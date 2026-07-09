@@ -5,7 +5,13 @@ namespace AuthService.Database;
 
 public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<DatabaseInitializer> logger)
 {
-    private const string MigrationId = "202607071600_auth_character_world_join";
+    private const long MigrationLockId = 7_104_202_607_071_600;
+
+    private static readonly IReadOnlyCollection<DatabaseMigration> Migrations =
+    [
+        new("202607071600_auth_character_world_join", InitialMigrationSql),
+        new("202607101200_character_world_sessions", WorldSessionMigrationSql)
+    ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -20,34 +26,53 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
             """,
             cancellationToken: cancellationToken));
 
-        var alreadyApplied = await connection.ExecuteScalarAsync<bool>(
-            new CommandDefinition(
-                "select exists (select 1 from schema_migrations where id = @MigrationId);",
-                new { MigrationId },
-                cancellationToken: cancellationToken));
-
-        if (alreadyApplied)
+        foreach (var migration in Migrations)
         {
-            return;
+            await ApplyMigrationAsync(connection, migration, cancellationToken);
         }
+    }
 
+    private async Task ApplyMigrationAsync(
+        NpgsqlConnection connection,
+        DatabaseMigration migration,
+        CancellationToken cancellationToken)
+    {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
             await connection.ExecuteAsync(new CommandDefinition(
-                MigrationSql,
+                "select pg_advisory_xact_lock(@MigrationLockId);",
+                new { MigrationLockId },
+                transaction: transaction,
+                cancellationToken: cancellationToken));
+
+            var alreadyApplied = await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(
+                    "select exists (select 1 from schema_migrations where id = @MigrationId);",
+                    new { MigrationId = migration.Id },
+                    transaction,
+                    cancellationToken: cancellationToken));
+
+            if (alreadyApplied)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return;
+            }
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                migration.Sql,
                 transaction: transaction,
                 cancellationToken: cancellationToken));
 
             await connection.ExecuteAsync(new CommandDefinition(
                 "insert into schema_migrations (id) values (@MigrationId);",
-                new { MigrationId },
+                new { MigrationId = migration.Id },
                 transaction,
                 cancellationToken: cancellationToken));
 
             await transaction.CommitAsync(cancellationToken);
-            logger.LogInformation("Applied database migration {MigrationId}.", MigrationId);
+            logger.LogInformation("Applied database migration {MigrationId}.", migration.Id);
         }
         catch
         {
@@ -56,7 +81,7 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         }
     }
 
-    private const string MigrationSql = """
+    private const string InitialMigrationSql = """
         create table accounts (
             id uuid primary key,
             email text not null,
@@ -129,5 +154,61 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
             on world_join_tickets(ticket_hash)
             where consumed_at is null;
         """;
-}
 
+    private const string WorldSessionMigrationSql = """
+        create table character_world_sessions (
+            id uuid primary key,
+            session_token_hash text not null unique,
+            account_id uuid not null references accounts(id) on delete cascade,
+            character_id uuid not null references characters(id) on delete cascade,
+            world_id text not null references worlds(id),
+            created_at timestamptz not null default now(),
+            last_heartbeat_at timestamptz not null default now(),
+            expires_at timestamptz not null,
+            released_at timestamptz null,
+            constraint ck_character_world_sessions_expiry
+                check (expires_at > created_at),
+            constraint ck_character_world_sessions_heartbeat
+                check (last_heartbeat_at >= created_at),
+            constraint ck_character_world_sessions_release
+                check (released_at is null or released_at >= created_at)
+        );
+
+        create unique index ux_character_world_sessions_active_character
+            on character_world_sessions(character_id)
+            where released_at is null;
+
+        create index ix_character_world_sessions_active_world
+            on character_world_sessions(world_id)
+            where released_at is null;
+
+        create index ix_character_world_sessions_active_expiry
+            on character_world_sessions(expires_at)
+            where released_at is null;
+
+        alter table world_join_tickets
+            add column world_session_id uuid null references character_world_sessions(id);
+
+        with ranked_tickets as (
+            select id,
+                   row_number() over (
+                       partition by character_id
+                       order by created_at desc, id desc) as ticket_rank
+            from world_join_tickets
+            where consumed_at is null
+        )
+        update world_join_tickets
+        set consumed_at = now()
+        where id in (
+            select id
+            from ranked_tickets
+            where ticket_rank > 1
+        );
+
+        create unique index ux_world_join_tickets_active_character
+            on world_join_tickets(character_id)
+            where consumed_at is null;
+        """;
+
+    private sealed record DatabaseMigration(string Id, string Sql);
+}

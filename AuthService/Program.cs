@@ -24,6 +24,7 @@ builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<CharacterService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<WorldService>();
+builder.Services.AddScoped<WorldSessionService>();
 
 var app = builder.Build();
 

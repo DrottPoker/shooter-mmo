@@ -1,6 +1,6 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 ## Purpose
 
@@ -243,6 +243,10 @@ Current implementation note:
 
 - Auth sessions and world join tickets are stored in PostgreSQL for the first
   backend phase.
+- Active character world sessions use PostgreSQL leases so ticket consumption and
+  the global single-world claim can commit in one transaction.
+- WorldServer rotates the lease token on reconnect, heartbeats active leases, and
+  releases them during a normal leave or graceful shutdown.
 - Redis runs locally, but join tickets can move to Redis later when multiple
   live WorldServers need faster short-lived coordination.
 - WorldServer currently validates join tickets through a temporary HTTP debug

@@ -50,8 +50,9 @@ dotnet test ShooterMmo.slnx --configuration Release
 Expected result:
 
 - All unit tests pass.
-- The PostgreSQL registration, session, character, world ticket, and single-use
-  consumption integration flow passes instead of being skipped.
+- PostgreSQL migration concurrency, ticket concurrency, wrong-world protection,
+  reconnect, heartbeat, cross-world exclusion, and idempotent release tests pass
+  instead of being skipped.
 
 Clean up the isolated environment:
 
@@ -186,6 +187,23 @@ List active debug sessions in WorldServer:
 Invoke-RestMethod http://localhost:5100/debug/sessions
 ```
 
+The returned session includes `worldSessionId`, `sessionExpiresAt`, and
+`isReconnect`. Wait at least 40 seconds and list the sessions again to verify that
+WorldServer heartbeat keeps the 30-second database lease alive.
+
+Reconnect test:
+
+1. Join `local-world-1` from `CharacterSelect`.
+2. Use `Back To Character Select` without leaving the world.
+3. Join the same character and world again.
+
+Expected result:
+
+- The second join succeeds as a reconnect.
+- `worldSessionId` remains unchanged.
+- `isReconnect` is `true` after the second join.
+- Only one active session exists for the character.
+
 ## Unity Temporary Client Flow
 
 The Unity project includes temporary runtime UI for the current backend flow.
@@ -277,8 +295,12 @@ The current backend foundation includes:
 - Database-backed session tokens.
 - Character creation and listing.
 - Local world listing and join tickets.
-- WorldServer join ticket validation through AuthService.
-- In-memory active player sessions inside WorldServer.
+- Character-locked ticket creation with one active ticket per character.
+- Transactional ticket consumption and PostgreSQL world-session claims.
+- Global single-world enforcement per character.
+- WorldServer reconnect, heartbeat, graceful release, and lease expiry handling.
+- In-memory WorldServer simulation sessions backed by authoritative database
+  leases.
 - Unity temporary UI for login, character selection, world ticket creation, and
   WorldServer debug join.
 - Unity local WorldScene gameplay preview with runtime environment creation,

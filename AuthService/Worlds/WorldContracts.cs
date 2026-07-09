@@ -14,13 +14,26 @@ public sealed record JoinWorldResponse(
     WorldResponse World,
     Guid CharacterId,
     string JoinTicket,
-    DateTime ExpiresAt);
+    DateTime ExpiresAt,
+    bool IsReconnect);
 
-public sealed record ConsumeJoinTicketRequest(string? Ticket);
+public sealed record ConsumeJoinTicketRequest(string? Ticket, string? WorldId);
 
 public sealed record ConsumedJoinTicketResponse(
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
     string WorldId,
-    DateTime ExpiresAt);
+    Guid WorldSessionId,
+    string WorldSessionToken,
+    DateTime SessionExpiresAt,
+    bool IsReconnect);
+
+public sealed record WorldSessionCredentialRequest(string? WorldId, string? SessionToken);
+
+public sealed record WorldSessionLeaseResponse(
+    Guid WorldSessionId,
+    Guid CharacterId,
+    string WorldId,
+    DateTime ExpiresAt,
+    bool Released);

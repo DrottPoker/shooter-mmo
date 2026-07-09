@@ -49,7 +49,34 @@ public static class WorldEndpoints
             return result.ToHttpResult();
         });
 
+        app.MapPost("/api/world-sessions/{worldSessionId:guid}/heartbeat", async (
+            Guid worldSessionId,
+            WorldSessionCredentialRequest request,
+            WorldSessionService worldSessionService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await worldSessionService.HeartbeatAsync(
+                worldSessionId,
+                request,
+                cancellationToken);
+
+            return result.ToHttpResult();
+        });
+
+        app.MapPost("/api/world-sessions/{worldSessionId:guid}/release", async (
+            Guid worldSessionId,
+            WorldSessionCredentialRequest request,
+            WorldSessionService worldSessionService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await worldSessionService.ReleaseAsync(
+                worldSessionId,
+                request,
+                cancellationToken);
+
+            return result.ToHttpResult();
+        });
+
         return app;
     }
 }
-

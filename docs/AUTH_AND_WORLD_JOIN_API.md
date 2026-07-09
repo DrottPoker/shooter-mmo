@@ -1,6 +1,6 @@
 # Auth And World Join API
 
-Last updated: 2026-07-07
+Last updated: 2026-07-09
 
 ## Scope
 
@@ -9,8 +9,10 @@ world join tickets.
 
 The current implementation uses database-backed session tokens instead of JWTs.
 This keeps early development simple and makes sessions easy to revoke later.
-Join tickets are also stored in PostgreSQL for now. They can move to Redis when
-multiple live WorldServers need faster short-lived coordination.
+Join tickets and authoritative character world-session leases are also stored in
+PostgreSQL. Ticket consumption and world-session claiming therefore share one
+transaction. They can move behind a Redis-backed implementation later when scale
+requires it.
 
 ## Database Startup
 
@@ -32,6 +34,7 @@ The migration creates:
 - `characters`
 - `worlds`
 - `world_join_tickets`
+- `character_world_sessions`
 - `schema_migrations`
 
 It also seeds `local-world-1`.
@@ -172,11 +175,18 @@ Response:
   },
   "characterId": "00000000-0000-0000-0000-000000000000",
   "joinTicket": "ticket",
-  "expiresAt": "2026-07-07T13:00:30Z"
+  "expiresAt": "2026-07-07T13:00:30Z",
+  "isReconnect": false
 }
 ```
 
 The current ticket lifetime is 30 seconds.
+
+Ticket creation locks the character row. Creating a new ticket invalidates any
+older unconsumed ticket for that character. If the character already has an
+active lease on the requested world, the response is a reconnect ticket. A join
+request for a different world is rejected until the active lease is released or
+expires.
 
 ### Consume World Join Ticket
 
@@ -188,12 +198,61 @@ Request:
 
 ```json
 {
-  "ticket": "ticket"
+  "ticket": "ticket",
+  "worldId": "local-world-1"
 }
 ```
 
+Response:
+
+```json
+{
+  "accountId": "00000000-0000-0000-0000-000000000000",
+  "characterId": "00000000-0000-0000-0000-000000000000",
+  "characterName": "Hero One",
+  "worldId": "local-world-1",
+  "worldSessionId": "00000000-0000-0000-0000-000000000000",
+  "worldSessionToken": "token",
+  "sessionExpiresAt": "2026-07-07T13:01:00Z",
+  "isReconnect": false
+}
+```
+
+AuthService validates `worldId` before consuming the ticket. Sending a ticket to
+the wrong WorldServer returns a conflict without invalidating the ticket. A valid
+consume atomically marks the ticket as consumed and creates or refreshes the one
+active world-session lease for the character.
+
 This endpoint is used by WorldServer validation. It has no service-to-service
 authentication yet because there is only one local WorldServer in the MVP.
+
+### Heartbeat World Session
+
+```http
+POST /api/world-sessions/{worldSessionId}/heartbeat
+```
+
+Request:
+
+```json
+{
+  "worldId": "local-world-1",
+  "sessionToken": "token"
+}
+```
+
+WorldServer sends a heartbeat every 10 seconds. A successful heartbeat extends
+the lease to 30 seconds from the database clock. Invalid, released, or expired
+credentials are rejected.
+
+### Release World Session
+
+```http
+POST /api/world-sessions/{worldSessionId}/release
+```
+
+The request uses the same credentials as heartbeat. Release is idempotent, so a
+retry with the same valid credentials returns success after the first release.
 
 ## WorldServer Debug Endpoints
 
@@ -230,8 +289,9 @@ WorldServer will:
 
 - Call AuthService `POST /api/world-join-tickets/consume`.
 - Reject expired, invalid, or already consumed tickets.
-- Reject tickets for a different world.
-- Store a successful join as an in-memory active player session.
+- Reject tickets for a different world without consuming them.
+- Claim or reconnect the global PostgreSQL world-session lease.
+- Store the successful session locally and heartbeat it while WorldServer runs.
 
 ### List Debug Sessions
 
@@ -247,13 +307,14 @@ Returns the active in-memory sessions inside the local WorldServer.
 DELETE /debug/sessions/{characterId}
 ```
 
-Removes one in-memory session from WorldServer. This exists only to make local
-debugging easier.
+Releases the authoritative PostgreSQL lease and removes the local WorldServer
+session. Repeating the delete after the local session is gone returns success.
 
 ## Current Limitations
 
 - Character deletion is not implemented.
 - JWT auth is not implemented.
-- Active online character leases are not implemented yet.
+- Service-to-service authentication is not implemented yet.
 - Redis is running locally but is not used for auth or join tickets yet.
-- WorldServer active sessions are in-memory and are lost when WorldServer stops.
+- WorldServer simulation state is still in-memory. The authoritative lease expires
+  if a stopped WorldServer can no longer heartbeat it.

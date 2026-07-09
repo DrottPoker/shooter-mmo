@@ -1,125 +1,240 @@
-using AuthService.Auth;
-using AuthService.Characters;
-using AuthService.Database;
 using AuthService.Worlds;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql;
 
 namespace ShooterMmo.Backend.Tests.Integration;
 
 public sealed class AuthWorldFlowIntegrationTests
 {
     [PostgresIntegrationFact]
-    public async Task RegistrationCharacterAndWorldJoinFlowPersistsAcrossServices()
+    public async Task RegistrationCharacterAndWorldSessionLifecyclePersistsAcrossServices()
     {
-        var connectionString = Environment.GetEnvironmentVariable(
-            PostgresIntegrationFactAttribute.ConnectionStringVariable)!;
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        await context.InitializeDatabaseAsync();
 
-        EnsureDedicatedTestDatabase(connectionString);
+        Assert.Equal(7, await CountFoundationTablesAsync(context));
+        Assert.Equal(2, await CountAppliedMigrationsAsync(context));
 
-        await using var dataSource = NpgsqlDataSource.Create(connectionString);
-        await ResetPublicSchemaAsync(dataSource);
-
-        var initializer = new DatabaseInitializer(
-            dataSource,
-            NullLogger<DatabaseInitializer>.Instance);
-
-        await initializer.InitializeAsync(CancellationToken.None);
-        await AssertFoundationSchemaAsync(dataSource);
-
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Auth:SessionLifetimeHours"] = "24",
-                ["Game:MaxCharactersPerAccount"] = "5",
-                ["WorldJoin:TicketLifetimeSeconds"] = "30"
-            })
-            .Build();
-
-        var sessionService = new SessionService(dataSource, configuration);
-        var accountService = new AccountService(dataSource, sessionService);
-        var characterService = new CharacterService(dataSource, configuration);
-        var worldService = new WorldService(dataSource, configuration);
-
-        var registration = await accountService.RegisterAsync(
-            new RegisterAccountRequest("integration@example.com", "integration_player", "TestPass123!"),
-            CancellationToken.None);
-
-        Assert.True(registration.Succeeded, registration.Error?.Message);
-
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Headers.Authorization = $"Bearer {registration.Value!.SessionToken}";
-
-        var authenticatedAccount = await sessionService.AuthenticateAsync(
-            httpContext.Request,
-            CancellationToken.None);
-
-        Assert.True(authenticatedAccount.Succeeded, authenticatedAccount.Error?.Message);
-        Assert.Equal(registration.Value.AccountId, authenticatedAccount.Value!.AccountId);
-
-        var character = await characterService.CreateAsync(
-            registration.Value.AccountId,
-            new CreateCharacterRequest("Integration Hero"),
-            CancellationToken.None);
-
-        Assert.True(character.Succeeded, character.Error?.Message);
-
-        var characters = await characterService.ListAsync(
-            registration.Value.AccountId,
+        var player = await context.RegisterPlayerAsync();
+        var characters = await context.CharacterService.ListAsync(
+            player.Registration.AccountId,
             CancellationToken.None);
 
         Assert.Single(characters.Value!);
-        Assert.Equal(character.Value!.Id, characters.Value!.Single().Id);
+        Assert.Equal(player.Character.Id, characters.Value!.Single().Id);
 
-        var join = await worldService.CreateJoinTicketAsync(
-            authenticatedAccount.Value,
+        var join = await context.WorldService.CreateJoinTicketAsync(
+            player.Account,
             "local-world-1",
-            new JoinWorldRequest(character.Value.Id),
+            new JoinWorldRequest(player.Character.Id),
             CancellationToken.None);
 
         Assert.True(join.Succeeded, join.Error?.Message);
+        Assert.False(join.Value!.IsReconnect);
 
-        var consumed = await worldService.ConsumeJoinTicketAsync(
-            new ConsumeJoinTicketRequest(join.Value!.JoinTicket),
+        var wrongWorld = await context.WorldService.ConsumeJoinTicketAsync(
+            new ConsumeJoinTicketRequest(join.Value.JoinTicket, "local-world-2"),
+            CancellationToken.None);
+
+        Assert.False(wrongWorld.Succeeded);
+        Assert.Equal(StatusCodes.Status409Conflict, wrongWorld.StatusCode);
+        Assert.Equal("wrong_world", wrongWorld.Error!.Code);
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        var consumed = await context.WorldService.ConsumeJoinTicketAsync(
+            new ConsumeJoinTicketRequest(join.Value.JoinTicket, "local-world-1"),
             CancellationToken.None);
 
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
-        Assert.Equal(character.Value.Id, consumed.Value!.CharacterId);
+        Assert.Equal(player.Character.Id, consumed.Value!.CharacterId);
         Assert.Equal("Integration Hero", consumed.Value.CharacterName);
         Assert.Equal("local-world-1", consumed.Value.WorldId);
+        Assert.NotEqual(Guid.Empty, consumed.Value.WorldSessionId);
+        Assert.False(string.IsNullOrWhiteSpace(consumed.Value.WorldSessionToken));
+        Assert.False(consumed.Value.IsReconnect);
+        Assert.Equal(1, await CountActiveWorldSessionsAsync(context));
 
-        var consumedAgain = await worldService.ConsumeJoinTicketAsync(
-            new ConsumeJoinTicketRequest(join.Value.JoinTicket),
+        var consumedAgain = await context.WorldService.ConsumeJoinTicketAsync(
+            new ConsumeJoinTicketRequest(join.Value.JoinTicket, "local-world-1"),
             CancellationToken.None);
 
         Assert.False(consumedAgain.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, consumedAgain.StatusCode);
+
+        var heartbeat = await context.WorldSessionService.HeartbeatAsync(
+            consumed.Value.WorldSessionId,
+            new WorldSessionCredentialRequest(
+                consumed.Value.WorldId,
+                consumed.Value.WorldSessionToken),
+            CancellationToken.None);
+
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        Assert.False(heartbeat.Value!.Released);
+        Assert.True(heartbeat.Value.ExpiresAt >= consumed.Value.SessionExpiresAt);
+
+        var firstRelease = await context.WorldSessionService.ReleaseAsync(
+            consumed.Value.WorldSessionId,
+            new WorldSessionCredentialRequest(
+                consumed.Value.WorldId,
+                consumed.Value.WorldSessionToken),
+            CancellationToken.None);
+
+        var secondRelease = await context.WorldSessionService.ReleaseAsync(
+            consumed.Value.WorldSessionId,
+            new WorldSessionCredentialRequest(
+                consumed.Value.WorldId,
+                consumed.Value.WorldSessionToken),
+            CancellationToken.None);
+
+        Assert.True(firstRelease.Succeeded, firstRelease.Error?.Message);
+        Assert.True(secondRelease.Succeeded, secondRelease.Error?.Message);
+        Assert.True(firstRelease.Value!.Released);
+        Assert.True(secondRelease.Value!.Released);
+        Assert.Equal(0, await CountActiveWorldSessionsAsync(context));
+
+        var heartbeatAfterRelease = await context.WorldSessionService.HeartbeatAsync(
+            consumed.Value.WorldSessionId,
+            new WorldSessionCredentialRequest(
+                consumed.Value.WorldId,
+                consumed.Value.WorldSessionToken),
+            CancellationToken.None);
+
+        Assert.False(heartbeatAfterRelease.Succeeded);
+        Assert.Equal(StatusCodes.Status401Unauthorized, heartbeatAfterRelease.StatusCode);
     }
 
-    private static void EnsureDedicatedTestDatabase(string connectionString)
+    [PostgresIntegrationFact]
+    public async Task ConcurrentTicketsReconnectAndCrossWorldRulesKeepOneActiveSession()
     {
-        var builder = new NpgsqlConnectionStringBuilder(connectionString);
-        if (string.IsNullOrWhiteSpace(builder.Database)
-            || !builder.Database.Contains("test", StringComparison.OrdinalIgnoreCase))
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "concurrency@example.com",
+            "concurrency_player",
+            "Concurrency Hero");
+
+        var ticketTasks = Enumerable.Range(0, 2)
+            .Select(_ => context.WorldService.CreateJoinTicketAsync(
+                player.Account,
+                "local-world-1",
+                new JoinWorldRequest(player.Character.Id),
+                CancellationToken.None));
+
+        var tickets = await Task.WhenAll(ticketTasks);
+
+        Assert.All(tickets, result => Assert.True(result.Succeeded, result.Error?.Message));
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        var consumeResults = new List<ConsumedJoinTicketResponse>();
+        var rejectedTicketCount = 0;
+
+        foreach (var ticket in tickets)
         {
-            throw new InvalidOperationException(
-                "The PostgreSQL integration connection must target a database whose name contains 'test'.");
+            var consume = await context.WorldService.ConsumeJoinTicketAsync(
+                new ConsumeJoinTicketRequest(ticket.Value!.JoinTicket, "local-world-1"),
+                CancellationToken.None);
+
+            if (consume.Succeeded)
+            {
+                consumeResults.Add(consume.Value!);
+            }
+            else
+            {
+                Assert.Equal(StatusCodes.Status401Unauthorized, consume.StatusCode);
+                rejectedTicketCount++;
+            }
         }
+
+        var firstSession = Assert.Single(consumeResults);
+        Assert.Equal(1, rejectedTicketCount);
+        Assert.Equal(1, await CountActiveWorldSessionsAsync(context));
+
+        var reconnectTicket = await context.WorldService.CreateJoinTicketAsync(
+            player.Account,
+            "local-world-1",
+            new JoinWorldRequest(player.Character.Id),
+            CancellationToken.None);
+
+        Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
+        Assert.True(reconnectTicket.Value!.IsReconnect);
+
+        var reconnect = await context.WorldService.ConsumeJoinTicketAsync(
+            new ConsumeJoinTicketRequest(reconnectTicket.Value.JoinTicket, "local-world-1"),
+            CancellationToken.None);
+
+        Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
+        Assert.True(reconnect.Value!.IsReconnect);
+        Assert.Equal(firstSession.WorldSessionId, reconnect.Value.WorldSessionId);
+        Assert.NotEqual(firstSession.WorldSessionToken, reconnect.Value.WorldSessionToken);
+        Assert.Equal(1, await CountActiveWorldSessionsAsync(context));
+
+        await context.AddWorldAsync("local-world-2");
+
+        var crossWorldWhileActive = await context.WorldService.CreateJoinTicketAsync(
+            player.Account,
+            "local-world-2",
+            new JoinWorldRequest(player.Character.Id),
+            CancellationToken.None);
+
+        Assert.False(crossWorldWhileActive.Succeeded);
+        Assert.Equal(StatusCodes.Status409Conflict, crossWorldWhileActive.StatusCode);
+        Assert.Equal("character_already_active", crossWorldWhileActive.Error!.Code);
+
+        var staleTokenRelease = await context.WorldSessionService.ReleaseAsync(
+            firstSession.WorldSessionId,
+            new WorldSessionCredentialRequest(
+                firstSession.WorldId,
+                firstSession.WorldSessionToken),
+            CancellationToken.None);
+
+        Assert.False(staleTokenRelease.Succeeded);
+        Assert.Equal(StatusCodes.Status401Unauthorized, staleTokenRelease.StatusCode);
+        Assert.Equal(1, await CountActiveWorldSessionsAsync(context));
+
+        var release = await context.WorldSessionService.ReleaseAsync(
+            reconnect.Value.WorldSessionId,
+            new WorldSessionCredentialRequest(
+                reconnect.Value.WorldId,
+                reconnect.Value.WorldSessionToken),
+            CancellationToken.None);
+
+        Assert.True(release.Succeeded, release.Error?.Message);
+
+        var crossWorldAfterRelease = await context.WorldService.CreateJoinTicketAsync(
+            player.Account,
+            "local-world-2",
+            new JoinWorldRequest(player.Character.Id),
+            CancellationToken.None);
+
+        Assert.True(crossWorldAfterRelease.Succeeded, crossWorldAfterRelease.Error?.Message);
+        Assert.False(crossWorldAfterRelease.Value!.IsReconnect);
     }
 
-    private static async Task ResetPublicSchemaAsync(NpgsqlDataSource dataSource)
+    [PostgresIntegrationFact]
+    public async Task ConcurrentMigrationInitializationAppliesEachMigrationOnce()
     {
-        await using var command = dataSource.CreateCommand(
-            "drop schema if exists public cascade; create schema public;");
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(initializeDatabase: false);
 
-        await command.ExecuteNonQueryAsync();
+        await Task.WhenAll(
+            context.InitializeDatabaseAsync(),
+            context.InitializeDatabaseAsync());
+
+        Assert.Equal(7, await CountFoundationTablesAsync(context));
+        Assert.Equal(2, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(
+            2,
+            await context.ExecuteScalarIntAsync(
+                """
+                select count(*)
+                from pg_indexes
+                where schemaname = 'public'
+                  and indexname in (
+                      'ux_character_world_sessions_active_character',
+                      'ux_world_join_tickets_active_character');
+                """));
     }
 
-    private static async Task AssertFoundationSchemaAsync(NpgsqlDataSource dataSource)
+    private static Task<int> CountFoundationTablesAsync(PostgresIntegrationTestContext context)
     {
-        await using var command = dataSource.CreateCommand(
+        return context.ExecuteScalarIntAsync(
             """
             select count(*)
             from information_schema.tables
@@ -130,10 +245,25 @@ public sealed class AuthWorldFlowIntegrationTests
                   'characters',
                   'worlds',
                   'world_join_tickets',
+                  'character_world_sessions',
                   'schema_migrations');
             """);
+    }
 
-        var tableCount = Convert.ToInt32(await command.ExecuteScalarAsync());
-        Assert.Equal(6, tableCount);
+    private static Task<int> CountAppliedMigrationsAsync(PostgresIntegrationTestContext context)
+    {
+        return context.ExecuteScalarIntAsync("select count(*) from schema_migrations;");
+    }
+
+    private static Task<int> CountActiveTicketsAsync(PostgresIntegrationTestContext context)
+    {
+        return context.ExecuteScalarIntAsync(
+            "select count(*) from world_join_tickets where consumed_at is null;");
+    }
+
+    private static Task<int> CountActiveWorldSessionsAsync(PostgresIntegrationTestContext context)
+    {
+        return context.ExecuteScalarIntAsync(
+            "select count(*) from character_world_sessions where released_at is null;");
     }
 }

@@ -1,13 +1,25 @@
 namespace WorldServer.Auth;
 
-public sealed record ConsumeJoinTicketRequest(string Ticket);
+public sealed record ConsumeJoinTicketRequest(string Ticket, string WorldId);
 
 public sealed record ConsumedJoinTicketResponse(
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
     string WorldId,
-    DateTime ExpiresAt);
+    Guid WorldSessionId,
+    string WorldSessionToken,
+    DateTime SessionExpiresAt,
+    bool IsReconnect);
+
+public sealed record WorldSessionCredentialRequest(string WorldId, string SessionToken);
+
+public sealed record WorldSessionLeaseResponse(
+    Guid WorldSessionId,
+    Guid CharacterId,
+    string WorldId,
+    DateTime ExpiresAt,
+    bool Released);
 
 public sealed record AuthServiceErrorResponse(string Code, string Message);
 
@@ -27,4 +39,3 @@ public sealed record AuthServiceResult<T>(T? Value, WorldServerErrorResponse? Er
 }
 
 public sealed record WorldServerErrorResponse(string Code, string Message);
-

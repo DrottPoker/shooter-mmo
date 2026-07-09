@@ -74,6 +74,7 @@ namespace ShooterMmo.Api
         public string characterId;
         public string joinTicket;
         public string expiresAt;
+        public bool isReconnect;
     }
 
     [Serializable]
@@ -85,11 +86,13 @@ namespace ShooterMmo.Api
     [Serializable]
     public sealed class ActivePlayerSessionResponse
     {
+        public string worldSessionId;
         public string accountId;
         public string characterId;
         public string characterName;
         public string worldId;
         public string joinedAt;
+        public string sessionExpiresAt;
+        public bool isReconnect;
     }
 }
-

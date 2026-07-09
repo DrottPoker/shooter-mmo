@@ -43,7 +43,10 @@ namespace ShooterMmo.Ui
                 GUILayout.Label("Character: " + session.characterName);
                 GUILayout.Label("Character Id: " + session.characterId);
                 GUILayout.Label("World: " + session.worldId);
+                GUILayout.Label("World Session Id: " + session.worldSessionId);
                 GUILayout.Label("Joined At: " + session.joinedAt);
+                GUILayout.Label("Session Expires At: " + session.sessionExpiresAt);
+                GUILayout.Label("Reconnect: " + session.isReconnect);
             }
             else
             {
@@ -140,4 +143,3 @@ namespace ShooterMmo.Ui
         }
     }
 }
-

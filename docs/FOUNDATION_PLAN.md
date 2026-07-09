@@ -29,7 +29,7 @@ Delivered foundation:
 
 ## Phase 1: World Join Correctness
 
-Status: Planned
+Status: Complete
 
 Required outcomes:
 
@@ -43,6 +43,19 @@ Required outcomes:
 The first implementation should keep ticket consumption and the authoritative
 world session claim in PostgreSQL so they can share one transaction. Redis can be
 introduced later behind the same session abstraction when scale requires it.
+
+Delivered foundation:
+
+- Ordered, advisory-lock-protected database migrations.
+- One active unconsumed ticket per character, backed by a database constraint.
+- Character row locking across ticket creation and consumption.
+- World-bound consumption that preserves a ticket sent to the wrong server.
+- Transactional world-session claim and reconnect token rotation.
+- One active world-session lease per character across all worlds.
+- Heartbeat extension, graceful shutdown release, and idempotent explicit release.
+- Local WorldServer reconnect handling and expired-session replacement.
+- Unit, integration, concurrency, and migration regression tests for the rules
+  above.
 
 ## Later Foundation Phases
 

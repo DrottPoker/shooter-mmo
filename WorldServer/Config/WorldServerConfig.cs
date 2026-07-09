@@ -6,6 +6,7 @@ public sealed record WorldServerConfig(
     string HttpUrl,
     Uri AuthServiceBaseUrl,
     TimeSpan AuthServiceTimeout,
+    TimeSpan WorldSessionHeartbeatInterval,
     string RedisConnectionString,
     TimeSpan HealthCheckTimeout)
 {
@@ -19,6 +20,10 @@ public sealed record WorldServerConfig(
             GetString("WORLD_HTTP_URL", section["HttpUrl"], "http://localhost:5100"),
             GetUri("AUTH_SERVICE_BASE_URL", section["AuthServiceBaseUrl"], "http://localhost:5000"),
             TimeSpan.FromSeconds(GetInt("AUTH_SERVICE_TIMEOUT_SECONDS", section["AuthServiceTimeoutSeconds"], 5)),
+            TimeSpan.FromSeconds(GetInt(
+                "WORLD_SESSION_HEARTBEAT_SECONDS",
+                section["WorldSessionHeartbeatSeconds"],
+                10)),
             GetString("ConnectionStrings__Redis", configuration.GetConnectionString("Redis"), "localhost:6379"),
             TimeSpan.FromMilliseconds(GetInt(
                 "HealthChecks__TcpTimeoutMilliseconds",
@@ -51,4 +56,3 @@ public sealed record WorldServerConfig(
             : new Uri(defaultValue, UriKind.Absolute);
     }
 }
-

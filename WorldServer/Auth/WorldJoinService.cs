@@ -21,6 +21,7 @@ public sealed class WorldJoinService(
 
         var consumedTicket = await authServiceClient.ConsumeJoinTicketAsync(
             request.JoinTicket.Trim(),
+            config.WorldServerId,
             cancellationToken);
 
         if (!consumedTicket.Succeeded)
@@ -33,18 +34,36 @@ public sealed class WorldJoinService(
 
         if (!string.Equals(consumedTicket.Value!.WorldId, config.WorldServerId, StringComparison.Ordinal))
         {
+            await authServiceClient.ReleaseWorldSessionAsync(
+                consumedTicket.Value.WorldSessionId,
+                consumedTicket.Value.WorldId,
+                consumedTicket.Value.WorldSessionToken,
+                cancellationToken);
+
             return WorldJoinResult<ActivePlayerSessionResponse>.Conflict(
                 "wrong_world",
                 $"Join ticket is for world {consumedTicket.Value.WorldId}, not {config.WorldServerId}.");
         }
 
         var session = ActivePlayerSession.FromJoinTicket(consumedTicket.Value);
+        var registration = sessionStore.Register(session);
 
-        return sessionStore.TryAdd(session)
-            ? WorldJoinResult<ActivePlayerSessionResponse>.Success(ActivePlayerSessionResponse.FromSession(session))
-            : WorldJoinResult<ActivePlayerSessionResponse>.Conflict(
+        if (registration == ActivePlayerSessionRegistration.Conflict)
+        {
+            await authServiceClient.ReleaseWorldSessionAsync(
+                session.WorldSessionId,
+                session.WorldId,
+                session.WorldSessionToken,
+                cancellationToken);
+
+            return WorldJoinResult<ActivePlayerSessionResponse>.Conflict(
                 "character_already_active",
-                "Character already has an active WorldServer session.");
+                "Character already has a different active WorldServer session.");
+        }
+
+        sessionStore.TryGet(session.CharacterId, out var registeredSession);
+
+        return WorldJoinResult<ActivePlayerSessionResponse>.Success(
+            ActivePlayerSessionResponse.FromSession(registeredSession!));
     }
 }
-

@@ -9,6 +9,8 @@ foundation for the first playable MVP.
 
 - ASP.NET Core AuthService backed by PostgreSQL.
 - .NET WorldServer with temporary HTTP join validation.
+- Transactional PostgreSQL world-session leases with reconnect, heartbeat, and
+  idempotent release.
 - Shared .NET networking and health helpers.
 - Unity 6 client scenes for login, character selection, and a local world preview.
 - PostgreSQL and Redis development infrastructure through Docker Compose.
