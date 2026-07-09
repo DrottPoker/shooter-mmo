@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      SHOOTER_MMO_TEST_POSTGRES: Host=localhost;Port=5432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: shooter_mmo_tests
+          POSTGRES_USER: shooter_mmo_tests
+          POSTGRES_PASSWORD: shooter_mmo_tests_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shooter_mmo_tests -d shooter_mmo_tests"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      - name: Restore locked dependencies
+        run: dotnet restore ShooterMmo.slnx --locked-mode
+
+      - name: Verify formatting
+        run: dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build ShooterMmo.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: >-
+          dotnet test ShooterMmo.slnx
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=backend-tests.trx"
+          --results-directory TestResults
+          --collect "XPlat Code Coverage"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults
+          if-no-files-found: warn
+          retention-days: 14

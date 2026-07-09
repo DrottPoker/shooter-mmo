@@ -2,8 +2,13 @@
 **/bin/
 **/obj/
 .vs/
+.idea/
+.vscode/
 *.user
 *.suo
+TestResults/
+coverage/
+artifacts/
 
 # Local environment
 .env
@@ -17,6 +22,8 @@ shooter-mmorpg-unity-client/[Bb]uild/
 shooter-mmorpg-unity-client/[Bb]uilds/
 shooter-mmorpg-unity-client/[Ll]ogs/
 shooter-mmorpg-unity-client/[Uu]ser[Ss]ettings/
+shooter-mmorpg-unity-client/[Mm]emoryCaptures/
+shooter-mmorpg-unity-client/[Rr]ecordings/
 shooter-mmorpg-unity-client/*.csproj
 shooter-mmorpg-unity-client/*.sln
 shooter-mmorpg-unity-client/*.slnx
@@ -31,4 +38,3 @@ shooter-mmorpg-unity-client/*.VC.db
 # OS files
 .DS_Store
 Thumbs.db
-

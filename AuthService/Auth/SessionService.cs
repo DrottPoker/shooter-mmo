@@ -1,6 +1,6 @@
+using AuthService.Http;
 using Dapper;
 using Npgsql;
-using AuthService.Http;
 
 namespace AuthService.Auth;
 

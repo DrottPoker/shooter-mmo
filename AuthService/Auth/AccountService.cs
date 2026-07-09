@@ -1,7 +1,7 @@
+using AuthService.Http;
 using BCrypt.Net;
 using Dapper;
 using Npgsql;
-using AuthService.Http;
 
 namespace AuthService.Auth;
 

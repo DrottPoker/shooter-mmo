@@ -1,7 +1,7 @@
-using Dapper;
-using Npgsql;
 using AuthService.Auth;
 using AuthService.Http;
+using Dapper;
+using Npgsql;
 
 namespace AuthService.Worlds;
 

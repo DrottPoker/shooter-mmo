@@ -1,12 +1,64 @@
 # Local Development
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 ## Requirements
 
 - .NET SDK 10.0 or newer.
 - Docker Desktop.
 - Unity Editor for the client project.
+
+## Repository Quality Checks
+
+Restore locked dependencies and run the standard backend quality gate:
+
+```powershell
+dotnet restore ShooterMmo.slnx --locked-mode
+dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
+dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet test ShooterMmo.slnx --configuration Release --no-build
+```
+
+Expected result:
+
+- Restore accepts every committed `packages.lock.json` file.
+- Format reports no files that need changes.
+- Build completes with zero warnings and zero errors.
+- Unit tests pass.
+- The PostgreSQL integration test is skipped unless its dedicated connection is
+  configured.
+
+## Isolated PostgreSQL Integration Tests
+
+The integration test resets the target database's `public` schema. Always use the
+isolated test Compose file and never point the test variable at a development,
+staging, or production database.
+
+Start the test database:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+```
+
+Set the dedicated connection and run all backend tests:
+
+```powershell
+$env:SHOOTER_MMO_TEST_POSTGRES = "Host=localhost;Port=55432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password"
+dotnet test ShooterMmo.slnx --configuration Release
+```
+
+Expected result:
+
+- All unit tests pass.
+- The PostgreSQL registration, session, character, world ticket, and single-use
+  consumption integration flow passes instead of being skipped.
+
+Clean up the isolated environment:
+
+```powershell
+docker compose -f docker-compose.test.yml down
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+```
 
 ## Local Infrastructure
 
@@ -139,6 +191,16 @@ Invoke-RestMethod http://localhost:5100/debug/sessions
 The Unity project includes temporary runtime UI for the current backend flow.
 The UI is created automatically by a bootstrap script when each scene starts.
 
+The Unity project also contains separate EditMode and PlayMode test assemblies.
+Open `Window > General > Test Runner` and run both suites before delivering Unity
+changes.
+
+Expected result:
+
+- EditMode validates API array parsing and client session cleanup.
+- PlayMode validates that loading `LoginMenu` creates the persistent client
+  bootstrap and runtime login panel.
+
 Before using the Unity client, start these services:
 
 ```powershell
@@ -222,6 +284,10 @@ The current backend foundation includes:
 - Unity local WorldScene gameplay preview with runtime environment creation,
   placeholder player spawn, local movement, jump, sprint, and third-person
   camera control.
+- Backend unit tests and an isolated PostgreSQL integration test.
+- Unity EditMode and PlayMode smoke tests in separate test assemblies.
+- A GitHub Actions backend quality gate with locked restore, format, build,
+  PostgreSQL integration testing, and coverage collection.
 
 Persistent gameplay systems, inventory, combat, and Unity networking are not
 implemented yet.

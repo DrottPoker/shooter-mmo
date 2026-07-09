@@ -1,0 +1,19 @@
+{
+  "name": "ShooterMmo.PlayModeTests",
+  "rootNamespace": "ShooterMmo.Tests.PlayMode",
+  "references": [
+    "ShooterMmo.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
