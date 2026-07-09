@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/Shared/">
+    <Project Path="Shared/ShooterMmo.Shared.csproj" />
+  </Folder>
+  <Project Path="AuthService/AuthService.csproj" />
+  <Project Path="WorldServer/WorldServer.csproj" />
+</Solution>
