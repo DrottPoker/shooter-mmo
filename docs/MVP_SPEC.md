@@ -266,6 +266,11 @@ Current implementation note:
 - Unity WorldScene currently creates a local placeholder environment, player,
   and third-person camera at runtime so movement can be tested before UDP
   gameplay networking exists.
+- Unity API requests use configured timeouts and structured Problem Details
+  errors. UI operations are serialized, unauthorized sessions return to login,
+  and every WorldScene navigation button releases the current world session.
+- Local movement and camera controls use Input Actions. The third-person camera
+  follows one configured focus point and uses spherecasts to avoid world geometry.
 
 ## Persistence Principles
 

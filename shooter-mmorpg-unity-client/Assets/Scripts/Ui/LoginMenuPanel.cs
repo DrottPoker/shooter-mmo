@@ -1,3 +1,4 @@
+using System.Collections;
 using ShooterMmo.Api;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -6,16 +7,19 @@ namespace ShooterMmo.Ui
 {
     public sealed class LoginMenuPanel : MonoBehaviour
     {
-        private readonly ShooterMmoApiClient apiClient = new ShooterMmoApiClient();
+        private readonly ClientOperationState operationState = new ClientOperationState();
 
-        private string authServiceBaseUrl = ShooterMmoClientSession.AuthServiceBaseUrl;
-        private string worldServerBaseUrl = ShooterMmoClientSession.WorldServerBaseUrl;
+        private ShooterMmoApiClient apiClient;
         private string email = "player@example.com";
         private string username = "player_one";
         private string password = "TestPass123!";
         private string status = "Register or login to continue.";
-        private bool isBusy;
         private Vector2 scrollPosition;
+
+        private void Awake()
+        {
+            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+        }
 
         private void OnGUI()
         {
@@ -23,8 +27,9 @@ namespace ShooterMmo.Ui
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
 
             GUILayout.Label("Connections");
-            authServiceBaseUrl = TemporaryPanelStyles.LabeledTextField("Auth Service", authServiceBaseUrl);
-            worldServerBaseUrl = TemporaryPanelStyles.LabeledTextField("World Server", worldServerBaseUrl);
+            GUILayout.Label("Auth Service: " + ShooterMmoClientSession.AuthServiceBaseUrl);
+            GUILayout.Label("World Server: " + ShooterMmoClientSession.WorldServerBaseUrl);
+            GUILayout.Label("Request Timeout: " + ShooterMmoClientSession.RequestTimeoutSeconds + " seconds");
 
             GUILayout.Space(12f);
             GUILayout.Label("Account");
@@ -32,32 +37,30 @@ namespace ShooterMmo.Ui
             username = TemporaryPanelStyles.LabeledTextField("Username", username);
             password = TemporaryPanelStyles.LabeledPasswordField("Password", password);
 
+            var previousGuiState = GUI.enabled;
+            GUI.enabled = previousGuiState && !operationState.IsBusy;
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Register", GUILayout.Height(34f)))
             {
-                Register();
+                BeginAuthentication(RegisterRoutine());
             }
 
             if (GUILayout.Button("Login", GUILayout.Height(34f)))
             {
-                Login();
+                BeginAuthentication(LoginRoutine());
             }
             GUILayout.EndHorizontal();
+            GUI.enabled = previousGuiState;
 
             GUILayout.Space(12f);
-            TemporaryPanelStyles.DrawStatus(isBusy, status);
+            TemporaryPanelStyles.DrawStatus(operationState.IsBusy, status);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
 
-        private void Register()
+        private IEnumerator RegisterRoutine()
         {
-            if (isBusy)
-            {
-                return;
-            }
-
             var request = new RegisterAccountRequest
             {
                 email = email,
@@ -65,29 +68,46 @@ namespace ShooterMmo.Ui
                 password = password
             };
 
-            RunRequest(apiClient.Register(authServiceBaseUrl, request, OnAuthSuccess, SetError));
+            yield return apiClient.Register(
+                ShooterMmoClientSession.AuthServiceBaseUrl,
+                request,
+                OnAuthSuccess,
+                SetError);
         }
 
-        private void Login()
+        private IEnumerator LoginRoutine()
         {
-            if (isBusy)
-            {
-                return;
-            }
-
             var request = new LoginAccountRequest
             {
                 login = username,
                 password = password
             };
 
-            RunRequest(apiClient.Login(authServiceBaseUrl, request, OnAuthSuccess, SetError));
+            yield return apiClient.Login(
+                ShooterMmoClientSession.AuthServiceBaseUrl,
+                request,
+                OnAuthSuccess,
+                SetError);
+        }
+
+        private void BeginAuthentication(IEnumerator routine)
+        {
+            if (!operationState.TryBegin(ClientOperation.Authenticate))
+            {
+                return;
+            }
+
+            StartCoroutine(RunOperation(ClientOperation.Authenticate, routine));
+        }
+
+        private IEnumerator RunOperation(ClientOperation operation, IEnumerator routine)
+        {
+            yield return routine;
+            operationState.Complete(operation);
         }
 
         private void OnAuthSuccess(AuthResponse response)
         {
-            ShooterMmoClientSession.AuthServiceBaseUrl = authServiceBaseUrl;
-            ShooterMmoClientSession.WorldServerBaseUrl = worldServerBaseUrl;
             ShooterMmoClientSession.Auth = response;
             ShooterMmoClientSession.SelectedCharacter = null;
             ShooterMmoClientSession.SelectedWorld = null;
@@ -96,23 +116,10 @@ namespace ShooterMmo.Ui
             SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
         }
 
-        private void RunRequest(System.Collections.IEnumerator request)
+        private void SetError(ShooterMmoApiError error)
         {
-            StartCoroutine(RunRequestRoutine(request));
-        }
-
-        private System.Collections.IEnumerator RunRequestRoutine(System.Collections.IEnumerator request)
-        {
-            isBusy = true;
-            yield return request;
-            isBusy = false;
-        }
-
-        private void SetError(string message)
-        {
-            status = "Error: " + message;
+            status = "Error: " + error.ToDisplayMessage();
             Debug.LogWarning(status);
         }
     }
 }
-

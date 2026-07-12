@@ -322,8 +322,14 @@ Scene flow:
 Expected result in `LoginMenu`:
 
 - A `Login Menu` panel appears in the Game view.
-- `Auth Service` is set to `http://localhost:5000`.
-- `World Server` is set to `http://localhost:5100`.
+- `Auth Service` displays `http://localhost:5000`.
+- `World Server` displays `http://localhost:5100`.
+- Request timeout displays 10 seconds.
+
+These values are stored in
+`Assets/Resources/ShooterMmoClientConfig.asset`. Create build-specific variants
+or change the asset before building a client for another environment. Endpoint
+fields are no longer editable from the runtime login panel.
 
 Manual Unity test flow:
 
@@ -345,6 +351,36 @@ Expected result:
 - `Invoke-RestMethod http://localhost:5100/debug/sessions` shows the active
   session from WorldServer.
 - `Leave World` removes the debug session and returns to `CharacterSelect`.
+- `Back To Character Select` uses the same leave request and does not abandon an
+  active server session.
+- `Back To Login` revokes the current AuthService session before clearing local
+  client state.
+
+Unity client stability test:
+
+1. Double-click `Register`, `Create Character`, refresh, join, and leave buttons.
+2. Verify only one operation starts and controls remain disabled until it ends.
+3. Stop AuthService, start a request, and wait for the configured timeout.
+4. Verify the UI shows a structured timeout or network error rather than raw JSON.
+5. Revoke the current account session, then refresh characters.
+6. Verify the client clears local state and returns to `LoginMenu` after HTTP 401.
+7. Join a world and test both `Leave World` and `Back To Character Select`.
+8. Verify `GET /debug/sessions` no longer contains the character after either path.
+
+Camera and input test:
+
+1. Move with keyboard WASD or arrows, sprint with Shift, and jump with Space.
+2. Optionally use gamepad left stick, left-stick press, and south button.
+3. Orbit with right mouse button and zoom with the mouse wheel.
+4. Walk with a wall between the camera target and desired camera position.
+
+Expected result:
+
+- Movement is supplied by Input Actions rather than direct device polling.
+- Camera focus stays at the single `CameraTarget` height without the previous
+  duplicated vertical offset.
+- The camera moves in front of walls using a spherecast and returns to the desired
+  distance when the obstruction clears.
 
 Direct movement-only test:
 
@@ -392,9 +428,11 @@ The current backend foundation includes:
   leases.
 - Unity temporary UI for login, character selection, world ticket creation, and
   WorldServer debug join.
+- Serialized client operations, timeout-aware structured API errors, 401 recovery,
+  and ScriptableObject endpoint configuration.
 - Unity local WorldScene gameplay preview with runtime environment creation,
   placeholder player spawn, local movement, jump, sprint, and third-person
-  camera control.
+  camera control through Input Actions and spherecast collision.
 - Backend unit tests and an isolated PostgreSQL integration test.
 - Unity EditMode and PlayMode smoke tests in separate test assemblies.
 - A GitHub Actions backend quality gate with locked restore, format, build,

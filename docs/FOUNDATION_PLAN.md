@@ -106,10 +106,24 @@ Delivered foundation:
 
 ### Phase 4: Unity Client Stability
 
-- Request timeout and structured client errors.
-- Correct request concurrency and scene transition state.
-- Reliable world leave and expired-session handling.
-- Camera focus, collision, and Input Actions improvements.
+Status: Complete
+
+Delivered foundation:
+
+- Configurable UnityWebRequest timeout and structured API errors with HTTP status,
+  stable code, message, correlation id, and failure kind.
+- Sequential per-panel operation state instead of overlapping boolean busy flags.
+- Disabled UI controls while an operation is active to reject duplicate clicks.
+- One join coroutine covering ticket creation and WorldServer validation.
+- Shared leave handling for every WorldScene navigation button and unauthorized
+  recovery.
+- Automatic session cleanup and LoginMenu navigation after HTTP 401.
+- ScriptableObject endpoint and timeout configuration under `Assets/Resources`.
+- Programmatic Input Actions for movement, sprint, jump, orbit, look, and zoom.
+- Correct single camera-target height and spherecast-based camera collision that
+  ignores the local player hierarchy.
+- EditMode coverage for operation serialization, Problem Details parsing,
+  endpoint configuration, and invalid array responses.
 
 ## Quality Gate
 

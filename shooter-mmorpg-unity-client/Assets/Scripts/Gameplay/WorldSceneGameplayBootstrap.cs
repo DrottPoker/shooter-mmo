@@ -92,7 +92,7 @@ namespace ShooterMmo.Gameplay
             var sceneCamera = Camera.main;
             if (sceneCamera == null)
             {
-                sceneCamera = FindFirstObjectByType<Camera>();
+                sceneCamera = FindAnyObjectByType<Camera>();
             }
 
             if (sceneCamera == null)
@@ -130,7 +130,7 @@ namespace ShooterMmo.Gameplay
 
         private static void EnsureDirectionalLight()
         {
-            if (FindFirstObjectByType<Light>() != null)
+            if (FindAnyObjectByType<Light>() != null)
             {
                 return;
             }
@@ -192,4 +192,3 @@ namespace ShooterMmo.Gameplay
         }
     }
 }
-

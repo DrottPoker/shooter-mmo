@@ -26,5 +26,16 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(result[0].name, Is.EqualTo("Hero One"));
             Assert.That(result[0].currency, Is.EqualTo(25));
         }
+
+        [Test]
+        public void TryFromJsonRejectsNonArrayPayload()
+        {
+            CharacterResponse[] result;
+
+            var succeeded = JsonArrayUtility.TryFromJson("{\"id\":\"not-an-array\"}", out result);
+
+            Assert.That(succeeded, Is.False);
+            Assert.That(result, Is.Empty);
+        }
     }
 }

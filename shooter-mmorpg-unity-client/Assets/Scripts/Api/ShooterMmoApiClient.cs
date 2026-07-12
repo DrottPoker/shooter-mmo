@@ -8,11 +8,18 @@ namespace ShooterMmo.Api
 {
     public sealed class ShooterMmoApiClient
     {
+        private readonly int timeoutSeconds;
+
+        public ShooterMmoApiClient(int timeoutSeconds)
+        {
+            this.timeoutSeconds = Mathf.Clamp(timeoutSeconds, 1, 120);
+        }
+
         public IEnumerator Register(
             string authServiceBaseUrl,
             RegisterAccountRequest request,
             Action<AuthResponse> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendJson(
                 "POST",
@@ -27,7 +34,7 @@ namespace ShooterMmo.Api
             string authServiceBaseUrl,
             LoginAccountRequest request,
             Action<AuthResponse> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendJson(
                 "POST",
@@ -42,7 +49,7 @@ namespace ShooterMmo.Api
             string authServiceBaseUrl,
             string sessionToken,
             Action onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendEmpty(
                 "POST",
@@ -58,7 +65,7 @@ namespace ShooterMmo.Api
             string sessionToken,
             string sessionId,
             Action onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendEmpty(
                 "DELETE",
@@ -73,7 +80,7 @@ namespace ShooterMmo.Api
             string authServiceBaseUrl,
             string sessionToken,
             Action<CharacterResponse[]> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendArray(
                 "GET",
@@ -89,7 +96,7 @@ namespace ShooterMmo.Api
             string sessionToken,
             CreateCharacterRequest request,
             Action<CharacterResponse> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendJson(
                 "POST",
@@ -103,7 +110,7 @@ namespace ShooterMmo.Api
         public IEnumerator GetWorlds(
             string authServiceBaseUrl,
             Action<WorldResponse[]> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendArray(
                 "GET",
@@ -120,7 +127,7 @@ namespace ShooterMmo.Api
             string worldId,
             JoinWorldRequest request,
             Action<JoinWorldResponse> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendJson(
                 "POST",
@@ -135,7 +142,7 @@ namespace ShooterMmo.Api
             string worldServerBaseUrl,
             DebugJoinRequest request,
             Action<ActivePlayerSessionResponse> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendJson(
                 "POST",
@@ -149,7 +156,7 @@ namespace ShooterMmo.Api
         public IEnumerator GetDebugSessions(
             string worldServerBaseUrl,
             Action<ActivePlayerSessionResponse[]> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendArray(
                 "GET",
@@ -163,25 +170,29 @@ namespace ShooterMmo.Api
         public IEnumerator RemoveDebugSession(
             string worldServerBaseUrl,
             string characterId,
+            string worldSessionId,
             Action onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             return SendEmpty(
                 "DELETE",
-                CombineUrl(worldServerBaseUrl, "/debug/sessions/" + Uri.EscapeDataString(characterId)),
+                CombineUrl(
+                    worldServerBaseUrl,
+                    "/debug/sessions/" + Uri.EscapeDataString(characterId)
+                    + "?worldSessionId=" + Uri.EscapeDataString(worldSessionId)),
                 null,
                 null,
                 onSuccess,
                 onError);
         }
 
-        private static IEnumerator SendJson<T>(
+        private IEnumerator SendJson<T>(
             string method,
             string url,
             string json,
             string sessionToken,
             Action<T> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             using (var request = CreateRequest(method, url, json, sessionToken))
             {
@@ -189,14 +200,31 @@ namespace ShooterMmo.Api
 
                 if (!IsSuccessful(request))
                 {
-                    onError(CreateErrorMessage(request));
+                    onError(CreateError(request));
                     yield break;
                 }
 
-                var response = JsonUtility.FromJson<T>(request.downloadHandler.text);
+                var body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                if (string.IsNullOrWhiteSpace(body))
+                {
+                    onError(InvalidResponse("The server returned an empty response."));
+                    yield break;
+                }
+
+                T response;
+                try
+                {
+                    response = JsonUtility.FromJson<T>(body);
+                }
+                catch (Exception exception)
+                {
+                    onError(InvalidResponse("The server returned invalid JSON: " + exception.Message));
+                    yield break;
+                }
+
                 if (response == null)
                 {
-                    onError("The server returned an empty response.");
+                    onError(InvalidResponse("The server returned an invalid response."));
                     yield break;
                 }
 
@@ -204,13 +232,13 @@ namespace ShooterMmo.Api
             }
         }
 
-        private static IEnumerator SendArray<T>(
+        private IEnumerator SendArray<T>(
             string method,
             string url,
             string json,
             string sessionToken,
             Action<T[]> onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             using (var request = CreateRequest(method, url, json, sessionToken))
             {
@@ -218,21 +246,28 @@ namespace ShooterMmo.Api
 
                 if (!IsSuccessful(request))
                 {
-                    onError(CreateErrorMessage(request));
+                    onError(CreateError(request));
                     yield break;
                 }
 
-                onSuccess(JsonArrayUtility.FromJson<T>(request.downloadHandler.text));
+                T[] result;
+                if (!JsonArrayUtility.TryFromJson(request.downloadHandler.text, out result))
+                {
+                    onError(InvalidResponse("The server returned an invalid JSON array."));
+                    yield break;
+                }
+
+                onSuccess(result);
             }
         }
 
-        private static IEnumerator SendEmpty(
+        private IEnumerator SendEmpty(
             string method,
             string url,
             string json,
             string sessionToken,
             Action onSuccess,
-            Action<string> onError)
+            Action<ShooterMmoApiError> onError)
         {
             using (var request = CreateRequest(method, url, json, sessionToken))
             {
@@ -240,7 +275,7 @@ namespace ShooterMmo.Api
 
                 if (!IsSuccessful(request))
                 {
-                    onError(CreateErrorMessage(request));
+                    onError(CreateError(request));
                     yield break;
                 }
 
@@ -248,7 +283,7 @@ namespace ShooterMmo.Api
             }
         }
 
-        private static UnityWebRequest CreateRequest(
+        private UnityWebRequest CreateRequest(
             string method,
             string url,
             string json,
@@ -256,7 +291,8 @@ namespace ShooterMmo.Api
         {
             var request = new UnityWebRequest(url, method)
             {
-                downloadHandler = new DownloadHandlerBuffer()
+                downloadHandler = new DownloadHandlerBuffer(),
+                timeout = timeoutSeconds
             };
 
             if (!string.IsNullOrEmpty(json))
@@ -283,12 +319,69 @@ namespace ShooterMmo.Api
                    && request.responseCode < 300;
         }
 
-        private static string CreateErrorMessage(UnityWebRequest request)
+        internal static ShooterMmoApiError ParseHttpError(long statusCode, string body, string fallbackMessage)
+        {
+            ProblemDetailsResponse problem = null;
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                try
+                {
+                    problem = JsonUtility.FromJson<ProblemDetailsResponse>(body);
+                }
+                catch (ArgumentException)
+                {
+                    problem = null;
+                }
+            }
+
+            var code = problem != null && !string.IsNullOrWhiteSpace(problem.code)
+                ? problem.code
+                : "http_error";
+            var message = problem != null && !string.IsNullOrWhiteSpace(problem.detail)
+                ? problem.detail
+                : fallbackMessage;
+            var correlationId = problem != null ? problem.correlationId : string.Empty;
+
+            return new ShooterMmoApiError(
+                ShooterMmoApiErrorKind.Http,
+                statusCode,
+                code,
+                message,
+                correlationId);
+        }
+
+        private static ShooterMmoApiError CreateError(UnityWebRequest request)
         {
             var body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
-            return string.IsNullOrWhiteSpace(body)
-                ? request.responseCode + " " + request.error
-                : request.responseCode + " " + body;
+            if (request.result == UnityWebRequest.Result.ConnectionError)
+            {
+                var timedOut = !string.IsNullOrWhiteSpace(request.error)
+                    && (request.error.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0
+                        || request.error.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0);
+                return new ShooterMmoApiError(
+                    timedOut ? ShooterMmoApiErrorKind.Timeout : ShooterMmoApiErrorKind.Network,
+                    request.responseCode,
+                    timedOut ? "request_timeout" : "network_error",
+                    timedOut ? "The request timed out." : request.error,
+                    string.Empty);
+            }
+
+            if (request.responseCode > 0)
+            {
+                return ParseHttpError(request.responseCode, body, request.error);
+            }
+
+            return InvalidResponse(request.error);
+        }
+
+        private static ShooterMmoApiError InvalidResponse(string message)
+        {
+            return new ShooterMmoApiError(
+                ShooterMmoApiErrorKind.InvalidResponse,
+                0,
+                "invalid_response",
+                message,
+                string.Empty);
         }
 
         private static string CombineUrl(string baseUrl, string path)

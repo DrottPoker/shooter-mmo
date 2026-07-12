@@ -89,6 +89,7 @@ if (app.Environment.IsDevelopment())
 
     app.MapDelete("/debug/sessions/{characterId:guid}", async (
         Guid characterId,
+        Guid worldSessionId,
         ActivePlayerSessionStore sessionStore,
         AuthServiceClient authServiceClient,
         CancellationToken cancellationToken) =>
@@ -98,8 +99,20 @@ if (app.Environment.IsDevelopment())
             return Results.NoContent();
         }
 
+        if (session!.WorldSessionId != worldSessionId)
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "World session changed",
+                detail: "The active WorldServer session no longer matches the requested leave operation.",
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = "world_session_changed"
+                });
+        }
+
         var release = await authServiceClient.ReleaseWorldSessionAsync(
-            session!.WorldSessionId,
+            session.WorldSessionId,
             session.WorldId,
             session.WorldSessionToken,
             cancellationToken);

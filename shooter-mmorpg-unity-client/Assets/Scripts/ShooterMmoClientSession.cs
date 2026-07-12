@@ -4,8 +4,9 @@ namespace ShooterMmo
 {
     public static class ShooterMmoClientSession
     {
-        public static string AuthServiceBaseUrl = "http://localhost:5000";
-        public static string WorldServerBaseUrl = "http://localhost:5100";
+        public static string AuthServiceBaseUrl { get; private set; } = "http://localhost:5000";
+        public static string WorldServerBaseUrl { get; private set; } = "http://localhost:5100";
+        public static int RequestTimeoutSeconds { get; private set; } = 10;
         public static AuthResponse Auth;
         public static CharacterResponse SelectedCharacter;
         public static WorldResponse SelectedWorld;
@@ -21,6 +22,18 @@ namespace ShooterMmo
             get { return !string.IsNullOrWhiteSpace(SessionToken); }
         }
 
+        public static void Configure(Config.ShooterMmoClientConfig config)
+        {
+            if (config == null)
+            {
+                return;
+            }
+
+            AuthServiceBaseUrl = config.AuthServiceBaseUrl;
+            WorldServerBaseUrl = config.WorldServerBaseUrl;
+            RequestTimeoutSeconds = config.RequestTimeoutSeconds;
+        }
+
         public static void Clear()
         {
             Auth = null;
@@ -30,4 +43,3 @@ namespace ShooterMmo
         }
     }
 }
-

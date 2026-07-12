@@ -387,11 +387,13 @@ Returns the active in-memory sessions inside the local WorldServer.
 ### Remove Debug Session
 
 ```http
-DELETE /debug/sessions/{characterId}
+DELETE /debug/sessions/{characterId}?worldSessionId={worldSessionId}
 ```
 
-Releases the authoritative PostgreSQL lease and removes the local WorldServer
-session. Repeating the delete after the local session is gone returns success.
+Releases the authoritative PostgreSQL lease and removes the matching local
+WorldServer session. The required world-session id prevents a delayed leave from
+removing a newer reconnect generation. Repeating the delete after the local
+session is gone returns success.
 
 ## Current Limitations
 
@@ -428,3 +430,16 @@ WorldServer maps AuthService dependency failures as follows:
 - Timeout: `504 auth_service_timeout`
 - Malformed JSON or invalid success payload: `502 invalid_auth_response`
 - Invalid service credentials: `502 auth_service_authentication_failed`
+
+## Unity Client Handling
+
+The temporary Unity client reads endpoints and its request timeout from
+`Assets/Resources/ShooterMmoClientConfig.asset`. API failures are represented by
+a structured client error containing failure kind, HTTP status, stable API code,
+message, and correlation id.
+
+HTTP 401 clears account, character, world, and active world-session state before
+loading `LoginMenu`. Character selection operations run sequentially. World join
+creates the join ticket and validates it through WorldServer inside one coroutine.
+Both WorldScene navigation buttons release the WorldServer session before loading
+`CharacterSelect`.

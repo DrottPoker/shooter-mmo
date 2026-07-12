@@ -1,3 +1,4 @@
+using System.Collections;
 using ShooterMmo.Api;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -6,27 +7,31 @@ namespace ShooterMmo.Ui
 {
     public sealed class CharacterSelectPanel : MonoBehaviour
     {
-        private readonly ShooterMmoApiClient apiClient = new ShooterMmoApiClient();
+        private readonly ClientOperationState operationState = new ClientOperationState();
 
+        private ShooterMmoApiClient apiClient;
         private string characterName = "Hero One";
         private string status = "Select or create a character, then join a world.";
         private CharacterResponse[] characters = new CharacterResponse[0];
         private WorldResponse[] worlds = new WorldResponse[0];
         private int selectedCharacterIndex;
         private int selectedWorldIndex;
-        private bool isBusy;
+        private bool operationStepFailed;
         private Vector2 scrollPosition;
+
+        private void Awake()
+        {
+            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+        }
 
         private void Start()
         {
-            if (!ShooterMmoClientSession.IsAuthenticated)
+            if (!EnsureAuthenticated())
             {
-                status = "No active login session. Return to LoginMenu.";
                 return;
             }
 
-            RefreshCharacters();
-            RefreshWorlds();
+            BeginOperation(ClientOperation.LoadSelection, LoadSelectionRoutine());
         }
 
         private void OnGUI()
@@ -34,12 +39,15 @@ namespace ShooterMmo.Ui
             GUILayout.BeginArea(TemporaryPanelStyles.GetPanelRect(620f, 720f), "Character Select", GUI.skin.window);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
 
+            var previousGuiState = GUI.enabled;
+            GUI.enabled = previousGuiState && !operationState.IsBusy;
             DrawAccountSection();
             DrawCharacterSection();
             DrawWorldSection();
+            GUI.enabled = previousGuiState;
 
             GUILayout.Space(12f);
-            TemporaryPanelStyles.DrawStatus(isBusy, status);
+            TemporaryPanelStyles.DrawStatus(operationState.IsBusy, status);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -48,23 +56,35 @@ namespace ShooterMmo.Ui
         private void DrawAccountSection()
         {
             GUILayout.Label("Account");
-
-            if (ShooterMmoClientSession.Auth != null)
-            {
-                GUILayout.Label("Signed in: " + ShooterMmoClientSession.Auth.username);
-            }
-            else
-            {
-                GUILayout.Label("Not signed in.");
-            }
+            GUILayout.Label(ShooterMmoClientSession.Auth != null
+                ? "Signed in: " + ShooterMmoClientSession.Auth.username
+                : "Not signed in.");
 
             if (GUILayout.Button("Back To Login", GUILayout.Height(32f)))
             {
-                ShooterMmoClientSession.Clear();
-                SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
+                BeginOperation(ClientOperation.Logout, LogoutRoutine());
             }
 
             GUILayout.Space(12f);
+        }
+
+        private IEnumerator LogoutRoutine()
+        {
+            ShooterMmoApiError error = null;
+            yield return apiClient.Logout(
+                ShooterMmoClientSession.AuthServiceBaseUrl,
+                ShooterMmoClientSession.SessionToken,
+                () => { },
+                value => error = value);
+
+            if (error != null && !error.IsUnauthorized)
+            {
+                HandleError(error);
+                yield break;
+            }
+
+            ShooterMmoClientSession.Clear();
+            SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
         }
 
         private void DrawCharacterSection()
@@ -75,12 +95,12 @@ namespace ShooterMmo.Ui
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Create Character", GUILayout.Height(32f)))
             {
-                CreateCharacter();
+                BeginOperation(ClientOperation.CreateCharacter, CreateCharacterRoutine());
             }
 
             if (GUILayout.Button("Refresh Characters", GUILayout.Height(32f)))
             {
-                RefreshCharacters();
+                BeginOperation(ClientOperation.RefreshCharacters, RefreshCharactersRoutine());
             }
             GUILayout.EndHorizontal();
 
@@ -111,12 +131,12 @@ namespace ShooterMmo.Ui
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Refresh Worlds", GUILayout.Height(32f)))
             {
-                RefreshWorlds();
+                BeginOperation(ClientOperation.RefreshWorlds, RefreshWorldsRoutine());
             }
 
             if (GUILayout.Button("Join Selected World", GUILayout.Height(32f)))
             {
-                JoinSelectedWorld();
+                BeginJoin();
             }
             GUILayout.EndHorizontal();
 
@@ -126,7 +146,9 @@ namespace ShooterMmo.Ui
                 var labels = new string[worlds.Length];
                 for (var index = 0; index < worlds.Length; index++)
                 {
-                    labels[index] = worlds[index].displayName + " (" + worlds[index].id + ")";
+                    labels[index] = worlds[index].displayName
+                        + " (" + worlds[index].id + ") "
+                        + (worlds[index].isOnline ? "Online" : "Offline");
                 }
 
                 selectedWorldIndex = GUILayout.SelectionGrid(selectedWorldIndex, labels, 1);
@@ -138,119 +160,167 @@ namespace ShooterMmo.Ui
             }
         }
 
-        private void CreateCharacter()
+        private IEnumerator LoadSelectionRoutine()
         {
-            if (isBusy || !EnsureAuthenticated())
+            yield return RefreshCharactersRoutine();
+            if (operationStepFailed || !ShooterMmoClientSession.IsAuthenticated)
             {
-                return;
+                yield break;
             }
 
-            var request = new CreateCharacterRequest
-            {
-                name = characterName
-            };
-
-            RunRequest(apiClient.CreateCharacter(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
-                ShooterMmoClientSession.SessionToken,
-                request,
-                character =>
-                {
-                    status = "Created character " + character.name + ".";
-                    RefreshCharacters();
-                },
-                SetError));
+            yield return RefreshWorldsRoutine();
+            status = "Character and world data loaded.";
         }
 
-        private void RefreshCharacters()
+        private IEnumerator CreateCharacterRoutine()
         {
             if (!EnsureAuthenticated())
             {
-                return;
+                yield break;
             }
 
-            RunRequest(apiClient.GetCharacters(
+            CharacterResponse createdCharacter = null;
+            ShooterMmoApiError error = null;
+            var request = new CreateCharacterRequest { name = characterName };
+
+            yield return apiClient.CreateCharacter(
                 ShooterMmoClientSession.AuthServiceBaseUrl,
                 ShooterMmoClientSession.SessionToken,
-                result =>
-                {
-                    characters = result;
-                    selectedCharacterIndex = Mathf.Clamp(selectedCharacterIndex, 0, Mathf.Max(0, characters.Length - 1));
-                    if (characters.Length > 0)
-                    {
-                        ShooterMmoClientSession.SelectedCharacter = characters[selectedCharacterIndex];
-                    }
+                request,
+                result => createdCharacter = result,
+                result => error = result);
 
-                    status = "Loaded " + characters.Length + " characters.";
-                },
-                SetError));
-        }
-
-        private void RefreshWorlds()
-        {
-            RunRequest(apiClient.GetWorlds(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
-                result =>
-                {
-                    worlds = result;
-                    selectedWorldIndex = Mathf.Clamp(selectedWorldIndex, 0, Mathf.Max(0, worlds.Length - 1));
-                    if (worlds.Length > 0)
-                    {
-                        ShooterMmoClientSession.SelectedWorld = worlds[selectedWorldIndex];
-                    }
-
-                    status = "Loaded " + worlds.Length + " worlds.";
-                },
-                SetError));
-        }
-
-        private void JoinSelectedWorld()
-        {
-            if (isBusy || !EnsureAuthenticated())
+            if (HandleError(error))
             {
-                return;
+                yield break;
             }
 
-            if (characters.Length == 0 || worlds.Length == 0)
+            status = "Created character " + createdCharacter.name + ".";
+            yield return RefreshCharactersRoutine();
+        }
+
+        private IEnumerator RefreshCharactersRoutine()
+        {
+            if (!EnsureAuthenticated())
+            {
+                yield break;
+            }
+
+            CharacterResponse[] result = null;
+            ShooterMmoApiError error = null;
+            yield return apiClient.GetCharacters(
+                ShooterMmoClientSession.AuthServiceBaseUrl,
+                ShooterMmoClientSession.SessionToken,
+                value => result = value,
+                value => error = value);
+
+            if (HandleError(error))
+            {
+                yield break;
+            }
+
+            characters = result ?? new CharacterResponse[0];
+            selectedCharacterIndex = Mathf.Clamp(selectedCharacterIndex, 0, Mathf.Max(0, characters.Length - 1));
+            ShooterMmoClientSession.SelectedCharacter = characters.Length > 0
+                ? characters[selectedCharacterIndex]
+                : null;
+            status = "Loaded " + characters.Length + " characters.";
+        }
+
+        private IEnumerator RefreshWorldsRoutine()
+        {
+            WorldResponse[] result = null;
+            ShooterMmoApiError error = null;
+            yield return apiClient.GetWorlds(
+                ShooterMmoClientSession.AuthServiceBaseUrl,
+                value => result = value,
+                value => error = value);
+
+            if (HandleError(error))
+            {
+                yield break;
+            }
+
+            worlds = result ?? new WorldResponse[0];
+            selectedWorldIndex = Mathf.Clamp(selectedWorldIndex, 0, Mathf.Max(0, worlds.Length - 1));
+            ShooterMmoClientSession.SelectedWorld = worlds.Length > 0
+                ? worlds[selectedWorldIndex]
+                : null;
+            status = "Loaded " + worlds.Length + " worlds.";
+        }
+
+        private void BeginJoin()
+        {
+            if (!EnsureAuthenticated() || characters.Length == 0 || worlds.Length == 0)
             {
                 status = "Load a character and a world before joining.";
                 return;
             }
 
+            var world = worlds[selectedWorldIndex];
+            if (!world.isOnline)
+            {
+                status = world.displayName + " is offline.";
+                return;
+            }
+
+            BeginOperation(ClientOperation.JoinWorld, JoinSelectedWorldRoutine());
+        }
+
+        private IEnumerator JoinSelectedWorldRoutine()
+        {
             var character = characters[selectedCharacterIndex];
             var world = worlds[selectedWorldIndex];
             ShooterMmoClientSession.SelectedCharacter = character;
             ShooterMmoClientSession.SelectedWorld = world;
 
-            var request = new JoinWorldRequest
-            {
-                characterId = character.id
-            };
-
-            RunRequest(apiClient.CreateJoinTicket(
+            JoinWorldResponse joinTicket = null;
+            ShooterMmoApiError error = null;
+            yield return apiClient.CreateJoinTicket(
                 ShooterMmoClientSession.AuthServiceBaseUrl,
                 ShooterMmoClientSession.SessionToken,
                 world.id,
-                request,
-                join =>
-                {
-                    var debugJoinRequest = new DebugJoinRequest
-                    {
-                        joinTicket = join.joinTicket
-                    };
+                new JoinWorldRequest { characterId = character.id },
+                result => joinTicket = result,
+                result => error = result);
 
-                    RunRequest(apiClient.DebugJoinWorldServer(
-                        ShooterMmoClientSession.WorldServerBaseUrl,
-                        debugJoinRequest,
-                        session =>
-                        {
-                            ShooterMmoClientSession.ActiveWorldSession = session;
-                            status = "Joined " + session.worldId + " as " + session.characterName + ".";
-                            SceneManager.LoadScene(ShooterMmoSceneNames.WorldScene);
-                        },
-                        SetError));
-                },
-                SetError));
+            if (HandleError(error))
+            {
+                yield break;
+            }
+
+            ActivePlayerSessionResponse activeSession = null;
+            yield return apiClient.DebugJoinWorldServer(
+                ShooterMmoClientSession.WorldServerBaseUrl,
+                new DebugJoinRequest { joinTicket = joinTicket.joinTicket },
+                result => activeSession = result,
+                result => error = result);
+
+            if (HandleError(error))
+            {
+                yield break;
+            }
+
+            ShooterMmoClientSession.ActiveWorldSession = activeSession;
+            status = "Joined " + activeSession.worldId + " as " + activeSession.characterName + ".";
+            SceneManager.LoadScene(ShooterMmoSceneNames.WorldScene);
+        }
+
+        private void BeginOperation(ClientOperation operation, IEnumerator routine)
+        {
+            if (!operationState.TryBegin(operation))
+            {
+                return;
+            }
+
+            operationStepFailed = false;
+            StartCoroutine(RunOperation(operation, routine));
+        }
+
+        private IEnumerator RunOperation(ClientOperation operation, IEnumerator routine)
+        {
+            yield return routine;
+            operationState.Complete(operation);
         }
 
         private bool EnsureAuthenticated()
@@ -260,27 +330,27 @@ namespace ShooterMmo.Ui
                 return true;
             }
 
-            status = "Return to LoginMenu and login first.";
+            ShooterMmoClientSession.Clear();
+            SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
             return false;
         }
 
-        private void RunRequest(System.Collections.IEnumerator request)
+        private bool HandleError(ShooterMmoApiError error)
         {
-            StartCoroutine(RunRequestRoutine(request));
-        }
+            if (error == null)
+            {
+                return false;
+            }
 
-        private System.Collections.IEnumerator RunRequestRoutine(System.Collections.IEnumerator request)
-        {
-            isBusy = true;
-            yield return request;
-            isBusy = false;
-        }
+            operationStepFailed = true;
 
-        private void SetError(string message)
-        {
-            status = "Error: " + message;
-            Debug.LogWarning(status);
+            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error))
+            {
+                status = "Error: " + error.ToDisplayMessage();
+                Debug.LogWarning(status);
+            }
+
+            return true;
         }
     }
 }
-

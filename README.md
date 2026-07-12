@@ -19,6 +19,9 @@ foundation for the first playable MVP.
 - Split liveness and protocol-level dependency readiness checks.
 - Shared .NET networking and health helpers.
 - Unity 6 client scenes for login, character selection, and a local world preview.
+- Timeout-aware Unity API handling, serialized UI operations, and automatic 401
+  recovery.
+- Input Action movement and collision-safe third-person camera controls.
 - PostgreSQL and Redis development infrastructure through Docker Compose.
 
 Inventory, combat, persistent world simulation, and UDP gameplay networking are

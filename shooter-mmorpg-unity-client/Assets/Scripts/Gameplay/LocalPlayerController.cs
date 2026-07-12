@@ -15,6 +15,9 @@ namespace ShooterMmo.Gameplay
 
         private CharacterController characterController;
         private Transform cameraTransform;
+        private InputAction moveAction;
+        private InputAction sprintAction;
+        private InputAction jumpAction;
         private float verticalVelocity;
 
         public Transform CameraTarget
@@ -25,16 +28,37 @@ namespace ShooterMmo.Gameplay
         private void Awake()
         {
             characterController = GetComponent<CharacterController>();
+            CreateInputActions();
+        }
+
+        private void OnEnable()
+        {
+            moveAction.Enable();
+            sprintAction.Enable();
+            jumpAction.Enable();
+        }
+
+        private void OnDisable()
+        {
+            moveAction.Disable();
+            sprintAction.Disable();
+            jumpAction.Disable();
+        }
+
+        private void OnDestroy()
+        {
+            moveAction.Dispose();
+            sprintAction.Dispose();
+            jumpAction.Dispose();
         }
 
         private void Update()
         {
-            var keyboard = Keyboard.current;
-            var moveInput = ReadMoveInput(keyboard);
+            var moveInput = Vector2.ClampMagnitude(moveAction.ReadValue<Vector2>(), 1f);
             var planarMove = BuildCameraRelativeMove(moveInput);
-            var speed = IsSprinting(keyboard) ? sprintSpeed : walkSpeed;
+            var speed = sprintAction.IsPressed() ? sprintSpeed : walkSpeed;
 
-            ApplyGravityAndJump(keyboard);
+            ApplyGravityAndJump();
 
             var velocity = planarMove * speed;
             velocity.y = verticalVelocity;
@@ -60,42 +84,28 @@ namespace ShooterMmo.Gameplay
             cameraTransform = targetCameraTransform;
         }
 
-        private static Vector2 ReadMoveInput(Keyboard keyboard)
+        private void CreateInputActions()
         {
-            if (keyboard == null)
-            {
-                return Vector2.zero;
-            }
+            moveAction = new InputAction("Move", InputActionType.Value);
+            moveAction.AddCompositeBinding("2DVector")
+                .With("Up", "<Keyboard>/w")
+                .With("Up", "<Keyboard>/upArrow")
+                .With("Down", "<Keyboard>/s")
+                .With("Down", "<Keyboard>/downArrow")
+                .With("Left", "<Keyboard>/a")
+                .With("Left", "<Keyboard>/leftArrow")
+                .With("Right", "<Keyboard>/d")
+                .With("Right", "<Keyboard>/rightArrow");
+            moveAction.AddBinding("<Gamepad>/leftStick");
 
-            var horizontal = 0f;
-            var vertical = 0f;
+            sprintAction = new InputAction("Sprint", InputActionType.Button);
+            sprintAction.AddBinding("<Keyboard>/leftShift");
+            sprintAction.AddBinding("<Keyboard>/rightShift");
+            sprintAction.AddBinding("<Gamepad>/leftStickPress");
 
-            if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed)
-            {
-                horizontal -= 1f;
-            }
-
-            if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed)
-            {
-                horizontal += 1f;
-            }
-
-            if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed)
-            {
-                vertical -= 1f;
-            }
-
-            if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed)
-            {
-                vertical += 1f;
-            }
-
-            return Vector2.ClampMagnitude(new Vector2(horizontal, vertical), 1f);
-        }
-
-        private static bool IsSprinting(Keyboard keyboard)
-        {
-            return keyboard != null && (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed);
+            jumpAction = new InputAction("Jump", InputActionType.Button);
+            jumpAction.AddBinding("<Keyboard>/space");
+            jumpAction.AddBinding("<Gamepad>/buttonSouth");
         }
 
         private Vector3 BuildCameraRelativeMove(Vector2 moveInput)
@@ -128,14 +138,14 @@ namespace ShooterMmo.Gameplay
             return Vector3.ClampMagnitude((right * moveInput.x) + (forward * moveInput.y), 1f);
         }
 
-        private void ApplyGravityAndJump(Keyboard keyboard)
+        private void ApplyGravityAndJump()
         {
             if (characterController.isGrounded && verticalVelocity < 0f)
             {
                 verticalVelocity = -1f;
             }
 
-            if (keyboard != null && keyboard.spaceKey.wasPressedThisFrame && characterController.isGrounded)
+            if (jumpAction.WasPressedThisFrame() && characterController.isGrounded)
             {
                 verticalVelocity = jumpVelocity;
             }
@@ -144,4 +154,3 @@ namespace ShooterMmo.Gameplay
         }
     }
 }
-

@@ -1,14 +1,22 @@
-using UnityEngine.SceneManagement;
+using System.Collections;
+using ShooterMmo.Api;
+using ShooterMmo.Config;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace ShooterMmo
 {
     public sealed class ShooterMmoClientBootstrap : MonoBehaviour
     {
+        private ShooterMmoApiClient apiClient;
+        private string previousSceneName;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            if (FindFirstObjectByType<ShooterMmoClientBootstrap>() != null)
+            ShooterMmoClientSession.Configure(ShooterMmoClientConfig.Load());
+
+            if (FindAnyObjectByType<ShooterMmoClientBootstrap>() != null)
             {
                 return;
             }
@@ -16,6 +24,12 @@ namespace ShooterMmo
             var gameObject = new GameObject("ShooterMmoClientBootstrap");
             DontDestroyOnLoad(gameObject);
             gameObject.AddComponent<ShooterMmoClientBootstrap>();
+        }
+
+        private void Awake()
+        {
+            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+            previousSceneName = SceneManager.GetActiveScene().name;
         }
 
         private void OnEnable()
@@ -31,7 +45,49 @@ namespace ShooterMmo
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            if (previousSceneName == ShooterMmoSceneNames.WorldScene
+                && scene.name != ShooterMmoSceneNames.WorldScene
+                && ShooterMmoClientSession.ActiveWorldSession != null)
+            {
+                StartCoroutine(ReleaseAbandonedWorldSessionRoutine());
+            }
+
+            previousSceneName = scene.name;
             EnsureSceneController(scene.name);
+        }
+
+        private IEnumerator ReleaseAbandonedWorldSessionRoutine()
+        {
+            var session = ShooterMmoClientSession.ActiveWorldSession;
+            if (session == null)
+            {
+                yield break;
+            }
+
+            ShooterMmoApiError error = null;
+            yield return apiClient.RemoveDebugSession(
+                ShooterMmoClientSession.WorldServerBaseUrl,
+                session.characterId,
+                session.worldSessionId,
+                () =>
+                {
+                    if (ShooterMmoClientSession.ActiveWorldSession != null
+                        && ShooterMmoClientSession.ActiveWorldSession.worldSessionId == session.worldSessionId)
+                    {
+                        ShooterMmoClientSession.ActiveWorldSession = null;
+                    }
+                },
+                value => error = value);
+
+            if (error == null)
+            {
+                yield break;
+            }
+
+            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error))
+            {
+                Debug.LogWarning("Fallback world leave failed: " + error.ToDisplayMessage());
+            }
         }
 
         private static void EnsureSceneController(string sceneName)
@@ -57,7 +113,7 @@ namespace ShooterMmo
 
         private static void AddControllerIfMissing<T>() where T : Component
         {
-            if (FindFirstObjectByType<T>() != null)
+            if (FindAnyObjectByType<T>() != null)
             {
                 return;
             }
