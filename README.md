@@ -2,13 +2,13 @@
 
 Shooter MMO is an early classless, profession-driven open-world MMORPG with a
 modern third-person shooter direction. The current repository contains the
-account, character, world join, local WorldServer, and temporary Unity client
+account, character, world join, local WorldServer, and Unity client
 foundation for the first playable MVP.
 
 ## Current Foundation
 
 - ASP.NET Core AuthService backed by PostgreSQL.
-- .NET WorldServer with temporary HTTP join validation.
+- .NET WorldServer with Development-only HTTP join validation.
 - Transactional PostgreSQL world-session leases with reconnect, heartbeat, and
   idempotent release.
 - Revocable account sessions, authentication rate limits, and service-authenticated
@@ -97,7 +97,7 @@ Run Unity tests from `Window > General > Test Runner`:
 ## Repository Layout
 
 - `AuthService`: account, session, character, world, and join ticket API.
-- `WorldServer`: temporary world join validation and active local sessions.
+- `WorldServer`: Development-only world join validation and active local sessions.
 - `Shared`: shared backend health and networking helpers.
 - `Tests`: backend unit and PostgreSQL integration tests.
 - `shooter-mmorpg-unity-client`: Unity client project and Unity tests.

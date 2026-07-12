@@ -21,12 +21,12 @@ The current playable path is intentionally small:
 
 ## Main Components
 
-- **Unity client** provides the temporary menus, session state, API access, scene
-  flow, local player controls, and world preview.
+- **Unity client** provides temporary menus, structured cross-scene session state,
+  API access, scene flow, local player controls, and world preview.
 - **AuthService** owns accounts, authentication sessions, characters, the world
   registry, join tickets, and authoritative character world-session leases.
 - **WorldServer** validates joins, maintains active local simulation sessions,
-  heartbeats authoritative leases, and exposes temporary Development-only HTTP
+  heartbeats authoritative leases, and exposes Development-only HTTP
   debug endpoints.
 - **PostgreSQL** is the durable source of truth for account, character, ticket,
   registry, and world-session data.
@@ -46,7 +46,8 @@ The foundation currently supports:
 - Reconnect, heartbeat, expiry, and safe release behavior.
 - Split liveness and readiness health checks.
 - A timeout-aware Unity API client with structured errors and 401 recovery.
-- A temporary three-scene client flow and local third-person movement preview.
+- A three-scene client flow with temporary UI and a local third-person movement
+  foundation.
 - Backend unit and PostgreSQL integration tests plus Unity EditMode and PlayMode
   smoke tests.
 
@@ -59,6 +60,18 @@ The following areas are not implemented yet:
 - Inventory, equipment, loot, crafting, gathering, professions, and economy.
 - Persistent world simulation, NPCs, quests, social systems, and guilds.
 - Production deployment, horizontal scaling, telemetry, and live operations.
+
+## Engineering Standard
+
+Only the current UI is intentionally temporary while the custom interface is
+being designed. Service boundaries, client state, networking contracts, scene
+flow, gameplay code, input, camera systems, persistence, and tooling must be
+built as maintainable foundations from the start.
+
+Early content can be visually simple, but its implementation must still have a
+clear owner, testable behavior, and a safe extension path. Disposable shortcuts
+outside the UI require an explicit decision and documentation before they are
+introduced.
 
 ## Where To Read Next
 

@@ -14,9 +14,14 @@ The Unity project lives in `shooter-mmorpg-unity-client` and targets Unity
 6000.5.2f1. Runtime code is compiled into `ShooterMmo.Runtime`. EditMode and
 PlayMode tests use separate assemblies.
 
-The current UI and world are code-driven placeholders. This keeps the early
-backend contract testable without making temporary scene content expensive to
-replace.
+The current runtime UI is intentionally temporary while the custom UI is being
+designed. The client bootstrap, state ownership, API layer, scene lifecycle,
+input, camera, and gameplay foundations are long-term systems and must be built
+to production-quality structural standards from the start.
+
+The first world environment uses simple code-driven content so scene flow and
+controls remain testable. Simple content does not make its supporting gameplay
+architecture disposable.
 
 ## Runtime Structure
 
@@ -35,7 +40,7 @@ Scene panel
 WorldSceneGameplayBootstrap
   +-- LocalPlayerController
   +-- ThirdPersonCameraController
-  +-- placeholder environment
+  +-- initial test environment
 ```
 
 ## Persistent Client Bootstrap
@@ -137,7 +142,7 @@ AuthService to revoke the active account session, then clears local state.
 
 ## Local Gameplay Preview
 
-`WorldSceneGameplayBootstrap` creates a temporary safe-city environment, local
+`WorldSceneGameplayBootstrap` creates the initial safe-city test environment, local
 player, camera target, and third-person camera when the scene starts.
 
 `LocalPlayerController` uses programmatically defined Input Actions for movement,
@@ -173,3 +178,9 @@ Manual flows and expected results are documented in
   implemented.
 - Update this document when client ownership, scene flow, networking, input, or
   persistent runtime structure changes.
+- Temporary implementation shortcuts are permitted only inside the replaceable
+  UI presentation layer. UI-independent state and behavior must not be embedded
+  in temporary panels.
+- Every delivered Unity change must explicitly state whether manual Editor work
+  is required. Required Inspector, scene, asset, package, input, or build-setting
+  steps must be listed with expected results.

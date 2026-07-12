@@ -28,9 +28,10 @@ AuthService ---------------------> Redis
 ```
 
 The Unity client treats AuthService as the public application API. WorldServer
-is currently contacted through Development-only HTTP endpoints to validate the
-temporary end-to-end join flow. Future gameplay transport will replace this
-debug path without changing AuthService ownership of identity and access.
+is currently contacted through Development-only HTTP integration endpoints to
+validate the end-to-end join flow. Future gameplay transport will replace this
+development surface without changing AuthService ownership of identity and
+access.
 
 ## Repository Components
 
@@ -62,7 +63,7 @@ WorldServer owns:
 - The local process view of connected players.
 - Periodic world registry heartbeat execution.
 - Periodic active world-session heartbeat execution.
-- Temporary Development-only join, list, and leave endpoints.
+- Development-only join, list, and leave integration endpoints.
 - WorldServer readiness and startup health checks.
 
 ### Shared
@@ -126,8 +127,8 @@ resources belonging to another world.
 ### Development Surface
 
 WorldServer `/debug/*` endpoints exist only in the Development environment. They
-are a temporary bridge for client integration and are not a production gameplay
-protocol.
+are isolated integration tooling and are not a production gameplay protocol or
+a substitute for the future authoritative gameplay transport.
 
 ## Core Runtime Flows
 
@@ -210,3 +211,9 @@ in PostgreSQL. Future gameplay networking, simulation, persistence, and scaling
 must preserve these boundaries unless an explicit architecture change updates
 this document. Redis can later be introduced behind an abstraction when a real
 state or coordination use case requires it.
+
+Only the UI layer may be intentionally temporary. Every other architectural
+component must be maintainable, testable, and suitable for extension from its
+first implementation. A simplified first version is acceptable, but knowingly
+disposable service, client, gameplay, persistence, or networking architecture is
+not the project default.

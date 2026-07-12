@@ -204,8 +204,9 @@ Run WorldServer:
 dotnet run --project WorldServer
 ```
 
-`dotnet run` uses the Development launch profile. The temporary `/debug/*`
-endpoints are not registered in Production, Staging, or any other environment.
+`dotnet run` uses the Development launch profile. The Development-only `/debug/*`
+integration endpoints are not registered in Production, Staging, or any other
+environment.
 
 Run a one-time WorldServer startup health check:
 
@@ -284,10 +285,13 @@ Expected result:
 - `isReconnect` is `true` after the second join.
 - Only one active session exists for the character.
 
-## Unity Temporary Client Flow
+## Unity Client Flow
 
 The Unity project includes temporary runtime UI for the current backend flow.
-The UI is created automatically by a bootstrap script when each scene starts.
+Only this UI presentation is intentionally temporary. The runtime bootstrap,
+session handling, API layer, scene lifecycle, input, camera, and gameplay systems
+are maintained as long-term foundations. The UI is created automatically by a
+bootstrap script when each scene starts.
 
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
@@ -345,7 +349,7 @@ Manual Unity test flow:
 Expected result:
 
 - `WorldScene` shows the selected character on `local-world-1`.
-- A local placeholder player spawns in a simple safe city area.
+- A local test player spawns in the initial safe city area.
 - You can move with `WASD`, sprint with `Shift`, jump with `Space`, rotate the
   camera by holding right mouse button, and zoom with the mouse wheel.
 - `Invoke-RestMethod http://localhost:5100/debug/sessions` shows the active
@@ -386,11 +390,11 @@ Direct movement-only test:
 
 1. Open `Assets/Scenes/WorldScene.unity`.
 2. Press Play.
-3. Move the local placeholder player around the city and through the front gate.
+3. Move the local test player around the city and through the front gate.
 
 Expected result:
 
-- A safe city placeholder area, boundary marker, camera, and local player are
+- An initial safe city test area, boundary marker, camera, and local player are
   created automatically.
 - Movement works without starting the backend, but server session data only
   appears after the full login and world join flow.

@@ -12,3 +12,10 @@ Follow these rules for all future work in this repository.
 - Prefer small, focused changes that match the existing project structure.
 - Verify backend changes with lint and compile checks when practical.
 - Verify frontend changes with typecheck when practical.
+- Only UI may use explicitly temporary implementations while the custom UI is
+  being designed. Architecture, networking, state management, gameplay systems,
+  service code, and tooling must be implemented as maintainable foundations from
+  the start.
+- When a change requires Unity Editor actions, always list the exact manual steps
+  the user must perform and the expected result. Explicitly state when no manual
+  Unity Editor steps are required.

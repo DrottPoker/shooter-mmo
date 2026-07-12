@@ -10,9 +10,9 @@ design. Features are added here only when working code exists.
 
 ## Account Entry Flow
 
-Status: Prototype implemented
+Status: UI prototype on implemented account flow
 
-The temporary LoginMenu allows a player to register or log in. A successful
+The temporary LoginMenu UI allows a player to register or log in. A successful
 request stores the account session in the persistent Unity client state and loads
 CharacterSelect. Duplicate submissions are blocked while a request is active.
 
@@ -20,9 +20,9 @@ This is functional development UI, not final art or UX.
 
 ## Character Selection
 
-Status: Prototype implemented
+Status: UI prototype on implemented character flow
 
-The temporary CharacterSelect flow supports:
+The temporary CharacterSelect UI supports:
 
 - Loading the account's characters.
 - Creating a character.
@@ -36,7 +36,7 @@ not implemented.
 
 ## World Entry And Exit
 
-Status: Prototype implemented
+Status: Foundation implemented with temporary UI
 
 A selected character can enter an online local world through the authenticated
 join-ticket flow. WorldScene displays the selected character, world, and current
@@ -48,9 +48,9 @@ state and returns the player to LoginMenu.
 
 ## Local World Preview
 
-Status: Prototype implemented
+Status: Initial content on implemented gameplay foundation
 
-WorldScene creates a code-driven placeholder safe-city area with a local player,
+WorldScene creates an initial code-driven safe-city test area with a local player,
 spawn point, boundary marker, front gate, camera target, and third-person camera.
 It exists to test scene flow and controls while the real world is still being
 designed.
@@ -59,7 +59,7 @@ The preview has no persistent world simulation and no remote players.
 
 ## Player Movement
 
-Status: Local prototype implemented
+Status: Local foundation implemented
 
 - Move with WASD or arrow keys.
 - Sprint with Shift.
@@ -71,7 +71,7 @@ Movement is client-local and is not validated or replicated by WorldServer.
 
 ## Third-Person Camera
 
-Status: Local prototype implemented
+Status: Local foundation implemented
 
 - Hold the right mouse button to orbit.
 - Use the mouse wheel to zoom.
@@ -98,7 +98,8 @@ They remain in the MVP specification until working behavior is available:
 
 When a game feature is implemented, document it here with:
 
-1. A clear status such as Prototype, MVP, or Production-ready.
+1. A clear status such as Foundation, MVP, or Production-ready. Use Prototype
+   only for temporary UI presentation.
 2. The player-visible behavior.
 3. Inputs, rules, and important edge cases.
 4. Whether the behavior is local, server-authoritative, or persistent.

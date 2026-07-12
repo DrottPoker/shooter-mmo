@@ -42,3 +42,9 @@ feature documents describe what is actually implemented in the repository.
   duplicating them across architecture and feature documents.
 - Keep this index and the root `README.md` links current when documents are
   added, renamed, or removed.
+- Only the current UI may be documented or implemented as temporary. All other
+  systems must be treated as maintainable foundations and must not accumulate
+  knowingly disposable architecture.
+- Every Unity change must state whether manual Unity Editor work is required. If
+  it is required, document exact steps and the expected result in
+  `LOCAL_DEVELOPMENT.md`.
