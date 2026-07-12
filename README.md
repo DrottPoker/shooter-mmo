@@ -61,7 +61,8 @@ the file. Never commit `.env`.
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
-See [Local Development](docs/LOCAL_DEVELOPMENT.md) for the complete manual flow.
+See [Project Overview](docs/PROJECT_OVERVIEW.md) for a short orientation and
+[Local Development](docs/LOCAL_DEVELOPMENT.md) for the complete manual flow.
 
 ## Quality Checks
 
@@ -100,7 +101,11 @@ Run Unity tests from `Window > General > Test Runner`:
 - `Shared`: shared backend health and networking helpers.
 - `Tests`: backend unit and PostgreSQL integration tests.
 - `shooter-mmorpg-unity-client`: Unity client project and Unity tests.
-- `docs`: MVP, architecture, API, and local development documentation.
+- `docs`: project overview, architecture, features, product scope, and local
+  development documentation.
+
+The complete documentation map is available in
+[docs/README.md](docs/README.md).
 
 ## Development Rules
 

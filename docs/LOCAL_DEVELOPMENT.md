@@ -395,48 +395,10 @@ Expected result:
 - Movement works without starting the backend, but server session data only
   appears after the full login and world join flow.
 
-## Current Foundation Scope
+## Related Documentation
 
-The current backend foundation includes:
-
-- A root .NET solution.
-- `AuthService` as a minimal ASP.NET Core service.
-- `WorldServer` as a minimal ASP.NET Core debug host for world join validation.
-- `ShooterMmo.Shared` for shared foundation helpers.
-- Local PostgreSQL and Redis through Docker Compose.
-- Protocol-level PostgreSQL query and Redis PING readiness checks without a Redis
-  client dependency.
-- Auth persistence through Npgsql and Dapper.
-- Password hashing through BCrypt.
-- Database-backed account registration and login.
-- Database-backed session tokens.
-- ASP.NET authentication handlers and authorization policies for account sessions
-  and WorldServer service identities.
-- Login and registration rate limiting, logout, and targeted session revocation.
-- Problem Details errors, `X-Correlation-ID`, and no-store token responses.
-- Resilient WorldServer handling of AuthService timeout, network, and invalid
-  response failures.
-- Heartbeat-driven world registry status, split liveness/readiness, fail-fast
-  configuration, and complete command-line health checks.
-- Character creation and listing.
-- Local world listing and join tickets.
-- Character-locked ticket creation with one active ticket per character.
-- Transactional ticket consumption and PostgreSQL world-session claims.
-- Global single-world enforcement per character.
-- WorldServer reconnect, heartbeat, graceful release, and lease expiry handling.
-- In-memory WorldServer simulation sessions backed by authoritative database
-  leases.
-- Unity temporary UI for login, character selection, world ticket creation, and
-  WorldServer debug join.
-- Serialized client operations, timeout-aware structured API errors, 401 recovery,
-  and ScriptableObject endpoint configuration.
-- Unity local WorldScene gameplay preview with runtime environment creation,
-  placeholder player spawn, local movement, jump, sprint, and third-person
-  camera control through Input Actions and spherecast collision.
-- Backend unit tests and an isolated PostgreSQL integration test.
-- Unity EditMode and PlayMode smoke tests in separate test assemblies.
-- A GitHub Actions backend quality gate with locked restore, format, build,
-  PostgreSQL integration testing, and coverage collection.
-
-Persistent gameplay systems, inventory, combat, and Unity networking are not
-implemented yet.
+- [Project Overview](PROJECT_OVERVIEW.md)
+- [Project Architecture](PROJECT_ARCHITECTURE.md)
+- [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md)
+- [Service Features](SERVICE_FEATURES.md)
+- [Game Features](GAME_FEATURES.md)
