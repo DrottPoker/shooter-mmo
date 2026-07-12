@@ -60,6 +60,8 @@ namespace ShooterMmo.Api
         public int udpPort;
         public string ruleSet;
         public bool isOnline;
+        public string lastHeartbeatAt;
+        public string onlineUntil;
     }
 
     [Serializable]

@@ -6,14 +6,14 @@ namespace WorldServer.Auth;
 
 public sealed class AuthServiceClient(HttpClient httpClient)
 {
-    public async Task<DependencyHealth> CheckHealthAsync(CancellationToken cancellationToken)
+    public async Task<DependencyHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
         try
         {
-            using var response = await httpClient.GetAsync("/health", cancellationToken);
+            using var response = await httpClient.GetAsync("/health/ready", cancellationToken);
             return new DependencyHealth(
                 "auth-service",
-                new Uri(httpClient.BaseAddress!, "/health").ToString(),
+                new Uri(httpClient.BaseAddress!, "/health/ready").ToString(),
                 response.IsSuccessStatusCode,
                 response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode}");
         }
@@ -37,6 +37,19 @@ public sealed class AuthServiceClient(HttpClient httpClient)
                 false,
                 "Connection failed.");
         }
+    }
+
+    public Task<AuthServiceResult<WorldHeartbeatResponse>> HeartbeatWorldAsync(
+        string worldId,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<object, WorldHeartbeatResponse>(
+            $"/api/worlds/{Uri.EscapeDataString(worldId)}/heartbeat",
+            new { },
+            response => string.Equals(response.WorldId, worldId, StringComparison.Ordinal)
+                && response.LastHeartbeatAt != default
+                && response.OnlineUntil > response.LastHeartbeatAt,
+            cancellationToken);
     }
 
     public Task<AuthServiceResult<ConsumedJoinTicketResponse>> ConsumeJoinTicketAsync(

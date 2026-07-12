@@ -8,6 +8,31 @@ Last updated: 2026-07-12
 - Docker Desktop.
 - Unity Editor for the client project.
 
+## Local Environment File
+
+Create the ignored local environment file before running Compose or either
+backend service:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Replace every `replace-with-...` placeholder in `.env`. AuthService and WorldServer
+share `WORLD_SERVER_ID` and `WORLD_SERVER_SERVICE_SECRET`. Both services search
+their content root and parent directories for `.env`. Process environment
+variables and command-line values take precedence.
+
+If the PostgreSQL Docker volume already exists, changing `POSTGRES_PASSWORD` does
+not change the password stored inside PostgreSQL. Either keep the current local
+password in both `.env` entries or update the database role interactively:
+
+```powershell
+docker exec -it shooter_mmo_postgres psql -U shooter_mmo -d shooter_mmo
+```
+
+Then run `\password shooter_mmo` inside `psql`. Deleting the Compose volume also
+recreates the credentials, but permanently removes local database data.
+
 ## Repository Quality Checks
 
 Restore locked dependencies and run the standard backend quality gate:
@@ -43,7 +68,10 @@ docker compose -f docker-compose.test.yml up -d --wait
 Set the dedicated connection and run all backend tests:
 
 ```powershell
-$env:SHOOTER_MMO_TEST_POSTGRES = "Host=localhost;Port=55432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password"
+$testConnectionLine = Get-Content .env |
+  Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" } |
+  Select-Object -First 1
+$env:SHOOTER_MMO_TEST_POSTGRES = $testConnectionLine.Split("=", 2)[1]
 dotnet test ShooterMmo.slnx --configuration Release
 ```
 
@@ -77,24 +105,9 @@ The local services use these ports:
 - WorldServer HTTP debug: `http://localhost:5100`
 - WorldServer UDP: `27015`
 
-The local PostgreSQL database is configured as:
-
-- Database: `shooter_mmo`
-- User: `shooter_mmo`
-- Password: `shooter_mmo_dev_password`
-
-These credentials are for local development only.
-
-The local WorldServer service identity also uses a committed development-only
-secret. AuthService reads it from
-`ServiceAuthentication:WorldServers:local-world-1`, and WorldServer reads it from
-`WorldServer:AuthServiceSecret`. In any non-local environment, override both with
-the same strong secret:
-
-```powershell
-$env:ServiceAuthentication__WorldServers__local-world-1 = "replace-with-a-long-random-secret"
-$env:WORLD_SERVER_SERVICE_SECRET = "replace-with-a-long-random-secret"
-```
+Local PostgreSQL credentials and WorldServer service credentials live only in
+the ignored `.env` file. `.env.example` documents every required key without
+placing active credentials in application settings or Compose YAML.
 
 ## Backend Services
 
@@ -104,11 +117,15 @@ Run AuthService:
 dotnet run --project AuthService
 ```
 
-Check AuthService health:
+Check AuthService liveness and readiness:
 
 ```powershell
-Invoke-RestMethod http://localhost:5000/health
+Invoke-RestMethod http://localhost:5000/health/live
+Invoke-RestMethod http://localhost:5000/health/ready
 ```
+
+Expected result: liveness reports `live`. Readiness reports `ready` only after a
+real PostgreSQL `select 1` query and Redis `PING` both succeed.
 
 Register a test account:
 
@@ -196,11 +213,34 @@ Run a one-time WorldServer startup health check:
 dotnet run --project WorldServer -- --health-check-only
 ```
 
-Check WorldServer health while AuthService and WorldServer are both running:
+Expected result: PostgreSQL is verified through AuthService readiness, Redis is
+verified directly with `PING`, and the process exits with code `0`. Stop Redis or
+AuthService and repeat to verify exit code `1`:
 
 ```powershell
-Invoke-RestMethod http://localhost:5100/health
+$LASTEXITCODE
 ```
+
+Check WorldServer liveness and readiness while both services are running:
+
+```powershell
+Invoke-RestMethod http://localhost:5100/health/live
+Invoke-RestMethod http://localhost:5100/health/ready
+```
+
+Expected result: both return HTTP `200`. Readiness returns HTTP `503` if Redis or
+AuthService readiness is unavailable, while liveness remains HTTP `200` as long
+as the WorldServer process can serve requests.
+
+World registry test:
+
+1. Start AuthService without WorldServer and call `GET /api/worlds`.
+2. Start WorldServer and call the endpoint again.
+3. Stop WorldServer, wait longer than the configured 30-second timeout, and call
+   the endpoint again.
+
+Expected result: `local-world-1` is offline before the first heartbeat, online
+while fresh heartbeats arrive, and offline after the heartbeat timeout.
 
 Create a join ticket through AuthService, then validate it through WorldServer:
 
@@ -328,7 +368,8 @@ The current backend foundation includes:
 - `WorldServer` as a minimal ASP.NET Core debug host for world join validation.
 - `ShooterMmo.Shared` for shared foundation helpers.
 - Local PostgreSQL and Redis through Docker Compose.
-- TCP-based dependency health checks without external NuGet packages.
+- Protocol-level PostgreSQL query and Redis PING readiness checks without a Redis
+  client dependency.
 - Auth persistence through Npgsql and Dapper.
 - Password hashing through BCrypt.
 - Database-backed account registration and login.
@@ -339,6 +380,8 @@ The current backend foundation includes:
 - Problem Details errors, `X-Correlation-ID`, and no-store token responses.
 - Resilient WorldServer handling of AuthService timeout, network, and invalid
   response failures.
+- Heartbeat-driven world registry status, split liveness/readiness, fail-fast
+  configuration, and complete command-line health checks.
 - Character creation and listing.
 - Local world listing and join tickets.
 - Character-locked ticket creation with one active ticket per character.

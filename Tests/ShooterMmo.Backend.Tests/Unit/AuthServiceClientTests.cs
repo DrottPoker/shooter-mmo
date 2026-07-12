@@ -76,6 +76,23 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
+    public async Task WorldHeartbeatUsesTheAuthenticatedWorldRoute()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            worldId = "local-world-1",
+            lastHeartbeatAt = DateTime.UtcNow,
+            onlineUntil = DateTime.UtcNow.AddSeconds(30)
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.HeartbeatWorldAsync("local-world-1", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal("/api/worlds/local-world-1/heartbeat", Assert.Single(handler.Requests).Path);
+    }
+
+    [Fact]
     public async Task NetworkFailureReturnsServiceUnavailable()
     {
         var handler = new RecordingHttpMessageHandler(_ => throw new HttpRequestException("offline"));

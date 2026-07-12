@@ -1,11 +1,15 @@
 using AuthService.Auth;
+using AuthService.Config;
 using AuthService.Http;
 using Dapper;
 using Npgsql;
 
 namespace AuthService.Worlds;
 
-public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration configuration)
+public sealed class WorldService(
+    NpgsqlDataSource dataSource,
+    IConfiguration configuration,
+    AuthServiceConfig config)
 {
     public async Task<ServiceResult<IReadOnlyCollection<WorldResponse>>> ListWorldsAsync(
         CancellationToken cancellationToken)
@@ -16,14 +20,21 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
                    host as "Host",
                    udp_port as "UdpPort",
                    rule_set as "RuleSet",
-                   is_online as "IsOnline"
+                   (is_online
+                    and last_heartbeat_at is not null
+                    and last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) > now()) as "IsOnline",
+                   last_heartbeat_at as "LastHeartbeatAt",
+                   last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil"
             from worlds
             order by id asc;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         var worlds = await connection.QueryAsync<WorldResponse>(
-            new CommandDefinition(sql, cancellationToken: cancellationToken));
+            new CommandDefinition(
+                sql,
+                new { HeartbeatTimeoutSeconds = (int)config.WorldHeartbeatTimeout.TotalSeconds },
+                cancellationToken: cancellationToken));
 
         return ServiceResult<IReadOnlyCollection<WorldResponse>>.Ok(worlds.ToArray());
     }
@@ -52,7 +63,12 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        var world = await GetWorldAsync(connection, transaction, normalizedWorldId, cancellationToken);
+        var world = await GetWorldAsync(
+            connection,
+            transaction,
+            normalizedWorldId,
+            (int)config.WorldHeartbeatTimeout.TotalSeconds,
+            cancellationToken);
         if (world is null)
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -306,6 +322,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string worldId,
+        int heartbeatTimeoutSeconds,
         CancellationToken cancellationToken)
     {
         const string sql = """
@@ -314,13 +331,21 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
                    host as "Host",
                    udp_port as "UdpPort",
                    rule_set as "RuleSet",
-                   is_online as "IsOnline"
+                   (is_online
+                    and last_heartbeat_at is not null
+                    and last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) > now()) as "IsOnline",
+                   last_heartbeat_at as "LastHeartbeatAt",
+                   last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil"
             from worlds
             where id = @WorldId;
             """;
 
         return await connection.QuerySingleOrDefaultAsync<WorldResponse>(
-            new CommandDefinition(sql, new { WorldId = worldId }, transaction, cancellationToken: cancellationToken));
+            new CommandDefinition(
+                sql,
+                new { WorldId = worldId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
+                transaction,
+                cancellationToken: cancellationToken));
     }
 
     private static async Task<bool> LockOwnedCharacterAsync(

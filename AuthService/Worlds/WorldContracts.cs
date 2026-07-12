@@ -6,7 +6,14 @@ public sealed record WorldResponse(
     string Host,
     int UdpPort,
     string RuleSet,
-    bool IsOnline);
+    bool IsOnline,
+    DateTime? LastHeartbeatAt,
+    DateTime? OnlineUntil);
+
+public sealed record WorldHeartbeatResponse(
+    string WorldId,
+    DateTime LastHeartbeatAt,
+    DateTime OnlineUntil);
 
 public sealed record JoinWorldRequest(Guid CharacterId);
 

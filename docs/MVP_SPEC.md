@@ -252,6 +252,10 @@ Current implementation note:
 - Login and registration are rate limited, and token-bearing responses are marked
   as non-cacheable.
 - Both HTTP services return Problem Details errors with correlation identifiers.
+- WorldServer heartbeats the world registry, and AuthService derives online status
+  from the heartbeat age rather than a permanent online flag.
+- Liveness checks only the process. Readiness executes a PostgreSQL query, sends a
+  Redis PING, and verifies AuthService readiness where required.
 - Redis runs locally, but join tickets can move to Redis later when multiple
   live WorldServers need faster short-lived coordination.
 - WorldServer currently validates join tickets through a temporary HTTP debug

@@ -137,6 +137,10 @@ Requires a bearer session token and returns `204 No Content`. The current sessio
 is revoked, its unconsumed join tickets are invalidated, and its active
 world-session leases are released.
 
+The phase 3 migration adds `worlds.last_heartbeat_at` and marks every seeded or
+existing world offline. Online status is true only while the registry heartbeat
+is newer than `WorldRegistry:HeartbeatTimeoutSeconds`.
+
 ### Revoke Account Session
 
 ```http
@@ -186,6 +190,23 @@ GET /api/worlds
 
 This is public for now.
 
+Each world response includes `lastHeartbeatAt` and `onlineUntil`. Both are null
+before the first heartbeat. `isOnline` is computed from the database clock, the
+stored heartbeat timestamp, the configured timeout, and the stored `is_online`
+flag.
+
+### Heartbeat World Registry Entry
+
+```http
+POST /api/worlds/{worldId}/heartbeat
+```
+
+Requires WorldServer service authentication. The authenticated world id must
+match the route. A successful response contains the database-generated
+`lastHeartbeatAt` and `onlineUntil` timestamps. WorldServer sends this heartbeat
+immediately on startup and then every 10 seconds. The default online timeout is
+30 seconds.
+
 ### Create World Join Ticket
 
 ```http
@@ -212,7 +233,9 @@ Response:
     "host": "127.0.0.1",
     "udpPort": 27015,
     "ruleSet": "mvp-open-risk",
-    "isOnline": true
+    "isOnline": true,
+    "lastHeartbeatAt": "2026-07-12T13:00:00Z",
+    "onlineUntil": "2026-07-12T13:00:30Z"
   },
   "characterId": "00000000-0000-0000-0000-000000000000",
   "joinTicket": "ticket",
@@ -311,13 +334,25 @@ They are registered only when `ASPNETCORE_ENVIRONMENT=Development`. They return
 The Unity temporary client currently uses these endpoints to test the full
 account, character, join ticket, and WorldServer validation flow from Play Mode.
 
-### WorldServer Health
+### Service Liveness
 
 ```http
-GET /health
+GET /health/live
 ```
 
-Checks Redis and AuthService reachability.
+Liveness checks only that the HTTP process can serve requests. It does not call
+dependencies and returns HTTP `200` with status `live`.
+
+### Service Readiness
+
+```http
+GET /health/ready
+```
+
+AuthService readiness executes `select 1` against PostgreSQL and sends the Redis
+RESP `PING` command, requiring `PONG`. WorldServer readiness sends its own Redis
+PING and requires AuthService readiness. Readiness returns HTTP `503` with status
+`not_ready` when any mandatory dependency fails.
 
 ### Debug Join
 

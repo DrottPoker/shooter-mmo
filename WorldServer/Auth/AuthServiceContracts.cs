@@ -21,6 +21,11 @@ public sealed record WorldSessionLeaseResponse(
     DateTime ExpiresAt,
     bool Released);
 
+public sealed record WorldHeartbeatResponse(
+    string WorldId,
+    DateTime LastHeartbeatAt,
+    DateTime OnlineUntil);
+
 public sealed record AuthServiceProblemDetails(string? Code, string? Detail, string? Message);
 
 public sealed record AuthServiceResult<T>(T? Value, WorldServerErrorResponse? Error, int StatusCode)

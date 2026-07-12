@@ -1,33 +1,40 @@
 using System.Threading.RateLimiting;
 using AuthService.Auth;
 using AuthService.Characters;
+using AuthService.Config;
 using AuthService.Database;
+using AuthService.Health;
 using AuthService.Worlds;
 using Microsoft.AspNetCore.Authentication;
 using Npgsql;
-using ShooterMmo.Shared.Health;
+using ShooterMmo.Shared.Configuration;
 using ShooterMmo.Shared.Http;
-using ShooterMmo.Shared.Networking;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddOptionalDotEnvFile(builder.Environment.ContentRootPath);
+builder.Configuration.AddEnvironmentVariables();
+builder.Configuration.AddCommandLine(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
+var config = AuthServiceConfig.FromConfiguration(builder.Configuration);
+
 builder.Services.AddSingleton(_ =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("Postgres")
-        ?? throw new InvalidOperationException("Postgres connection string is not configured.");
-
-    return NpgsqlDataSource.Create(connectionString);
+    return NpgsqlDataSource.Create(config.PostgresConnectionString);
 });
 
+builder.Services.AddSingleton(config);
 builder.Services.AddSingleton<DatabaseInitializer>();
+builder.Services.AddSingleton<PostgresHealthProbe>();
+builder.Services.AddSingleton<AuthServiceHealthService>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<CharacterService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<WorldService>();
 builder.Services.AddScoped<WorldSessionService>();
+builder.Services.AddScoped<WorldRegistryService>();
 builder.Services.AddApiProblemDetails();
 builder.Services
     .AddAuthentication()
@@ -87,32 +94,23 @@ if (app.Configuration.GetValue("Database:RunMigrationsOnStartup", true))
     await initializer.InitializeAsync(CancellationToken.None);
 }
 
-app.MapGet("/", () => Results.Redirect("/health"));
-
-app.MapGet("/health", async (IConfiguration configuration, CancellationToken cancellationToken) =>
+app.MapGet("/", () => Results.Redirect("/health/ready"));
+app.MapGet("/health/live", () => Results.Ok(new
 {
-    var timeout = TimeSpan.FromMilliseconds(
-        configuration.GetValue("HealthChecks:TcpTimeoutMilliseconds", 1_000));
-
-    var postgresEndpoint = PostgresConnectionString.ParseEndpoint(
-        configuration.GetConnectionString("Postgres"));
-
-    var redisEndpoint = RedisConnectionString.ParseEndpoint(
-        configuration.GetConnectionString("Redis"));
-
-    var dependencies = await Task.WhenAll(
-        TcpHealthProbe.CheckAsync("postgres", postgresEndpoint, timeout, cancellationToken),
-        TcpHealthProbe.CheckAsync("redis", redisEndpoint, timeout, cancellationToken));
-
-    var status = dependencies.All(dependency => dependency.IsReachable)
-        ? "healthy"
-        : "degraded";
-
-    return Results.Ok(new ServiceHealth(
-        "AuthService",
-        status,
-        DateTimeOffset.UtcNow,
-        dependencies));
+    service = "AuthService",
+    status = "live",
+    checkedAt = DateTimeOffset.UtcNow
+}));
+app.MapGet("/health/ready", async (
+    AuthServiceHealthService healthService,
+    CancellationToken cancellationToken) =>
+{
+    var health = await healthService.CheckReadinessAsync(cancellationToken);
+    return Results.Json(
+        health,
+        statusCode: health.Status == "ready"
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
 });
 
 app.MapAccountEndpoints();

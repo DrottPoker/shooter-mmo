@@ -12,7 +12,7 @@ public sealed class AuthWorldFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(7, await CountFoundationTablesAsync(context));
-        Assert.Equal(4, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(5, await CountAppliedMigrationsAsync(context));
 
         var player = await context.RegisterPlayerAsync();
         var characters = await context.CharacterService.ListAsync(
@@ -218,7 +218,7 @@ public sealed class AuthWorldFlowIntegrationTests
             context.InitializeDatabaseAsync());
 
         Assert.Equal(7, await CountFoundationTablesAsync(context));
-        Assert.Equal(4, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(5, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -287,6 +287,35 @@ public sealed class AuthWorldFlowIntegrationTests
             CancellationToken.None));
         Assert.Equal(0, await CountActiveTicketsAsync(context));
         Assert.Equal(0, await CountActiveWorldSessionsAsync(context));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task SeedWorldRequiresFreshHeartbeatToBeOnline()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedWorld: false);
+
+        var beforeHeartbeat = await context.WorldService.ListWorldsAsync(CancellationToken.None);
+        var offlineWorld = Assert.Single(beforeHeartbeat.Value!);
+        Assert.False(offlineWorld.IsOnline);
+        Assert.Null(offlineWorld.LastHeartbeatAt);
+
+        var heartbeat = await context.WorldRegistryService.HeartbeatAsync(
+            "local-world-1",
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+
+        var afterHeartbeat = await context.WorldService.ListWorldsAsync(CancellationToken.None);
+        var onlineWorld = Assert.Single(afterHeartbeat.Value!);
+        Assert.True(onlineWorld.IsOnline);
+        Assert.NotNull(onlineWorld.LastHeartbeatAt);
+        Assert.True(onlineWorld.OnlineUntil > onlineWorld.LastHeartbeatAt);
+
+        await context.ExecuteAsync(
+            "update worlds set last_heartbeat_at = now() - interval '1 hour';");
+
+        var afterTimeout = await context.WorldService.ListWorldsAsync(CancellationToken.None);
+        Assert.False(Assert.Single(afterTimeout.Value!).IsOnline);
     }
 
     private static Task<int> CountFoundationTablesAsync(PostgresIntegrationTestContext context)

@@ -12,7 +12,8 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         new("202607071600_auth_character_world_join", InitialMigrationSql),
         new("202607101200_character_world_sessions", WorldSessionMigrationSql),
         new("202607121200_session_ticket_ownership", SessionTicketOwnershipMigrationSql),
-        new("202607121500_world_session_ownership", WorldSessionOwnershipMigrationSql)
+        new("202607121500_world_session_ownership", WorldSessionOwnershipMigrationSql),
+        new("202607131000_world_registry_heartbeat", WorldRegistryHeartbeatMigrationSql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -228,6 +229,19 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         create index ix_character_world_sessions_account_session_id
             on character_world_sessions(account_session_id)
             where released_at is null;
+        """;
+
+    private const string WorldRegistryHeartbeatMigrationSql = """
+        alter table worlds
+            add column last_heartbeat_at timestamptz null;
+
+        update worlds
+        set is_online = false,
+            last_heartbeat_at = null,
+            updated_at = now();
+
+        create index ix_worlds_last_heartbeat_at
+            on worlds(last_heartbeat_at);
         """;
 
     private sealed record DatabaseMigration(string Id, string Sql);

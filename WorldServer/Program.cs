@@ -1,15 +1,15 @@
-using ShooterMmo.Shared.Health;
+using ShooterMmo.Shared.Configuration;
 using ShooterMmo.Shared.Http;
-using ShooterMmo.Shared.Networking;
 using WorldServer.Auth;
 using WorldServer.Config;
+using WorldServer.Health;
 using WorldServer.Sessions;
+using WorldServer.Worlds;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Configuration.AddJsonFile(
-    Path.Combine(AppContext.BaseDirectory, "appsettings.json"),
-    optional: true,
-    reloadOnChange: false);
+builder.Configuration.AddOptionalDotEnvFile(builder.Environment.ContentRootPath);
+builder.Configuration.AddEnvironmentVariables();
+builder.Configuration.AddCommandLine(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -27,53 +27,48 @@ builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
 }).AddHttpMessageHandler<AuthServiceAuthenticationHandler>();
 builder.Services.AddSingleton<WorldJoinService>();
 builder.Services.AddHostedService<WorldSessionHeartbeatService>();
+builder.Services.AddHostedService<WorldRegistryHeartbeatService>();
+builder.Services.AddSingleton<WorldServerHealthService>();
 builder.Services.AddApiProblemDetails();
 
 var app = builder.Build();
 
 app.UseApiPipeline();
 
-var redisHealth = await TcpHealthProbe.CheckAsync(
-    "redis",
-    RedisConnectionString.ParseEndpoint(config.RedisConnectionString),
-    config.HealthCheckTimeout,
-    CancellationToken.None);
-
 Console.WriteLine($"Starting {config.WorldServerId} on UDP port {config.UdpPort}.");
-Console.WriteLine(redisHealth.IsReachable
-    ? $"Redis reachable at {redisHealth.Target}."
-    : $"Redis unreachable at {redisHealth.Target}: {redisHealth.Error}");
 
 if (args.Contains("--health-check-only", StringComparer.OrdinalIgnoreCase))
 {
+    var healthService = app.Services.GetRequiredService<WorldServerHealthService>();
+    var health = await healthService.CheckReadinessAsync(CancellationToken.None);
+    foreach (var dependency in health.Dependencies)
+    {
+        Console.WriteLine(dependency.IsReachable
+            ? $"{dependency.Name} ready at {dependency.Target}."
+            : $"{dependency.Name} not ready at {dependency.Target}: {dependency.Error}");
+    }
+
+    Environment.ExitCode = health.Status == "ready" ? 0 : 1;
     return;
 }
 
-app.MapGet("/", () => Results.Redirect("/health"));
-
-app.MapGet("/health", async (
-    AuthServiceClient authServiceClient,
+app.MapGet("/", () => Results.Redirect("/health/ready"));
+app.MapGet("/health/live", () => Results.Ok(new
+{
+    service = "WorldServer",
+    status = "live",
+    checkedAt = DateTimeOffset.UtcNow
+}));
+app.MapGet("/health/ready", async (
+    WorldServerHealthService healthService,
     CancellationToken cancellationToken) =>
 {
-    var dependencies = new[]
-    {
-        await TcpHealthProbe.CheckAsync(
-            "redis",
-            RedisConnectionString.ParseEndpoint(config.RedisConnectionString),
-            config.HealthCheckTimeout,
-            cancellationToken),
-        await authServiceClient.CheckHealthAsync(cancellationToken)
-    };
-
-    var status = dependencies.All(dependency => dependency.IsReachable)
-        ? "healthy"
-        : "degraded";
-
-    return Results.Ok(new ServiceHealth(
-        "WorldServer",
-        status,
-        DateTimeOffset.UtcNow,
-        dependencies));
+    var health = await healthService.CheckReadinessAsync(cancellationToken);
+    return Results.Json(
+        health,
+        statusCode: health.Status == "ready"
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
 });
 
 if (app.Environment.IsDevelopment())

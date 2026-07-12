@@ -15,6 +15,8 @@ foundation for the first playable MVP.
   WorldServer calls.
 - RFC Problem Details responses with correlation identifiers and dependency failure
   mapping.
+- Heartbeat-driven world registry status with timeout-based offline detection.
+- Split liveness and protocol-level dependency readiness checks.
 - Shared .NET networking and health helpers.
 - Unity 6 client scenes for login, character selection, and a local world preview.
 - PostgreSQL and Redis development infrastructure through Docker Compose.
@@ -30,6 +32,12 @@ intentionally deferred until the foundation is stable.
 
 ## Quick Start
 
+Create the ignored local environment file and replace its placeholder secrets:
+
+```powershell
+Copy-Item .env.example .env
+```
+
 Start local infrastructure:
 
 ```powershell
@@ -43,10 +51,9 @@ dotnet run --project AuthService
 dotnet run --project WorldServer
 ```
 
-The committed WorldServer service secret is for local development only. Override
-`ServiceAuthentication__WorldServers__local-world-1` in AuthService and
-`WORLD_SERVER_SERVICE_SECRET` in WorldServer with the same secret outside the
-local environment.
+AuthService and WorldServer load the repository-root `.env` file for local
+development. Real environment variables and command-line configuration override
+the file. Never commit `.env`.
 
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
@@ -69,7 +76,7 @@ configured. Start the isolated test database and run all tests with:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
-$env:SHOOTER_MMO_TEST_POSTGRES = "Host=localhost;Port=55432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password"
+$env:SHOOTER_MMO_TEST_POSTGRES = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" }).Split("=", 2)[1]
 dotnet test ShooterMmo.slnx --configuration Release
 docker compose -f docker-compose.test.yml down
 Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES

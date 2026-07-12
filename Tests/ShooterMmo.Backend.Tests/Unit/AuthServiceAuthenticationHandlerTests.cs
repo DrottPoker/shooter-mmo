@@ -36,6 +36,7 @@ public sealed class AuthServiceAuthenticationHandlerTests
             TimeSpan.FromSeconds(5),
             "test-service-secret",
             TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(10),
             "localhost:6379",
             TimeSpan.FromSeconds(1));
     }

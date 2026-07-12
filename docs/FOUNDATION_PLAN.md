@@ -84,10 +84,25 @@ Delivered foundation:
 
 ### Phase 3: World Registry And Operations
 
-- Heartbeat-driven online world status.
-- Separate liveness and readiness endpoints.
-- Fail-fast configuration validation.
-- Safe local port binding and staging-ready service configuration.
+Status: Complete
+
+Delivered foundation:
+
+- Authenticated WorldServer registry heartbeat with database timestamps.
+- Timeout-derived world online status and an offline seeded world.
+- Separate `/health/live` and `/health/ready` endpoints in both HTTP services.
+- PostgreSQL readiness through `select 1` and Redis readiness through protocol
+  `PING` and `PONG` validation.
+- `503 Service Unavailable` readiness responses when any mandatory dependency is
+  unavailable.
+- A complete WorldServer `--health-check-only` command with exit code `1` on
+  readiness failure.
+- Aggregated fail-fast validation for all application-owned configuration.
+- Loopback-only PostgreSQL and Redis Compose port bindings.
+- Optional repository-root `.env` loading with secrets documented only in
+  `.env.example`.
+- Unit, PostgreSQL integration, Compose, and live process verification for these
+  rules.
 
 ### Phase 4: Unity Client Stability
 

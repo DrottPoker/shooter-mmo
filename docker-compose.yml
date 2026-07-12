@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     container_name: shooter_mmo_postgres
     environment:
-      POSTGRES_DB: shooter_mmo
-      POSTGRES_USER: shooter_mmo
-      POSTGRES_PASSWORD: shooter_mmo_dev_password
+      POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env and configure POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env and configure POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env and configure POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - shooter_mmo_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shooter_mmo -d shooter_mmo"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,7 +21,7 @@ services:
     container_name: shooter_mmo_redis
     command: ["redis-server", "--appendonly", "no"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -30,4 +30,3 @@ services:
 
 volumes:
   shooter_mmo_postgres_data:
-

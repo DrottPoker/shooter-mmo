@@ -26,6 +26,11 @@ public sealed class WorldServerAuthenticationHandler(
 
         var configuredSecret = configuration[$"ServiceAuthentication:WorldServers:{worldId}"];
         if (string.IsNullOrWhiteSpace(configuredSecret)
+            && string.Equals(configuration["WORLD_SERVER_ID"], worldId, StringComparison.Ordinal))
+        {
+            configuredSecret = configuration["WORLD_SERVER_SERVICE_SECRET"];
+        }
+        if (string.IsNullOrWhiteSpace(configuredSecret)
             || !SecretsMatch(configuredSecret, suppliedSecret))
         {
             return Task.FromResult(AuthenticateResult.Fail("WorldServer credentials are invalid."));

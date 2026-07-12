@@ -30,4 +30,15 @@ public sealed class ConnectionStringTests
         Assert.Equal("cache.internal", endpoint.Host);
         Assert.Equal(6380, endpoint.Port);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("localhost")]
+    [InlineData("localhost:not-a-port")]
+    [InlineData("localhost:70000")]
+    public void RequiredRedisParserRejectsInvalidConfiguration(string? value)
+    {
+        Assert.Throws<InvalidOperationException>(() => RedisConnectionString.ParseRequiredEndpoint(value));
+    }
 }

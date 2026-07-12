@@ -40,6 +40,24 @@ public static class WorldEndpoints
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
+        group.MapPost("/{worldId}/heartbeat", async (
+            string worldId,
+            ClaimsPrincipal principal,
+            WorldRegistryService worldRegistryService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.Equals(worldId, principal.GetWorldId(), StringComparison.Ordinal))
+            {
+                return ServiceResult<WorldHeartbeatResponse>.Forbidden(
+                    "service_world_mismatch",
+                    "The authenticated WorldServer cannot heartbeat another world.")
+                    .ToHttpResult();
+            }
+
+            var result = await worldRegistryService.HeartbeatAsync(worldId, cancellationToken);
+            return result.ToHttpResult();
+        }).RequireAuthorization(AuthenticationConstants.WorldServerPolicy);
+
         app.MapPost("/api/world-join-tickets/consume", async (
             ConsumeJoinTicketRequest consumeRequest,
             ClaimsPrincipal principal,

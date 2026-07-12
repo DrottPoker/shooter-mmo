@@ -1,5 +1,6 @@
 using AuthService.Auth;
 using AuthService.Characters;
+using AuthService.Config;
 using AuthService.Database;
 using AuthService.Worlds;
 using Microsoft.AspNetCore.Http;
@@ -11,14 +12,18 @@ namespace ShooterMmo.Backend.Tests.Integration;
 
 internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 {
-    private PostgresIntegrationTestContext(NpgsqlDataSource dataSource, IConfiguration configuration)
+    private PostgresIntegrationTestContext(
+        NpgsqlDataSource dataSource,
+        IConfiguration configuration,
+        AuthServiceConfig authServiceConfig)
     {
         DataSource = dataSource;
         SessionService = new SessionService(dataSource, configuration);
         AccountService = new AccountService(dataSource, SessionService);
         CharacterService = new CharacterService(dataSource, configuration);
-        WorldService = new WorldService(dataSource, configuration);
+        WorldService = new WorldService(dataSource, configuration, authServiceConfig);
         WorldSessionService = new WorldSessionService(dataSource, configuration);
+        WorldRegistryService = new WorldRegistryService(dataSource, authServiceConfig);
     }
 
     public NpgsqlDataSource DataSource { get; }
@@ -33,7 +38,11 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public WorldSessionService WorldSessionService { get; }
 
-    public static async Task<PostgresIntegrationTestContext> CreateAsync(bool initializeDatabase = true)
+    public WorldRegistryService WorldRegistryService { get; }
+
+    public static async Task<PostgresIntegrationTestContext> CreateAsync(
+        bool initializeDatabase = true,
+        bool heartbeatSeedWorld = true)
     {
         var connectionString = Environment.GetEnvironmentVariable(
             PostgresIntegrationFactAttribute.ConnectionStringVariable)!;
@@ -52,14 +61,27 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                     ["Auth:SessionLifetimeHours"] = "24",
                     ["Game:MaxCharactersPerAccount"] = "5",
                     ["WorldJoin:TicketLifetimeSeconds"] = "30",
-                    ["WorldSession:LeaseLifetimeSeconds"] = "60"
+                    ["WorldSession:LeaseLifetimeSeconds"] = "60",
+                    ["WorldRegistry:HeartbeatTimeoutSeconds"] = "30"
                 })
                 .Build();
 
-            var context = new PostgresIntegrationTestContext(dataSource, configuration);
+            var authServiceConfig = new AuthServiceConfig(
+                connectionString,
+                "localhost:6379",
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(30));
+            var context = new PostgresIntegrationTestContext(dataSource, configuration, authServiceConfig);
             if (initializeDatabase)
             {
                 await context.InitializeDatabaseAsync();
+                if (heartbeatSeedWorld)
+                {
+                    var heartbeat = await context.WorldRegistryService.HeartbeatAsync(
+                        "local-world-1",
+                        CancellationToken.None);
+                    Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+                }
             }
 
             return context;
@@ -116,6 +138,10 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             """
             insert into worlds (id, display_name, host, udp_port, rule_set, is_online)
             values (@WorldId, @DisplayName, '127.0.0.1', 27016, 'mvp-open-risk', true);
+
+            update worlds
+            set last_heartbeat_at = now()
+            where id = @WorldId;
             """);
 
         command.Parameters.AddWithValue("WorldId", worldId);
@@ -127,6 +153,12 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     {
         await using var command = DataSource.CreateCommand(sql);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    public async Task ExecuteAsync(string sql)
+    {
+        await using var command = DataSource.CreateCommand(sql);
+        await command.ExecuteNonQueryAsync();
     }
 
     public ValueTask DisposeAsync()
