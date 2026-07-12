@@ -42,6 +42,13 @@ public sealed class WorldSessionHeartbeatService(
                         session.WorldSessionId,
                         session.WorldSessionToken);
                 }
+                else
+                {
+                    logger.LogWarning(
+                        "Could not release world session {WorldSessionId} during shutdown: {Code}.",
+                        session.WorldSessionId,
+                        result.Error!.Code);
+                }
             }
             catch (Exception exception) when (IsExpectedTransportException(exception))
             {
@@ -90,7 +97,14 @@ public sealed class WorldSessionHeartbeatService(
                     "Removed inactive world session {WorldSessionId} after AuthService returned {StatusCode}.",
                     session.WorldSessionId,
                     result.StatusCode);
+
+                return;
             }
+
+            logger.LogWarning(
+                "Could not heartbeat world session {WorldSessionId}: {Code}.",
+                session.WorldSessionId,
+                result.Error!.Code);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

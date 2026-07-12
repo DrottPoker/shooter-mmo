@@ -91,14 +91,11 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
         Assert.True(registration.Succeeded, registration.Error?.Message);
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Headers.Authorization = $"Bearer {registration.Value!.SessionToken}";
-
-        var authenticatedAccount = await SessionService.AuthenticateAsync(
-            httpContext.Request,
+        var authenticatedAccount = await SessionService.AuthenticateTokenAsync(
+            registration.Value!.SessionToken,
             CancellationToken.None);
 
-        Assert.True(authenticatedAccount.Succeeded, authenticatedAccount.Error?.Message);
+        Assert.NotNull(authenticatedAccount);
 
         var character = await CharacterService.CreateAsync(
             registration.Value.AccountId,
@@ -109,7 +106,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
         return new IntegrationPlayer(
             registration.Value,
-            authenticatedAccount.Value!,
+            authenticatedAccount!,
             character.Value!);
     }
 

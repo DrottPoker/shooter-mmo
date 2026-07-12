@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-09
+Last updated: 2026-07-12
 
 ## Requirements
 
@@ -85,6 +85,17 @@ The local PostgreSQL database is configured as:
 
 These credentials are for local development only.
 
+The local WorldServer service identity also uses a committed development-only
+secret. AuthService reads it from
+`ServiceAuthentication:WorldServers:local-world-1`, and WorldServer reads it from
+`WorldServer:AuthServiceSecret`. In any non-local environment, override both with
+the same strong secret:
+
+```powershell
+$env:ServiceAuthentication__WorldServers__local-world-1 = "replace-with-a-long-random-secret"
+$env:WORLD_SERVER_SERVICE_SECRET = "replace-with-a-long-random-secret"
+```
+
 ## Backend Services
 
 Run AuthService:
@@ -120,6 +131,32 @@ Use the returned session token:
 $headers = @{ Authorization = "Bearer $($auth.sessionToken)" }
 ```
 
+The response also contains `sessionId`. Token-bearing responses include
+`Cache-Control: no-store` and `Pragma: no-cache`.
+
+Logout the current session:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/api/accounts/logout `
+  -Method Post `
+  -Headers $headers
+```
+
+Expected result: the endpoint returns `204 No Content`, and the same bearer token
+returns `401 Unauthorized` on the next authenticated request.
+
+An authenticated session can revoke another session owned by the same account:
+
+```powershell
+Invoke-RestMethod "http://localhost:5000/api/accounts/sessions/$sessionId" `
+  -Method Delete `
+  -Headers $headers
+```
+
+Expected result: the endpoint returns `204 No Content`. Any unconsumed join ticket
+issued by the revoked session is invalidated, and any world-session lease owned by
+that account session is released.
+
 Create a character:
 
 ```powershell
@@ -149,6 +186,9 @@ Run WorldServer:
 ```powershell
 dotnet run --project WorldServer
 ```
+
+`dotnet run` uses the Development launch profile. The temporary `/debug/*`
+endpoints are not registered in Production, Staging, or any other environment.
 
 Run a one-time WorldServer startup health check:
 
@@ -293,6 +333,12 @@ The current backend foundation includes:
 - Password hashing through BCrypt.
 - Database-backed account registration and login.
 - Database-backed session tokens.
+- ASP.NET authentication handlers and authorization policies for account sessions
+  and WorldServer service identities.
+- Login and registration rate limiting, logout, and targeted session revocation.
+- Problem Details errors, `X-Correlation-ID`, and no-store token responses.
+- Resilient WorldServer handling of AuthService timeout, network, and invalid
+  response failures.
 - Character creation and listing.
 - Local world listing and join tickets.
 - Character-locked ticket creation with one active ticket per character.

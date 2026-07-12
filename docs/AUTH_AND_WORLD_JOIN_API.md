@@ -1,6 +1,6 @@
 # Auth And World Join API
 
-Last updated: 2026-07-09
+Last updated: 2026-07-12
 
 ## Scope
 
@@ -8,7 +8,7 @@ This document describes the current MVP API flow for accounts, characters, and
 world join tickets.
 
 The current implementation uses database-backed session tokens instead of JWTs.
-This keeps early development simple and makes sessions easy to revoke later.
+Sessions support logout and account-owned targeted revocation.
 Join tickets and authoritative character world-session leases are also stored in
 PostgreSQL. Ticket consumption and world-session claiming therefore share one
 transaction. They can move behind a Redis-backed implementation later when scale
@@ -39,6 +39,10 @@ The migration creates:
 
 It also seeds `local-world-1`.
 
+The phase 2 migration links new join tickets and world-session leases to the
+account session that issued them. Revoking that session invalidates its
+unconsumed join tickets and releases its active world-session leases.
+
 ## Authentication
 
 Register and login return a session token.
@@ -51,6 +55,22 @@ Authorization: Bearer <sessionToken>
 
 Session tokens are only returned once. AuthService stores a SHA-256 hash of the
 token in PostgreSQL.
+
+Protected account routes use the `AccountSession` ASP.NET authentication scheme
+and policy. Protected service routes use the separate `WorldServer` scheme and
+policy. Endpoint handlers consume authenticated claims instead of parsing bearer
+headers manually.
+
+Login and registration each allow five requests per client IP in a 60-second
+fixed window. Exceeding the limit returns `429 Too Many Requests` with a
+`Retry-After` header.
+
+All token-bearing responses include:
+
+```text
+Cache-Control: no-store
+Pragma: no-cache
+```
 
 ## Endpoints
 
@@ -76,6 +96,7 @@ Response:
 {
   "accountId": "00000000-0000-0000-0000-000000000000",
   "username": "player_one",
+  "sessionId": "00000000-0000-0000-0000-000000000000",
   "sessionToken": "token",
   "expiresAt": "2026-07-08T13:00:00Z"
 }
@@ -105,6 +126,26 @@ GET /api/accounts/me
 ```
 
 Requires a bearer session token.
+
+### Logout Current Session
+
+```http
+POST /api/accounts/logout
+```
+
+Requires a bearer session token and returns `204 No Content`. The current session
+is revoked, its unconsumed join tickets are invalidated, and its active
+world-session leases are released.
+
+### Revoke Account Session
+
+```http
+DELETE /api/accounts/sessions/{sessionId}
+```
+
+Requires a bearer session token. The target session is revoked only when it
+belongs to the authenticated account. The operation is idempotent and returns
+`204 No Content` without revealing whether another account owns the supplied id.
 
 ### List Characters
 
@@ -223,8 +264,15 @@ the wrong WorldServer returns a conflict without invalidating the ticket. A vali
 consume atomically marks the ticket as consumed and creates or refreshes the one
 active world-session lease for the character.
 
-This endpoint is used by WorldServer validation. It has no service-to-service
-authentication yet because there is only one local WorldServer in the MVP.
+This endpoint requires WorldServer service authentication. WorldServer sends:
+
+```text
+X-World-Server-ID: local-world-1
+X-World-Server-Secret: <shared secret>
+```
+
+The authenticated world id must match the request `worldId`. The same
+authentication and world binding apply to heartbeat and release.
 
 ### Heartbeat World Session
 
@@ -257,8 +305,8 @@ retry with the same valid credentials returns success after the first release.
 ## WorldServer Debug Endpoints
 
 WorldServer exposes temporary HTTP debug endpoints on `http://localhost:5100`.
-These endpoints are for local development until the real Unity and UDP join
-handshake exists.
+They are registered only when `ASPNETCORE_ENVIRONMENT=Development`. They return
+`404 Not Found` in Production and other environments.
 
 The Unity temporary client currently uses these endpoints to test the full
 account, character, join ticket, and WorldServer validation flow from Play Mode.
@@ -314,7 +362,34 @@ session. Repeating the delete after the local session is gone returns success.
 
 - Character deletion is not implemented.
 - JWT auth is not implemented.
-- Service-to-service authentication is not implemented yet.
 - Redis is running locally but is not used for auth or join tickets yet.
 - WorldServer simulation state is still in-memory. The authoritative lease expires
   if a stopped WorldServer can no longer heartbeat it.
+
+## Error Contract And Correlation
+
+Both services return RFC Problem Details for application errors, authorization
+failures, malformed requests, unhandled failures, and unmapped HTTP status codes.
+Application errors include a stable `code` extension. Every response includes an
+`X-Correlation-ID` header, and error bodies include the same value as
+`correlationId`.
+
+Example:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "A valid bearer session token is required.",
+  "code": "invalid_session_token",
+  "correlationId": "9aaad83514034f9c936f1c820d2df826"
+}
+```
+
+WorldServer maps AuthService dependency failures as follows:
+
+- Connection failure: `503 auth_service_unavailable`
+- Timeout: `504 auth_service_timeout`
+- Malformed JSON or invalid success payload: `502 invalid_auth_response`
+- Invalid service credentials: `502 auth_service_authentication_failed`

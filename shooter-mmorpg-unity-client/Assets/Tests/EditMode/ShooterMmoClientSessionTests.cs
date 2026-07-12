@@ -18,6 +18,7 @@ namespace ShooterMmo.Tests.EditMode
             {
                 accountId = "account-1",
                 username = "player_one",
+                sessionId = "session-1",
                 sessionToken = "session-token",
                 expiresAt = "2026-07-10T12:00:00Z"
             };

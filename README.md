@@ -11,6 +11,10 @@ foundation for the first playable MVP.
 - .NET WorldServer with temporary HTTP join validation.
 - Transactional PostgreSQL world-session leases with reconnect, heartbeat, and
   idempotent release.
+- Revocable account sessions, authentication rate limits, and service-authenticated
+  WorldServer calls.
+- RFC Problem Details responses with correlation identifiers and dependency failure
+  mapping.
 - Shared .NET networking and health helpers.
 - Unity 6 client scenes for login, character selection, and a local world preview.
 - PostgreSQL and Redis development infrastructure through Docker Compose.
@@ -38,6 +42,11 @@ Run the backend services in separate terminals:
 dotnet run --project AuthService
 dotnet run --project WorldServer
 ```
+
+The committed WorldServer service secret is for local development only. Override
+`ServiceAuthentication__WorldServers__local-world-1` in AuthService and
+`WORLD_SERVER_SERVICE_SECRET` in WorldServer with the same secret outside the
+local environment.
 
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.

@@ -7,6 +7,7 @@ public sealed record LoginAccountRequest(string? Login, string? Password);
 public sealed record AuthResponse(
     Guid AccountId,
     string Username,
+    Guid SessionId,
     string SessionToken,
     DateTime ExpiresAt);
 

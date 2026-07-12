@@ -19,6 +19,11 @@ public sealed record ServiceResult<T>(T? Value, ErrorResponse? Error, int Status
         return Failure(StatusCodes.Status401Unauthorized, code, message);
     }
 
+    public static ServiceResult<T> Forbidden(string code, string message)
+    {
+        return Failure(StatusCodes.Status403Forbidden, code, message);
+    }
+
     public static ServiceResult<T> NotFound(string code, string message)
     {
         return Failure(StatusCodes.Status404NotFound, code, message);
@@ -34,4 +39,3 @@ public sealed record ServiceResult<T>(T? Value, ErrorResponse? Error, int Status
         return new ServiceResult<T>(default, new ErrorResponse(code, message), statusCode);
     }
 }
-

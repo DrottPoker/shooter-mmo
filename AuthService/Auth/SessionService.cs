@@ -6,7 +6,7 @@ namespace AuthService.Auth;
 
 public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration configuration)
 {
-    public async Task<(string Token, DateTime ExpiresAt)> CreateSessionAsync(
+    public async Task<(Guid SessionId, string Token, DateTime ExpiresAt)> CreateSessionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
         Guid accountId,
@@ -17,6 +17,8 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration c
         var expiresAt = DateTime.UtcNow.AddHours(
             configuration.GetValue("Auth:SessionLifetimeHours", 24));
 
+        var sessionId = Guid.NewGuid();
+
         const string sql = """
             insert into account_sessions (id, account_id, token_hash, expires_at)
             values (@Id, @AccountId, @TokenHash, @ExpiresAt);
@@ -26,7 +28,7 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration c
             sql,
             new
             {
-                Id = Guid.NewGuid(),
+                Id = sessionId,
                 AccountId = accountId,
                 TokenHash = tokenHash,
                 ExpiresAt = expiresAt
@@ -34,26 +36,17 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration c
             transaction,
             cancellationToken: cancellationToken));
 
-        return (token, expiresAt);
+        return (sessionId, token, expiresAt);
     }
 
-    public async Task<ServiceResult<AuthenticatedAccount>> AuthenticateAsync(
-        HttpRequest request,
+    public async Task<AuthenticatedAccount?> AuthenticateTokenAsync(
+        string token,
         CancellationToken cancellationToken)
     {
-        var token = ReadBearerToken(request);
-
-        if (token is null)
-        {
-            return ServiceResult<AuthenticatedAccount>.Unauthorized(
-                "missing_session_token",
-                "A bearer session token is required.");
-        }
-
         var tokenHash = TokenGenerator.HashToken(token);
 
         const string sql = """
-            select a.id as "AccountId", a.username as "Username"
+            select a.id as "AccountId", a.username as "Username", s.id as "SessionId"
             from account_sessions s
             join accounts a on a.id = s.account_id
             where s.token_hash = @TokenHash
@@ -62,15 +55,58 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration c
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var account = await connection.QuerySingleOrDefaultAsync<AuthenticatedAccount>(
+        return await connection.QuerySingleOrDefaultAsync<AuthenticatedAccount>(
             new CommandDefinition(sql, new { TokenHash = tokenHash }, cancellationToken: cancellationToken));
-
-        return account is null
-            ? ServiceResult<AuthenticatedAccount>.Unauthorized("invalid_session_token", "Session token is invalid or expired.")
-            : ServiceResult<AuthenticatedAccount>.Ok(account);
     }
 
-    private static string? ReadBearerToken(HttpRequest request)
+    public async Task RevokeAsync(
+        Guid accountId,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        const string revokeSessionSql = """
+            update account_sessions
+            set revoked_at = coalesce(revoked_at, now())
+            where id = @SessionId and account_id = @AccountId;
+            """;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            revokeSessionSql,
+            new { AccountId = accountId, SessionId = sessionId },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        const string releaseWorldSessionsSql = """
+            update character_world_sessions
+            set released_at = coalesce(released_at, now())
+            where account_session_id = @SessionId and released_at is null;
+            """;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            releaseWorldSessionsSql,
+            new { SessionId = sessionId },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        const string revokeTicketsSql = """
+            update world_join_tickets
+            set consumed_at = now()
+            where account_session_id = @SessionId and consumed_at is null;
+            """;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            revokeTicketsSql,
+            new { SessionId = sessionId },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public static string? ReadBearerToken(HttpRequest request)
     {
         if (!request.Headers.TryGetValue("Authorization", out var values))
         {

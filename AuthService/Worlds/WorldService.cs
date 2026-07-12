@@ -113,9 +113,9 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
 
         const string insertTicketSql = """
             insert into world_join_tickets
-                (id, ticket_hash, account_id, character_id, world_id, expires_at, world_session_id)
+                (id, ticket_hash, account_id, account_session_id, character_id, world_id, expires_at, world_session_id)
             values
-                (@Id, @TicketHash, @AccountId, @CharacterId, @WorldId,
+                (@Id, @TicketHash, @AccountId, @AccountSessionId, @CharacterId, @WorldId,
                  now() + make_interval(secs => @TicketLifetimeSeconds), @WorldSessionId)
             returning expires_at;
             """;
@@ -127,6 +127,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
                 Id = Guid.NewGuid(),
                 TicketHash = ticketHash,
                 AccountId = account.AccountId,
+                AccountSessionId = account.SessionId,
                 request.CharacterId,
                 WorldId = world.Id,
                 TicketLifetimeSeconds = ticketLifetimeSeconds,
@@ -257,6 +258,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
                 connection,
                 transaction,
                 activeSession.Id,
+                ticket.AccountSessionId,
                 sessionTokenHash,
                 leaseLifetimeSeconds,
                 cancellationToken);
@@ -395,6 +397,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
         const string sql = """
             select t.id as "TicketId",
                    t.account_id as "AccountId",
+                   t.account_session_id as "AccountSessionId",
                    t.character_id as "CharacterId",
                    c.name as "CharacterName",
                    t.world_id as "WorldId",
@@ -468,9 +471,9 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
     {
         const string sql = """
             insert into character_world_sessions
-                (id, session_token_hash, account_id, character_id, world_id, expires_at)
+                (id, session_token_hash, account_id, account_session_id, character_id, world_id, expires_at)
             values
-                (@Id, @SessionTokenHash, @AccountId, @CharacterId, @WorldId,
+                (@Id, @SessionTokenHash, @AccountId, @AccountSessionId, @CharacterId, @WorldId,
                  now() + make_interval(secs => @LeaseLifetimeSeconds))
             returning id as "Id", world_id as "WorldId", expires_at as "ExpiresAt";
             """;
@@ -482,6 +485,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
                 Id = Guid.NewGuid(),
                 SessionTokenHash = sessionTokenHash,
                 ticket.AccountId,
+                ticket.AccountSessionId,
                 ticket.CharacterId,
                 ticket.WorldId,
                 LeaseLifetimeSeconds = leaseLifetimeSeconds
@@ -494,6 +498,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid worldSessionId,
+        Guid? accountSessionId,
         string sessionTokenHash,
         int leaseLifetimeSeconds,
         CancellationToken cancellationToken)
@@ -501,6 +506,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
         const string sql = """
             update character_world_sessions
             set session_token_hash = @SessionTokenHash,
+                account_session_id = @AccountSessionId,
                 last_heartbeat_at = now(),
                 expires_at = now() + make_interval(secs => @LeaseLifetimeSeconds)
             where id = @WorldSessionId and released_at is null
@@ -512,6 +518,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
             new
             {
                 WorldSessionId = worldSessionId,
+                AccountSessionId = accountSessionId,
                 SessionTokenHash = sessionTokenHash,
                 LeaseLifetimeSeconds = leaseLifetimeSeconds
             },
@@ -522,6 +529,7 @@ public sealed class WorldService(NpgsqlDataSource dataSource, IConfiguration con
     private sealed record JoinTicketRow(
         Guid TicketId,
         Guid AccountId,
+        Guid? AccountSessionId,
         Guid CharacterId,
         string CharacterName,
         string WorldId,

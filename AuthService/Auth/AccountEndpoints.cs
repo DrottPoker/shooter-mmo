@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using AuthService.Http;
+using ShooterMmo.Shared.Http;
 
 namespace AuthService.Auth;
 
@@ -15,7 +17,9 @@ public static class AccountEndpoints
         {
             var result = await accountService.RegisterAsync(request, cancellationToken);
             return result.ToHttpResult();
-        });
+        })
+            .RequireRateLimiting("register")
+            .WithMetadata(new SensitiveResponseAttribute());
 
         group.MapPost("/login", async (
             LoginAccountRequest request,
@@ -24,25 +28,46 @@ public static class AccountEndpoints
         {
             var result = await accountService.LoginAsync(request, cancellationToken);
             return result.ToHttpResult();
-        });
+        })
+            .RequireRateLimiting("login")
+            .WithMetadata(new SensitiveResponseAttribute());
 
         group.MapGet("/me", async (
-            HttpRequest request,
-            SessionService sessionService,
+            ClaimsPrincipal principal,
             AccountService accountService,
             CancellationToken cancellationToken) =>
         {
-            var session = await sessionService.AuthenticateAsync(request, cancellationToken);
-            if (!session.Succeeded)
-            {
-                return session.ToHttpResult();
-            }
-
-            var result = await accountService.GetProfileAsync(session.Value!.AccountId, cancellationToken);
+            var result = await accountService.GetProfileAsync(principal.GetAccountId(), cancellationToken);
             return result.ToHttpResult();
-        });
+        }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+
+        group.MapPost("/logout", async (
+            ClaimsPrincipal principal,
+            SessionService sessionService,
+            CancellationToken cancellationToken) =>
+        {
+            await sessionService.RevokeAsync(
+                principal.GetAccountId(),
+                principal.GetSessionId(),
+                cancellationToken);
+
+            return Results.NoContent();
+        }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+
+        group.MapDelete("/sessions/{sessionId:guid}", async (
+            Guid sessionId,
+            ClaimsPrincipal principal,
+            SessionService sessionService,
+            CancellationToken cancellationToken) =>
+        {
+            await sessionService.RevokeAsync(
+                principal.GetAccountId(),
+                sessionId,
+                cancellationToken);
+
+            return Results.NoContent();
+        }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
 
         return app;
     }
 }
-

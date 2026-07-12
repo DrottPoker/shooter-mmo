@@ -1,4 +1,5 @@
 using ShooterMmo.Shared.Health;
+using ShooterMmo.Shared.Http;
 using ShooterMmo.Shared.Networking;
 using WorldServer.Auth;
 using WorldServer.Config;
@@ -18,16 +19,19 @@ var config = WorldServerConfig.FromConfiguration(builder.Configuration);
 builder.WebHost.UseUrls(config.HttpUrl);
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton<ActivePlayerSessionStore>();
-builder.Services.AddSingleton(_ => new HttpClient
+builder.Services.AddTransient<AuthServiceAuthenticationHandler>();
+builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
 {
-    BaseAddress = config.AuthServiceBaseUrl,
-    Timeout = config.AuthServiceTimeout
-});
-builder.Services.AddSingleton<AuthServiceClient>();
+    httpClient.BaseAddress = config.AuthServiceBaseUrl;
+    httpClient.Timeout = config.AuthServiceTimeout;
+}).AddHttpMessageHandler<AuthServiceAuthenticationHandler>();
 builder.Services.AddSingleton<WorldJoinService>();
 builder.Services.AddHostedService<WorldSessionHeartbeatService>();
+builder.Services.AddApiProblemDetails();
 
 var app = builder.Build();
+
+app.UseApiPipeline();
 
 var redisHealth = await TcpHealthProbe.CheckAsync(
     "redis",
@@ -72,55 +76,67 @@ app.MapGet("/health", async (
         dependencies));
 });
 
-app.MapPost("/debug/join", async (
-    DebugJoinRequest request,
-    WorldJoinService joinService,
-    CancellationToken cancellationToken) =>
+if (app.Environment.IsDevelopment())
 {
-    var result = await joinService.JoinAsync(request, cancellationToken);
-    return result.ToHttpResult();
-});
-
-app.MapGet("/debug/sessions", (ActivePlayerSessionStore sessionStore) =>
-{
-    return Results.Ok(sessionStore.List());
-});
-
-app.MapDelete("/debug/sessions/{characterId:guid}", async (
-    Guid characterId,
-    ActivePlayerSessionStore sessionStore,
-    AuthServiceClient authServiceClient,
-    CancellationToken cancellationToken) =>
-{
-    if (!sessionStore.TryGet(characterId, out var session))
+    app.MapPost("/debug/join", async (
+        DebugJoinRequest request,
+        WorldJoinService joinService,
+        CancellationToken cancellationToken) =>
     {
-        return Results.NoContent();
-    }
+        var result = await joinService.JoinAsync(request, cancellationToken);
+        return result.ToHttpResult();
+    });
 
-    var release = await authServiceClient.ReleaseWorldSessionAsync(
-        session!.WorldSessionId,
-        session.WorldId,
-        session.WorldSessionToken,
-        cancellationToken);
-
-    if (!release.Succeeded)
+    app.MapGet("/debug/sessions", (ActivePlayerSessionStore sessionStore) =>
     {
-        if (release.StatusCode is StatusCodes.Status401Unauthorized
-            or StatusCodes.Status404NotFound
-            or StatusCodes.Status409Conflict)
+        return Results.Ok(sessionStore.List());
+    });
+
+    app.MapDelete("/debug/sessions/{characterId:guid}", async (
+        Guid characterId,
+        ActivePlayerSessionStore sessionStore,
+        AuthServiceClient authServiceClient,
+        CancellationToken cancellationToken) =>
+    {
+        if (!sessionStore.TryGet(characterId, out var session))
         {
-            sessionStore.Remove(characterId, session.WorldSessionId, session.WorldSessionToken);
             return Results.NoContent();
         }
 
-        return Results.Json(release.Error, statusCode: release.StatusCode);
-    }
+        var release = await authServiceClient.ReleaseWorldSessionAsync(
+            session!.WorldSessionId,
+            session.WorldId,
+            session.WorldSessionToken,
+            cancellationToken);
 
-    sessionStore.Remove(characterId, session.WorldSessionId, session.WorldSessionToken);
-    return Results.NoContent();
-});
+        if (!release.Succeeded)
+        {
+            if (release.StatusCode is StatusCodes.Status401Unauthorized
+                or StatusCodes.Status404NotFound
+                or StatusCodes.Status409Conflict)
+            {
+                sessionStore.Remove(characterId, session.WorldSessionId, session.WorldSessionToken);
+                return Results.NoContent();
+            }
 
-Console.WriteLine($"WorldServer HTTP debug endpoint listening on {config.HttpUrl}.");
+            return Results.Problem(
+                statusCode: release.StatusCode,
+                title: "AuthService request failed",
+                detail: release.Error!.Message,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = release.Error.Code
+                });
+        }
+
+        sessionStore.Remove(characterId, session.WorldSessionId, session.WorldSessionToken);
+        return Results.NoContent();
+    });
+}
+
+Console.WriteLine(app.Environment.IsDevelopment()
+    ? $"WorldServer HTTP debug endpoints listening on {config.HttpUrl}."
+    : "WorldServer HTTP debug endpoints are disabled outside Development.");
 Console.WriteLine("WorldServer foundation is running. Press Ctrl+C to stop.");
 
 await app.RunAsync();

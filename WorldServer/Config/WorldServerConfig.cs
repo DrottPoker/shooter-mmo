@@ -6,6 +6,7 @@ public sealed record WorldServerConfig(
     string HttpUrl,
     Uri AuthServiceBaseUrl,
     TimeSpan AuthServiceTimeout,
+    string AuthServiceSecret,
     TimeSpan WorldSessionHeartbeatInterval,
     string RedisConnectionString,
     TimeSpan HealthCheckTimeout)
@@ -20,6 +21,10 @@ public sealed record WorldServerConfig(
             GetString("WORLD_HTTP_URL", section["HttpUrl"], "http://localhost:5100"),
             GetUri("AUTH_SERVICE_BASE_URL", section["AuthServiceBaseUrl"], "http://localhost:5000"),
             TimeSpan.FromSeconds(GetInt("AUTH_SERVICE_TIMEOUT_SECONDS", section["AuthServiceTimeoutSeconds"], 5)),
+            GetString(
+                "WORLD_SERVER_SERVICE_SECRET",
+                section["AuthServiceSecret"],
+                "local-development-world-server-secret-change-me"),
             TimeSpan.FromSeconds(GetInt(
                 "WORLD_SESSION_HEARTBEAT_SECONDS",
                 section["WorldSessionHeartbeatSeconds"],

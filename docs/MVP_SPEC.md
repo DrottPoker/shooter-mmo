@@ -1,6 +1,6 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-09
+Last updated: 2026-07-12
 
 ## Purpose
 
@@ -247,10 +247,16 @@ Current implementation note:
   the global single-world claim can commit in one transaction.
 - WorldServer rotates the lease token on reconnect, heartbeats active leases, and
   releases them during a normal leave or graceful shutdown.
+- AuthService uses separate authentication policies for account sessions and
+  WorldServer service identities. Account sessions can be logged out or revoked.
+- Login and registration are rate limited, and token-bearing responses are marked
+  as non-cacheable.
+- Both HTTP services return Problem Details errors with correlation identifiers.
 - Redis runs locally, but join tickets can move to Redis later when multiple
   live WorldServers need faster short-lived coordination.
 - WorldServer currently validates join tickets through a temporary HTTP debug
-  endpoint before the real Unity and UDP join handshake exists.
+  endpoint before the real Unity and UDP join handshake exists. These endpoints
+  are registered only in Development.
 - Unity currently has temporary scene UI that uses AuthService HTTP and
   WorldServer HTTP debug endpoints before the real UDP gameplay client exists.
 - Unity WorldScene currently creates a local placeholder environment, player,

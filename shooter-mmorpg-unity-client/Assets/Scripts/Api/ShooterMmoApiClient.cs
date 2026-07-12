@@ -38,6 +38,37 @@ namespace ShooterMmo.Api
                 onError);
         }
 
+        public IEnumerator Logout(
+            string authServiceBaseUrl,
+            string sessionToken,
+            Action onSuccess,
+            Action<string> onError)
+        {
+            return SendEmpty(
+                "POST",
+                CombineUrl(authServiceBaseUrl, "/api/accounts/logout"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
+        public IEnumerator RevokeSession(
+            string authServiceBaseUrl,
+            string sessionToken,
+            string sessionId,
+            Action onSuccess,
+            Action<string> onError)
+        {
+            return SendEmpty(
+                "DELETE",
+                CombineUrl(authServiceBaseUrl, "/api/accounts/sessions/" + Uri.EscapeDataString(sessionId)),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
         public IEnumerator GetCharacters(
             string authServiceBaseUrl,
             string sessionToken,

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AuthService.Auth;
 using AuthService.Http;
 
@@ -8,38 +9,25 @@ public static class CharacterEndpoints
     public static IEndpointRouteBuilder MapCharacterEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/characters");
+        group.RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
 
         group.MapGet("/", async (
-            HttpRequest request,
-            SessionService sessionService,
+            ClaimsPrincipal principal,
             CharacterService characterService,
             CancellationToken cancellationToken) =>
         {
-            var session = await sessionService.AuthenticateAsync(request, cancellationToken);
-            if (!session.Succeeded)
-            {
-                return session.ToHttpResult();
-            }
-
-            var result = await characterService.ListAsync(session.Value!.AccountId, cancellationToken);
+            var result = await characterService.ListAsync(principal.GetAccountId(), cancellationToken);
             return result.ToHttpResult();
         });
 
         group.MapPost("/", async (
-            HttpRequest request,
+            ClaimsPrincipal principal,
             CreateCharacterRequest createRequest,
-            SessionService sessionService,
             CharacterService characterService,
             CancellationToken cancellationToken) =>
         {
-            var session = await sessionService.AuthenticateAsync(request, cancellationToken);
-            if (!session.Succeeded)
-            {
-                return session.ToHttpResult();
-            }
-
             var result = await characterService.CreateAsync(
-                session.Value!.AccountId,
+                principal.GetAccountId(),
                 createRequest,
                 cancellationToken);
 
@@ -49,4 +37,3 @@ public static class CharacterEndpoints
         return app;
     }
 }
-

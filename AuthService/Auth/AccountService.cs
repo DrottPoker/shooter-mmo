@@ -88,6 +88,7 @@ public sealed class AccountService(NpgsqlDataSource dataSource, SessionService s
             return ServiceResult<AuthResponse>.Ok(new AuthResponse(
                 accountId,
                 username,
+                session.SessionId,
                 session.Token,
                 session.ExpiresAt));
         }
@@ -133,6 +134,7 @@ public sealed class AccountService(NpgsqlDataSource dataSource, SessionService s
         return ServiceResult<AuthResponse>.Ok(new AuthResponse(
             account.Id,
             account.Username,
+            session.SessionId,
             session.Token,
             session.ExpiresAt));
     }
@@ -182,4 +184,3 @@ public sealed class AccountService(NpgsqlDataSource dataSource, SessionService s
 
     private sealed record AccountLoginRow(Guid Id, string Username, string PasswordHash);
 }
-

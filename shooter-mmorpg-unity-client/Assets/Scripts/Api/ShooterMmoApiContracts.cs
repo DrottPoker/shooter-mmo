@@ -22,6 +22,7 @@ namespace ShooterMmo.Api
     {
         public string accountId;
         public string username;
+        public string sessionId;
         public string sessionToken;
         public string expiresAt;
     }

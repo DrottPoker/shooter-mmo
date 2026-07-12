@@ -75,6 +75,85 @@ public sealed class AuthServiceClientTests
             request => Assert.Equal($"/api/world-sessions/{worldSessionId}/release", request.Path));
     }
 
+    [Fact]
+    public async Task NetworkFailureReturnsServiceUnavailable()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => throw new HttpRequestException("offline"));
+        var client = CreateClient(handler);
+
+        var result = await client.ConsumeJoinTicketAsync(
+            "join-ticket",
+            "local-world-1",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(503, result.StatusCode);
+        Assert.Equal("auth_service_unavailable", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task TimeoutReturnsGatewayTimeout()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => throw new TaskCanceledException("timeout"));
+        var client = CreateClient(handler);
+
+        var result = await client.ConsumeJoinTicketAsync(
+            "join-ticket",
+            "local-world-1",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(504, result.StatusCode);
+        Assert.Equal("auth_service_timeout", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task InvalidSuccessPayloadReturnsBadGateway()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            accountId = Guid.Empty,
+            characterId = Guid.Empty
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.ConsumeJoinTicketAsync(
+            "join-ticket",
+            "local-world-1",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task ProblemDetailsErrorIsMappedWithoutLosingItsCode()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict)
+        {
+            Content = JsonContent.Create(new
+            {
+                type = "about:blank",
+                title = "Conflict",
+                status = 409,
+                detail = "The ticket belongs to another world.",
+                code = "wrong_world"
+            })
+        });
+        var client = CreateClient(handler);
+
+        var result = await client.ConsumeJoinTicketAsync(
+            "join-ticket",
+            "local-world-1",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("wrong_world", result.Error!.Code);
+        Assert.Equal("The ticket belongs to another world.", result.Error.Message);
+    }
+
     private static AuthServiceClient CreateClient(HttpMessageHandler handler)
     {
         return new AuthServiceClient(new HttpClient(handler)

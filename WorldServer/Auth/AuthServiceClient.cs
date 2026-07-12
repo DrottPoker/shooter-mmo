@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using ShooterMmo.Shared.Health;
 
 namespace WorldServer.Auth;
@@ -16,13 +17,25 @@ public sealed class AuthServiceClient(HttpClient httpClient)
                 response.IsSuccessStatusCode,
                 response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode}");
         }
-        catch (HttpRequestException exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return new DependencyHealth("auth-service", httpClient.BaseAddress!.ToString(), false, exception.Message);
+            throw;
         }
-        catch (TaskCanceledException exception)
+        catch (TaskCanceledException)
         {
-            return new DependencyHealth("auth-service", httpClient.BaseAddress!.ToString(), false, exception.Message);
+            return new DependencyHealth(
+                "auth-service",
+                httpClient.BaseAddress!.ToString(),
+                false,
+                "Request timed out.");
+        }
+        catch (HttpRequestException)
+        {
+            return new DependencyHealth(
+                "auth-service",
+                httpClient.BaseAddress!.ToString(),
+                false,
+                "Connection failed.");
         }
     }
 
@@ -34,7 +47,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         return PostAsync<ConsumeJoinTicketRequest, ConsumedJoinTicketResponse>(
             "/api/world-join-tickets/consume",
             new ConsumeJoinTicketRequest(ticket, worldId),
-            "AuthService returned an empty join ticket response.",
+            IsValidConsumedTicket,
             cancellationToken);
     }
 
@@ -47,7 +60,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         return PostAsync<WorldSessionCredentialRequest, WorldSessionLeaseResponse>(
             $"/api/world-sessions/{worldSessionId}/heartbeat",
             new WorldSessionCredentialRequest(worldId, sessionToken),
-            "AuthService returned an empty world session heartbeat response.",
+            IsValidWorldSessionLease,
             cancellationToken);
     }
 
@@ -60,37 +73,106 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         return PostAsync<WorldSessionCredentialRequest, WorldSessionLeaseResponse>(
             $"/api/world-sessions/{worldSessionId}/release",
             new WorldSessionCredentialRequest(worldId, sessionToken),
-            "AuthService returned an empty world session release response.",
+            IsValidWorldSessionLease,
             cancellationToken);
     }
 
     private async Task<AuthServiceResult<TResponse>> PostAsync<TRequest, TResponse>(
         string path,
         TRequest requestBody,
-        string emptyResponseMessage,
+        Func<TResponse, bool> responseValidator,
         CancellationToken cancellationToken)
     {
-        using var response = await httpClient.PostAsJsonAsync(path, requestBody, cancellationToken);
-
-        if (response.IsSuccessStatusCode)
+        try
         {
-            var responseBody = await response.Content.ReadFromJsonAsync<TResponse>(
-                cancellationToken: cancellationToken);
+            using var response = await httpClient.PostAsJsonAsync(path, requestBody, cancellationToken);
 
-            return responseBody is null
-                ? AuthServiceResult<TResponse>.Failure(
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await ReadJsonAsync<TResponse>(response, cancellationToken);
+                return responseBody is not null && responseValidator(responseBody)
+                    ? AuthServiceResult<TResponse>.Success(responseBody)
+                    : InvalidResponse<TResponse>();
+            }
+
+            var problem = await ReadJsonAsync<AuthServiceProblemDetails>(response, cancellationToken);
+            if (problem is null || string.IsNullOrWhiteSpace(problem.Code))
+            {
+                return InvalidResponse<TResponse>();
+            }
+
+            if (string.Equals(problem.Code, "invalid_service_credentials", StringComparison.Ordinal))
+            {
+                return AuthServiceResult<TResponse>.Failure(
                     StatusCodes.Status502BadGateway,
-                    "invalid_auth_response",
-                    emptyResponseMessage)
-                : AuthServiceResult<TResponse>.Success(responseBody);
+                    "auth_service_authentication_failed",
+                    "WorldServer could not authenticate with AuthService.");
+            }
+
+            return AuthServiceResult<TResponse>.Failure(
+                (int)response.StatusCode,
+                problem.Code,
+                problem.Detail ?? problem.Message ?? "AuthService rejected the request.");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            return AuthServiceResult<TResponse>.Failure(
+                StatusCodes.Status504GatewayTimeout,
+                "auth_service_timeout",
+                "AuthService did not respond before the timeout.");
+        }
+        catch (HttpRequestException)
+        {
+            return AuthServiceResult<TResponse>.Failure(
+                StatusCodes.Status503ServiceUnavailable,
+                "auth_service_unavailable",
+                "AuthService could not be reached.");
+        }
+        catch (JsonException)
+        {
+            return InvalidResponse<TResponse>();
+        }
+        catch (NotSupportedException)
+        {
+            return InvalidResponse<TResponse>();
+        }
+    }
 
-        var error = await response.Content.ReadFromJsonAsync<AuthServiceErrorResponse>(
-            cancellationToken: cancellationToken);
+    private static async Task<T?> ReadJsonAsync<T>(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken);
+    }
 
-        return AuthServiceResult<TResponse>.Failure(
-            (int)response.StatusCode,
-            error?.Code ?? "auth_service_error",
-            error?.Message ?? "AuthService rejected the request.");
+    private static AuthServiceResult<T> InvalidResponse<T>()
+    {
+        return AuthServiceResult<T>.Failure(
+            StatusCodes.Status502BadGateway,
+            "invalid_auth_response",
+            "AuthService returned an invalid response.");
+    }
+
+    private static bool IsValidConsumedTicket(ConsumedJoinTicketResponse response)
+    {
+        return response.AccountId != Guid.Empty
+            && response.CharacterId != Guid.Empty
+            && response.WorldSessionId != Guid.Empty
+            && !string.IsNullOrWhiteSpace(response.CharacterName)
+            && !string.IsNullOrWhiteSpace(response.WorldId)
+            && !string.IsNullOrWhiteSpace(response.WorldSessionToken)
+            && response.SessionExpiresAt != default;
+    }
+
+    private static bool IsValidWorldSessionLease(WorldSessionLeaseResponse response)
+    {
+        return response.WorldSessionId != Guid.Empty
+            && response.CharacterId != Guid.Empty
+            && !string.IsNullOrWhiteSpace(response.WorldId)
+            && response.ExpiresAt != default;
     }
 }

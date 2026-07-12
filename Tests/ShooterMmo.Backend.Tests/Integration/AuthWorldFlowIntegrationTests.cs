@@ -12,7 +12,7 @@ public sealed class AuthWorldFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(7, await CountFoundationTablesAsync(context));
-        Assert.Equal(2, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(4, await CountAppliedMigrationsAsync(context));
 
         var player = await context.RegisterPlayerAsync();
         var characters = await context.CharacterService.ListAsync(
@@ -218,7 +218,7 @@ public sealed class AuthWorldFlowIntegrationTests
             context.InitializeDatabaseAsync());
 
         Assert.Equal(7, await CountFoundationTablesAsync(context));
-        Assert.Equal(2, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(4, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -230,6 +230,63 @@ public sealed class AuthWorldFlowIntegrationTests
                       'ux_character_world_sessions_active_character',
                       'ux_world_join_tickets_active_character');
                 """));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task RevokingOneSessionInvalidatesItsTokenAndOutstandingTicketsOnly()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+
+        var secondLogin = await context.AccountService.LoginAsync(
+            new AuthService.Auth.LoginAccountRequest("integration_player", "TestPass123!"),
+            CancellationToken.None);
+
+        Assert.True(secondLogin.Succeeded, secondLogin.Error?.Message);
+
+        var secondAccount = await context.SessionService.AuthenticateTokenAsync(
+            secondLogin.Value!.SessionToken,
+            CancellationToken.None);
+        Assert.NotNull(secondAccount);
+
+        var join = await context.WorldService.CreateJoinTicketAsync(
+            secondAccount,
+            "local-world-1",
+            new JoinWorldRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+
+        var consumed = await context.WorldService.ConsumeJoinTicketAsync(
+            new ConsumeJoinTicketRequest(join.Value!.JoinTicket, "local-world-1"),
+            CancellationToken.None);
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+        Assert.Equal(1, await CountActiveWorldSessionsAsync(context));
+
+        var reconnectTicket = await context.WorldService.CreateJoinTicketAsync(
+            secondAccount,
+            "local-world-1",
+            new JoinWorldRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        await context.SessionService.RevokeAsync(
+            secondLogin.Value.AccountId,
+            secondLogin.Value.SessionId,
+            CancellationToken.None);
+        await context.SessionService.RevokeAsync(
+            secondLogin.Value.AccountId,
+            secondLogin.Value.SessionId,
+            CancellationToken.None);
+
+        Assert.Null(await context.SessionService.AuthenticateTokenAsync(
+            secondLogin.Value.SessionToken,
+            CancellationToken.None));
+        Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
+            player.Registration.SessionToken,
+            CancellationToken.None));
+        Assert.Equal(0, await CountActiveTicketsAsync(context));
+        Assert.Equal(0, await CountActiveWorldSessionsAsync(context));
     }
 
     private static Task<int> CountFoundationTablesAsync(PostgresIntegrationTestContext context)

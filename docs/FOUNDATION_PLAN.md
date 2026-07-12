@@ -1,6 +1,6 @@
 # Foundation Stabilization Plan
 
-Last updated: 2026-07-09
+Last updated: 2026-07-12
 
 ## Purpose
 
@@ -57,14 +57,30 @@ Delivered foundation:
 - Unit, integration, concurrency, and migration regression tests for the rules
   above.
 
+## Phase 2: Security And API Resilience
+
+Status: Complete
+
+Delivered foundation:
+
+- Separate ASP.NET authentication handlers and authorization policies for player
+  sessions and WorldServer service identities.
+- WorldServer credentials on ticket consumption, lease heartbeat, and release.
+- World identity binding so one authenticated WorldServer cannot act for another.
+- WorldServer debug endpoints registered only in the Development environment.
+- Per-IP fixed-window rate limits for login and registration.
+- Current-session logout and account-owned targeted session revocation.
+- Revocation of outstanding join tickets and active world-session leases owned by
+  a revoked account session.
+- RFC Problem Details errors, correlation identifiers, and centralized exception
+  handling in both HTTP services.
+- `Cache-Control: no-store` on responses that return session, join, or world
+  session tokens.
+- Explicit WorldServer mapping for AuthService timeout, network, malformed JSON,
+  invalid payload, and service-credential failures.
+- Unit, PostgreSQL integration, and live HTTP verification for the rules above.
+
 ## Later Foundation Phases
-
-### Phase 2: Security And API Resilience
-
-- Service authentication between WorldServer and AuthService.
-- Development-only debug endpoints.
-- Authentication rate limits, logout, and session revocation.
-- Structured API errors, correlation identifiers, and dependency failure mapping.
 
 ### Phase 3: World Registry And Operations
 

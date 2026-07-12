@@ -28,7 +28,13 @@ public sealed record WorldJoinResult<T>(T? Value, WorldServerErrorResponse? Erro
     {
         return Succeeded
             ? Results.Ok(Value)
-            : Results.Json(Error, statusCode: StatusCode);
+            : Results.Problem(
+                statusCode: StatusCode,
+                title: "World join failed",
+                detail: Error!.Message,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = Error.Code
+                });
     }
 }
-
