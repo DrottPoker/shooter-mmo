@@ -255,6 +255,7 @@ namespace ShooterMmo.Tests.EditMode
                 Guid.NewGuid().ToString("D"),
                 "Collision Hero",
                 "local-world-1",
+                1,
                 simulationRevision,
                 collisionRevision,
                 DateTime.UtcNow.ToString("O"),

@@ -14,7 +14,9 @@ namespace ShooterMmo.GameProtocol
         LeaveRejected = 6,
         ServerDisconnect = 7,
         MovementInputBatch = 8,
-        WorldSnapshot = 9
+        WorldSnapshot = 9,
+        EntitySpawn = 10,
+        EntityDespawn = 11
     }
 
     [Flags]
@@ -26,6 +28,11 @@ namespace ShooterMmo.GameProtocol
         Aim = 4
     }
 
+    public enum RealtimeEntityKind : byte
+    {
+        Player = 1
+    }
+
     public sealed class RealtimeJoinAccepted
     {
         public RealtimeJoinAccepted(
@@ -34,6 +41,7 @@ namespace ShooterMmo.GameProtocol
             string characterId,
             string characterName,
             string worldId,
+            ulong controlledEntityId,
             string simulationRevision,
             string collisionRevision,
             string joinedAt,
@@ -47,6 +55,7 @@ namespace ShooterMmo.GameProtocol
             CharacterId = characterId;
             CharacterName = characterName;
             WorldId = worldId;
+            ControlledEntityId = controlledEntityId;
             SimulationRevision = simulationRevision;
             CollisionRevision = collisionRevision;
             JoinedAt = joinedAt;
@@ -65,6 +74,8 @@ namespace ShooterMmo.GameProtocol
         public string CharacterName { get; }
 
         public string WorldId { get; }
+
+        public ulong ControlledEntityId { get; }
 
         public string SimulationRevision { get; }
 
@@ -246,19 +257,67 @@ namespace ShooterMmo.GameProtocol
         public bool IsSprinting { get; }
     }
 
-    public sealed class RealtimePlayerSnapshot
+    public sealed class RealtimeEntitySpawn
     {
-        public RealtimePlayerSnapshot(
-            string characterId,
+        public RealtimeEntitySpawn(
+            ulong entityId,
+            RealtimeEntityKind kind,
+            string persistentId,
+            string displayName,
+            string archetypeId,
+            uint serverTick,
+            RealtimePlayerState initialState)
+        {
+            EntityId = entityId;
+            Kind = kind;
+            PersistentId = persistentId;
+            DisplayName = displayName;
+            ArchetypeId = archetypeId;
+            ServerTick = serverTick;
+            InitialState = initialState;
+        }
+
+        public ulong EntityId { get; }
+
+        public RealtimeEntityKind Kind { get; }
+
+        public string PersistentId { get; }
+
+        public string DisplayName { get; }
+
+        public string ArchetypeId { get; }
+
+        public uint ServerTick { get; }
+
+        public RealtimePlayerState InitialState { get; }
+    }
+
+    public sealed class RealtimeEntityDespawn
+    {
+        public RealtimeEntityDespawn(ulong entityId, string reason)
+        {
+            EntityId = entityId;
+            Reason = reason;
+        }
+
+        public ulong EntityId { get; }
+
+        public string Reason { get; }
+    }
+
+    public sealed class RealtimeEntitySnapshot
+    {
+        public RealtimeEntitySnapshot(
+            ulong entityId,
             uint lastProcessedInputSequence,
             RealtimePlayerState state)
         {
-            CharacterId = characterId;
+            EntityId = entityId;
             LastProcessedInputSequence = lastProcessedInputSequence;
             State = state;
         }
 
-        public string CharacterId { get; }
+        public ulong EntityId { get; }
 
         public uint LastProcessedInputSequence { get; }
 
@@ -272,13 +331,13 @@ namespace ShooterMmo.GameProtocol
             uint serverTick,
             ushort chunkIndex,
             ushort chunkCount,
-            RealtimePlayerSnapshot[] players)
+            RealtimeEntitySnapshot[] entities)
         {
             SnapshotSequence = snapshotSequence;
             ServerTick = serverTick;
             ChunkIndex = chunkIndex;
             ChunkCount = chunkCount;
-            Players = players;
+            Entities = entities;
         }
 
         public uint SnapshotSequence { get; }
@@ -289,7 +348,7 @@ namespace ShooterMmo.GameProtocol
 
         public ushort ChunkCount { get; }
 
-        public RealtimePlayerSnapshot[] Players { get; }
+        public RealtimeEntitySnapshot[] Entities { get; }
     }
 
     public sealed class RealtimeError
@@ -316,14 +375,14 @@ namespace ShooterMmo.GameProtocol
         private const int MaximumErrorMessageLength = 512;
 
         public const int MaximumInputBatchSize = 4;
-        public const int MaximumSnapshotPlayersPerChunk = 20;
+        public const int MaximumSnapshotEntitiesPerChunk = 20;
         public const byte ControlChannel = 0;
         public const byte MovementInputChannel = 1;
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 4;
-        public const string ConnectionKey = "ShooterMmo.Realtime.v4";
+        public const ushort Version = 5;
+        public const string ConnectionKey = "ShooterMmo.Realtime.v5";
         public const int MaximumPacketSize = 1200;
 
         public static byte[] EncodeJoinRequest(string joinTicket)
@@ -363,6 +422,12 @@ namespace ShooterMmo.GameProtocol
                 WriteString(writer, session.CharacterId, MaximumIdentifierLength, nameof(session.CharacterId));
                 WriteString(writer, session.CharacterName, MaximumNameLength, nameof(session.CharacterName));
                 WriteString(writer, session.WorldId, MaximumIdentifierLength, nameof(session.WorldId));
+                if (session.ControlledEntityId == 0)
+                {
+                    throw new ArgumentException("Controlled entity id is invalid.", nameof(session));
+                }
+
+                writer.Write(session.ControlledEntityId);
                 WriteString(
                     writer,
                     session.SimulationRevision,
@@ -400,6 +465,7 @@ namespace ShooterMmo.GameProtocol
                     || !TryReadString(reader, MaximumIdentifierLength, out var characterId, out error)
                     || !TryReadString(reader, MaximumNameLength, out var characterName, out error)
                     || !TryReadString(reader, MaximumIdentifierLength, out var worldId, out error)
+                    || !TryReadUInt64(reader, out var controlledEntityId, out error)
                     || !TryReadString(
                         reader,
                         MaximumIdentifierLength,
@@ -413,6 +479,12 @@ namespace ShooterMmo.GameProtocol
                     || !TryReadString(reader, MaximumTimestampLength, out var joinedAt, out error)
                     || !TryReadString(reader, MaximumTimestampLength, out var sessionExpiresAt, out error))
                 {
+                    return false;
+                }
+
+                if (controlledEntityId == 0)
+                {
+                    error = "Controlled entity id is invalid.";
                     return false;
                 }
 
@@ -430,6 +502,7 @@ namespace ShooterMmo.GameProtocol
                     characterId,
                     characterName,
                     worldId,
+                    controlledEntityId,
                     simulationRevision,
                     collisionRevision,
                     joinedAt,
@@ -518,6 +591,113 @@ namespace ShooterMmo.GameProtocol
             return TryDecodeError(data, RealtimeMessageType.ServerDisconnect, out reason, out error);
         }
 
+        public static byte[] EncodeEntitySpawn(RealtimeEntitySpawn spawn)
+        {
+            if (!IsValidEntitySpawn(spawn))
+            {
+                throw new ArgumentException("Entity spawn is invalid.", nameof(spawn));
+            }
+
+            return Encode(RealtimeMessageType.EntitySpawn, writer =>
+            {
+                writer.Write(spawn.EntityId);
+                writer.Write((byte)spawn.Kind);
+                WriteString(writer, spawn.PersistentId, MaximumIdentifierLength, nameof(spawn.PersistentId));
+                WriteString(writer, spawn.DisplayName, MaximumNameLength, nameof(spawn.DisplayName));
+                WriteString(writer, spawn.ArchetypeId, MaximumIdentifierLength, nameof(spawn.ArchetypeId));
+                writer.Write(spawn.ServerTick);
+                WritePlayerState(writer, spawn.InitialState);
+            });
+        }
+
+        public static bool TryDecodeEntitySpawn(
+            byte[] data,
+            out RealtimeEntitySpawn spawn,
+            out string error)
+        {
+            spawn = null;
+            if (!TryCreateReader(data, RealtimeMessageType.EntitySpawn, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadUInt64(reader, out var entityId, out error)
+                    || !TryReadByte(reader, out var rawKind, out error)
+                    || !TryReadString(reader, MaximumIdentifierLength, out var persistentId, out error)
+                    || !TryReadString(reader, MaximumNameLength, out var displayName, out error)
+                    || !TryReadString(reader, MaximumIdentifierLength, out var archetypeId, out error)
+                    || !TryReadUInt32(reader, out var serverTick, out error)
+                    || !TryReadPlayerState(reader, out var initialState, out error)
+                    || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                var decoded = new RealtimeEntitySpawn(
+                    entityId,
+                    (RealtimeEntityKind)rawKind,
+                    persistentId,
+                    displayName,
+                    archetypeId,
+                    serverTick,
+                    initialState);
+                if (!IsValidEntitySpawn(decoded))
+                {
+                    error = "Entity spawn is invalid.";
+                    return false;
+                }
+
+                spawn = decoded;
+                return true;
+            }
+        }
+
+        public static byte[] EncodeEntityDespawn(RealtimeEntityDespawn despawn)
+        {
+            if (despawn == null || despawn.EntityId == 0 || string.IsNullOrWhiteSpace(despawn.Reason))
+            {
+                throw new ArgumentException("Entity despawn is invalid.", nameof(despawn));
+            }
+
+            return Encode(RealtimeMessageType.EntityDespawn, writer =>
+            {
+                writer.Write(despawn.EntityId);
+                WriteString(writer, despawn.Reason, MaximumErrorCodeLength, nameof(despawn.Reason));
+            });
+        }
+
+        public static bool TryDecodeEntityDespawn(
+            byte[] data,
+            out RealtimeEntityDespawn despawn,
+            out string error)
+        {
+            despawn = null;
+            if (!TryCreateReader(data, RealtimeMessageType.EntityDespawn, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadUInt64(reader, out var entityId, out error)
+                    || entityId == 0
+                    || !TryReadString(reader, MaximumErrorCodeLength, out var reason, out error)
+                    || string.IsNullOrWhiteSpace(reason)
+                    || !TryFinish(stream, out error))
+                {
+                    error = string.IsNullOrEmpty(error) ? "Entity despawn is invalid." : error;
+                    return false;
+                }
+
+                despawn = new RealtimeEntityDespawn(entityId, reason);
+                return true;
+            }
+        }
+
         public static byte[] EncodeMovementInputBatch(RealtimeMovementInput[] inputs)
         {
             if (inputs == null || inputs.Length == 0 || inputs.Length > MaximumInputBatchSize)
@@ -588,9 +768,9 @@ namespace ShooterMmo.GameProtocol
             if (snapshot == null
                 || snapshot.ChunkCount == 0
                 || snapshot.ChunkIndex >= snapshot.ChunkCount
-                || snapshot.Players == null
-                || snapshot.Players.Length == 0
-                || snapshot.Players.Length > MaximumSnapshotPlayersPerChunk)
+                || snapshot.Entities == null
+                || snapshot.Entities.Length == 0
+                || snapshot.Entities.Length > MaximumSnapshotEntitiesPerChunk)
             {
                 throw new ArgumentException("World snapshot metadata is invalid.", nameof(snapshot));
             }
@@ -601,10 +781,10 @@ namespace ShooterMmo.GameProtocol
                 writer.Write(snapshot.ServerTick);
                 writer.Write(snapshot.ChunkIndex);
                 writer.Write(snapshot.ChunkCount);
-                writer.Write((byte)snapshot.Players.Length);
-                for (var index = 0; index < snapshot.Players.Length; index++)
+                writer.Write((byte)snapshot.Entities.Length);
+                for (var index = 0; index < snapshot.Entities.Length; index++)
                 {
-                    WritePlayerSnapshot(writer, snapshot.Players[index]);
+                    WriteEntitySnapshot(writer, snapshot.Entities[index]);
                 }
             });
         }
@@ -632,24 +812,24 @@ namespace ShooterMmo.GameProtocol
                     || !TryReadUInt32(reader, out var serverTick, out error)
                     || !TryReadUInt16(reader, out var chunkIndex, out error)
                     || !TryReadUInt16(reader, out var chunkCount, out error)
-                    || !TryReadByte(reader, out var playerCount, out error))
+                    || !TryReadByte(reader, out var entityCount, out error))
                 {
                     return false;
                 }
 
                 if (chunkCount == 0
                     || chunkIndex >= chunkCount
-                    || playerCount == 0
-                    || playerCount > MaximumSnapshotPlayersPerChunk)
+                    || entityCount == 0
+                    || entityCount > MaximumSnapshotEntitiesPerChunk)
                 {
                     error = "World snapshot metadata is invalid.";
                     return false;
                 }
 
-                var players = new RealtimePlayerSnapshot[playerCount];
-                for (var index = 0; index < players.Length; index++)
+                var entities = new RealtimeEntitySnapshot[entityCount];
+                for (var index = 0; index < entities.Length; index++)
                 {
-                    if (!TryReadPlayerSnapshot(reader, out players[index], out error))
+                    if (!TryReadEntitySnapshot(reader, out entities[index], out error))
                     {
                         return false;
                     }
@@ -665,7 +845,7 @@ namespace ShooterMmo.GameProtocol
                     serverTick,
                     chunkIndex,
                     chunkCount,
-                    players);
+                    entities);
                 return true;
             }
         }
@@ -1000,50 +1180,39 @@ namespace ShooterMmo.GameProtocol
             return true;
         }
 
-        private static void WritePlayerSnapshot(BinaryWriter writer, RealtimePlayerSnapshot snapshot)
+        private static void WriteEntitySnapshot(BinaryWriter writer, RealtimeEntitySnapshot snapshot)
         {
-            if (snapshot == null || !Guid.TryParse(snapshot.CharacterId, out var characterId))
+            if (snapshot == null || snapshot.EntityId == 0)
             {
-                throw new ArgumentException("Player snapshot character id is invalid.", nameof(snapshot));
+                throw new ArgumentException("Entity snapshot id is invalid.", nameof(snapshot));
             }
 
-            writer.Write(characterId.ToByteArray());
+            writer.Write(snapshot.EntityId);
             writer.Write(snapshot.LastProcessedInputSequence);
             WritePlayerState(writer, snapshot.State);
         }
 
-        private static bool TryReadPlayerSnapshot(
+        private static bool TryReadEntitySnapshot(
             BinaryReader reader,
-            out RealtimePlayerSnapshot snapshot,
+            out RealtimeEntitySnapshot snapshot,
             out string error)
         {
             snapshot = null;
-            try
+            if (!TryReadUInt64(reader, out var entityId, out error)
+                || !TryReadUInt32(reader, out var lastProcessedInputSequence, out error)
+                || !TryReadPlayerState(reader, out var state, out error))
             {
-                var characterBytes = reader.ReadBytes(16);
-                if (characterBytes.Length != 16)
-                {
-                    error = "Player snapshot character id is incomplete.";
-                    return false;
-                }
-
-                if (!TryReadUInt32(reader, out var lastProcessedInputSequence, out error)
-                    || !TryReadPlayerState(reader, out var state, out error))
-                {
-                    return false;
-                }
-
-                snapshot = new RealtimePlayerSnapshot(
-                    new Guid(characterBytes).ToString("D"),
-                    lastProcessedInputSequence,
-                    state);
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                error = "Player snapshot is incomplete.";
                 return false;
             }
+
+            if (entityId == 0)
+            {
+                error = "Entity snapshot id is invalid.";
+                return false;
+            }
+
+            snapshot = new RealtimeEntitySnapshot(entityId, lastProcessedInputSequence, state);
+            return true;
         }
 
         private static void WritePlayerState(BinaryWriter writer, RealtimePlayerState state)
@@ -1164,6 +1333,33 @@ namespace ShooterMmo.GameProtocol
                 error = "Packet unsigned integer is incomplete.";
                 return false;
             }
+        }
+
+        private static bool TryReadUInt64(BinaryReader reader, out ulong value, out string error)
+        {
+            try
+            {
+                value = reader.ReadUInt64();
+                error = string.Empty;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                value = 0;
+                error = "Packet unsigned integer is incomplete.";
+                return false;
+            }
+        }
+
+        private static bool IsValidEntitySpawn(RealtimeEntitySpawn spawn)
+        {
+            return spawn != null
+                && spawn.EntityId != 0
+                && Enum.IsDefined(typeof(RealtimeEntityKind), spawn.Kind)
+                && Guid.TryParse(spawn.PersistentId, out _)
+                && !string.IsNullOrWhiteSpace(spawn.DisplayName)
+                && !string.IsNullOrWhiteSpace(spawn.ArchetypeId)
+                && IsValidPlayerState(spawn.InitialState);
         }
 
         private static bool TryReadSingle(BinaryReader reader, out float value, out string error)

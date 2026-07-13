@@ -55,9 +55,13 @@ The foundation currently supports:
 - Reconnect, heartbeat, expiry, and safe release behavior.
 - A persistent LiteNetLib UDP client and headless WorldServer join and leave
   handshake.
+- A server-owned world entity registry with nonzero network entity ids,
+  one-to-one connection ownership, and reliable spawn and despawn lifecycle.
 - Sequenced movement input, a fixed 30 Hz authoritative server simulation, 15 Hz
   world snapshots, stale-input neutralization, local reconciliation, and
   stall-recovering remote interpolation.
+- A Unity-side entity cache that survives scene loading and creates remote views
+  only under a dedicated presentation root.
 - Versioned, chunked test-map collision shared by WorldServer and Unity
   prediction, with authoritative capsule movement across walls, ramps, steps,
   and cover.

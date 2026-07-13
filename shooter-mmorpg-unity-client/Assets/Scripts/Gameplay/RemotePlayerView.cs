@@ -8,6 +8,8 @@ namespace ShooterMmo.Gameplay
     [DisallowMultipleComponent]
     public sealed class RemotePlayerView : MonoBehaviour
     {
+        public const string SupportedArchetypeId = "player.default";
+
         private readonly RemoteMovementInterpolation interpolation =
             new RemoteMovementInterpolation();
         private readonly CollisionQueryBuffer presentationGroundQuery =
@@ -18,38 +20,43 @@ namespace ShooterMmo.Gameplay
 
         private int tickRateHz;
         private int interpolationDelayTicks;
-        private float latestSnapshotReceivedAt;
         private ICollisionWorld collisionWorld;
         private CharacterCollisionSettings collisionSettings;
 
-        public string CharacterId { get; private set; }
+        public ulong NetworkEntityId { get; private set; }
 
-        public float SecondsSinceLastSnapshot
-        {
-            get { return Time.realtimeSinceStartup - latestSnapshotReceivedAt; }
-        }
+        public string PersistentId { get; private set; }
+
+        public string DisplayName { get; private set; }
+
+        public string ArchetypeId { get; private set; }
 
         public void Initialize(
-            string characterId,
+            ulong networkEntityId,
+            string persistentId,
+            string displayName,
+            string archetypeId,
             int simulationTickRateHz,
             int delayTicks,
             ICollisionWorld worldCollision,
             CharacterCollisionSettings characterCollision)
         {
-            CharacterId = characterId;
+            NetworkEntityId = networkEntityId;
+            PersistentId = persistentId;
+            DisplayName = displayName;
+            ArchetypeId = archetypeId;
             tickRateHz = Mathf.Max(1, simulationTickRateHz);
             interpolationDelayTicks = Mathf.Max(1, delayTicks);
             collisionWorld = worldCollision;
             collisionSettings = characterCollision;
             groundedVerticalPresentation.Clear();
-            latestSnapshotReceivedAt = Time.realtimeSinceStartup;
             renderClock.Clear();
-            name = "RemotePlayer_" + characterId;
+            name = "RemotePlayer_" + networkEntityId + "_" + displayName;
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)
         {
-            if (state == null || string.IsNullOrWhiteSpace(CharacterId))
+            if (state == null || NetworkEntityId == 0)
             {
                 return;
             }
@@ -70,7 +77,6 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            latestSnapshotReceivedAt = Time.realtimeSinceStartup;
             if (wasEmpty)
             {
                 ApplyInterpolatedState(renderClock.Reset(

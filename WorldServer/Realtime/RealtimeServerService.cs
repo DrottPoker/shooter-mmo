@@ -7,6 +7,7 @@ using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using WorldServer.Auth;
 using WorldServer.Config;
+using WorldServer.Entities;
 using WorldServer.Sessions;
 
 namespace WorldServer.Realtime;
@@ -16,6 +17,8 @@ public sealed class RealtimeServerService(
     WorldJoinService joinService,
     WorldSessionReleaseService releaseService,
     ActivePlayerSessionStore sessionStore,
+    WorldEntityRegistry entityRegistry,
+    ConnectionEntityBindingRegistry connectionBindings,
     RealtimeTransportReadiness transportReadiness,
     ChunkedStaticCollisionWorld staticCollisionWorld,
     ICollisionWorld collisionWorld,
@@ -101,6 +104,8 @@ public sealed class RealtimeServerService(
             server.Stop();
             server = null;
             peers.Clear();
+            connectionBindings.Clear();
+            entityRegistry.Clear();
             await AwaitActiveOperationsAsync();
             logger.LogInformation("[WORLDSERVER] Realtime transport stopped.");
         }
@@ -124,6 +129,7 @@ public sealed class RealtimeServerService(
 
         if (context.Session is not null)
         {
+            RemoveBoundEntity(context, context.Session, "connection_closed");
             TrackOperation(ReleaseDisconnectedSessionAsync(context.Session));
         }
 
@@ -228,7 +234,7 @@ public sealed class RealtimeServerService(
                 return;
             }
 
-            if (context.Movement is null)
+            if (!TryGetBoundPlayer(context, out var playerEntity))
             {
                 RejectProtocol(
                     peer,
@@ -248,7 +254,7 @@ public sealed class RealtimeServerService(
                 return;
             }
 
-            context.Movement.AcceptInputs(inputs);
+            playerEntity.Movement.AcceptInputs(inputs);
             return;
         }
 
@@ -402,28 +408,35 @@ public sealed class RealtimeServerService(
             return;
         }
 
-        completed.Context.Session = session;
-        var previousMovementState = FindPreviousCharacterMovementState(
-            completed.Context,
-            session.CharacterId);
-        var initialMovementState = previousMovementState
-            ?? PlayerMovementSimulation.CreateInitialState(
+        var initialMovementState = PlayerMovementSimulation.CreateInitialState(
                 config.MovementSimulation,
                 collisionWorld,
                 config.MovementSpawn.X,
                 config.MovementSpawn.Y,
                 config.MovementSpawn.Z,
                 config.MovementSpawn.YawDegrees);
-        completed.Context.Movement = new AuthoritativePlayerMovement(
-            initialMovementState,
-            config.MovementSimulation,
-            collisionWorld,
-            Math.Max(
-                1,
-                (int)Math.Ceiling(
-                    config.MovementInputSilenceTimeout.TotalSeconds
-                    * config.MovementSimulation.TickRateHz)));
-        DisconnectPreviousCharacterPeer(completed.Context, session);
+        var registration = entityRegistry.RegisterPlayer(
+            session,
+            () => new AuthoritativePlayerMovement(
+                initialMovementState,
+                config.MovementSimulation,
+                collisionWorld,
+                Math.Max(
+                    1,
+                    (int)Math.Ceiling(
+                        config.MovementInputSilenceTimeout.TotalSeconds
+                        * config.MovementSimulation.TickRateHz))));
+        if (registration.ReplacedEntity is not null)
+        {
+            RemoveReplacedEntity(registration.ReplacedEntity);
+        }
+
+        var entity = registration.Entity;
+        var binding = connectionBindings.Bind(
+            completed.Context.PeerId,
+            entity.NetworkEntityId);
+        completed.Context.Session = session;
+        DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActivePlayerSessionResponse.FromSession(session);
 
         peer.Send(
@@ -433,22 +446,29 @@ public sealed class RealtimeServerService(
                 response.CharacterId.ToString("D"),
                 response.CharacterName,
                 response.WorldId,
+                entity.NetworkEntityId,
                 GameSimulationCompatibility.Revision,
                 staticCollisionWorld.Revision,
                 response.JoinedAt.ToString("O"),
                 response.SessionExpiresAt.ToString("O"),
                 response.IsReconnect,
                 ToRealtimeMovementSettings(),
-                ToRealtimePlayerState(initialMovementState))),
+                ToRealtimePlayerState(entity.Movement.State))),
             DeliveryMethod.ReliableOrdered);
+        SendEntityBaseline(peer);
+        if (registration.IsNewEntity)
+        {
+            BroadcastEntitySpawn(entity, completed.Context.PeerId);
+        }
 
         logger.LogInformation(
-            "[WORLDSERVER] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to world {WorldId}. World session {WorldSessionId}, UDP peer {PeerId}.",
+            "[WORLDSERVER] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to world {WorldId}. World session {WorldSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
             response.AccountId,
             response.CharacterName,
             response.CharacterId,
             response.WorldId,
             response.WorldSessionId,
+            entity.NetworkEntityId,
             completed.Context.PeerId);
     }
 
@@ -489,8 +509,8 @@ public sealed class RealtimeServerService(
             completed.Session.WorldId,
             completed.Session.WorldSessionId,
             completed.Context.PeerId);
+        RemoveBoundEntity(completed.Context, completed.Session, "left_world");
         completed.Context.Session = null;
-        completed.Context.Movement = null;
         peer.Send(RealtimeProtocol.EncodeLeaveAccepted(), DeliveryMethod.ReliableOrdered);
         completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
     }
@@ -510,9 +530,9 @@ public sealed class RealtimeServerService(
                 serverTick++;
             }
 
-            foreach (var context in peers.Values)
+            foreach (var entity in entityRegistry.ListPlayers())
             {
-                context.Movement?.SimulateTick();
+                entity.Movement.SimulateTick();
             }
 
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
@@ -536,15 +556,16 @@ public sealed class RealtimeServerService(
 
     private void BroadcastWorldSnapshots()
     {
-        var playerSnapshots = peers.Values
-            .Where(context => context.Session is not null && context.Movement is not null)
-            .OrderBy(context => context.Session!.CharacterId)
-            .Select(context => new RealtimePlayerSnapshot(
-                context.Session!.CharacterId.ToString("D"),
-                context.Movement!.LastProcessedInputSequence,
-                ToRealtimePlayerState(context.Movement.State)))
+        var entitySnapshots = entityRegistry.ListPlayers()
+            .Where(entity => connectionBindings.TryGetConnectionId(
+                entity.NetworkEntityId,
+                out _))
+            .Select(entity => new RealtimeEntitySnapshot(
+                entity.NetworkEntityId,
+                entity.Movement.LastProcessedInputSequence,
+                ToRealtimePlayerState(entity.Movement.State)))
             .ToArray();
-        if (playerSnapshots.Length == 0)
+        if (entitySnapshots.Length == 0)
         {
             return;
         }
@@ -555,40 +576,30 @@ public sealed class RealtimeServerService(
         }
 
         var chunkCount = (ushort)Math.Ceiling(
-            playerSnapshots.Length / (double)RealtimeProtocol.MaximumSnapshotPlayersPerChunk);
+            entitySnapshots.Length / (double)RealtimeProtocol.MaximumSnapshotEntitiesPerChunk);
         for (ushort chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
         {
-            var players = playerSnapshots
-                .Skip(chunkIndex * RealtimeProtocol.MaximumSnapshotPlayersPerChunk)
-                .Take(RealtimeProtocol.MaximumSnapshotPlayersPerChunk)
+            var entities = entitySnapshots
+                .Skip(chunkIndex * RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
+                .Take(RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
                 .ToArray();
             var packet = RealtimeProtocol.EncodeWorldSnapshot(new RealtimeWorldSnapshot(
                 snapshotSequence,
                 serverTick,
                 chunkIndex,
                 chunkCount,
-                players));
+                entities));
 
             foreach (var context in peers.Values)
             {
-                if (context.Session is not null && TryGetCurrentPeer(context, out var peer))
+                if (context.Session is not null
+                    && connectionBindings.TryGetEntityId(context.PeerId, out _)
+                    && TryGetCurrentPeer(context, out var peer))
                 {
                     peer.Send(packet, DeliveryMethod.Unreliable);
                 }
             }
         }
-    }
-
-    private PlayerMovementState? FindPreviousCharacterMovementState(
-        PeerContext currentContext,
-        Guid characterId)
-    {
-        return peers.Values
-            .Where(context => context != currentContext
-                && context.Session?.CharacterId == characterId
-                && context.Movement is not null)
-            .Select(context => (PlayerMovementState?)context.Movement!.State)
-            .FirstOrDefault();
     }
 
     private RealtimeMovementSettings ToRealtimeMovementSettings()
@@ -633,23 +644,23 @@ public sealed class RealtimeServerService(
             state.IsSprinting);
     }
 
-    private void DisconnectPreviousCharacterPeer(PeerContext currentContext, ActivePlayerSession session)
+    private void DisconnectReplacedConnection(int? replacedConnectionId)
     {
-        foreach (var previousContext in peers.Values.Where(context =>
-                     context != currentContext
-                     && context.Session?.CharacterId == session.CharacterId))
+        if (replacedConnectionId is null
+            || !peers.TryGetValue(replacedConnectionId.Value, out var previousContext))
         {
-            if (TryGetCurrentPeer(previousContext, out var previousPeer))
-            {
-                previousPeer.Send(
-                    RealtimeProtocol.EncodeServerDisconnect(
-                        "session_reconnected",
-                        "This character connected from another client."),
-                    DeliveryMethod.ReliableOrdered);
-                previousContext.Session = null;
-                previousContext.Movement = null;
-                previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
-            }
+            return;
+        }
+
+        if (TryGetCurrentPeer(previousContext, out var previousPeer))
+        {
+            previousPeer.Send(
+                RealtimeProtocol.EncodeServerDisconnect(
+                    "session_reconnected",
+                    "This character connected from another client."),
+                DeliveryMethod.ReliableOrdered);
+            previousContext.Session = null;
+            previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
     }
 
@@ -699,8 +710,8 @@ public sealed class RealtimeServerService(
                         reason.Code,
                         reason.Message),
                     DeliveryMethod.ReliableOrdered);
+                RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
-                context.Movement = null;
                 context.DisconnectAfterUtc = now.AddMilliseconds(250);
             }
         }
@@ -709,6 +720,110 @@ public sealed class RealtimeServerService(
     private bool IsCurrentSession(ActivePlayerSession session)
     {
         return sessionStore.IsCurrent(session, DateTime.UtcNow);
+    }
+
+    private bool TryGetBoundPlayer(PeerContext context, out PlayerWorldEntity entity)
+    {
+        if (connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
+            && entityRegistry.TryGetPlayer(entityId, out var player))
+        {
+            entity = player!;
+            return true;
+        }
+
+        entity = null!;
+        return false;
+    }
+
+    private void SendEntityBaseline(NetPeer peer)
+    {
+        foreach (var entity in entityRegistry.ListPlayers())
+        {
+            peer.Send(
+                RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)),
+                DeliveryMethod.ReliableOrdered);
+        }
+    }
+
+    private void BroadcastEntitySpawn(PlayerWorldEntity entity, int excludedConnectionId)
+    {
+        var packet = RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity));
+        foreach (var context in peers.Values)
+        {
+            if (context.PeerId != excludedConnectionId
+                && context.Session is not null
+                && connectionBindings.TryGetEntityId(context.PeerId, out _)
+                && TryGetCurrentPeer(context, out var peer))
+            {
+                peer.Send(packet, DeliveryMethod.ReliableOrdered);
+            }
+        }
+    }
+
+    private void BroadcastEntityDespawn(
+        ulong entityId,
+        string reason,
+        int? excludedConnectionId)
+    {
+        var packet = RealtimeProtocol.EncodeEntityDespawn(
+            new RealtimeEntityDespawn(entityId, reason));
+        foreach (var context in peers.Values)
+        {
+            if (context.PeerId != excludedConnectionId
+                && context.Session is not null
+                && connectionBindings.TryGetEntityId(context.PeerId, out _)
+                && TryGetCurrentPeer(context, out var peer))
+            {
+                peer.Send(packet, DeliveryMethod.ReliableOrdered);
+            }
+        }
+    }
+
+    private void RemoveBoundEntity(
+        PeerContext context,
+        ActivePlayerSession session,
+        string reason)
+    {
+        if (!connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
+            || !entityRegistry.RemovePlayer(
+                entityId,
+                session.WorldSessionId,
+                out _))
+        {
+            return;
+        }
+
+        connectionBindings.UnbindConnection(context.PeerId, out _);
+        BroadcastEntityDespawn(entityId, reason, context.PeerId);
+    }
+
+    private void RemoveReplacedEntity(PlayerWorldEntity replacedEntity)
+    {
+        int? replacedConnectionId = null;
+        if (connectionBindings.UnbindEntity(
+                replacedEntity.NetworkEntityId,
+                out var connectionId))
+        {
+            replacedConnectionId = connectionId;
+            DisconnectReplacedConnection(connectionId);
+        }
+
+        BroadcastEntityDespawn(
+            replacedEntity.NetworkEntityId,
+            "entity_replaced",
+            replacedConnectionId);
+    }
+
+    private RealtimeEntitySpawn ToRealtimeEntitySpawn(PlayerWorldEntity entity)
+    {
+        return new RealtimeEntitySpawn(
+            entity.NetworkEntityId,
+            RealtimeEntityKind.Player,
+            entity.Session.CharacterId.ToString("D"),
+            entity.Session.CharacterName,
+            PlayerWorldEntity.DefaultArchetypeId,
+            serverTick,
+            ToRealtimePlayerState(entity.Movement.State));
     }
 
     private bool TryGetCurrentPeer(PeerContext context, out NetPeer peer)
@@ -793,8 +908,6 @@ public sealed class RealtimeServerService(
         public bool LeaveStarted { get; set; }
 
         public ActivePlayerSession? Session { get; set; }
-
-        public AuthoritativePlayerMovement? Movement { get; set; }
 
         public DateTime? DisconnectAfterUtc { get; set; }
     }

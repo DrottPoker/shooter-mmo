@@ -55,7 +55,9 @@ by default.
 WorldServer owns:
 
 - UDP connection admission and versioned packet validation.
-- Join-ticket handshakes and local connected-player state.
+- Join-ticket handshakes, world entity identity, and connection-to-entity
+  ownership.
+- Reliable entity spawn and despawn lifecycle.
 - Fixed-rate authoritative player movement simulation.
 - Fail-fast loading and checksum validation of baked world collision chunks.
 - Static and dynamic collision queries through one simulation interface.
@@ -84,14 +86,17 @@ this project.
 realtime contract. `GameProtocol.DotNet` compiles the same source for WorldServer
 and backend tests without placing .NET build output inside the Unity package.
 
-Protocol version 4 currently defines:
+Protocol version 5 currently defines:
 
 - Join request, accepted, and rejected messages.
 - Leave request, accepted, and rejected messages.
 - Structured server disconnect reasons.
+- Server-assigned nonzero network entity ids.
+- Reliable ordered entity spawn and despawn messages with persistent identity,
+  presentation archetype, and initial state.
 - Bounded batches of sequenced player input commands.
-- Chunked world snapshots with server tick, snapshot sequence, acknowledged
-  input sequence, and authoritative player state.
+- Chunked world snapshots keyed by network entity id, with server tick,
+  snapshot sequence, acknowledged input sequence, and authoritative state.
 - Explicit movement-simulation and collision-data revisions plus character
   capsule settings in join acceptance.
 - Packet magic, version, size, and bounded-string validation.
@@ -167,8 +172,8 @@ inside the Unity project.
 | World registry and online status | AuthService | PostgreSQL |
 | Join tickets | AuthService | PostgreSQL |
 | Character world-session lease | AuthService | PostgreSQL |
-| Connected UDP peers and local sessions | WorldServer | Process memory |
-| Live player movement state | WorldServer | Process memory |
+| Connected UDP peers and connection-to-entity bindings | WorldServer | Process memory |
+| Live world entities, network ids, and player movement | WorldServer | Process memory |
 | Movement simulation configuration | WorldServer | Validated configuration |
 | Predicted local movement and remote interpolation buffers | Unity client | Process memory |
 | Client selection and active session view | Unity client | Process memory |
@@ -247,10 +252,14 @@ channel sends the reason before disconnecting the peer.
    client.
 6. Ticket consumption and the authoritative lease claim occur in one PostgreSQL
    transaction.
-7. WorldServer stores the accepted session and returns non-secret session
-   metadata over UDP.
-8. A same-world reconnect preserves the world-session id, rotates the secret
-   session token, and disconnects the older peer.
+7. WorldServer registers or reconnects the player entity, binds the UDP peer to
+   its server-assigned network entity id, and returns that id with non-secret
+   session metadata over UDP.
+8. WorldServer sends a reliable spawn baseline to the joining peer and a
+   reliable spawn for the new entity to existing peers.
+9. A same-world reconnect preserves the world-session id, network entity id,
+   and movement state, rotates the secret session token, and disconnects the
+   older peer.
 
 PostgreSQL locks and constraints prevent concurrent tickets or cross-world
 active leases for the same character.
@@ -262,8 +271,10 @@ active leases for the same character.
 3. WorldServer releases the exact lease generation through AuthService.
 4. Unity receives leave acceptance, closes UDP, clears local session state, and
    changes scene.
-5. An unexpected peer disconnect triggers the same release service.
-6. If release cannot reach AuthService, the lease becomes inactive after
+5. WorldServer removes the exact peer binding and entity, then sends a reliable
+   despawn to remaining peers.
+6. An unexpected peer disconnect triggers the same entity and lease cleanup.
+7. If release cannot reach AuthService, the lease becomes inactive after
    heartbeat expiry.
 
 WorldServer also enforces the cached database lease expiry locally. A missed
@@ -288,8 +299,9 @@ session token and cannot release the newer lease.
    collision world. Clients send input, never accepted positions. If no newer
    input arrives for the configured timeout, WorldServer neutralizes movement
    and action buttons instead of replaying stale input indefinitely.
-4. WorldServer sends authoritative snapshots at 15 Hz. Each player entry
-   includes the latest processed input sequence.
+4. WorldServer sends authoritative snapshots at 15 Hz. Each entity entry uses
+   its process-local network entity id and includes the latest processed input
+   sequence.
 5. The owning client replaces its predicted base with the authoritative state,
    removes acknowledged inputs, and replays remaining inputs. Small visual
    corrections are smoothed and large corrections are applied immediately. A

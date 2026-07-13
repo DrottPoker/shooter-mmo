@@ -196,7 +196,7 @@ dotnet run --project WorldServer
 
 WorldServer is a headless .NET Generic Host. It does not expose HTTP routes. A
 successful start logs that `local-world-1` is listening on UDP port `27015` with
-realtime protocol version 4, the movement-simulation revision, the advertised
+realtime protocol version 5, the movement-simulation revision, the advertised
 endpoint, and the loaded collision revision.
 
 Run a one-time WorldServer startup health check:
@@ -253,15 +253,16 @@ $join = Invoke-RestMethod http://localhost:5000/api/worlds/local-world-1/join `
 
 The ticket is intentionally short-lived and is consumed by the Unity UDP
 handshake. Do not attempt to send it to an HTTP WorldServer endpoint. The backend
-socket test verifies the real join and leave message path with:
+socket tests verify join, leave, and the reliable entity lifecycle with:
 
 ```powershell
 dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
-  --filter "FullyQualifiedName~RealtimeServerServiceTests"
+  --filter "FullyQualifiedName~RealtimeServerServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests"
 ```
 
-Expected result: one LiteNetLib client connects, joins, leaves, and the exact
-local session is removed.
+Expected result: the authenticated client joins, moves, and leaves with exact
+session cleanup. The two-client lifecycle test also proves that an existing peer
+receives reliable ordered spawn and despawn for the other player.
 
 ## Unity Client Flow
 
@@ -454,18 +455,23 @@ chunks. It exits with code 1 if the authoring JSON and runtime data differ.
    at PlayerSpawn when the scene starts.
 4. Remove any separate Main Camera from WorldScene. The LocalPlayer prefab owns
    the only gameplay camera and AudioListener.
-5. Create an empty GameObject named `WorldSceneContext` and add the
+5. Create an empty child of Gameplay named `EntityPresentationRoot` and reset
+   its transform. This object owns runtime views for replicated entities and
+   must not be a child of LocalPlayer.
+6. Create an empty GameObject named `WorldSceneContext` and add the
    `WorldSceneContext` component.
-6. Assign its Local Player field to the LocalPlayer prefab instance and Player
+7. Assign its Local Player field to the LocalPlayer prefab instance and Player
    Spawn Point to PlayerSpawn.
-7. Assign `RemotePlayer.prefab` to the Remote Player Prefab field. Drag the
+8. Assign `RemotePlayer.prefab` to the Remote Player Prefab field. Drag the
    prefab asset from the Project window, not a temporary scene instance.
-8. Keep one Directional Light in the scene and save the scene.
+9. Assign Entity Presentation Root to the `EntityPresentationRoot` transform.
+10. Keep one Directional Light in the scene and save the scene.
 
 Expected result: no gameplay object is created by a runtime bootstrap. Entering
 Play Mode places the local prefab instance at PlayerSpawn, connects the camera,
-keeps the authored remote prefab available for replicated characters, and
-reports no missing-reference or input-configuration errors.
+keeps the authored remote prefab available for replicated characters, parents
+runtime remote views below `EntityPresentationRoot`, and reports no
+missing-reference or input-configuration errors.
 
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
@@ -508,7 +514,8 @@ to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
 restart WorldServer so both processes use the current protocol implementation.
-Protocol version 4 also validates the compiled movement-simulation revision.
+Protocol version 5 also validates the compiled movement-simulation revision,
+server-assigned network entity ids, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
 
 Scene flow:
@@ -569,7 +576,7 @@ Expected Unity Console sequence for a successful login and world join:
 [AUTH] AuthService issued a short-lived join ticket for character 'Hero One' and world 'local-world-1'.
 [CLIENT] Opening UDP connection to 127.0.0.1:27015/udp.
 [CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to WorldServer.
-[WORLDSERVER] Account '<account-id>' with character 'Hero One' (<character-id>) connected to world 'local-world-1'. World session '<world-session-id>' is active.
+[WORLDSERVER] Account '<account-id>' with character 'Hero One' (<character-id>) connected to world 'local-world-1'. World session '<world-session-id>' controls network entity '<entity-id>'.
 [CLIENT] Server-authoritative movement is active at 30 ticks per second with 15 snapshots per second.
 ```
 
@@ -733,11 +740,13 @@ Remote interpolation test with a standalone build:
 5. Move each character while watching it from the other client.
 
 Expected result: each client owns one predicted local player and creates one
-presentation-only RemotePlayer instance for the other character. Remote motion
-is interpolated instead of jumping directly between 15 Hz snapshots. After a
-temporary network or frame stall, the remote render clock restores its intended
-buffer instead of retaining permanent extra delay. Leaving or disconnecting
-removes the corresponding remote view within three seconds.
+presentation-only RemotePlayer instance for the other character under
+`Gameplay/EntityPresentationRoot`. The local player is not duplicated under
+that root. Remote motion is interpolated instead of jumping directly between 15
+Hz snapshots. After a temporary network or frame stall, the remote render clock
+restores its intended buffer instead of retaining permanent extra delay.
+Leaving or disconnecting sends reliable despawn and removes the corresponding
+remote view immediately without waiting for a snapshot timeout.
 
 Direct movement-only test:
 

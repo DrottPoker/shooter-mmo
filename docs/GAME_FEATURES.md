@@ -66,7 +66,11 @@ a dedicated camera-collision wall.
 
 The world has no persistent simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
-rendered from interpolated WorldServer snapshots.
+rendered from interpolated WorldServer snapshots. WorldServer assigns each live
+player a network entity id. Reliable spawn and despawn messages decide when a
+remote player exists, while unreliable snapshots update only its movement.
+Remote instances are kept under WorldScene's separate
+`EntityPresentationRoot`, outside the authored LocalPlayer hierarchy.
 
 ## Player Movement
 

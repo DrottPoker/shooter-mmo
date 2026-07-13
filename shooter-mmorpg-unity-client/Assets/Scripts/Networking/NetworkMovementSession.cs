@@ -9,12 +9,14 @@ namespace ShooterMmo.Networking
     {
         private NetworkMovementSession(
             string characterId,
+            ulong controlledEntityId,
             MovementSimulationSettings settings,
             int snapshotRateHz,
             PlayerMovementState initialState,
             ChunkedStaticCollisionWorld collisionWorld)
         {
             CharacterId = characterId;
+            ControlledEntityId = controlledEntityId;
             Settings = settings;
             SnapshotRateHz = snapshotRateHz;
             InitialState = initialState;
@@ -22,6 +24,8 @@ namespace ShooterMmo.Networking
         }
 
         public string CharacterId { get; private set; }
+
+        public ulong ControlledEntityId { get; private set; }
 
         public MovementSimulationSettings Settings { get; private set; }
 
@@ -43,6 +47,12 @@ namespace ShooterMmo.Networking
                 || accepted.InitialPlayerState == null)
             {
                 error = "WorldServer did not provide movement simulation configuration.";
+                return false;
+            }
+
+            if (accepted.ControlledEntityId == 0)
+            {
+                error = "WorldServer did not assign a controlled network entity.";
                 return false;
             }
 
@@ -112,6 +122,7 @@ namespace ShooterMmo.Networking
                 var state = accepted.InitialPlayerState;
                 session = new NetworkMovementSession(
                     accepted.CharacterId,
+                    accepted.ControlledEntityId,
                     settings,
                     source.SnapshotRateHz,
                     new PlayerMovementState(

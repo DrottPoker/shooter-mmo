@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using LiteNetLib;
 using ShooterMmo.Api;
 using ShooterMmo.Diagnostics;
@@ -31,10 +32,16 @@ namespace ShooterMmo.Networking
         private bool transportStarted;
         private bool stopTransportAfterPoll;
         private bool leaveAccepted;
+        private readonly Dictionary<ulong, RealtimeEntitySpawn> spawnedEntities =
+            new Dictionary<ulong, RealtimeEntitySpawn>();
 
         public event Action<RealtimeClientError> UnexpectedlyDisconnected;
 
         public event Action<RealtimeWorldSnapshot> WorldSnapshotReceived;
+
+        public event Action<RealtimeEntitySpawn> EntitySpawned;
+
+        public event Action<RealtimeEntityDespawn> EntityDespawned;
 
         public RealtimeConnectionState State { get; private set; }
 
@@ -45,6 +52,11 @@ namespace ShooterMmo.Networking
         public NetworkMovementSession MovementSession { get; private set; }
 
         public uint LatestServerTick { get; private set; }
+
+        public IReadOnlyCollection<RealtimeEntitySpawn> SpawnedEntities
+        {
+            get { return new List<RealtimeEntitySpawn>(spawnedEntities.Values); }
+        }
 
         public bool IsJoined
         {
@@ -312,6 +324,7 @@ namespace ShooterMmo.Networking
             joinedSession = null;
             MovementSession = null;
             LatestServerTick = 0;
+            ClearSpawnedEntities("client_aborted");
             operationError = null;
             pendingUnexpectedDisconnect = null;
             StopTransport();
@@ -352,6 +365,7 @@ namespace ShooterMmo.Networking
             State = RealtimeConnectionState.Disconnected;
             MovementSession = null;
             LatestServerTick = 0;
+            ClearSpawnedEntities("connection_lost");
             stopTransportAfterPoll = true;
             LogFailure(error);
 
@@ -420,6 +434,12 @@ namespace ShooterMmo.Networking
                         break;
                     case RealtimeMessageType.ServerDisconnect:
                         HandleServerDisconnect(packet);
+                        break;
+                    case RealtimeMessageType.EntitySpawn:
+                        HandleEntitySpawn(packet);
+                        break;
+                    case RealtimeMessageType.EntityDespawn:
+                        HandleEntityDespawn(packet);
                         break;
                     default:
                         FailProtocol("unexpected_message", "WorldServer returned a message that is invalid for clients.");
@@ -491,7 +511,8 @@ namespace ShooterMmo.Networking
                 ClientLogCategory.WorldServer,
                 "Account '" + joinedSession.accountId + "' with character '" + joinedSession.characterName
                 + "' (" + joinedSession.characterId + ") connected to world '" + joinedSession.worldId
-                + "'. World session '" + joinedSession.worldSessionId + "' is active.");
+                + "'. World session '" + joinedSession.worldSessionId + "' controls network entity '"
+                + movementSession.ControlledEntityId + "'.");
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Server-authoritative movement is active at " + movementSession.Settings.TickRateHz
@@ -536,6 +557,53 @@ namespace ShooterMmo.Networking
             }
         }
 
+        private void HandleEntitySpawn(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol("unexpected_entity_spawn", "Entity spawn arrived before the world session was joined.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeEntitySpawn(packet, out var spawn, out var error))
+            {
+                FailProtocol("invalid_entity_spawn", error);
+                return;
+            }
+
+            if (spawnedEntities.TryGetValue(spawn.EntityId, out var existing)
+                && (!string.Equals(existing.PersistentId, spawn.PersistentId, StringComparison.OrdinalIgnoreCase)
+                    || existing.Kind != spawn.Kind
+                    || !string.Equals(existing.ArchetypeId, spawn.ArchetypeId, StringComparison.Ordinal)))
+            {
+                FailProtocol(
+                    "entity_id_conflict",
+                    "WorldServer reused an active network entity id for another entity.");
+                return;
+            }
+
+            spawnedEntities[spawn.EntityId] = spawn;
+            EntitySpawned?.Invoke(spawn);
+        }
+
+        private void HandleEntityDespawn(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol("unexpected_entity_despawn", "Entity despawn arrived outside an active world session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeEntityDespawn(packet, out var despawn, out var error))
+            {
+                FailProtocol("invalid_entity_despawn", error);
+                return;
+            }
+
+            spawnedEntities.Remove(despawn.EntityId);
+            EntityDespawned?.Invoke(despawn);
+        }
+
         private void HandleLeaveAccepted(byte[] packet)
         {
             if (State != RealtimeConnectionState.Leaving)
@@ -559,6 +627,7 @@ namespace ShooterMmo.Networking
             }
 
             leaveAccepted = true;
+            ClearSpawnedEntities("left_world");
             joinedSession = null;
             MovementSession = null;
             LatestServerTick = 0;
@@ -602,6 +671,7 @@ namespace ShooterMmo.Networking
                 reason.Code,
                 reason.Message);
             operationError = disconnectError;
+            ClearSpawnedEntities(reason.Code);
             joinedSession = null;
             MovementSession = null;
             LatestServerTick = 0;
@@ -629,6 +699,7 @@ namespace ShooterMmo.Networking
         {
             var previousState = State;
             operationError = error;
+            ClearSpawnedEntities(error.Code);
             joinedSession = null;
             MovementSession = null;
             LatestServerTick = 0;
@@ -645,6 +716,7 @@ namespace ShooterMmo.Networking
         private void ResetOperation()
         {
             operationError = null;
+            ClearSpawnedEntities("session_reset");
             joinedSession = null;
             MovementSession = null;
             LatestServerTick = 0;
@@ -669,6 +741,21 @@ namespace ShooterMmo.Networking
             pendingJoinTicket = string.Empty;
         }
 
+        private void ClearSpawnedEntities(string reason)
+        {
+            if (spawnedEntities.Count == 0)
+            {
+                return;
+            }
+
+            var entityIds = new List<ulong>(spawnedEntities.Keys);
+            spawnedEntities.Clear();
+            for (var index = 0; index < entityIds.Count; index++)
+            {
+                EntityDespawned?.Invoke(new RealtimeEntityDespawn(entityIds[index], reason));
+            }
+        }
+
         private static bool IsValidSession(RealtimeJoinAccepted session)
         {
             if (session == null)
@@ -679,6 +766,7 @@ namespace ShooterMmo.Networking
             return Guid.TryParse(session.WorldSessionId, out _)
                 && Guid.TryParse(session.AccountId, out _)
                 && Guid.TryParse(session.CharacterId, out _)
+                && session.ControlledEntityId != 0
                 && !string.IsNullOrWhiteSpace(session.CharacterName)
                 && !string.IsNullOrWhiteSpace(session.WorldId)
                 && !string.IsNullOrWhiteSpace(session.SimulationRevision)

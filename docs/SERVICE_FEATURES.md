@@ -129,19 +129,47 @@ Status: Session and authoritative movement foundation implemented
 - Join authentication runs asynchronously so the UDP poll loop is not blocked
   by AuthService requests.
 - Every peer must complete one join handshake before its timeout.
-- Accepted peers are bound to an exact local session generation.
+- Accepted peers are bound one-to-one to an exact server-owned network entity.
 - Same-character reconnect disconnects the older peer.
 - Normal leave, unexpected disconnect, revoked lease, and process shutdown all
   converge on exact-session cleanup.
 - Structured join, leave, and server-disconnect errors are returned to Unity.
 - Movement input is isolated from control traffic on a sequenced channel.
+- Entity spawn and despawn use reliable ordered control messages.
 - World snapshots use unchanneled unreliable delivery with bounded packet size
   and application-level tick and chunk metadata.
 
-Protocol version 4 reserves reliable ordered channel 0 for control, sequenced
+Protocol version 5 reserves reliable ordered channel 0 for control, sequenced
 channel 1 for player input, and LiteNetLib's unchanneled `Unreliable` delivery
 for world snapshots. Unreliable receive callbacks report channel 0, so snapshot
 validation relies on the protocol message type and delivery method.
+
+## World Entity Lifecycle
+
+Status: Player entity foundation implemented
+
+- `WorldEntityRegistry` is the WorldServer authority for live player entities.
+- Every new entity receives a nonzero monotonically increasing `ulong` network
+  id. Ids are process-local, are never derived from database ids, and are not
+  reused while the WorldServer process remains alive.
+- Persistent character ids remain metadata. Movement input and snapshots use
+  the network entity id after admission.
+- `ConnectionEntityBindingRegistry` enforces a one-to-one relationship between
+  a LiteNetLib peer id and its controlled entity id.
+- A same-world-session reconnect keeps the entity id and movement object while
+  replacing only the controlling connection and refreshed secret generation.
+- A different session for the same character removes the old entity before the
+  replacement receives a new network id.
+- Join acceptance identifies the controlled entity. The joining peer then
+  receives a reliable ordered baseline of all current entity spawns.
+- Existing peers receive a reliable ordered spawn for a new entity and a
+  reliable ordered despawn when that exact entity leaves, disconnects, expires,
+  or is replaced.
+- Unreliable snapshots contain only registered and connected entity ids. They do
+  not create entities and cannot keep a despawned entity alive.
+- The current registry owns player entities only. The network id and lifecycle
+  boundary are designed to add NPCs, projectiles, and dynamic world objects
+  without using character database ids as transport identity.
 
 ## Server-Authoritative Movement
 
@@ -160,9 +188,9 @@ Status: Fixed-tick movement and authored collision implemented
   simulation tick.
 - The default 500 ms input-silence timeout neutralizes stale movement, sprint,
   aim, and jump state until a newer sequence arrives.
-- Each snapshot player record includes the authoritative movement state and the
+- Each snapshot entity record includes the authoritative movement state and the
   newest processed input sequence required for reconciliation.
-- Snapshot chunks contain at most 20 players and remain below the protocol's
+- Snapshot chunks contain at most 20 entities and remain below the protocol's
   1200-byte packet limit.
 - Same-character reconnect preserves the current in-memory movement state while
   the older peer is replaced.
@@ -242,6 +270,7 @@ decoding validates:
 - Complete payloads with no trailing data.
 - Finite normalized movement input and known movement flags.
 - Valid snapshot chunk metadata and finite player state.
+- Nonzero network entity ids and valid reliable spawn or despawn payloads.
 - The accepted join includes an explicit movement-simulation revision so an
   incompatible client fails before prediction starts.
 
@@ -294,9 +323,10 @@ Status: Implemented
 
 - Unit tests cover validation, configuration, authentication handlers, API
   resilience, protocol encoding, malformed packet rejection, and session stores.
-- A socket-level test starts the real LiteNetLib WorldServer transport and proves
-  join, authoritative movement snapshot acknowledgement, and leave against a
-  controlled AuthService response.
+- Socket-level tests start the real LiteNetLib WorldServer transport and prove
+  join, authoritative movement snapshot acknowledgement, leave, and reliable
+  spawn and despawn delivery between two peers against controlled AuthService
+  responses.
 - Isolated PostgreSQL integration tests cover migration concurrency, auth and
   character flow, ticket concurrency, wrong-world protection, reconnect,
   heartbeat, cross-world exclusion, revocation, and idempotent release.

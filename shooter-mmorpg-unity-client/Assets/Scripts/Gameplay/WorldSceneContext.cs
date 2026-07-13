@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.Networking;
@@ -12,10 +11,10 @@ namespace ShooterMmo.Gameplay
         [SerializeField] private LocalPlayerController localPlayer;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private RemotePlayerView remotePlayerPrefab;
+        [SerializeField] private Transform entityPresentationRoot;
 
-        private readonly Dictionary<string, RemotePlayerView> remotePlayers =
-            new Dictionary<string, RemotePlayerView>(StringComparer.OrdinalIgnoreCase);
-        private readonly List<string> staleRemotePlayerIds = new List<string>();
+        private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
+            new Dictionary<ulong, RemotePlayerView>();
         private RealtimeWorldClient worldClient;
 
         private void Start()
@@ -40,7 +39,13 @@ namespace ShooterMmo.Gameplay
                     return;
                 }
 
+                worldClient.EntitySpawned += OnEntitySpawned;
+                worldClient.EntityDespawned += OnEntityDespawned;
                 worldClient.WorldSnapshotReceived += OnWorldSnapshotReceived;
+                foreach (var spawn in worldClient.SpawnedEntities)
+                {
+                    OnEntitySpawned(spawn);
+                }
             }
             else
             {
@@ -50,37 +55,74 @@ namespace ShooterMmo.Gameplay
             localPlayer.PlayerCamera.SetTarget(localPlayer.CameraTarget, localPlayer.PlayerInput);
         }
 
-        private void Update()
-        {
-            staleRemotePlayerIds.Clear();
-            foreach (var remotePlayer in remotePlayers)
-            {
-                if (remotePlayer.Value.SecondsSinceLastSnapshot > 3f)
-                {
-                    staleRemotePlayerIds.Add(remotePlayer.Key);
-                }
-            }
-
-            for (var index = 0; index < staleRemotePlayerIds.Count; index++)
-            {
-                var characterId = staleRemotePlayerIds[index];
-                var remotePlayer = remotePlayers[characterId];
-                remotePlayers.Remove(characterId);
-                Destroy(remotePlayer.gameObject);
-            }
-        }
-
         private void OnDestroy()
         {
             if (worldClient != null)
             {
+                worldClient.EntitySpawned -= OnEntitySpawned;
+                worldClient.EntityDespawned -= OnEntityDespawned;
                 worldClient.WorldSnapshotReceived -= OnWorldSnapshotReceived;
             }
+
+            remotePlayers.Clear();
 
             if (localPlayer != null)
             {
                 localPlayer.DisableServerAuthoritativeMovement();
             }
+        }
+
+        private void OnEntitySpawned(RealtimeEntitySpawn spawn)
+        {
+            var movementSession = worldClient != null ? worldClient.MovementSession : null;
+            if (movementSession == null || spawn.EntityId == movementSession.ControlledEntityId)
+            {
+                return;
+            }
+
+            if (spawn.Kind != RealtimeEntityKind.Player
+                || !string.Equals(
+                    spawn.ArchetypeId,
+                    RemotePlayerView.SupportedArchetypeId,
+                    System.StringComparison.Ordinal))
+            {
+                Debug.LogWarning(
+                    "WorldSceneContext cannot present unsupported entity archetype '"
+                    + spawn.ArchetypeId + "' for network entity '" + spawn.EntityId + "'.",
+                    this);
+                return;
+            }
+
+            if (!remotePlayers.TryGetValue(spawn.EntityId, out var remotePlayer))
+            {
+                remotePlayer = Instantiate(remotePlayerPrefab, entityPresentationRoot);
+                var delayTicks = Mathf.Max(
+                    2,
+                    Mathf.CeilToInt(movementSession.Settings.TickRateHz * 0.1f));
+                remotePlayer.Initialize(
+                    spawn.EntityId,
+                    spawn.PersistentId,
+                    spawn.DisplayName,
+                    spawn.ArchetypeId,
+                    movementSession.Settings.TickRateHz,
+                    delayTicks,
+                    movementSession.CollisionWorld,
+                    movementSession.Settings.CharacterCollision);
+                remotePlayers.Add(spawn.EntityId, remotePlayer);
+            }
+
+            remotePlayer.PushSnapshot(spawn.ServerTick, spawn.InitialState);
+        }
+
+        private void OnEntityDespawned(RealtimeEntityDespawn despawn)
+        {
+            if (!remotePlayers.TryGetValue(despawn.EntityId, out var remotePlayer))
+            {
+                return;
+            }
+
+            remotePlayers.Remove(despawn.EntityId);
+            Destroy(remotePlayer.gameObject);
         }
 
         private void OnWorldSnapshotReceived(RealtimeWorldSnapshot snapshot)
@@ -91,42 +133,40 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            for (var index = 0; index < snapshot.Players.Length; index++)
+            for (var index = 0; index < snapshot.Entities.Length; index++)
             {
-                var player = snapshot.Players[index];
-                if (string.Equals(
-                    player.CharacterId,
-                    movementSession.CharacterId,
-                    StringComparison.OrdinalIgnoreCase))
+                var entity = snapshot.Entities[index];
+                if (entity.EntityId == movementSession.ControlledEntityId)
                 {
                     continue;
                 }
 
-                if (!remotePlayers.TryGetValue(player.CharacterId, out var remotePlayer))
+                if (!remotePlayers.TryGetValue(entity.EntityId, out var remotePlayer))
                 {
-                    remotePlayer = Instantiate(remotePlayerPrefab, transform);
-                    var delayTicks = Mathf.Max(
-                        2,
-                        Mathf.CeilToInt(movementSession.Settings.TickRateHz * 0.1f));
-                    remotePlayer.Initialize(
-                        player.CharacterId,
-                        movementSession.Settings.TickRateHz,
-                        delayTicks,
-                        movementSession.CollisionWorld,
-                        movementSession.Settings.CharacterCollision);
-                    remotePlayers.Add(player.CharacterId, remotePlayer);
+                    continue;
                 }
 
-                remotePlayer.PushSnapshot(snapshot.ServerTick, player.State);
+                remotePlayer.PushSnapshot(snapshot.ServerTick, entity.State);
             }
         }
 
         private bool ValidateReferences()
         {
-            if (localPlayer == null || playerSpawnPoint == null || remotePlayerPrefab == null)
+            if (localPlayer == null
+                || playerSpawnPoint == null
+                || remotePlayerPrefab == null
+                || entityPresentationRoot == null)
             {
                 Debug.LogError(
-                    "WorldSceneContext requires a local player, spawn point, and remote player prefab.",
+                    "WorldSceneContext requires a local player, spawn point, remote player prefab, and entity presentation root.",
+                    this);
+                return false;
+            }
+
+            if (entityPresentationRoot.IsChildOf(localPlayer.transform))
+            {
+                Debug.LogError(
+                    "WorldSceneContext entity presentation root must not be owned by the local player.",
                     this);
                 return false;
             }

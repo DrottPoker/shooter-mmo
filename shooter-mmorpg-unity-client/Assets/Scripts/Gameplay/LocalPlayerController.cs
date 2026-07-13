@@ -275,18 +275,15 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            for (var index = 0; index < snapshot.Players.Length; index++)
+            for (var index = 0; index < snapshot.Entities.Length; index++)
             {
-                var player = snapshot.Players[index];
-                if (!string.Equals(
-                        player.CharacterId,
-                        movementSession.CharacterId,
-                        System.StringComparison.OrdinalIgnoreCase))
+                var entity = snapshot.Entities[index];
+                if (entity.EntityId != movementSession.ControlledEntityId)
                 {
                     continue;
                 }
 
-                var state = player.State;
+                var state = entity.State;
                 var authoritative = new PlayerMovementState(
                     state.PositionX,
                     state.PositionY,
@@ -299,7 +296,7 @@ namespace ShooterMmo.Gameplay
                     state.IsSprinting);
                 var reconciliation = movementPrediction.Reconcile(
                     authoritative,
-                    player.LastProcessedInputSequence);
+                    entity.LastProcessedInputSequence);
                 ApplyReconciliationCorrection(reconciliation);
                 return;
             }

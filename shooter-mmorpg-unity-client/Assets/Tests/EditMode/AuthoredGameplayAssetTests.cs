@@ -236,17 +236,21 @@ namespace ShooterMmo.Tests.EditMode
                 var spawnPoint = FindGameObject(scene, "PlayerSpawn");
                 var localPlayer = FindGameObject(scene, "LocalPlayer");
                 var context = FindGameObject(scene, "WorldSceneContext");
+                var entityPresentationRoot = FindGameObject(scene, "EntityPresentationRoot");
                 var localPlayerCamera = FindGameObject(scene, "LocalPlayerCamera");
 
                 Assert.That(environment, Is.Not.Null);
                 Assert.That(gameplay, Is.Not.Null);
                 Assert.That(spawnPoint, Is.Not.Null);
                 Assert.That(context, Is.Not.Null);
+                Assert.That(entityPresentationRoot, Is.Not.Null);
                 Assert.That(FindGameObject(scene, "Main Camera"), Is.Null);
                 Assert.That(spawnPoint.transform.parent, Is.EqualTo(gameplay.transform));
                 Assert.That(spawnPoint.transform.localPosition, Is.EqualTo(new Vector3(0f, 0f, -1f)));
                 Assert.That(localPlayer, Is.Not.Null);
                 Assert.That(localPlayer.transform.parent, Is.EqualTo(gameplay.transform));
+                Assert.That(entityPresentationRoot.transform.parent, Is.EqualTo(gameplay.transform));
+                Assert.That(entityPresentationRoot.transform.IsChildOf(localPlayer.transform), Is.False);
                 Assert.That(PrefabUtility.IsPartOfPrefabInstance(localPlayer), Is.True);
                 Assert.That(localPlayerCamera, Is.Not.Null);
                 Assert.That(localPlayerCamera.transform.IsChildOf(localPlayer.transform), Is.True);
@@ -263,6 +267,8 @@ namespace ShooterMmo.Tests.EditMode
                 var remotePlayerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RemotePlayerPrefabPath);
                 Assert.That(contextProperties.FindProperty("remotePlayerPrefab").objectReferenceValue,
                     Is.EqualTo(remotePlayerPrefab.GetComponent<RemotePlayerView>()));
+                Assert.That(contextProperties.FindProperty("entityPresentationRoot").objectReferenceValue,
+                    Is.EqualTo(entityPresentationRoot.transform));
 
                 Assert.That(environment.GetComponentsInChildren<BoxCollider>(true), Has.Length.EqualTo(12));
                 Assert.That(environment.GetComponentsInChildren<Rigidbody>(true), Is.Empty);

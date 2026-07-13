@@ -30,6 +30,7 @@ public sealed class RealtimeProtocolTests
             Guid.NewGuid().ToString("D"),
             "Protocol Hero",
             "local-world-1",
+            42,
             GameSimulationCompatibility.Revision,
             "collision-revision-123",
             DateTime.UtcNow.ToString("O"),
@@ -48,6 +49,7 @@ public sealed class RealtimeProtocolTests
         Assert.Equal(expected.CharacterId, actual.CharacterId);
         Assert.Equal(expected.CharacterName, actual.CharacterName);
         Assert.Equal(expected.WorldId, actual.WorldId);
+        Assert.Equal(42ul, actual.ControlledEntityId);
         Assert.Equal(expected.SimulationRevision, actual.SimulationRevision);
         Assert.Equal(expected.CollisionRevision, actual.CollisionRevision);
         Assert.True(actual.IsReconnect);
@@ -118,9 +120,41 @@ public sealed class RealtimeProtocolTests
     }
 
     [Fact]
-    public void WorldSnapshotRoundTripsChunkMetadataAndPlayers()
+    public void EntitySpawnAndDespawnRoundTripIdentityAndPresentationMetadata()
     {
-        var characterId = Guid.NewGuid().ToString("D");
+        var persistentId = Guid.NewGuid().ToString("D");
+        var expectedSpawn = new RealtimeEntitySpawn(
+            73,
+            RealtimeEntityKind.Player,
+            persistentId,
+            "Protocol Hero",
+            "player.default",
+            90,
+            CreatePlayerState(3f));
+
+        Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(
+            RealtimeProtocol.EncodeEntitySpawn(expectedSpawn),
+            out var spawn,
+            out var spawnError), spawnError);
+        Assert.Equal(73ul, spawn.EntityId);
+        Assert.Equal(RealtimeEntityKind.Player, spawn.Kind);
+        Assert.Equal(persistentId, spawn.PersistentId);
+        Assert.Equal("Protocol Hero", spawn.DisplayName);
+        Assert.Equal("player.default", spawn.ArchetypeId);
+        Assert.Equal(90u, spawn.ServerTick);
+
+        var expectedDespawn = new RealtimeEntityDespawn(73, "left_world");
+        Assert.True(RealtimeProtocol.TryDecodeEntityDespawn(
+            RealtimeProtocol.EncodeEntityDespawn(expectedDespawn),
+            out var despawn,
+            out var despawnError), despawnError);
+        Assert.Equal(73ul, despawn.EntityId);
+        Assert.Equal("left_world", despawn.Reason);
+    }
+
+    [Fact]
+    public void WorldSnapshotRoundTripsChunkMetadataAndEntities()
+    {
         var expected = new RealtimeWorldSnapshot(
             4,
             90,
@@ -128,7 +162,7 @@ public sealed class RealtimeProtocolTests
             3,
             new[]
             {
-                new RealtimePlayerSnapshot(characterId, 12, CreatePlayerState(3f))
+                new RealtimeEntitySnapshot(73, 12, CreatePlayerState(3f))
             });
 
         var decoded = RealtimeProtocol.TryDecodeWorldSnapshot(
@@ -141,8 +175,31 @@ public sealed class RealtimeProtocolTests
         Assert.Equal(90u, actual.ServerTick);
         Assert.Equal((ushort)1, actual.ChunkIndex);
         Assert.Equal((ushort)3, actual.ChunkCount);
-        Assert.Equal(characterId, actual.Players[0].CharacterId);
-        Assert.Equal(3f, actual.Players[0].State.PositionX);
+        Assert.Equal(73ul, actual.Entities[0].EntityId);
+        Assert.Equal(3f, actual.Entities[0].State.PositionX);
+    }
+
+    [Fact]
+    public void EntityLifecycleRejectsZeroNetworkIds()
+    {
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySpawn(
+            new RealtimeEntitySpawn(
+                0,
+                RealtimeEntityKind.Player,
+                Guid.NewGuid().ToString("D"),
+                "Invalid Hero",
+                "player.default",
+                1,
+                CreatePlayerState(0f))));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntityDespawn(
+            new RealtimeEntityDespawn(0, "left_world")));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeWorldSnapshot(
+            new RealtimeWorldSnapshot(
+                1,
+                1,
+                0,
+                1,
+                [new RealtimeEntitySnapshot(0, 0, CreatePlayerState(0f))])));
     }
 
     [Fact]

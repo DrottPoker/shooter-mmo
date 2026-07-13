@@ -43,7 +43,8 @@ WorldSceneContext
   +-- scene-authored LocalPlayer prefab instance
   +-- scene-authored PlayerSpawn
   +-- scene-authored RemotePlayer prefab reference
-  +-- runtime remote-player view instances
+  +-- scene-authored EntityPresentationRoot
+      +-- runtime remote-player view instances
 
 LocalPlayer prefab
   +-- CharacterController
@@ -166,11 +167,11 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a world.
 
-Protocol version 4 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 5 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
-- Channel 0 uses reliable ordered delivery for join, leave, and disconnect
-  control messages.
+- Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
+  spawn, and entity despawn control messages.
 - Channel 1 uses sequenced delivery for redundant movement input batches.
 - World snapshot chunks use LiteNetLib's unchanneled `Unreliable` delivery.
   LiteNetLib reports these packets with receive channel 0. Server tick, snapshot
@@ -180,6 +181,15 @@ snapshot delivery:
   flight during and immediately after leave are ignored outside the `Joined`
   state. They are not protocol failures because LiteNetLib delivery methods do
   not provide ordering relative to each other.
+
+Every accepted world session identifies the local player's server-assigned
+nonzero network entity id. `RealtimeWorldClient` owns an in-memory registry of
+the reliable spawn baseline and subsequent spawn or despawn changes. The
+registry survives the CharacterSelect to WorldScene transition, so entities
+that spawned before scene loading are still presented. Conflicting reuse of an
+active entity id is treated as a protocol failure. Snapshots never create or
+remove entities. They update only ids already admitted by the reliable
+lifecycle.
 
 `NetworkMovementSession` is created only from a validated join response. It owns
 the server-provided movement settings and initial state used by the client. The
@@ -255,12 +265,14 @@ AuthService to revoke the active account session, then clears local state.
 
 `WorldSceneContext` is a scene composition root. It validates serialized scene
 and prefab references, connects the local player to the active realtime movement
-session, routes snapshots, and connects the player-owned camera to input and
-CameraTarget. Direct WorldScene Play Mode remains an offline preview and places
-the local player at the authored spawn point. The context never selects a global
-camera and never generates a player asset, camera, map object, material, light,
-or collider. Runtime instances of the explicitly authored RemotePlayer prefab
-are created only for replicated characters.
+session, consumes the cached reliable entity baseline, routes entity snapshots,
+and connects the player-owned camera to input and CameraTarget. Direct WorldScene
+Play Mode remains an offline preview and places the local player at the authored
+spawn point. The context never selects a global camera and never generates a
+player asset, camera, map object, material, light, or collider. Runtime instances
+of the explicitly authored RemotePlayer prefab are created only from reliable
+player-entity spawn messages and are parented under the scene-authored
+`EntityPresentationRoot`. The local player remains a separate authored object.
 
 `LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
 prefab. The referenced Input Actions asset defines movement, sprint, jump, aim,
@@ -327,13 +339,15 @@ explicitly. Runtime code never scans the Unity scene or treats PhysX as network
 authority.
 
 `RemotePlayerView` is presentation-only. It has no input, camera, audio listener,
-rigidbody, or collider. It buffers server states in
+rigidbody, or collider. It stores the network entity id, persistent character
+id, display name, and presentation archetype supplied by the spawn message. It
+buffers server states in
 `RemoteMovementInterpolation` and advances an adaptive monotonic frame-rate
 render clock approximately 100 ms behind the latest server tick. The clock uses
 bounded catch-up and slow-down corrections during normal delivery. After a
 larger network stall it restores the intended buffer delay instead of retaining
-permanent extra latency. A remote view is removed if no snapshot containing that
-character arrives for three seconds.
+permanent extra latency. A reliable despawn removes the matching view
+immediately. Missing unreliable snapshots never decide entity lifetime.
 
 `ThirdPersonCameraController` consumes look input continuously while the gameplay
 cursor is captured. F1 switches between captured shooter input and a released

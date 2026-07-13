@@ -7,6 +7,7 @@ using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using WorldServer.Auth;
 using WorldServer.Config;
+using WorldServer.Entities;
 using WorldServer.Realtime;
 using WorldServer.Sessions;
 
@@ -46,6 +47,8 @@ public sealed class RealtimeServerServiceTests
             new WorldJoinService(authClient, sessionStore, config),
             new WorldSessionReleaseService(authClient, sessionStore),
             sessionStore,
+            new WorldEntityRegistry(),
+            new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),
             staticCollisionWorld,
             collisionWorld,
@@ -60,7 +63,9 @@ public sealed class RealtimeServerServiceTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         var serverDisconnect = new TaskCompletionSource<RealtimeError>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var movementSnapshot = new TaskCompletionSource<RealtimePlayerSnapshot>(
+        var entitySpawn = new TaskCompletionSource<RealtimeEntitySpawn>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var movementSnapshot = new TaskCompletionSource<RealtimeEntitySnapshot>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var listener = new EventBasedNetListener();
         var client = new NetManager(listener)
@@ -112,12 +117,13 @@ public sealed class RealtimeServerServiceTests
                         packet,
                         out var snapshot,
                         out var error), error);
-                    var player = snapshot.Players.SingleOrDefault(
-                        value => value.CharacterId == authHandler.CharacterId.ToString("D"));
-                    if (player is not null
-                        && player.LastProcessedInputSequence == 1
-                        && player.State.PositionZ > -1f
-                        && movementSnapshot.TrySetResult(player))
+                    var joined = joinAccepted.Task.GetAwaiter().GetResult();
+                    var entity = snapshot.Entities.SingleOrDefault(
+                        value => value.EntityId == joined.ControlledEntityId);
+                    if (entity is not null
+                        && entity.LastProcessedInputSequence == 1
+                        && entity.State.PositionZ > -1f
+                        && movementSnapshot.TrySetResult(entity))
                     {
                         if (invalidateAsReplaced)
                         {
@@ -130,11 +136,26 @@ public sealed class RealtimeServerServiceTests
                         }
                         else
                         {
-                            var joined = joinAccepted.Task.GetAwaiter().GetResult();
                             peer.Send(
                                 RealtimeProtocol.EncodeLeaveRequest(joined.WorldSessionId),
                                 DeliveryMethod.ReliableOrdered);
                         }
+                    }
+
+                    return;
+                }
+
+                if (messageType == RealtimeMessageType.EntitySpawn)
+                {
+                    Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                    Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
+                    Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(
+                        packet,
+                        out var spawn,
+                        out var error), error);
+                    if (spawn.PersistentId == authHandler.CharacterId.ToString("D"))
+                    {
+                        entitySpawn.TrySetResult(spawn);
                     }
 
                     return;
@@ -159,6 +180,7 @@ public sealed class RealtimeServerServiceTests
             catch (Exception exception)
             {
                 joinAccepted.TrySetException(exception);
+                entitySpawn.TrySetException(exception);
                 movementSnapshot.TrySetException(exception);
                 leaveAccepted.TrySetException(exception);
                 serverDisconnect.TrySetException(exception);
@@ -184,10 +206,14 @@ public sealed class RealtimeServerServiceTests
             }
 
             var joined = await joinAccepted.Task.WaitAsync(timeout.Token);
+            var spawned = await entitySpawn.Task.WaitAsync(timeout.Token);
             var movedPlayer = await movementSnapshot.Task.WaitAsync(timeout.Token);
             await completion.WaitAsync(timeout.Token);
 
             Assert.Equal(authHandler.CharacterId.ToString("D"), joined.CharacterId);
+            Assert.NotEqual(0ul, joined.ControlledEntityId);
+            Assert.Equal(joined.ControlledEntityId, spawned.EntityId);
+            Assert.Equal("player.default", spawned.ArchetypeId);
             Assert.Equal(staticCollisionWorld.Revision, joined.CollisionRevision);
             Assert.Equal(0.35f, joined.MovementSettings.CharacterRadius);
             Assert.Equal(55f, joined.MovementSettings.MaximumFallSpeed);
