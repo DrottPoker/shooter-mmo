@@ -285,7 +285,38 @@ namespace ShooterMmo.GameSimulation
             out float groundHeight,
             out SimulationVector3 groundNormal)
         {
-            groundHeight = 0f;
+            if (!TryFindWalkableGroundSurface(
+                    collisionWorld,
+                    settings,
+                    rootPosition,
+                    maximumRise,
+                    maximumDrop,
+                    queryBuffer,
+                    out var surfaceHeight,
+                    out groundNormal))
+            {
+                groundHeight = 0f;
+                return false;
+            }
+
+            groundHeight = CalculateCapsuleSupportHeight(
+                surfaceHeight,
+                groundNormal,
+                settings.Radius);
+            return true;
+        }
+
+        public static bool TryFindWalkableGroundSurface(
+            ICollisionWorld collisionWorld,
+            CharacterCollisionSettings settings,
+            SimulationVector3 rootPosition,
+            float maximumRise,
+            float maximumDrop,
+            CollisionQueryBuffer queryBuffer,
+            out float surfaceHeight,
+            out SimulationVector3 groundNormal)
+        {
+            surfaceHeight = 0f;
             groundNormal = SimulationVector3.Zero;
             var origin = new SimulationVector3(
                 rootPosition.X,
@@ -322,8 +353,32 @@ namespace ShooterMmo.GameSimulation
                 found = true;
             }
 
-            groundHeight = highest;
+            surfaceHeight = highest;
             return found;
+        }
+
+        public static float CalculateCapsuleSupportHeight(
+            float surfaceHeight,
+            SimulationVector3 groundNormal,
+            float capsuleRadius)
+        {
+            if (!IsFinite(surfaceHeight))
+            {
+                throw new ArgumentOutOfRangeException(nameof(surfaceHeight));
+            }
+
+            if (!SimulationVector3.IsFinite(groundNormal) || groundNormal.Y <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(groundNormal));
+            }
+
+            if (!IsFinite(capsuleRadius) || capsuleRadius <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(capsuleRadius));
+            }
+
+            return surfaceHeight
+                + (capsuleRadius * ((1f / groundNormal.Y) - 1f));
         }
 
         private static bool TryStepUp(
@@ -498,6 +553,11 @@ namespace ShooterMmo.GameSimulation
             var x = left.X - right.X;
             var z = left.Z - right.Z;
             return (x * x) + (z * z);
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 }

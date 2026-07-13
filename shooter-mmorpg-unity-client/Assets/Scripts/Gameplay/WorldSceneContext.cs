@@ -111,7 +111,9 @@ namespace ShooterMmo.Gameplay
                     remotePlayer.Initialize(
                         player.CharacterId,
                         movementSession.Settings.TickRateHz,
-                        delayTicks);
+                        delayTicks,
+                        movementSession.CollisionWorld,
+                        movementSession.Settings.CharacterCollision);
                     remotePlayers.Add(player.CharacterId, remotePlayer);
                 }
 

@@ -109,9 +109,10 @@ WorldServer and Unity. `GameSimulation.DotNet` compiles that exact source for
 the backend while Unity consumes it as the local
 `com.shootermmo.game-simulation` package.
 
-The shared simulation owns movement integration, sprint state, jump, gravity,
-facing, world bounds, the kinematic character capsule, collision queries, step
-handling, slope limits, and collision-data compilation. It contains no Unity
+The shared simulation owns movement integration, aim restrictions on sprint and
+jump, sprint state, gravity, facing, world bounds, the kinematic character
+capsule, collision queries, step handling, slope limits, and collision-data
+compilation. It contains no Unity
 dependencies and does not own network transport or presentation. This prevents
 the server and client prediction paths from drifting into separate movement or
 collision implementations.
@@ -278,15 +279,31 @@ session token and cannot release the newer lease.
    includes the latest processed input sequence.
 5. The owning client replaces its predicted base with the authoritative state,
    removes acknowledged inputs, and replays remaining inputs. Small visual
-   corrections are smoothed and large corrections are applied immediately.
-6. Other players are rendered from a snapshot buffer approximately 100 ms behind
-   the latest server tick so normal packet timing variation remains smooth.
+   corrections are smoothed and large corrections are applied immediately. A
+   local presentation state interpolates predicted fixed-tick poses at the
+   render frame rate, including the camera target, without changing simulation
+   authority or the commands sent to WorldServer.
+6. Other players advance through a snapshot buffer on a monotonic render clock
+   approximately 100 ms behind the latest server tick. New snapshot arrival only
+   extends the buffer and never bypasses interpolation by applying the newest
+   pose directly.
 
 The current baked collision set contains the test map ground, four boundaries,
 camera wall, ramp, three steps, and two cover objects. The same oriented-box
 queries and capsule motor run in WorldServer and local prediction. WorldServer
 snapshots remain authoritative and reconciliation corrects any float drift,
 packet loss, stale input, or untrusted client behavior.
+
+Walkable ground queries convert the authored surface height and normal into the
+exact vertical support height required by the collision capsule. This prevents a
+ground penetration correction from adding a downhill component while the player
+is idle. Unity removes the capsule's slope support offset from the interpolated
+render pose without overwriting its height with a discrete surface sample.
+Grounded steps and small drops receive a bounded 100 ms vertical presentation
+blend, while ramps, airborne movement, teleports, and large corrections remain
+direct. None of this changes the authoritative simulation position. Surfaces
+above the configured slope limit are excluded from ground support and remain
+collision obstacles.
 
 ## HTTP And Realtime Conventions
 

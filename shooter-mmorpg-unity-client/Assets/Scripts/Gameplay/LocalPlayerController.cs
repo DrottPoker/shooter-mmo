@@ -25,8 +25,15 @@ namespace ShooterMmo.Gameplay
         private bool isSprinting;
         private RealtimeWorldClient realtimeClient;
         private ClientMovementPrediction movementPrediction;
+        private readonly LocalMovementPresentation movementPresentation =
+            new LocalMovementPresentation();
+        private readonly CollisionQueryBuffer presentationGroundQuery =
+            new CollisionQueryBuffer();
+        private readonly GroundedVerticalPresentation groundedVerticalPresentation =
+            new GroundedVerticalPresentation();
         private MovementSimulationSettings networkSettings;
         private float networkTickAccumulator;
+        private bool isInitialNetworkTickPending;
         private uint nextInputSequence;
         private uint clientTick;
         private bool jumpQueued;
@@ -138,12 +145,15 @@ namespace ShooterMmo.Gameplay
                 worldClient.MovementSession.CollisionWorld);
             realtimeClient.WorldSnapshotReceived += OnWorldSnapshotReceived;
             networkTickAccumulator = 0f;
+            isInitialNetworkTickPending = true;
             nextInputSequence = 0;
             clientTick = 0;
             jumpQueued = false;
             reconciliationOffset = Vector3.zero;
             reconciliationYawOffset = 0f;
-            ApplyNetworkPresentation(movementPrediction.State);
+            groundedVerticalPresentation.Clear();
+            movementPresentation.Reset(movementPrediction.State);
+            ApplyNetworkPresentation(movementPresentation.State);
             return true;
         }
 
@@ -158,9 +168,11 @@ namespace ShooterMmo.Gameplay
             movementPrediction = null;
             networkSettings = null;
             networkTickAccumulator = 0f;
+            isInitialNetworkTickPending = false;
             jumpQueued = false;
             reconciliationOffset = Vector3.zero;
             reconciliationYawOffset = 0f;
+            groundedVerticalPresentation.Clear();
         }
 
         private void OnDestroy()
@@ -171,6 +183,17 @@ namespace ShooterMmo.Gameplay
         private void UpdateNetworkMovement()
         {
             jumpQueued |= playerInput.JumpPressedThisFrame;
+            if (playerInput.AimHeld)
+            {
+                jumpQueued = false;
+            }
+
+            if (isInitialNetworkTickPending)
+            {
+                PredictAndSendNetworkTick();
+                isInitialNetworkTickPending = false;
+            }
+
             networkTickAccumulator += Mathf.Min(Time.deltaTime, 0.25f);
             var processedTicks = 0;
             while (networkTickAccumulator >= networkSettings.FixedDeltaTime
@@ -196,7 +219,10 @@ namespace ShooterMmo.Gameplay
                 reconciliationYawOffset,
                 0f,
                 correctionBlend);
-            ApplyNetworkPresentation(movementPrediction.State);
+            movementPresentation.Advance(
+                Time.deltaTime,
+                networkSettings.FixedDeltaTime);
+            ApplyNetworkPresentation(movementPresentation.State);
         }
 
         private void PredictAndSendNetworkTick()
@@ -209,20 +235,21 @@ namespace ShooterMmo.Gameplay
 
             var move = Vector2.ClampMagnitude(playerInput.Move, 1f);
             var buttons = PlayerMovementButtons.None;
-            if (playerInput.SprintHeld)
+            var isAiming = playerInput.AimHeld;
+            if (isAiming)
+            {
+                jumpQueued = false;
+                buttons |= PlayerMovementButtons.Aim;
+            }
+            else if (playerInput.SprintHeld)
             {
                 buttons |= PlayerMovementButtons.Sprint;
             }
 
-            if (jumpQueued)
+            if (!isAiming && jumpQueued)
             {
                 buttons |= PlayerMovementButtons.Jump;
                 jumpQueued = false;
-            }
-
-            if (playerInput.AimHeld)
-            {
-                buttons |= PlayerMovementButtons.Aim;
             }
 
             var cameraYaw = playerCamera != null
@@ -236,6 +263,7 @@ namespace ShooterMmo.Gameplay
                 cameraYaw,
                 buttons);
             movementPrediction.Predict(input);
+            movementPresentation.Retarget(movementPrediction.State);
             realtimeClient.TrySendMovementInputs(movementPrediction.CreateRedundantInputBatch());
         }
 
@@ -287,11 +315,14 @@ namespace ShooterMmo.Gameplay
                 previous.PositionZ - corrected.PositionZ);
             if (positionError.magnitude >= HardReconciliationDistance)
             {
+                movementPresentation.Reset(corrected);
+                groundedVerticalPresentation.Clear();
                 reconciliationOffset = Vector3.zero;
                 reconciliationYawOffset = 0f;
                 return;
             }
 
+            movementPresentation.ApplySimulationCorrection(corrected);
             reconciliationOffset += positionError;
             reconciliationYawOffset += Mathf.DeltaAngle(
                 corrected.YawDegrees,
@@ -304,6 +335,36 @@ namespace ShooterMmo.Gameplay
                 state.PositionX,
                 state.PositionY,
                 state.PositionZ) + reconciliationOffset;
+            var movementSession = realtimeClient != null
+                ? realtimeClient.MovementSession
+                : null;
+            var shouldSmoothGroundedHeight = false;
+            if (movementSession != null
+                && GroundedMovementPresentation.TryGetVisualHeight(
+                    position.x,
+                    position.y,
+                    position.z,
+                    state.IsGrounded,
+                    movementSession.CollisionWorld,
+                    networkSettings.CharacterCollision,
+                    presentationGroundQuery,
+                    out var visualHeight,
+                    out var groundNormal))
+            {
+                position.y = visualHeight;
+                shouldSmoothGroundedHeight = GroundedMovementPresentation.IsFlatGround(
+                    groundNormal);
+            }
+
+            var maximumSmoothDistance = networkSettings.CharacterCollision.StepHeight
+                + networkSettings.CharacterCollision.GroundSnapDistance;
+            position.y = groundedVerticalPresentation.Update(
+                position.y,
+                state.IsGrounded && shouldSmoothGroundedHeight,
+                maximumSmoothDistance,
+                GroundedMovementPresentation.StepSmoothingDurationSeconds,
+                Time.deltaTime);
+
             var yaw = state.YawDegrees + reconciliationYawOffset;
             characterBody.Teleport(position, Quaternion.Euler(0f, yaw, 0f));
             verticalVelocity = state.VelocityY;
@@ -318,6 +379,7 @@ namespace ShooterMmo.Gameplay
             }
 
             characterBody.Teleport(position, rotation);
+            groundedVerticalPresentation.Clear();
             verticalVelocity = 0f;
             isSprinting = false;
         }
@@ -349,7 +411,7 @@ namespace ShooterMmo.Gameplay
 
         private void UpdateSprintState()
         {
-            if (!playerInput.SprintHeld)
+            if (playerInput.AimHeld || !playerInput.SprintHeld)
             {
                 isSprinting = false;
                 return;
@@ -410,7 +472,9 @@ namespace ShooterMmo.Gameplay
                 verticalVelocity = groundedVerticalVelocity;
             }
 
-            if (playerInput.JumpPressedThisFrame && characterController.isGrounded)
+            if (playerInput.JumpPressedThisFrame
+                && characterController.isGrounded
+                && !playerInput.AimHeld)
             {
                 verticalVelocity = jumpVelocity;
             }

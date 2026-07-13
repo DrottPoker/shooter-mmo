@@ -13,13 +13,14 @@ namespace ShooterMmo.Gameplay
         [SerializeField, Min(0f)] private float aimShoulderOffset = 1.3f;
         [SerializeField, Min(0f)] private float verticalOffset = 0.45f;
         [SerializeField, Min(0f)] private float aimVerticalOffset = 0.35f;
-        [SerializeField, Min(0.1f)] private float distance = 5.25f;
+        [SerializeField, Min(0.1f)] private float distance = 4.75f;
+        [SerializeField, Min(0.1f)] private float aimDistance = 4.25f;
         [SerializeField] private float mouseSensitivity = 0.12f;
         [SerializeField] private float initialPitch = 12f;
         [SerializeField] private float minPitch = -50f;
         [SerializeField] private float maxPitch = 75f;
         [SerializeField, Range(1f, 179f)] private float normalFieldOfView = 60f;
-        [SerializeField, Range(1f, 179f)] private float aimFieldOfView = 50f;
+        [SerializeField, Range(1f, 179f)] private float aimFieldOfView = 45f;
         [SerializeField, Min(0.01f)] private float aimTransitionSharpness = 12f;
         [SerializeField] private float collisionRadius = 0.25f;
         [SerializeField] private float collisionPadding = 0.1f;
@@ -34,6 +35,7 @@ namespace ShooterMmo.Gameplay
         private float pitch;
         private float currentShoulderOffset;
         private float currentVerticalOffset;
+        private float currentDistance;
         private float currentFieldOfView;
         private bool debugCursorReleased;
         private bool applicationHasFocus;
@@ -65,6 +67,7 @@ namespace ShooterMmo.Gameplay
 
             currentShoulderOffset = shoulderOffset;
             currentVerticalOffset = verticalOffset;
+            currentDistance = distance;
             currentFieldOfView = normalFieldOfView;
             controlledCamera.fieldOfView = currentFieldOfView;
 
@@ -166,10 +169,12 @@ namespace ShooterMmo.Gameplay
             var blend = 1f - Mathf.Exp(-aimTransitionSharpness * Time.deltaTime);
             var targetShoulderOffset = isAiming ? aimShoulderOffset : shoulderOffset;
             var targetVerticalOffset = isAiming ? aimVerticalOffset : verticalOffset;
+            var targetDistance = isAiming ? aimDistance : distance;
             var targetFieldOfView = isAiming ? aimFieldOfView : normalFieldOfView;
 
             currentShoulderOffset = Mathf.Lerp(currentShoulderOffset, targetShoulderOffset, blend);
             currentVerticalOffset = Mathf.Lerp(currentVerticalOffset, targetVerticalOffset, blend);
+            currentDistance = Mathf.Lerp(currentDistance, targetDistance, blend);
             currentFieldOfView = Mathf.Lerp(currentFieldOfView, targetFieldOfView, blend);
             controlledCamera.fieldOfView = currentFieldOfView;
         }
@@ -178,7 +183,8 @@ namespace ShooterMmo.Gameplay
         {
             var focusPosition = target.position;
             var cameraRotation = Quaternion.Euler(pitch, yaw, 0f);
-            var desiredOffset = cameraRotation * new Vector3(currentShoulderOffset, 0f, -distance);
+            var desiredOffset = cameraRotation
+                * new Vector3(currentShoulderOffset, 0f, -currentDistance);
             desiredOffset += Vector3.up * currentVerticalOffset;
             if (desiredOffset.sqrMagnitude < 0.0001f)
             {

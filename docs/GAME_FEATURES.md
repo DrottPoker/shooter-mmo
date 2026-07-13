@@ -82,15 +82,30 @@ Status: Server-authoritative movement and test-map collision implemented
 - Camera-relative movement follows the current mouse-controlled view.
 - While aiming, the player faces the camera direction so lateral movement
   behaves as shooter strafing.
+- Aim cancels sprint and blocks both sprint and jump until Aim is released. The
+  shared simulation enforces this rule for prediction and WorldServer authority.
 - Movement uses a PlayerInput-owned Unity Input Actions asset.
-- The local player predicts each fixed input tick immediately.
+- The local player predicts each fixed input tick immediately. A separate local
+  presentation state interpolates those predictions at the render frame rate so
+  the player and camera do not move in 30 Hz steps.
 - WorldServer owns the accepted position, velocity, facing, grounded state, and
   sprint state.
 - WorldServer resolves the player capsule against the baked ground, boundaries,
   ramp, steps, cover, and camera test wall.
+- Walkable slopes up to the configured 45 degree limit hold a grounded character
+  in place when movement input stops. Steeper surfaces are not treated as ground.
+- The simulation capsule uses a slope-aware support height to avoid penetration
+  correction along the slope. Presentation removes only that geometric offset,
+  preserving render-frame interpolation instead of replacing it with the latest
+  surface height.
+- Grounded transitions over configured steps and small drops use an additional
+  100 ms vertical presentation blend. Jumping, airborne movement, steep surfaces,
+  teleports, and large corrections bypass this blend.
 - Authoritative snapshots acknowledge processed input sequences. The client
   replays remaining input and smooths small corrections.
-- Remote players are interpolated approximately 100 ms behind server time.
+- Remote players advance on a frame-rate render clock through a snapshot buffer
+  approximately 100 ms behind server time. Receiving a snapshot never renders
+  its newest position immediately.
 
 Gamepad bindings and player-configurable rebinding are not implemented yet.
 
@@ -105,8 +120,8 @@ point, including skin width, without moving the presentation hierarchy. Visual
 assets use a feet-at-zero convention below PlayerVisual, and spawn placement
 aligns the character root directly to the spawn point. Direct scene preview uses
 normal gravity and CharacterController collision without forced per-frame ground
-snapping. Authenticated play presents the shared predicted movement state at the
-same root convention.
+snapping. Authenticated play keeps simulation at the shared fixed tick rate and
+renders an interpolated presentation state at the same root convention.
 
 The current test map is baked into versioned collision chunks shared by the
 server and client prediction. Authenticated movement therefore collides with all

@@ -155,13 +155,14 @@ MonoBehaviour:
   aimShoulderOffset: 1.3
   verticalOffset: 0.45
   aimVerticalOffset: 0.35
-  distance: 5.25
+  distance: 4.75
+  aimDistance: 4.25
   mouseSensitivity: 0.12
   initialPitch: 12
   minPitch: -50
   maxPitch: 75
   normalFieldOfView: 60
-  aimFieldOfView: 50
+  aimFieldOfView: 45
   aimTransitionSharpness: 12
   collisionRadius: 0.25
   collisionPadding: 0.1

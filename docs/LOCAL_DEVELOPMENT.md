@@ -635,9 +635,11 @@ Camera and input test:
 4. Move the mouse without holding a mouse button and test the full upward and
    downward look range.
 5. Hold right mouse button and move sideways with A and D.
-6. Press F1, use the visible cursor, then press F1 again.
-7. Press F2 twice to hide and restore the World Debug panel.
-8. Walk with a wall between the camera target and desired camera position.
+6. While holding right mouse button, hold Shift and press Space while moving.
+7. Begin sprinting, then press and hold right mouse button.
+8. Press F1, use the visible cursor, then press F1 again.
+9. Press F2 twice to hide and restore the World Debug panel.
+10. Walk with a wall between the camera target and desired camera position.
 
 Expected result:
 
@@ -652,13 +654,16 @@ Expected result:
 - The camera can look substantially farther upward and downward without turning
   fully upside down.
 - Aim turns the player toward the camera heading and supports strafing.
+- Aim blocks sprint and jump. Entering Aim while sprinting immediately returns
+  movement to walk speed.
 - F1 releases pointer input without causing Aim, then restores captured shooter
   input.
 - Camera focus stays at the single `CameraTarget` height without the previous
   duplicated vertical offset.
 - Normal camera framing stays over the right shoulder.
-- Aim smoothly tightens the shoulder offset and changes FOV from 60 to 50.
-- Camera distance remains fixed and the mouse wheel does not change it.
+- Normal camera distance is 4.75 meters. Aim smoothly tightens the shoulder
+  offset, moves to 4.25 meters, and changes FOV from 60 to 45.
+- The mouse wheel does not change camera distance.
 - The camera moves in front of walls using a spherecast and returns to the desired
   distance when the obstruction clears.
 - The unarmed crosshair dot is centered while the cursor is captured and hidden
@@ -675,7 +680,8 @@ Server-authoritative movement test:
    Tick value.
 4. Move, rotate, sprint, jump, release movement, and change direction sharply.
 5. Walk into the four boundaries, CameraTestWall, LowCover, and HighCover.
-6. Walk up and down Ramp, then traverse Step01, Step02, and Step03.
+6. Walk up and down Ramp, release all movement input while standing halfway up,
+   wait for at least three seconds, then traverse Step01, Step02, and Step03.
 7. Watch the Unity Console and WorldServer terminal while moving for at least
    30 seconds.
 8. Stop WorldServer while the character is moving.
@@ -692,6 +698,12 @@ Expected result:
   protocol errors.
 - The capsule stops at walls and cover, follows the walkable ramp, and climbs
   the configured step heights in both the predicted and authoritative state.
+- Releasing movement input on Ramp leaves the character stationary, and the
+  rendered feet remain aligned with the ramp surface while moving and idle.
+- Step01, Step02, Step03, and short grounded drops transition smoothly instead
+  of snapping the rendered player or camera directly to each discrete height.
+- Jump takeoff, airborne falling, and landing from heights above the ground snap
+  range remain responsive and are not delayed by step presentation smoothing.
 - The client refuses to activate movement and reports a collision revision error
   if its baked world data differs from WorldServer.
 - Stopping WorldServer clears the active world session and returns the client to

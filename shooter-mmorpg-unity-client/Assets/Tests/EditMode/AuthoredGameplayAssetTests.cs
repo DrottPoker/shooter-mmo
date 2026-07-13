@@ -137,7 +137,9 @@ namespace ShooterMmo.Tests.EditMode
                 Assert.That(cameraProperties.FindProperty("aimVerticalOffset").floatValue,
                     Is.EqualTo(0.35f));
                 Assert.That(cameraProperties.FindProperty("distance").floatValue,
-                    Is.EqualTo(5.25f));
+                    Is.EqualTo(4.75f));
+                Assert.That(cameraProperties.FindProperty("aimDistance").floatValue,
+                    Is.EqualTo(4.25f));
                 Assert.That(cameraProperties.FindProperty("initialPitch").floatValue,
                     Is.EqualTo(12f));
                 Assert.That(cameraProperties.FindProperty("minPitch").floatValue,
@@ -147,7 +149,7 @@ namespace ShooterMmo.Tests.EditMode
                 Assert.That(cameraProperties.FindProperty("normalFieldOfView").floatValue,
                     Is.EqualTo(60f));
                 Assert.That(cameraProperties.FindProperty("aimFieldOfView").floatValue,
-                    Is.EqualTo(50f));
+                    Is.EqualTo(45f));
 
                 var bodyProperties = new SerializedObject(characterBody);
                 Assert.That(bodyProperties.FindProperty("controllerSkinWidthRatio").floatValue,

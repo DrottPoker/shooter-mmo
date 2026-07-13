@@ -97,6 +97,114 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void LocalPresentationInterpolatesPredictionAcrossRenderFrames()
+        {
+            var presentation = new LocalMovementPresentation();
+            presentation.Reset(State(0f, 350f));
+            presentation.Retarget(State(2f, 10f));
+
+            presentation.Advance(1f / 60f, 1f / 30f);
+
+            Assert.That(presentation.State.PositionX, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(presentation.State.YawDegrees, Is.EqualTo(0f).Within(0.0001f));
+
+            presentation.Advance(1f / 60f, 1f / 30f);
+
+            Assert.That(presentation.State.PositionX, Is.EqualTo(2f).Within(0.0001f));
+            Assert.That(presentation.State.YawDegrees, Is.EqualTo(10f).Within(0.0001f));
+        }
+
+        [Test]
+        public void LocalPresentationShiftsInFlightStateDuringReconciliation()
+        {
+            var presentation = new LocalMovementPresentation();
+            presentation.Reset(State(0f, 0f));
+            presentation.Retarget(State(2f, 20f));
+            presentation.Advance(1f / 60f, 1f / 30f);
+
+            presentation.ApplySimulationCorrection(State(1.5f, 10f));
+
+            Assert.That(presentation.State.PositionX, Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(presentation.State.YawDegrees, Is.EqualTo(0f).Within(0.0001f));
+
+            presentation.Advance(1f / 60f, 1f / 30f);
+
+            Assert.That(presentation.State.PositionX, Is.EqualTo(1.5f).Within(0.0001f));
+            Assert.That(presentation.State.YawDegrees, Is.EqualTo(10f).Within(0.0001f));
+        }
+
+        [Test]
+        public void GroundedPresentationRemovesSlopeSupportOffsetFromVisualHeight()
+        {
+            var world = LoadCollisionWorld();
+            var state = PlayerMovementSimulation.CreateInitialState(
+                Settings,
+                world,
+                0f,
+                0.6f,
+                -7f,
+                0f);
+            var queryBuffer = new CollisionQueryBuffer();
+
+            var found = GroundedMovementPresentation.TryGetVisualHeight(
+                state.PositionX,
+                state.PositionY,
+                state.PositionZ,
+                state.IsGrounded,
+                world,
+                Settings.CharacterCollision,
+                queryBuffer,
+                out var visualHeight,
+                out var groundNormal);
+
+            Assert.That(found, Is.True);
+            Assert.That(visualHeight, Is.LessThan(state.PositionY));
+            Assert.That(GroundedMovementPresentation.IsFlatGround(groundNormal), Is.False);
+        }
+
+        [Test]
+        public void GroundedVerticalPresentationSmoothsSmallStepHeightChanges()
+        {
+            var presentation = new GroundedVerticalPresentation();
+            presentation.Reset(0f);
+
+            var firstFrame = presentation.Update(
+                0.3f,
+                true,
+                0.75f,
+                GroundedMovementPresentation.StepSmoothingDurationSeconds,
+                1f / 60f);
+
+            Assert.That(firstFrame, Is.GreaterThan(0f));
+            Assert.That(firstFrame, Is.LessThan(0.3f));
+
+            for (var frame = 1; frame < 6; frame++)
+            {
+                presentation.Update(
+                    0.3f,
+                    true,
+                    0.75f,
+                    GroundedMovementPresentation.StepSmoothingDurationSeconds,
+                    1f / 60f);
+            }
+
+            Assert.That(presentation.CurrentHeight, Is.EqualTo(0.3f).Within(0.0031f));
+        }
+
+        [Test]
+        public void GroundedVerticalPresentationSnapsAirborneAndLargeChanges()
+        {
+            var presentation = new GroundedVerticalPresentation();
+            presentation.Reset(0f);
+
+            var airborne = presentation.Update(0.3f, false, 0.75f, 0.1f, 1f / 60f);
+            var largeCorrection = presentation.Update(2f, true, 0.75f, 0.1f, 1f / 60f);
+
+            Assert.That(airborne, Is.EqualTo(0.3f));
+            Assert.That(largeCorrection, Is.EqualTo(2f));
+        }
+
+        [Test]
         public void NetworkSessionRejectsDifferentCollisionRevision()
         {
             var accepted = new RealtimeJoinAccepted(

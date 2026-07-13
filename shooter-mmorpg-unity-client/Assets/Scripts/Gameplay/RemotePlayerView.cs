@@ -1,3 +1,4 @@
+using System;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Networking;
@@ -10,10 +11,18 @@ namespace ShooterMmo.Gameplay
     {
         private readonly RemoteMovementInterpolation interpolation =
             new RemoteMovementInterpolation();
+        private readonly CollisionQueryBuffer presentationGroundQuery =
+            new CollisionQueryBuffer();
+        private readonly GroundedVerticalPresentation groundedVerticalPresentation =
+            new GroundedVerticalPresentation();
 
         private int tickRateHz;
         private int interpolationDelayTicks;
         private float latestSnapshotReceivedAt;
+        private double renderServerTick;
+        private bool isRenderClockInitialized;
+        private ICollisionWorld collisionWorld;
+        private CharacterCollisionSettings collisionSettings;
 
         public string CharacterId { get; private set; }
 
@@ -22,12 +31,22 @@ namespace ShooterMmo.Gameplay
             get { return Time.realtimeSinceStartup - latestSnapshotReceivedAt; }
         }
 
-        public void Initialize(string characterId, int simulationTickRateHz, int delayTicks)
+        public void Initialize(
+            string characterId,
+            int simulationTickRateHz,
+            int delayTicks,
+            ICollisionWorld worldCollision,
+            CharacterCollisionSettings characterCollision)
         {
             CharacterId = characterId;
             tickRateHz = Mathf.Max(1, simulationTickRateHz);
             interpolationDelayTicks = Mathf.Max(1, delayTicks);
+            collisionWorld = worldCollision;
+            collisionSettings = characterCollision;
+            groundedVerticalPresentation.Clear();
             latestSnapshotReceivedAt = Time.realtimeSinceStartup;
+            renderServerTick = 0d;
+            isRenderClockInitialized = false;
             name = "RemotePlayer_" + characterId;
         }
 
@@ -48,25 +67,32 @@ namespace ShooterMmo.Gameplay
                 state.YawDegrees,
                 state.IsGrounded,
                 state.IsSprinting);
+            var wasEmpty = interpolation.Count == 0;
             if (!interpolation.Push(serverTick, movementState))
             {
                 return;
             }
 
             latestSnapshotReceivedAt = Time.realtimeSinceStartup;
-            ApplyInterpolatedState(interpolation.LatestServerTick);
+            if (wasEmpty)
+            {
+                renderServerTick = interpolation.LatestServerTick - interpolationDelayTicks;
+                isRenderClockInitialized = true;
+                ApplyInterpolatedState(renderServerTick);
+            }
         }
 
         private void Update()
         {
-            if (interpolation.Count == 0)
+            if (interpolation.Count == 0 || !isRenderClockInitialized)
             {
                 return;
             }
 
-            var elapsedTicks = (Time.realtimeSinceStartup - latestSnapshotReceivedAt) * tickRateHz;
-            var targetTick = interpolation.LatestServerTick + elapsedTicks - interpolationDelayTicks;
-            ApplyInterpolatedState(targetTick);
+            renderServerTick = Math.Min(
+                renderServerTick + (Time.deltaTime * tickRateHz),
+                interpolation.LatestServerTick);
+            ApplyInterpolatedState(renderServerTick);
         }
 
         private void ApplyInterpolatedState(double targetTick)
@@ -76,8 +102,36 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
+            var position = new Vector3(state.PositionX, state.PositionY, state.PositionZ);
+            var shouldSmoothGroundedHeight = false;
+            if (GroundedMovementPresentation.TryGetVisualHeight(
+                    position.x,
+                    position.y,
+                    position.z,
+                    state.IsGrounded,
+                    collisionWorld,
+                    collisionSettings,
+                    presentationGroundQuery,
+                    out var visualHeight,
+                    out var groundNormal))
+            {
+                position.y = visualHeight;
+                shouldSmoothGroundedHeight = GroundedMovementPresentation.IsFlatGround(
+                    groundNormal);
+            }
+
+            var maximumSmoothDistance = collisionSettings != null
+                ? collisionSettings.StepHeight + collisionSettings.GroundSnapDistance
+                : 0f;
+            position.y = groundedVerticalPresentation.Update(
+                position.y,
+                state.IsGrounded && shouldSmoothGroundedHeight,
+                maximumSmoothDistance,
+                GroundedMovementPresentation.StepSmoothingDurationSeconds,
+                Time.deltaTime);
+
             transform.SetPositionAndRotation(
-                new Vector3(state.PositionX, state.PositionY, state.PositionZ),
+                position,
                 Quaternion.Euler(0f, state.YawDegrees, 0f));
         }
     }

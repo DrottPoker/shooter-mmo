@@ -274,6 +274,17 @@ the root directly at the requested ground position. A future network or AI
 movement driver can therefore reuse the same body without depending on local
 input.
 
+Authenticated movement keeps a separate collision pose and rendered pose on
+walkable slopes. The shared motor stores the slope-aware capsule support height
+needed to avoid penetration and downhill drift. `GroundedMovementPresentation`
+queries the same baked collision world and removes the geometric slope support
+offset from local and remote render poses without replacing their interpolated
+height. Its `GroundedVerticalPresentation` applies a bounded 100 ms blend to
+small height changes on flat walkable support, covering steps and short grounded
+drops. Ramps, jumps, airborne movement, teleports, and large corrections bypass
+this extra blend. Presentation never feeds back into prediction, reconciliation,
+input packets, or WorldServer state.
+
 `LocalPlayerController` has two explicit execution paths. Direct scene preview
 uses the existing CharacterController path for local map and camera testing. An
 authenticated world session uses `ClientMovementPrediction` and the exact shared
@@ -289,8 +300,11 @@ command receives an input sequence and client tick. The local state is predicted
 immediately and up to four newest unacknowledged commands are sent in each batch.
 On an authoritative snapshot, `ClientMovementPrediction` removes acknowledged
 commands, starts from the server state, and replays the remaining commands.
-`LocalPlayerController` smooths corrections smaller than three meters and applies
-larger corrections immediately. The shared simulation source is installed as
+`LocalMovementPresentation` interpolates consecutive predicted states at the
+render frame rate, while `LocalPlayerController` smooths reconciliation
+corrections smaller than three meters and applies larger corrections immediately.
+The presentation interpolation never feeds positions back into input packets or
+the shared simulation. The shared simulation source is installed as
 `com.shootermmo.game-simulation` and contains no Unity dependencies.
 
 `UnityWorldCollisionLoader` loads the selected world's manifest and all current
@@ -311,19 +325,21 @@ authority.
 
 `RemotePlayerView` is presentation-only. It has no input, camera, audio listener,
 rigidbody, or collider. It buffers server states in
-`RemoteMovementInterpolation` and renders approximately 100 ms behind the latest
-server tick. A remote view is removed if no snapshot containing that character
-arrives for three seconds.
+`RemoteMovementInterpolation` and advances a monotonic frame-rate render clock
+approximately 100 ms behind the latest server tick. Snapshot arrival extends the
+buffer without applying the newest pose directly. A remote view is removed if no
+snapshot containing that character arrives for three seconds.
 
 `ThirdPersonCameraController` consumes look input continuously while the gameplay
 cursor is captured. F1 switches between captured shooter input and a released
 debug cursor. The component and Camera live on the LocalPlayerCamera child owned
 by the LocalPlayer prefab. Normal framing uses a 1.1 meter right-shoulder offset,
-a 0.45 meter vertical offset, a 5.25 meter follow distance, and a 12 degree
-initial pitch. Aim changes the offsets to 1.3 and 0.35 meters and reduces FOV
-from 60 to 50 degrees using a frame-rate-independent transition. Camera distance
-is fixed and mouse-wheel zoom is not supported. Vertical input is clamped from
--50 to 75 degrees. Camera orbit uses the single CameraTarget pivot. A
+a 0.45 meter vertical offset, a 4.75 meter follow distance, and a 12 degree
+initial pitch. Aim changes the offsets to 1.3 and 0.35 meters, moves the camera
+to 4.25 meters, and reduces FOV from 60 to 45 degrees using a
+frame-rate-independent transition. Player-controlled camera zoom is not
+supported. Vertical input is clamped from -50 to 75 degrees. Camera orbit uses
+the single CameraTarget pivot. A
 non-allocating spherecast follows the complete offset camera path, moves the
 camera in front of obstructions, and filters the local player hierarchy.
 

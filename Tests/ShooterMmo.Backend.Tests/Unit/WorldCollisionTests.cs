@@ -105,6 +105,106 @@ public sealed class WorldCollisionTests
     }
 
     [Fact]
+    public void WalkableRampHoldsIdleCharacterInPlace()
+    {
+        var world = CompileWorld(
+            Ground(),
+            Box(
+                "Test/Ramp",
+                0f,
+                0.4f,
+                -7f,
+                2.5f,
+                0.25f,
+                4f,
+                0.10452846f,
+                0f,
+                0f,
+                0.9945219f));
+        var state = PlayerMovementSimulation.CreateInitialState(
+            MovementSettings,
+            world,
+            0f,
+            0f,
+            -2f,
+            180f);
+
+        for (var tick = 0; tick < 18; tick++)
+        {
+            state = PlayerMovementSimulation.Step(
+                state,
+                Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None, 180f),
+                MovementSettings,
+                world);
+        }
+
+        var restingX = state.PositionX;
+        var restingY = state.PositionY;
+        var restingZ = state.PositionZ;
+        for (var tick = 0; tick < 60; tick++)
+        {
+            state = PlayerMovementSimulation.Step(
+                state,
+                Input((uint)(tick + 19), 0f, 0f, PlayerMovementButtons.None, 180f),
+                MovementSettings,
+                world);
+        }
+
+        Assert.True(state.IsGrounded);
+        Assert.InRange(Math.Abs(state.PositionX - restingX), 0f, 0.0001f);
+        Assert.InRange(Math.Abs(state.PositionY - restingY), 0f, 0.0001f);
+        Assert.InRange(Math.Abs(state.PositionZ - restingZ), 0f, 0.0001f);
+
+        var queryBuffer = new CollisionQueryBuffer();
+        Assert.True(KinematicCharacterMotor.TryFindWalkableGroundSurface(
+            world,
+            MovementSettings.CharacterCollision,
+            new SimulationVector3(state.PositionX, state.PositionY, state.PositionZ),
+            0f,
+            MovementSettings.CharacterCollision.GroundSnapDistance
+                + MovementSettings.CharacterCollision.Radius,
+            queryBuffer,
+            out var surfaceHeight,
+            out var groundNormal));
+        var expectedSupportHeight = KinematicCharacterMotor.CalculateCapsuleSupportHeight(
+            surfaceHeight,
+            groundNormal,
+            MovementSettings.CharacterCollision.Radius);
+        Assert.InRange(Math.Abs(state.PositionY - expectedSupportHeight), 0f, 0.0001f);
+        Assert.True(state.PositionY > surfaceHeight);
+    }
+
+    [Fact]
+    public void RampAboveSlopeLimitIsNotWalkableGround()
+    {
+        var world = CompileWorld(Box(
+            "Test/SteepRamp",
+            0f,
+            0.4f,
+            -7f,
+            2.5f,
+            0.25f,
+            4f,
+            0.4617486f,
+            0f,
+            0f,
+            0.8870108f));
+        var queryBuffer = new CollisionQueryBuffer();
+
+        var found = KinematicCharacterMotor.TryFindWalkableGroundSurface(
+            world,
+            MovementSettings.CharacterCollision,
+            new SimulationVector3(0f, 2f, -7f),
+            0f,
+            4f,
+            queryBuffer,
+            out _,
+            out _);
+
+        Assert.False(found);
+    }
+
+    [Fact]
     public void AuthoritativeCapsuleClimbsConfiguredSteps()
     {
         var world = CompileWorld(

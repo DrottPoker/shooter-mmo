@@ -94,6 +94,59 @@ public sealed class PlayerMovementSimulationTests
     }
 
     [Fact]
+    public void AimCancelsSprintAndUsesWalkSpeed()
+    {
+        var grounded = CreateInitialState(0f, 0f, 0f);
+        var sprinting = PlayerMovementSimulation.Step(
+            grounded,
+            new PlayerMovementInput(
+                1,
+                1,
+                0f,
+                1f,
+                0f,
+                PlayerMovementButtons.Sprint),
+            Settings,
+            CollisionWorld);
+
+        var aiming = PlayerMovementSimulation.Step(
+            sprinting,
+            new PlayerMovementInput(
+                2,
+                2,
+                0f,
+                1f,
+                0f,
+                PlayerMovementButtons.Sprint | PlayerMovementButtons.Aim),
+            Settings,
+            CollisionWorld);
+
+        Assert.False(aiming.IsSprinting);
+        Assert.Equal(Settings.WalkSpeed, aiming.VelocityZ);
+    }
+
+    [Fact]
+    public void AimBlocksJumpEvenWhenJumpFlagIsSet()
+    {
+        var grounded = CreateInitialState(0f, 0f, 0f);
+        var aimingAndJumping = PlayerMovementSimulation.Step(
+            grounded,
+            new PlayerMovementInput(
+                1,
+                1,
+                0f,
+                0f,
+                0f,
+                PlayerMovementButtons.Aim | PlayerMovementButtons.Jump),
+            Settings,
+            CollisionWorld);
+
+        Assert.True(aimingAndJumping.IsGrounded);
+        Assert.Equal(Settings.GroundedVerticalVelocity, aimingAndJumping.VelocityY);
+        Assert.Equal(grounded.PositionY, aimingAndJumping.PositionY);
+    }
+
+    [Fact]
     public void WorldBoundsClampAuthoritativePosition()
     {
         var initial = CreateInitialState(13.95f, 0f, 0f);

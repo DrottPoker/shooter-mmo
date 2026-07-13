@@ -145,6 +145,8 @@ Status: Fixed-tick movement and authored collision implemented
 - World snapshots are emitted at a validated 15 Hz by default.
 - Each input command carries an unsigned sequence, client tick, normalized move
   vector, camera yaw, and bounded button flags.
+- Aim is an authoritative movement state modifier. It cancels sprint and causes
+  WorldServer to ignore sprint and jump flags until Aim is released.
 - Clients send up to four current unacknowledged inputs per batch. WorldServer
   ignores duplicate and older sequences and preserves a jump edge until the next
   simulation tick.
@@ -165,6 +167,9 @@ Status: Fixed-tick movement and authored collision implemented
   fall speeds from tunneling through thin authored objects.
 - Walkable rotated ramps, configured steps, walls, cover, ground, ceilings, and
   map boundaries are resolved by the shared kinematic motor.
+- Walkable ramps use slope-aware capsule support heights, preventing stationary
+  characters from being pushed downhill by penetration resolution. Surfaces
+  above the configured slope limit are not accepted as ground support.
 - Authoritative snapshots correct client prediction through acknowledged-input
   replay and reconciliation.
 

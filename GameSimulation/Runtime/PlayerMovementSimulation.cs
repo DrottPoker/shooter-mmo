@@ -376,7 +376,7 @@ namespace ShooterMmo.GameSimulation
 
             var isGrounded = state.IsGrounded;
             var isSprinting = state.IsSprinting;
-            if (!input.SprintHeld)
+            if (input.AimHeld || !input.SprintHeld)
             {
                 isSprinting = false;
             }
@@ -398,7 +398,7 @@ namespace ShooterMmo.GameSimulation
                     velocity.Z);
             }
 
-            if (input.JumpPressed && isGrounded)
+            if (input.JumpPressed && isGrounded && !input.AimHeld)
             {
                 velocity = new SimulationVector3(
                     velocity.X,
