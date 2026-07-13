@@ -20,41 +20,56 @@ public sealed class WorldSessionHeartbeatService(
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            foreach (var session in sessionStore.ListActiveSessions())
-            {
-                await HeartbeatAsync(session, stoppingToken);
-            }
+            await RunBoundedAsync(
+                sessionStore.ListActiveSessions(),
+                HeartbeatAsync,
+                stoppingToken);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        foreach (var session in sessionStore.ListActiveSessions())
-        {
-            try
+        await RunBoundedAsync(
+            sessionStore.ListActiveSessions(),
+            async (session, token) =>
             {
-                var result = await releaseService.ReleaseAsync(session, cancellationToken);
-
-                if (result.Succeeded)
+                try
                 {
-                    continue;
-                }
+                    var result = await releaseService.ReleaseAsync(session, token);
 
-                logger.LogWarning(
-                    "Could not release world session {WorldSessionId} during shutdown: {Code}.",
-                    session.WorldSessionId,
-                    result.Code);
-            }
-            catch (Exception exception) when (IsExpectedTransportException(exception))
-            {
-                logger.LogWarning(
-                    exception,
-                    "Could not release world session {WorldSessionId} during shutdown.",
-                    session.WorldSessionId);
-            }
-        }
+                    if (result.Succeeded)
+                    {
+                        return;
+                    }
+
+                    logger.LogWarning(
+                        "Could not release world session {WorldSessionId} during shutdown: {Code}.",
+                        session.WorldSessionId,
+                        result.Code);
+                }
+                catch (Exception exception) when (IsExpectedTransportException(exception))
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Could not release world session {WorldSessionId} during shutdown.",
+                        session.WorldSessionId);
+                }
+            },
+            cancellationToken);
 
         await base.StopAsync(cancellationToken);
+    }
+
+    private Task RunBoundedAsync(
+        IEnumerable<ActivePlayerSession> sessions,
+        Func<ActivePlayerSession, CancellationToken, Task> operation,
+        CancellationToken cancellationToken)
+    {
+        return BoundedAsync.ForEachAsync(
+            sessions,
+            config.WorldSessionHeartbeatMaxConcurrency,
+            operation,
+            cancellationToken);
     }
 
     private async Task HeartbeatAsync(

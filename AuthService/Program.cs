@@ -4,14 +4,29 @@ using AuthService.Characters;
 using AuthService.Config;
 using AuthService.Database;
 using AuthService.Health;
+using AuthService.Http;
 using AuthService.Worlds;
 using Microsoft.AspNetCore.Authentication;
 using Npgsql;
 using ShooterMmo.Shared.Configuration;
-using ShooterMmo.Shared.Http;
 
-var builder = WebApplication.CreateBuilder(args);
-builder.Configuration.AddOptionalDotEnvFile(builder.Environment.ContentRootPath);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
+builder.Configuration
+    .AddJsonFile(
+        Path.Combine("Config", "appsettings.json"),
+        optional: false,
+        reloadOnChange: true)
+    .AddJsonFile(
+        Path.Combine(
+            "Config",
+            $"appsettings.{builder.Environment.EnvironmentName}.json"),
+        optional: true,
+        reloadOnChange: true);
+builder.Configuration.AddOptionalDotEnvFile(Directory.GetCurrentDirectory());
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 

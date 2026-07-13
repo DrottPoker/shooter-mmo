@@ -32,13 +32,14 @@ namespace ShooterMmo.Config
 
         public static ShooterMmoClientConfig Load()
         {
-            var config = Resources.Load<ShooterMmoClientConfig>("ShooterMmoClientConfig");
+            var config = Resources.Load<ShooterMmoClientConfig>("Config/ShooterMmoClientConfig");
             if (config != null)
             {
                 return config;
             }
 
-            Debug.LogWarning("Resources/ShooterMmoClientConfig is missing. Using local fallback endpoints.");
+            Debug.LogWarning(
+                "Resources/Config/ShooterMmoClientConfig is missing. Using local fallback endpoints.");
             return CreateInstance<ShooterMmoClientConfig>();
         }
 

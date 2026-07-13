@@ -9,6 +9,7 @@ using WorldServer.Auth;
 using WorldServer.Config;
 using WorldServer.Entities;
 using WorldServer.Sessions;
+using WorldServer.WorldCollision;
 
 namespace WorldServer.Realtime;
 
@@ -22,12 +23,19 @@ public sealed class RealtimeServerService(
     RealtimeTransportReadiness transportReadiness,
     ChunkedStaticCollisionWorld staticCollisionWorld,
     ICollisionWorld collisionWorld,
-    ILogger<RealtimeServerService> logger) : BackgroundService
+    ILogger<RealtimeServerService> logger,
+    WorldCollisionStreamingStore? collisionStreamingStore = null,
+    WorldInterestManager? providedInterestManager = null,
+    RealtimeNetworkMetrics? providedNetworkMetrics = null) : BackgroundService
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
     private readonly Dictionary<int, PeerContext> peers = [];
     private readonly HashSet<Task> activeOperations = [];
     private readonly object activeOperationsLock = new();
+    private readonly WorldInterestManager interestManager =
+        providedInterestManager ?? new WorldInterestManager(config.InterestManagement);
+    private readonly RealtimeNetworkMetrics networkMetrics =
+        providedNetworkMetrics ?? new RealtimeNetworkMetrics();
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
@@ -104,8 +112,11 @@ public sealed class RealtimeServerService(
             server.Stop();
             server = null;
             peers.Clear();
+            interestManager.Clear();
             connectionBindings.Clear();
             entityRegistry.Clear();
+            networkMetrics.SetActivePeers(0);
+            networkMetrics.SetActiveEntities(0);
             await AwaitActiveOperationsAsync();
             logger.LogInformation("[WORLDSERVER] Realtime transport stopped.");
         }
@@ -113,7 +124,8 @@ public sealed class RealtimeServerService(
 
     private void HandlePeerConnected(NetPeer peer)
     {
-        peers[peer.Id] = new PeerContext(peer.Id, DateTime.UtcNow);
+        peers[peer.Id] = new PeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
+        networkMetrics.SetActivePeers(peers.Count);
         logger.LogInformation(
             "[WORLDSERVER] UDP peer {PeerId} connected from {EndPoint} and must authenticate before joining.",
             peer.Id,
@@ -126,6 +138,9 @@ public sealed class RealtimeServerService(
         {
             return;
         }
+
+        interestManager.RemoveConnection(peer.Id);
+        networkMetrics.SetActivePeers(peers.Count);
 
         if (context.Session is not null)
         {
@@ -153,6 +168,22 @@ public sealed class RealtimeServerService(
             }
 
             var packet = reader.GetRemainingBytes();
+            networkMetrics.RecordReceived(packet.Length);
+            if (context.DisconnectAfterUtc is not null)
+            {
+                return;
+            }
+
+            if (!context.Quota.TryConsumeInbound(packet.Length))
+            {
+                networkMetrics.RecordQuotaRejected();
+                RejectProtocol(
+                    peer,
+                    context,
+                    "udp_rate_limited",
+                    "The realtime connection exceeded its inbound UDP quota.");
+                return;
+            }
             if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType))
             {
                 RejectProtocol(peer, context, "invalid_packet", "Realtime packet header is invalid.");
@@ -270,19 +301,17 @@ public sealed class RealtimeServerService(
         if (!RealtimeProtocol.TryDecodeLeaveRequest(packet, out var worldSessionId, out var error)
             || !Guid.TryParse(worldSessionId, out var parsedSessionId))
         {
-            peer.Send(
-                RealtimeProtocol.EncodeLeaveRejected("invalid_leave_request", error),
-                DeliveryMethod.ReliableOrdered);
+            SendControl(peer, RealtimeProtocol.EncodeLeaveRejected("invalid_leave_request", error));
             return;
         }
 
         if (context.Session!.WorldSessionId != parsedSessionId)
         {
-            peer.Send(
+            SendControl(
+                peer,
                 RealtimeProtocol.EncodeLeaveRejected(
                     "world_session_changed",
-                    "The active world session no longer matches the leave request."),
-                DeliveryMethod.ReliableOrdered);
+                    "The active world session no longer matches the leave request."));
             return;
         }
 
@@ -392,11 +421,12 @@ public sealed class RealtimeServerService(
                 completed.Context.PeerId,
                 completed.Result.Error!.Code,
                 completed.Result.Error.Message);
-            peer.Send(
+            SendControl(
+                peer,
                 RealtimeProtocol.EncodeJoinRejected(
                     completed.Result.Error!.Code,
-                    completed.Result.Error.Message),
-                DeliveryMethod.ReliableOrdered);
+                    completed.Result.Error.Message));
+            networkMetrics.RecordJoinRejected();
             completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
             return;
         }
@@ -438,8 +468,13 @@ public sealed class RealtimeServerService(
         completed.Context.Session = session;
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActivePlayerSessionResponse.FromSession(session);
+        RebuildInterestIndex();
+        var joiningInterest = interestManager.Refresh(
+            completed.Context.PeerId,
+            entity.NetworkEntityId);
 
-        peer.Send(
+        SendControl(
+            peer,
             RealtimeProtocol.EncodeJoinAccepted(new RealtimeJoinAccepted(
                 response.WorldSessionId.ToString("D"),
                 response.AccountId.ToString("D"),
@@ -453,13 +488,11 @@ public sealed class RealtimeServerService(
                 response.SessionExpiresAt.ToString("O"),
                 response.IsReconnect,
                 ToRealtimeMovementSettings(),
-                ToRealtimePlayerState(entity.Movement.State))),
-            DeliveryMethod.ReliableOrdered);
-        SendEntityBaseline(peer);
-        if (registration.IsNewEntity)
-        {
-            BroadcastEntitySpawn(entity, completed.Context.PeerId);
-        }
+                ToRealtimePlayerState(entity.Movement.State))));
+        SendEntityBaseline(peer, joiningInterest.Visible);
+        RefreshInterests(completed.Context.PeerId);
+        networkMetrics.RecordJoinAccepted();
+        networkMetrics.SetActiveEntities(entityRegistry.ListPlayers().Count);
 
         logger.LogInformation(
             "[WORLDSERVER] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to world {WorldId}. World session {WorldSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
@@ -493,11 +526,11 @@ public sealed class RealtimeServerService(
                 completed.Result.Code,
                 completed.Result.Message);
             completed.Context.LeaveStarted = false;
-            peer.Send(
+            SendControl(
+                peer,
                 RealtimeProtocol.EncodeLeaveRejected(
                     completed.Result.Code!,
-                    completed.Result.Message!),
-                DeliveryMethod.ReliableOrdered);
+                    completed.Result.Message!));
             return;
         }
 
@@ -511,7 +544,7 @@ public sealed class RealtimeServerService(
             completed.Context.PeerId);
         RemoveBoundEntity(completed.Context, completed.Session, "left_world");
         completed.Context.Session = null;
-        peer.Send(RealtimeProtocol.EncodeLeaveAccepted(), DeliveryMethod.ReliableOrdered);
+        SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
         completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
     }
 
@@ -529,6 +562,8 @@ public sealed class RealtimeServerService(
             {
                 serverTick++;
             }
+
+            RefreshCollisionStreaming();
 
             foreach (var entity in entityRegistry.ListPlayers())
             {
@@ -556,7 +591,7 @@ public sealed class RealtimeServerService(
 
     private void BroadcastWorldSnapshots()
     {
-        var entitySnapshots = entityRegistry.ListPlayers()
+        var entitySnapshotsById = entityRegistry.ListPlayers()
             .Where(entity => connectionBindings.TryGetConnectionId(
                 entity.NetworkEntityId,
                 out _))
@@ -564,39 +599,62 @@ public sealed class RealtimeServerService(
                 entity.NetworkEntityId,
                 entity.Movement.LastProcessedInputSequence,
                 ToRealtimePlayerState(entity.Movement.State)))
-            .ToArray();
-        if (entitySnapshots.Length == 0)
+            .ToDictionary(snapshot => snapshot.EntityId);
+        if (entitySnapshotsById.Count == 0)
         {
             return;
         }
+
+        RebuildInterestIndex();
+        RefreshInterests(null);
 
         unchecked
         {
             snapshotSequence++;
         }
 
-        var chunkCount = (ushort)Math.Ceiling(
-            entitySnapshots.Length / (double)RealtimeProtocol.MaximumSnapshotEntitiesPerChunk);
-        for (ushort chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
+        foreach (var context in peers.Values)
         {
-            var entities = entitySnapshots
-                .Skip(chunkIndex * RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
-                .Take(RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
-                .ToArray();
-            var packet = RealtimeProtocol.EncodeWorldSnapshot(new RealtimeWorldSnapshot(
-                snapshotSequence,
-                serverTick,
-                chunkIndex,
-                chunkCount,
-                entities));
-
-            foreach (var context in peers.Values)
+            if (context.Session is null
+                || !connectionBindings.TryGetEntityId(context.PeerId, out _)
+                || !TryGetCurrentPeer(context, out var peer))
             {
-                if (context.Session is not null
-                    && connectionBindings.TryGetEntityId(context.PeerId, out _)
-                    && TryGetCurrentPeer(context, out var peer))
+                continue;
+            }
+
+            var entitySnapshots = interestManager.GetVisible(context.PeerId)
+                .Where(entitySnapshotsById.ContainsKey)
+                .Order()
+                .Select(entityId => entitySnapshotsById[entityId])
+                .ToArray();
+            if (entitySnapshots.Length == 0)
+            {
+                continue;
+            }
+
+            var chunkCount = (ushort)Math.Ceiling(
+                entitySnapshots.Length / (double)RealtimeProtocol.MaximumSnapshotEntitiesPerChunk);
+            for (ushort chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
+            {
+                var entities = entitySnapshots
+                    .Skip(chunkIndex * RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
+                    .Take(RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
+                    .ToArray();
+                var packet = RealtimeProtocol.EncodeWorldSnapshot(new RealtimeWorldSnapshot(
+                    snapshotSequence,
+                    serverTick,
+                    chunkIndex,
+                    chunkCount,
+                    entities));
+                if (context.Quota.TryConsumeSnapshot(packet.Length))
                 {
                     peer.Send(packet, DeliveryMethod.Unreliable);
+                    networkMetrics.RecordSent(packet.Length);
+                    networkMetrics.RecordSnapshotEntities(entities.Length);
+                }
+                else
+                {
+                    networkMetrics.RecordSnapshotDropped();
                 }
             }
         }
@@ -654,11 +712,11 @@ public sealed class RealtimeServerService(
 
         if (TryGetCurrentPeer(previousContext, out var previousPeer))
         {
-            previousPeer.Send(
+            SendControl(
+                previousPeer,
                 RealtimeProtocol.EncodeServerDisconnect(
                     "session_reconnected",
-                    "This character connected from another client."),
-                DeliveryMethod.ReliableOrdered);
+                    "This character connected from another client."));
             previousContext.Session = null;
             previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
@@ -705,11 +763,11 @@ public sealed class RealtimeServerService(
                     : new ActivePlayerSessionInvalidation(
                         "session_revoked",
                         "The world session is no longer active.");
-                peer.Send(
+                SendControl(
+                    peer,
                     RealtimeProtocol.EncodeServerDisconnect(
                         reason.Code,
-                        reason.Message),
-                    DeliveryMethod.ReliableOrdered);
+                        reason.Message));
                 RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
                 context.DisconnectAfterUtc = now.AddMilliseconds(250);
@@ -735,27 +793,41 @@ public sealed class RealtimeServerService(
         return false;
     }
 
-    private void SendEntityBaseline(NetPeer peer)
+    private void SendEntityBaseline(NetPeer peer, IReadOnlySet<ulong> visibleEntityIds)
     {
         foreach (var entity in entityRegistry.ListPlayers())
         {
-            peer.Send(
-                RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)),
-                DeliveryMethod.ReliableOrdered);
+            if (visibleEntityIds.Contains(entity.NetworkEntityId))
+            {
+                SendSpawn(peer, entity);
+            }
         }
     }
 
-    private void BroadcastEntitySpawn(PlayerWorldEntity entity, int excludedConnectionId)
+    private void RefreshInterests(int? excludedConnectionId)
     {
-        var packet = RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity));
         foreach (var context in peers.Values)
         {
-            if (context.PeerId != excludedConnectionId
-                && context.Session is not null
-                && connectionBindings.TryGetEntityId(context.PeerId, out _)
-                && TryGetCurrentPeer(context, out var peer))
+            if (context.PeerId == excludedConnectionId
+                || context.Session is null
+                || !connectionBindings.TryGetEntityId(context.PeerId, out var controlledEntityId)
+                || !TryGetCurrentPeer(context, out var peer))
             {
-                peer.Send(packet, DeliveryMethod.ReliableOrdered);
+                continue;
+            }
+
+            var update = interestManager.Refresh(context.PeerId, controlledEntityId);
+            foreach (var enteredEntityId in update.Entered)
+            {
+                if (entityRegistry.TryGetPlayer(enteredEntityId, out var enteredEntity))
+                {
+                    SendSpawn(peer, enteredEntity!);
+                }
+            }
+
+            foreach (var exitedEntityId in update.Exited)
+            {
+                SendDespawn(peer, exitedEntityId, "out_of_interest");
             }
         }
     }
@@ -765,16 +837,15 @@ public sealed class RealtimeServerService(
         string reason,
         int? excludedConnectionId)
     {
-        var packet = RealtimeProtocol.EncodeEntityDespawn(
-            new RealtimeEntityDespawn(entityId, reason));
-        foreach (var context in peers.Values)
+        var affectedConnections = interestManager.ForgetEntity(entityId);
+        foreach (var connectionId in affectedConnections)
         {
-            if (context.PeerId != excludedConnectionId
+            if (connectionId != excludedConnectionId
+                && peers.TryGetValue(connectionId, out var context)
                 && context.Session is not null
-                && connectionBindings.TryGetEntityId(context.PeerId, out _)
                 && TryGetCurrentPeer(context, out var peer))
             {
-                peer.Send(packet, DeliveryMethod.ReliableOrdered);
+                SendDespawn(peer, entityId, reason);
             }
         }
     }
@@ -795,6 +866,7 @@ public sealed class RealtimeServerService(
 
         connectionBindings.UnbindConnection(context.PeerId, out _);
         BroadcastEntityDespawn(entityId, reason, context.PeerId);
+        networkMetrics.SetActiveEntities(entityRegistry.ListPlayers().Count);
     }
 
     private void RemoveReplacedEntity(PlayerWorldEntity replacedEntity)
@@ -857,10 +929,56 @@ public sealed class RealtimeServerService(
             context.PeerId,
             code,
             message);
-        peer.Send(
-            RealtimeProtocol.EncodeServerDisconnect(code, message),
-            DeliveryMethod.ReliableOrdered);
+        SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
         context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+    }
+
+    private void RefreshCollisionStreaming()
+    {
+        if (collisionStreamingStore is null)
+        {
+            return;
+        }
+
+        var anchors = entityRegistry.ListPlayers()
+            .Select(entity => new SimulationVector3(
+                entity.Movement.State.PositionX,
+                entity.Movement.State.PositionY,
+                entity.Movement.State.PositionZ))
+            .Append(new SimulationVector3(
+                config.MovementSpawn.X,
+                config.MovementSpawn.Y,
+                config.MovementSpawn.Z));
+        collisionStreamingStore.Refresh(anchors);
+    }
+
+    private void RebuildInterestIndex()
+    {
+        interestManager.Rebuild(entityRegistry.ListPlayers().Select(entity =>
+            new WorldInterestEntity(
+                entity.NetworkEntityId,
+                entity.Movement.State.PositionX,
+                entity.Movement.State.PositionZ)));
+    }
+
+    private void SendSpawn(NetPeer peer, PlayerWorldEntity entity)
+    {
+        SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
+        networkMetrics.RecordSpawnPacket();
+    }
+
+    private void SendDespawn(NetPeer peer, ulong entityId, string reason)
+    {
+        SendControl(
+            peer,
+            RealtimeProtocol.EncodeEntityDespawn(new RealtimeEntityDespawn(entityId, reason)));
+        networkMetrics.RecordDespawnPacket();
+    }
+
+    private void SendControl(NetPeer peer, byte[] packet)
+    {
+        peer.Send(packet, DeliveryMethod.ReliableOrdered);
+        networkMetrics.RecordSent(packet.Length);
     }
 
     private void TrackOperation(Task operation)
@@ -897,11 +1015,16 @@ public sealed class RealtimeServerService(
         }
     }
 
-    private sealed class PeerContext(int peerId, DateTime connectedAtUtc)
+    private sealed class PeerContext(
+        int peerId,
+        DateTime connectedAtUtc,
+        UdpQuotaConfig quotaConfig)
     {
         public int PeerId { get; } = peerId;
 
         public DateTime ConnectedAtUtc { get; } = connectedAtUtc;
+
+        public UdpPeerQuota Quota { get; } = new(quotaConfig);
 
         public bool JoinStarted { get; set; }
 

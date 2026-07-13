@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    target-branch: development
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 5
+    groups:
+      dotnet-runtime:
+        patterns:
+          - "Microsoft.*"
+      test-tooling:
+        patterns:
+          - "xunit*"
+          - "coverlet.*"
+    labels:
+      - dependencies
+      - backend
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: development
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:30"
+      timezone: Europe/Stockholm
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - ci

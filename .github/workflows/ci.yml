@@ -39,6 +39,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Verify dependency policy
+        shell: pwsh
+        run: ./Tools/Verify-DependencyPolicy.ps1
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -70,5 +74,34 @@ jobs:
         with:
           name: backend-test-results
           path: TestResults
+          if-no-files-found: warn
+          retention-days: 14
+
+  unity:
+    name: Unity quality gate
+    if: vars.UNITY_CI_ENABLED == 'true'
+    runs-on: [self-hosted, Windows, X64, unity-6000.5.2f1]
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify dependency policy
+        shell: pwsh
+        run: ./Tools/Verify-DependencyPolicy.ps1
+
+      - name: Run Unity EditMode and PlayMode tests
+        shell: pwsh
+        env:
+          UNITY_EDITOR_PATH: ${{ vars.UNITY_EDITOR_PATH }}
+        run: ./Tools/Run-UnityTests.ps1
+
+      - name: Upload Unity test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-test-results
+          path: TestResults/Unity
           if-no-files-found: warn
           retention-days: 14

@@ -26,6 +26,18 @@ public sealed record WorldServerConfig(
     string RedisConnectionString,
     TimeSpan HealthCheckTimeout)
 {
+    public int WorldSessionHeartbeatMaxConcurrency { get; init; } = 8;
+
+    public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
+
+    public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
+
+    public InterestManagementConfig InterestManagement { get; init; } =
+        InterestManagementConfig.Default;
+
+    public CollisionStreamingConfig CollisionStreaming { get; init; } =
+        CollisionStreamingConfig.Default;
+
     public static WorldServerConfig FromConfiguration(IConfiguration configuration)
     {
         var errors = new List<string>();
@@ -192,9 +204,64 @@ public sealed record WorldServerConfig(
             First(section["WorldSessionHeartbeatSeconds"], configuration["WORLD_SESSION_HEARTBEAT_SECONDS"]),
             "WorldServer:WorldSessionHeartbeatSeconds",
             errors);
+        var sessionHeartbeatMaxConcurrency = PositiveInt(
+            section["WorldSessionHeartbeatMaxConcurrency"],
+            "WorldServer:WorldSessionHeartbeatMaxConcurrency",
+            errors);
         var registryHeartbeatSeconds = PositiveInt(
             First(section["WorldRegistryHeartbeatSeconds"], configuration["WORLD_REGISTRY_HEARTBEAT_SECONDS"]),
             "WorldServer:WorldRegistryHeartbeatSeconds",
+            errors);
+        var networkMetricsLogSeconds = PositiveInt(
+            section["NetworkMetricsLogSeconds"],
+            "WorldServer:NetworkMetricsLogSeconds",
+            errors);
+        var udpQuotaSection = section.GetSection("UdpQuotas");
+        var inboundPacketsPerSecond = PositiveInt(
+            udpQuotaSection["InboundPacketsPerSecond"],
+            "WorldServer:UdpQuotas:InboundPacketsPerSecond",
+            errors);
+        var inboundPacketBurst = PositiveInt(
+            udpQuotaSection["InboundPacketBurst"],
+            "WorldServer:UdpQuotas:InboundPacketBurst",
+            errors);
+        var inboundBytesPerSecond = PositiveInt(
+            udpQuotaSection["InboundBytesPerSecond"],
+            "WorldServer:UdpQuotas:InboundBytesPerSecond",
+            errors);
+        var inboundByteBurst = PositiveInt(
+            udpQuotaSection["InboundByteBurst"],
+            "WorldServer:UdpQuotas:InboundByteBurst",
+            errors);
+        var snapshotBytesPerSecond = PositiveInt(
+            udpQuotaSection["SnapshotBytesPerSecond"],
+            "WorldServer:UdpQuotas:SnapshotBytesPerSecond",
+            errors);
+        var snapshotByteBurst = PositiveInt(
+            udpQuotaSection["SnapshotByteBurst"],
+            "WorldServer:UdpQuotas:SnapshotByteBurst",
+            errors);
+        var interestSection = section.GetSection("InterestManagement");
+        var interestCellSize = FiniteFloat(
+            interestSection["CellSize"],
+            "WorldServer:InterestManagement:CellSize",
+            errors);
+        var interestEnterRadius = FiniteFloat(
+            interestSection["EnterRadius"],
+            "WorldServer:InterestManagement:EnterRadius",
+            errors);
+        var interestExitRadius = FiniteFloat(
+            interestSection["ExitRadius"],
+            "WorldServer:InterestManagement:ExitRadius",
+            errors);
+        var collisionStreamingSection = section.GetSection("CollisionStreaming");
+        var collisionLoadRadiusChunks = PositiveInt(
+            collisionStreamingSection["LoadRadiusChunks"],
+            "WorldServer:CollisionStreaming:LoadRadiusChunks",
+            errors);
+        var collisionUnloadRadiusChunks = PositiveInt(
+            collisionStreamingSection["UnloadRadiusChunks"],
+            "WorldServer:CollisionStreaming:UnloadRadiusChunks",
             errors);
         var healthTimeoutMilliseconds = PositiveInt(
             configuration["HealthChecks:TimeoutMilliseconds"],
@@ -228,6 +295,53 @@ public sealed record WorldServerConfig(
         if (networkPollIntervalMilliseconds > 1000)
         {
             errors.Add("WorldServer:NetworkPollIntervalMilliseconds must not exceed 1000.");
+        }
+
+        if (sessionHeartbeatMaxConcurrency > 128)
+        {
+            errors.Add("WorldServer:WorldSessionHeartbeatMaxConcurrency must not exceed 128.");
+        }
+
+        if (networkMetricsLogSeconds > 3_600)
+        {
+            errors.Add("WorldServer:NetworkMetricsLogSeconds must not exceed 3600.");
+        }
+
+        if (inboundPacketBurst < inboundPacketsPerSecond
+            || inboundByteBurst < inboundBytesPerSecond
+            || snapshotByteBurst < snapshotBytesPerSecond)
+        {
+            errors.Add("WorldServer UDP quota burst values must be greater than or equal to their sustained rates.");
+        }
+
+        if (inboundPacketsPerSecond > 10_000
+            || inboundBytesPerSecond > 16 * 1024 * 1024
+            || snapshotBytesPerSecond > 16 * 1024 * 1024
+            || inboundPacketBurst > 20_000
+            || inboundByteBurst > 32 * 1024 * 1024
+            || snapshotByteBurst > 32 * 1024 * 1024)
+        {
+            errors.Add("WorldServer UDP quota rates or bursts exceed the supported safety limits.");
+        }
+
+        if (interestCellSize <= 0f
+            || interestEnterRadius <= 0f
+            || interestExitRadius < interestEnterRadius
+            || interestCellSize > 4_096f
+            || interestExitRadius > 10_000f
+            || interestExitRadius / interestCellSize > 64f)
+        {
+            errors.Add("WorldServer interest management requires bounded positive radii, a positive cell size, an exit radius greater than or equal to the enter radius, and no more than 64 searched cells per axis direction.");
+        }
+
+        if (collisionUnloadRadiusChunks < collisionLoadRadiusChunks)
+        {
+            errors.Add("WorldServer:CollisionStreaming:UnloadRadiusChunks must be greater than or equal to LoadRadiusChunks.");
+        }
+
+        if (collisionUnloadRadiusChunks > 16)
+        {
+            errors.Add("WorldServer:CollisionStreaming:UnloadRadiusChunks must not exceed 16.");
         }
 
         if (snapshotRateHz > movementTickRateHz
@@ -330,7 +444,25 @@ public sealed record WorldServerConfig(
             TimeSpan.FromSeconds(sessionHeartbeatSeconds),
             TimeSpan.FromSeconds(registryHeartbeatSeconds),
             redis!,
-            TimeSpan.FromMilliseconds(healthTimeoutMilliseconds));
+            TimeSpan.FromMilliseconds(healthTimeoutMilliseconds))
+        {
+            WorldSessionHeartbeatMaxConcurrency = sessionHeartbeatMaxConcurrency,
+            NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
+            UdpQuotas = new UdpQuotaConfig(
+                inboundPacketsPerSecond,
+                inboundPacketBurst,
+                inboundBytesPerSecond,
+                inboundByteBurst,
+                snapshotBytesPerSecond,
+                snapshotByteBurst),
+            InterestManagement = new InterestManagementConfig(
+                interestCellSize,
+                interestEnterRadius,
+                interestExitRadius),
+            CollisionStreaming = new CollisionStreamingConfig(
+                collisionLoadRadiusChunks,
+                collisionUnloadRadiusChunks)
+        };
     }
 
     private static string? Require(string? value, string key, ICollection<string> errors)
@@ -397,3 +529,35 @@ public sealed record WorldServerConfig(
 }
 
 public sealed record MovementSpawnConfig(float X, float Y, float Z, float YawDegrees);
+
+public sealed record UdpQuotaConfig(
+    int InboundPacketsPerSecond,
+    int InboundPacketBurst,
+    int InboundBytesPerSecond,
+    int InboundByteBurst,
+    int SnapshotBytesPerSecond,
+    int SnapshotByteBurst)
+{
+    public static UdpQuotaConfig Default { get; } = new(
+        120,
+        240,
+        128 * 1024,
+        256 * 1024,
+        256 * 1024,
+        512 * 1024);
+}
+
+public sealed record InterestManagementConfig(
+    float CellSize,
+    float EnterRadius,
+    float ExitRadius)
+{
+    public static InterestManagementConfig Default { get; } = new(64f, 128f, 144f);
+}
+
+public sealed record CollisionStreamingConfig(
+    int LoadRadiusChunks,
+    int UnloadRadiusChunks)
+{
+    public static CollisionStreamingConfig Default { get; } = new(2, 3);
+}

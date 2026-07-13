@@ -18,6 +18,10 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     Args = args,
     ContentRootPath = AppContext.BaseDirectory
 });
+builder.Configuration.AddJsonFile(
+    Path.Combine("Config", "appsettings.json"),
+    optional: false,
+    reloadOnChange: true);
 builder.Configuration.AddOptionalDotEnvFile(Directory.GetCurrentDirectory());
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
@@ -26,13 +30,26 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = WorldServerConfig.FromConfiguration(builder.Configuration);
-var staticCollisionWorld = WorldCollisionLoader.Load(config);
+var collisionStreamingStore = WorldCollisionLoader.LoadStreaming(config);
+collisionStreamingStore.Refresh([
+    new SimulationVector3(
+        config.MovementSpawn.X,
+        config.MovementSpawn.Y,
+        config.MovementSpawn.Z)
+]);
+var staticCollisionWorld = collisionStreamingStore.CollisionWorld;
+if (staticCollisionWorld.ChunkCount == 0)
+{
+    throw new InvalidOperationException(
+        "No collision chunk is available around the configured movement spawn.");
+}
 var dynamicCollisionWorld = new DynamicCollisionWorld(staticCollisionWorld.ChunkSize);
 var collisionWorld = new CompositeCollisionWorld(
     staticCollisionWorld,
     dynamicCollisionWorld);
 
 builder.Services.AddSingleton(config);
+builder.Services.AddSingleton(collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);
 builder.Services.AddSingleton(dynamicCollisionWorld);
 builder.Services.AddSingleton(collisionWorld);
@@ -41,6 +58,8 @@ builder.Services.AddSingleton<ActivePlayerSessionStore>();
 builder.Services.AddSingleton<WorldEntityRegistry>();
 builder.Services.AddSingleton<ConnectionEntityBindingRegistry>();
 builder.Services.AddSingleton<RealtimeTransportReadiness>();
+builder.Services.AddSingleton(new WorldInterestManager(config.InterestManagement));
+builder.Services.AddSingleton<RealtimeNetworkMetrics>();
 builder.Services.AddSingleton(WorldServerInstanceIdentity.Create());
 builder.Services.AddTransient<AuthServiceAuthenticationHandler>();
 builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
@@ -54,6 +73,7 @@ builder.Services.AddSingleton<WorldServerHealthService>();
 builder.Services.AddHostedService<RealtimeServerService>();
 builder.Services.AddHostedService<WorldSessionHeartbeatService>();
 builder.Services.AddHostedService<WorldRegistryHeartbeatService>();
+builder.Services.AddHostedService<RealtimeMetricsReporterService>();
 
 using var host = builder.Build();
 
@@ -74,12 +94,14 @@ if (args.Contains("--health-check-only", StringComparer.OrdinalIgnoreCase))
 
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("WorldServer");
 logger.LogInformation(
-    "Starting {WorldServerId} as a headless .NET worker on UDP port {UdpPort}, advertising {AdvertisedHost}:{AdvertisedUdpPort}, with simulation revision {SimulationRevision} and collision revision {CollisionRevision}.",
+    "Starting {WorldServerId} as a headless .NET worker on UDP port {UdpPort}, advertising {AdvertisedHost}:{AdvertisedUdpPort}, with simulation revision {SimulationRevision}, collision revision {CollisionRevision}, and {LoadedCollisionChunks} of {AvailableCollisionChunks} collision chunks initially loaded.",
     config.WorldServerId,
     config.UdpPort,
     config.AdvertisedHost,
     config.AdvertisedUdpPort,
     GameSimulationCompatibility.Revision,
-    staticCollisionWorld.Revision);
+    staticCollisionWorld.Revision,
+    collisionStreamingStore.LoadedChunkCount,
+    collisionStreamingStore.AvailableChunkCount);
 
 await host.RunAsync();

@@ -11,8 +11,26 @@ namespace ShooterMmo.GameSimulation
         public ChunkedStaticCollisionWorld(
             string worldId,
             string revision,
+            float chunkSize)
+            : this(worldId, revision, chunkSize, Array.Empty<CollisionChunk>(), true)
+        {
+        }
+
+        public ChunkedStaticCollisionWorld(
+            string worldId,
+            string revision,
             float chunkSize,
             IEnumerable<CollisionChunk> collisionChunks)
+            : this(worldId, revision, chunkSize, collisionChunks, false)
+        {
+        }
+
+        private ChunkedStaticCollisionWorld(
+            string worldId,
+            string revision,
+            float chunkSize,
+            IEnumerable<CollisionChunk> collisionChunks,
+            bool allowEmpty)
         {
             if (string.IsNullOrWhiteSpace(worldId))
             {
@@ -41,7 +59,7 @@ namespace ShooterMmo.GameSimulation
                 }
             }
 
-            if (chunks.Count == 0)
+            if (!allowEmpty && chunks.Count == 0)
             {
                 throw new ArgumentException("Collision world must contain at least one chunk.", nameof(collisionChunks));
             }
@@ -90,6 +108,14 @@ namespace ShooterMmo.GameSimulation
             lock (syncRoot)
             {
                 return chunks.Remove(ChunkKey(x, z));
+            }
+        }
+
+        public bool IsChunkLoaded(int x, int z)
+        {
+            lock (syncRoot)
+            {
+                return chunks.ContainsKey(ChunkKey(x, z));
             }
         }
 

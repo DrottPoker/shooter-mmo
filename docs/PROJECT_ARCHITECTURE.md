@@ -46,6 +46,10 @@ AuthService owns:
 - HTTP authentication, authorization, rate limiting, Problem Details, and
   health routes.
 
+AuthService's ASP.NET-specific Problem Details, correlation-id, sensitive-cache,
+and exception pipeline lives in `AuthService/Http`. It is not a shared library
+because no other process consumes it.
+
 ### WorldServer
 
 `WorldServer` is a headless .NET Generic Host console application. It does not
@@ -58,13 +62,17 @@ WorldServer owns:
 - Join-ticket handshakes, world entity identity, and connection-to-entity
   ownership.
 - Reliable entity spawn and despawn lifecycle.
+- Spatial interest management with enter and exit hysteresis.
 - Fixed-rate authoritative player movement simulation.
-- Fail-fast loading and checksum validation of baked world collision chunks.
+- Fail-fast manifest and checksum validation plus position-driven loading of
+  baked world collision chunks.
 - Static and dynamic collision queries through one simulation interface.
 - Input sequence processing and periodic world snapshots.
 - Reconnect replacement for an older connection of the same character.
 - Exact-session leave and disconnect cleanup.
 - Periodic world registry and active-session heartbeats.
+- Bounded heartbeat concurrency, per-peer UDP quotas, and low-cardinality
+  realtime metrics.
 - Startup configuration and dependency validation.
 
 ### Shared Core
@@ -76,15 +84,11 @@ WorldServer owns:
 - Redis protocol health checks.
 - Common dependency and service health models.
 
-`Shared.Http/ShooterMmo.Shared.Http.csproj` contains ASP.NET-specific Problem
-Details, correlation-id, and API pipeline behavior. Only AuthService references
-this project.
-
 ### Realtime Game Protocol
 
 `GameProtocol/Runtime` is a local Unity package containing the versioned binary
-realtime contract. `GameProtocol.DotNet` compiles the same source for WorldServer
-and backend tests without placing .NET build output inside the Unity package.
+realtime contract. `Shared/DotNet/GameProtocol` compiles the same source for .NET
+tools and tests without putting build output inside the Unity package.
 
 Protocol version 5 currently defines:
 
@@ -111,8 +115,8 @@ message type and delivery method rather than a fictional third channel.
 ### Shared Game Simulation
 
 `GameSimulation/Runtime` contains the fixed-step movement rules used by both
-WorldServer and Unity. `GameSimulation.DotNet` compiles that exact source for
-the backend while Unity consumes it as the local
+WorldServer and Unity. `Shared/DotNet/GameSimulation` compiles that exact source
+for the backend while Unity consumes it as the local
 `com.shootermmo.game-simulation` package.
 
 The shared simulation owns movement integration, aim restrictions on sprint and
@@ -134,16 +138,17 @@ the complete collision set.
 `Tools/WorldCollisionCompiler` turns neutral JSON authoring data into the same
 binary chunks used by WorldServer and Unity. WorldServer copies the package data
 into its build output and validates the format, world id, checksums, chunk
-coordinates, and revision before opening its UDP socket. Unity loads the same
-resources before enabling prediction. A revision mismatch rejects the join on
-the client instead of simulating against different geometry.
+coordinates, and revision before opening its UDP socket. Unity reads the same
+manifest before enabling prediction and loads nearby chunks on demand. A
+revision mismatch rejects the join on the client instead of simulating against
+different geometry.
 
 Static boxes are assigned to every intersected chunk and deduplicated by stable
 id during queries. Movement contacts are sorted by stable id before resolution
 so server and client do not depend on dictionary or spatial-hash iteration
-order. Static chunks can be loaded and unloaded without changing the
-movement query contract, which leaves a clean boundary for later client and
-server streaming. Dynamic colliders use a mutable spatial hash behind the same
+order. Server and client use the shared chunk-coordinate planner to load an
+active radius around simulated entities and retain a larger hysteresis ring
+before unloading. Dynamic colliders use a mutable spatial hash behind the same
 `ICollisionWorld` interface. This allows doors, lifts, and other server-owned
 kinematic objects to be registered without replacing the static format. A later
 mesh or rigid-body backend can implement the same query boundary without moving
@@ -160,7 +165,8 @@ scene transitions, HTTP serialization, and the persistent UDP client. See
 
 `Tests/ShooterMmo.Backend.Tests` contains unit, socket-level realtime, and
 isolated PostgreSQL integration tests. Unity EditMode and PlayMode tests remain
-inside the Unity project.
+inside the Unity project and can run on the licensed Windows self-hosted CI
+runner.
 
 ## Data Ownership
 
@@ -299,16 +305,19 @@ session token and cannot release the newer lease.
    collision world. Clients send input, never accepted positions. If no newer
    input arrives for the configured timeout, WorldServer neutralizes movement
    and action buttons instead of replaying stale input indefinitely.
-4. WorldServer sends authoritative snapshots at 15 Hz. Each entity entry uses
-   its process-local network entity id and includes the latest processed input
-   sequence.
-5. The owning client replaces its predicted base with the authoritative state,
+4. WorldServer rebuilds a spatial hash from authoritative positions, applies
+   enter and exit radii per connection, and sends reliable spawn or despawn
+   transitions when visibility changes.
+5. WorldServer sends authoritative snapshots at 15 Hz. Each connection receives
+   only visible entity ids. Each entity entry includes the latest processed
+   input sequence.
+6. The owning client replaces its predicted base with the authoritative state,
    removes acknowledged inputs, and replays remaining inputs. Small visual
    corrections are smoothed and large corrections are applied immediately. A
    local presentation state interpolates predicted fixed-tick poses at the
    render frame rate, including the camera target, without changing simulation
    authority or the commands sent to WorldServer.
-6. Other players advance through a snapshot buffer on an adaptive monotonic
+7. Other players advance through a snapshot buffer on an adaptive monotonic
    render clock approximately 100 ms behind the latest server tick. It makes
    bounded speed corrections and restores its target delay after a network
    stall instead of keeping permanent extra latency.
@@ -318,6 +327,11 @@ camera wall, ramp, three steps, and two cover objects. The same oriented-box
 queries and capsule motor run in WorldServer and local prediction. WorldServer
 snapshots remain authoritative and reconciliation corrects any float drift,
 packet loss, stale input, or untrusted client behavior.
+
+Before each authoritative simulation tick, WorldServer loads collision chunks
+around the spawn anchor and all live entity positions. Unity maintains the same
+kind of active set around the local and visible remote positions. A larger
+retention radius avoids repeated unload and reload work at chunk boundaries.
 
 Walkable ground queries convert the authored surface height and normal into the
 exact vertical support height required by the collision capsule. This prevents a
@@ -345,6 +359,32 @@ and service authentication failures into structured realtime errors. Its health
 surface is the one-shot `--health-check-only` command because the process does
 not host an HTTP server.
 
+## Configuration Ownership
+
+Configuration follows the process that owns the behavior:
+
+- `AuthService/Config/appsettings.json` contains checked-in AuthService defaults.
+- `AuthService/Config/appsettings.Development.json` contains development-only
+  AuthService overrides.
+- `WorldServer/Config/appsettings.json` contains checked-in WorldServer defaults,
+  including authoritative movement, collision streaming, interest, and quotas.
+- `shooter-mmorpg-unity-client/Assets/Resources/Config/` contains runtime-loaded
+  Unity configuration assets. Their definitions live in `Assets/Scripts/Config`.
+- The ignored root `.env` contains local secrets and machine-specific overrides.
+  `.env.example` is the committed key contract.
+
+Both services load their owned JSON from their output `Config` directory, then
+apply root `.env`, real environment variables, and command-line arguments in
+that order. This keeps deployment overrides possible while making the committed
+default source easy to locate. Invalid application configuration fails before a
+service starts accepting work.
+
+Repository-wide build and orchestration configuration remains in root because it
+does not belong to one process. `Properties/launchSettings.json` also remains in
+each service's conventional .NET tooling directory. Unity scene references,
+prefab references, and map-authoring fields remain on their owning Unity assets.
+They are authored asset data rather than environment configuration.
+
 ## Operational Architecture
 
 Local PostgreSQL and Redis run through Docker Compose and bind only to
@@ -357,13 +397,21 @@ WorldServer startup validates collision data, then readiness checks Redis,
 AuthService readiness, and UDP port availability. `--health-check-only` exits
 with code 0 when all are ready and 1 otherwise.
 
+The UDP poll loop accounts inbound packets and bytes per peer. Sustained and
+burst token buckets disconnect abusive inbound traffic and may drop excess
+unreliable snapshot output without delaying reliable lifecycle control. A
+`System.Diagnostics.Metrics` meter and periodic structured log expose peer,
+entity, byte, packet, quota, join, lifecycle, and snapshot totals without
+account, character, session, or connection-id labels.
+
 ## Architectural Direction
 
 The collision format currently supports oriented boxes, which covers the
 authored test map. Triangle-mesh chunks for terrain and caves, dynamic-object
-replication, durable world simulation, interest management, bandwidth budgets,
-and combat remain later slices. Those additions extend the current chunk and
-query boundaries rather than replacing movement authority.
+replication, durable world simulation, cross-process spatial partitioning,
+production metric export, and combat remain later slices. Those additions
+extend the current chunk, interest, quota, and query boundaries rather than
+replacing movement authority.
 
 Only UI may be intentionally temporary. Service boundaries, state ownership,
 networking contracts, gameplay systems, persistence, and tooling must remain

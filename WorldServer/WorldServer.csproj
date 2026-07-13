@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\GameProtocol.DotNet\ShooterMmo.GameProtocol.csproj" />
-    <ProjectReference Include="..\GameSimulation.DotNet\ShooterMmo.GameSimulation.csproj" />
+    <ProjectReference Include="..\Shared\DotNet\GameProtocol\ShooterMmo.GameProtocol.csproj" />
+    <ProjectReference Include="..\Shared\DotNet\GameSimulation\ShooterMmo.GameSimulation.csproj" />
     <ProjectReference Include="..\Shared\ShooterMmo.Shared.csproj" />
   </ItemGroup>
 
@@ -13,10 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\WorldData\Runtime\Resources\ShooterMmo\WorldCollision\**\*"
-             Link="CollisionData\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Config\appsettings.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Runtime\Resources\ShooterMmo\WorldCollision\**\*" Link="CollisionData\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

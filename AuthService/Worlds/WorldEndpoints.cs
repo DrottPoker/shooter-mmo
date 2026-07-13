@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using AuthService.Auth;
 using AuthService.Http;
-using ShooterMmo.Shared.Http;
 
 namespace AuthService.Worlds;
 

@@ -34,7 +34,6 @@ The current playable path is intentionally small:
 - **Redis** is currently an operational dependency used by readiness checks. It
   does not yet own gameplay or authentication state.
 - **Shared** contains framework-neutral .NET configuration and health helpers.
-- **Shared.Http** contains AuthService-only ASP.NET pipeline behavior.
 - **GameProtocol** is the versioned binary contract shared by Unity and
   WorldServer.
 - **GameSimulation** is the fixed-step movement implementation compiled from the
@@ -57,6 +56,8 @@ The foundation currently supports:
   handshake.
 - A server-owned world entity registry with nonzero network entity ids,
   one-to-one connection ownership, and reliable spawn and despawn lifecycle.
+- Spatial per-client interest sets, UDP traffic quotas, bounded heartbeat fan-out,
+  and structured low-cardinality realtime metrics.
 - Sequenced movement input, a fixed 30 Hz authoritative server simulation, 15 Hz
   world snapshots, stale-input neutralization, local reconciliation, and
   stall-recovering remote interpolation.
@@ -64,7 +65,7 @@ The foundation currently supports:
   only under a dedicated presentation root.
 - Versioned, chunked test-map collision shared by WorldServer and Unity
   prediction, with authoritative capsule movement across walls, ramps, steps,
-  and cover.
+  and cover. Server and client keep only position-relevant chunks decoded.
 - Split liveness and readiness health checks.
 - A timeout-aware Unity API client with structured errors and 401 recovery.
 - A three-scene client flow with temporary UI and a server-authoritative
@@ -82,7 +83,8 @@ The following areas are not implemented yet:
 - Combat, weapons, abilities, damage, death, and respawning.
 - Inventory, equipment, loot, crafting, gathering, professions, and economy.
 - Persistent world simulation, NPCs, quests, social systems, and guilds.
-- Production deployment, horizontal scaling, telemetry, and live operations.
+- Production deployment, cross-process world partitioning, metric export,
+  dashboards, alerting, and live operations.
 
 ## Engineering Standard
 

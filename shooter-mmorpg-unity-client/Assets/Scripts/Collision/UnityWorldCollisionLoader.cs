@@ -9,6 +9,8 @@ namespace ShooterMmo.Collision
     public static class UnityWorldCollisionLoader
     {
         private const string ResourceRoot = "ShooterMmo/WorldCollision/";
+        private const int DefaultLoadRadiusChunks = 2;
+        private const int DefaultUnloadRadiusChunks = 3;
 
         public static bool TryLoad(
             string worldId,
@@ -16,6 +18,22 @@ namespace ShooterMmo.Collision
             out string error)
         {
             collisionWorld = null;
+            if (!TryCreateStream(worldId, out var stream, out error)
+                || !stream.TryLoadAll(out error))
+            {
+                return false;
+            }
+
+            collisionWorld = stream.CollisionWorld;
+            return true;
+        }
+
+        public static bool TryCreateStream(
+            string worldId,
+            out UnityWorldCollisionStream collisionStream,
+            out string error)
+        {
+            collisionStream = null;
             error = string.Empty;
             if (string.IsNullOrWhiteSpace(worldId))
             {
@@ -35,41 +53,11 @@ namespace ShooterMmo.Collision
             {
                 var manifest = JsonUtility.FromJson<CollisionWorldManifest>(manifestAsset.text);
                 ValidateManifest(manifest, worldId);
-                var chunks = new List<CollisionChunk>(manifest.Chunks.Length);
-                for (var index = 0; index < manifest.Chunks.Length; index++)
-                {
-                    var entry = manifest.Chunks[index];
-                    var chunkAsset = Resources.Load<TextAsset>(resourceDirectory + entry.ResourceName);
-                    if (chunkAsset == null)
-                    {
-                        throw new InvalidDataException(
-                            "Collision chunk is missing: " + entry.ResourceName);
-                    }
-
-                    var bytes = chunkAsset.bytes;
-                    var hash = CollisionWorldCompiler.ComputeSha256Hex(bytes);
-                    if (!string.Equals(hash, entry.Sha256, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidDataException(
-                            "Collision chunk checksum does not match: " + entry.ResourceName);
-                    }
-
-                    var chunk = CollisionChunkCodec.Decode(bytes);
-                    if (chunk.X != entry.X || chunk.Z != entry.Z)
-                    {
-                        throw new InvalidDataException(
-                            "Collision chunk coordinates do not match the manifest: "
-                            + entry.ResourceName);
-                    }
-
-                    chunks.Add(chunk);
-                }
-
-                collisionWorld = new ChunkedStaticCollisionWorld(
-                    manifest.WorldId,
-                    manifest.Revision,
-                    manifest.ChunkSize,
-                    chunks);
+                collisionStream = new UnityWorldCollisionStream(
+                    resourceDirectory,
+                    manifest,
+                    DefaultLoadRadiusChunks,
+                    DefaultUnloadRadiusChunks);
                 return true;
             }
             catch (Exception exception)
@@ -77,6 +65,10 @@ namespace ShooterMmo.Collision
                 error = "Collision data is invalid for world '" + worldId + "': "
                     + exception.Message;
                 return false;
+            }
+            finally
+            {
+                Resources.UnloadAsset(manifestAsset);
             }
         }
 

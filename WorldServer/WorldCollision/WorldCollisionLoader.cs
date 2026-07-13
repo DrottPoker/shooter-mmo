@@ -14,6 +14,13 @@ public static class WorldCollisionLoader
 
     public static ChunkedStaticCollisionWorld Load(WorldServerConfig config)
     {
+        var streamingStore = LoadStreaming(config);
+        streamingStore.LoadAll();
+        return streamingStore.CollisionWorld;
+    }
+
+    public static WorldCollisionStreamingStore LoadStreaming(WorldServerConfig config)
+    {
         var rootPath = Path.IsPathRooted(config.CollisionDataPath)
             ? config.CollisionDataPath
             : Path.Combine(AppContext.BaseDirectory, config.CollisionDataPath);
@@ -46,7 +53,7 @@ public static class WorldCollisionLoader
         }
 
         ValidateManifest(manifest, config.WorldServerId);
-        var chunks = new List<CollisionChunk>(manifest.Chunks.Length);
+        var chunkSources = new List<WorldCollisionChunkSource>(manifest.Chunks.Length);
         foreach (var entry in manifest.Chunks)
         {
             var chunkPath = Path.Combine(worldPath, entry.ResourceName + ".bytes");
@@ -64,32 +71,20 @@ public static class WorldCollisionLoader
                     $"Collision chunk '{entry.ResourceName}' failed checksum validation.");
             }
 
-            CollisionChunk chunk;
-            try
-            {
-                chunk = CollisionChunkCodec.Decode(bytes);
-            }
-            catch (InvalidDataException exception)
-            {
-                throw new InvalidOperationException(
-                    $"Collision chunk '{entry.ResourceName}' is invalid.",
-                    exception);
-            }
-
-            if (chunk.X != entry.X || chunk.Z != entry.Z)
-            {
-                throw new InvalidOperationException(
-                    $"Collision chunk '{entry.ResourceName}' coordinates do not match its manifest entry.");
-            }
-
-            chunks.Add(chunk);
+            chunkSources.Add(new WorldCollisionChunkSource(
+                entry.X,
+                entry.Z,
+                entry.ResourceName,
+                chunkPath,
+                entry.Sha256));
         }
 
-        return new ChunkedStaticCollisionWorld(
+        return new WorldCollisionStreamingStore(
             manifest.WorldId,
             manifest.Revision,
             manifest.ChunkSize,
-            chunks);
+            chunkSources,
+            config.CollisionStreaming);
     }
 
     private static void ValidateManifest(CollisionWorldManifest manifest, string expectedWorldId)

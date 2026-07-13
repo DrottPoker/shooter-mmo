@@ -65,10 +65,33 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(27015, config.AdvertisedUdpPort);
         Assert.Equal(100, config.MaxConnections);
         Assert.Equal(TimeSpan.FromSeconds(10), config.WorldRegistryHeartbeatInterval);
+        Assert.Equal(8, config.WorldSessionHeartbeatMaxConcurrency);
+        Assert.Equal(128f, config.InterestManagement.EnterRadius);
+        Assert.Equal(2, config.CollisionStreaming.LoadRadiusChunks);
         Assert.Equal(30, config.MovementSimulation.TickRateHz);
         Assert.Equal(15, config.SnapshotRateHz);
         Assert.Equal(TimeSpan.FromMilliseconds(500), config.MovementInputSilenceTimeout);
         Assert.Equal(0.35f, config.MovementSimulation.CharacterCollision.Radius);
+    }
+
+    [Fact]
+    public void WorldServerRejectsUnsafeResilienceLimits()
+    {
+        var settings = WorldSettings();
+        settings["WorldServer:WorldSessionHeartbeatMaxConcurrency"] = "129";
+        settings["WorldServer:UdpQuotas:InboundPacketBurst"] = "20001";
+        settings["WorldServer:InterestManagement:CellSize"] = "1";
+        settings["WorldServer:InterestManagement:ExitRadius"] = "100";
+        settings["WorldServer:CollisionStreaming:UnloadRadiusChunks"] = "17";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => WorldServerConfig.FromConfiguration(configuration));
+
+        Assert.Contains("WorldSessionHeartbeatMaxConcurrency must not exceed 128", exception.Message);
+        Assert.Contains("UDP quota rates or bursts exceed", exception.Message);
+        Assert.Contains("no more than 64 searched cells", exception.Message);
+        Assert.Contains("UnloadRadiusChunks must not exceed 16", exception.Message);
     }
 
     private static Dictionary<string, string?> AuthSettings(bool includeSecrets)
@@ -114,7 +137,20 @@ public sealed class ConfigurationValidationTests
             ["WorldServer:AuthServiceTimeoutSeconds"] = "5",
             ["WorldServer:AuthServiceSecret"] = "test-world-server-secret-at-least-32-characters",
             ["WorldServer:WorldSessionHeartbeatSeconds"] = "10",
+            ["WorldServer:WorldSessionHeartbeatMaxConcurrency"] = "8",
             ["WorldServer:WorldRegistryHeartbeatSeconds"] = "10",
+            ["WorldServer:NetworkMetricsLogSeconds"] = "30",
+            ["WorldServer:UdpQuotas:InboundPacketsPerSecond"] = "120",
+            ["WorldServer:UdpQuotas:InboundPacketBurst"] = "240",
+            ["WorldServer:UdpQuotas:InboundBytesPerSecond"] = "131072",
+            ["WorldServer:UdpQuotas:InboundByteBurst"] = "262144",
+            ["WorldServer:UdpQuotas:SnapshotBytesPerSecond"] = "262144",
+            ["WorldServer:UdpQuotas:SnapshotByteBurst"] = "524288",
+            ["WorldServer:InterestManagement:CellSize"] = "64",
+            ["WorldServer:InterestManagement:EnterRadius"] = "128",
+            ["WorldServer:InterestManagement:ExitRadius"] = "144",
+            ["WorldServer:CollisionStreaming:LoadRadiusChunks"] = "2",
+            ["WorldServer:CollisionStreaming:UnloadRadiusChunks"] = "3",
             ["WorldServer:Movement:TickRateHz"] = "30",
             ["WorldServer:Movement:SnapshotRateHz"] = "15",
             ["WorldServer:Movement:InputSilenceTimeoutMilliseconds"] = "500",

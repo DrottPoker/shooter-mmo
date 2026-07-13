@@ -39,6 +39,7 @@ Restore locked dependencies and run the standard backend quality gate:
 
 ```powershell
 dotnet restore ShooterMmo.slnx --locked-mode
+& .\Tools\Verify-DependencyPolicy.ps1
 dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet test ShooterMmo.slnx --configuration Release --no-build
@@ -47,11 +48,32 @@ dotnet test ShooterMmo.slnx --configuration Release --no-build
 Expected result:
 
 - Restore accepts every committed `packages.lock.json` file.
+- Dependency policy verification confirms exact Unity and NuGet versions, local
+  package paths, Unity lock coverage, and the absence of tracked client builds.
 - Format reports no files that need changes.
 - Build completes with zero warnings and zero errors.
 - Unit tests pass.
 - The PostgreSQL integration test is skipped unless its dedicated connection is
   configured.
+
+NuGet and GitHub Actions updates are proposed monthly by Dependabot against
+`development`. Unity Package Manager updates remain explicit because Dependabot
+does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
+let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
+quality gate before merging. `LiteNetLib` must stay aligned between
+`WorldServer.csproj` and the Unity manifest.
+
+Run the deterministic realtime scalability workload separately when changing
+interest selection, snapshot encoding, or quota code:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "Category=Load"
+```
+
+Expected result: 25,000 entities and 1,000 observers complete spatial selection
+and snapshot encode/decode inside the five-second regression budget.
 
 ## Isolated PostgreSQL Integration Tests
 
@@ -197,7 +219,15 @@ dotnet run --project WorldServer
 WorldServer is a headless .NET Generic Host. It does not expose HTTP routes. A
 successful start logs that `local-world-1` is listening on UDP port `27015` with
 realtime protocol version 5, the movement-simulation revision, the advertised
-endpoint, and the loaded collision revision.
+endpoint, and the loaded collision revision. Every 30 seconds it also logs
+aggregate realtime packet, byte, entity, peer, quota, and snapshot counters.
+
+The default resilience settings allow eight concurrent active-session
+heartbeats, 120 inbound packets per second with a 240-packet burst, 128 KiB per
+second inbound with a 256 KiB burst, and 256 KiB per second of unreliable
+snapshots with a 512 KiB burst. Interest enters at 128 meters and exits at 144
+meters. Collision loads within two chunks of active anchors and unloads outside
+three chunks. Invalid values fail startup.
 
 Run a one-time WorldServer startup health check:
 
@@ -475,7 +505,12 @@ missing-reference or input-configuration errors.
 
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
-changes.
+changes. You can run the same suites outside the Editor with:
+
+```powershell
+$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe"
+& .\Tools\Run-UnityTests.ps1
+```
 
 Expected result:
 
@@ -484,6 +519,23 @@ Expected result:
   contracts, and authored WorldScene composition.
 - PlayMode validates that loading `LoginMenu` creates the persistent client
   bootstrap, realtime client, and runtime login panel.
+
+The CI Unity job uses a Windows self-hosted runner because Unity requires an
+installed and activated Editor. To enable it:
+
+1. In the GitHub repository, open `Settings > Actions > Runners` and register a
+   Windows x64 self-hosted runner.
+2. Add the custom label `unity-6000.5.2f1` to that runner.
+3. Install and activate Unity `6000.5.2f1` for the Windows account that runs the
+   runner service.
+4. Add repository variable `UNITY_CI_ENABLED` with value `true`.
+5. If Unity is not installed in the default Unity Hub path, add repository
+   variable `UNITY_EDITOR_PATH` containing the full path to `Unity.exe`.
+
+Expected result: pushes and pull requests run both Unity suites, upload XML and
+Unity logs as `unity-test-results`, and fail the Unity quality gate on compiler
+or test errors. Until the runner and variable exist, the Unity job is shown as
+skipped instead of waiting forever for an unavailable runner.
 
 Before using the Unity client, start these services:
 
@@ -517,6 +569,8 @@ restart WorldServer so both processes use the current protocol implementation.
 Protocol version 5 also validates the compiled movement-simulation revision,
 server-assigned network entity ids, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
+Standalone build output belongs under ignored `ClientBuilds` or `Builds`
+directories and must never be committed.
 
 Scene flow:
 
@@ -532,9 +586,9 @@ Expected result in `LoginMenu`:
 - Realtime timeout displays 10 seconds.
 
 These values are stored in
-`Assets/Resources/ShooterMmoClientConfig.asset`. Create build-specific variants
-or change the asset before building a client for another environment. Endpoint
-fields are no longer editable from the runtime login panel.
+`Assets/Resources/Config/ShooterMmoClientConfig.asset`. Create build-specific
+variants or change the asset before building a client for another environment.
+Endpoint fields are no longer editable from the runtime login panel.
 
 Manual Unity test flow:
 

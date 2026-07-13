@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ShooterMmo.Collision;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
@@ -13,14 +14,15 @@ namespace ShooterMmo.Networking
             MovementSimulationSettings settings,
             int snapshotRateHz,
             PlayerMovementState initialState,
-            ChunkedStaticCollisionWorld collisionWorld)
+            UnityWorldCollisionStream collisionStream)
         {
             CharacterId = characterId;
             ControlledEntityId = controlledEntityId;
             Settings = settings;
             SnapshotRateHz = snapshotRateHz;
             InitialState = initialState;
-            CollisionWorld = collisionWorld;
+            CollisionStream = collisionStream;
+            CollisionWorld = collisionStream.CollisionWorld;
         }
 
         public string CharacterId { get; private set; }
@@ -34,6 +36,22 @@ namespace ShooterMmo.Networking
         public PlayerMovementState InitialState { get; private set; }
 
         public ChunkedStaticCollisionWorld CollisionWorld { get; private set; }
+
+        public UnityWorldCollisionStream CollisionStream { get; private set; }
+
+        public bool TryRefreshCollisionStreaming(
+            IEnumerable<SimulationVector3> anchors,
+            out string error)
+        {
+            return CollisionStream.TryRefresh(anchors, out error);
+        }
+
+        public bool TryEnsureCollisionChunks(
+            IEnumerable<SimulationVector3> anchors,
+            out string error)
+        {
+            return CollisionStream.TryEnsureLoaded(anchors, out error);
+        }
 
         public static bool TryCreate(
             RealtimeJoinAccepted accepted,
@@ -67,9 +85,9 @@ namespace ShooterMmo.Networking
                 return false;
             }
 
-            if (!UnityWorldCollisionLoader.TryLoad(
+            if (!UnityWorldCollisionLoader.TryCreateStream(
                     accepted.WorldId,
-                    out var collisionWorld,
+                    out var collisionStream,
                     out error))
             {
                 return false;
@@ -77,11 +95,31 @@ namespace ShooterMmo.Networking
 
             if (!string.Equals(
                     accepted.CollisionRevision,
-                    collisionWorld.Revision,
+                    collisionStream.CollisionWorld.Revision,
                     StringComparison.OrdinalIgnoreCase))
             {
                 error = "Client collision revision does not match WorldServer. Client: "
-                    + collisionWorld.Revision + ", server: " + accepted.CollisionRevision + ".";
+                    + collisionStream.CollisionWorld.Revision + ", server: " + accepted.CollisionRevision + ".";
+                return false;
+            }
+
+            var initialState = accepted.InitialPlayerState;
+            if (!collisionStream.TryRefresh(
+                    new[]
+                    {
+                        new SimulationVector3(
+                            initialState.PositionX,
+                            initialState.PositionY,
+                            initialState.PositionZ)
+                    },
+                    out error)
+                || collisionStream.CollisionWorld.ChunkCount == 0)
+            {
+                if (string.IsNullOrEmpty(error))
+                {
+                    error = "No collision chunk is available around the initial player position.";
+                }
+
                 return false;
             }
 
@@ -135,7 +173,7 @@ namespace ShooterMmo.Networking
                         state.YawDegrees,
                         state.IsGrounded,
                         state.IsSprinting),
-                    collisionWorld);
+                    collisionStream);
                 return true;
             }
             catch (ArgumentException exception)

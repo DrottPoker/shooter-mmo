@@ -51,7 +51,7 @@ namespace ShooterMmo.Api
         [Serializable]
         private sealed class ArrayWrapper<T>
         {
-            public T[] items;
+            public T[] items = Array.Empty<T>();
         }
     }
 }

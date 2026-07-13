@@ -27,8 +27,10 @@ foundation for the first playable MVP.
 - Server-authoritative Input Action movement with prediction, reconciliation,
   stale-input neutralization, snapshots, stall-recovering remote interpolation,
   shared test-map collision, and collision-safe third-person camera controls.
+- Spatial interest management with reliable visibility transitions, per-peer UDP
+  quotas, bounded session heartbeats, and low-cardinality network metrics.
 - Versioned collision baking with checksummed chunks consumed by both
-  WorldServer and Unity prediction.
+  WorldServer and Unity prediction through position-driven chunk streaming.
 - PostgreSQL and Redis development infrastructure through Docker Compose.
 
 Inventory, combat, persistent world simulation, complex terrain collision, and
@@ -77,6 +79,7 @@ Run the standard backend checks from the repository root:
 
 ```powershell
 dotnet restore ShooterMmo.slnx --locked-mode
+& ./Tools/Verify-DependencyPolicy.ps1
 dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet test ShooterMmo.slnx --configuration Release --no-build
@@ -106,16 +109,20 @@ Run Unity tests from `Window > General > Test Runner`:
   gameplay assets.
 - PlayMode validates the persistent runtime and realtime client bootstrap.
 
+The same suites can run headlessly with `Tools/Run-UnityTests.ps1`. CI enables
+the Unity job on a licensed Windows self-hosted runner when the repository
+variable `UNITY_CI_ENABLED` is `true`.
+
 ## Repository Layout
 
-- `AuthService`: account, session, character, world, and join ticket API.
-- `WorldServer`: headless realtime transport and active local sessions.
-- `Shared`: framework-neutral backend health and configuration helpers.
-- `Shared.Http`: AuthService-only ASP.NET pipeline behavior.
+- `AuthService`: account, session, character, world, join ticket, HTTP pipeline,
+  and service-owned configuration.
+- `WorldServer`: headless realtime transport, authoritative simulation, active
+  local sessions, and service-owned configuration.
+- `Shared`: framework-neutral backend helpers and .NET adapters for shared game
+  source under `Shared/DotNet`.
 - `GameProtocol`: local Unity package containing the realtime binary contract.
-- `GameProtocol.DotNet`: .NET build project for the shared protocol source.
 - `GameSimulation`: local Unity package containing shared fixed-step movement.
-- `GameSimulation.DotNet`: .NET build project for the shared simulation source.
 - `WorldData`: neutral authoring and baked collision chunks shared by the server
   and Unity.
 - `Tools/WorldCollisionCompiler`: command-line collision bake and verification
@@ -124,6 +131,11 @@ Run Unity tests from `Window > General > Test Runner`:
 - `shooter-mmorpg-unity-client`: Unity client project and Unity tests.
 - `docs`: project overview, architecture, features, product scope, and local
   development documentation.
+
+Repository-wide tool configuration remains in root: `.env.example`, Compose,
+`Directory.Build.props`, `global.json`, and `ShooterMmo.slnx`. Service settings
+belong under each service's `Config` folder. Unity runtime settings belong under
+`Assets/Resources/Config` with their C# definitions under `Assets/Scripts/Config`.
 
 The complete documentation map is available in
 [docs/README.md](docs/README.md).

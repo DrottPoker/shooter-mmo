@@ -22,9 +22,6 @@
       },
       "shootermmo.shared": {
         "type": "Project"
-      },
-      "shootermmo.shared.http": {
-        "type": "Project"
       }
     }
   }

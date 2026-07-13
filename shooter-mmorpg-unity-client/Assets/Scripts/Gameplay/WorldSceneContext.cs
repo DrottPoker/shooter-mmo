@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using ShooterMmo.GameSimulation;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.Networking;
 using UnityEngine;
@@ -93,6 +95,22 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
+            if (!movementSession.TryEnsureCollisionChunks(
+                    new[]
+                    {
+                        new SimulationVector3(
+                            spawn.InitialState.PositionX,
+                            spawn.InitialState.PositionY,
+                            spawn.InitialState.PositionZ)
+                    },
+                    out var collisionError))
+            {
+                worldClient.DisconnectForClientFailure(
+                    "collision_stream_failed",
+                    collisionError);
+                return;
+            }
+
             if (!remotePlayers.TryGetValue(spawn.EntityId, out var remotePlayer))
             {
                 remotePlayer = Instantiate(remotePlayerPrefab, entityPresentationRoot);
@@ -130,6 +148,21 @@ namespace ShooterMmo.Gameplay
             var movementSession = worldClient != null ? worldClient.MovementSession : null;
             if (movementSession == null)
             {
+                return;
+            }
+
+            var collisionAnchors = snapshot.Entities
+                .Select(entity => new SimulationVector3(
+                    entity.State.PositionX,
+                    entity.State.PositionY,
+                    entity.State.PositionZ));
+            if (!movementSession.TryRefreshCollisionStreaming(
+                    collisionAnchors,
+                    out var collisionError))
+            {
+                worldClient.DisconnectForClientFailure(
+                    "collision_stream_failed",
+                    collisionError);
                 return;
             }
 

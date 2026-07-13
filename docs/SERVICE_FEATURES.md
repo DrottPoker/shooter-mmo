@@ -138,6 +138,11 @@ Status: Session and authoritative movement foundation implemented
 - Entity spawn and despawn use reliable ordered control messages.
 - World snapshots use unchanneled unreliable delivery with bounded packet size
   and application-level tick and chunk metadata.
+- Per-peer token buckets bound inbound packet rate, inbound byte rate, and
+  unreliable snapshot byte output. Reliable lifecycle control is not delayed by
+  snapshot pressure.
+- Active-session heartbeat and shutdown release calls use validated bounded
+  concurrency instead of serial work or unbounded fan-out.
 
 Protocol version 5 reserves reliable ordered channel 0 for control, sequenced
 channel 1 for player input, and LiteNetLib's unchanneled `Unreliable` delivery
@@ -161,12 +166,16 @@ Status: Player entity foundation implemented
 - A different session for the same character removes the old entity before the
   replacement receives a new network id.
 - Join acceptance identifies the controlled entity. The joining peer then
-  receives a reliable ordered baseline of all current entity spawns.
-- Existing peers receive a reliable ordered spawn for a new entity and a
-  reliable ordered despawn when that exact entity leaves, disconnects, expires,
-  or is replaced.
-- Unreliable snapshots contain only registered and connected entity ids. They do
-  not create entities and cannot keep a despawned entity alive.
+  receives a reliable ordered baseline of its current visible entity set.
+- A spatial hash evaluates visibility from authoritative XZ positions. New
+  visibility uses the configured enter radius, while existing visibility uses a
+  larger exit radius to prevent boundary churn.
+- Reliable ordered spawn and despawn messages update each peer when an entity
+  enters or leaves its interest set, or when the exact entity leaves,
+  disconnects, expires, or is replaced.
+- Unreliable snapshots contain only connected entity ids in that peer's current
+  interest set. They do not create entities and cannot keep a despawned entity
+  alive.
 - The current registry owns player entities only. The network id and lifecycle
   boundary are designed to add NPCs, projectiles, and dynamic world objects
   without using character database ids as transport identity.
@@ -212,9 +221,9 @@ Status: Fixed-tick movement and authored collision implemented
   replay and reconciliation.
 
 `GameSimulation/Runtime` is compiled unchanged into WorldServer through
-`GameSimulation.DotNet` and into Unity through a local package. It contains the
-neutral collision format, chunk codec, oriented-box queries, spatial indexes,
-and capsule motor in addition to movement integration.
+`Shared/DotNet/GameSimulation` and into Unity through a local package. It
+contains the neutral collision format, chunk codec, oriented-box queries,
+spatial indexes, and capsule motor in addition to movement integration.
 
 ## World Collision Data
 
@@ -227,13 +236,15 @@ Status: Static test-map pipeline and dynamic registry foundation implemented
   32-meter chunks.
 - Every chunk has a SHA-256 checksum. The manifest revision is derived from the
   world id, format, chunk size, chunk coordinates, and checksums.
-- WorldServer validates all collision data before starting realtime transport.
+- WorldServer validates the manifest, file presence, and checksums before
+  starting realtime transport. It decodes only chunks inside the configured
+  load radius around spawn and live entities.
 - Join acceptance includes the collision revision. A client with different map
   data cannot enable prediction for that session.
 - Static objects are queried only from intersected chunks and deduplicated by
   stable id.
-- Static chunks expose explicit load and unload operations for later interest
-  and streaming systems.
+- Static chunks are loaded through a shared coordinate planner and unloaded only
+  after leaving a larger retention radius.
 - `DynamicCollisionWorld` supports thread-safe upsert and removal through a
   spatial hash. It is registered in the server's composite collision world for
   future doors, lifts, platforms, and server-owned kinematic objects.
@@ -250,6 +261,9 @@ Status: Implemented
   stable account and public session identifiers.
 - WorldServer logs UDP admission, authenticated account and character joins,
   graceful leaves, disconnects, protocol rejections, and cleanup failures.
+- WorldServer emits periodic structured realtime totals for active peers and
+  entities, packets, bytes, quota rejects, snapshot drops, lifecycle packets,
+  joins, and snapshot entity records. The meter does not use per-player labels.
 - Domain events use `[AUTH]` and `[WORLDSERVER]` prefixes so local service
   consoles can be filtered independently from framework logs.
 - Join-ticket values, service credentials, and secret world-session tokens are
@@ -260,8 +274,8 @@ Status: Implemented
 Status: Implemented
 
 The local `com.shootermmo.game-protocol` Unity package and the
-`GameProtocol.DotNet` build project compile the same source contract. Packet
-decoding validates:
+`Shared/DotNet/GameProtocol` build project compile the same source contract.
+Packet decoding validates:
 
 - Magic value and protocol version.
 - Known message type.
@@ -303,6 +317,8 @@ Status: Implemented
   before either normal startup or the health-only path can continue.
 - The WorldServer health command exits with code 0 on success and 1 on failure.
 - Application-owned configuration fails fast at startup.
+- Checked-in AuthService settings live under `AuthService/Config` and checked-in
+  WorldServer settings live under `WorldServer/Config`.
 - Optional root `.env` loading supports local development.
 - Compose exposes PostgreSQL and Redis only on `127.0.0.1`.
 
@@ -333,16 +349,21 @@ Status: Implemented
 - Unity tests cover client state, input, authored assets, and runtime bootstrap.
 - Collision tests cover deterministic baking, binary round trips, static and
   dynamic spatial queries, wall blocking, ramp traversal, and configured steps.
+- Resilience tests cover bounded concurrency, token-bucket refill behavior,
+  AOI hysteresis, metrics, and collision chunk planning.
+- A deterministic network pipeline load test exercises 25,000 entities and
+  1,000 observers through spatial interest selection and snapshot encoding.
+- CI runs backend gates on GitHub-hosted runners and can run Unity EditMode and
+  PlayMode gates on a licensed Windows self-hosted runner.
 
 ## Not Yet Implemented
 
-- Interest management and per-client snapshot visibility.
 - Triangle-mesh collision chunks for terrain, caves, and complex rock meshes.
 - Replication of dynamic collision transforms to client prediction.
 - General rigid-body simulation for physics-driven world objects.
 - Durable WorldServer simulation state.
 - Redis-backed domain state.
 - Character deletion.
-- Production deployment, telemetry, dashboards, and alerting.
+- Production deployment, metric export, dashboards, and alerting.
 
 See [Local Development](LOCAL_DEVELOPMENT.md) for commands and manual tests.

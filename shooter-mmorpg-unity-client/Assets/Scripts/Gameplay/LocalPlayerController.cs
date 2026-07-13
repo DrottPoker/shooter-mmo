@@ -227,6 +227,26 @@ namespace ShooterMmo.Gameplay
 
         private void PredictAndSendNetworkTick()
         {
+            var collisionSession = realtimeClient != null
+                ? realtimeClient.MovementSession
+                : null;
+            if (collisionSession != null
+                && !collisionSession.TryEnsureCollisionChunks(
+                    new[]
+                    {
+                        new SimulationVector3(
+                            movementPrediction.State.PositionX,
+                            movementPrediction.State.PositionY,
+                            movementPrediction.State.PositionZ)
+                    },
+                    out var collisionError))
+            {
+                realtimeClient.DisconnectForClientFailure(
+                    "collision_stream_failed",
+                    collisionError);
+                return;
+            }
+
             unchecked
             {
                 nextInputSequence++;

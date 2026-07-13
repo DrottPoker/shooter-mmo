@@ -82,11 +82,13 @@ run disconnect cleanup.
 ## Configuration
 
 `ShooterMmoClientConfig` is a ScriptableObject loaded from
-`Assets/Resources/ShooterMmoClientConfig.asset`. It currently contains:
+`Assets/Resources/Config/ShooterMmoClientConfig.asset`. Its C# definition lives
+in `Assets/Scripts/Config`. It currently contains:
 
 - AuthService base URL.
 - HTTP request timeout in seconds.
 - Realtime operation timeout in seconds.
+- Account-session validation interval in seconds.
 
 WorldServer host and UDP port come from AuthService world discovery. They are not
 duplicated in client configuration. Different environments should use
@@ -322,13 +324,19 @@ The presentation interpolation never feeds positions back into input packets or
 the shared simulation. The shared simulation source is installed as
 `com.shootermmo.game-simulation` and contains no Unity dependencies.
 
-`UnityWorldCollisionLoader` loads the selected world's manifest and all current
-collision chunks from the local `com.shootermmo.world-data` package. It validates
-the format, world id, SHA-256 chunk checksums, and chunk coordinates. The join
-response carries WorldServer's collision revision, and `NetworkMovementSession`
-does not start when the local revision differs. `ClientMovementPrediction` then
-uses the loaded `ICollisionWorld` for prediction and replay, while authoritative
-snapshots continue to correct divergence.
+`UnityWorldCollisionLoader` loads the selected world's manifest from the local
+`com.shootermmo.world-data` package. `UnityWorldCollisionStream` then loads and
+checksum-validates chunks around the initial player, local prediction, and
+visible remote entities. It retains a larger chunk ring before unloading, which
+prevents boundary churn. The join response carries WorldServer's collision
+revision, and `NetworkMovementSession` does not start when the local revision
+differs. A missing, corrupt, or coordinate-mismatched streamed chunk closes the
+active session through the normal structured client failure path.
+
+`ClientMovementPrediction`, reconciliation, grounded presentation, and remote
+presentation all query the same mutable `ChunkedStaticCollisionWorld`. Loading
+changes which authored chunks are resident but never changes WorldServer
+authority or feeds presentation positions back into prediction.
 
 `WorldCollisionAuthoring` defines the world id, chunk size, collision root, and
 layer mask on an authored scene object. The Editor command

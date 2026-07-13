@@ -63,6 +63,16 @@ namespace ShooterMmo.Networking
             get { return State == RealtimeConnectionState.Joined; }
         }
 
+        public void DisconnectForClientFailure(string code, string message)
+        {
+            if (State == RealtimeConnectionState.Disconnected)
+            {
+                return;
+            }
+
+            FailProtocol(code, message);
+        }
+
         private void Awake()
         {
             listener = new EventBasedNetListener();

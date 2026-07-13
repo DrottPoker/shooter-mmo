@@ -71,6 +71,9 @@ player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
 Remote instances are kept under WorldScene's separate
 `EntityPresentationRoot`, outside the authored LocalPlayer hierarchy.
+WorldServer uses distance-based interest management, so distant entities are
+removed reliably and recreated reliably when they enter the configured area of
+interest. Snapshot loss never decides whether a remote player exists.
 
 ## Player Movement
 
@@ -188,7 +191,7 @@ Status: Gameplay contract implemented with temporary UI presentation
 These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
-- Interest management and dynamic collision transform replication.
+- Dynamic collision transform replication.
 - Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
 - Inventory, equipment, item stats, and loot.

@@ -195,8 +195,7 @@
           "BCrypt.Net-Next": "[4.0.3, )",
           "Dapper": "[2.1.66, )",
           "Npgsql": "[9.0.3, )",
-          "ShooterMmo.Shared": "[1.0.0, )",
-          "ShooterMmo.Shared.Http": "[1.0.0, )"
+          "ShooterMmo.Shared": "[1.0.0, )"
         }
       },
       "shootermmo.gameprotocol": {
@@ -206,9 +205,6 @@
         "type": "Project"
       },
       "shootermmo.shared": {
-        "type": "Project"
-      },
-      "shootermmo.shared.http": {
         "type": "Project"
       },
       "worldserver": {
