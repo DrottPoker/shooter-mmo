@@ -42,6 +42,7 @@ public static class WorldEndpoints
 
         group.MapPost("/{worldId}/heartbeat", async (
             string worldId,
+            WorldHeartbeatRequest request,
             ClaimsPrincipal principal,
             WorldRegistryService worldRegistryService,
             CancellationToken cancellationToken) =>
@@ -54,7 +55,32 @@ public static class WorldEndpoints
                     .ToHttpResult();
             }
 
-            var result = await worldRegistryService.HeartbeatAsync(worldId, cancellationToken);
+            var result = await worldRegistryService.HeartbeatAsync(
+                worldId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        }).RequireAuthorization(AuthenticationConstants.WorldServerPolicy);
+
+        group.MapPost("/{worldId}/offline", async (
+            string worldId,
+            WorldOfflineRequest request,
+            ClaimsPrincipal principal,
+            WorldRegistryService worldRegistryService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.Equals(worldId, principal.GetWorldId(), StringComparison.Ordinal))
+            {
+                return ServiceResult<WorldOfflineResponse>.Forbidden(
+                    "service_world_mismatch",
+                    "The authenticated WorldServer cannot update another world.")
+                    .ToHttpResult();
+            }
+
+            var result = await worldRegistryService.MarkOfflineAsync(
+                worldId,
+                request,
+                cancellationToken);
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.WorldServerPolicy);
 

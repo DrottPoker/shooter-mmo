@@ -84,7 +84,7 @@ this project.
 realtime contract. `GameProtocol.DotNet` compiles the same source for WorldServer
 and backend tests without placing .NET build output inside the Unity package.
 
-Protocol version 3 currently defines:
+Protocol version 4 currently defines:
 
 - Join request, accepted, and rejected messages.
 - Leave request, accepted, and rejected messages.
@@ -92,7 +92,8 @@ Protocol version 3 currently defines:
 - Bounded batches of sequenced player input commands.
 - Chunked world snapshots with server tick, snapshot sequence, acknowledged
   input sequence, and authoritative player state.
-- A collision-data revision and character capsule settings in join acceptance.
+- Explicit movement-simulation and collision-data revisions plus character
+  capsule settings in join acceptance.
 - Packet magic, version, size, and bounded-string validation.
 
 Control messages use reliable ordered channel 0. Movement inputs use sequenced
@@ -224,10 +225,16 @@ channel sends the reason before disconnecting the peer.
 
 ### World Discovery
 
-1. WorldServer authenticates and heartbeats its registry entry.
-2. AuthService stores a database-generated heartbeat time.
-3. World listing derives `isOnline` from that time and the configured timeout.
-4. A seeded or stale world remains offline until a fresh heartbeat exists.
+1. WorldServer binds its UDP transport before it registers as online.
+2. WorldServer authenticates and heartbeats its advertised host, UDP port,
+   process instance id, protocol version, simulation revision, and collision
+   revision.
+3. AuthService stores the advertised endpoint, build metadata, and a
+   database-generated heartbeat time.
+4. World listing derives `isOnline` from that time and the configured timeout.
+5. A seeded or stale world remains offline until a fresh heartbeat exists.
+6. Graceful shutdown marks the matching process instance offline immediately.
+   A stale process cannot mark a newer instance offline.
 
 ### World Join And Reconnect
 
@@ -259,22 +266,28 @@ active leases for the same character.
 6. If release cannot reach AuthService, the lease becomes inactive after
    heartbeat expiry.
 
+WorldServer also enforces the cached database lease expiry locally. A missed
+heartbeat cannot leave a peer active indefinitely while AuthService is
+unreachable.
+
 A delayed disconnect from an older reconnect generation carries the older secret
 session token and cannot release the newer lease.
 
 ### Authoritative Movement And Replication
 
-1. WorldServer includes validated movement settings and the initial player state
-   plus the authoritative collision revision in the accepted join response.
-   Unity loads and validates the matching baked collision world before movement
-   begins.
+1. WorldServer includes validated movement settings, the initial player state,
+   the movement-simulation revision, and the authoritative collision revision
+   in the accepted join response. Unity validates both revisions before
+   movement begins.
 2. Unity samples Player Input Actions at the server-provided fixed rate, assigns
    a monotonically increasing input sequence, predicts the input locally, and
    sends a redundant batch containing up to the four newest unacknowledged
    inputs.
 3. WorldServer accepts only newer sequences and simulates every connected player
    on its fixed 30 Hz clock using the shared capsule motor and composite
-   collision world. Clients send input, never accepted positions.
+   collision world. Clients send input, never accepted positions. If no newer
+   input arrives for the configured timeout, WorldServer neutralizes movement
+   and action buttons instead of replaying stale input indefinitely.
 4. WorldServer sends authoritative snapshots at 15 Hz. Each player entry
    includes the latest processed input sequence.
 5. The owning client replaces its predicted base with the authoritative state,
@@ -283,10 +296,10 @@ session token and cannot release the newer lease.
    local presentation state interpolates predicted fixed-tick poses at the
    render frame rate, including the camera target, without changing simulation
    authority or the commands sent to WorldServer.
-6. Other players advance through a snapshot buffer on a monotonic render clock
-   approximately 100 ms behind the latest server tick. New snapshot arrival only
-   extends the buffer and never bypasses interpolation by applying the newest
-   pose directly.
+6. Other players advance through a snapshot buffer on an adaptive monotonic
+   render clock approximately 100 ms behind the latest server tick. It makes
+   bounded speed corrections and restores its target delay after a network
+   stall instead of keeping permanent extra latency.
 
 The current baked collision set contains the test map ground, four boundaries,
 camera wall, ramp, three steps, and two cover objects. The same oriented-box

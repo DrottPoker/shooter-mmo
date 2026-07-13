@@ -58,7 +58,34 @@ public sealed class AuthoritativePlayerMovementTests
         Assert.True(movement.State.PositionY > 0f);
     }
 
-    private static AuthoritativePlayerMovement CreateMovement()
+    [Fact]
+    public void StaleMovementInputIsNeutralizedUntilANewerInputArrives()
+    {
+        var movement = CreateMovement(maximumInputSilenceTicks: 2);
+        movement.AcceptInputs(new[]
+        {
+            Input(1, 0f, 1f, RealtimeMovementButtons.Sprint)
+        });
+
+        movement.SimulateTick();
+        movement.SimulateTick();
+        var positionBeforeTimeout = movement.State.PositionZ;
+        movement.SimulateTick();
+
+        Assert.Equal(positionBeforeTimeout, movement.State.PositionZ);
+        Assert.False(movement.State.IsSprinting);
+
+        movement.AcceptInputs(new[]
+        {
+            Input(2, 0f, 1f, RealtimeMovementButtons.None)
+        });
+        movement.SimulateTick();
+
+        Assert.True(movement.State.PositionZ > positionBeforeTimeout);
+        Assert.Equal(2u, movement.LastProcessedInputSequence);
+    }
+
+    private static AuthoritativePlayerMovement CreateMovement(int maximumInputSilenceTicks = 15)
     {
         var collisionWorld = CollisionTestWorldFactory.Create();
         return new AuthoritativePlayerMovement(
@@ -70,7 +97,8 @@ public sealed class AuthoritativePlayerMovementTests
                 -1f,
                 0f),
             Settings,
-            collisionWorld);
+            collisionWorld,
+            maximumInputSilenceTicks);
     }
 
     private static RealtimeMovementInput Input(

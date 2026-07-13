@@ -103,10 +103,13 @@ The local services use these ports:
 - Redis: `127.0.0.1:6379`
 - AuthService: `http://localhost:5000`
 - WorldServer realtime transport: `0.0.0.0:27015/udp`
+- WorldServer advertised client endpoint: `127.0.0.1:27015/udp`
 
 Local PostgreSQL credentials and WorldServer service credentials live only in
 the ignored `.env` file. `.env.example` documents every required key without
 placing active credentials in application settings or Compose YAML.
+`WORLD_ADVERTISED_HOST` and `WORLD_ADVERTISED_UDP_PORT` override the client-facing
+endpoint without changing the local bind port.
 
 ## Backend Services
 
@@ -193,7 +196,8 @@ dotnet run --project WorldServer
 
 WorldServer is a headless .NET Generic Host. It does not expose HTTP routes. A
 successful start logs that `local-world-1` is listening on UDP port `27015` with
-realtime protocol version 3 and the loaded collision revision.
+realtime protocol version 4, the movement-simulation revision, the advertised
+endpoint, and the loaded collision revision.
 
 Run a one-time WorldServer startup health check:
 
@@ -225,11 +229,14 @@ World registry test:
 
 1. Start AuthService without WorldServer and call `GET /api/worlds`.
 2. Start WorldServer and call the endpoint again.
-3. Stop WorldServer, wait longer than the configured 30-second timeout, and call
-   the endpoint again.
+3. Stop WorldServer normally with Ctrl+C and call the endpoint again.
+4. Start WorldServer, then terminate it without graceful shutdown. Wait longer
+   than the configured 30-second timeout and call the endpoint again.
 
 Expected result: `local-world-1` is offline before the first heartbeat, online
-while fresh heartbeats arrive, and offline after the heartbeat timeout.
+while fresh heartbeats arrive, immediately offline after graceful shutdown, and
+offline after the heartbeat timeout following an ungraceful stop. While online,
+the response uses the advertised host and UDP port.
 
 Create a join ticket after WorldServer has heartbeated the world online:
 
@@ -501,6 +508,8 @@ to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
 restart WorldServer so both processes use the current protocol implementation.
+Protocol version 4 also validates the compiled movement-simulation revision.
+Rebuild every standalone client after a protocol or simulation revision change.
 
 Scene flow:
 
@@ -696,6 +705,8 @@ Expected result:
   batch containing its edge is duplicated.
 - The server tick increases continuously and snapshots acknowledge input without
   protocol errors.
+- If input packets stop for more than the configured 500 ms timeout, WorldServer
+  neutralizes movement and action state instead of continuing the last command.
 - The capsule stops at walls and cover, follows the walkable ramp, and climbs
   the configured step heights in both the predicted and authoritative state.
 - Releasing movement input on Ramp leaves the character stationary, and the
@@ -706,6 +717,8 @@ Expected result:
   range remain responsive and are not delayed by step presentation smoothing.
 - The client refuses to activate movement and reports a collision revision error
   if its baked world data differs from WorldServer.
+- The client refuses to activate movement and reports a simulation revision
+  error if its compiled movement rules differ from WorldServer.
 - Stopping WorldServer clears the active world session and returns the client to
   CharacterSelect through the existing disconnect recovery flow.
 
@@ -721,8 +734,10 @@ Remote interpolation test with a standalone build:
 
 Expected result: each client owns one predicted local player and creates one
 presentation-only RemotePlayer instance for the other character. Remote motion
-is interpolated instead of jumping directly between 15 Hz snapshots. Leaving or
-disconnecting removes the corresponding remote view within three seconds.
+is interpolated instead of jumping directly between 15 Hz snapshots. After a
+temporary network or frame stall, the remote render clock restores its intended
+buffer instead of retaining permanent extra delay. Leaving or disconnecting
+removes the corresponding remote view within three seconds.
 
 Direct movement-only test:
 

@@ -97,6 +97,21 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void RemoteRenderClockRestoresItsInterpolationBufferAfterANetworkStall()
+        {
+            var clock = new RemoteRenderClock();
+            Assert.That(clock.Reset(100, 4), Is.EqualTo(96d));
+
+            clock.Advance(1f, 30, 100, 4);
+            Assert.That(clock.CurrentTick, Is.EqualTo(100d));
+
+            clock.Advance(1f / 60f, 30, 130, 4);
+
+            Assert.That(clock.CurrentTick, Is.EqualTo(126d));
+            Assert.That(130d - clock.CurrentTick, Is.EqualTo(4d));
+        }
+
+        [Test]
         public void LocalPresentationInterpolatesPredictionAcrossRenderFrames()
         {
             var presentation = new LocalMovementPresentation();
@@ -207,13 +222,41 @@ namespace ShooterMmo.Tests.EditMode
         [Test]
         public void NetworkSessionRejectsDifferentCollisionRevision()
         {
-            var accepted = new RealtimeJoinAccepted(
+            var accepted = CreateJoinAccepted(
+                GameSimulationCompatibility.Revision,
+                "different-collision-revision");
+
+            var created = NetworkMovementSession.TryCreate(accepted, out _, out var error);
+
+            Assert.That(created, Is.False);
+            Assert.That(error, Does.Contain("collision revision"));
+        }
+
+        [Test]
+        public void NetworkSessionRejectsDifferentSimulationRevision()
+        {
+            var accepted = CreateJoinAccepted(
+                "different-simulation-revision",
+                LoadCollisionWorld().Revision);
+
+            var created = NetworkMovementSession.TryCreate(accepted, out _, out var error);
+
+            Assert.That(created, Is.False);
+            Assert.That(error, Does.Contain("simulation revision"));
+        }
+
+        private static RealtimeJoinAccepted CreateJoinAccepted(
+            string simulationRevision,
+            string collisionRevision)
+        {
+            return new RealtimeJoinAccepted(
                 Guid.NewGuid().ToString("D"),
                 Guid.NewGuid().ToString("D"),
                 Guid.NewGuid().ToString("D"),
                 "Collision Hero",
                 "local-world-1",
-                "different-collision-revision",
+                simulationRevision,
+                collisionRevision,
                 DateTime.UtcNow.ToString("O"),
                 DateTime.UtcNow.AddSeconds(30).ToString("O"),
                 false,
@@ -249,11 +292,6 @@ namespace ShooterMmo.Tests.EditMode
                     0f,
                     true,
                     false));
-
-            var created = NetworkMovementSession.TryCreate(accepted, out _, out var error);
-
-            Assert.That(created, Is.False);
-            Assert.That(error, Does.Contain("collision revision"));
         }
 
         private static PlayerMovementInput Input(uint sequence, float moveX, float moveY)

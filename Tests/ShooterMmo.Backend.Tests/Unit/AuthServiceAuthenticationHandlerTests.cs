@@ -33,10 +33,13 @@ public sealed class AuthServiceAuthenticationHandlerTests
             "local-world-1",
             "CollisionData",
             27015,
+            "127.0.0.1",
+            27015,
             100,
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(15),
             15,
+            TimeSpan.FromMilliseconds(500),
             new MovementSimulationSettings(
                 30,
                 5f,

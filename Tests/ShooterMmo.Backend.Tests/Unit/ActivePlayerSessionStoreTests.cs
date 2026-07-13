@@ -120,6 +120,21 @@ public sealed class ActivePlayerSessionStoreTests
         Assert.False(store.TryTakeInvalidation(session.WorldSessionId, out _));
     }
 
+    [Fact]
+    public void IsCurrentExpiresTheExactSessionAndPreservesItsDisconnectReason()
+    {
+        var session = CreateSession(sessionExpiresAt: DateTime.UtcNow.AddSeconds(1));
+        var store = new ActivePlayerSessionStore();
+        store.Register(session);
+
+        Assert.True(store.IsCurrent(session, session.SessionExpiresAt.AddTicks(-1)));
+        Assert.False(store.IsCurrent(session, session.SessionExpiresAt));
+        Assert.Empty(store.ListActiveSessions());
+        Assert.True(store.TryTakeInvalidation(session.WorldSessionId, out var invalidation));
+        Assert.Equal("session_expired", invalidation!.Code);
+        Assert.Equal("The world session lease expired.", invalidation.Message);
+    }
+
     private static ActivePlayerSession CreateSession(
         Guid? worldSessionId = null,
         string sessionToken = "session-token",

@@ -49,13 +49,15 @@ The foundation currently supports:
 - Database-backed registration, login, logout, and single-active-account-session
   enforcement. A later login replaces the earlier client session.
 - Character creation and listing.
-- Heartbeat-based world discovery and online status.
+- Readiness-gated world registration with advertised UDP endpoints,
+  compatibility metadata, timeout-based status, and graceful offline updates.
 - Secure, transactional world join tickets and single-world character leases.
 - Reconnect, heartbeat, expiry, and safe release behavior.
 - A persistent LiteNetLib UDP client and headless WorldServer join and leave
   handshake.
 - Sequenced movement input, a fixed 30 Hz authoritative server simulation, 15 Hz
-  world snapshots, local reconciliation, and remote interpolation.
+  world snapshots, stale-input neutralization, local reconciliation, and
+  stall-recovering remote interpolation.
 - Versioned, chunked test-map collision shared by WorldServer and Unity
   prediction, with authoritative capsule movement across walls, ramps, steps,
   and cover.

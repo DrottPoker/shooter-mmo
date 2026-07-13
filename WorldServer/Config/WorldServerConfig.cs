@@ -9,10 +9,13 @@ public sealed record WorldServerConfig(
     string WorldServerId,
     string CollisionDataPath,
     int UdpPort,
+    string AdvertisedHost,
+    int AdvertisedUdpPort,
     int MaxConnections,
     TimeSpan JoinHandshakeTimeout,
     TimeSpan NetworkPollInterval,
     int SnapshotRateHz,
+    TimeSpan MovementInputSilenceTimeout,
     MovementSimulationSettings MovementSimulation,
     MovementSpawnConfig MovementSpawn,
     Uri AuthServiceBaseUrl,
@@ -52,6 +55,14 @@ public sealed record WorldServerConfig(
             First(section["UdpPort"], configuration["WORLD_UDP_PORT"]),
             "WorldServer:UdpPort",
             errors);
+        var advertisedHost = Require(
+            First(section["AdvertisedHost"], configuration["WORLD_ADVERTISED_HOST"]),
+            "WorldServer:AdvertisedHost",
+            errors);
+        var advertisedUdpPort = PositiveInt(
+            First(section["AdvertisedUdpPort"], configuration["WORLD_ADVERTISED_UDP_PORT"]),
+            "WorldServer:AdvertisedUdpPort",
+            errors);
         var maxConnections = PositiveInt(
             First(section["MaxConnections"], configuration["WORLD_MAX_CONNECTIONS"]),
             "WorldServer:MaxConnections",
@@ -76,6 +87,10 @@ public sealed record WorldServerConfig(
         var snapshotRateHz = PositiveInt(
             movementSection["SnapshotRateHz"],
             "WorldServer:Movement:SnapshotRateHz",
+            errors);
+        var movementInputSilenceTimeoutMilliseconds = PositiveInt(
+            movementSection["InputSilenceTimeoutMilliseconds"],
+            "WorldServer:Movement:InputSilenceTimeoutMilliseconds",
             errors);
         var walkSpeed = FiniteFloat(
             movementSection["WalkSpeed"],
@@ -191,6 +206,20 @@ public sealed record WorldServerConfig(
             errors.Add("WorldServer:UdpPort must be between 1 and 65535.");
         }
 
+        if (advertisedUdpPort > 65535)
+        {
+            errors.Add("WorldServer:AdvertisedUdpPort must be between 1 and 65535.");
+        }
+
+        if (advertisedHost is not null
+            && (advertisedHost.Length > 253
+                || advertisedHost.Any(char.IsWhiteSpace)
+                || advertisedHost.Contains("/", StringComparison.Ordinal)
+                || advertisedHost.Contains("\\", StringComparison.Ordinal)))
+        {
+            errors.Add("WorldServer:AdvertisedHost must be a host name or IP address without a scheme or path.");
+        }
+
         if (maxConnections > 10_000)
         {
             errors.Add("WorldServer:MaxConnections must not exceed 10000.");
@@ -206,6 +235,12 @@ public sealed record WorldServerConfig(
         {
             errors.Add(
                 "WorldServer:Movement:SnapshotRateHz must divide TickRateHz without a remainder.");
+        }
+
+        if (movementInputSilenceTimeoutMilliseconds > 5_000)
+        {
+            errors.Add(
+                "WorldServer:Movement:InputSilenceTimeoutMilliseconds must not exceed 5000.");
         }
 
         MovementSimulationSettings? movementSimulation = null;
@@ -280,10 +315,13 @@ public sealed record WorldServerConfig(
             worldServerId!,
             collisionDataPath!,
             udpPort,
+            advertisedHost!,
+            advertisedUdpPort,
             maxConnections,
             TimeSpan.FromSeconds(joinHandshakeTimeoutSeconds),
             TimeSpan.FromMilliseconds(networkPollIntervalMilliseconds),
             snapshotRateHz,
+            TimeSpan.FromMilliseconds(movementInputSilenceTimeoutMilliseconds),
             movementSimulation!,
             new MovementSpawnConfig(spawnX, spawnY, spawnZ, spawnYaw),
             parsedAuthServiceUrl!,

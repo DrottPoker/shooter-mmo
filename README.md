@@ -15,7 +15,8 @@ foundation for the first playable MVP.
   authentication rate limits, and service-authenticated WorldServer calls.
 - RFC Problem Details responses with correlation identifiers and dependency failure
   mapping.
-- Heartbeat-driven world registry status with timeout-based offline detection.
+- UDP-readiness-gated world registration with advertised endpoints, build
+  compatibility metadata, timeout-based status, and graceful offline updates.
 - Split liveness and protocol-level dependency readiness checks.
 - A versioned realtime protocol and fixed-step movement simulation shared by
   .NET and Unity.
@@ -24,8 +25,8 @@ foundation for the first playable MVP.
 - Timeout-aware Unity API handling, serialized UI operations, and automatic 401
   recovery.
 - Server-authoritative Input Action movement with prediction, reconciliation,
-  snapshots, remote interpolation, shared test-map collision, and collision-safe
-  third-person camera controls.
+  stale-input neutralization, snapshots, stall-recovering remote interpolation,
+  shared test-map collision, and collision-safe third-person camera controls.
 - Versioned collision baking with checksummed chunks consumed by both
   WorldServer and Unity prediction.
 - PostgreSQL and Redis development infrastructure through Docker Compose.

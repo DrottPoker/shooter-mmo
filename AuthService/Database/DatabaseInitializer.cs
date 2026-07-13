@@ -14,25 +14,49 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         new("202607121200_session_ticket_ownership", SessionTicketOwnershipMigrationSql),
         new("202607121500_world_session_ownership", WorldSessionOwnershipMigrationSql),
         new("202607131000_world_registry_heartbeat", WorldRegistryHeartbeatMigrationSql),
-        new("202607131900_single_active_account_session", SingleActiveAccountSessionMigrationSql)
+        new("202607131900_single_active_account_session", SingleActiveAccountSessionMigrationSql),
+        new("202607132100_world_runtime_registration", WorldRuntimeRegistrationMigrationSql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
-            create table if not exists schema_migrations (
-                id text primary key,
-                applied_at timestamptz not null default now()
-            );
-            """,
-            cancellationToken: cancellationToken));
+        await EnsureMigrationTableAsync(connection, cancellationToken);
 
         foreach (var migration in Migrations)
         {
             await ApplyMigrationAsync(connection, migration, cancellationToken);
+        }
+    }
+
+    private static async Task EnsureMigrationTableAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "select pg_advisory_xact_lock(@MigrationLockId);",
+                new { MigrationLockId },
+                transaction,
+                cancellationToken: cancellationToken));
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                create table if not exists schema_migrations (
+                    id text primary key,
+                    applied_at timestamptz not null default now()
+                );
+                """,
+                transaction: transaction,
+                cancellationToken: cancellationToken));
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
         }
     }
 
@@ -301,6 +325,39 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         create unique index ux_account_sessions_active_account
             on account_sessions(account_id)
             where revoked_at is null;
+        """;
+
+    private const string WorldRuntimeRegistrationMigrationSql = """
+        alter table worlds
+            add column instance_id text null,
+            add column protocol_version integer null,
+            add column simulation_revision text null,
+            add column collision_revision text null;
+
+        update worlds
+        set is_online = false,
+            updated_at = now()
+        where instance_id is null;
+
+        alter table worlds
+            add constraint ck_worlds_udp_port
+                check (udp_port between 1 and 65535),
+            add constraint ck_worlds_protocol_version
+                check (protocol_version is null or protocol_version between 1 and 65535),
+            add constraint ck_worlds_runtime_metadata
+                check (
+                    (
+                        (instance_id is null
+                         and protocol_version is null
+                         and simulation_revision is null
+                         and collision_revision is null)
+                        or
+                        (instance_id is not null
+                         and protocol_version is not null
+                         and simulation_revision is not null
+                         and collision_revision is not null)
+                    )
+                    and (not is_online or instance_id is not null));
         """;
 
     private sealed record DatabaseMigration(string Id, string Sql);

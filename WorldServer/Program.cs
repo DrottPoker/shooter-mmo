@@ -37,6 +37,8 @@ builder.Services.AddSingleton(dynamicCollisionWorld);
 builder.Services.AddSingleton(collisionWorld);
 builder.Services.AddSingleton<ICollisionWorld>(collisionWorld);
 builder.Services.AddSingleton<ActivePlayerSessionStore>();
+builder.Services.AddSingleton<RealtimeTransportReadiness>();
+builder.Services.AddSingleton(WorldServerInstanceIdentity.Create());
 builder.Services.AddTransient<AuthServiceAuthenticationHandler>();
 builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
 {
@@ -46,9 +48,9 @@ builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
 builder.Services.AddSingleton<WorldJoinService>();
 builder.Services.AddSingleton<WorldSessionReleaseService>();
 builder.Services.AddSingleton<WorldServerHealthService>();
-builder.Services.AddHostedService<WorldRegistryHeartbeatService>();
-builder.Services.AddHostedService<WorldSessionHeartbeatService>();
 builder.Services.AddHostedService<RealtimeServerService>();
+builder.Services.AddHostedService<WorldSessionHeartbeatService>();
+builder.Services.AddHostedService<WorldRegistryHeartbeatService>();
 
 using var host = builder.Build();
 
@@ -69,9 +71,12 @@ if (args.Contains("--health-check-only", StringComparer.OrdinalIgnoreCase))
 
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("WorldServer");
 logger.LogInformation(
-    "Starting {WorldServerId} as a headless .NET worker on UDP port {UdpPort} with collision revision {CollisionRevision}.",
+    "Starting {WorldServerId} as a headless .NET worker on UDP port {UdpPort}, advertising {AdvertisedHost}:{AdvertisedUdpPort}, with simulation revision {SimulationRevision} and collision revision {CollisionRevision}.",
     config.WorldServerId,
     config.UdpPort,
+    config.AdvertisedHost,
+    config.AdvertisedUdpPort,
+    GameSimulationCompatibility.Revision,
     staticCollisionWorld.Revision);
 
 await host.RunAsync();

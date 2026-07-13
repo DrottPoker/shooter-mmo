@@ -46,6 +46,7 @@ public sealed class RealtimeServerServiceTests
             new WorldJoinService(authClient, sessionStore, config),
             new WorldSessionReleaseService(authClient, sessionStore),
             sessionStore,
+            new RealtimeTransportReadiness(),
             staticCollisionWorld,
             collisionWorld,
             NullLogger<RealtimeServerService>.Instance);
@@ -219,10 +220,13 @@ public sealed class RealtimeServerServiceTests
             "local-world-1",
             "CollisionData",
             port,
+            "127.0.0.1",
+            port,
             4,
             TimeSpan.FromSeconds(2),
             TimeSpan.FromMilliseconds(5),
             15,
+            TimeSpan.FromMilliseconds(500),
             new MovementSimulationSettings(
                 30,
                 5f,

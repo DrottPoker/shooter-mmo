@@ -103,9 +103,12 @@ Status: Server-authoritative movement and test-map collision implemented
   teleports, and large corrections bypass this blend.
 - Authoritative snapshots acknowledge processed input sequences. The client
   replays remaining input and smooths small corrections.
-- Remote players advance on a frame-rate render clock through a snapshot buffer
-  approximately 100 ms behind server time. Receiving a snapshot never renders
-  its newest position immediately.
+- Remote players advance on an adaptive frame-rate render clock through a
+  snapshot buffer approximately 100 ms behind server time. Bounded clock
+  correction restores that delay after a network stall instead of accumulating
+  permanent latency.
+- WorldServer neutralizes movement and action state after 500 ms without a
+  newer input sequence, then resumes from the next valid input.
 
 Gamepad bindings and player-configurable rebinding are not implemented yet.
 

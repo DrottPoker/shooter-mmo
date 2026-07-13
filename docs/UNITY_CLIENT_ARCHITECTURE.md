@@ -166,7 +166,7 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a world.
 
-Protocol version 3 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 4 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, and disconnect
@@ -185,6 +185,9 @@ snapshot delivery:
 the server-provided movement settings and initial state used by the client. The
 client does not maintain a second editable copy of movement speed, tick rate,
 gravity, bounds, or snapshot frequency for an active network session.
+The join response must also match the client's compiled movement-simulation
+revision and baked collision revision. Either mismatch aborts activation with a
+structured client error.
 
 `GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
 installed from OpenUPM. The runtime assembly references both by assembly name.
@@ -325,10 +328,12 @@ authority.
 
 `RemotePlayerView` is presentation-only. It has no input, camera, audio listener,
 rigidbody, or collider. It buffers server states in
-`RemoteMovementInterpolation` and advances a monotonic frame-rate render clock
-approximately 100 ms behind the latest server tick. Snapshot arrival extends the
-buffer without applying the newest pose directly. A remote view is removed if no
-snapshot containing that character arrives for three seconds.
+`RemoteMovementInterpolation` and advances an adaptive monotonic frame-rate
+render clock approximately 100 ms behind the latest server tick. The clock uses
+bounded catch-up and slow-down corrections during normal delivery. After a
+larger network stall it restores the intended buffer delay instead of retaining
+permanent extra latency. A remote view is removed if no snapshot containing that
+character arrives for three seconds.
 
 `ThirdPersonCameraController` consumes look input continuously while the gameplay
 cursor is captured. F1 switches between captured shooter input and a released

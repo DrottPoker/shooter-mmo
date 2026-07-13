@@ -46,6 +46,17 @@ namespace ShooterMmo.Networking
                 return false;
             }
 
+            if (!string.Equals(
+                    accepted.SimulationRevision,
+                    GameSimulationCompatibility.Revision,
+                    StringComparison.Ordinal))
+            {
+                error = "Client movement simulation revision does not match WorldServer. Client: "
+                    + GameSimulationCompatibility.Revision + ", server: "
+                    + accepted.SimulationRevision + ".";
+                return false;
+            }
+
             if (!UnityWorldCollisionLoader.TryLoad(
                     accepted.WorldId,
                     out var collisionWorld,

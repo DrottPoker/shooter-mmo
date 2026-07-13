@@ -16,6 +16,7 @@ public sealed class RealtimeServerService(
     WorldJoinService joinService,
     WorldSessionReleaseService releaseService,
     ActivePlayerSessionStore sessionStore,
+    RealtimeTransportReadiness transportReadiness,
     ChunkedStaticCollisionWorld staticCollisionWorld,
     ICollisionWorld collisionWorld,
     ILogger<RealtimeServerService> logger) : BackgroundService
@@ -63,6 +64,8 @@ public sealed class RealtimeServerService(
             throw new InvalidOperationException(
                 $"WorldServer could not bind UDP port {config.UdpPort}.");
         }
+
+        transportReadiness.MarkListening(config.UdpPort);
 
         logger.LogInformation(
             "[WORLDSERVER] Realtime transport listening on UDP port {UdpPort} with protocol version {ProtocolVersion}, {TickRate} simulation ticks per second, and {SnapshotRate} snapshots per second.",
@@ -414,7 +417,12 @@ public sealed class RealtimeServerService(
         completed.Context.Movement = new AuthoritativePlayerMovement(
             initialMovementState,
             config.MovementSimulation,
-            collisionWorld);
+            collisionWorld,
+            Math.Max(
+                1,
+                (int)Math.Ceiling(
+                    config.MovementInputSilenceTimeout.TotalSeconds
+                    * config.MovementSimulation.TickRateHz)));
         DisconnectPreviousCharacterPeer(completed.Context, session);
         var response = ActivePlayerSessionResponse.FromSession(session);
 
@@ -425,6 +433,7 @@ public sealed class RealtimeServerService(
                 response.CharacterId.ToString("D"),
                 response.CharacterName,
                 response.WorldId,
+                GameSimulationCompatibility.Revision,
                 staticCollisionWorld.Revision,
                 response.JoinedAt.ToString("O"),
                 response.SessionExpiresAt.ToString("O"),
@@ -699,12 +708,7 @@ public sealed class RealtimeServerService(
 
     private bool IsCurrentSession(ActivePlayerSession session)
     {
-        return sessionStore.TryGet(session.CharacterId, out var current)
-            && current!.WorldSessionId == session.WorldSessionId
-            && string.Equals(
-                current.WorldSessionToken,
-                session.WorldSessionToken,
-                StringComparison.Ordinal);
+        return sessionStore.IsCurrent(session, DateTime.UtcNow);
     }
 
     private bool TryGetCurrentPeer(PeerContext context, out NetPeer peer)

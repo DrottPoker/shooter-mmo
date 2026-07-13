@@ -78,18 +78,63 @@ public sealed class AuthServiceClientTests
     [Fact]
     public async Task WorldHeartbeatUsesTheAuthenticatedWorldRoute()
     {
-        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        var requestBody = new WorldHeartbeatRequest(
+            "world.example.test",
+            28015,
+            "world-instance-1",
+            4,
+            "movement-simulation-v1",
+            "collision-revision-1");
+        var handler = new RecordingHttpMessageHandler(request => CreateJsonResponse(new
         {
             worldId = "local-world-1",
+            host = requestBody.Host,
+            udpPort = requestBody.UdpPort,
+            instanceId = requestBody.InstanceId,
+            protocolVersion = requestBody.ProtocolVersion,
+            simulationRevision = requestBody.SimulationRevision,
+            collisionRevision = requestBody.CollisionRevision,
             lastHeartbeatAt = DateTime.UtcNow,
             onlineUntil = DateTime.UtcNow.AddSeconds(30)
         }));
         var client = CreateClient(handler);
 
-        var result = await client.HeartbeatWorldAsync("local-world-1", CancellationToken.None);
+        var result = await client.HeartbeatWorldAsync(
+            "local-world-1",
+            requestBody,
+            CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
-        Assert.Equal("/api/worlds/local-world-1/heartbeat", Assert.Single(handler.Requests).Path);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("/api/worlds/local-world-1/heartbeat", request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("world.example.test", body.RootElement.GetProperty("host").GetString());
+        Assert.Equal(28015, body.RootElement.GetProperty("udpPort").GetInt32());
+        Assert.Equal("world-instance-1", body.RootElement.GetProperty("instanceId").GetString());
+        Assert.Equal(4, body.RootElement.GetProperty("protocolVersion").GetInt32());
+    }
+
+    [Fact]
+    public async Task WorldOfflineUsesTheInstanceGuardedRoute()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            worldId = "local-world-1",
+            instanceId = "world-instance-1",
+            offlineAt = DateTime.UtcNow
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.MarkWorldOfflineAsync(
+            "local-world-1",
+            "world-instance-1",
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("/api/worlds/local-world-1/offline", request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("world-instance-1", body.RootElement.GetProperty("instanceId").GetString());
     }
 
     [Fact]

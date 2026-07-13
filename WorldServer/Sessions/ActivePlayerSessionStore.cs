@@ -29,6 +29,8 @@ public sealed class ActivePlayerSessionStore
 
             if (existingSession.SessionExpiresAt <= DateTime.UtcNow)
             {
+                invalidationsByWorldSessionId[existingSession.WorldSessionId] =
+                    SessionExpiredInvalidation();
                 sessionsByCharacterId[session.CharacterId] = session;
                 return ActivePlayerSessionRegistration.ReplacedExpired;
             }
@@ -42,6 +44,31 @@ public sealed class ActivePlayerSessionStore
         lock (syncRoot)
         {
             return sessionsByCharacterId.TryGetValue(characterId, out session);
+        }
+    }
+
+    public bool IsCurrent(ActivePlayerSession expectedSession, DateTime utcNow)
+    {
+        lock (syncRoot)
+        {
+            if (!sessionsByCharacterId.TryGetValue(expectedSession.CharacterId, out var current)
+                || current.WorldSessionId != expectedSession.WorldSessionId
+                || !string.Equals(
+                    current.WorldSessionToken,
+                    expectedSession.WorldSessionToken,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (current.SessionExpiresAt > utcNow)
+            {
+                return true;
+            }
+
+            sessionsByCharacterId.Remove(expectedSession.CharacterId);
+            invalidationsByWorldSessionId[current.WorldSessionId] = SessionExpiredInvalidation();
+            return false;
         }
     }
 
@@ -148,6 +175,13 @@ public sealed class ActivePlayerSessionStore
                 .Select(ActivePlayerSessionResponse.FromSession)
                 .ToArray();
         }
+    }
+
+    private static ActivePlayerSessionInvalidation SessionExpiredInvalidation()
+    {
+        return new ActivePlayerSessionInvalidation(
+            "session_expired",
+            "The world session lease expired.");
     }
 }
 

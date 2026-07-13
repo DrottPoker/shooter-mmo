@@ -42,14 +42,41 @@ public sealed class AuthServiceClient(HttpClient httpClient)
 
     public Task<AuthServiceResult<WorldHeartbeatResponse>> HeartbeatWorldAsync(
         string worldId,
+        WorldHeartbeatRequest request,
         CancellationToken cancellationToken)
     {
-        return PostAsync<object, WorldHeartbeatResponse>(
+        return PostAsync<WorldHeartbeatRequest, WorldHeartbeatResponse>(
             $"/api/worlds/{Uri.EscapeDataString(worldId)}/heartbeat",
-            new { },
+            request,
             response => string.Equals(response.WorldId, worldId, StringComparison.Ordinal)
+                && string.Equals(response.Host, request.Host, StringComparison.OrdinalIgnoreCase)
+                && response.UdpPort == request.UdpPort
+                && string.Equals(response.InstanceId, request.InstanceId, StringComparison.Ordinal)
+                && response.ProtocolVersion == request.ProtocolVersion
+                && string.Equals(
+                    response.SimulationRevision,
+                    request.SimulationRevision,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    response.CollisionRevision,
+                    request.CollisionRevision,
+                    StringComparison.Ordinal)
                 && response.LastHeartbeatAt != default
                 && response.OnlineUntil > response.LastHeartbeatAt,
+            cancellationToken);
+    }
+
+    public Task<AuthServiceResult<WorldOfflineResponse>> MarkWorldOfflineAsync(
+        string worldId,
+        string instanceId,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<WorldOfflineRequest, WorldOfflineResponse>(
+            $"/api/worlds/{Uri.EscapeDataString(worldId)}/offline",
+            new WorldOfflineRequest(instanceId),
+            response => string.Equals(response.WorldId, worldId, StringComparison.Ordinal)
+                && string.Equals(response.InstanceId, instanceId, StringComparison.Ordinal)
+                && response.OfflineAt != default,
             cancellationToken);
     }
 

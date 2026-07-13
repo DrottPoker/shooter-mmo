@@ -1,4 +1,5 @@
 using ShooterMmo.GameProtocol;
+using ShooterMmo.GameSimulation;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
@@ -29,6 +30,7 @@ public sealed class RealtimeProtocolTests
             Guid.NewGuid().ToString("D"),
             "Protocol Hero",
             "local-world-1",
+            GameSimulationCompatibility.Revision,
             "collision-revision-123",
             DateTime.UtcNow.ToString("O"),
             DateTime.UtcNow.AddSeconds(30).ToString("O"),
@@ -46,6 +48,7 @@ public sealed class RealtimeProtocolTests
         Assert.Equal(expected.CharacterId, actual.CharacterId);
         Assert.Equal(expected.CharacterName, actual.CharacterName);
         Assert.Equal(expected.WorldId, actual.WorldId);
+        Assert.Equal(expected.SimulationRevision, actual.SimulationRevision);
         Assert.Equal(expected.CollisionRevision, actual.CollisionRevision);
         Assert.True(actual.IsReconnect);
         Assert.Equal(30, actual.MovementSettings.TickRateHz);

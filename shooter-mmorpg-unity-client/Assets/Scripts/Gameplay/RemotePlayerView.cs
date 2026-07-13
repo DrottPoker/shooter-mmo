@@ -1,4 +1,3 @@
-using System;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Networking;
@@ -15,12 +14,11 @@ namespace ShooterMmo.Gameplay
             new CollisionQueryBuffer();
         private readonly GroundedVerticalPresentation groundedVerticalPresentation =
             new GroundedVerticalPresentation();
+        private readonly RemoteRenderClock renderClock = new RemoteRenderClock();
 
         private int tickRateHz;
         private int interpolationDelayTicks;
         private float latestSnapshotReceivedAt;
-        private double renderServerTick;
-        private bool isRenderClockInitialized;
         private ICollisionWorld collisionWorld;
         private CharacterCollisionSettings collisionSettings;
 
@@ -45,8 +43,7 @@ namespace ShooterMmo.Gameplay
             collisionSettings = characterCollision;
             groundedVerticalPresentation.Clear();
             latestSnapshotReceivedAt = Time.realtimeSinceStartup;
-            renderServerTick = 0d;
-            isRenderClockInitialized = false;
+            renderClock.Clear();
             name = "RemotePlayer_" + characterId;
         }
 
@@ -76,23 +73,24 @@ namespace ShooterMmo.Gameplay
             latestSnapshotReceivedAt = Time.realtimeSinceStartup;
             if (wasEmpty)
             {
-                renderServerTick = interpolation.LatestServerTick - interpolationDelayTicks;
-                isRenderClockInitialized = true;
-                ApplyInterpolatedState(renderServerTick);
+                ApplyInterpolatedState(renderClock.Reset(
+                    interpolation.LatestServerTick,
+                    interpolationDelayTicks));
             }
         }
 
         private void Update()
         {
-            if (interpolation.Count == 0 || !isRenderClockInitialized)
+            if (interpolation.Count == 0 || !renderClock.IsInitialized)
             {
                 return;
             }
 
-            renderServerTick = Math.Min(
-                renderServerTick + (Time.deltaTime * tickRateHz),
-                interpolation.LatestServerTick);
-            ApplyInterpolatedState(renderServerTick);
+            ApplyInterpolatedState(renderClock.Advance(
+                Time.unscaledDeltaTime,
+                tickRateHz,
+                interpolation.LatestServerTick,
+                interpolationDelayTicks));
         }
 
         private void ApplyInterpolatedState(double targetTick)

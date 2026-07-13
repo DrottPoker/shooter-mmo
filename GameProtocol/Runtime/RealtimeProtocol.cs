@@ -34,6 +34,7 @@ namespace ShooterMmo.GameProtocol
             string characterId,
             string characterName,
             string worldId,
+            string simulationRevision,
             string collisionRevision,
             string joinedAt,
             string sessionExpiresAt,
@@ -46,6 +47,7 @@ namespace ShooterMmo.GameProtocol
             CharacterId = characterId;
             CharacterName = characterName;
             WorldId = worldId;
+            SimulationRevision = simulationRevision;
             CollisionRevision = collisionRevision;
             JoinedAt = joinedAt;
             SessionExpiresAt = sessionExpiresAt;
@@ -63,6 +65,8 @@ namespace ShooterMmo.GameProtocol
         public string CharacterName { get; }
 
         public string WorldId { get; }
+
+        public string SimulationRevision { get; }
 
         public string CollisionRevision { get; }
 
@@ -318,8 +322,8 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 3;
-        public const string ConnectionKey = "ShooterMmo.Realtime.v3";
+        public const ushort Version = 4;
+        public const string ConnectionKey = "ShooterMmo.Realtime.v4";
         public const int MaximumPacketSize = 1200;
 
         public static byte[] EncodeJoinRequest(string joinTicket)
@@ -361,6 +365,11 @@ namespace ShooterMmo.GameProtocol
                 WriteString(writer, session.WorldId, MaximumIdentifierLength, nameof(session.WorldId));
                 WriteString(
                     writer,
+                    session.SimulationRevision,
+                    MaximumIdentifierLength,
+                    nameof(session.SimulationRevision));
+                WriteString(
+                    writer,
                     session.CollisionRevision,
                     MaximumIdentifierLength,
                     nameof(session.CollisionRevision));
@@ -394,6 +403,11 @@ namespace ShooterMmo.GameProtocol
                     || !TryReadString(
                         reader,
                         MaximumIdentifierLength,
+                        out var simulationRevision,
+                        out error)
+                    || !TryReadString(
+                        reader,
+                        MaximumIdentifierLength,
                         out var collisionRevision,
                         out error)
                     || !TryReadString(reader, MaximumTimestampLength, out var joinedAt, out error)
@@ -416,6 +430,7 @@ namespace ShooterMmo.GameProtocol
                     characterId,
                     characterName,
                     worldId,
+                    simulationRevision,
                     collisionRevision,
                     joinedAt,
                     sessionExpiresAt,

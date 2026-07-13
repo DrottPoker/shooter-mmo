@@ -6,8 +6,12 @@ namespace WorldServer.Realtime;
 public sealed class AuthoritativePlayerMovement(
     PlayerMovementState initialState,
     MovementSimulationSettings settings,
-    ICollisionWorld collisionWorld)
+    ICollisionWorld collisionWorld,
+    int maximumInputSilenceTicks)
 {
+    private readonly int inputSilenceTickLimit = maximumInputSilenceTicks > 0
+        ? maximumInputSilenceTicks
+        : throw new ArgumentOutOfRangeException(nameof(maximumInputSilenceTicks));
     private PlayerMovementInput latestInput = new(
         0,
         0,
@@ -16,6 +20,15 @@ public sealed class AuthoritativePlayerMovement(
         initialState.YawDegrees,
         PlayerMovementButtons.None);
     private bool jumpPending;
+    private int ticksSinceLatestInput;
+
+    public AuthoritativePlayerMovement(
+        PlayerMovementState initialState,
+        MovementSimulationSettings settings,
+        ICollisionWorld collisionWorld)
+        : this(initialState, settings, collisionWorld, Math.Max(1, settings.TickRateHz / 2))
+    {
+    }
 
     public PlayerMovementState State { get; private set; } = initialState;
 
@@ -25,6 +38,7 @@ public sealed class AuthoritativePlayerMovement(
 
     public void AcceptInputs(RealtimeMovementInput[] inputs)
     {
+        var acceptedInput = false;
         foreach (var input in inputs)
         {
             if (!MovementSequence.IsNewer(input.InputSequence, LastReceivedInputSequence))
@@ -42,12 +56,21 @@ public sealed class AuthoritativePlayerMovement(
                 input.CameraYawDegrees,
                 buttons & ~PlayerMovementButtons.Jump);
             LastReceivedInputSequence = input.InputSequence;
+            acceptedInput = true;
+        }
+
+        if (acceptedInput)
+        {
+            ticksSinceLatestInput = 0;
         }
     }
 
     public void SimulateTick()
     {
-        var buttons = latestInput.Buttons;
+        var inputIsStale = ticksSinceLatestInput >= inputSilenceTickLimit;
+        var buttons = inputIsStale
+            ? PlayerMovementButtons.None
+            : latestInput.Buttons;
         if (jumpPending)
         {
             buttons |= PlayerMovementButtons.Jump;
@@ -56,13 +79,17 @@ public sealed class AuthoritativePlayerMovement(
         var input = new PlayerMovementInput(
             LastReceivedInputSequence,
             latestInput.ClientTick,
-            latestInput.MoveX,
-            latestInput.MoveY,
+            inputIsStale ? 0f : latestInput.MoveX,
+            inputIsStale ? 0f : latestInput.MoveY,
             latestInput.CameraYawDegrees,
             buttons);
         State = PlayerMovementSimulation.Step(State, input, settings, collisionWorld);
         LastProcessedInputSequence = LastReceivedInputSequence;
         jumpPending = false;
+        if (ticksSinceLatestInput < int.MaxValue)
+        {
+            ticksSinceLatestInput++;
+        }
     }
 
     private static PlayerMovementButtons ToSimulationButtons(RealtimeMovementButtons buttons)

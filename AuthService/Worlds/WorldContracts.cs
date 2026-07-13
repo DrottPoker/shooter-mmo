@@ -12,8 +12,29 @@ public sealed record WorldResponse(
 
 public sealed record WorldHeartbeatResponse(
     string WorldId,
+    string Host,
+    int UdpPort,
+    string InstanceId,
+    int ProtocolVersion,
+    string SimulationRevision,
+    string CollisionRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
+
+public sealed record WorldHeartbeatRequest(
+    string? Host,
+    int UdpPort,
+    string? InstanceId,
+    int ProtocolVersion,
+    string? SimulationRevision,
+    string? CollisionRevision);
+
+public sealed record WorldOfflineRequest(string? InstanceId);
+
+public sealed record WorldOfflineResponse(
+    string WorldId,
+    string InstanceId,
+    DateTime OfflineAt);
 
 public sealed record JoinWorldRequest(Guid CharacterId);
 

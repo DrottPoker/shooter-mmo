@@ -37,6 +37,8 @@ public sealed class ConfigurationValidationTests
     {
         var settings = WorldSettings();
         settings["WorldServer:UdpPort"] = "70000";
+        settings["WorldServer:AdvertisedHost"] = "http://world.example.test/path";
+        settings["WorldServer:AdvertisedUdpPort"] = "70001";
         settings.Remove("WorldServer:AuthServiceSecret");
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
@@ -44,6 +46,8 @@ public sealed class ConfigurationValidationTests
             () => WorldServerConfig.FromConfiguration(configuration));
 
         Assert.Contains("UdpPort must be between 1 and 65535", exception.Message);
+        Assert.Contains("AdvertisedUdpPort must be between 1 and 65535", exception.Message);
+        Assert.Contains("AdvertisedHost must be a host name or IP address", exception.Message);
         Assert.Contains("AuthServiceSecret is required", exception.Message);
     }
 
@@ -57,10 +61,13 @@ public sealed class ConfigurationValidationTests
         var config = WorldServerConfig.FromConfiguration(configuration);
 
         Assert.Equal("local-world-1", config.WorldServerId);
+        Assert.Equal("127.0.0.1", config.AdvertisedHost);
+        Assert.Equal(27015, config.AdvertisedUdpPort);
         Assert.Equal(100, config.MaxConnections);
         Assert.Equal(TimeSpan.FromSeconds(10), config.WorldRegistryHeartbeatInterval);
         Assert.Equal(30, config.MovementSimulation.TickRateHz);
         Assert.Equal(15, config.SnapshotRateHz);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), config.MovementInputSilenceTimeout);
         Assert.Equal(0.35f, config.MovementSimulation.CharacterCollision.Radius);
     }
 
@@ -98,6 +105,8 @@ public sealed class ConfigurationValidationTests
             ["WorldServer:WorldServerId"] = "local-world-1",
             ["WorldServer:CollisionDataPath"] = "CollisionData",
             ["WorldServer:UdpPort"] = "27015",
+            ["WorldServer:AdvertisedHost"] = "127.0.0.1",
+            ["WorldServer:AdvertisedUdpPort"] = "27015",
             ["WorldServer:MaxConnections"] = "100",
             ["WorldServer:JoinHandshakeTimeoutSeconds"] = "10",
             ["WorldServer:NetworkPollIntervalMilliseconds"] = "15",
@@ -108,6 +117,7 @@ public sealed class ConfigurationValidationTests
             ["WorldServer:WorldRegistryHeartbeatSeconds"] = "10",
             ["WorldServer:Movement:TickRateHz"] = "30",
             ["WorldServer:Movement:SnapshotRateHz"] = "15",
+            ["WorldServer:Movement:InputSilenceTimeoutMilliseconds"] = "500",
             ["WorldServer:Movement:WalkSpeed"] = "5",
             ["WorldServer:Movement:SprintSpeed"] = "8",
             ["WorldServer:Movement:RotationSpeedDegrees"] = "720",

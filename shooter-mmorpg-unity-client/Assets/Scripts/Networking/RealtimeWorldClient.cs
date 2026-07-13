@@ -681,6 +681,7 @@ namespace ShooterMmo.Networking
                 && Guid.TryParse(session.CharacterId, out _)
                 && !string.IsNullOrWhiteSpace(session.CharacterName)
                 && !string.IsNullOrWhiteSpace(session.WorldId)
+                && !string.IsNullOrWhiteSpace(session.SimulationRevision)
                 && !string.IsNullOrWhiteSpace(session.CollisionRevision)
                 && DateTime.TryParse(session.JoinedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out _)
                 && DateTime.TryParse(

@@ -45,6 +45,7 @@ AuthService is the only ASP.NET application.
 | `GET /api/worlds` | Public client | List worlds and online state |
 | `POST /api/worlds/{worldId}/join` | Authenticated player | Create join ticket |
 | `POST /api/worlds/{worldId}/heartbeat` | Authenticated WorldServer | Refresh registry entry |
+| `POST /api/worlds/{worldId}/offline` | Authenticated WorldServer | Unregister exact process instance |
 | `POST /api/world-join-tickets/consume` | Authenticated WorldServer | Consume ticket and claim lease |
 | `POST /api/world-sessions/{id}/heartbeat` | Authenticated WorldServer | Extend exact lease generation |
 | `POST /api/world-sessions/{id}/release` | Authenticated WorldServer | Release exact lease generation |
@@ -70,10 +71,15 @@ Status: Implemented
 
 - Public world listing with host, UDP port, ruleset, and heartbeat metadata.
 - Service-authenticated WorldServer heartbeat.
+- Registration begins only after the UDP transport has bound successfully.
+- Each heartbeat publishes the advertised host and UDP port, process instance
+  id, protocol version, simulation revision, and collision revision.
 - Database-generated heartbeat timestamps.
 - Timeout-derived online status.
 - Seeded and stale worlds remain offline until a fresh heartbeat exists.
 - Default 10-second heartbeat interval and 30-second online timeout.
+- Graceful shutdown marks the matching instance offline immediately. Instance
+  matching prevents an older process from unregistering its replacement.
 
 ## World Join Tickets
 
@@ -103,6 +109,8 @@ Status: Implemented
 - A replaced account session fails world heartbeat with
   `account_session_replaced`; WorldServer forwards that reason to the displaced
   UDP client before disconnecting it.
+- WorldServer disconnects a local peer with `session_expired` when its cached
+  database lease reaches its expiry before a successful renewal.
 
 PostgreSQL constraints, transactions, character locks, and advisory migration
 locks enforce consistency.
@@ -130,7 +138,7 @@ Status: Session and authoritative movement foundation implemented
 - World snapshots use unchanneled unreliable delivery with bounded packet size
   and application-level tick and chunk metadata.
 
-Protocol version 3 reserves reliable ordered channel 0 for control, sequenced
+Protocol version 4 reserves reliable ordered channel 0 for control, sequenced
 channel 1 for player input, and LiteNetLib's unchanneled `Unreliable` delivery
 for world snapshots. Unreliable receive callbacks report channel 0, so snapshot
 validation relies on the protocol message type and delivery method.
@@ -150,6 +158,8 @@ Status: Fixed-tick movement and authored collision implemented
 - Clients send up to four current unacknowledged inputs per batch. WorldServer
   ignores duplicate and older sequences and preserves a jump edge until the next
   simulation tick.
+- The default 500 ms input-silence timeout neutralizes stale movement, sprint,
+  aim, and jump state until a newer sequence arrives.
 - Each snapshot player record includes the authoritative movement state and the
   newest processed input sequence required for reconciliation.
 - Snapshot chunks contain at most 20 players and remain below the protocol's
@@ -232,6 +242,8 @@ decoding validates:
 - Complete payloads with no trailing data.
 - Finite normalized movement input and known movement flags.
 - Valid snapshot chunk metadata and finite player state.
+- The accepted join includes an explicit movement-simulation revision so an
+  incompatible client fails before prediction starts.
 
 Keeping Unity package contents separate from .NET `bin` and `obj` output avoids
 duplicate Unity assembly imports.
@@ -272,7 +284,9 @@ Status: Implemented
 AuthService owns ordered migrations for accounts, account sessions, characters,
 worlds, join tickets, character world sessions, and migration metadata. Startup
 migration execution is configurable and protected against concurrent service
-startup.
+startup. The advisory lock is acquired before the migration metadata table is
+created, so two completely fresh service instances cannot race during database
+bootstrap.
 
 ## Quality Coverage
 

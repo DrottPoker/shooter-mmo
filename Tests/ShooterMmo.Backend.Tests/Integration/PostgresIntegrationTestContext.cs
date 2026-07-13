@@ -82,6 +82,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 {
                     var heartbeat = await context.WorldRegistryService.HeartbeatAsync(
                         "local-world-1",
+                        CreateHeartbeatRequest(),
                         CancellationToken.None);
                     Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
                 }
@@ -103,6 +104,20 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             NullLogger<DatabaseInitializer>.Instance);
 
         return initializer.InitializeAsync(CancellationToken.None);
+    }
+
+    public static WorldHeartbeatRequest CreateHeartbeatRequest(
+        string instanceId = "integration-world-instance",
+        string host = "127.0.0.1",
+        int udpPort = 27015)
+    {
+        return new WorldHeartbeatRequest(
+            host,
+            udpPort,
+            instanceId,
+            4,
+            "movement-simulation-v1",
+            "integration-collision-revision");
     }
 
     public async Task<IntegrationPlayer> RegisterPlayerAsync(
@@ -139,8 +154,28 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     {
         await using var command = DataSource.CreateCommand(
             """
-            insert into worlds (id, display_name, host, udp_port, rule_set, is_online)
-            values (@WorldId, @DisplayName, '127.0.0.1', 27016, 'mvp-open-risk', true);
+            insert into worlds (
+                id,
+                display_name,
+                host,
+                udp_port,
+                rule_set,
+                is_online,
+                instance_id,
+                protocol_version,
+                simulation_revision,
+                collision_revision)
+            values (
+                @WorldId,
+                @DisplayName,
+                '127.0.0.1',
+                27016,
+                'mvp-open-risk',
+                true,
+                'integration-secondary-instance',
+                4,
+                'movement-simulation-v1',
+                'integration-collision-revision');
 
             update worlds
             set last_heartbeat_at = now()
