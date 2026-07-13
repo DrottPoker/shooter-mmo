@@ -19,7 +19,10 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     {
         DataSource = dataSource;
         SessionService = new SessionService(dataSource, configuration);
-        AccountService = new AccountService(dataSource, SessionService);
+        AccountService = new AccountService(
+            dataSource,
+            SessionService,
+            NullLogger<AccountService>.Instance);
         CharacterService = new CharacterService(dataSource, configuration);
         WorldService = new WorldService(dataSource, configuration, authServiceConfig);
         WorldSessionService = new WorldSessionService(dataSource, configuration);

@@ -12,6 +12,9 @@ public sealed class AccountSessionAuthenticationHandler(
     SessionService sessionService)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    private string challengeCode = "invalid_session_token";
+    private string challengeDetail = "A valid bearer session token is required.";
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var token = SessionService.ReadBearerToken(Request);
@@ -20,11 +23,15 @@ public sealed class AccountSessionAuthenticationHandler(
             return AuthenticateResult.NoResult();
         }
 
-        var account = await sessionService.AuthenticateTokenAsync(token, Context.RequestAborted);
-        if (account is null)
+        var result = await sessionService.ResolveTokenAsync(token, Context.RequestAborted);
+        if (result.Account is null)
         {
-            return AuthenticateResult.Fail("Session token is invalid, revoked, or expired.");
+            challengeCode = result.ErrorCode ?? challengeCode;
+            challengeDetail = result.ErrorMessage ?? challengeDetail;
+            return AuthenticateResult.Fail(challengeDetail);
         }
+
+        var account = result.Account;
 
         var claims = new[]
         {
@@ -45,10 +52,10 @@ public sealed class AccountSessionAuthenticationHandler(
         return Results.Problem(
                 statusCode: StatusCodes.Status401Unauthorized,
                 title: "Unauthorized",
-                detail: "A valid bearer session token is required.",
+                detail: challengeDetail,
                 extensions: new Dictionary<string, object?>
                 {
-                    ["code"] = "invalid_session_token"
+                    ["code"] = challengeCode
                 })
             .ExecuteAsync(Context);
     }

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using ShooterMmo.Shared.Health;
@@ -117,7 +118,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             if (string.Equals(problem.Code, "invalid_service_credentials", StringComparison.Ordinal))
             {
                 return AuthServiceResult<TResponse>.Failure(
-                    StatusCodes.Status502BadGateway,
+                    (int)HttpStatusCode.BadGateway,
                     "auth_service_authentication_failed",
                     "WorldServer could not authenticate with AuthService.");
             }
@@ -134,14 +135,14 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         catch (TaskCanceledException)
         {
             return AuthServiceResult<TResponse>.Failure(
-                StatusCodes.Status504GatewayTimeout,
+                (int)HttpStatusCode.GatewayTimeout,
                 "auth_service_timeout",
                 "AuthService did not respond before the timeout.");
         }
         catch (HttpRequestException)
         {
             return AuthServiceResult<TResponse>.Failure(
-                StatusCodes.Status503ServiceUnavailable,
+                (int)HttpStatusCode.ServiceUnavailable,
                 "auth_service_unavailable",
                 "AuthService could not be reached.");
         }
@@ -165,7 +166,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
     private static AuthServiceResult<T> InvalidResponse<T>()
     {
         return AuthServiceResult<T>.Failure(
-            StatusCodes.Status502BadGateway,
+            (int)HttpStatusCode.BadGateway,
             "invalid_auth_response",
             "AuthService returned an invalid response.");
     }

@@ -23,6 +23,8 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\AuthService\AuthService.csproj" />
+    <ProjectReference Include="..\..\GameProtocol.DotNet\ShooterMmo.GameProtocol.csproj" />
+    <ProjectReference Include="..\..\GameSimulation.DotNet\ShooterMmo.GameSimulation.csproj" />
     <ProjectReference Include="..\..\Shared\ShooterMmo.Shared.csproj" />
     <ProjectReference Include="..\..\WorldServer\WorldServer.csproj" />
   </ItemGroup>

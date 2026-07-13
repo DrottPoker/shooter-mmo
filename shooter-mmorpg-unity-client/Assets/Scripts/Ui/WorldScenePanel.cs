@@ -1,5 +1,6 @@
 using System.Collections;
-using ShooterMmo.Api;
+using ShooterMmo.Gameplay;
+using ShooterMmo.Networking;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -9,34 +10,67 @@ namespace ShooterMmo.Ui
     {
         private readonly ClientOperationState operationState = new ClientOperationState();
 
-        private ShooterMmoApiClient apiClient;
-        private string status = "World scene loaded.";
-        private ActivePlayerSessionResponse[] serverSessions = new ActivePlayerSessionResponse[0];
+        private string status = "Realtime world connection active.";
         private Vector2 scrollPosition;
-
-        private void Awake()
-        {
-            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
-        }
+        private LocalPlayerInput localPlayerInput;
+        private bool isVisible = true;
 
         private void Start()
         {
-            BeginOperation(ClientOperation.RefreshWorldSession, RefreshServerSessionsRoutine());
+            localPlayerInput = FindAnyObjectByType<LocalPlayerInput>();
+            if (ShooterMmoClientSession.ActiveWorldSession == null)
+            {
+#if UNITY_EDITOR
+                status = "Offline Editor movement preview. Realtime is disconnected.";
+                return;
+#else
+                SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+                return;
+#endif
+            }
+
+            if (ShooterMmoClientBootstrap.WorldClient == null
+                || !ShooterMmoClientBootstrap.WorldClient.IsJoined)
+            {
+                ShooterMmoClientSession.ActiveWorldSession = null;
+                SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+            }
+        }
+
+        private void Update()
+        {
+            if (localPlayerInput == null)
+            {
+                localPlayerInput = FindAnyObjectByType<LocalPlayerInput>();
+            }
+
+            if (localPlayerInput != null && localPlayerInput.ToggleWorldDebugPressedThisFrame)
+            {
+                isVisible = !isVisible;
+            }
         }
 
         private void OnGUI()
         {
-            GUILayout.BeginArea(TemporaryPanelStyles.GetPanelRect(620f, 620f), "World Scene", GUI.skin.window);
+            if (!isVisible)
+            {
+                return;
+            }
+
+            GUILayout.BeginArea(
+                TemporaryPanelStyles.GetBottomLeftPanelRect(420f, 300f),
+                "World Debug (F2)",
+                GUI.skin.window);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
 
             var previousGuiState = GUI.enabled;
             GUI.enabled = previousGuiState && !operationState.IsBusy;
             DrawSessionSection();
-            DrawServerSection();
+            DrawTransportSection();
             GUI.enabled = previousGuiState;
 
-            GUILayout.Space(12f);
-            TemporaryPanelStyles.DrawStatus(operationState.IsBusy, status);
+            GUILayout.Space(6f);
+            TemporaryPanelStyles.DrawStatus(operationState.IsBusy, status, 44f);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -46,15 +80,12 @@ namespace ShooterMmo.Ui
         {
             GUILayout.Label("Local Session");
 
-            if (ShooterMmoClientSession.ActiveWorldSession != null)
+            var session = ShooterMmoClientSession.ActiveWorldSession;
+            if (session != null)
             {
-                var session = ShooterMmoClientSession.ActiveWorldSession;
                 GUILayout.Label("Character: " + session.characterName);
-                GUILayout.Label("Character Id: " + session.characterId);
                 GUILayout.Label("World: " + session.worldId);
-                GUILayout.Label("World Session Id: " + session.worldSessionId);
-                GUILayout.Label("Joined At: " + session.joinedAt);
-                GUILayout.Label("Session Expires At: " + session.sessionExpiresAt);
+                GUILayout.Label("Session: " + session.worldSessionId);
                 GUILayout.Label("Reconnect: " + session.isReconnect);
             }
             else
@@ -62,130 +93,86 @@ namespace ShooterMmo.Ui
                 GUILayout.Label("No local world session.");
             }
 
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Refresh Server Sessions", GUILayout.Height(32f)))
+            if (GUILayout.Button("Leave World", GUILayout.Height(28f)))
             {
-                BeginOperation(ClientOperation.RefreshWorldSession, RefreshServerSessionsRoutine());
+                BeginLeave();
             }
 
-            if (GUILayout.Button("Leave World", GUILayout.Height(32f)))
-            {
-                BeginLeave(ShooterMmoSceneNames.CharacterSelect, clearAuthentication: false);
-            }
-
-            if (GUILayout.Button("Back To Character Select", GUILayout.Height(32f)))
-            {
-                BeginLeave(ShooterMmoSceneNames.CharacterSelect, clearAuthentication: false);
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(12f);
+            GUILayout.Space(6f);
         }
 
-        private void DrawServerSection()
+        private void DrawTransportSection()
         {
-            GUILayout.Label("WorldServer Sessions");
-
-            if (serverSessions.Length == 0)
+            GUILayout.Label("Realtime Transport");
+            var worldClient = ShooterMmoClientBootstrap.WorldClient;
+            if (worldClient == null)
             {
-                GUILayout.Label("No active server sessions loaded.");
+                GUILayout.Label("Client unavailable");
                 return;
             }
 
-            for (var index = 0; index < serverSessions.Length; index++)
+            GUILayout.Label("State: " + worldClient.State);
+            GUILayout.Label("Endpoint: " + worldClient.ConnectedHost + ":" + worldClient.ConnectedPort + "/udp");
+            if (worldClient.MovementSession != null)
             {
-                var session = serverSessions[index];
-                GUILayout.Label(session.characterName + " on " + session.worldId + " (" + session.characterId + ")");
+                GUILayout.Label("Authority: WorldServer");
+                GUILayout.Label("Server Tick: " + worldClient.LatestServerTick);
+                GUILayout.Label(
+                    "Simulation: " + worldClient.MovementSession.Settings.TickRateHz
+                    + " Hz / Snapshots: " + worldClient.MovementSession.SnapshotRateHz + " Hz");
             }
         }
 
-        private IEnumerator RefreshServerSessionsRoutine()
+        private void BeginLeave()
         {
-            ActivePlayerSessionResponse[] result = null;
-            ShooterMmoApiError error = null;
-            yield return apiClient.GetDebugSessions(
-                ShooterMmoClientSession.WorldServerBaseUrl,
-                value => result = value,
-                value => error = value);
-
-            if (error == null)
+            if (!operationState.TryBegin(ClientOperation.LeaveWorld))
             {
-                serverSessions = result ?? new ActivePlayerSessionResponse[0];
-                status = "Loaded " + serverSessions.Length + " WorldServer sessions.";
-                yield break;
+                return;
             }
 
-            if (error.IsUnauthorized)
-            {
-                yield return LeaveWorldRoutine(ShooterMmoSceneNames.LoginMenu, clearAuthentication: true);
-                yield break;
-            }
-
-            SetError(error);
+            StartCoroutine(RunLeaveOperation());
         }
 
-        private void BeginLeave(string destinationScene, bool clearAuthentication)
+        private IEnumerator RunLeaveOperation()
         {
-            BeginOperation(
-                ClientOperation.LeaveWorld,
-                LeaveWorldRoutine(destinationScene, clearAuthentication));
+            yield return LeaveWorldRoutine();
+            operationState.Complete(ClientOperation.LeaveWorld);
         }
 
-        private IEnumerator LeaveWorldRoutine(string destinationScene, bool clearAuthentication)
+        private IEnumerator LeaveWorldRoutine()
         {
             var session = ShooterMmoClientSession.ActiveWorldSession;
-            if (session != null)
+            var worldClient = ShooterMmoClientBootstrap.WorldClient;
+            if (session == null || worldClient == null)
             {
-                ShooterMmoApiError error = null;
-                yield return apiClient.RemoveDebugSession(
-                    ShooterMmoClientSession.WorldServerBaseUrl,
-                    session.characterId,
-                    session.worldSessionId,
-                    () => { },
-                    value => error = value);
+                ShooterMmoClientSession.ActiveWorldSession = null;
+                SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+                yield break;
+            }
 
-                if (error != null && error.IsUnauthorized)
+            RealtimeClientError error = null;
+            yield return worldClient.Leave(
+                session.worldSessionId,
+                () => { },
+                value => error = value);
+
+            if (error != null)
+            {
+                SetError(error);
+                if (worldClient.IsJoined)
                 {
-                    clearAuthentication = true;
-                    destinationScene = ShooterMmoSceneNames.LoginMenu;
-                }
-                else if (error != null)
-                {
-                    SetError(error);
                     yield break;
                 }
             }
 
             ShooterMmoClientSession.ActiveWorldSession = null;
-            if (clearAuthentication)
-            {
-                ShooterMmoClientSession.Clear();
-            }
-
             status = "Left world.";
-            SceneManager.LoadScene(destinationScene);
+            SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
         }
 
-        private void BeginOperation(ClientOperation operation, IEnumerator routine)
-        {
-            if (!operationState.TryBegin(operation))
-            {
-                return;
-            }
-
-            StartCoroutine(RunOperation(operation, routine));
-        }
-
-        private IEnumerator RunOperation(ClientOperation operation, IEnumerator routine)
-        {
-            yield return routine;
-            operationState.Complete(operation);
-        }
-
-        private void SetError(ShooterMmoApiError error)
+        private void SetError(RealtimeClientError error)
         {
             status = "Error: " + error.ToDisplayMessage();
-            Debug.LogWarning(status);
         }
     }
 }

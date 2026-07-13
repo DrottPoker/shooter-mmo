@@ -1,6 +1,8 @@
 using System.Collections;
 using ShooterMmo.Api;
 using ShooterMmo.Config;
+using ShooterMmo.Diagnostics;
+using ShooterMmo.Networking;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -8,8 +10,11 @@ namespace ShooterMmo
 {
     public sealed class ShooterMmoClientBootstrap : MonoBehaviour
     {
-        private ShooterMmoApiClient apiClient;
         private string previousSceneName;
+        private ShooterMmoApiClient apiClient;
+        private Coroutine accountSessionMonitor;
+
+        public static RealtimeWorldClient WorldClient { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -29,6 +34,13 @@ namespace ShooterMmo
         private void Awake()
         {
             apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+            WorldClient = GetComponent<RealtimeWorldClient>();
+            if (WorldClient == null)
+            {
+                WorldClient = gameObject.AddComponent<RealtimeWorldClient>();
+            }
+
+            WorldClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
         }
 
@@ -36,11 +48,27 @@ namespace ShooterMmo
         {
             SceneManager.sceneLoaded += OnSceneLoaded;
             EnsureSceneController(SceneManager.GetActiveScene().name);
+            accountSessionMonitor = StartCoroutine(MonitorAccountSessionRoutine());
         }
 
         private void OnDisable()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            if (accountSessionMonitor != null)
+            {
+                StopCoroutine(accountSessionMonitor);
+                accountSessionMonitor = null;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (WorldClient != null)
+            {
+                WorldClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
+            }
+
+            WorldClient = null;
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -64,29 +92,97 @@ namespace ShooterMmo
                 yield break;
             }
 
-            ShooterMmoApiError error = null;
-            yield return apiClient.RemoveDebugSession(
-                ShooterMmoClientSession.WorldServerBaseUrl,
-                session.characterId,
-                session.worldSessionId,
-                () =>
-                {
-                    if (ShooterMmoClientSession.ActiveWorldSession != null
-                        && ShooterMmoClientSession.ActiveWorldSession.worldSessionId == session.worldSessionId)
-                    {
-                        ShooterMmoClientSession.ActiveWorldSession = null;
-                    }
-                },
-                value => error = value);
-
-            if (error == null)
+            RealtimeClientError error = null;
+            if (WorldClient != null && WorldClient.IsJoined)
             {
-                yield break;
+                yield return WorldClient.Leave(
+                    session.worldSessionId,
+                    () => { },
+                    value => error = value);
             }
 
-            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error))
+            if (error != null)
             {
-                Debug.LogWarning("Fallback world leave failed: " + error.ToDisplayMessage());
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "Fallback world leave did not complete. Closing UDP locally: " + error.ToDisplayMessage());
+                if (WorldClient != null)
+                {
+                    WorldClient.Abort();
+                }
+            }
+
+            if (ShooterMmoClientSession.ActiveWorldSession != null
+                && ShooterMmoClientSession.ActiveWorldSession.worldSessionId == session.worldSessionId)
+            {
+                ShooterMmoClientSession.ActiveWorldSession = null;
+            }
+        }
+
+        private void OnUnexpectedlyDisconnected(RealtimeClientError error)
+        {
+            if (string.Equals(
+                error.Code,
+                ClientSessionRecovery.AccountSessionReplacedCode,
+                System.StringComparison.Ordinal))
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Auth,
+                    "This client was disconnected because the account logged in from another client. "
+                    + error.ToDisplayMessage());
+                ShooterMmoClientSession.Clear();
+                if (SceneManager.GetActiveScene().name != ShooterMmoSceneNames.LoginMenu)
+                {
+                    SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
+                }
+
+                return;
+            }
+
+            ClientLog.Warning(
+                ClientLogCategory.Client,
+                "The active world connection closed. Clearing local world state and leaving WorldScene: "
+                + error.ToDisplayMessage());
+            ShooterMmoClientSession.ActiveWorldSession = null;
+
+            if (SceneManager.GetActiveScene().name == ShooterMmoSceneNames.WorldScene)
+            {
+                SceneManager.LoadScene(ShooterMmoClientSession.IsAuthenticated
+                    ? ShooterMmoSceneNames.CharacterSelect
+                    : ShooterMmoSceneNames.LoginMenu);
+            }
+        }
+
+        private IEnumerator MonitorAccountSessionRoutine()
+        {
+            var wait = new WaitForSecondsRealtime(
+                ShooterMmoClientSession.SessionValidationIntervalSeconds);
+            while (true)
+            {
+                yield return wait;
+
+                var token = ShooterMmoClientSession.SessionToken;
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                ShooterMmoApiError error = null;
+                yield return apiClient.ValidateSession(
+                    ShooterMmoClientSession.AuthServiceBaseUrl,
+                    token,
+                    () => { },
+                    value => error = value);
+
+                if (!string.Equals(
+                    token,
+                    ShooterMmoClientSession.SessionToken,
+                    System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                ClientSessionRecovery.ReturnToLoginIfUnauthorized(error);
             }
         }
 
@@ -106,8 +202,9 @@ namespace ShooterMmo
 
             if (sceneName == ShooterMmoSceneNames.WorldScene)
             {
-                AddControllerIfMissing<Gameplay.WorldSceneGameplayBootstrap>();
+                AddControllerIfMissing<Gameplay.CrosshairController>();
                 AddControllerIfMissing<Ui.WorldScenePanel>();
+                AddControllerIfMissing<Ui.CrosshairPanel>();
             }
         }
 

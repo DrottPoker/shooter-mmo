@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/Shared/">
+    <Project Path="GameProtocol.DotNet/ShooterMmo.GameProtocol.csproj" />
+    <Project Path="GameSimulation.DotNet/ShooterMmo.GameSimulation.csproj" />
     <Project Path="Shared/ShooterMmo.Shared.csproj" />
+    <Project Path="Shared.Http/ShooterMmo.Shared.Http.csproj" />
   </Folder>
   <Project Path="AuthService/AuthService.csproj" />
   <Project Path="Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj" />
+  <Project Path="Tools/WorldCollisionCompiler/WorldCollisionCompiler.csproj" />
   <Project Path="WorldServer/WorldServer.csproj" />
 </Solution>

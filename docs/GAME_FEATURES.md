@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 ## Purpose
 
@@ -15,6 +15,10 @@ Status: UI prototype on implemented account flow
 The temporary LoginMenu UI allows a player to register or log in. A successful
 request stores the account session in the persistent Unity client state and loads
 CharacterSelect. Duplicate submissions are blocked while a request is active.
+Only one client session may remain active for an account. A successful login on
+a second client replaces the first client, disconnects its active world peer if
+needed, clears its local account state, and returns it to LoginMenu with a
+temporary Unity Console explanation.
 
 This is functional development UI, not final art or UX.
 
@@ -39,53 +43,131 @@ not implemented.
 Status: Foundation implemented with temporary UI
 
 A selected character can enter an online local world through the authenticated
-join-ticket flow. WorldScene displays the selected character, world, and current
-session metadata.
+join-ticket flow. The client connects to the selected host and UDP port with
+LiteNetLib, sends the ticket through the shared versioned protocol, and loads
+WorldScene only after WorldServer accepts the session. WorldScene displays the
+selected character, world, session metadata, and current UDP connection state.
 
-Both WorldScene exit actions use the same leave flow. The active server session
-is released before returning to CharacterSelect. HTTP 401 clears stale client
-state and returns the player to LoginMenu.
+Leave sends the exact world-session id over the active peer and waits for server
+acknowledgement before returning to CharacterSelect. Unexpected disconnects
+clear world state and return an authenticated player to CharacterSelect. HTTP
+401 from AuthService still clears account state and returns the player to
+LoginMenu.
 
-## Local World Preview
+## World Preview
 
-Status: Initial content on implemented gameplay foundation
+Status: Initial content on implemented network gameplay foundation
 
-WorldScene creates an initial code-driven safe-city test area with a local player,
-spawn point, boundary marker, front gate, camera target, and third-person camera.
-It exists to test scene flow and controls while the real world is still being
-designed.
+WorldScene contains a 30 by 30 meter scene-authored test map, a LocalPlayer
+prefab instance, an explicit spawn point, and a configured third-person camera.
+Runtime code validates and connects these authored objects but does not generate
+them. The map includes static boundaries, a slope, three step heights, cover, and
+a dedicated camera-collision wall.
 
-The preview has no persistent world simulation and no remote players.
+The world has no persistent simulation yet. During authenticated play, other
+connected characters are represented by an authored RemotePlayer prefab and
+rendered from interpolated WorldServer snapshots.
 
 ## Player Movement
 
-Status: Local foundation implemented
+Status: Server-authoritative movement and test-map collision implemented
 
-- Move with WASD or arrow keys.
+- Move with WASD.
 - Sprint with Shift.
 - Jump with Space.
-- Gamepad supports left stick, left-stick press, and south button.
-- Movement uses Unity Input Actions.
+- Sprint can only begin while grounded. A sprint that began on the ground can
+  continue through a jump while Shift remains held.
+- Releasing Shift in the air ends sprint, and pressing it again cannot restart
+  sprint until the player reaches the ground.
+- Camera-relative movement follows the current mouse-controlled view.
+- While aiming, the player faces the camera direction so lateral movement
+  behaves as shooter strafing.
+- Movement uses a PlayerInput-owned Unity Input Actions asset.
+- The local player predicts each fixed input tick immediately.
+- WorldServer owns the accepted position, velocity, facing, grounded state, and
+  sprint state.
+- WorldServer resolves the player capsule against the baked ground, boundaries,
+  ramp, steps, cover, and camera test wall.
+- Authoritative snapshots acknowledge processed input sequences. The client
+  replays remaining input and smooths small corrections.
+- Remote players are interpolated approximately 100 ms behind server time.
 
-Movement is client-local and is not validated or replicated by WorldServer.
+Gamepad bindings and player-configurable rebinding are not implemented yet.
+
+Movement speed, gravity, terminal fall speed, jump, facing, capsule dimensions,
+slope and step rules, authored collision, and world bounds are validated and
+simulated by WorldServer.
+The active UDP connection carries sequenced input and periodic movement
+snapshots in addition to session control.
+The character root is the shared logical ground point for players and NPCs.
+`CharacterBody` configures the CharacterController contact envelope around that
+point, including skin width, without moving the presentation hierarchy. Visual
+assets use a feet-at-zero convention below PlayerVisual, and spawn placement
+aligns the character root directly to the spawn point. Direct scene preview uses
+normal gravity and CharacterController collision without forced per-frame ground
+snapping. Authenticated play presents the shared predicted movement state at the
+same root convention.
+
+The current test map is baked into versioned collision chunks shared by the
+server and client prediction. Authenticated movement therefore collides with all
+12 current BoxColliders. WorldServer sends the authoritative collision revision
+when the character joins, and the client refuses to predict against a different
+revision. Direct WorldScene preview still uses Unity CharacterController for a
+fast offline authoring check, but it is not the network authority.
+
+Complex terrain meshes, caves, moving platforms, dynamic doors, and rigid-body
+objects are not gameplay features yet. Dynamic server collision already has a
+spatial registry, while transform replication and non-box collision formats are
+later slices.
 
 ## Third-Person Camera
 
 Status: Local foundation implemented
 
-- Hold the right mouse button to orbit.
-- Use the mouse wheel to zoom.
+- Mouse movement controls the camera continuously while gameplay input is
+  captured.
+- Hold the right mouse button to enter the current aim input state.
+- F1 releases the cursor for temporary debug UI interaction. F1 captures it again.
+- Normal framing uses a right-shoulder offset so the player does not block the
+  center of the view.
+- The LocalPlayer prefab owns `LocalPlayerCamera`, so other scene cameras can be
+  added without becoming the gameplay camera by accident.
+- Normal framing uses an explicit vertical offset and a closer follow distance
+  to keep the character lower and left of center in a modern shooter composition.
+- Aim smoothly tightens the right-shoulder framing and changes camera FOV from
+  60 to 50 degrees.
+- Camera distance is fixed. Mouse-wheel zoom is not available.
 - Camera focus follows a single player CameraTarget height.
+- Vertical look supports a wider range from 50 degrees upward to 75 degrees
+  downward.
 - Spherecast collision moves the camera in front of walls and restores its
   desired distance after the obstruction clears.
 - The collision filter ignores the local player hierarchy.
+
+## Crosshair And World Debug HUD
+
+Status: Gameplay contract implemented with temporary UI presentation
+
+- An unequipped player sees a small white dot at screen center.
+- Crosshair definitions support dot and cross shapes, size, thickness, gap,
+  color, and runtime spread.
+- Future weapon equipment can replace the active definition without changing
+  camera or input code.
+- The temporary World Debug panel is compact and anchored to the bottom-left
+  corner.
+- F2 hides or restores the World Debug panel.
+- During an authenticated world session, World Debug shows WorldServer as the
+  movement authority, the latest server tick, and the configured tick and
+  snapshot rates.
+- The crosshair is hidden while F1 has released the cursor.
 
 ## Planned Feature Categories
 
 These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
-- Authoritative multiplayer movement and replication.
+- Interest management and dynamic collision transform replication.
+- Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
 - Inventory, equipment, item stats, and loot.
 - Gathering, crafting, professions, and player economy.

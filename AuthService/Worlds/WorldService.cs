@@ -432,6 +432,14 @@ public sealed class WorldService(
             where t.ticket_hash = @TicketHash
               and t.consumed_at is null
               and t.expires_at > now()
+              and (
+                  t.account_session_id is null
+                  or exists (
+                      select 1
+                      from account_sessions s
+                      where s.id = t.account_session_id
+                        and s.revoked_at is null
+                        and s.expires_at > now()))
             for update of t;
             """;
 

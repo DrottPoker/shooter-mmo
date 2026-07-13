@@ -30,6 +30,14 @@ public sealed class WorldSessionService(NpgsqlDataSource dataSource, IConfigurat
               and session_token_hash = @SessionTokenHash
               and released_at is null
               and expires_at > now()
+              and (
+                  account_session_id is null
+                  or exists (
+                      select 1
+                      from account_sessions
+                      where id = character_world_sessions.account_session_id
+                        and revoked_at is null
+                        and expires_at > now()))
             returning id as "WorldSessionId",
                       character_id as "CharacterId",
                       world_id as "WorldId",
@@ -50,11 +58,42 @@ public sealed class WorldSessionService(NpgsqlDataSource dataSource, IConfigurat
                 },
                 cancellationToken: cancellationToken));
 
-        return session is null
+        if (session is not null)
+        {
+            return ServiceResult<WorldSessionLeaseResponse>.Ok(session);
+        }
+
+        const string revocationReasonSql = """
+            select account_sessions.revocation_reason
+            from character_world_sessions
+            left join account_sessions
+              on account_sessions.id = character_world_sessions.account_session_id
+            where character_world_sessions.id = @WorldSessionId
+              and character_world_sessions.world_id = @WorldId
+              and character_world_sessions.session_token_hash = @SessionTokenHash;
+            """;
+
+        var revocationReason = await connection.QuerySingleOrDefaultAsync<string>(
+            new CommandDefinition(
+                revocationReasonSql,
+                new
+                {
+                    WorldSessionId = worldSessionId,
+                    WorldId = request.WorldId!.Trim(),
+                    SessionTokenHash = sessionTokenHash
+                },
+                cancellationToken: cancellationToken));
+
+        return string.Equals(
+            revocationReason,
+            AccountSessionRevocationReason.SessionReplaced,
+            StringComparison.Ordinal)
             ? ServiceResult<WorldSessionLeaseResponse>.Unauthorized(
+                AccountSessionErrorCode.SessionReplaced,
+                "This account logged in from another client.")
+            : ServiceResult<WorldSessionLeaseResponse>.Unauthorized(
                 "invalid_world_session",
-                "World session is invalid, released, or expired.")
-            : ServiceResult<WorldSessionLeaseResponse>.Ok(session);
+                "World session is invalid, released, or expired.");
     }
 
     public async Task<ServiceResult<WorldSessionLeaseResponse>> ReleaseAsync(

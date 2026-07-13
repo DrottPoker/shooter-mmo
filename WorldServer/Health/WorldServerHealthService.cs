@@ -15,7 +15,10 @@ public sealed class WorldServerHealthService(
             config.HealthCheckTimeout,
             cancellationToken);
         var authServiceTask = authServiceClient.CheckReadinessAsync(cancellationToken);
-        var dependencies = await Task.WhenAll(redisTask, authServiceTask);
+        var remoteDependencies = await Task.WhenAll(redisTask, authServiceTask);
+        var dependencies = remoteDependencies
+            .Append(UdpPortHealthProbe.CheckAvailable(config.UdpPort))
+            .ToArray();
 
         return new ServiceHealth(
             "WorldServer",

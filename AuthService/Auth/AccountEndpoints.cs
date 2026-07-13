@@ -41,15 +41,27 @@ public static class AccountEndpoints
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
 
+        group.MapGet("/session", () => Results.NoContent())
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+
         group.MapPost("/logout", async (
             ClaimsPrincipal principal,
             SessionService sessionService,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
+            var accountId = principal.GetAccountId();
+            var sessionId = principal.GetSessionId();
             await sessionService.RevokeAsync(
-                principal.GetAccountId(),
-                principal.GetSessionId(),
+                accountId,
+                sessionId,
+                AccountSessionRevocationReason.Logout,
                 cancellationToken);
+
+            loggerFactory.CreateLogger("AuthService.Auth").LogInformation(
+                "[AUTH] Account {AccountId} logged out and revoked session {SessionId}.",
+                accountId,
+                sessionId);
 
             return Results.NoContent();
         }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
@@ -63,6 +75,7 @@ public static class AccountEndpoints
             await sessionService.RevokeAsync(
                 principal.GetAccountId(),
                 sessionId,
+                AccountSessionRevocationReason.ManualRevoke,
                 cancellationToken);
 
             return Results.NoContent();

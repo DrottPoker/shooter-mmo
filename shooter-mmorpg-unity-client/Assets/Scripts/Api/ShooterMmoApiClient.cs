@@ -76,6 +76,21 @@ namespace ShooterMmo.Api
                 onError);
         }
 
+        public IEnumerator ValidateSession(
+            string authServiceBaseUrl,
+            string sessionToken,
+            Action onSuccess,
+            Action<ShooterMmoApiError> onError)
+        {
+            return SendEmpty(
+                "GET",
+                CombineUrl(authServiceBaseUrl, "/api/accounts/session"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
         public IEnumerator GetCharacters(
             string authServiceBaseUrl,
             string sessionToken,
@@ -134,54 +149,6 @@ namespace ShooterMmo.Api
                 CombineUrl(authServiceBaseUrl, "/api/worlds/" + Uri.EscapeDataString(worldId) + "/join"),
                 JsonUtility.ToJson(request),
                 sessionToken,
-                onSuccess,
-                onError);
-        }
-
-        public IEnumerator DebugJoinWorldServer(
-            string worldServerBaseUrl,
-            DebugJoinRequest request,
-            Action<ActivePlayerSessionResponse> onSuccess,
-            Action<ShooterMmoApiError> onError)
-        {
-            return SendJson(
-                "POST",
-                CombineUrl(worldServerBaseUrl, "/debug/join"),
-                JsonUtility.ToJson(request),
-                null,
-                onSuccess,
-                onError);
-        }
-
-        public IEnumerator GetDebugSessions(
-            string worldServerBaseUrl,
-            Action<ActivePlayerSessionResponse[]> onSuccess,
-            Action<ShooterMmoApiError> onError)
-        {
-            return SendArray(
-                "GET",
-                CombineUrl(worldServerBaseUrl, "/debug/sessions"),
-                null,
-                null,
-                onSuccess,
-                onError);
-        }
-
-        public IEnumerator RemoveDebugSession(
-            string worldServerBaseUrl,
-            string characterId,
-            string worldSessionId,
-            Action onSuccess,
-            Action<ShooterMmoApiError> onError)
-        {
-            return SendEmpty(
-                "DELETE",
-                CombineUrl(
-                    worldServerBaseUrl,
-                    "/debug/sessions/" + Uri.EscapeDataString(characterId)
-                    + "?worldSessionId=" + Uri.EscapeDataString(worldSessionId)),
-                null,
-                null,
                 onSuccess,
                 onError);
         }

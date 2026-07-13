@@ -6,22 +6,28 @@ namespace ShooterMmo.Config
     public sealed class ShooterMmoClientConfig : ScriptableObject
     {
         [SerializeField] private string authServiceBaseUrl = "http://localhost:5000";
-        [SerializeField] private string worldServerBaseUrl = "http://localhost:5100";
         [SerializeField] private int requestTimeoutSeconds = 10;
+        [SerializeField] private int realtimeTimeoutSeconds = 10;
+        [SerializeField] private int sessionValidationIntervalSeconds = 5;
 
         public string AuthServiceBaseUrl
         {
             get { return NormalizeUrl(authServiceBaseUrl, "http://localhost:5000"); }
         }
 
-        public string WorldServerBaseUrl
-        {
-            get { return NormalizeUrl(worldServerBaseUrl, "http://localhost:5100"); }
-        }
-
         public int RequestTimeoutSeconds
         {
             get { return Mathf.Clamp(requestTimeoutSeconds, 1, 120); }
+        }
+
+        public int RealtimeTimeoutSeconds
+        {
+            get { return Mathf.Clamp(realtimeTimeoutSeconds, 1, 120); }
+        }
+
+        public int SessionValidationIntervalSeconds
+        {
+            get { return Mathf.Clamp(sessionValidationIntervalSeconds, 2, 60); }
         }
 
         public static ShooterMmoClientConfig Load()

@@ -1,4 +1,5 @@
 using System.Net;
+using ShooterMmo.GameSimulation;
 using WorldServer.Auth;
 using WorldServer.Config;
 
@@ -30,8 +31,26 @@ public sealed class AuthServiceAuthenticationHandlerTests
     {
         return new WorldServerConfig(
             "local-world-1",
+            "CollisionData",
             27015,
-            "http://localhost:5100",
+            100,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(15),
+            15,
+            new MovementSimulationSettings(
+                30,
+                5f,
+                8f,
+                720f,
+                -24f,
+                7f,
+                -2f,
+                0f,
+                -14f,
+                14f,
+                -14f,
+                14f),
+            new MovementSpawnConfig(0f, 0f, -1f, 0f),
             new Uri("http://localhost:5000"),
             TimeSpan.FromSeconds(5),
             "test-service-secret",

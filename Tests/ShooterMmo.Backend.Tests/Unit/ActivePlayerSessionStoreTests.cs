@@ -93,6 +93,33 @@ public sealed class ActivePlayerSessionStoreTests
         Assert.Empty(store.List());
     }
 
+    [Fact]
+    public void InvalidationRemovesTheExactSessionAndPreservesItsDisconnectReason()
+    {
+        var session = CreateSession();
+        var store = new ActivePlayerSessionStore();
+        store.Register(session);
+
+        Assert.False(store.Invalidate(
+            session.CharacterId,
+            session.WorldSessionId,
+            "wrong-token",
+            "account_session_replaced",
+            "This account logged in from another client."));
+        Assert.True(store.Invalidate(
+            session.CharacterId,
+            session.WorldSessionId,
+            session.WorldSessionToken,
+            "account_session_replaced",
+            "This account logged in from another client."));
+
+        Assert.Empty(store.ListActiveSessions());
+        Assert.True(store.TryTakeInvalidation(session.WorldSessionId, out var invalidation));
+        Assert.Equal("account_session_replaced", invalidation!.Code);
+        Assert.Equal("This account logged in from another client.", invalidation.Message);
+        Assert.False(store.TryTakeInvalidation(session.WorldSessionId, out _));
+    }
+
     private static ActivePlayerSession CreateSession(
         Guid? worldSessionId = null,
         string sessionToken = "session-token",

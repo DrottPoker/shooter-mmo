@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,

@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 ## Purpose
 
@@ -19,9 +19,10 @@ designed. The client bootstrap, state ownership, API layer, scene lifecycle,
 input, camera, and gameplay foundations are long-term systems and must be built
 to production-quality structural standards from the start.
 
-The first world environment uses simple code-driven content so scene flow and
-controls remain testable. Simple content does not make its supporting gameplay
-architecture disposable.
+The first world environment uses simple, scene-authored Unity primitives so
+scene flow and controls remain testable. The map, local player, camera, input
+asset, and spawn point are real Unity assets and are never created by runtime
+generation code.
 
 ## Runtime Structure
 
@@ -29,6 +30,7 @@ architecture disposable.
 ShooterMmoClientBootstrap
   +-- ShooterMmoClientSession
   +-- ShooterMmoApiClient
+  +-- RealtimeWorldClient
   +-- ShooterMmoClientConfig
   +-- scene lifecycle recovery
 
@@ -37,21 +39,44 @@ Scene panel
   +-- API coroutine flow
   +-- ClientSessionRecovery
 
-WorldSceneGameplayBootstrap
+WorldSceneContext
+  +-- scene-authored LocalPlayer prefab instance
+  +-- scene-authored PlayerSpawn
+  +-- scene-authored RemotePlayer prefab reference
+  +-- runtime remote-player view instances
+
+LocalPlayer prefab
+  +-- CharacterController
+  +-- CharacterBody
+  +-- PlayerInput and LocalPlayerInput
   +-- LocalPlayerController
-  +-- ThirdPersonCameraController
-  +-- initial test environment
+  +-- PlayerVisual
+  +-- CameraTarget
+  +-- LocalPlayerCamera
+      +-- Camera and AudioListener
+      +-- ThirdPersonCameraController
+
+Realtime movement
+  +-- NetworkMovementSession
+  +-- UnityWorldCollisionLoader
+  +-- baked WorldData chunks
+  +-- ClientMovementPrediction
+  +-- shared PlayerMovementSimulation
+  +-- RemoteMovementInterpolation
+  +-- RemotePlayerView
 ```
 
 ## Persistent Client Bootstrap
 
 `ShooterMmoClientBootstrap` creates the persistent runtime root and survives scene
-changes. It initializes the session and API client from configuration, observes
-scene transitions, and performs fallback release when an active WorldScene is
-left outside the normal panel flow.
+changes. It initializes configuration, owns one `RealtimeWorldClient`, observes
+scene transitions, and performs fallback leave when an active WorldScene is left
+outside the normal panel flow.
 
 The fallback release is bound to the exact world-session identity. Completion of
-an older request cannot clear a newer local reconnect state.
+an older request cannot clear a newer local reconnect state. If graceful leave
+fails after the scene already changed, the client closes UDP so WorldServer can
+run disconnect cleanup.
 
 ## Configuration
 
@@ -59,24 +84,26 @@ an older request cannot clear a newer local reconnect state.
 `Assets/Resources/ShooterMmoClientConfig.asset`. It currently contains:
 
 - AuthService base URL.
-- WorldServer base URL.
-- Request timeout in seconds.
+- HTTP request timeout in seconds.
+- Realtime operation timeout in seconds.
 
-The runtime login panel displays these values but does not edit them. Different
-environments should use build-specific configuration assets or a future build
-configuration pipeline.
+WorldServer host and UDP port come from AuthService world discovery. They are not
+duplicated in client configuration. Different environments should use
+build-specific configuration assets or a future build configuration pipeline.
 
 ## Client Session State
 
 `ShooterMmoClientSession` stores the current in-memory client view:
 
-- AuthService and WorldServer endpoints.
+- AuthService endpoint.
 - Account and bearer session details.
 - Selected character and world.
 - Active world-session id and lease metadata.
 
 This state is a client cache, not an authority. AuthService and WorldServer remain
-authoritative. HTTP 401 clears all local session state before loading LoginMenu.
+authoritative. The persistent bootstrap validates an authenticated account
+session every five seconds, including outside WorldScene. HTTP 401 clears all
+local session state before loading LoginMenu.
 
 ## API Layer
 
@@ -92,6 +119,80 @@ authoritative. HTTP 401 clears all local session state before loading LoginMenu.
 message, and correlation id. Panels display a safe message rather than raw JSON.
 Array responses are validated through `JsonArrayUtility` before they reach UI
 state.
+
+## Client Diagnostics
+
+`ClientLog` is the single Unity Console formatting boundary for runtime flow
+diagnostics. It assigns one stable category prefix to each entry:
+
+- `[AUTH]` for account authentication, session logout, and join-ticket issuance.
+- `[CLIENT]` for local API flow, transport state, and recovery actions.
+- `[WORLDSERVER]` for accepted world joins, accepted leaves, and server
+  rejections.
+
+Information entries confirm expected state transitions. Failed operations use
+Unity error entries, while recovery details that follow an already reported
+failure use warnings. Line breaks are normalized before output so remote error
+messages cannot create misleading log entries.
+
+Passwords, bearer tokens, join-ticket values, service secrets, and secret world
+session tokens must never be passed to `ClientLog`. Stable account, character,
+world, and public world-session identifiers may be logged for local diagnosis.
+
+## Realtime Networking Layer
+
+`RealtimeWorldClient` is a persistent MonoBehaviour owned by the bootstrap. It
+wraps one LiteNetLib `NetManager` and polls network events on Unity's main thread.
+It owns an explicit connection state:
+
+```text
+Disconnected -> Connecting -> Joining -> Joined -> Leaving -> Disconnected
+```
+
+Join and leave are coroutine operations with configured deadlines, structured
+errors, and one completion path. A join connects to the selected world's
+registry-provided host and UDP port, then sends the short-lived join ticket in a
+versioned reliable ordered packet. Only accepted non-secret session metadata is
+copied into `ShooterMmoClientSession`.
+
+Unexpected disconnect clears the active world view and returns an authenticated
+player to CharacterSelect. Join rejection stays in CharacterSelect and displays
+the structured server code. Protocol decoding rejects wrong versions, invalid
+types, oversized values, and trailing data.
+
+If another client logs into the same account, WorldServer can send
+`account_session_replaced` over the reliable control path. The client aborts its
+transport, clears the entire account session, logs an `[AUTH]` error, and loads
+LoginMenu. The periodic AuthService validation provides the same recovery when
+the displaced client is not connected to a world.
+
+Protocol version 3 uses two explicit LiteNetLib channels plus unchanneled
+snapshot delivery:
+
+- Channel 0 uses reliable ordered delivery for join, leave, and disconnect
+  control messages.
+- Channel 1 uses sequenced delivery for redundant movement input batches.
+- World snapshot chunks use LiteNetLib's unchanneled `Unreliable` delivery.
+  LiteNetLib reports these packets with receive channel 0. Server tick, snapshot
+  sequence, message type, and chunk metadata provide application-level ordering
+  without confusing snapshots with reliable control messages.
+- Correctly delivered snapshots that overtake join acceptance or remain in
+  flight during and immediately after leave are ignored outside the `Joined`
+  state. They are not protocol failures because LiteNetLib delivery methods do
+  not provide ordering relative to each other.
+
+`NetworkMovementSession` is created only from a validated join response. It owns
+the server-provided movement settings and initial state used by the client. The
+client does not maintain a second editable copy of movement speed, tick rate,
+gravity, bounds, or snapshot frequency for an active network session.
+
+`GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
+installed from OpenUPM. The runtime assembly references both by assembly name.
+LiteNetLib is pinned to version 2.1.4 in both the project manifest and package
+lock. Unity displays a missing-signature warning because the scoped third-party
+registry package is not signed by Unity. This warning does not indicate a
+compile or runtime failure, but every package upgrade still requires source and
+changelog review.
 
 ## Scene And UI Flow
 
@@ -112,15 +213,18 @@ loads CharacterSelect after successful authentication.
 
 `CharacterSelectPanel` loads characters and worlds sequentially. It supports
 character creation, selection, refresh, logout, and world join. Join ticket
-creation and WorldServer validation run inside one coroutine so the operation
-cannot be partially overlapped by another click.
+creation and the UDP handshake run inside one coroutine so the operation cannot
+be partially overlapped by another click.
 
 ### WorldScene
 
-`WorldScenePanel` displays active session information. Both navigation actions
-use the same leave coroutine, which releases the exact active WorldServer session
-before loading CharacterSelect. Unauthorized responses clear the session and
-load LoginMenu.
+`WorldScenePanel` displays compact active-session diagnostics in the bottom-left
+corner. F2 toggles its visibility through the Player Input Actions asset. Its
+Leave World action waits for an exact-session UDP leave acknowledgement before
+loading CharacterSelect. It displays connection state and the active UDP
+endpoint instead of relying on a WorldServer debug HTTP route. When movement is
+active it also displays WorldServer authority, the latest server tick, and the
+simulation and snapshot rates.
 
 ## Operation Serialization
 
@@ -137,32 +241,118 @@ join, leave, or authentication requests.
 2. Load LoginMenu.
 3. Stop the failed panel flow from continuing with stale data.
 
+The stable `account_session_replaced` code identifies a login from another
+client. Recovery writes a specific temporary Unity Console message rather than
+presenting it as an ordinary expired session.
+
 Logout is different from recovery. A normal Back to Login action first asks
 AuthService to revoke the active account session, then clears local state.
 
 ## Local Gameplay Preview
 
-`WorldSceneGameplayBootstrap` creates the initial safe-city test environment, local
-player, camera target, and third-person camera when the scene starts.
+`WorldSceneContext` is a scene composition root. It validates serialized scene
+and prefab references, connects the local player to the active realtime movement
+session, routes snapshots, and connects the player-owned camera to input and
+CameraTarget. Direct WorldScene Play Mode remains an offline preview and places
+the local player at the authored spawn point. The context never selects a global
+camera and never generates a player asset, camera, map object, material, light,
+or collider. Runtime instances of the explicitly authored RemotePlayer prefab
+are created only for replicated characters.
 
-`LocalPlayerController` uses programmatically defined Input Actions for movement,
-sprint, and jump. Current bindings support keyboard, mouse, and gamepad.
+`LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
+prefab. The referenced Input Actions asset defines movement, sprint, jump, aim,
+look, debug cursor, and debug panel bindings. This keeps device bindings out of
+gameplay and UI code and allows future rebinding and control-scheme work without
+changing those systems.
 
-`ThirdPersonCameraController` uses Input Actions for orbit and zoom. Camera focus
-uses the single CameraTarget position. A non-allocating spherecast moves the
-camera in front of obstructions while filtering the local player hierarchy.
+`CharacterBody` is the reusable collision foundation for local players, remote
+players, and NPCs. The character root is its logical ground point. CharacterBody
+keeps skin width proportional to radius and offsets the CharacterController
+center so the lower edge of its contact envelope is local Y zero. Presentation
+objects are not moved to compensate for physics margins. Teleportation places
+the root directly at the requested ground position. A future network or AI
+movement driver can therefore reuse the same body without depending on local
+input.
 
-This preview is entirely local. It does not send movement to WorldServer and is
-not authoritative multiplayer gameplay.
+`LocalPlayerController` has two explicit execution paths. Direct scene preview
+uses the existing CharacterController path for local map and camera testing. An
+authenticated world session uses `ClientMovementPrediction` and the exact shared
+fixed-step capsule simulation and baked collision world. Normal movement faces
+its travel direction. Aim faces the camera heading so left and right movement
+become shooter-style strafing. Sprint is a grounded state transition: it may
+remain active through a jump but cannot start while airborne.
+`RefreshCharacterDimensions` remains the runtime entry point when a future
+character system changes collider dimensions.
+
+For network movement, input is sampled at the server-provided tick rate and each
+command receives an input sequence and client tick. The local state is predicted
+immediately and up to four newest unacknowledged commands are sent in each batch.
+On an authoritative snapshot, `ClientMovementPrediction` removes acknowledged
+commands, starts from the server state, and replays the remaining commands.
+`LocalPlayerController` smooths corrections smaller than three meters and applies
+larger corrections immediately. The shared simulation source is installed as
+`com.shootermmo.game-simulation` and contains no Unity dependencies.
+
+`UnityWorldCollisionLoader` loads the selected world's manifest and all current
+collision chunks from the local `com.shootermmo.world-data` package. It validates
+the format, world id, SHA-256 chunk checksums, and chunk coordinates. The join
+response carries WorldServer's collision revision, and `NetworkMovementSession`
+does not start when the local revision differs. `ClientMovementPrediction` then
+uses the loaded `ICollisionWorld` for prediction and replay, while authoritative
+snapshots continue to correct divergence.
+
+`WorldCollisionAuthoring` defines the world id, chunk size, collision root, and
+layer mask on an authored scene object. The Editor command
+`Shooter MMO > World Collision > Bake Open Scene` scans enabled, non-trigger
+BoxColliders below that root and writes neutral authoring JSON plus versioned
+binary resources into `WorldData`. Unsupported collider types fail the bake
+explicitly. Runtime code never scans the Unity scene or treats PhysX as network
+authority.
+
+`RemotePlayerView` is presentation-only. It has no input, camera, audio listener,
+rigidbody, or collider. It buffers server states in
+`RemoteMovementInterpolation` and renders approximately 100 ms behind the latest
+server tick. A remote view is removed if no snapshot containing that character
+arrives for three seconds.
+
+`ThirdPersonCameraController` consumes look input continuously while the gameplay
+cursor is captured. F1 switches between captured shooter input and a released
+debug cursor. The component and Camera live on the LocalPlayerCamera child owned
+by the LocalPlayer prefab. Normal framing uses a 1.1 meter right-shoulder offset,
+a 0.45 meter vertical offset, a 5.25 meter follow distance, and a 12 degree
+initial pitch. Aim changes the offsets to 1.3 and 0.35 meters and reduces FOV
+from 60 to 50 degrees using a frame-rate-independent transition. Camera distance
+is fixed and mouse-wheel zoom is not supported. Vertical input is clamped from
+-50 to 75 degrees. Camera orbit uses the single CameraTarget pivot. A
+non-allocating spherecast follows the complete offset camera path, moves the
+camera in front of obstructions, and filters the local player hierarchy.
+
+`CrosshairDefinition` is a gameplay-facing value type with shape, size,
+thickness, gap, and color. `CrosshairController` owns the active definition and
+dynamic spread and exposes change APIs for future equipment and weapon systems.
+`CrosshairPanel` only presents that state through the current temporary IMGUI
+layer. The controller defaults to the unarmed dot and does not depend on the UI
+implementation.
+
+The current network simulation collides with all 12 baked BoxColliders in the
+test map, including the rotated ramp, steps, cover, and boundaries. The capsule
+dimensions, slope limit, step height, ground snap distance, and substep budget
+come from the validated server join settings. Direct scene preview still uses
+Unity CharacterController against the authored scene colliders as an offline
+authoring check. Authenticated movement does not use CharacterController to
+decide network position.
 
 ## Test Architecture
 
 EditMode tests cover client session cleanup, operation serialization, structured
-Problem Details parsing, configuration loading, Input Action lifecycle, and
-invalid array rejection.
+Problem Details parsing, diagnostic prefix formatting, configuration loading,
+PlayerInput action binding, invalid array rejection, dynamic crosshair
+configuration, local reconciliation, redundant input batches, remote
+interpolation, collision resource loading, authored player prefab contracts, and
+WorldScene composition.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
-bootstrap and runtime login panel.
+bootstrap, persistent realtime client, and runtime login panel.
 
 Manual flows and expected results are documented in
 [Local Development](LOCAL_DEVELOPMENT.md).
@@ -170,10 +360,18 @@ Manual flows and expected results are documented in
 ## Extension Rules
 
 - Keep HTTP serialization and failure mapping inside the API layer.
+- Keep realtime transport state and packet handling inside
+  `RealtimeWorldClient`, not scene panels.
+- Keep deterministic movement rules in `GameSimulation`, not in transport or
+  presentation components.
+- Keep authored collision in `WorldData`; never duplicate scene geometry as
+  hand-maintained server constants.
+- Keep prediction and reconciliation separate from remote interpolation.
 - Keep persistent cross-scene state in the client session, not scene panels.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
-- Route every WorldScene exit through exact-session leave or fallback release.
+- Route every WorldScene exit through exact-session UDP leave or disconnect
+  fallback.
 - Add player-facing behavior to [Game Features](GAME_FEATURES.md) when it becomes
   implemented.
 - Update this document when client ownership, scene flow, networking, input, or

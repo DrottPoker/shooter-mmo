@@ -1,13 +1,23 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ShooterMmo.GameSimulation;
 using ShooterMmo.Shared.Configuration;
-using ShooterMmo.Shared.Http;
 using WorldServer.Auth;
 using WorldServer.Config;
 using WorldServer.Health;
+using WorldServer.Realtime;
 using WorldServer.Sessions;
+using WorldServer.WorldCollision;
 using WorldServer.Worlds;
 
-var builder = WebApplication.CreateBuilder(args);
-builder.Configuration.AddOptionalDotEnvFile(builder.Environment.ContentRootPath);
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
+builder.Configuration.AddOptionalDotEnvFile(Directory.GetCurrentDirectory());
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 
@@ -15,9 +25,17 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = WorldServerConfig.FromConfiguration(builder.Configuration);
+var staticCollisionWorld = WorldCollisionLoader.Load(config);
+var dynamicCollisionWorld = new DynamicCollisionWorld(staticCollisionWorld.ChunkSize);
+var collisionWorld = new CompositeCollisionWorld(
+    staticCollisionWorld,
+    dynamicCollisionWorld);
 
-builder.WebHost.UseUrls(config.HttpUrl);
 builder.Services.AddSingleton(config);
+builder.Services.AddSingleton(staticCollisionWorld);
+builder.Services.AddSingleton(dynamicCollisionWorld);
+builder.Services.AddSingleton(collisionWorld);
+builder.Services.AddSingleton<ICollisionWorld>(collisionWorld);
 builder.Services.AddSingleton<ActivePlayerSessionStore>();
 builder.Services.AddTransient<AuthServiceAuthenticationHandler>();
 builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
@@ -26,20 +44,17 @@ builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
     httpClient.Timeout = config.AuthServiceTimeout;
 }).AddHttpMessageHandler<AuthServiceAuthenticationHandler>();
 builder.Services.AddSingleton<WorldJoinService>();
-builder.Services.AddHostedService<WorldSessionHeartbeatService>();
-builder.Services.AddHostedService<WorldRegistryHeartbeatService>();
+builder.Services.AddSingleton<WorldSessionReleaseService>();
 builder.Services.AddSingleton<WorldServerHealthService>();
-builder.Services.AddApiProblemDetails();
+builder.Services.AddHostedService<WorldRegistryHeartbeatService>();
+builder.Services.AddHostedService<WorldSessionHeartbeatService>();
+builder.Services.AddHostedService<RealtimeServerService>();
 
-var app = builder.Build();
-
-app.UseApiPipeline();
-
-Console.WriteLine($"Starting {config.WorldServerId} on UDP port {config.UdpPort}.");
+using var host = builder.Build();
 
 if (args.Contains("--health-check-only", StringComparer.OrdinalIgnoreCase))
 {
-    var healthService = app.Services.GetRequiredService<WorldServerHealthService>();
+    var healthService = host.Services.GetRequiredService<WorldServerHealthService>();
     var health = await healthService.CheckReadinessAsync(CancellationToken.None);
     foreach (var dependency in health.Dependencies)
     {
@@ -52,99 +67,11 @@ if (args.Contains("--health-check-only", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
-app.MapGet("/", () => Results.Redirect("/health/ready"));
-app.MapGet("/health/live", () => Results.Ok(new
-{
-    service = "WorldServer",
-    status = "live",
-    checkedAt = DateTimeOffset.UtcNow
-}));
-app.MapGet("/health/ready", async (
-    WorldServerHealthService healthService,
-    CancellationToken cancellationToken) =>
-{
-    var health = await healthService.CheckReadinessAsync(cancellationToken);
-    return Results.Json(
-        health,
-        statusCode: health.Status == "ready"
-            ? StatusCodes.Status200OK
-            : StatusCodes.Status503ServiceUnavailable);
-});
+var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("WorldServer");
+logger.LogInformation(
+    "Starting {WorldServerId} as a headless .NET worker on UDP port {UdpPort} with collision revision {CollisionRevision}.",
+    config.WorldServerId,
+    config.UdpPort,
+    staticCollisionWorld.Revision);
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapPost("/debug/join", async (
-        DebugJoinRequest request,
-        WorldJoinService joinService,
-        CancellationToken cancellationToken) =>
-    {
-        var result = await joinService.JoinAsync(request, cancellationToken);
-        return result.ToHttpResult();
-    });
-
-    app.MapGet("/debug/sessions", (ActivePlayerSessionStore sessionStore) =>
-    {
-        return Results.Ok(sessionStore.List());
-    });
-
-    app.MapDelete("/debug/sessions/{characterId:guid}", async (
-        Guid characterId,
-        Guid worldSessionId,
-        ActivePlayerSessionStore sessionStore,
-        AuthServiceClient authServiceClient,
-        CancellationToken cancellationToken) =>
-    {
-        if (!sessionStore.TryGet(characterId, out var session))
-        {
-            return Results.NoContent();
-        }
-
-        if (session!.WorldSessionId != worldSessionId)
-        {
-            return Results.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "World session changed",
-                detail: "The active WorldServer session no longer matches the requested leave operation.",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "world_session_changed"
-                });
-        }
-
-        var release = await authServiceClient.ReleaseWorldSessionAsync(
-            session.WorldSessionId,
-            session.WorldId,
-            session.WorldSessionToken,
-            cancellationToken);
-
-        if (!release.Succeeded)
-        {
-            if (release.StatusCode is StatusCodes.Status401Unauthorized
-                or StatusCodes.Status404NotFound
-                or StatusCodes.Status409Conflict)
-            {
-                sessionStore.Remove(characterId, session.WorldSessionId, session.WorldSessionToken);
-                return Results.NoContent();
-            }
-
-            return Results.Problem(
-                statusCode: release.StatusCode,
-                title: "AuthService request failed",
-                detail: release.Error!.Message,
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = release.Error.Code
-                });
-        }
-
-        sessionStore.Remove(characterId, session.WorldSessionId, session.WorldSessionToken);
-        return Results.NoContent();
-    });
-}
-
-Console.WriteLine(app.Environment.IsDevelopment()
-    ? $"WorldServer HTTP debug endpoints listening on {config.HttpUrl}."
-    : "WorldServer HTTP debug endpoints are disabled outside Development.");
-Console.WriteLine("WorldServer foundation is running. Press Ctrl+C to stop.");
-
-await app.RunAsync();
+await host.RunAsync();

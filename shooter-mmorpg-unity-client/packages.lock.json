@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "dependencies": {
+    ".NETStandard,Version=v2.1": {
+      "unity.multiplayer.center.common": {
+        "type": "Project",
+        "dependencies": {
+          "UnityEditor.UI": "[1.0.0, )",
+          "UnityEngine.UI": "[1.0.0, )"
+        }
+      },
+      "unityeditor.testrunner": {
+        "type": "Project",
+        "dependencies": {
+          "UnityEngine.TestRunner": "[1.0.0, )"
+        }
+      },
+      "unityeditor.ui": {
+        "type": "Project",
+        "dependencies": {
+          "UnityEditor.TestRunner": "[1.0.0, )",
+          "UnityEngine.TestRunner": "[1.0.0, )",
+          "UnityEngine.UI": "[1.0.0, )"
+        }
+      },
+      "unityengine.testrunner": {
+        "type": "Project"
+      },
+      "unityengine.ui": {
+        "type": "Project"
+      }
+    }
+  }
+}

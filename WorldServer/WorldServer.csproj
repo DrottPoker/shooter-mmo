@@ -1,11 +1,22 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\GameProtocol.DotNet\ShooterMmo.GameProtocol.csproj" />
+    <ProjectReference Include="..\GameSimulation.DotNet\ShooterMmo.GameSimulation.csproj" />
     <ProjectReference Include="..\Shared\ShooterMmo.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="LiteNetLib" Version="2.1.4" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Runtime\Resources\ShooterMmo\WorldCollision\**\*"
+             Link="CollisionData\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -16,4 +27,3 @@
   </PropertyGroup>
 
 </Project>
-

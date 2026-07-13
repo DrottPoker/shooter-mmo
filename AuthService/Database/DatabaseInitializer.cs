@@ -13,7 +13,8 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         new("202607101200_character_world_sessions", WorldSessionMigrationSql),
         new("202607121200_session_ticket_ownership", SessionTicketOwnershipMigrationSql),
         new("202607121500_world_session_ownership", WorldSessionOwnershipMigrationSql),
-        new("202607131000_world_registry_heartbeat", WorldRegistryHeartbeatMigrationSql)
+        new("202607131000_world_registry_heartbeat", WorldRegistryHeartbeatMigrationSql),
+        new("202607131900_single_active_account_session", SingleActiveAccountSessionMigrationSql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -242,6 +243,64 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
 
         create index ix_worlds_last_heartbeat_at
             on worlds(last_heartbeat_at);
+        """;
+
+    private const string SingleActiveAccountSessionMigrationSql = """
+        alter table account_sessions
+            add column revocation_reason text null;
+
+        update account_sessions
+        set revocation_reason = 'legacy_revocation'
+        where revoked_at is not null;
+
+        with ranked_sessions as (
+            select id,
+                   row_number() over (
+                       partition by account_id
+                       order by created_at desc, id desc) as session_rank
+            from account_sessions
+            where revoked_at is null
+        ), superseded_sessions as (
+            select id
+            from ranked_sessions
+            where session_rank > 1
+        )
+        update account_sessions
+        set revoked_at = now(),
+            revocation_reason = 'session_replaced'
+        where id in (select id from superseded_sessions);
+
+        update world_join_tickets
+        set consumed_at = now()
+        where consumed_at is null
+          and account_session_id in (
+              select id
+              from account_sessions
+              where revocation_reason = 'session_replaced');
+
+        update character_world_sessions
+        set released_at = now()
+        where released_at is null
+          and account_session_id in (
+              select id
+              from account_sessions
+              where revocation_reason = 'session_replaced');
+
+        alter table account_sessions
+            add constraint ck_account_sessions_revocation_reason
+            check (
+                (revoked_at is null and revocation_reason is null)
+                or
+                (revoked_at is not null and revocation_reason in (
+                    'logout',
+                    'manual_revoke',
+                    'session_replaced',
+                    'legacy_revocation'))
+            );
+
+        create unique index ux_account_sessions_active_account
+            on account_sessions(account_id)
+            where revoked_at is null;
         """;
 
     private sealed record DatabaseMigration(string Id, string Sql);

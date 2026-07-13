@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace WorldServer.Auth;
 
 public sealed record ConsumeJoinTicketRequest(string Ticket, string WorldId);
@@ -34,7 +36,7 @@ public sealed record AuthServiceResult<T>(T? Value, WorldServerErrorResponse? Er
 
     public static AuthServiceResult<T> Success(T value)
     {
-        return new AuthServiceResult<T>(value, null, StatusCodes.Status200OK);
+        return new AuthServiceResult<T>(value, null, (int)HttpStatusCode.OK);
     }
 
     public static AuthServiceResult<T> Failure(int statusCode, string code, string message)

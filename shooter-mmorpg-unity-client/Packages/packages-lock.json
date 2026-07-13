@@ -1,5 +1,30 @@
 {
   "dependencies": {
+    "com.revenantx.litenetlib": {
+      "version": "2.1.4",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "com.shootermmo.game-protocol": {
+      "version": "file:../../GameProtocol/",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
+    "com.shootermmo.game-simulation": {
+      "version": "file:../../GameSimulation/",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
+    "com.shootermmo.world-data": {
+      "version": "file:../../WorldData/",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.13",
       "depth": 0,

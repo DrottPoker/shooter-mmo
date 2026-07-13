@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 ## What Shooter MMO Is
 
@@ -14,9 +14,11 @@ The current playable path is intentionally small:
 1. A player registers or logs in.
 2. The player creates and selects a character.
 3. The client lists available worlds and requests a short-lived join ticket.
-4. WorldServer validates the ticket and claims the character's world session.
-5. Unity loads a local world preview with basic movement and camera controls.
-6. Leaving the world releases the server session before returning to character
+4. Unity connects to WorldServer over LiteNetLib UDP and sends the ticket.
+5. WorldServer validates the ticket and claims the character's world session.
+6. Unity loads WorldScene and predicts movement while WorldServer owns the
+   authoritative player state.
+7. Leaving the world releases the server session before returning to character
    selection.
 
 ## Main Components
@@ -26,28 +28,41 @@ The current playable path is intentionally small:
 - **AuthService** owns accounts, authentication sessions, characters, the world
   registry, join tickets, and authoritative character world-session leases.
 - **WorldServer** validates joins, maintains active local simulation sessions,
-  heartbeats authoritative leases, and exposes Development-only HTTP
-  debug endpoints.
+  heartbeats authoritative leases, and owns the headless realtime UDP transport.
 - **PostgreSQL** is the durable source of truth for account, character, ticket,
   registry, and world-session data.
 - **Redis** is currently an operational dependency used by readiness checks. It
   does not yet own gameplay or authentication state.
-- **Shared** contains reusable .NET configuration, networking, HTTP pipeline, and
-  health-check helpers.
+- **Shared** contains framework-neutral .NET configuration and health helpers.
+- **Shared.Http** contains AuthService-only ASP.NET pipeline behavior.
+- **GameProtocol** is the versioned binary contract shared by Unity and
+  WorldServer.
+- **GameSimulation** is the fixed-step movement implementation compiled from the
+  same source for WorldServer and Unity prediction.
+- **WorldData** contains the neutral collision authoring and checksummed chunks
+  consumed by WorldServer and Unity.
 
 ## Current State
 
 The foundation currently supports:
 
-- Database-backed registration, login, logout, and session revocation.
+- Database-backed registration, login, logout, and single-active-account-session
+  enforcement. A later login replaces the earlier client session.
 - Character creation and listing.
 - Heartbeat-based world discovery and online status.
 - Secure, transactional world join tickets and single-world character leases.
 - Reconnect, heartbeat, expiry, and safe release behavior.
+- A persistent LiteNetLib UDP client and headless WorldServer join and leave
+  handshake.
+- Sequenced movement input, a fixed 30 Hz authoritative server simulation, 15 Hz
+  world snapshots, local reconciliation, and remote interpolation.
+- Versioned, chunked test-map collision shared by WorldServer and Unity
+  prediction, with authoritative capsule movement across walls, ramps, steps,
+  and cover.
 - Split liveness and readiness health checks.
 - A timeout-aware Unity API client with structured errors and 401 recovery.
-- A three-scene client flow with temporary UI and a local third-person movement
-  foundation.
+- A three-scene client flow with temporary UI and a server-authoritative
+  third-person movement replication foundation.
 - Backend unit and PostgreSQL integration tests plus Unity EditMode and PlayMode
   smoke tests.
 
@@ -55,7 +70,9 @@ The foundation currently supports:
 
 The following areas are not implemented yet:
 
-- Real gameplay networking and authoritative movement simulation.
+- Terrain and cave triangle-mesh collision beyond the current oriented-box test
+  map format.
+- Dynamic collision transform replication and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
 - Inventory, equipment, loot, crafting, gathering, professions, and economy.
 - Persistent world simulation, NPCs, quests, social systems, and guilds.

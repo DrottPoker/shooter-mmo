@@ -1,8 +1,8 @@
 using NUnit.Framework;
 using ShooterMmo.Api;
 using ShooterMmo.Config;
-using ShooterMmo.Gameplay;
-using UnityEngine;
+using ShooterMmo.Diagnostics;
+using ShooterMmo.Networking;
 
 namespace ShooterMmo.Tests.EditMode
 {
@@ -39,36 +39,56 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void ReplacedAccountSessionPreservesTheDisconnectReason()
+        {
+            const string json =
+                "{\"status\":401,\"detail\":\"This account logged in from another client.\",\"code\":\"account_session_replaced\"}";
+
+            var error = ShooterMmoApiClient.ParseHttpError(401, json, "fallback");
+
+            Assert.That(error.IsUnauthorized, Is.True);
+            Assert.That(error.Code, Is.EqualTo(ClientSessionRecovery.AccountSessionReplacedCode));
+            Assert.That(error.Message, Is.EqualTo("This account logged in from another client."));
+        }
+
+        [Test]
+        public void SnapshotsOutsideJoinedStateAreIgnoredAsInFlightPackets()
+        {
+            Assert.That(
+                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Joining),
+                Is.True);
+            Assert.That(
+                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Leaving),
+                Is.True);
+            Assert.That(
+                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Disconnected),
+                Is.True);
+            Assert.That(
+                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Joined),
+                Is.False);
+        }
+
+        [Test]
         public void ResourcesContainsClientEndpointConfiguration()
         {
             var config = ShooterMmoClientConfig.Load();
 
             Assert.That(config.AuthServiceBaseUrl, Is.EqualTo("http://localhost:5000"));
-            Assert.That(config.WorldServerBaseUrl, Is.EqualTo("http://localhost:5100"));
             Assert.That(config.RequestTimeoutSeconds, Is.EqualTo(10));
+            Assert.That(config.RealtimeTimeoutSeconds, Is.EqualTo(10));
+            Assert.That(config.SessionValidationIntervalSeconds, Is.EqualTo(5));
         }
 
         [Test]
-        public void InputActionControllersCanEnableAndDispose()
+        public void ClientLogFormatsCategoryAndNeutralizesLineBreaks()
         {
-            var player = new GameObject("InputActionTestPlayer");
-            var cameraObject = new GameObject("InputActionTestCamera");
+            var message = ClientLog.Format(
+                ClientLogCategory.WorldServer,
+                "Connection rejected.\r\nTry again.");
 
-            try
-            {
-                player.AddComponent<CharacterController>();
-                var playerController = player.AddComponent<LocalPlayerController>();
-                var cameraController = cameraObject.AddComponent<ThirdPersonCameraController>();
-                cameraController.SetTarget(playerController.CameraTarget);
-
-                Assert.That(playerController.enabled, Is.True);
-                Assert.That(cameraController.enabled, Is.True);
-            }
-            finally
-            {
-                Object.DestroyImmediate(cameraObject);
-                Object.DestroyImmediate(player);
-            }
+            Assert.That(
+                message,
+                Is.EqualTo("[WORLDSERVER] Connection rejected.  Try again."));
         }
     }
 }

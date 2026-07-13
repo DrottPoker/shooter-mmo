@@ -5,12 +5,17 @@ using Npgsql;
 
 namespace AuthService.Auth;
 
-public sealed class AccountService(NpgsqlDataSource dataSource, SessionService sessionService)
+public sealed class AccountService(
+    NpgsqlDataSource dataSource,
+    SessionService sessionService,
+    ILogger<AccountService> logger)
 {
     public async Task<ServiceResult<AuthResponse>> RegisterAsync(
         RegisterAccountRequest request,
         CancellationToken cancellationToken)
     {
+        logger.LogInformation("[AUTH] Validating account registration details.");
+
         var emailError = AccountValidation.ValidateEmail(request.Email);
         if (emailError is not null)
         {
@@ -85,6 +90,11 @@ public sealed class AccountService(NpgsqlDataSource dataSource, SessionService s
 
             await transaction.CommitAsync(cancellationToken);
 
+            logger.LogInformation(
+                "[AUTH] Account {AccountId} with username {Username} registered and logged in.",
+                accountId,
+                username);
+
             return ServiceResult<AuthResponse>.Ok(new AuthResponse(
                 accountId,
                 username,
@@ -103,6 +113,8 @@ public sealed class AccountService(NpgsqlDataSource dataSource, SessionService s
         LoginAccountRequest request,
         CancellationToken cancellationToken)
     {
+        logger.LogInformation("[AUTH] Validating login credentials.");
+
         if (string.IsNullOrWhiteSpace(request.Login) || string.IsNullOrWhiteSpace(request.Password))
         {
             return ServiceResult<AuthResponse>.BadRequest("invalid_login", "Login and password are required.");
@@ -122,14 +134,23 @@ public sealed class AccountService(NpgsqlDataSource dataSource, SessionService s
 
         if (account is null || !BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
         {
+            logger.LogWarning("[AUTH] Login rejected because the supplied credentials were invalid.");
             return ServiceResult<AuthResponse>.Unauthorized("invalid_credentials", "Login or password is incorrect.");
         }
 
-        var session = await sessionService.CreateSessionAsync(
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var session = await sessionService.ReplaceSessionAsync(
             connection,
-            null,
+            transaction,
             account.Id,
             cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "[AUTH] Account {AccountId} with username {Username} logged in and replaced {ReplacedSessionCount} previous active sessions.",
+            account.Id,
+            account.Username,
+            session.ReplacedSessionCount);
 
         return ServiceResult<AuthResponse>.Ok(new AuthResponse(
             account.Id,

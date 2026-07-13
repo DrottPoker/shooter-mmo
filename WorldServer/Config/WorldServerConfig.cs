@@ -1,11 +1,20 @@
+using System.Globalization;
+using Microsoft.Extensions.Configuration;
+using ShooterMmo.GameSimulation;
 using ShooterMmo.Shared.Networking;
 
 namespace WorldServer.Config;
 
 public sealed record WorldServerConfig(
     string WorldServerId,
+    string CollisionDataPath,
     int UdpPort,
-    string HttpUrl,
+    int MaxConnections,
+    TimeSpan JoinHandshakeTimeout,
+    TimeSpan NetworkPollInterval,
+    int SnapshotRateHz,
+    MovementSimulationSettings MovementSimulation,
+    MovementSpawnConfig MovementSpawn,
     Uri AuthServiceBaseUrl,
     TimeSpan AuthServiceTimeout,
     string AuthServiceSecret,
@@ -23,10 +32,6 @@ public sealed record WorldServerConfig(
             First(section["WorldServerId"], configuration["WORLD_SERVER_ID"]),
             "WorldServer:WorldServerId",
             errors);
-        var httpUrl = Require(
-            First(section["HttpUrl"], configuration["WORLD_HTTP_URL"]),
-            "WorldServer:HttpUrl",
-            errors);
         var authServiceUrl = Require(
             First(section["AuthServiceBaseUrl"], configuration["AUTH_SERVICE_BASE_URL"]),
             "WorldServer:AuthServiceBaseUrl",
@@ -35,11 +40,134 @@ public sealed record WorldServerConfig(
             First(section["AuthServiceSecret"], configuration["WORLD_SERVER_SERVICE_SECRET"]),
             "WorldServer:AuthServiceSecret",
             errors);
+        var collisionDataPath = Require(
+            First(
+                section["CollisionDataPath"],
+                configuration["WORLD_COLLISION_DATA_PATH"]),
+            "WorldServer:CollisionDataPath",
+            errors);
         var redis = Require(configuration.GetConnectionString("Redis"), "ConnectionStrings:Redis", errors);
 
         var udpPort = PositiveInt(
             First(section["UdpPort"], configuration["WORLD_UDP_PORT"]),
             "WorldServer:UdpPort",
+            errors);
+        var maxConnections = PositiveInt(
+            First(section["MaxConnections"], configuration["WORLD_MAX_CONNECTIONS"]),
+            "WorldServer:MaxConnections",
+            errors);
+        var joinHandshakeTimeoutSeconds = PositiveInt(
+            First(
+                section["JoinHandshakeTimeoutSeconds"],
+                configuration["WORLD_JOIN_HANDSHAKE_TIMEOUT_SECONDS"]),
+            "WorldServer:JoinHandshakeTimeoutSeconds",
+            errors);
+        var networkPollIntervalMilliseconds = PositiveInt(
+            First(
+                section["NetworkPollIntervalMilliseconds"],
+                configuration["WORLD_NETWORK_POLL_INTERVAL_MILLISECONDS"]),
+            "WorldServer:NetworkPollIntervalMilliseconds",
+            errors);
+        var movementSection = section.GetSection("Movement");
+        var movementTickRateHz = PositiveInt(
+            movementSection["TickRateHz"],
+            "WorldServer:Movement:TickRateHz",
+            errors);
+        var snapshotRateHz = PositiveInt(
+            movementSection["SnapshotRateHz"],
+            "WorldServer:Movement:SnapshotRateHz",
+            errors);
+        var walkSpeed = FiniteFloat(
+            movementSection["WalkSpeed"],
+            "WorldServer:Movement:WalkSpeed",
+            errors);
+        var sprintSpeed = FiniteFloat(
+            movementSection["SprintSpeed"],
+            "WorldServer:Movement:SprintSpeed",
+            errors);
+        var rotationSpeed = FiniteFloat(
+            movementSection["RotationSpeedDegrees"],
+            "WorldServer:Movement:RotationSpeedDegrees",
+            errors);
+        var gravity = FiniteFloat(
+            movementSection["Gravity"],
+            "WorldServer:Movement:Gravity",
+            errors);
+        var maximumFallSpeed = FiniteFloat(
+            movementSection["MaximumFallSpeed"],
+            "WorldServer:Movement:MaximumFallSpeed",
+            errors);
+        var jumpVelocity = FiniteFloat(
+            movementSection["JumpVelocity"],
+            "WorldServer:Movement:JumpVelocity",
+            errors);
+        var groundedVerticalVelocity = FiniteFloat(
+            movementSection["GroundedVerticalVelocity"],
+            "WorldServer:Movement:GroundedVerticalVelocity",
+            errors);
+        var groundHeight = FiniteFloat(
+            movementSection["GroundHeight"],
+            "WorldServer:Movement:GroundHeight",
+            errors);
+        var minimumX = FiniteFloat(
+            movementSection["MinimumX"],
+            "WorldServer:Movement:MinimumX",
+            errors);
+        var maximumX = FiniteFloat(
+            movementSection["MaximumX"],
+            "WorldServer:Movement:MaximumX",
+            errors);
+        var minimumZ = FiniteFloat(
+            movementSection["MinimumZ"],
+            "WorldServer:Movement:MinimumZ",
+            errors);
+        var maximumZ = FiniteFloat(
+            movementSection["MaximumZ"],
+            "WorldServer:Movement:MaximumZ",
+            errors);
+        var characterRadius = FiniteFloat(
+            movementSection["CharacterRadius"],
+            "WorldServer:Movement:CharacterRadius",
+            errors);
+        var characterHeight = FiniteFloat(
+            movementSection["CharacterHeight"],
+            "WorldServer:Movement:CharacterHeight",
+            errors);
+        var stepHeight = FiniteFloat(
+            movementSection["StepHeight"],
+            "WorldServer:Movement:StepHeight",
+            errors);
+        var maximumSlopeDegrees = FiniteFloat(
+            movementSection["MaximumSlopeDegrees"],
+            "WorldServer:Movement:MaximumSlopeDegrees",
+            errors);
+        var groundSnapDistance = FiniteFloat(
+            movementSection["GroundSnapDistance"],
+            "WorldServer:Movement:GroundSnapDistance",
+            errors);
+        var maximumSubstepDistance = FiniteFloat(
+            movementSection["MaximumSubstepDistance"],
+            "WorldServer:Movement:MaximumSubstepDistance",
+            errors);
+        var maximumPenetrationIterations = PositiveInt(
+            movementSection["MaximumPenetrationIterations"],
+            "WorldServer:Movement:MaximumPenetrationIterations",
+            errors);
+        var spawnX = FiniteFloat(
+            movementSection["SpawnX"],
+            "WorldServer:Movement:SpawnX",
+            errors);
+        var spawnY = FiniteFloat(
+            movementSection["SpawnY"],
+            "WorldServer:Movement:SpawnY",
+            errors);
+        var spawnZ = FiniteFloat(
+            movementSection["SpawnZ"],
+            "WorldServer:Movement:SpawnZ",
+            errors);
+        var spawnYaw = FiniteFloat(
+            movementSection["SpawnYawDegrees"],
+            "WorldServer:Movement:SpawnYawDegrees",
             errors);
         var authTimeoutSeconds = PositiveInt(
             First(section["AuthServiceTimeoutSeconds"], configuration["AUTH_SERVICE_TIMEOUT_SECONDS"]),
@@ -63,7 +191,65 @@ public sealed record WorldServerConfig(
             errors.Add("WorldServer:UdpPort must be between 1 and 65535.");
         }
 
-        var parsedHttpUrl = ParseHttpUri(httpUrl, "WorldServer:HttpUrl", errors);
+        if (maxConnections > 10_000)
+        {
+            errors.Add("WorldServer:MaxConnections must not exceed 10000.");
+        }
+
+        if (networkPollIntervalMilliseconds > 1000)
+        {
+            errors.Add("WorldServer:NetworkPollIntervalMilliseconds must not exceed 1000.");
+        }
+
+        if (snapshotRateHz > movementTickRateHz
+            || movementTickRateHz % snapshotRateHz != 0)
+        {
+            errors.Add(
+                "WorldServer:Movement:SnapshotRateHz must divide TickRateHz without a remainder.");
+        }
+
+        MovementSimulationSettings? movementSimulation = null;
+        try
+        {
+            var characterCollision = new CharacterCollisionSettings(
+                characterRadius,
+                characterHeight,
+                stepHeight,
+                maximumSlopeDegrees,
+                groundSnapDistance,
+                maximumSubstepDistance,
+                maximumPenetrationIterations);
+            movementSimulation = new MovementSimulationSettings(
+                movementTickRateHz,
+                walkSpeed,
+                sprintSpeed,
+                rotationSpeed,
+                gravity,
+                maximumFallSpeed,
+                jumpVelocity,
+                groundedVerticalVelocity,
+                groundHeight,
+                minimumX,
+                maximumX,
+                minimumZ,
+                maximumZ,
+                characterCollision);
+        }
+        catch (ArgumentException exception)
+        {
+            errors.Add($"WorldServer:Movement is invalid: {exception.Message}");
+        }
+
+        if (movementSimulation is not null
+            && (spawnX < movementSimulation.MinimumX
+                || spawnX > movementSimulation.MaximumX
+                || spawnY < movementSimulation.GroundHeight
+                || spawnZ < movementSimulation.MinimumZ
+                || spawnZ > movementSimulation.MaximumZ))
+        {
+            errors.Add("WorldServer:Movement spawn must be inside the configured world bounds.");
+        }
+
         var parsedAuthServiceUrl = ParseHttpUri(authServiceUrl, "WorldServer:AuthServiceBaseUrl", errors);
 
         if (authServiceSecret is not null && authServiceSecret.Length < 32)
@@ -92,8 +278,14 @@ public sealed record WorldServerConfig(
 
         return new WorldServerConfig(
             worldServerId!,
+            collisionDataPath!,
             udpPort,
-            httpUrl!,
+            maxConnections,
+            TimeSpan.FromSeconds(joinHandshakeTimeoutSeconds),
+            TimeSpan.FromMilliseconds(networkPollIntervalMilliseconds),
+            snapshotRateHz,
+            movementSimulation!,
+            new MovementSpawnConfig(spawnX, spawnY, spawnZ, spawnYaw),
             parsedAuthServiceUrl!,
             TimeSpan.FromSeconds(authTimeoutSeconds),
             authServiceSecret!,
@@ -130,6 +322,23 @@ public sealed record WorldServerConfig(
         return parsed;
     }
 
+    private static float FiniteFloat(string? value, string key, ICollection<string> errors)
+    {
+        if (!float.TryParse(
+                value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsed)
+            || float.IsNaN(parsed)
+            || float.IsInfinity(parsed))
+        {
+            errors.Add($"{key} must be a finite number.");
+            return 0f;
+        }
+
+        return parsed;
+    }
+
     private static Uri? ParseHttpUri(string? value, string key, ICollection<string> errors)
     {
         if (value is null)
@@ -148,3 +357,5 @@ public sealed record WorldServerConfig(
         return uri;
     }
 }
+
+public sealed record MovementSpawnConfig(float X, float Y, float Z, float YawDegrees);

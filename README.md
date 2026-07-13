@@ -8,24 +8,30 @@ foundation for the first playable MVP.
 ## Current Foundation
 
 - ASP.NET Core AuthService backed by PostgreSQL.
-- .NET WorldServer with Development-only HTTP join validation.
+- Headless .NET WorldServer with LiteNetLib UDP session and movement transport.
 - Transactional PostgreSQL world-session leases with reconnect, heartbeat, and
   idempotent release.
-- Revocable account sessions, authentication rate limits, and service-authenticated
-  WorldServer calls.
+- One active session per account, replacement-aware client disconnects,
+  authentication rate limits, and service-authenticated WorldServer calls.
 - RFC Problem Details responses with correlation identifiers and dependency failure
   mapping.
 - Heartbeat-driven world registry status with timeout-based offline detection.
 - Split liveness and protocol-level dependency readiness checks.
-- Shared .NET networking and health helpers.
+- A versioned realtime protocol and fixed-step movement simulation shared by
+  .NET and Unity.
+- Framework-neutral .NET helpers plus an AuthService-only HTTP helper project.
 - Unity 6 client scenes for login, character selection, and a local world preview.
 - Timeout-aware Unity API handling, serialized UI operations, and automatic 401
   recovery.
-- Input Action movement and collision-safe third-person camera controls.
+- Server-authoritative Input Action movement with prediction, reconciliation,
+  snapshots, remote interpolation, shared test-map collision, and collision-safe
+  third-person camera controls.
+- Versioned collision baking with checksummed chunks consumed by both
+  WorldServer and Unity prediction.
 - PostgreSQL and Redis development infrastructure through Docker Compose.
 
-Inventory, combat, persistent world simulation, and UDP gameplay networking are
-intentionally deferred until the foundation is stable.
+Inventory, combat, persistent world simulation, complex terrain collision, and
+dynamic rigid-body simulation are intentionally deferred.
 
 ## Requirements
 
@@ -73,6 +79,10 @@ dotnet restore ShooterMmo.slnx --locked-mode
 dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet test ShooterMmo.slnx --configuration Release --no-build
+dotnet run --project Tools/WorldCollisionCompiler -- `
+  WorldData/Authoring/local-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  --verify
 ```
 
 The PostgreSQL integration test is skipped unless a dedicated test connection is
@@ -91,14 +101,24 @@ The integration test resets the `public` schema. Never point
 
 Run Unity tests from `Window > General > Test Runner`:
 
-- EditMode validates client serialization and session state.
-- PlayMode validates that the login scene receives its runtime UI bootstrap.
+- EditMode validates client serialization, session state, input, and authored
+  gameplay assets.
+- PlayMode validates the persistent runtime and realtime client bootstrap.
 
 ## Repository Layout
 
 - `AuthService`: account, session, character, world, and join ticket API.
-- `WorldServer`: Development-only world join validation and active local sessions.
-- `Shared`: shared backend health and networking helpers.
+- `WorldServer`: headless realtime transport and active local sessions.
+- `Shared`: framework-neutral backend health and configuration helpers.
+- `Shared.Http`: AuthService-only ASP.NET pipeline behavior.
+- `GameProtocol`: local Unity package containing the realtime binary contract.
+- `GameProtocol.DotNet`: .NET build project for the shared protocol source.
+- `GameSimulation`: local Unity package containing shared fixed-step movement.
+- `GameSimulation.DotNet`: .NET build project for the shared simulation source.
+- `WorldData`: neutral authoring and baked collision chunks shared by the server
+  and Unity.
+- `Tools/WorldCollisionCompiler`: command-line collision bake and verification
+  tool.
 - `Tests`: backend unit and PostgreSQL integration tests.
 - `shooter-mmorpg-unity-client`: Unity client project and Unity tests.
 - `docs`: project overview, architecture, features, product scope, and local

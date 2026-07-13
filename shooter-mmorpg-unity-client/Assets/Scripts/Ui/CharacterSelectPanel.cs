@@ -1,5 +1,7 @@
 using System.Collections;
 using ShooterMmo.Api;
+using ShooterMmo.Diagnostics;
+using ShooterMmo.Networking;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -70,6 +72,13 @@ namespace ShooterMmo.Ui
 
         private IEnumerator LogoutRoutine()
         {
+            var account = ShooterMmoClientSession.Auth;
+            var accountName = account != null ? account.username : "unknown";
+            var accountId = account != null ? account.accountId : "unknown";
+            ClientLog.Info(
+                ClientLogCategory.Auth,
+                "Logging out account '" + accountName + "' (" + accountId + ").");
+
             ShooterMmoApiError error = null;
             yield return apiClient.Logout(
                 ShooterMmoClientSession.AuthServiceBaseUrl,
@@ -83,6 +92,9 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
+            ClientLog.Info(
+                ClientLogCategory.Auth,
+                "Account '" + accountName + "' logged out and its current session was revoked.");
             ShooterMmoClientSession.Clear();
             SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
         }
@@ -273,6 +285,10 @@ namespace ShooterMmo.Ui
             var world = worlds[selectedWorldIndex];
             ShooterMmoClientSession.SelectedCharacter = character;
             ShooterMmoClientSession.SelectedWorld = world;
+            ClientLog.Info(
+                ClientLogCategory.Client,
+                "Character '" + character.name + "' (" + character.id + ") is requesting access to world '"
+                + world.id + "'.");
 
             JoinWorldResponse joinTicket = null;
             ShooterMmoApiError error = null;
@@ -289,14 +305,34 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            ActivePlayerSessionResponse activeSession = null;
-            yield return apiClient.DebugJoinWorldServer(
-                ShooterMmoClientSession.WorldServerBaseUrl,
-                new DebugJoinRequest { joinTicket = joinTicket.joinTicket },
-                result => activeSession = result,
-                result => error = result);
+            ClientLog.Info(
+                ClientLogCategory.Auth,
+                "AuthService issued a short-lived join ticket for character '" + character.name
+                + "' and world '" + world.id + "'.");
 
-            if (HandleError(error))
+            var worldClient = ShooterMmoClientBootstrap.WorldClient;
+            if (worldClient == null)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "The persistent realtime client is unavailable, so the world join cannot start.");
+                HandleRealtimeError(new RealtimeClientError(
+                    RealtimeClientErrorKind.Network,
+                    "realtime_client_missing",
+                    "The persistent realtime client is unavailable."));
+                yield break;
+            }
+
+            ActivePlayerSessionResponse activeSession = null;
+            RealtimeClientError realtimeError = null;
+            yield return worldClient.Join(
+                world.host,
+                world.udpPort,
+                joinTicket.joinTicket,
+                result => activeSession = result,
+                result => realtimeError = result);
+
+            if (HandleRealtimeError(realtimeError))
             {
                 yield break;
             }
@@ -347,9 +383,21 @@ namespace ShooterMmo.Ui
             if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error))
             {
                 status = "Error: " + error.ToDisplayMessage();
-                Debug.LogWarning(status);
+                ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDisplayMessage());
             }
 
+            return true;
+        }
+
+        private bool HandleRealtimeError(RealtimeClientError error)
+        {
+            if (error == null)
+            {
+                return false;
+            }
+
+            operationStepFailed = true;
+            status = "Error: " + error.ToDisplayMessage();
             return true;
         }
     }

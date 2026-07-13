@@ -81,12 +81,6 @@ namespace ShooterMmo.Api
     }
 
     [Serializable]
-    public sealed class DebugJoinRequest
-    {
-        public string joinTicket;
-    }
-
-    [Serializable]
     public sealed class ActivePlayerSessionResponse
     {
         public string worldSessionId;

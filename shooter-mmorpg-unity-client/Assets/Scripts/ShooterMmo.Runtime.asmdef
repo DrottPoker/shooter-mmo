@@ -2,7 +2,10 @@
   "name": "ShooterMmo.Runtime",
   "rootNamespace": "ShooterMmo",
   "references": [
-    "Unity.InputSystem"
+    "Unity.InputSystem",
+    "LiteNetLib",
+    "ShooterMmo.GameProtocol",
+    "ShooterMmo.GameSimulation"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

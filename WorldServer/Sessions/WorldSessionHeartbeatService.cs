@@ -1,4 +1,7 @@
+using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using WorldServer.Auth;
 using WorldServer.Config;
 
@@ -6,6 +9,7 @@ namespace WorldServer.Sessions;
 
 public sealed class WorldSessionHeartbeatService(
     AuthServiceClient authServiceClient,
+    WorldSessionReleaseService releaseService,
     ActivePlayerSessionStore sessionStore,
     WorldServerConfig config,
     ILogger<WorldSessionHeartbeatService> logger) : BackgroundService
@@ -29,26 +33,17 @@ public sealed class WorldSessionHeartbeatService(
         {
             try
             {
-                var result = await authServiceClient.ReleaseWorldSessionAsync(
-                    session.WorldSessionId,
-                    session.WorldId,
-                    session.WorldSessionToken,
-                    cancellationToken);
+                var result = await releaseService.ReleaseAsync(session, cancellationToken);
 
                 if (result.Succeeded)
                 {
-                    sessionStore.Remove(
-                        session.CharacterId,
-                        session.WorldSessionId,
-                        session.WorldSessionToken);
+                    continue;
                 }
-                else
-                {
-                    logger.LogWarning(
-                        "Could not release world session {WorldSessionId} during shutdown: {Code}.",
-                        session.WorldSessionId,
-                        result.Error!.Code);
-                }
+
+                logger.LogWarning(
+                    "Could not release world session {WorldSessionId} during shutdown: {Code}.",
+                    session.WorldSessionId,
+                    result.Code);
             }
             catch (Exception exception) when (IsExpectedTransportException(exception))
             {
@@ -85,17 +80,29 @@ public sealed class WorldSessionHeartbeatService(
                 return;
             }
 
-            if (result.StatusCode is StatusCodes.Status401Unauthorized
-                or StatusCodes.Status404NotFound
-                or StatusCodes.Status409Conflict)
+            if (result.StatusCode is (int)HttpStatusCode.Unauthorized
+                or (int)HttpStatusCode.NotFound
+                or (int)HttpStatusCode.Conflict)
             {
-                sessionStore.Remove(
+                var code = string.Equals(
+                    result.Error!.Code,
+                    "account_session_replaced",
+                    StringComparison.Ordinal)
+                    ? "account_session_replaced"
+                    : "session_revoked";
+                var message = code == "account_session_replaced"
+                    ? "This account logged in from another client."
+                    : "The world session is no longer active.";
+                sessionStore.Invalidate(
                     session.CharacterId,
                     session.WorldSessionId,
-                    session.WorldSessionToken);
+                    session.WorldSessionToken,
+                    code,
+                    message);
                 logger.LogWarning(
-                    "Removed inactive world session {WorldSessionId} after AuthService returned {StatusCode}.",
+                    "Invalidated world session {WorldSessionId} with code {Code} after AuthService returned {StatusCode}.",
                     session.WorldSessionId,
+                    code,
                     result.StatusCode);
 
                 return;

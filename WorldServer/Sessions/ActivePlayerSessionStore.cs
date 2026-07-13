@@ -4,11 +4,13 @@ public sealed class ActivePlayerSessionStore
 {
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, ActivePlayerSession> sessionsByCharacterId = [];
+    private readonly Dictionary<Guid, ActivePlayerSessionInvalidation> invalidationsByWorldSessionId = [];
 
     public ActivePlayerSessionRegistration Register(ActivePlayerSession session)
     {
         lock (syncRoot)
         {
+            invalidationsByWorldSessionId.Remove(session.WorldSessionId);
             if (!sessionsByCharacterId.TryGetValue(session.CharacterId, out var existingSession))
             {
                 sessionsByCharacterId.Add(session.CharacterId, session);
@@ -80,7 +82,52 @@ public sealed class ActivePlayerSessionStore
                 return false;
             }
 
+            invalidationsByWorldSessionId.Remove(worldSessionId);
             return sessionsByCharacterId.Remove(characterId);
+        }
+    }
+
+    public bool Invalidate(
+        Guid characterId,
+        Guid worldSessionId,
+        string worldSessionToken,
+        string code,
+        string message)
+    {
+        lock (syncRoot)
+        {
+            if (!sessionsByCharacterId.TryGetValue(characterId, out var session)
+                || session.WorldSessionId != worldSessionId
+                || !string.Equals(
+                    session.WorldSessionToken,
+                    worldSessionToken,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            sessionsByCharacterId.Remove(characterId);
+            invalidationsByWorldSessionId[worldSessionId] = new ActivePlayerSessionInvalidation(
+                code,
+                message);
+            return true;
+        }
+    }
+
+    public bool TryTakeInvalidation(
+        Guid worldSessionId,
+        out ActivePlayerSessionInvalidation? invalidation)
+    {
+        lock (syncRoot)
+        {
+            if (!invalidationsByWorldSessionId.Remove(worldSessionId, out var stored))
+            {
+                invalidation = null;
+                return false;
+            }
+
+            invalidation = stored;
+            return true;
         }
     }
 
@@ -111,3 +158,5 @@ public enum ActivePlayerSessionRegistration
     ReplacedExpired,
     Conflict
 }
+
+public sealed record ActivePlayerSessionInvalidation(string Code, string Message);

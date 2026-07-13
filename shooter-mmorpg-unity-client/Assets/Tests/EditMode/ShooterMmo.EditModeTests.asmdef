@@ -2,7 +2,10 @@
   "name": "ShooterMmo.EditModeTests",
   "rootNamespace": "ShooterMmo.Tests.EditMode",
   "references": [
-    "ShooterMmo.Runtime"
+    "ShooterMmo.Runtime",
+    "Unity.InputSystem",
+    "ShooterMmo.GameSimulation",
+    "ShooterMmo.GameProtocol"
   ],
   "includePlatforms": [
     "Editor"

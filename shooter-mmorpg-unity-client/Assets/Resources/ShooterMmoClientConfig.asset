@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: ShooterMmoClientConfig
   m_EditorClassIdentifier: 
   authServiceBaseUrl: http://localhost:5000
-  worldServerBaseUrl: http://localhost:5100
   requestTimeoutSeconds: 10
+  realtimeTimeoutSeconds: 10
+  sessionValidationIntervalSeconds: 5

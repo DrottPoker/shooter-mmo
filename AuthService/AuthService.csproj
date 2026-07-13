@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Shared\ShooterMmo.Shared.csproj" />
+    <ProjectReference Include="..\Shared.Http\ShooterMmo.Shared.Http.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -8,25 +8,25 @@ public sealed class WorldJoinService(
     ActivePlayerSessionStore sessionStore,
     WorldServerConfig config)
 {
-    public async Task<WorldJoinResult<ActivePlayerSessionResponse>> JoinAsync(
-        DebugJoinRequest request,
+    public async Task<WorldJoinResult<ActivePlayerSession>> JoinAsync(
+        string joinTicket,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.JoinTicket))
+        if (string.IsNullOrWhiteSpace(joinTicket))
         {
-            return WorldJoinResult<ActivePlayerSessionResponse>.BadRequest(
+            return WorldJoinResult<ActivePlayerSession>.BadRequest(
                 "missing_join_ticket",
                 "Join ticket is required.");
         }
 
         var consumedTicket = await authServiceClient.ConsumeJoinTicketAsync(
-            request.JoinTicket.Trim(),
+            joinTicket.Trim(),
             config.WorldServerId,
             cancellationToken);
 
         if (!consumedTicket.Succeeded)
         {
-            return WorldJoinResult<ActivePlayerSessionResponse>.Failure(
+            return WorldJoinResult<ActivePlayerSession>.Failure(
                 consumedTicket.StatusCode,
                 consumedTicket.Error!.Code,
                 consumedTicket.Error.Message);
@@ -40,7 +40,7 @@ public sealed class WorldJoinService(
                 consumedTicket.Value.WorldSessionToken,
                 cancellationToken);
 
-            return WorldJoinResult<ActivePlayerSessionResponse>.Conflict(
+            return WorldJoinResult<ActivePlayerSession>.Conflict(
                 "wrong_world",
                 $"Join ticket is for world {consumedTicket.Value.WorldId}, not {config.WorldServerId}.");
         }
@@ -56,14 +56,13 @@ public sealed class WorldJoinService(
                 session.WorldSessionToken,
                 cancellationToken);
 
-            return WorldJoinResult<ActivePlayerSessionResponse>.Conflict(
+            return WorldJoinResult<ActivePlayerSession>.Conflict(
                 "character_already_active",
                 "Character already has a different active WorldServer session.");
         }
 
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 
-        return WorldJoinResult<ActivePlayerSessionResponse>.Success(
-            ActivePlayerSessionResponse.FromSession(registeredSession!));
+        return WorldJoinResult<ActivePlayerSession>.Success(registeredSession!);
     }
 }

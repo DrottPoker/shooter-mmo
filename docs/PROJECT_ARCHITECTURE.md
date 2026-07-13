@@ -1,96 +1,159 @@
 # Project Architecture
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 ## Purpose
 
-This document is the source of truth for the current project-wide architecture.
-It describes component boundaries, data ownership, trust boundaries, and the
-main runtime flows. Detailed Unity internals belong in
-[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md), while implemented
-behavior belongs in the feature documents.
+This document is the source of truth for project-wide architecture. Detailed
+Unity internals belong in [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
+Implemented backend and gameplay behavior belongs in the feature documents.
 
 ## System Context
 
 ```text
-Unity Client
-  | player bearer session
-  v
-AuthService --------------------> PostgreSQL
-  ^                                   ^
-  | service-authenticated HTTP        | authoritative leases and data
-  |                                   |
-WorldServer --------------------------+
-  |
-  +------------------------------> Redis
+                         HTTPS or local HTTP
+Unity Client ------------------------------------> AuthService
+     |                                                  |
+     | LiteNetLib reliable UDP                          | PostgreSQL authority
+     v                                                  v
+WorldServer --------------------------------------> AuthService ------> PostgreSQL
+     |                        service-authenticated HTTP
+     |
+     +-----------------------------------------------------------> Redis
 
-AuthService ---------------------> Redis
+AuthService -----------------------------------------------------> Redis
 ```
 
-The Unity client treats AuthService as the public application API. WorldServer
-is currently contacted through Development-only HTTP integration endpoints to
-validate the end-to-end join flow. Future gameplay transport will replace this
-development surface without changing AuthService ownership of identity and
-access.
+The client uses AuthService for accounts, characters, world discovery, and join
+tickets. It connects directly to the selected WorldServer over UDP after ticket
+creation. AuthService never carries realtime gameplay packets.
 
 ## Repository Components
 
 ### AuthService
 
-`AuthService` is an ASP.NET Core minimal API and the authority for persistent
-identity and world-access data. Its feature folders group account, character,
-world registry, join ticket, and world-session logic. It applies ordered database
-migrations when configured to do so.
+`AuthService` is the only ASP.NET Core application. It is the public application
+API and the authority for persistent identity and world-access data.
 
 AuthService owns:
 
 - Accounts and password hashes.
 - Revocable account sessions.
-- Characters and character ownership.
+- Characters and ownership.
 - World registry records and heartbeat timestamps.
 - Short-lived world join tickets.
 - Global single-world leases for characters.
+- HTTP authentication, authorization, rate limiting, Problem Details, and
+  health routes.
 
 ### WorldServer
 
-`WorldServer` is an ASP.NET Core host for the local world process. It authenticates
-to AuthService with a world identity and shared secret. It currently keeps its
-local active-player simulation list in memory while the authoritative lease is
-stored in PostgreSQL through AuthService.
+`WorldServer` is a headless .NET Generic Host console application. It does not
+host ASP.NET routes. LiteNetLib owns its realtime UDP transport on port `27015`
+by default.
 
 WorldServer owns:
 
-- The local process view of connected players.
-- Periodic world registry heartbeat execution.
-- Periodic active world-session heartbeat execution.
-- Development-only join, list, and leave integration endpoints.
-- WorldServer readiness and startup health checks.
+- UDP connection admission and versioned packet validation.
+- Join-ticket handshakes and local connected-player state.
+- Fixed-rate authoritative player movement simulation.
+- Fail-fast loading and checksum validation of baked world collision chunks.
+- Static and dynamic collision queries through one simulation interface.
+- Input sequence processing and periodic world snapshots.
+- Reconnect replacement for an older connection of the same character.
+- Exact-session leave and disconnect cleanup.
+- Periodic world registry and active-session heartbeats.
+- Startup configuration and dependency validation.
 
-### Shared
+### Shared Core
 
-`Shared/ShooterMmo.Shared.csproj` contains infrastructure helpers shared by both
-.NET services:
+`Shared/ShooterMmo.Shared.csproj` contains framework-neutral .NET helpers:
 
 - Optional repository-root `.env` loading.
 - Connection-string parsing and validation.
 - Redis protocol health checks.
 - Common dependency and service health models.
-- Correlation id, Problem Details, and API pipeline helpers.
 
-Shared does not own domain state or feature-specific business rules.
+`Shared.Http/ShooterMmo.Shared.Http.csproj` contains ASP.NET-specific Problem
+Details, correlation-id, and API pipeline behavior. Only AuthService references
+this project.
+
+### Realtime Game Protocol
+
+`GameProtocol/Runtime` is a local Unity package containing the versioned binary
+realtime contract. `GameProtocol.DotNet` compiles the same source for WorldServer
+and backend tests without placing .NET build output inside the Unity package.
+
+Protocol version 3 currently defines:
+
+- Join request, accepted, and rejected messages.
+- Leave request, accepted, and rejected messages.
+- Structured server disconnect reasons.
+- Bounded batches of sequenced player input commands.
+- Chunked world snapshots with server tick, snapshot sequence, acknowledged
+  input sequence, and authoritative player state.
+- A collision-data revision and character capsule settings in join acceptance.
+- Packet magic, version, size, and bounded-string validation.
+
+Control messages use reliable ordered channel 0. Movement inputs use sequenced
+channel 1. World snapshots use LiteNetLib's unchanneled `Unreliable` delivery
+and carry application-level tick and chunk metadata so multiple chunks from one
+snapshot can arrive without LiteNetLib discarding an earlier chunk. LiteNetLib
+reports unchanneled packets with receive channel 0, so snapshot validation uses
+message type and delivery method rather than a fictional third channel.
+
+### Shared Game Simulation
+
+`GameSimulation/Runtime` contains the fixed-step movement rules used by both
+WorldServer and Unity. `GameSimulation.DotNet` compiles that exact source for
+the backend while Unity consumes it as the local
+`com.shootermmo.game-simulation` package.
+
+The shared simulation owns movement integration, sprint state, jump, gravity,
+facing, world bounds, the kinematic character capsule, collision queries, step
+handling, slope limits, and collision-data compilation. It contains no Unity
+dependencies and does not own network transport or presentation. This prevents
+the server and client prediction paths from drifting into separate movement or
+collision implementations.
+
+### Shared World Collision Data
+
+`WorldData` is a local Unity package and the canonical repository for baked
+world collision. Each world has a versioned manifest and binary chunks. Every
+chunk records oriented boxes with stable ids and collision-layer masks. The
+manifest records a SHA-256 checksum per chunk and a deterministic revision for
+the complete collision set.
+
+`Tools/WorldCollisionCompiler` turns neutral JSON authoring data into the same
+binary chunks used by WorldServer and Unity. WorldServer copies the package data
+into its build output and validates the format, world id, checksums, chunk
+coordinates, and revision before opening its UDP socket. Unity loads the same
+resources before enabling prediction. A revision mismatch rejects the join on
+the client instead of simulating against different geometry.
+
+Static boxes are assigned to every intersected chunk and deduplicated by stable
+id during queries. Movement contacts are sorted by stable id before resolution
+so server and client do not depend on dictionary or spatial-hash iteration
+order. Static chunks can be loaded and unloaded without changing the
+movement query contract, which leaves a clean boundary for later client and
+server streaming. Dynamic colliders use a mutable spatial hash behind the same
+`ICollisionWorld` interface. This allows doors, lifts, and other server-owned
+kinematic objects to be registered without replacing the static format. A later
+mesh or rigid-body backend can implement the same query boundary without moving
+authority into Unity physics.
 
 ### Unity Client
 
-`shooter-mmorpg-unity-client` is the player-facing Unity 6 project. It owns local
-presentation, input, scene transitions, client session state, API serialization,
-and the current local gameplay preview. See
+`shooter-mmorpg-unity-client` is the Unity 6 player client. It owns local
+presentation, input sampling, prediction, reconciliation, remote interpolation,
+scene transitions, HTTP serialization, and the persistent UDP client. See
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
 
 ### Tests
 
-`Tests/ShooterMmo.Backend.Tests` references all three backend projects and
-contains unit and isolated PostgreSQL integration tests. Unity tests are kept in
-separate EditMode and PlayMode assemblies under `Assets/Tests`.
+`Tests/ShooterMmo.Backend.Tests` contains unit, socket-level realtime, and
+isolated PostgreSQL integration tests. Unity EditMode and PlayMode tests remain
+inside the Unity project.
 
 ## Data Ownership
 
@@ -102,118 +165,164 @@ separate EditMode and PlayMode assemblies under `Assets/Tests`.
 | World registry and online status | AuthService | PostgreSQL |
 | Join tickets | AuthService | PostgreSQL |
 | Character world-session lease | AuthService | PostgreSQL |
-| Locally connected players | WorldServer | Process memory |
-| Unity selection and active session view | Unity client | Process memory |
+| Connected UDP peers and local sessions | WorldServer | Process memory |
+| Live player movement state | WorldServer | Process memory |
+| Movement simulation configuration | WorldServer | Validated configuration |
+| Predicted local movement and remote interpolation buffers | Unity client | Process memory |
+| Client selection and active session view | Unity client | Process memory |
 
-Redis is required by current operational readiness but does not yet own domain
-data.
+Redis is required by operational readiness but does not yet own domain state.
 
 ## Trust Boundaries
 
 ### Player Authentication
 
-Registration and login issue an opaque session token. Only a SHA-256 token hash
-is stored. Protected player routes use the `AccountSession` ASP.NET authentication
-scheme and authorization policy. Logout and revocation invalidate related join
+Registration and login issue an opaque account session token. Only its SHA-256
+hash is stored. Protected routes use the `AccountSession` ASP.NET authentication
+scheme and policy. PostgreSQL permits only one unrevoked session per account.
+A successful login locks the account, revokes the previous session with the
+stable `account_session_replaced` reason, consumes its pending join tickets,
+releases every active world lease for the account, and creates the replacement
+session in one transaction. Logout and manual revocation also invalidate related
 tickets and leases.
 
 ### Service Authentication
 
 WorldServer sends `X-World-Server-ID` and `X-World-Server-Secret` to protected
-AuthService routes. The `WorldServer` authentication scheme validates both the
-credential and the world identity. A server cannot consume, heartbeat, or release
-resources belonging to another world.
+AuthService routes. The `WorldServer` scheme binds the credential to a world. A
+server cannot consume, heartbeat, or release another world's resources.
 
-### Development Surface
+### Realtime Admission
 
-WorldServer `/debug/*` endpoints exist only in the Development environment. They
-are isolated integration tooling and are not a production gameplay protocol or
-a substitute for the future authoritative gameplay transport.
+A LiteNetLib connection key rejects unrelated traffic before application
+handshake processing. It is not player authentication. The short-lived join
+ticket is the credential that authenticates the player and character. WorldServer
+consumes it through its authenticated AuthService channel before accepting the
+peer as joined.
+
+Every packet validates protocol magic, version, type, size, and bounded fields.
+Peers that do not complete one join handshake before the configured timeout are
+disconnected.
 
 ## Core Runtime Flows
 
 ### Account And Character Flow
 
 1. Unity registers or logs in through AuthService.
-2. AuthService returns a one-time opaque token and account-session metadata.
-3. Unity sends the token as a bearer credential for protected operations.
-4. Character operations validate the authenticated account and ownership.
+2. AuthService returns an opaque bearer token and account-session metadata.
+3. Unity uses the token for protected account and character operations.
+4. AuthService validates account ownership for every character operation.
+5. The persistent client periodically validates the account session. An HTTP 401
+   with `account_session_replaced` clears local state and returns the older
+   client to LoginMenu.
+
+An older client already connected to a world is also removed through the world
+lease heartbeat path. AuthService reports the same replacement reason,
+WorldServer invalidates the exact local session, and the realtime control
+channel sends the reason before disconnecting the peer.
 
 ### World Discovery
 
-1. WorldServer authenticates and heartbeats its registry entry on startup and at
-   a configured interval.
-2. AuthService stores the database-generated heartbeat time.
-3. World listing derives `isOnline` from the stored state, database clock, and
-   configured heartbeat timeout.
+1. WorldServer authenticates and heartbeats its registry entry.
+2. AuthService stores a database-generated heartbeat time.
+3. World listing derives `isOnline` from that time and the configured timeout.
 4. A seeded or stale world remains offline until a fresh heartbeat exists.
 
 ### World Join And Reconnect
 
 1. Unity requests a join ticket for an owned character and online world.
-2. AuthService locks the character and invalidates any older unconsumed ticket.
-3. Unity submits the short-lived ticket to its selected WorldServer.
-4. WorldServer authenticates to AuthService and consumes the ticket for its own
-   world id.
-5. Ticket consumption and the authoritative lease claim occur in one PostgreSQL
+2. AuthService locks the character and invalidates older unconsumed tickets.
+3. Unity opens a LiteNetLib connection to the registry-provided host and UDP
+   port.
+4. Unity sends the join ticket in a versioned reliable ordered message.
+5. WorldServer consumes the ticket through its service-authenticated AuthService
+   client.
+6. Ticket consumption and the authoritative lease claim occur in one PostgreSQL
    transaction.
-6. A new join creates one character lease. A same-world reconnect keeps the
-   world-session id and rotates the world-session token.
-7. WorldServer stores the accepted player locally and heartbeats the exact lease
-   generation.
+7. WorldServer stores the accepted session and returns non-secret session
+   metadata over UDP.
+8. A same-world reconnect preserves the world-session id, rotates the secret
+   session token, and disconnects the older peer.
 
-PostgreSQL locks and constraints prevent concurrent tickets or cross-world active
-leases for the same character.
+PostgreSQL locks and constraints prevent concurrent tickets or cross-world
+active leases for the same character.
 
-### Leave And Expiry
+### Leave, Disconnect, And Expiry
 
-1. Unity sends the exact character id and world-session id to WorldServer.
-2. WorldServer verifies that the requested session still matches its local
-   generation.
-3. WorldServer releases the authoritative lease through AuthService and removes
-   the local session.
-4. Repeated release is safe. A delayed leave cannot remove a newer reconnect
-   generation.
-5. If graceful release is impossible, the lease becomes inactive after its
-   heartbeat expires.
+1. Unity sends the exact world-session id over its authenticated peer.
+2. WorldServer validates it against the peer's local session.
+3. WorldServer releases the exact lease generation through AuthService.
+4. Unity receives leave acceptance, closes UDP, clears local session state, and
+   changes scene.
+5. An unexpected peer disconnect triggers the same release service.
+6. If release cannot reach AuthService, the lease becomes inactive after
+   heartbeat expiry.
 
-## HTTP Conventions
+A delayed disconnect from an older reconnect generation carries the older secret
+session token and cannot release the newer lease.
 
-Both services use:
+### Authoritative Movement And Replication
 
-- RFC Problem Details for errors.
-- Stable application error codes.
-- `X-Correlation-ID` on every response and in error bodies.
-- `Cache-Control: no-store` and `Pragma: no-cache` for token-bearing responses.
-- Separate `/health/live` and `/health/ready` endpoints.
+1. WorldServer includes validated movement settings and the initial player state
+   plus the authoritative collision revision in the accepted join response.
+   Unity loads and validates the matching baked collision world before movement
+   begins.
+2. Unity samples Player Input Actions at the server-provided fixed rate, assigns
+   a monotonically increasing input sequence, predicts the input locally, and
+   sends a redundant batch containing up to the four newest unacknowledged
+   inputs.
+3. WorldServer accepts only newer sequences and simulates every connected player
+   on its fixed 30 Hz clock using the shared capsule motor and composite
+   collision world. Clients send input, never accepted positions.
+4. WorldServer sends authoritative snapshots at 15 Hz. Each player entry
+   includes the latest processed input sequence.
+5. The owning client replaces its predicted base with the authoritative state,
+   removes acknowledged inputs, and replays remaining inputs. Small visual
+   corrections are smoothed and large corrections are applied immediately.
+6. Other players are rendered from a snapshot buffer approximately 100 ms behind
+   the latest server tick so normal packet timing variation remains smooth.
+
+The current baked collision set contains the test map ground, four boundaries,
+camera wall, ramp, three steps, and two cover objects. The same oriented-box
+queries and capsule motor run in WorldServer and local prediction. WorldServer
+snapshots remain authoritative and reconciliation corrects any float drift,
+packet loss, stale input, or untrusted client behavior.
+
+## HTTP And Realtime Conventions
+
+AuthService HTTP uses:
+
+- RFC Problem Details with stable application error codes.
+- `X-Correlation-ID` on responses and error bodies.
+- `Cache-Control: no-store` and `Pragma: no-cache` for token responses.
+- Separate `/health/live` and `/health/ready` routes.
 - Fail-fast validation for application-owned configuration.
 
-WorldServer maps AuthService connection, timeout, invalid-response, and service
-authentication failures into explicit dependency errors.
+WorldServer maps AuthService timeouts, connection failures, invalid payloads,
+and service authentication failures into structured realtime errors. Its health
+surface is the one-shot `--health-check-only` command because the process does
+not host an HTTP server.
 
 ## Operational Architecture
 
-Local PostgreSQL and Redis run through Docker Compose with host bindings limited
-to `127.0.0.1`. Secrets live in the ignored repository-root `.env` file, with
-required keys documented in `.env.example`.
+Local PostgreSQL and Redis run through Docker Compose and bind only to
+`127.0.0.1`. Secrets live in the ignored root `.env`; `.env.example` documents
+required keys. Local Redis uses `127.0.0.1` explicitly so the one-second health
+probe does not wait for an unavailable IPv6 localhost listener.
 
-AuthService readiness executes a real PostgreSQL query and Redis `PING`.
-WorldServer readiness checks Redis and AuthService readiness. A missing mandatory
-dependency produces HTTP 503. Liveness only confirms that the process can serve
-requests.
-
-See [Local Development](LOCAL_DEVELOPMENT.md) for commands and expected results.
+AuthService readiness executes PostgreSQL `select 1` and Redis `PING`.
+WorldServer startup validates collision data, then readiness checks Redis,
+AuthService readiness, and UDP port availability. `--health-check-only` exits
+with code 0 when all are ready and 1 otherwise.
 
 ## Architectural Direction
 
-The current foundation deliberately keeps durable identity and access authority
-in PostgreSQL. Future gameplay networking, simulation, persistence, and scaling
-must preserve these boundaries unless an explicit architecture change updates
-this document. Redis can later be introduced behind an abstraction when a real
-state or coordination use case requires it.
+The collision format currently supports oriented boxes, which covers the
+authored test map. Triangle-mesh chunks for terrain and caves, dynamic-object
+replication, durable world simulation, interest management, bandwidth budgets,
+and combat remain later slices. Those additions extend the current chunk and
+query boundaries rather than replacing movement authority.
 
-Only the UI layer may be intentionally temporary. Every other architectural
-component must be maintainable, testable, and suitable for extension from its
-first implementation. A simplified first version is acceptable, but knowingly
-disposable service, client, gameplay, persistence, or networking architecture is
-not the project default.
+Only UI may be intentionally temporary. Service boundaries, state ownership,
+networking contracts, gameplay systems, persistence, and tooling must remain
+maintainable and testable from their first implementation.

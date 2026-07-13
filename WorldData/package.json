@@ -1,0 +1,10 @@
+{
+  "name": "com.shootermmo.world-data",
+  "version": "0.1.0",
+  "displayName": "Shooter MMO World Data",
+  "description": "Versioned baked world data shared by Unity builds and WorldServer.",
+  "unity": "6000.0",
+  "author": {
+    "name": "Shooter MMO"
+  }
+}

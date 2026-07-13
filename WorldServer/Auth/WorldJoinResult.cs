@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace WorldServer.Auth;
 
 public sealed record WorldJoinResult<T>(T? Value, WorldServerErrorResponse? Error, int StatusCode)
@@ -6,17 +8,17 @@ public sealed record WorldJoinResult<T>(T? Value, WorldServerErrorResponse? Erro
 
     public static WorldJoinResult<T> Success(T value)
     {
-        return new WorldJoinResult<T>(value, null, StatusCodes.Status200OK);
+        return new WorldJoinResult<T>(value, null, (int)HttpStatusCode.OK);
     }
 
     public static WorldJoinResult<T> BadRequest(string code, string message)
     {
-        return Failure(StatusCodes.Status400BadRequest, code, message);
+        return Failure((int)HttpStatusCode.BadRequest, code, message);
     }
 
     public static WorldJoinResult<T> Conflict(string code, string message)
     {
-        return Failure(StatusCodes.Status409Conflict, code, message);
+        return Failure((int)HttpStatusCode.Conflict, code, message);
     }
 
     public static WorldJoinResult<T> Failure(int statusCode, string code, string message)
@@ -24,17 +26,4 @@ public sealed record WorldJoinResult<T>(T? Value, WorldServerErrorResponse? Erro
         return new WorldJoinResult<T>(default, new WorldServerErrorResponse(code, message), statusCode);
     }
 
-    public IResult ToHttpResult()
-    {
-        return Succeeded
-            ? Results.Ok(Value)
-            : Results.Problem(
-                statusCode: StatusCode,
-                title: "World join failed",
-                detail: Error!.Message,
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = Error.Code
-                });
-    }
 }
