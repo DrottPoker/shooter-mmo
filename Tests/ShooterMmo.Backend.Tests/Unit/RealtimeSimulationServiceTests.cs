@@ -16,6 +16,23 @@ namespace ShooterMmo.Backend.Tests.Unit;
 
 public sealed class RealtimeSimulationServiceTests
 {
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, false)]
+    public void LeaveInProgressOwnsCleanupAfterLocalLeaseRemoval(
+        bool leaveStarted,
+        bool isCurrentSession,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            RealtimeSimulationService.ShouldEnforceSessionInvalidation(
+                leaveStarted,
+                isCurrentSession));
+    }
+
     [Fact]
     public async Task UdpClientCanJoinMoveAndLeaveAnAuthenticatedSimulationSession()
     {

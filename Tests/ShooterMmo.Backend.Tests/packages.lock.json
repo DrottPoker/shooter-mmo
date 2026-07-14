@@ -207,6 +207,13 @@
       "shootermmo.shared": {
         "type": "Project"
       },
+      "simulationstressgenerator": {
+        "type": "Project",
+        "dependencies": {
+          "LiteNetLib": "[2.1.4, )",
+          "ShooterMmo.GameProtocol": "[1.0.0, )"
+        }
+      },
       "simulationworker": {
         "type": "Project",
         "dependencies": {

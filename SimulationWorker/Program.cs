@@ -62,6 +62,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SimulationWorkerRegistrationLease>();
 builder.Services.AddSingleton(new SimulationInterestManager(config.InterestManagement));
 builder.Services.AddSingleton<RealtimeNetworkMetrics>();
+builder.Services.AddSingleton<RealtimePerformanceMetrics>();
 builder.Services.AddSingleton(SimulationWorkerIdentity.Create());
 builder.Services.AddTransient<AuthServiceAuthenticationHandler>();
 builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>

@@ -10,6 +10,17 @@ public sealed class SimulationEntityRegistry
     private readonly Dictionary<Guid, ulong> entityIdsByCharacterId = [];
     private ulong nextEntityId = 1;
 
+    public int PlayerCount
+    {
+        get
+        {
+            lock (syncRoot)
+            {
+                return playersByEntityId.Count;
+            }
+        }
+    }
+
     public SimulationEntityRegistration RegisterPlayer(
         ActiveSimulationSession session,
         Func<AuthoritativePlayerMovement> movementFactory)
@@ -92,6 +103,18 @@ public sealed class SimulationEntityRegistry
             return playersByEntityId.Values
                 .OrderBy(entity => entity.NetworkEntityId)
                 .ToArray();
+        }
+    }
+
+    public void CopyPlayersTo(List<PlayerSimulationEntity> destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        lock (syncRoot)
+        {
+            destination.Clear();
+            destination.AddRange(playersByEntityId.Values);
+            destination.Sort(static (left, right) =>
+                left.NetworkEntityId.CompareTo(right.NetworkEntityId));
         }
     }
 

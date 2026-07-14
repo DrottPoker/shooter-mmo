@@ -119,7 +119,9 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - Fixed-rate authoritative movement and collision queries.
 - Input sequence processing and periodic snapshots.
 - Spatial interest management with enter and exit hysteresis.
-- Per-peer UDP quotas and low-cardinality realtime metrics.
+- Snapshot encoding reuse for peers with equal visibility.
+- Per-peer UDP quotas, fair aggregate snapshot backpressure, and
+  low-cardinality realtime metrics.
 - Bounded session heartbeat fan-out.
 - Position-driven world collision chunk streaming.
 - Fail-fast configuration and collision validation.
@@ -192,7 +194,12 @@ persistent UDP client. It never owns authoritative gameplay state. See
 
 `Tests/ShooterMmo.Backend.Tests` contains unit, socket-level, and isolated
 PostgreSQL integration tests. Unity tests live inside the Unity project. `Tools`
-contains repository-wide verification and content build tools.
+contains repository-wide verification, content build, and external stress
+tools. `SimulationStressGenerator` hosts an in-memory loopback authority and
+manually polled headless UDP clients without adding per-bot transport threads or
+a stress admission path to production services. Its bounded latency reservoirs
+and process samplers make longer local soak tests safe to run without the tool
+itself accumulating every acknowledgement sample.
 
 ## Durable Data Model
 

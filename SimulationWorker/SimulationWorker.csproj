@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ShooterMmo.Backend.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Config\appsettings.json"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />

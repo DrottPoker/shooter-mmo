@@ -19,6 +19,8 @@ operations, and future design do not drift into duplicate descriptions.
 5. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
 6. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
    instructions.
+7. [Simulation Stress Testing](SIMULATION_STRESS_TESTING.md) for repeatable
+   headless SimulationWorker hotspot, ramp, soak, and bottleneck measurement.
 
 ## Product Direction
 

@@ -79,6 +79,13 @@ dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
 Expected result: 25,000 entities and 1,000 observers complete spatial selection
 and snapshot encode/decode inside the five-second regression budget.
 
+Run the external headless SimulationWorker stress flow before accepting a new
+capacity baseline or after changing the realtime loop, collision, interest,
+snapshot, or session-heartbeat behavior. The generator uses in-memory stress
+identities and tickets, so it does not write accounts or characters to
+PostgreSQL. Complete commands, expected results, measurements, and cleanup are
+documented in [Simulation Stress Testing](SIMULATION_STRESS_TESTING.md).
+
 ## Isolated PostgreSQL Integration Tests
 
 The integration test resets the target database's `public` schema. Always use the
@@ -209,9 +216,11 @@ realtime packet, byte, entity, peer, quota, and snapshot counters.
 The default resilience settings allow eight concurrent active-session
 heartbeats, 120 inbound packets per second with a 240-packet burst, 128 KiB per
 second inbound with a 256 KiB burst, and 256 KiB per second of unreliable
-snapshots with a 512 KiB burst. Interest enters at 128 meters and exits at 144
-meters. Collision loads within two chunks of active anchors and unloads outside
-three chunks. Invalid values fail startup.
+snapshots per peer with a 512 KiB burst. Aggregate unreliable snapshot output is
+limited to 38 MiB per second with a 4 MiB burst and fair recipient rotation.
+Interest enters at 128 meters and exits at 144 meters. Collision loads within
+two chunks of active anchors and unloads outside three chunks. Invalid values
+fail startup.
 
 Run a one-time SimulationWorker startup health check while the normal worker is
 stopped:

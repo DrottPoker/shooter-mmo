@@ -37,13 +37,17 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Transactional reconnect, heartbeat, expiry, and exact session release.
 - Versioned realtime protocol shared by .NET and Unity.
 - Server-assigned network entity ids, reliable spawn and despawn, spatial
-  interest management, UDP quotas, and network metrics.
+  interest management, reusable snapshot encoding, aggregate snapshot
+  backpressure, UDP quotas, and network metrics.
 - Fixed-step server-authoritative movement with Unity prediction,
   reconciliation, and remote interpolation.
 - Shared checksummed World collision chunks with ramps, walls, steps, slope
   handling, and position-driven streaming.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
+- External headless SimulationWorker stress generation with in-memory
+  exact-runtime tickets, deterministic bot movement, process-resource sampling,
+  bounded latency statistics, and phase timing.
 - Unity 6 login, character selection, shard selection, and WorldScene flow.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.

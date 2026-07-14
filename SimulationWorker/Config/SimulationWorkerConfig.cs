@@ -269,6 +269,14 @@ public sealed record SimulationWorkerConfig(
             udpQuotaSection["SnapshotByteBurst"],
             "SimulationWorker:UdpQuotas:SnapshotByteBurst",
             errors);
+        var aggregateSnapshotBytesPerSecond = PositiveInt(
+            udpQuotaSection["AggregateSnapshotBytesPerSecond"],
+            "SimulationWorker:UdpQuotas:AggregateSnapshotBytesPerSecond",
+            errors);
+        var aggregateSnapshotByteBurst = PositiveInt(
+            udpQuotaSection["AggregateSnapshotByteBurst"],
+            "SimulationWorker:UdpQuotas:AggregateSnapshotByteBurst",
+            errors);
         var interestSection = section.GetSection("InterestManagement");
         var interestCellSize = FiniteFloat(
             interestSection["CellSize"],
@@ -359,6 +367,12 @@ public sealed record SimulationWorkerConfig(
             || snapshotByteBurst > 32 * 1024 * 1024)
         {
             errors.Add("SimulationWorker UDP quota rates or bursts exceed the supported safety limits.");
+        }
+
+        if (aggregateSnapshotBytesPerSecond > 256 * 1024 * 1024
+            || aggregateSnapshotByteBurst > 64 * 1024 * 1024)
+        {
+            errors.Add("SimulationWorker aggregate snapshot quota exceeds the supported safety limits.");
         }
 
         if (interestCellSize <= 0f
@@ -495,7 +509,9 @@ public sealed record SimulationWorkerConfig(
                 inboundBytesPerSecond,
                 inboundByteBurst,
                 snapshotBytesPerSecond,
-                snapshotByteBurst),
+                snapshotByteBurst,
+                aggregateSnapshotBytesPerSecond,
+                aggregateSnapshotByteBurst),
             InterestManagement = new InterestManagementConfig(
                 interestCellSize,
                 interestEnterRadius,
@@ -595,7 +611,9 @@ public sealed record UdpQuotaConfig(
     int InboundBytesPerSecond,
     int InboundByteBurst,
     int SnapshotBytesPerSecond,
-    int SnapshotByteBurst)
+    int SnapshotByteBurst,
+    int AggregateSnapshotBytesPerSecond,
+    int AggregateSnapshotByteBurst)
 {
     public static UdpQuotaConfig Default { get; } = new(
         120,
@@ -603,7 +621,9 @@ public sealed record UdpQuotaConfig(
         128 * 1024,
         256 * 1024,
         256 * 1024,
-        512 * 1024);
+        512 * 1024,
+        38 * 1024 * 1024,
+        4 * 1024 * 1024);
 }
 
 public sealed record InterestManagementConfig(

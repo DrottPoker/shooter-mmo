@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\Shared\DotNet\GameSimulation\ShooterMmo.GameSimulation.csproj" />
     <ProjectReference Include="..\..\Shared\ShooterMmo.Shared.csproj" />
     <ProjectReference Include="..\..\SimulationWorker\SimulationWorker.csproj" />
+    <ProjectReference Include="..\..\Tools\SimulationStressGenerator\SimulationStressGenerator.csproj" />
   </ItemGroup>
 
   <ItemGroup>

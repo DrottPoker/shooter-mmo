@@ -11,6 +11,7 @@ public readonly record struct RealtimeNetworkMetricsSnapshot(
     long SentBytes,
     long QuotaRejectedPackets,
     long DroppedSnapshotPackets,
+    long BackpressureDroppedSnapshotPackets,
     long AcceptedJoins,
     long RejectedJoins,
     long SpawnPackets,
@@ -30,6 +31,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     private long sentBytes;
     private long quotaRejectedPackets;
     private long droppedSnapshotPackets;
+    private long backpressureDroppedSnapshotPackets;
     private long acceptedJoins;
     private long rejectedJoins;
     private long spawnPackets;
@@ -46,6 +48,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         meter.CreateObservableCounter("simulation_worker.realtime.sent.bytes", () => Volatile.Read(ref sentBytes));
         meter.CreateObservableCounter("simulation_worker.realtime.quota_rejected.packets", () => Volatile.Read(ref quotaRejectedPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.snapshot_dropped.packets", () => Volatile.Read(ref droppedSnapshotPackets));
+        meter.CreateObservableCounter("simulation_worker.realtime.snapshot_backpressure_dropped.packets", () => Volatile.Read(ref backpressureDroppedSnapshotPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.joins.accepted", () => Volatile.Read(ref acceptedJoins));
         meter.CreateObservableCounter("simulation_worker.realtime.joins.rejected", () => Volatile.Read(ref rejectedJoins));
         meter.CreateObservableCounter("simulation_worker.realtime.spawn.packets", () => Volatile.Read(ref spawnPackets));
@@ -71,7 +74,21 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     public void RecordQuotaRejected() => Interlocked.Increment(ref quotaRejectedPackets);
 
-    public void RecordSnapshotDropped() => Interlocked.Increment(ref droppedSnapshotPackets);
+    public void RecordSnapshotDropped(int packetCount = 1)
+    {
+        if (packetCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(packetCount));
+        }
+
+        Interlocked.Add(ref droppedSnapshotPackets, packetCount);
+    }
+
+    public void RecordSnapshotBackpressureDropped(int packetCount)
+    {
+        RecordSnapshotDropped(packetCount);
+        Interlocked.Add(ref backpressureDroppedSnapshotPackets, packetCount);
+    }
 
     public void RecordJoinAccepted() => Interlocked.Increment(ref acceptedJoins);
 
@@ -94,6 +111,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
             Volatile.Read(ref sentBytes),
             Volatile.Read(ref quotaRejectedPackets),
             Volatile.Read(ref droppedSnapshotPackets),
+            Volatile.Read(ref backpressureDroppedSnapshotPackets),
             Volatile.Read(ref acceptedJoins),
             Volatile.Read(ref rejectedJoins),
             Volatile.Read(ref spawnPackets),

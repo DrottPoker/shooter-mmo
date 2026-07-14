@@ -12,9 +12,14 @@ public sealed class TokenBucket
 
     public TokenBucket(double tokensPerSecond, double capacity)
     {
-        if (tokensPerSecond <= 0d || capacity < tokensPerSecond)
+        if (tokensPerSecond <= 0d)
         {
             throw new ArgumentOutOfRangeException(nameof(tokensPerSecond));
+        }
+
+        if (capacity <= 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(capacity));
         }
 
         this.tokensPerSecond = tokensPerSecond;

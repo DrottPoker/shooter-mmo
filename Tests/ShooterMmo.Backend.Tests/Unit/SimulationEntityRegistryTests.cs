@@ -34,7 +34,12 @@ public sealed class SimulationEntityRegistryTests
         Assert.Equal(2ul, second.Entity.NetworkEntityId);
         Assert.True(first.IsNewEntity);
         Assert.True(second.IsNewEntity);
-        Assert.Equal(2, registry.ListPlayers().Count);
+        Assert.Equal(2, registry.PlayerCount);
+        var copied = new List<PlayerSimulationEntity>();
+        registry.CopyPlayersTo(copied);
+        Assert.Equal(
+            [first.Entity.NetworkEntityId, second.Entity.NetworkEntityId],
+            copied.Select(entity => entity.NetworkEntityId));
     }
 
     [Fact]

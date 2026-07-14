@@ -91,6 +91,8 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(8, config.SimulationSessionHeartbeatMaxConcurrency);
         Assert.Equal(128f, config.InterestManagement.EnterRadius);
         Assert.Equal(2, config.CollisionStreaming.LoadRadiusChunks);
+        Assert.Equal(38 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotBytesPerSecond);
+        Assert.Equal(4 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotByteBurst);
         Assert.Equal(30, config.MovementSimulation.TickRateHz);
         Assert.Equal(15, config.SnapshotRateHz);
         Assert.Equal(TimeSpan.FromMilliseconds(500), config.MovementInputSilenceTimeout);
@@ -103,6 +105,7 @@ public sealed class ConfigurationValidationTests
         var settings = WorkerSettings();
         settings["SimulationWorker:SimulationSessionHeartbeatMaxConcurrency"] = "129";
         settings["SimulationWorker:UdpQuotas:InboundPacketBurst"] = "20001";
+        settings["SimulationWorker:UdpQuotas:AggregateSnapshotBytesPerSecond"] = "268435457";
         settings["SimulationWorker:InterestManagement:CellSize"] = "1";
         settings["SimulationWorker:InterestManagement:ExitRadius"] = "100";
         settings["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "17";
@@ -113,6 +116,7 @@ public sealed class ConfigurationValidationTests
 
         Assert.Contains("SimulationSessionHeartbeatMaxConcurrency must not exceed 128", exception.Message);
         Assert.Contains("UDP quota rates or bursts exceed", exception.Message);
+        Assert.Contains("aggregate snapshot quota exceeds", exception.Message);
         Assert.Contains("no more than 64 searched cells", exception.Message);
         Assert.Contains("UnloadRadiusChunks must not exceed 16", exception.Message);
     }
@@ -186,6 +190,8 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:UdpQuotas:InboundByteBurst"] = "262144",
             ["SimulationWorker:UdpQuotas:SnapshotBytesPerSecond"] = "262144",
             ["SimulationWorker:UdpQuotas:SnapshotByteBurst"] = "524288",
+            ["SimulationWorker:UdpQuotas:AggregateSnapshotBytesPerSecond"] = "39845888",
+            ["SimulationWorker:UdpQuotas:AggregateSnapshotByteBurst"] = "4194304",
             ["SimulationWorker:InterestManagement:CellSize"] = "64",
             ["SimulationWorker:InterestManagement:EnterRadius"] = "128",
             ["SimulationWorker:InterestManagement:ExitRadius"] = "144",

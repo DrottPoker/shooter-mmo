@@ -28,16 +28,28 @@ public sealed class RealtimeSimulationService(
     WorldCollisionStreamingStore? collisionStreamingStore = null,
     SimulationInterestManager? providedInterestManager = null,
     RealtimeNetworkMetrics? providedNetworkMetrics = null,
-    SimulationWorkerRegistrationLease? registrationLease = null) : BackgroundService
+    SimulationWorkerRegistrationLease? registrationLease = null,
+    RealtimePerformanceMetrics? providedPerformanceMetrics = null) : BackgroundService
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
     private readonly Dictionary<int, PeerContext> peers = [];
     private readonly HashSet<Task> activeOperations = [];
     private readonly object activeOperationsLock = new();
+    private readonly List<PlayerSimulationEntity> playerBuffer = [];
+    private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
+    private readonly List<SimulationVector3> collisionAnchorBuffer = [];
+    private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
+    private readonly SnapshotPacketCache snapshotPacketCache = new();
+    private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
+    private readonly TokenBucket aggregateSnapshotBytes = new(
+        config.UdpQuotas.AggregateSnapshotBytesPerSecond,
+        config.UdpQuotas.AggregateSnapshotByteBurst);
     private readonly SimulationInterestManager interestManager =
         providedInterestManager ?? new SimulationInterestManager(config.InterestManagement);
     private readonly RealtimeNetworkMetrics networkMetrics =
         providedNetworkMetrics ?? new RealtimeNetworkMetrics();
+    private readonly RealtimePerformanceMetrics performanceMetrics =
+        providedPerformanceMetrics ?? new RealtimePerformanceMetrics();
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
@@ -91,14 +103,23 @@ public sealed class RealtimeSimulationService(
         var simulationClock = Stopwatch.StartNew();
         var simulationInterval = TimeSpan.FromSeconds(
             1d / config.MovementSimulation.TickRateHz);
+        var completedOperationBudget = TimeSpan.FromTicks(
+            Math.Max(1, simulationInterval.Ticks / 8));
         var nextSimulationTick = simulationClock.Elapsed + simulationInterval;
 
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                var phaseStarted = Stopwatch.GetTimestamp();
                 server.PollEvents();
-                ProcessCompletedOperations();
+                performanceMetrics.RecordNetworkPoll(
+                    Stopwatch.GetElapsedTime(phaseStarted));
+
+                phaseStarted = Stopwatch.GetTimestamp();
+                ProcessCompletedOperations(completedOperationBudget);
+                performanceMetrics.RecordCompletedOperations(
+                    Stopwatch.GetElapsedTime(phaseStarted));
                 ProcessSimulationTicks(
                     simulationClock.Elapsed,
                     simulationInterval,
@@ -398,8 +419,9 @@ public sealed class RealtimeSimulationService(
         }
     }
 
-    private void ProcessCompletedOperations()
+    private void ProcessCompletedOperations(TimeSpan budget)
     {
+        var started = Stopwatch.GetTimestamp();
         while (completedOperations.TryDequeue(out var operation))
         {
             switch (operation)
@@ -410,6 +432,11 @@ public sealed class RealtimeSimulationService(
                 case LeaveCompleted leaveCompleted:
                     ProcessLeaveCompleted(leaveCompleted);
                     break;
+            }
+
+            if (Stopwatch.GetElapsedTime(started) >= budget)
+            {
+                break;
             }
         }
     }
@@ -506,7 +533,7 @@ public sealed class RealtimeSimulationService(
         SendEntityBaseline(peer, joiningInterest.Visible);
         RefreshInterests(completed.Context.PeerId);
         networkMetrics.RecordJoinAccepted();
-        networkMetrics.SetActiveEntities(entityRegistry.ListPlayers().Count);
+        networkMetrics.SetActiveEntities(entityRegistry.PlayerCount);
 
         logger.LogInformation(
             "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to shard {ShardId} for world {WorldId}. Simulation session {SimulationSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
@@ -573,17 +600,26 @@ public sealed class RealtimeSimulationService(
 
         while (elapsed >= nextSimulationTick && processedTicks < maximumCatchUpTicks)
         {
+            var tickStarted = Stopwatch.GetTimestamp();
+            performanceMetrics.RecordSimulationTickLag(elapsed - nextSimulationTick);
             unchecked
             {
                 serverTick++;
             }
 
+            var phaseStarted = Stopwatch.GetTimestamp();
             RefreshCollisionStreaming();
+            performanceMetrics.RecordCollisionStreaming(
+                Stopwatch.GetElapsedTime(phaseStarted));
 
-            foreach (var entity in entityRegistry.ListPlayers())
+            phaseStarted = Stopwatch.GetTimestamp();
+            entityRegistry.CopyPlayersTo(playerBuffer);
+            foreach (var entity in playerBuffer)
             {
                 entity.Movement.SimulateTick();
             }
+            performanceMetrics.RecordMovementSimulation(
+                Stopwatch.GetElapsedTime(phaseStarted));
 
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
             if (serverTick % snapshotIntervalTicks == 0)
@@ -591,6 +627,8 @@ public sealed class RealtimeSimulationService(
                 BroadcastSimulationSnapshots();
             }
 
+            performanceMetrics.RecordSimulationTick(
+                Stopwatch.GetElapsedTime(tickStarted));
             nextSimulationTick += simulationInterval;
             processedTicks++;
         }
@@ -600,78 +638,123 @@ public sealed class RealtimeSimulationService(
             logger.LogWarning(
                 "[SIMULATION] Movement simulation exceeded its catch-up budget at server tick {ServerTick}. Resynchronizing the fixed-tick clock.",
                 serverTick);
+            performanceMetrics.RecordTickResynchronization();
             nextSimulationTick = elapsed + simulationInterval;
         }
     }
 
     private void BroadcastSimulationSnapshots()
     {
-        var entitySnapshotsById = entityRegistry.ListPlayers()
-            .Where(entity => connectionBindings.TryGetConnectionId(
-                entity.NetworkEntityId,
-                out _))
-            .Select(entity => new RealtimeEntitySnapshot(
-                entity.NetworkEntityId,
-                entity.Movement.LastProcessedInputSequence,
-                ToRealtimePlayerState(entity.Movement.State)))
-            .ToDictionary(snapshot => snapshot.EntityId);
-        if (entitySnapshotsById.Count == 0)
+        var broadcastStarted = Stopwatch.GetTimestamp();
+        var sentPacketCount = 0;
+        try
         {
-            return;
-        }
-
-        RebuildInterestIndex();
-        RefreshInterests(null);
-
-        unchecked
-        {
-            snapshotSequence++;
-        }
-
-        foreach (var context in peers.Values)
-        {
-            if (context.Session is null
-                || !connectionBindings.TryGetEntityId(context.PeerId, out _)
-                || !TryGetCurrentPeer(context, out var peer))
+            snapshotPacketCache.Reset();
+            entityRegistry.CopyPlayersTo(playerBuffer);
+            foreach (var entity in playerBuffer)
             {
-                continue;
+                if (!connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out _))
+                {
+                    continue;
+                }
+
+                snapshotPacketCache.Add(new RealtimeEntitySnapshot(
+                    entity.NetworkEntityId,
+                    entity.Movement.LastProcessedInputSequence,
+                    ToRealtimePlayerState(entity.Movement.State)));
             }
 
-            var entitySnapshots = interestManager.GetVisible(context.PeerId)
-                .Where(entitySnapshotsById.ContainsKey)
-                .Order()
-                .Select(entityId => entitySnapshotsById[entityId])
-                .ToArray();
-            if (entitySnapshots.Length == 0)
+            if (snapshotPacketCache.EntitySnapshotCount == 0)
             {
-                continue;
+                return;
             }
 
-            var chunkCount = (ushort)Math.Ceiling(
-                entitySnapshots.Length / (double)RealtimeProtocol.MaximumSnapshotEntitiesPerChunk);
-            for (ushort chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
+            var interestStarted = Stopwatch.GetTimestamp();
+            RebuildInterestIndex(playerBuffer);
+            RefreshInterests(null);
+            performanceMetrics.RecordInterestRefresh(
+                Stopwatch.GetElapsedTime(interestStarted));
+
+            unchecked
             {
-                var entities = entitySnapshots
-                    .Skip(chunkIndex * RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
-                    .Take(RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
-                    .ToArray();
-                var packet = RealtimeProtocol.EncodeSimulationSnapshot(new RealtimeSimulationSnapshot(
+                snapshotSequence++;
+            }
+
+            snapshotRecipientBuffer.Clear();
+            foreach (var context in peers.Values)
+            {
+                if (context.Session is null
+                    || !connectionBindings.TryGetEntityId(context.PeerId, out _)
+                    || !TryGetCurrentPeer(context, out var peer))
+                {
+                    continue;
+                }
+
+                snapshotRecipientBuffer.Add(new SnapshotRecipient(context, peer));
+            }
+
+            if (snapshotRecipientBuffer.Count == 0)
+            {
+                return;
+            }
+
+            var recipientStart = snapshotRecipientRotation.Begin(
+                snapshotRecipientBuffer.Count);
+            var lastAdmittedRecipientOffset = -1;
+            for (var recipientIndex = 0;
+                recipientIndex < snapshotRecipientBuffer.Count;
+                recipientIndex++)
+            {
+                var recipient = snapshotRecipientBuffer[
+                    (recipientStart + recipientIndex) % snapshotRecipientBuffer.Count];
+                var packetBatch = snapshotPacketCache.GetOrCreate(
+                    interestManager.GetVisibleOrdered(recipient.Context.PeerId),
                     snapshotSequence,
-                    serverTick,
-                    chunkIndex,
-                    chunkCount,
-                    entities));
-                if (context.Quota.TryConsumeSnapshot(packet.Length))
+                    serverTick);
+                if (packetBatch.Packets.Count == 0)
                 {
-                    peer.Send(packet, DeliveryMethod.Unreliable);
-                    networkMetrics.RecordSent(packet.Length);
-                    networkMetrics.RecordSnapshotEntities(entities.Length);
+                    continue;
                 }
-                else
+
+                if (!aggregateSnapshotBytes.TryConsume(packetBatch.TotalBytes))
                 {
-                    networkMetrics.RecordSnapshotDropped();
+                    networkMetrics.RecordSnapshotBackpressureDropped(
+                        packetBatch.Packets.Count);
+                    continue;
+                }
+
+                lastAdmittedRecipientOffset = recipientIndex;
+
+                if (!recipient.Context.Quota.TryConsumeSnapshot(packetBatch.TotalBytes))
+                {
+                    networkMetrics.RecordSnapshotDropped(packetBatch.Packets.Count);
+                    continue;
+                }
+
+                for (var packetIndex = 0; packetIndex < packetBatch.Packets.Count; packetIndex++)
+                {
+                    var packet = packetBatch.Packets[packetIndex];
+                    recipient.Peer.Send(packet, DeliveryMethod.Unreliable);
+                    sentPacketCount++;
+                    networkMetrics.RecordSent(packet.Length);
+                    networkMetrics.RecordSnapshotEntities(
+                        packetBatch.EntityCounts[packetIndex]);
                 }
             }
+
+
+            snapshotRecipientRotation.Complete(
+                snapshotRecipientBuffer.Count,
+                lastAdmittedRecipientOffset);
+        }
+        finally
+        {
+            performanceMetrics.RecordSnapshotPacketReuse(
+                snapshotPacketCache.VisibilityGroupCount,
+                snapshotPacketCache.EncodedPacketCount,
+                sentPacketCount);
+            performanceMetrics.RecordSnapshotBroadcast(
+                Stopwatch.GetElapsedTime(broadcastStarted));
         }
     }
 
@@ -769,7 +852,8 @@ public sealed class RealtimeSimulationService(
                 continue;
             }
 
-            if (!IsCurrentSession(activeSession))
+            var isCurrentSession = IsCurrentSession(activeSession);
+            if (ShouldEnforceSessionInvalidation(context.LeaveStarted, isCurrentSession))
             {
                 var reason = sessionStore.TryTakeInvalidation(
                     activeSession.SimulationSessionId,
@@ -788,6 +872,14 @@ public sealed class RealtimeSimulationService(
                 context.DisconnectAfterUtc = now.AddMilliseconds(250);
             }
         }
+    }
+
+    internal static bool ShouldEnforceSessionInvalidation(
+        bool leaveStarted,
+        bool isCurrentSession)
+    {
+        // Leave completion owns cleanup after the release operation removes the local lease.
+        return !leaveStarted && !isCurrentSession;
     }
 
     private bool IsCurrentSession(ActiveSimulationSession session)
@@ -810,7 +902,8 @@ public sealed class RealtimeSimulationService(
 
     private void SendEntityBaseline(NetPeer peer, IReadOnlySet<ulong> visibleEntityIds)
     {
-        foreach (var entity in entityRegistry.ListPlayers())
+        entityRegistry.CopyPlayersTo(playerBuffer);
+        foreach (var entity in playerBuffer)
         {
             if (visibleEntityIds.Contains(entity.NetworkEntityId))
             {
@@ -881,7 +974,7 @@ public sealed class RealtimeSimulationService(
 
         connectionBindings.UnbindConnection(context.PeerId, out _);
         BroadcastEntityDespawn(entityId, reason, context.PeerId);
-        networkMetrics.SetActiveEntities(entityRegistry.ListPlayers().Count);
+        networkMetrics.SetActiveEntities(entityRegistry.PlayerCount);
     }
 
     private void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
@@ -955,25 +1048,42 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        var anchors = entityRegistry.ListPlayers()
-            .Select(entity => new SimulationVector3(
+        entityRegistry.CopyPlayersTo(playerBuffer);
+        collisionAnchorBuffer.Clear();
+        foreach (var entity in playerBuffer)
+        {
+            collisionAnchorBuffer.Add(new SimulationVector3(
                 entity.Movement.State.PositionX,
                 entity.Movement.State.PositionY,
-                entity.Movement.State.PositionZ))
-            .Append(new SimulationVector3(
-                config.MovementSpawn.X,
-                config.MovementSpawn.Y,
-                config.MovementSpawn.Z));
-        collisionStreamingStore.Refresh(anchors);
+                entity.Movement.State.PositionZ));
+        }
+
+        collisionAnchorBuffer.Add(new SimulationVector3(
+            config.MovementSpawn.X,
+            config.MovementSpawn.Y,
+            config.MovementSpawn.Z));
+        collisionStreamingStore.Refresh(collisionAnchorBuffer);
     }
 
     private void RebuildInterestIndex()
     {
-        interestManager.Rebuild(entityRegistry.ListPlayers().Select(entity =>
-            new SimulationInterestEntity(
+        entityRegistry.CopyPlayersTo(playerBuffer);
+        RebuildInterestIndex(playerBuffer);
+    }
+
+    private void RebuildInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)
+    {
+        interestEntityBuffer.Clear();
+        for (var index = 0; index < players.Count; index++)
+        {
+            var entity = players[index];
+            interestEntityBuffer.Add(new SimulationInterestEntity(
                 entity.NetworkEntityId,
                 entity.Movement.State.PositionX,
-                entity.Movement.State.PositionZ)));
+                entity.Movement.State.PositionZ));
+        }
+
+        interestManager.Rebuild(interestEntityBuffer);
     }
 
     private void SendSpawn(NetPeer peer, PlayerSimulationEntity entity)
@@ -1049,6 +1159,8 @@ public sealed class RealtimeSimulationService(
 
         public DateTime? DisconnectAfterUtc { get; set; }
     }
+
+    private readonly record struct SnapshotRecipient(PeerContext Context, NetPeer Peer);
 
     private abstract record RealtimeOperationResult(PeerContext Context);
 

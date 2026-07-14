@@ -45,6 +45,41 @@ public sealed class RealtimeResilienceTests
     }
 
     [Fact]
+    public void TokenBucketSupportsABurstSmallerThanOneSecondOfRefill()
+    {
+        var bucket = new TokenBucket(100d, 10d);
+        var start = Stopwatch.GetTimestamp();
+
+        Assert.True(bucket.TryConsume(10d, start));
+        Assert.False(bucket.TryConsume(1d, start));
+        Assert.True(bucket.TryConsume(10d, start + (Stopwatch.Frequency / 10)));
+    }
+
+    [Fact]
+    public void SnapshotRecipientRotationAdvancesPastTheAdmittedGroup()
+    {
+        var rotation = new SnapshotRecipientRotation();
+
+        Assert.Equal(0, rotation.Begin(400));
+        rotation.Complete(400, 159);
+        Assert.Equal(160, rotation.Begin(400));
+        rotation.Complete(400, 159);
+        Assert.Equal(320, rotation.Begin(400));
+        rotation.Complete(400, 159);
+        Assert.Equal(80, rotation.Begin(400));
+    }
+
+    [Fact]
+    public void SnapshotRecipientRotationStillAdvancesWhenNoRecipientIsAdmitted()
+    {
+        var rotation = new SnapshotRecipientRotation();
+
+        Assert.Equal(0, rotation.Begin(10));
+        rotation.Complete(10, -1);
+        Assert.Equal(1, rotation.Begin(10));
+    }
+
+    [Fact]
     public void InterestManagerUsesEnterAndExitHysteresis()
     {
         var manager = new SimulationInterestManager(
@@ -59,6 +94,12 @@ public sealed class RealtimeResilienceTests
         Assert.Contains((ulong)1, initial.Visible);
         Assert.Contains((ulong)2, initial.Entered);
         Assert.DoesNotContain((ulong)3, initial.Visible);
+        Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(7));
+
+        var unchanged = manager.Refresh(7, 1);
+        Assert.Empty(unchanged.Entered);
+        Assert.Empty(unchanged.Exited);
+        Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(7));
 
         manager.Rebuild([
             new SimulationInterestEntity(1, 0f, 0f),
@@ -75,6 +116,7 @@ public sealed class RealtimeResilienceTests
         ]);
         var exited = manager.Refresh(7, 1);
         Assert.Contains((ulong)2, exited.Exited);
+        Assert.Equal([1ul], manager.GetVisibleOrdered(7));
     }
 
     [Fact]
@@ -150,6 +192,7 @@ public sealed class RealtimeResilienceTests
         metrics.RecordSent(80);
         metrics.RecordQuotaRejected();
         metrics.RecordSnapshotDropped();
+        metrics.RecordSnapshotBackpressureDropped(3);
         metrics.RecordSnapshotEntities(2);
 
         var snapshot = metrics.Capture();
@@ -157,7 +200,8 @@ public sealed class RealtimeResilienceTests
         Assert.Equal(120, snapshot.ReceivedBytes);
         Assert.Equal(80, snapshot.SentBytes);
         Assert.Equal(1, snapshot.QuotaRejectedPackets);
-        Assert.Equal(1, snapshot.DroppedSnapshotPackets);
+        Assert.Equal(4, snapshot.DroppedSnapshotPackets);
+        Assert.Equal(3, snapshot.BackpressureDroppedSnapshotPackets);
         Assert.Equal(2, snapshot.SnapshotEntityRecords);
     }
 

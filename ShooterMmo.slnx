@@ -7,5 +7,6 @@
   <Project Path="AuthService/AuthService.csproj" />
   <Project Path="SimulationWorker/SimulationWorker.csproj" />
   <Project Path="Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj" />
+  <Project Path="Tools/SimulationStressGenerator/SimulationStressGenerator.csproj" />
   <Project Path="Tools/WorldCollisionCompiler/WorldCollisionCompiler.csproj" />
 </Solution>

@@ -173,6 +173,9 @@ Simulation session properties:
 - Idempotent exact-generation release.
 - Reconnect token rotation.
 - Safe stale-token rejection after reconnect.
+- Graceful leave remains owned by its in-flight release operation after the
+  local lease is removed, preventing concurrent leaves from being misreported as
+  revoked sessions.
 
 The worker also enforces cached lease expiry locally so an AuthService outage
 cannot leave a connected player active forever.
@@ -217,6 +220,9 @@ positions. Each peer has a visibility set:
 - A larger exit radius prevents boundary flapping.
 - Visibility changes emit reliable spawn or despawn.
 - Snapshots contain only visible entity ids.
+- Ordered visibility remains cached until the set changes.
+- Equal ordered visibility sets share one encoded snapshot packet batch per
+  broadcast.
 - Cell size and radii are worker-owned config values.
 
 This is process-local interest management for one complete shard. Cross-worker
@@ -258,6 +264,15 @@ Per-peer token buckets enforce configured packet and byte rates with burst
 allowance. Sustained inbound abuse is rejected. Excess unreliable snapshot
 output may be dropped without delaying reliable lifecycle messages.
 
+An additional worker-wide snapshot byte bucket bounds aggregate unreliable
+output. The checked-in local limit is 38 MiB per second with a 4 MiB burst.
+Snapshot admission occurs for a complete chunk batch, so a peer receives either
+all chunks for one snapshot sequence or none. The recipient start rotates past
+the admitted group after each broadcast, distributing overload gaps across
+peers instead of starving the same tail of the connection list. Reliable
+control, spawn, despawn, and leave traffic does not consume this snapshot
+budget.
+
 Session heartbeats use bounded concurrency so one worker cannot create an
 unbounded AuthService request fan-out. HTTP calls map timeout, connection,
 invalid-response, authentication, and domain failures to structured results.
@@ -268,13 +283,24 @@ The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
 
 - Active peers and entities.
 - Sent and received packets and bytes.
-- Quota rejections and dropped snapshots.
+- Quota rejections, total dropped snapshots, and the subset dropped by
+  aggregate snapshot backpressure.
 - Accepted and rejected joins.
 - Spawn and despawn packet counts.
 - Snapshot entity record counts.
 
 Periodic structured logs expose the same totals. Metrics deliberately avoid
 account, character, session, entity, and peer identifiers as labels.
+
+The performance meter `ShooterMmo.SimulationWorker.Performance` records network
+poll, completed-operation, simulation-tick, tick-lag, collision-streaming,
+movement, interest, and snapshot-broadcast durations plus fixed-tick
+resynchronizations. The periodic metrics log reports interval averages,
+approximate p95 and p99 upper bounds, and maximum durations. Snapshot broadcast
+is the complete snapshot pipeline and includes the separately reported interest
+phase. The same interval log reports process allocation, GC collection counts,
+managed heap size and fragmentation, live managed memory, distinct visibility
+groups, encoded snapshot packet count, and sent snapshot packet count.
 
 Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
 `[SIMULATION]` in the Unity console.
@@ -331,6 +357,8 @@ the test connection variable at development or production data.
 - Unity EditMode tests for contracts, state, input, movement, and authored assets.
 - Unity PlayMode bootstrap smoke tests.
 - Socket-level realtime and load-test coverage.
+- External headless stress authority and bot coverage for real UDP admission,
+  movement, snapshots, graceful leave, process resources, and phase timing.
 
 ## Not Yet Implemented
 

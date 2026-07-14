@@ -328,6 +328,26 @@ Status: Completed
 - Shared server-authoritative movement, prediction, reconciliation, remote
   interpolation, and checksummed collision.
 
+### Phase 3.5: SimulationWorker Performance Baseline
+
+Status: Completed
+
+- Headless bots run through real ticket consumption and LiteNetLib UDP admission
+  without persistent stress accounts or characters.
+- The optimized same-machine hotspot baseline keeps simulation-tick p99 within
+  the 33.34 ms budget with 250 mutually visible bots in a short run.
+- Reusable interest buffers, visibility-set packet sharing, bounded join
+  completion work, and a fair aggregate snapshot budget address the first
+  repeatable bottlenecks.
+- A two-minute 400-bot overload run completes every join and leave without tick
+  resynchronization or transport collapse. It intentionally drops unreliable
+  snapshots and remains outside the supported quality boundary.
+- Bot latency, packet flow, process resources, simulation phase timing, and
+  steady-state memory boundaries are recorded for repeatable comparisons.
+- Keep the permanent regression scenario, require a 30 to 60 minute soak before
+  declaring production capacity, and rerun the baseline after major realtime
+  gameplay systems are added.
+
 ### Phase 4: Items, Inventory, Secure Bag, And Equipment
 
 Status: Next

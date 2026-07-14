@@ -11,12 +11,17 @@ public sealed record SimulationInterestUpdate(
 
 public sealed class SimulationInterestManager
 {
+    private static readonly IReadOnlySet<ulong> EmptyVisible = new HashSet<ulong>();
+    private static readonly IReadOnlyList<ulong> EmptyOrderedVisible = Array.Empty<ulong>();
+
     private readonly float cellSize;
     private readonly float enterRadiusSquared;
     private readonly float exitRadiusSquared;
+    private readonly int cellRadius;
     private readonly Dictionary<ulong, SimulationInterestEntity> entities = [];
     private readonly Dictionary<long, List<ulong>> entityIdsByCell = [];
-    private readonly Dictionary<int, HashSet<ulong>> visibleEntityIdsByConnection = [];
+    private readonly Stack<List<ulong>> cellListPool = [];
+    private readonly Dictionary<int, ConnectionInterestState> interestsByConnection = [];
 
     public SimulationInterestManager(InterestManagementConfig config)
     {
@@ -35,12 +40,19 @@ public sealed class SimulationInterestManager
         cellSize = config.CellSize;
         enterRadiusSquared = config.EnterRadius * config.EnterRadius;
         exitRadiusSquared = config.ExitRadius * config.ExitRadius;
+        cellRadius = (int)Math.Ceiling(config.ExitRadius / config.CellSize);
     }
 
     public void Rebuild(IEnumerable<SimulationInterestEntity> currentEntities)
     {
         ArgumentNullException.ThrowIfNull(currentEntities);
         entities.Clear();
+        foreach (var cellEntities in entityIdsByCell.Values)
+        {
+            cellEntities.Clear();
+            cellListPool.Push(cellEntities);
+        }
+
         entityIdsByCell.Clear();
         foreach (var entity in currentEntities)
         {
@@ -53,7 +65,7 @@ public sealed class SimulationInterestManager
             var key = CellKey(ToCell(entity.X), ToCell(entity.Z));
             if (!entityIdsByCell.TryGetValue(key, out var cellEntities))
             {
-                cellEntities = [];
+                cellEntities = cellListPool.TryPop(out var pooled) ? pooled : [];
                 entityIdsByCell.Add(key, cellEntities);
             }
 
@@ -66,45 +78,103 @@ public sealed class SimulationInterestManager
         if (!entities.TryGetValue(controlledEntityId, out var observer))
         {
             RemoveConnection(connectionId);
-            return new SimulationInterestUpdate([], [], new HashSet<ulong>());
+            return new SimulationInterestUpdate([], [], EmptyVisible);
         }
 
-        if (!visibleEntityIdsByConnection.TryGetValue(connectionId, out var previous))
+        if (!interestsByConnection.TryGetValue(connectionId, out var state))
         {
-            previous = [];
-            visibleEntityIdsByConnection.Add(connectionId, previous);
+            state = new ConnectionInterestState();
+            interestsByConnection.Add(connectionId, state);
         }
 
-        var next = new HashSet<ulong> { controlledEntityId };
-        AddNearbyEntities(observer, previous, next);
-        var entered = next.Where(entityId => !previous.Contains(entityId)).Order().ToArray();
-        var exited = previous.Where(entityId => !next.Contains(entityId)).Order().ToArray();
-        visibleEntityIdsByConnection[connectionId] = next;
-        return new SimulationInterestUpdate(entered, exited, next);
+        state.Candidates.Clear();
+        state.Candidates.Add(controlledEntityId);
+        AddNearbyEntities(observer, state.Visible, state.Candidates);
+
+        state.Entered.Clear();
+        foreach (var entityId in state.Candidates)
+        {
+            if (!state.Visible.Contains(entityId))
+            {
+                state.Entered.Add(entityId);
+            }
+        }
+
+        state.Exited.Clear();
+        foreach (var entityId in state.Visible)
+        {
+            if (!state.Candidates.Contains(entityId))
+            {
+                state.Exited.Add(entityId);
+            }
+        }
+
+        if (state.Entered.Count > 0 || state.Exited.Count > 0)
+        {
+            state.Entered.Sort();
+            state.Exited.Sort();
+            state.Visible.Clear();
+            state.Visible.UnionWith(state.Candidates);
+            state.OrderedVisible.Clear();
+            state.OrderedVisible.AddRange(state.Visible);
+            state.OrderedVisible.Sort();
+        }
+
+        return new SimulationInterestUpdate(state.Entered, state.Exited, state.Visible);
     }
 
     public IReadOnlySet<ulong> GetVisible(int connectionId)
     {
-        return visibleEntityIdsByConnection.TryGetValue(connectionId, out var visible)
-            ? visible
-            : new HashSet<ulong>();
+        return interestsByConnection.TryGetValue(connectionId, out var state)
+            ? state.Visible
+            : EmptyVisible;
+    }
+
+    public IReadOnlyList<ulong> GetVisibleOrdered(int connectionId)
+    {
+        return interestsByConnection.TryGetValue(connectionId, out var state)
+            ? state.OrderedVisible
+            : EmptyOrderedVisible;
     }
 
     public bool RemoveConnection(int connectionId)
     {
-        return visibleEntityIdsByConnection.Remove(connectionId);
+        return interestsByConnection.Remove(connectionId);
     }
 
     public IReadOnlyList<int> ForgetEntity(ulong entityId)
     {
-        entities.Remove(entityId);
-        var affectedConnections = new List<int>();
-        foreach (var pair in visibleEntityIdsByConnection)
+        if (entities.Remove(entityId, out var entity))
         {
-            if (pair.Value.Remove(entityId))
+            var cellKey = CellKey(ToCell(entity.X), ToCell(entity.Z));
+            if (entityIdsByCell.TryGetValue(cellKey, out var cellEntities))
             {
-                affectedConnections.Add(pair.Key);
+                cellEntities.Remove(entityId);
+                if (cellEntities.Count == 0)
+                {
+                    entityIdsByCell.Remove(cellKey);
+                    cellListPool.Push(cellEntities);
+                }
             }
+        }
+
+        var affectedConnections = new List<int>();
+        foreach (var pair in interestsByConnection)
+        {
+            var state = pair.Value;
+            state.Candidates.Remove(entityId);
+            if (!state.Visible.Remove(entityId))
+            {
+                continue;
+            }
+
+            var orderedIndex = state.OrderedVisible.BinarySearch(entityId);
+            if (orderedIndex >= 0)
+            {
+                state.OrderedVisible.RemoveAt(orderedIndex);
+            }
+
+            affectedConnections.Add(pair.Key);
         }
 
         return affectedConnections;
@@ -113,8 +183,14 @@ public sealed class SimulationInterestManager
     public void Clear()
     {
         entities.Clear();
+        foreach (var cellEntities in entityIdsByCell.Values)
+        {
+            cellEntities.Clear();
+            cellListPool.Push(cellEntities);
+        }
+
         entityIdsByCell.Clear();
-        visibleEntityIdsByConnection.Clear();
+        interestsByConnection.Clear();
     }
 
     private void AddNearbyEntities(
@@ -122,7 +198,6 @@ public sealed class SimulationInterestManager
         IReadOnlySet<ulong> previous,
         ISet<ulong> next)
     {
-        var cellRadius = (int)Math.Ceiling(Math.Sqrt(exitRadiusSquared) / cellSize);
         var observerCellX = ToCell(observer.X);
         var observerCellZ = ToCell(observer.Z);
         for (var z = observerCellZ - cellRadius; z <= observerCellZ + cellRadius; z++)
@@ -165,5 +240,18 @@ public sealed class SimulationInterestManager
     private static bool IsFinite(float value)
     {
         return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private sealed class ConnectionInterestState
+    {
+        public HashSet<ulong> Visible { get; } = [];
+
+        public HashSet<ulong> Candidates { get; } = [];
+
+        public List<ulong> OrderedVisible { get; } = [];
+
+        public List<ulong> Entered { get; } = [];
+
+        public List<ulong> Exited { get; } = [];
     }
 }
