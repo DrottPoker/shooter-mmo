@@ -1437,7 +1437,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9d10a789e0394d01af935990f9876366, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ShooterMmo.Runtime::ShooterMmo.Gameplay.WorldSceneContext
-  localPlayer: {fileID: 0}
+  localPlayerPrefab: {fileID: 2243737688916317055, guid: 684d5c14307e78540b9c75d12b7787a9, type: 3}
   playerSpawnPoint: {fileID: 1202275090}
   remotePlayerPrefab: {fileID: 3979586188178329462, guid: 6ac7fc2d1b4699a4785304bbe10cc4a0, type: 3}
   entityPresentationRoot: {fileID: 1900000101}

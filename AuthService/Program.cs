@@ -34,6 +34,9 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = AuthServiceConfig.FromConfiguration(builder.Configuration);
+var developmentSimulationBotOptions = DevelopmentSimulationBotOptions.FromConfiguration(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 
 builder.Services.AddSingleton(_ =>
 {
@@ -41,6 +44,9 @@ builder.Services.AddSingleton(_ =>
 });
 
 builder.Services.AddSingleton(config);
+builder.Services.AddSingleton(developmentSimulationBotOptions);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<DevelopmentSimulationBotAuthority>();
 builder.Services.AddSingleton<DatabaseInitializer>();
 builder.Services.AddSingleton<SimulationTopologySeeder>();
 builder.Services.AddSingleton<PostgresHealthProbe>();
@@ -51,6 +57,8 @@ builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ShardService>();
 builder.Services.AddScoped<SimulationSessionService>();
 builder.Services.AddScoped<SimulationWorkerRegistryService>();
+builder.Services.AddScoped<DevelopmentSimulationBotPlacementService>();
+builder.Services.AddScoped<DevelopmentSimulationBotTicketService>();
 builder.Services.AddApiProblemDetails();
 builder.Services
     .AddAuthentication()
@@ -134,6 +142,7 @@ app.MapGet("/health/ready", async (
 app.MapAccountEndpoints();
 app.MapCharacterEndpoints();
 app.MapSimulationEndpoints();
+app.MapDevelopmentSimulationBotEndpoints(developmentSimulationBotOptions);
 
 app.Run();
 

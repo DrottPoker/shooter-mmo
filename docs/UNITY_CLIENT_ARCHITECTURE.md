@@ -40,11 +40,12 @@ Scene panel
   +-- ClientSessionRecovery
 
 WorldSceneContext
-  +-- scene-authored LocalPlayer prefab instance
+  +-- scene-authored LocalPlayer prefab reference
   +-- scene-authored PlayerSpawn
   +-- scene-authored RemotePlayer prefab reference
   +-- scene-authored EntityPresentationRoot
-      +-- runtime remote-player view instances
+  +-- runtime LocalPlayer instance after an accepted join
+  +-- runtime remote-player view instances below EntityPresentationRoot
 
 LocalPlayer prefab
   +-- CharacterController
@@ -269,18 +270,20 @@ presenting it as an ordinary expired session.
 Logout is different from recovery. A normal Back to Login action first asks
 AuthService to revoke the active account session, then clears local state.
 
-## Local Gameplay Preview
+## Local Player Lifecycle
 
 `WorldSceneContext` is a scene composition root. It validates serialized scene
-and prefab references, connects the local player to the active realtime movement
-session, consumes the cached reliable entity baseline, routes entity snapshots,
-and connects the player-owned camera to input and CameraTarget. Direct WorldScene
-Play Mode remains an offline preview and places the local player at the authored
-spawn point. The context never selects a global camera and never generates a
-player asset, camera, map object, material, light, or collider. Runtime instances
-of the explicitly authored RemotePlayer prefab are created only from reliable
-player-entity spawn messages and are parented under the scene-authored
-`EntityPresentationRoot`. The local player remains a separate authored object.
+and prefab references, then creates one LocalPlayer prefab instance only when
+WorldScene opens with an accepted realtime join and movement session. It connects
+that runtime player to server-authoritative movement, consumes the cached
+reliable entity baseline, routes entity snapshots, and connects the player-owned
+camera to input and CameraTarget. Opening WorldScene without an active joined
+session creates no local player. The context never selects a global camera and
+never generates a player asset, map object, material, light, or collider.
+Runtime instances of the explicitly authored RemotePlayer prefab are created
+only from reliable player-entity spawn messages and are parented under the
+scene-authored `EntityPresentationRoot`. The runtime local player remains
+separate from that presentation hierarchy and is destroyed with WorldScene.
 
 `LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
 prefab. The referenced Input Actions asset defines movement, sprint, jump, aim,
@@ -308,16 +311,16 @@ drops. Ramps, jumps, airborne movement, teleports, and large corrections bypass
 this extra blend. Presentation never feeds back into prediction, reconciliation,
 input packets, or SimulationWorker state.
 
-`LocalPlayerController` has two explicit execution paths. Direct scene preview
-uses the existing CharacterController path for local map and camera testing. An
-authenticated simulation session uses `ClientMovementPrediction` and the exact shared
+`LocalPlayerController` retains an offline CharacterController path for isolated
+prefab testing, but WorldScene does not create an offline player. A runtime
+WorldScene player always uses `ClientMovementPrediction` and the exact shared
 fixed-step capsule simulation and baked collision world. Normal movement faces
 its travel direction. Aim faces the camera heading so left and right movement
 become shooter-style strafing. Sprint is a grounded state transition: it may
-remain active through a jump but cannot start while airborne.
-Both direct scene preview and authenticated prediction preserve takeoff momentum
-and facing while airborne. Movement input resumes only after grounded state is
-restored, while the third-person camera remains independently controllable.
+remain active through a jump but cannot start while airborne. Both isolated
+prefab testing and authenticated prediction preserve takeoff momentum and facing
+while airborne. Movement input resumes only after grounded state is restored,
+while the third-person camera remains independently controllable.
 `RefreshCharacterDimensions` remains the runtime entry point when a future
 character system changes collider dimensions.
 

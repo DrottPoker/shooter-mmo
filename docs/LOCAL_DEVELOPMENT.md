@@ -86,6 +86,14 @@ identities and tickets, so it does not write accounts or characters to
 PostgreSQL. Complete commands, expected results, measurements, and cleanup are
 documented in [Simulation Stress Testing](SIMULATION_STRESS_TESTING.md).
 
+Use `Tools/ActiveSimulationBots` when a long-running synthetic population must
+share the normal AuthService, SimulationWorker, and shard with a Unity player.
+Its account-login bypass is Development-only and in memory, while every bot
+still uses an exact-runtime one-time ticket and the complete UDP join, input,
+snapshot, and leave flow. Configuration, startup commands, expected behavior,
+capacity reservation, Ctrl+C cleanup, and the visual Unity test are documented
+in [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md).
+
 ## Isolated PostgreSQL Integration Tests
 
 The integration test resets the target database's `public` schema. Always use the
@@ -496,27 +504,29 @@ chunks. It exits with code 1 if the authoring JSON and runtime data differ.
 1. Create an empty root named `Gameplay` and reset its transform.
 2. Add a child named `PlayerSpawn` at position `0, 0, -1` with rotation
    `0, 0, 0`.
-3. Drag `LocalPlayer.prefab` into the Gameplay root. WorldSceneContext places it
-   at PlayerSpawn when the scene starts.
-4. Remove any separate Main Camera from WorldScene. The LocalPlayer prefab owns
+3. Do not place a LocalPlayer instance in WorldScene. The player exists only
+   after an accepted character join.
+4. Remove any separate Main Camera from WorldScene. The runtime LocalPlayer owns
    the only gameplay camera and AudioListener.
 5. Create an empty child of Gameplay named `EntityPresentationRoot` and reset
    its transform. This object owns runtime views for replicated entities and
    must not be a child of LocalPlayer.
 6. Create an empty GameObject named `WorldSceneContext` and add the
    `WorldSceneContext` component.
-7. Assign its Local Player field to the LocalPlayer prefab instance and Player
-   Spawn Point to PlayerSpawn.
+7. Assign the `LocalPlayer.prefab` asset to Local Player Prefab and assign
+   Player Spawn Point to PlayerSpawn. Drag the prefab asset from the Project
+   window, not a scene instance.
 8. Assign `RemotePlayer.prefab` to the Remote Player Prefab field. Drag the
    prefab asset from the Project window, not a temporary scene instance.
 9. Assign Entity Presentation Root to the `EntityPresentationRoot` transform.
 10. Keep one Directional Light in the scene and save the scene.
 
-Expected result: no gameplay object is created by a runtime bootstrap. Entering
-Play Mode places the local prefab instance at PlayerSpawn, connects the camera,
-keeps the authored remote prefab available for replicated characters, parents
-runtime remote views below `EntityPresentationRoot`, and reports no
-missing-reference or input-configuration errors.
+Expected result: WorldScene contains no LocalPlayer or gameplay camera before a
+join. After an accepted join, WorldSceneContext creates one LocalPlayer from the
+assigned prefab at PlayerSpawn, connects it to the authoritative movement state,
+and connects its camera. Runtime remote views remain below
+`EntityPresentationRoot`. Opening WorldScene directly without a joined session
+creates no player and reports no missing-reference error.
 
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
@@ -533,7 +543,8 @@ Expected result:
   loading, prediction, reconciliation, remote interpolation, both player prefab
   contracts, and authored WorldScene composition.
 - PlayMode validates that loading `LoginMenu` creates the persistent client
-  bootstrap, realtime client, and runtime login panel.
+  bootstrap, realtime client, and runtime login panel, and that WorldScene
+  without a joined session creates no LocalPlayer.
 
 The CI Unity job uses a Windows self-hosted runner because Unity requires an
 installed and activated Editor. To enable it:
@@ -621,7 +632,8 @@ Expected result:
 
 - `WorldScene` shows the selected character on shard `local-shard-1` using
   World `local-world-1`.
-- A local test player spawns at the authored PlayerSpawn in the test map.
+- A local test player is instantiated only after the accepted join and starts
+  from the authoritative state associated with the authored PlayerSpawn.
 - You can move with `WASD`, sprint with `Shift`, jump with `Space`, control the
   camera continuously with the mouse, and hold the right mouse button to aim.
 - A small unarmed crosshair dot appears at screen center.
@@ -821,20 +833,21 @@ restores its intended buffer instead of retaining permanent extra delay.
 Leaving or disconnecting sends reliable despawn and removes the corresponding
 remote view immediately without waiting for a snapshot timeout.
 
-Direct movement-only test:
+WorldScene lifecycle test without a join:
 
 1. Open `Assets/Scenes/WorldScene.unity`.
 2. Press Play.
-3. Move the local test player across the ramp, step tests, cover, and camera wall.
 
 Expected result:
 
-- The scene-authored test map, LocalPlayer prefab instance, camera, and spawn point
-  are used without runtime object generation.
-- Movement works without starting the backend, but server session data only
-  appears after the full login and simulation join flow.
-- Direct scene preview uses Unity CharacterController collision. It is an
-  offline authoring check and does not exercise prediction or server authority.
+- The scene-authored map, spawn point, prefab references, and presentation root
+  remain available.
+- No LocalPlayer, gameplay camera, or local input object is created.
+- World Debug reports that no active simulation session exists.
+
+Use the full login and simulation join flow above to test movement across the
+ramp, steps, cover, and camera wall. WorldScene movement is intentionally not an
+offline preview because a local player represents an accepted world presence.
 
 ## Related Documentation
 

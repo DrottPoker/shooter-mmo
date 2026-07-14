@@ -189,6 +189,13 @@
           "xunit.v3.runner.common": "[3.2.2]"
         }
       },
+      "activesimulationbots": {
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.Shared": "[1.0.0, )",
+          "ShooterMmo.Tools.SimulationBotClient": "[1.0.0, )"
+        }
+      },
       "authservice": {
         "type": "Project",
         "dependencies": {
@@ -207,11 +214,19 @@
       "shootermmo.shared": {
         "type": "Project"
       },
-      "simulationstressgenerator": {
+      "shootermmo.tools.simulationbotclient": {
         "type": "Project",
         "dependencies": {
           "LiteNetLib": "[2.1.4, )",
           "ShooterMmo.GameProtocol": "[1.0.0, )"
+        }
+      },
+      "simulationstressgenerator": {
+        "type": "Project",
+        "dependencies": {
+          "LiteNetLib": "[2.1.4, )",
+          "ShooterMmo.GameProtocol": "[1.0.0, )",
+          "ShooterMmo.Tools.SimulationBotClient": "[1.0.0, )"
         }
       },
       "simulationworker": {

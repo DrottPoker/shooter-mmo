@@ -1,5 +1,6 @@
 using System.Collections;
 using NUnit.Framework;
+using ShooterMmo.Gameplay;
 using ShooterMmo.Networking;
 using ShooterMmo.Ui;
 using UnityEngine;
@@ -26,6 +27,26 @@ namespace ShooterMmo.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<ShooterMmoClientBootstrap>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<RealtimeSimulationClient>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator LoadingWorldSceneWithoutJoinedSessionDoesNotSpawnLocalPlayer()
+        {
+            ShooterMmoClientSession.Clear();
+            var loadOperation = SceneManager.LoadSceneAsync(ShooterMmoSceneNames.WorldScene);
+            Assert.That(loadOperation, Is.Not.Null);
+
+            while (!loadOperation.isDone)
+            {
+                yield return null;
+            }
+
+            yield return null;
+
+            var context = Object.FindAnyObjectByType<WorldSceneContext>();
+            Assert.That(context, Is.Not.Null);
+            Assert.That(context.enabled, Is.False);
+            Assert.That(Object.FindAnyObjectByType<LocalPlayerController>(), Is.Null);
         }
     }
 }

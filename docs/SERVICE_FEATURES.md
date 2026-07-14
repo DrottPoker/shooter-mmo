@@ -48,11 +48,20 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
+| `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
 
 The public shard list never exposes a SimulationWorker host, port, or runtime id.
 That endpoint appears only in a successful short-lived placement response.
+
+The development bot route is absent unless AuthService runs in `Development`
+with `DevelopmentSimulationBots:Enabled=true`. It also requires loopback and a
+separate secret. Its identities, tickets, and sessions remain in memory and are
+never durable account or character data. SimulationWorker uses the same worker
+service routes for real and bot credentials; AuthService routes recognized bot
+credentials to the in-memory authority and every other request to the existing
+PostgreSQL services.
 
 ## Accounts And Authentication
 

@@ -95,6 +95,7 @@ public static class SimulationEndpoints
             ConsumeSimulationJoinTicketRequest consumeRequest,
             ClaimsPrincipal principal,
             ShardService shardService,
+            DevelopmentSimulationBotAuthority developmentBotAuthority,
             CancellationToken cancellationToken) =>
         {
             if (!string.Equals(
@@ -108,9 +109,13 @@ public static class SimulationEndpoints
                     .ToHttpResult();
             }
 
-            var result = await shardService.ConsumeJoinTicketAsync(
+            var result = developmentBotAuthority.TryConsumeTicket(
                 consumeRequest,
-                cancellationToken);
+                out var developmentBotResult)
+                ? developmentBotResult
+                : await shardService.ConsumeJoinTicketAsync(
+                    consumeRequest,
+                    cancellationToken);
             return result.ToHttpResult();
         })
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
@@ -121,13 +126,21 @@ public static class SimulationEndpoints
             SimulationSessionCredentialRequest request,
             ClaimsPrincipal principal,
             SimulationSessionService simulationSessionService,
+            DevelopmentSimulationBotAuthority developmentBotAuthority,
             CancellationToken cancellationToken) =>
         {
-            var result = await simulationSessionService.HeartbeatAsync(
+            var workerId = principal.GetSimulationWorkerId();
+            var result = developmentBotAuthority.TryHeartbeatSession(
                 simulationSessionId,
-                principal.GetSimulationWorkerId(),
+                workerId,
                 request,
-                cancellationToken);
+                out var developmentBotResult)
+                ? developmentBotResult
+                : await simulationSessionService.HeartbeatAsync(
+                    simulationSessionId,
+                    workerId,
+                    request,
+                    cancellationToken);
 
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
@@ -137,13 +150,21 @@ public static class SimulationEndpoints
             SimulationSessionCredentialRequest request,
             ClaimsPrincipal principal,
             SimulationSessionService simulationSessionService,
+            DevelopmentSimulationBotAuthority developmentBotAuthority,
             CancellationToken cancellationToken) =>
         {
-            var result = await simulationSessionService.ReleaseAsync(
+            var workerId = principal.GetSimulationWorkerId();
+            var result = developmentBotAuthority.TryReleaseSession(
                 simulationSessionId,
-                principal.GetSimulationWorkerId(),
+                workerId,
                 request,
-                cancellationToken);
+                out var developmentBotResult)
+                ? developmentBotResult
+                : await simulationSessionService.ReleaseAsync(
+                    simulationSessionId,
+                    workerId,
+                    request,
+                    cancellationToken);
 
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);

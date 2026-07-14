@@ -105,6 +105,9 @@ The repository currently supports:
   recovery, and persistent realtime state across scene changes.
 - Backend unit and isolated PostgreSQL integration tests plus Unity EditMode and
   PlayMode coverage.
+- A finite SimulationWorker benchmark and a separate long-running active bot
+  population tool, both using a shared headless UDP client foundation without
+  persistent bot accounts.
 
 ## Current Scale Boundary
 
@@ -145,4 +148,6 @@ implementation.
 - [Service Features](SERVICE_FEATURES.md) records implemented backend behavior.
 - [Game Features](GAME_FEATURES.md) records implemented player-facing behavior.
 - [Local Development](LOCAL_DEVELOPMENT.md) explains setup and verification.
+- [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) explains local visual
+  population and connection churn testing.
 - [MVP Specification](MVP_SPEC.md) defines the current product scope.

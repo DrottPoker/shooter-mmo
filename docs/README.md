@@ -21,6 +21,8 @@ operations, and future design do not drift into duplicate descriptions.
    instructions.
 7. [Simulation Stress Testing](SIMULATION_STRESS_TESTING.md) for repeatable
    headless SimulationWorker hotspot, ramp, soak, and bottleneck measurement.
+8. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
+   bot population that can share the real shard with a Unity player.
 
 ## Product Direction
 

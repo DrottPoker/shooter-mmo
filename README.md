@@ -48,6 +48,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - External headless SimulationWorker stress generation with in-memory
   exact-runtime tickets, deterministic bot movement, process-resource sampling,
   bounded latency statistics, and phase timing.
+- Long-running active simulation bots that share the real local shard with
+  Unity players, use the complete UDP flow, churn through graceful logout and
+  login, and keep synthetic identity and session data out of PostgreSQL.
 - Unity 6 login, character selection, shard selection, and WorldScene flow.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
@@ -143,7 +146,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |
 | `WorldData` | World content authoring and compiled collision chunks |
-| `Tools` | Repository-wide verification and collision compiler |
+| `Tools` | Verification, content compiler, stress benchmark, shared headless bot client, and active bot population |
 | `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `shooter-mmorpg-unity-client` | Unity project and Unity tests |
 | `docs` | Architecture, implemented features, setup, and product references |

@@ -21,7 +21,7 @@ namespace ShooterMmo.Ui
             if (ShooterMmoClientSession.ActiveSimulationSession == null)
             {
 #if UNITY_EDITOR
-                status = "Offline Editor movement preview. Realtime is disconnected.";
+                status = "No active simulation session. Local player is not spawned.";
                 return;
 #else
                 SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);

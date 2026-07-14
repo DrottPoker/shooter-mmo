@@ -10,6 +10,9 @@
       "shootermmo.gameprotocol": {
         "type": "Project"
       },
+      "shootermmo.shared": {
+        "type": "Project"
+      },
       "shootermmo.tools.simulationbotclient": {
         "type": "Project",
         "dependencies": {

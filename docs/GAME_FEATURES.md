@@ -62,10 +62,12 @@ LoginMenu.
 Status: Initial content on implemented network gameplay foundation
 
 WorldScene contains a 30 by 30 meter scene-authored test map, a LocalPlayer
-prefab instance, an explicit spawn point, and a configured third-person camera.
-Runtime code validates and connects these authored objects but does not generate
-them. The map includes static boundaries, a slope, three step heights, cover, and
-a dedicated camera-collision wall.
+prefab reference, an explicit spawn point, and a separate entity presentation
+root. After SimulationWorker accepts a character join, WorldScene creates one
+runtime LocalPlayer instance whose prefab owns the configured third-person
+camera. Without an active joined session, no local player exists in the scene.
+The map includes static boundaries, a slope, three step heights, cover, and a
+dedicated camera-collision wall.
 
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
@@ -73,7 +75,7 @@ rendered from interpolated SimulationWorker snapshots. SimulationWorker assigns 
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
 Remote instances are kept under WorldScene's separate
-`EntityPresentationRoot`, outside the authored LocalPlayer hierarchy.
+`EntityPresentationRoot`, outside the runtime LocalPlayer hierarchy.
 SimulationWorker uses distance-based interest management, so distant entities are
 removed reliably and recreated reliably when they enter the configured area of
 interest. Snapshot loss never decides whether a remote player exists.
@@ -143,8 +145,8 @@ The current test map is baked into versioned collision chunks shared by the
 server and client prediction. Authenticated movement therefore collides with all
 12 current BoxColliders. SimulationWorker sends the authoritative collision revision
 when the character joins, and the client refuses to predict against a different
-revision. Direct WorldScene preview still uses Unity CharacterController for a
-fast offline authoring check, but it is not the network authority.
+revision. Isolated LocalPlayer prefab tests may use Unity CharacterController,
+but WorldScene movement requires the joined SimulationWorker session.
 
 Complex terrain meshes, caves, moving platforms, dynamic doors, and rigid-body
 objects are not gameplay features yet. Dynamic server collision already has a

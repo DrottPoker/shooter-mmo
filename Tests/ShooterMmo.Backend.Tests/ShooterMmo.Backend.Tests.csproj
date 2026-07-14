@@ -28,6 +28,8 @@
     <ProjectReference Include="..\..\Shared\ShooterMmo.Shared.csproj" />
     <ProjectReference Include="..\..\SimulationWorker\SimulationWorker.csproj" />
     <ProjectReference Include="..\..\Tools\SimulationStressGenerator\SimulationStressGenerator.csproj" />
+    <ProjectReference Include="..\..\Tools\ActiveSimulationBots\ActiveSimulationBots.csproj" />
+    <ProjectReference Include="..\..\Tools\SimulationBotClient\ShooterMmo.Tools.SimulationBotClient.csproj" />
   </ItemGroup>
 
   <ItemGroup>

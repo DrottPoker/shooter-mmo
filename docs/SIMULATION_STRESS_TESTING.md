@@ -14,6 +14,11 @@ The current small test map keeps every bot inside the same interest radius. This
 is intentionally a hotspot test with near all-to-all visibility. It measures a
 worst-case local crowd, not the distributed capacity of a future larger World.
 
+This finite benchmark deliberately replaces AuthService with its isolated
+authority and cannot share the worker with the normal local Unity flow. Use
+[Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) when the goal is a
+long-running visible population beside real local players.
+
 ## Architecture
 
 ```text

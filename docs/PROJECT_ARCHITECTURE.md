@@ -201,6 +201,14 @@ a stress admission path to production services. Its bounded latency reservoirs
 and process samplers make longer local soak tests safe to run without the tool
 itself accumulating every acknowledgement sample.
 
+`ActiveSimulationBots` reuses the same tool-only headless UDP client core but
+runs beside the real AuthService and SimulationWorker. A Development-only,
+loopback-only AuthService endpoint issues protected in-memory bot identities and
+exact-runtime tickets. Worker ticket consumption, session heartbeat and release
+route in-memory bot credentials to that authority and all other credentials to
+the unchanged PostgreSQL services. Reserved worker capacity prevents bots from
+occupying every connection slot needed by real local players.
+
 ## Durable Data Model
 
 | Table | Responsibility |

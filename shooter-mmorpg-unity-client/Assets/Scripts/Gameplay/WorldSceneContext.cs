@@ -10,7 +10,7 @@ namespace ShooterMmo.Gameplay
     [DisallowMultipleComponent]
     public sealed class WorldSceneContext : MonoBehaviour
     {
-        [SerializeField] private LocalPlayerController localPlayer;
+        [SerializeField] private LocalPlayerController localPlayerPrefab;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private RemotePlayerView remotePlayerPrefab;
         [SerializeField] private Transform entityPresentationRoot;
@@ -18,6 +18,7 @@ namespace ShooterMmo.Gameplay
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
         private RealtimeSimulationClient simulationClient;
+        private LocalPlayerController localPlayer;
 
         private void Start()
         {
@@ -27,34 +28,47 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            if (ShooterMmoClientSession.ActiveSimulationSession != null)
+            if (ShooterMmoClientSession.ActiveSimulationSession == null)
             {
-                simulationClient = ShooterMmoClientBootstrap.SimulationClient;
-                if (simulationClient == null
-                    || simulationClient.MovementSession == null
-                    || !localPlayer.EnableServerAuthoritativeMovement(simulationClient))
-                {
-                    Debug.LogError(
-                        "WorldSceneContext cannot start server-authoritative movement because the realtime movement session is unavailable.",
-                        this);
-                    enabled = false;
-                    return;
-                }
-
-                simulationClient.EntitySpawned += OnEntitySpawned;
-                simulationClient.EntityDespawned += OnEntityDespawned;
-                simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
-                foreach (var spawn in simulationClient.SpawnedEntities)
-                {
-                    OnEntitySpawned(spawn);
-                }
-            }
-            else
-            {
-                localPlayer.Teleport(playerSpawnPoint.position, playerSpawnPoint.rotation);
+                enabled = false;
+                return;
             }
 
-            localPlayer.PlayerCamera.SetTarget(localPlayer.CameraTarget, localPlayer.PlayerInput);
+            simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            if (simulationClient == null
+                || !simulationClient.IsJoined
+                || simulationClient.MovementSession == null)
+            {
+                Debug.LogError(
+                    "WorldSceneContext cannot spawn the local player because the joined realtime movement session is unavailable.",
+                    this);
+                enabled = false;
+                return;
+            }
+
+            if (!TrySpawnLocalPlayer())
+            {
+                enabled = false;
+                return;
+            }
+
+            if (!localPlayer.EnableServerAuthoritativeMovement(simulationClient))
+            {
+                Debug.LogError(
+                    "WorldSceneContext cannot start server-authoritative movement for the joined local player.",
+                    this);
+                DestroyLocalPlayer();
+                enabled = false;
+                return;
+            }
+
+            simulationClient.EntitySpawned += OnEntitySpawned;
+            simulationClient.EntityDespawned += OnEntityDespawned;
+            simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+            foreach (var spawn in simulationClient.SpawnedEntities)
+            {
+                OnEntitySpawned(spawn);
+            }
         }
 
         private void OnDestroy()
@@ -68,10 +82,7 @@ namespace ShooterMmo.Gameplay
 
             remotePlayers.Clear();
 
-            if (localPlayer != null)
-            {
-                localPlayer.DisableServerAuthoritativeMovement();
-            }
+            DestroyLocalPlayer();
         }
 
         private void OnEntitySpawned(RealtimeEntitySpawn spawn)
@@ -185,42 +196,79 @@ namespace ShooterMmo.Gameplay
 
         private bool ValidateReferences()
         {
-            if (localPlayer == null
+            if (localPlayerPrefab == null
                 || playerSpawnPoint == null
                 || remotePlayerPrefab == null
                 || entityPresentationRoot == null)
             {
                 Debug.LogError(
-                    "WorldSceneContext requires a local player, spawn point, remote player prefab, and entity presentation root.",
+                    "WorldSceneContext requires a local player prefab, spawn point, remote player prefab, and entity presentation root.",
                     this);
                 return false;
             }
 
-            if (entityPresentationRoot.IsChildOf(localPlayer.transform))
+            if (localPlayerPrefab.gameObject.scene.IsValid())
             {
                 Debug.LogError(
-                    "WorldSceneContext entity presentation root must not be owned by the local player.",
+                    "WorldSceneContext local player reference must be a prefab asset, not a scene instance.",
                     this);
                 return false;
             }
 
-            if (localPlayer.PlayerCamera == null)
+            if (playerSpawnPoint.parent == null)
             {
                 Debug.LogError(
-                    "WorldSceneContext requires the local player prefab to own its player camera.",
-                    localPlayer);
+                    "WorldSceneContext player spawn point must have a scene parent for runtime players.",
+                    playerSpawnPoint);
                 return false;
             }
 
-            if (!localPlayer.PlayerInput.Initialize())
+            if (localPlayerPrefab.PlayerCamera == null
+                || localPlayerPrefab.GetComponent<LocalPlayerInput>() == null)
             {
                 Debug.LogError(
-                    "WorldSceneContext cannot initialize because the local player input is not configured.",
-                    localPlayer);
+                    "WorldSceneContext requires the local player prefab to own its input and player camera.",
+                    localPlayerPrefab);
                 return false;
             }
 
             return true;
+        }
+
+        private bool TrySpawnLocalPlayer()
+        {
+            localPlayer = Instantiate(
+                localPlayerPrefab,
+                playerSpawnPoint.position,
+                playerSpawnPoint.rotation,
+                playerSpawnPoint.parent);
+            localPlayer.name = localPlayerPrefab.name;
+
+            if (localPlayer.PlayerCamera == null
+                || localPlayer.PlayerInput == null
+                || !localPlayer.PlayerInput.Initialize())
+            {
+                Debug.LogError(
+                    "WorldSceneContext cannot initialize the spawned local player input and camera.",
+                    localPlayer);
+                DestroyLocalPlayer();
+                return false;
+            }
+
+            localPlayer.PlayerCamera.SetTarget(localPlayer.CameraTarget, localPlayer.PlayerInput);
+            return true;
+        }
+
+        private void DestroyLocalPlayer()
+        {
+            if (localPlayer == null)
+            {
+                return;
+            }
+
+            localPlayer.DisableServerAuthoritativeMovement();
+            Destroy(localPlayer.gameObject);
+            localPlayer = null;
         }
     }
 }

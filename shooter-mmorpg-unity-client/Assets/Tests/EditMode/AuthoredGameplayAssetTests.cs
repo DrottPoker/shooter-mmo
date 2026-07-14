@@ -237,7 +237,6 @@ namespace ShooterMmo.Tests.EditMode
                 var localPlayer = FindGameObject(scene, "LocalPlayer");
                 var context = FindGameObject(scene, "WorldSceneContext");
                 var entityPresentationRoot = FindGameObject(scene, "EntityPresentationRoot");
-                var localPlayerCamera = FindGameObject(scene, "LocalPlayerCamera");
 
                 Assert.That(environment, Is.Not.Null);
                 Assert.That(gameplay, Is.Not.Null);
@@ -247,20 +246,14 @@ namespace ShooterMmo.Tests.EditMode
                 Assert.That(FindGameObject(scene, "Main Camera"), Is.Null);
                 Assert.That(spawnPoint.transform.parent, Is.EqualTo(gameplay.transform));
                 Assert.That(spawnPoint.transform.localPosition, Is.EqualTo(new Vector3(0f, 0f, -1f)));
-                Assert.That(localPlayer, Is.Not.Null);
-                Assert.That(localPlayer.transform.parent, Is.EqualTo(gameplay.transform));
+                Assert.That(localPlayer, Is.Null);
                 Assert.That(entityPresentationRoot.transform.parent, Is.EqualTo(gameplay.transform));
-                Assert.That(entityPresentationRoot.transform.IsChildOf(localPlayer.transform), Is.False);
-                Assert.That(PrefabUtility.IsPartOfPrefabInstance(localPlayer), Is.True);
-                Assert.That(localPlayerCamera, Is.Not.Null);
-                Assert.That(localPlayerCamera.transform.IsChildOf(localPlayer.transform), Is.True);
-                Assert.That(localPlayer.GetComponent<LocalPlayerController>().PlayerCamera,
-                    Is.EqualTo(localPlayerCamera.GetComponent<ThirdPersonCameraController>()));
 
                 var sceneContext = context.GetComponent<WorldSceneContext>();
                 var contextProperties = new SerializedObject(sceneContext);
-                Assert.That(contextProperties.FindProperty("localPlayer").objectReferenceValue,
-                    Is.EqualTo(localPlayer.GetComponent<LocalPlayerController>()));
+                var localPlayerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(LocalPlayerPrefabPath);
+                Assert.That(contextProperties.FindProperty("localPlayerPrefab").objectReferenceValue,
+                    Is.EqualTo(localPlayerPrefab.GetComponent<LocalPlayerController>()));
                 Assert.That(contextProperties.FindProperty("playerCamera"), Is.Null);
                 Assert.That(contextProperties.FindProperty("playerSpawnPoint").objectReferenceValue,
                     Is.EqualTo(spawnPoint.transform));
