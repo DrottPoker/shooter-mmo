@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -11,12 +12,56 @@ public sealed class RealtimeMetricsReporterService(
     SimulationWorkerConfig config,
     ILogger<RealtimeMetricsReporterService> logger) : BackgroundService
 {
+    private readonly Stopwatch workerUptime = Stopwatch.StartNew();
+    private TimeSpan previousProcessorTime = CaptureProcessorTime();
+    private TimeSpan previousSampleTime;
+    private RealtimeNetworkMetricsSnapshot previousNetwork = metrics.Capture();
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(config.NetworkMetricsLogInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             var snapshot = metrics.Capture();
+            var sampleTime = workerUptime.Elapsed;
+            var sampleSeconds = Math.Max(
+                double.Epsilon,
+                (sampleTime - previousSampleTime).TotalSeconds);
+            var processorTime = CaptureProcessorTime();
+            var processorSeconds = Math.Max(
+                0d,
+                (processorTime - previousProcessorTime).TotalSeconds);
+            var logicalProcessorCount = Math.Max(1, Environment.ProcessorCount);
+            var singleCoreCpuPercent = Math.Min(
+                logicalProcessorCount * 100d,
+                processorSeconds / sampleSeconds * 100d);
+            var machineCpuPercent = Math.Min(
+                100d,
+                singleCoreCpuPercent / logicalProcessorCount);
+            using var process = Process.GetCurrentProcess();
+
+            logger.LogInformation(
+                "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
+                snapshot.ActiveRealPlayers,
+                snapshot.ActiveSyntheticBots,
+                snapshot.UnauthenticatedPeers,
+                snapshot.ActivePeers,
+                snapshot.ActiveEntities,
+                machineCpuPercent,
+                singleCoreCpuPercent,
+                process.WorkingSet64 / 1024d / 1024d,
+                PerSecond(snapshot.ReceivedPackets - previousNetwork.ReceivedPackets, sampleSeconds),
+                PerSecond(snapshot.ReceivedBytes - previousNetwork.ReceivedBytes, sampleSeconds) / 1024d,
+                PerSecond(snapshot.SentPackets - previousNetwork.SentPackets, sampleSeconds),
+                PerSecond(snapshot.SentBytes - previousNetwork.SentBytes, sampleSeconds) / 1024d,
+                PerSecond(
+                    snapshot.DroppedSnapshotPackets - previousNetwork.DroppedSnapshotPackets,
+                    sampleSeconds),
+                PerSecond(
+                    snapshot.QuotaRejectedPackets - previousNetwork.QuotaRejectedPackets,
+                    sampleSeconds),
+                sampleSeconds);
+
             logger.LogInformation(
                 "[SIMULATION] Network metrics: peers {ActivePeers}, entities {ActiveEntities}, received {ReceivedPackets} packets and {ReceivedBytes} bytes, sent {SentPackets} packets and {SentBytes} bytes, quota rejects {QuotaRejects}, snapshot drops {SnapshotDrops}, including {SnapshotBackpressureDrops} from aggregate backpressure, joins {AcceptedJoins} accepted and {RejectedJoins} rejected, lifecycle {SpawnPackets} spawns and {DespawnPackets} despawns, snapshot entity records {SnapshotEntityRecords}.",
                 snapshot.ActivePeers,
@@ -56,7 +101,22 @@ public sealed class RealtimeMetricsReporterService(
                 performance.SnapshotVisibilityGroups,
                 performance.SnapshotPacketsEncoded,
                 performance.SnapshotPacketsSent);
+
+            previousSampleTime = sampleTime;
+            previousProcessorTime = processorTime;
+            previousNetwork = snapshot;
         }
+    }
+
+    private static TimeSpan CaptureProcessorTime()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.TotalProcessorTime;
+    }
+
+    private static double PerSecond(long delta, double seconds)
+    {
+        return Math.Max(0, delta) / seconds;
     }
 
     private static string Format(RealtimeDurationSummary? summary)

@@ -55,7 +55,10 @@ public sealed record StressConsumedTicketResponse(
     Guid SimulationSessionId,
     string SimulationSessionToken,
     DateTime SessionExpiresAt,
-    bool IsReconnect);
+    bool IsReconnect)
+{
+    public bool IsSyntheticBot { get; init; }
+}
 
 public sealed record StressSessionCredentialRequest(
     string WorkerRuntimeId,

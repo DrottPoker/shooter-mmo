@@ -240,13 +240,22 @@ be partially overlapped by another click.
 
 ### WorldScene
 
-`WorldScenePanel` displays compact active-session diagnostics in the bottom-left
+`WorldScenePanel` displays scrollable client-observed diagnostics in the bottom-left
 corner. F2 toggles its visibility through the Player Input Actions asset. Its
 Leave Shard action waits for an exact-session UDP leave acknowledgement before
-loading CharacterSelect. It displays connection state and the active UDP
-endpoint instead of relying on a SimulationWorker debug HTTP route. When movement is
-active it also displays SimulationWorker authority, the latest server tick, and the
-simulation and snapshot rates.
+loading CharacterSelect. It displays connection state, active UDP endpoint,
+frame timing, Unity memory, client prediction backlog, reconciliation counts,
+ping, snapshot health, observed payload rates, and client-known entities.
+
+`RealtimeSimulationClient` counts application-level realtime packets and bytes,
+unique snapshot sequences, snapshot chunks, and estimated missing sequences.
+`WorldDebugTelemetryTracker` derives rolling frame percentiles and half-second
+network rates from those local counters. The panel labels payload rates as
+application payload rather than total socket bandwidth.
+
+The gameplay protocol does not carry SimulationWorker process diagnostics.
+Worker CPU, memory, population, capacity, and internal timing stay in the worker
+metrics and logs instead of being disclosed to every connected game client.
 
 ## Operation Serialization
 

@@ -35,21 +35,6 @@ public sealed class DevelopmentSimulationBotAuthority(
         lock (gate)
         {
             Cleanup(now);
-            var liveIdentityIds = pendingTickets.Values
-                .Where(ticket => ticket.ExpiresAt > now)
-                .Select(ticket => ticket.BotInstanceId)
-                .Concat(sessions.Values
-                    .Where(session => session.ReleasedAt is null && session.ExpiresAt > now)
-                    .Select(session => session.BotInstanceId))
-                .ToHashSet();
-            if (liveIdentityIds.Count >= options.MaximumActiveBots
-                && !liveIdentityIds.Contains(request.BotInstanceId))
-            {
-                return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
-                    "development_bot_identity_limit_reached",
-                    "The development simulation bot identity limit has been reached.");
-            }
-
             var pendingForRuntime = pendingTickets.Values.Count(ticket =>
                 ticket.ExpiresAt > now
                 && string.Equals(ticket.WorkerId, placement.WorkerId, StringComparison.Ordinal)
@@ -67,13 +52,11 @@ public sealed class DevelopmentSimulationBotAuthority(
                     placement.ActiveDatabaseSessions + activeBotsForRuntime)
                 + placement.PendingDatabaseTickets
                 + pendingForRuntime;
-            var botCapacity = placement.MaxConnections - options.ReservedPlayerSlots;
-            if (botCapacity <= 0
-                || occupiedOrReservedConnections >= botCapacity)
+            if (occupiedOrReservedConnections >= placement.MaxConnections)
             {
                 return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
-                    "development_bot_capacity_reserved",
-                    "Development bots cannot consume the worker capacity reserved for real players.");
+                    "development_bot_worker_capacity_reached",
+                    "The selected SimulationWorker has reached its connection capacity.");
             }
 
             if (pendingTickets.Values.Any(ticket =>
@@ -97,16 +80,6 @@ public sealed class DevelopmentSimulationBotAuthority(
 
             if (!identities.TryGetValue(request.BotInstanceId, out var identity))
             {
-                foreach (var inactiveIdentityId in identities
-                             .Where(pair => !liveIdentityIds.Contains(pair.Key))
-                             .OrderBy(pair => pair.Value.LastTouchedAt)
-                             .Select(pair => pair.Key)
-                             .Take(Math.Max(0, identities.Count - options.MaximumActiveBots + 1))
-                             .ToArray())
-                {
-                    identities.Remove(inactiveIdentityId);
-                }
-
                 identity = new BotIdentity(
                     request.BotInstanceId,
                     request.BotIndex,
@@ -241,7 +214,10 @@ public sealed class DevelopmentSimulationBotAuthority(
                     session.Id,
                     sessionToken,
                     session.ExpiresAt,
-                    false));
+                    false)
+                {
+                    IsSyntheticBot = true
+                });
             return true;
         }
     }

@@ -33,6 +33,9 @@ namespace ShooterMmo.Networking
         private bool transportStarted;
         private bool stopTransportAfterPoll;
         private bool leaveAccepted;
+        private bool hasSnapshotSequence;
+        private uint latestSnapshotSequence;
+        private float latestSnapshotReceivedAt = -1f;
         private readonly Dictionary<ulong, RealtimeEntitySpawn> spawnedEntities =
             new Dictionary<ulong, RealtimeEntitySpawn>();
 
@@ -54,9 +57,43 @@ namespace ShooterMmo.Networking
 
         public uint LatestServerTick { get; private set; }
 
+        public long SnapshotPacketsReceived { get; private set; }
+
+        public long SnapshotFramesReceived { get; private set; }
+
+        public long EstimatedMissingSnapshotFrames { get; private set; }
+
+        public long RealtimePacketsReceived { get; private set; }
+
+        public long RealtimeBytesReceived { get; private set; }
+
+        public long RealtimePacketsSent { get; private set; }
+
+        public long RealtimeBytesSent { get; private set; }
+
+        public int RoundTripTimeMilliseconds
+        {
+            get { return serverPeer == null ? 0 : serverPeer.Ping; }
+        }
+
+        public float LatestSnapshotAgeSeconds
+        {
+            get
+            {
+                return latestSnapshotReceivedAt < 0f
+                    ? -1f
+                    : Mathf.Max(0f, Time.realtimeSinceStartup - latestSnapshotReceivedAt);
+            }
+        }
+
         public IReadOnlyCollection<RealtimeEntitySpawn> SpawnedEntities
         {
             get { return new List<RealtimeEntitySpawn>(spawnedEntities.Values); }
+        }
+
+        public int SpawnedEntityCount
+        {
+            get { return spawnedEntities.Count; }
         }
 
         public bool IsJoined
@@ -304,9 +341,9 @@ namespace ShooterMmo.Networking
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Requesting a graceful leave for simulation session '" + simulationSessionId.Trim() + "'.");
-            serverPeer.Send(
-                RealtimeProtocol.EncodeLeaveRequest(simulationSessionId.Trim()),
-                DeliveryMethod.ReliableOrdered);
+            var leavePacket = RealtimeProtocol.EncodeLeaveRequest(simulationSessionId.Trim());
+            serverPeer.Send(leavePacket, DeliveryMethod.ReliableOrdered);
+            RecordSentPacket(leavePacket.Length);
 
             while (State == RealtimeConnectionState.Leaving)
             {
@@ -357,10 +394,12 @@ namespace ShooterMmo.Networking
 
             try
             {
+                var movementPacket = RealtimeProtocol.EncodeMovementInputBatch(protocolInputs);
                 serverPeer.Send(
-                    RealtimeProtocol.EncodeMovementInputBatch(protocolInputs),
+                    movementPacket,
                     RealtimeProtocol.MovementInputChannel,
                     DeliveryMethod.Sequenced);
+                RecordSentPacket(movementPacket.Length);
                 return true;
             }
             catch (ArgumentException exception)
@@ -378,7 +417,7 @@ namespace ShooterMmo.Networking
             joinedSession = null;
             pendingPlacement = null;
             MovementSession = null;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             ClearSpawnedEntities("client_aborted");
             operationError = null;
             pendingUnexpectedDisconnect = null;
@@ -398,9 +437,9 @@ namespace ShooterMmo.Networking
                 ClientLogCategory.Client,
                 "UDP transport connected to " + ConnectedHost + ":" + ConnectedPort
                 + "/udp. Sending the short-lived join ticket to SimulationWorker.");
-            peer.Send(
-                RealtimeProtocol.EncodeJoinRequest(pendingJoinTicket),
-                DeliveryMethod.ReliableOrdered);
+            var joinPacket = RealtimeProtocol.EncodeJoinRequest(pendingJoinTicket);
+            peer.Send(joinPacket, DeliveryMethod.ReliableOrdered);
+            RecordSentPacket(joinPacket.Length);
         }
 
         private void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
@@ -419,7 +458,7 @@ namespace ShooterMmo.Networking
             operationError = operationError ?? error;
             State = RealtimeConnectionState.Disconnected;
             MovementSession = null;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             ClearSpawnedEntities("connection_lost");
             stopTransportAfterPoll = true;
             LogFailure(error);
@@ -439,6 +478,8 @@ namespace ShooterMmo.Networking
             try
             {
                 var packet = reader.GetRemainingBytes();
+                RealtimePacketsReceived++;
+                RealtimeBytesReceived += packet.Length;
                 if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType))
                 {
                     FailProtocol("invalid_packet", "SimulationWorker returned an invalid realtime packet.");
@@ -447,7 +488,8 @@ namespace ShooterMmo.Networking
 
                 if (messageType == RealtimeMessageType.SimulationSnapshot)
                 {
-                    if (deliveryMethod != DeliveryMethod.Unreliable)
+                    if (channel != RealtimeProtocol.UnreliableReceiveChannel
+                        || deliveryMethod != DeliveryMethod.Unreliable)
                     {
                         FailProtocol(
                             "invalid_snapshot_delivery",
@@ -573,7 +615,7 @@ namespace ShooterMmo.Networking
             pendingPlacement = null;
             operationError = null;
             MovementSession = movementSession;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Joined;
             ClientLog.Info(
                 ClientLogCategory.Simulation,
@@ -616,6 +658,33 @@ namespace ShooterMmo.Networking
             {
                 FailProtocol("invalid_simulation_snapshot", error);
                 return;
+            }
+
+            SnapshotPacketsReceived++;
+            if (!hasSnapshotSequence)
+            {
+                hasSnapshotSequence = true;
+                latestSnapshotSequence = snapshot.SnapshotSequence;
+                SnapshotFramesReceived++;
+            }
+            else if (snapshot.SnapshotSequence != latestSnapshotSequence
+                && MovementSequence.IsNewer(
+                    snapshot.SnapshotSequence,
+                    latestSnapshotSequence))
+            {
+                var sequenceDelta = unchecked(snapshot.SnapshotSequence - latestSnapshotSequence);
+                if (sequenceDelta > 1)
+                {
+                    EstimatedMissingSnapshotFrames += sequenceDelta - 1;
+                }
+
+                latestSnapshotSequence = snapshot.SnapshotSequence;
+                SnapshotFramesReceived++;
+            }
+
+            if (snapshot.SnapshotSequence == latestSnapshotSequence)
+            {
+                latestSnapshotReceivedAt = Time.realtimeSinceStartup;
             }
 
             if (LatestServerTick == 0
@@ -700,7 +769,7 @@ namespace ShooterMmo.Networking
             ClearSpawnedEntities("left_shard");
             joinedSession = null;
             MovementSession = null;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
         }
@@ -744,7 +813,7 @@ namespace ShooterMmo.Networking
             ClearSpawnedEntities(reason.Code);
             joinedSession = null;
             MovementSession = null;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
             LogFailure(disconnectError);
@@ -772,7 +841,7 @@ namespace ShooterMmo.Networking
             ClearSpawnedEntities(error.Code);
             joinedSession = null;
             MovementSession = null;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
             LogFailure(error);
@@ -789,7 +858,7 @@ namespace ShooterMmo.Networking
             ClearSpawnedEntities("session_reset");
             joinedSession = null;
             MovementSession = null;
-            LatestServerTick = 0;
+            ResetRealtimeDiagnostics();
             leaveAccepted = false;
             stopTransportAfterPoll = false;
             pendingUnexpectedDisconnect = null;
@@ -811,6 +880,27 @@ namespace ShooterMmo.Networking
             ConnectedPort = 0;
             pendingJoinTicket = string.Empty;
             pendingPlacement = null;
+        }
+
+        private void ResetRealtimeDiagnostics()
+        {
+            LatestServerTick = 0;
+            SnapshotPacketsReceived = 0;
+            SnapshotFramesReceived = 0;
+            EstimatedMissingSnapshotFrames = 0;
+            RealtimePacketsReceived = 0;
+            RealtimeBytesReceived = 0;
+            RealtimePacketsSent = 0;
+            RealtimeBytesSent = 0;
+            hasSnapshotSequence = false;
+            latestSnapshotSequence = 0;
+            latestSnapshotReceivedAt = -1f;
+        }
+
+        private void RecordSentPacket(int byteCount)
+        {
+            RealtimePacketsSent++;
+            RealtimeBytesSent += byteCount;
         }
 
         private void ClearSpawnedEntities(string reason)

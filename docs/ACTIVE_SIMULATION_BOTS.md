@@ -48,10 +48,11 @@ start if it is enabled outside `Development` or if its secret is too short.
 Bot identities, tickets, and sessions are never inserted into PostgreSQL and
 disappear when AuthService stops.
 
-AuthService also reserves `ReservedPlayerSlots` on the selected worker. It
-counts the worker's reported connections, durable active sessions, durable
-pending tickets, and in-memory pending bot tickets before admitting another bot.
-SimulationWorker's own `MaxConnections` remains the final connection limit.
+AuthService counts the worker's reported connections, durable active sessions,
+durable pending tickets, in-memory bot sessions, and in-memory pending bot
+tickets before admitting another bot. SimulationWorker `MaxConnections` is the
+single server-side connection limit. AuthService does not impose a separate bot
+identity limit or reserve worker slots specifically for real players.
 
 ## Configuration
 
@@ -61,8 +62,6 @@ Authority controls live in
 | Setting | Default | Behavior |
 | --- | ---: | --- |
 | `Enabled` | `false` | Maps the loopback development ticket endpoint |
-| `MaximumActiveBots` | `200` | Bounds in-memory bot identities in one AuthService process |
-| `ReservedPlayerSlots` | `8` | Capacity that development bots cannot consume |
 | `JoinTicketLifetimeSeconds` | `30` | Lifetime of an unconsumed one-time bot ticket |
 | `SessionLeaseLifetimeSeconds` | `30` | Worker-renewed in-memory bot session lease |
 | `CharacterNamePrefix` | `Active Bot` | Server-owned visible bot name prefix |
@@ -94,9 +93,11 @@ Population and behavior controls live in
 
 The tool validates all ranges before opening a connection. Real environment
 variables and command-line configuration keys override the checked-in JSON.
-Keep the tool's `MaximumActiveBots` at or below AuthService's
-`MaximumActiveBots` and within SimulationWorker `MaxConnections` after reserved
-real-player slots. Higher targets are rejected safely but cannot be reached.
+Keep the tool's `MaximumActiveBots` at or below SimulationWorker
+`MaxConnections`, allowing room for any real players you want to join during the
+test. The tool setting controls the requested population and is not a separate
+server-side admission limit. Higher targets are rejected safely by worker
+capacity admission but cannot be reached.
 For example:
 
 ```powershell
@@ -144,6 +145,9 @@ Expected result:
   account or character rows.
 - SimulationWorker logs joined characters named `Active Bot 1`, `Active Bot 2`,
   and so on.
+- Every metrics interval, SimulationWorker's worker status line separates the
+  joined synthetic bot count from joined real players and reports worker CPU,
+  working set, traffic rates, snapshot drops, and quota rejections.
 - Bots send movement input at the tick rate returned by SimulationWorker.
 - The target population changes within the configured range.
 - Individual bots issue a normal reliable leave, disappear, wait for a random
@@ -155,8 +159,8 @@ Expected result:
   temporary population below the requested minimum.
 - Console status reports joined, joining, leaving, ticket request, lifetime
   login, clean logout, failure, rejection, and packet counts.
-- When capacity reserved for real players would be crossed, AuthService returns
-  `development_bot_capacity_reserved` and the affected slot retries with
+- When SimulationWorker `MaxConnections` would be crossed, AuthService returns
+  `development_bot_worker_capacity_reached` and the affected slot retries with
   exponential backoff and jitter.
 
 Press Ctrl+C once. Expected result: joined bots request graceful leave, the tool
@@ -174,7 +178,9 @@ required.
 4. Log in with a normal account, select a character, and join
    `local-shard-1`.
 5. Move around the test map while bots log in, move, and log out.
-6. Keep the Unity Console visible for protocol, collision revision, or
+6. Press F2 and verify the client-observed frame, prediction, snapshot, and
+   payload metrics while the crowd moves.
+7. Keep the Unity Console visible for protocol, collision revision, or
    disconnect errors.
 
 Expected result: the local player uses the normal authenticated flow, remote
@@ -183,6 +189,10 @@ interpolated from SimulationWorker snapshots, and graceful bot logout removes
 the matching remote instance through a reliable despawn. The small current map
 keeps these clients within the same interest area, so it is useful as a dense
 visual crowd test.
+
+The F2 panel intentionally does not reveal the server-wide real-player count,
+bot count, CPU, memory, or internal tick timing. Verify those values in the
+SimulationWorker terminal status and performance lines.
 
 ## Scope Boundary
 

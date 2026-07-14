@@ -40,6 +40,9 @@ namespace ShooterMmo.Gameplay
         private bool jumpQueued;
         private Vector3 reconciliationOffset;
         private float reconciliationYawOffset;
+        private long reconciliationCount;
+        private long hardReconciliationCount;
+        private float latestReconciliationDistance;
 
         private const int MaximumSimulationTicksPerFrame = 5;
         private const float HardReconciliationDistance = 3f;
@@ -68,6 +71,31 @@ namespace ShooterMmo.Gameplay
         public bool IsServerAuthoritative
         {
             get { return movementPrediction != null && realtimeClient != null; }
+        }
+
+        public int PendingPredictedInputCount
+        {
+            get { return movementPrediction == null ? 0 : movementPrediction.PendingInputCount; }
+        }
+
+        public uint ClientSimulationTick
+        {
+            get { return clientTick; }
+        }
+
+        public long ReconciliationCount
+        {
+            get { return reconciliationCount; }
+        }
+
+        public long HardReconciliationCount
+        {
+            get { return hardReconciliationCount; }
+        }
+
+        public float LatestReconciliationDistance
+        {
+            get { return latestReconciliationDistance; }
         }
 
         private void Awake()
@@ -163,6 +191,9 @@ namespace ShooterMmo.Gameplay
             jumpQueued = false;
             reconciliationOffset = Vector3.zero;
             reconciliationYawOffset = 0f;
+            reconciliationCount = 0;
+            hardReconciliationCount = 0;
+            latestReconciliationDistance = 0f;
             groundedVerticalPresentation.Clear();
             movementPresentation.Reset(movementPrediction.State);
             ApplyNetworkPresentation(movementPresentation.State);
@@ -184,6 +215,9 @@ namespace ShooterMmo.Gameplay
             jumpQueued = false;
             reconciliationOffset = Vector3.zero;
             reconciliationYawOffset = 0f;
+            reconciliationCount = 0;
+            hardReconciliationCount = 0;
+            latestReconciliationDistance = 0f;
             groundedVerticalPresentation.Clear();
         }
 
@@ -342,8 +376,11 @@ namespace ShooterMmo.Gameplay
                 previous.PositionX - corrected.PositionX,
                 previous.PositionY - corrected.PositionY,
                 previous.PositionZ - corrected.PositionZ);
-            if (positionError.magnitude >= HardReconciliationDistance)
+            latestReconciliationDistance = positionError.magnitude;
+            reconciliationCount++;
+            if (latestReconciliationDistance >= HardReconciliationDistance)
             {
+                hardReconciliationCount++;
                 movementPresentation.Reset(corrected);
                 groundedVerticalPresentation.Clear();
                 reconciliationOffset = Vector3.zero;

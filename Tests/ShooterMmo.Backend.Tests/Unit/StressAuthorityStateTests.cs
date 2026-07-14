@@ -25,6 +25,7 @@ public sealed class StressAuthorityStateTests
             registration.RuntimeId,
             options.ShardId));
         Assert.True(consumed.Succeeded);
+        Assert.True(consumed.Value!.IsSyntheticBot);
 
         var consumedAgain = state.ConsumeTicket(new StressConsumeTicketRequest(
             issued.Ticket,

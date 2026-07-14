@@ -291,6 +291,8 @@ invalid-response, authentication, and domain failures to structured results.
 The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
 
 - Active peers and entities.
+- Joined real players, joined synthetic bots, and unauthenticated peers as
+  separate gauges.
 - Sent and received packets and bytes.
 - Quota rejections, total dropped snapshots, and the subset dropped by
   aggregate snapshot backpressure.
@@ -298,7 +300,11 @@ The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
 - Spawn and despawn packet counts.
 - Snapshot entity record counts.
 
-Periodic structured logs expose the same totals. Metrics deliberately avoid
+Periodic structured logs expose the same totals. A worker status line also
+reports real players, synthetic bots, unauthenticated peers, process CPU
+normalized to total logical-core capacity, single-core-equivalent CPU, working
+set, packet and payload rates, snapshot
+drops, quota rejections, and the sample window. Metrics deliberately avoid
 account, character, session, entity, and peer identifiers as labels.
 
 The performance meter `ShooterMmo.SimulationWorker.Performance` records network
@@ -310,6 +316,15 @@ is the complete snapshot pipeline and includes the separately reported interest
 phase. The same interval log reports process allocation, GC collection counts,
 managed heap size and fragmentation, live managed memory, distinct visibility
 groups, encoded snapshot packet count, and sent snapshot packet count.
+
+These operational values remain server-side. They are not added to the realtime
+gameplay protocol and are not broadcast to Unity clients. The Unity F2 panel
+derives its values only from local rendering, prediction, and received traffic.
+
+SimulationWorker filters routine successful `AuthServiceClient` HTTP pipeline
+messages below `Warning`. Domain failures and HTTP warnings remain visible, but
+high-frequency bot heartbeat and release requests do not drown out worker
+status, performance, lifecycle, or error logs.
 
 Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
 `[SIMULATION]` in the Unity console.

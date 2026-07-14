@@ -122,6 +122,8 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - Snapshot encoding reuse for peers with equal visibility.
 - Per-peer UDP quotas, fair aggregate snapshot backpressure, and
   low-cardinality realtime metrics.
+- Server-side population gauges that distinguish real players, synthetic bots,
+  and unauthenticated peers without extending the gameplay protocol.
 - Bounded session heartbeat fan-out.
 - Position-driven world collision chunk streaming.
 - Fail-fast configuration and collision validation.
@@ -189,6 +191,11 @@ interface, leaving room for doors, lifts, and other server-owned objects.
 reconciliation, interpolation, scene transitions, HTTP serialization, and the
 persistent UDP client. It never owns authoritative gameplay state. See
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
+
+The F2 panel is an observation surface for the local client. It derives frame,
+prediction, reconciliation, snapshot, and payload metrics from local state.
+Worker process and server-wide population data stay in SimulationWorker logs
+and metrics.
 
 ### Tests And Tools
 

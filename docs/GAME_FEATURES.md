@@ -185,12 +185,17 @@ Status: Gameplay contract implemented with temporary UI presentation
   color, and runtime spread.
 - Future weapon equipment can replace the active definition without changing
   camera or input code.
-- The temporary World Debug panel is compact and anchored to the bottom-left
-  corner.
+- The temporary World Client Debug panel is scrollable and anchored to the
+  bottom-left corner.
 - F2 hides or restores the World Debug panel.
-- During an authenticated simulation session, World Debug shows SimulationWorker as the
-  movement authority, the latest server tick, and the configured tick and
-  snapshot rates. It also shows the active shard, World, worker, and runtime.
+- During an authenticated simulation session, World Debug shows only information
+  available to that client. It includes frame average, p95, and maximum time,
+  FPS, Unity memory, connection identity, ping, snapshot age and observed rate,
+  estimated missing snapshot sequences, payload rates, known entities, pending
+  predicted inputs, and reconciliation statistics.
+- SimulationWorker CPU, memory, total population, bot population, capacity, and
+  internal tick timing remain server-side operational data and are not sent to
+  gameplay clients.
 - The crosshair is hidden while F1 has released the cursor.
 
 ## Planned Feature Categories

@@ -241,7 +241,10 @@ public sealed class StressAuthorityState
                     sessionId,
                     sessionToken,
                     expiresAt,
-                    false));
+                    false)
+                {
+                    IsSyntheticBot = true
+                });
         }
     }
 

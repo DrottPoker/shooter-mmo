@@ -219,7 +219,17 @@ A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
 `27015`, runtime id, realtime protocol version 6, simulation revision, collision
 revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
-realtime packet, byte, entity, peer, quota, and snapshot counters.
+realtime packet, byte, entity, peer, quota, and snapshot counters. The same
+interval logs a worker status line with connected real players, synthetic bots,
+unauthenticated peers, CPU, working set, packet and payload rates, snapshot
+drops, and quota rejections. Detailed tick and phase timing remains in the
+server-side performance line.
+
+Routine `HttpClient` request-start, request-send, and successful-response logs
+for `AuthServiceClient` are filtered below `Warning`. This keeps bot heartbeat
+and release traffic from flooding the SimulationWorker terminal while HTTP
+warnings, failures, simulation lifecycle events, worker status, and performance
+logs remain visible.
 
 The default resilience settings allow eight concurrent active-session
 heartbeats, 120 inbound packets per second with a 240-packet burst, 128 KiB per
@@ -638,12 +648,17 @@ Expected result:
   camera continuously with the mouse, and hold the right mouse button to aim.
 - A small unarmed crosshair dot appears at screen center.
 - F1 releases or recaptures the debug cursor, and F2 hides or restores the
-  compact bottom-left World Debug panel.
+  scrollable bottom-left World Client Debug panel.
 - World Debug displays `Joined` and `127.0.0.1:27015/udp`.
 - World Debug displays shard `local-shard-1`, World `local-world-1`, worker
   `local-simulation-worker-1`, and the current runtime id.
-- World Debug displays `Authority: SimulationWorker`, an increasing server tick, and
-  `Simulation: 30 Hz / Snapshots: 15 Hz`.
+- World Debug displays an increasing observed server tick, the configured 30 Hz
+  simulation and 15 Hz snapshot rates, client FPS and frame timing, prediction
+  backlog, reconciliation statistics, ping, snapshot age, observed packet and
+  payload rates, estimated snapshot loss, and client-known entities.
+- World Debug does not display SimulationWorker CPU, memory, capacity, or total
+  player and bot populations. Those values appear only in the SimulationWorker
+  terminal and metrics surface.
 - Local movement responds immediately through prediction and remains corrected
   to SimulationWorker snapshots without repeated visible snapping on flat ground.
 - `Leave Shard` receives server acknowledgement, closes UDP, and returns to
@@ -769,16 +784,16 @@ Expected result:
   distance when the obstruction clears.
 - The unarmed crosshair dot is centered while the cursor is captured and hidden
   while the debug cursor is released.
-- The compact World Debug panel stays in the bottom-left corner and F2 controls
-  its visibility.
+- The World Client Debug panel stays in the bottom-left corner, scrolls when the
+  viewport is small, and F2 controls its visibility.
 
 Server-authoritative movement test:
 
 1. Start PostgreSQL, Redis, AuthService, and SimulationWorker with the commands above.
 2. Enter WorldScene through LoginMenu and CharacterSelect. Do not start directly
    from WorldScene for this test.
-3. Confirm World Debug shows `Authority: SimulationWorker` and an increasing Server
-   Tick value.
+3. Confirm World Debug shows server-authoritative client prediction and an
+   increasing observed server tick value.
 4. Move, rotate, sprint, jump, release movement, and change direction sharply.
 5. Walk into the four boundaries, CameraTestWall, LowCover, and HighCover.
 6. Walk up and down Ramp, release all movement input while standing halfway up,

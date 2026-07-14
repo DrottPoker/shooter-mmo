@@ -75,6 +75,7 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.True(authority.TryConsumeTicket(consumeRequest, out var consumed));
         Assert.True(consumed.Succeeded);
         Assert.False(consumed.Value!.IsReconnect);
+        Assert.True(consumed.Value.IsSyntheticBot);
 
         Assert.True(authority.TryConsumeTicket(consumeRequest, out var consumedAgain));
         Assert.False(consumedAgain.Succeeded);
@@ -151,15 +152,15 @@ public sealed class DevelopmentSimulationBotAuthorityTests
     }
 
     [Fact]
-    public void ReservedPlayerCapacityRejectsAdditionalBotTicket()
+    public void WorkerConnectionCapacityRejectsAdditionalBotTicket()
     {
         var authority = new DevelopmentSimulationBotAuthority(
-            CreateOptions(reservedPlayerSlots: 2),
+            CreateOptions(),
             new TestTimeProvider(DateTimeOffset.UtcNow));
         var placement = CreatePlacement() with
         {
             MaxConnections = 10,
-            ReportedActiveConnections = 8
+            ReportedActiveConnections = 10
         };
 
         var result = authority.IssueTicket(
@@ -170,18 +171,43 @@ public sealed class DevelopmentSimulationBotAuthorityTests
             placement);
 
         Assert.False(result.Succeeded);
-        Assert.Equal("development_bot_capacity_reserved", result.Error!.Code);
+        Assert.Equal("development_bot_worker_capacity_reached", result.Error!.Code);
+    }
+
+    [Fact]
+    public void MoreThanTwoHundredDistinctBotIdentitiesCanReceiveTickets()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var placement = CreatePlacement() with { MaxConnections = 1_000 };
+
+        for (var index = 1; index <= 500; index++)
+        {
+            var issued = authority.IssueTicket(
+                new DevelopmentSimulationBotTicketRequest(
+                    Guid.NewGuid(),
+                    index,
+                    "local-shard-1"),
+                placement);
+
+            Assert.True(issued.Succeeded, issued.Error?.Message);
+        }
+
+        var snapshot = authority.CaptureSnapshot();
+        Assert.Equal(500, snapshot.Identities);
+        Assert.Equal(500, snapshot.PendingTickets);
     }
 
     [Fact]
     public void ActiveInMemorySessionsCountBeforeNextWorkerHeartbeat()
     {
         var authority = new DevelopmentSimulationBotAuthority(
-            CreateOptions(reservedPlayerSlots: 1),
+            CreateOptions(),
             new TestTimeProvider(DateTimeOffset.UtcNow));
         var placement = CreatePlacement() with { MaxConnections = 4 };
 
-        for (var index = 1; index <= 3; index++)
+        for (var index = 1; index <= 4; index++)
         {
             var issued = authority.IssueTicket(
                 new DevelopmentSimulationBotTicketRequest(
@@ -203,22 +229,19 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         var rejected = authority.IssueTicket(
             new DevelopmentSimulationBotTicketRequest(
                 Guid.NewGuid(),
-                4,
+                5,
                 "local-shard-1"),
             placement);
 
         Assert.False(rejected.Succeeded);
-        Assert.Equal("development_bot_capacity_reserved", rejected.Error!.Code);
+        Assert.Equal("development_bot_worker_capacity_reached", rejected.Error!.Code);
     }
 
-    private static DevelopmentSimulationBotOptions CreateOptions(
-        int reservedPlayerSlots = 2)
+    private static DevelopmentSimulationBotOptions CreateOptions()
     {
         return new DevelopmentSimulationBotOptions(
             true,
             new string('s', 32),
-            100,
-            reservedPlayerSlots,
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(30),
             "Active Bot");

@@ -106,7 +106,6 @@ public sealed class RealtimeSimulationService(
         var completedOperationBudget = TimeSpan.FromTicks(
             Math.Max(1, simulationInterval.Ticks / 8));
         var nextSimulationTick = simulationClock.Elapsed + simulationInterval;
-
         try
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -141,6 +140,7 @@ public sealed class RealtimeSimulationService(
             entityRegistry.Clear();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
+            networkMetrics.SetPeerPopulation(0, 0, 0);
             await AwaitActiveOperationsAsync();
             logger.LogInformation("[SIMULATION] Realtime transport stopped.");
         }
@@ -150,6 +150,7 @@ public sealed class RealtimeSimulationService(
     {
         peers[peer.Id] = new PeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
         networkMetrics.SetActivePeers(peers.Count);
+        RefreshPeerPopulationMetrics();
         logger.LogInformation(
             "[SIMULATION] UDP peer {PeerId} connected from {EndPoint} and must authenticate before joining.",
             peer.Id,
@@ -165,6 +166,7 @@ public sealed class RealtimeSimulationService(
 
         interestManager.RemoveConnection(peer.Id);
         networkMetrics.SetActivePeers(peers.Count);
+        RefreshPeerPopulationMetrics();
 
         if (context.Session is not null)
         {
@@ -506,6 +508,7 @@ public sealed class RealtimeSimulationService(
             completed.Context.PeerId,
             entity.NetworkEntityId);
         completed.Context.Session = session;
+        RefreshPeerPopulationMetrics();
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
         RebuildInterestIndex();
@@ -586,6 +589,7 @@ public sealed class RealtimeSimulationService(
             completed.Context.PeerId);
         RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
         completed.Context.Session = null;
+        RefreshPeerPopulationMetrics();
         SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
         completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
     }
@@ -816,6 +820,7 @@ public sealed class RealtimeSimulationService(
                     "session_reconnected",
                     "This character connected from another client."));
             previousContext.Session = null;
+            RefreshPeerPopulationMetrics();
             previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
     }
@@ -869,6 +874,7 @@ public sealed class RealtimeSimulationService(
                         reason.Message));
                 RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
+                RefreshPeerPopulationMetrics();
                 context.DisconnectAfterUtc = now.AddMilliseconds(250);
             }
         }
@@ -885,6 +891,33 @@ public sealed class RealtimeSimulationService(
     private bool IsCurrentSession(ActiveSimulationSession session)
     {
         return sessionStore.IsCurrent(session, DateTime.UtcNow);
+    }
+
+    private void RefreshPeerPopulationMetrics()
+    {
+        var activeRealPlayers = 0;
+        var activeSyntheticBots = 0;
+        var unauthenticatedPeers = 0;
+        foreach (var context in peers.Values)
+        {
+            if (context.Session is null)
+            {
+                unauthenticatedPeers++;
+            }
+            else if (context.Session.IsSyntheticBot)
+            {
+                activeSyntheticBots++;
+            }
+            else
+            {
+                activeRealPlayers++;
+            }
+        }
+
+        networkMetrics.SetPeerPopulation(
+            activeRealPlayers,
+            activeSyntheticBots,
+            unauthenticatedPeers);
     }
 
     private bool TryGetBoundPlayer(PeerContext context, out PlayerSimulationEntity entity)

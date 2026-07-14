@@ -13,6 +13,8 @@ public sealed record ActiveSimulationSessionResponse(
     DateTime SessionExpiresAt,
     bool IsReconnect)
 {
+    public bool IsSyntheticBot { get; init; }
+
     public static ActiveSimulationSessionResponse FromSession(ActiveSimulationSession session)
     {
         return new ActiveSimulationSessionResponse(
@@ -26,6 +28,9 @@ public sealed record ActiveSimulationSessionResponse(
             session.WorkerRuntimeId,
             session.JoinedAt,
             session.SessionExpiresAt,
-            session.IsReconnect);
+            session.IsReconnect)
+        {
+            IsSyntheticBot = session.IsSyntheticBot
+        };
     }
 }

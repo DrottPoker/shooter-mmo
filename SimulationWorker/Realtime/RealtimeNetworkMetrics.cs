@@ -5,6 +5,9 @@ namespace SimulationWorker.Realtime;
 public readonly record struct RealtimeNetworkMetricsSnapshot(
     long ActivePeers,
     long ActiveEntities,
+    long ActiveRealPlayers,
+    long ActiveSyntheticBots,
+    long UnauthenticatedPeers,
     long ReceivedPackets,
     long ReceivedBytes,
     long SentPackets,
@@ -25,6 +28,9 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     private readonly Meter meter = new(MeterName);
     private long activePeers;
     private long activeEntities;
+    private long activeRealPlayers;
+    private long activeSyntheticBots;
+    private long unauthenticatedPeers;
     private long receivedPackets;
     private long receivedBytes;
     private long sentPackets;
@@ -42,6 +48,9 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     {
         meter.CreateObservableGauge("simulation_worker.realtime.peers", () => Volatile.Read(ref activePeers));
         meter.CreateObservableGauge("simulation_worker.realtime.entities", () => Volatile.Read(ref activeEntities));
+        meter.CreateObservableGauge("simulation_worker.realtime.players.real", () => Volatile.Read(ref activeRealPlayers));
+        meter.CreateObservableGauge("simulation_worker.realtime.players.synthetic", () => Volatile.Read(ref activeSyntheticBots));
+        meter.CreateObservableGauge("simulation_worker.realtime.peers.unauthenticated", () => Volatile.Read(ref unauthenticatedPeers));
         meter.CreateObservableCounter("simulation_worker.realtime.received.packets", () => Volatile.Read(ref receivedPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.received.bytes", () => Volatile.Read(ref receivedBytes));
         meter.CreateObservableCounter("simulation_worker.realtime.sent.packets", () => Volatile.Read(ref sentPackets));
@@ -59,6 +68,16 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     public void SetActivePeers(long value) => Interlocked.Exchange(ref activePeers, value);
 
     public void SetActiveEntities(long value) => Interlocked.Exchange(ref activeEntities, value);
+
+    public void SetPeerPopulation(
+        long activeRealPlayerCount,
+        long activeSyntheticBotCount,
+        long unauthenticatedPeerCount)
+    {
+        Interlocked.Exchange(ref activeRealPlayers, activeRealPlayerCount);
+        Interlocked.Exchange(ref activeSyntheticBots, activeSyntheticBotCount);
+        Interlocked.Exchange(ref unauthenticatedPeers, unauthenticatedPeerCount);
+    }
 
     public void RecordReceived(int bytes)
     {
@@ -105,6 +124,9 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         return new RealtimeNetworkMetricsSnapshot(
             Volatile.Read(ref activePeers),
             Volatile.Read(ref activeEntities),
+            Volatile.Read(ref activeRealPlayers),
+            Volatile.Read(ref activeSyntheticBots),
+            Volatile.Read(ref unauthenticatedPeers),
             Volatile.Read(ref receivedPackets),
             Volatile.Read(ref receivedBytes),
             Volatile.Read(ref sentPackets),

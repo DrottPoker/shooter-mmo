@@ -51,6 +51,11 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Long-running active simulation bots that share the real local shard with
   Unity players, use the complete UDP flow, churn through graceful logout and
   login, and keep synthetic identity and session data out of PostgreSQL.
+- Client-observed F2 diagnostics for frame timing, prediction, reconciliation,
+  snapshot health, payload rates, and visible entities without broadcasting
+  server process information to game clients.
+- Worker-side operational status logs and metrics that distinguish real players
+  from synthetic bots and report CPU, memory, traffic, drops, and tick timing.
 - Unity 6 login, character selection, shard selection, and WorldScene flow.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.

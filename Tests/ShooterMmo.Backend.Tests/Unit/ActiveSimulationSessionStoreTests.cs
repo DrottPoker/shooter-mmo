@@ -1,9 +1,36 @@
+using SimulationWorker.Auth;
 using SimulationWorker.Sessions;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
 public sealed class ActiveSimulationSessionStoreTests
 {
+    [Fact]
+    public void SyntheticBotClassificationFlowsFromTicketToSessionResponse()
+    {
+        var ticket = new ConsumedSimulationJoinTicketResponse(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Active Bot 1",
+            "local-shard-1",
+            "local-world-1",
+            "local-simulation-worker-1",
+            "worker-runtime-1",
+            Guid.NewGuid(),
+            "session-token",
+            DateTime.UtcNow.AddMinutes(1),
+            false)
+        {
+            IsSyntheticBot = true
+        };
+
+        var session = ActiveSimulationSession.FromJoinTicket(ticket);
+        var response = ActiveSimulationSessionResponse.FromSession(session);
+
+        Assert.True(session.IsSyntheticBot);
+        Assert.True(response.IsSyntheticBot);
+    }
+
     [Fact]
     public void RegisterRejectsADifferentActiveSessionForTheSameCharacter()
     {

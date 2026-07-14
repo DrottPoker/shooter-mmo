@@ -36,19 +36,27 @@ public sealed class RealtimeSimulationServiceTests
     [Fact]
     public async Task UdpClientCanJoinMoveAndLeaveAnAuthenticatedSimulationSession()
     {
-        await RunRealtimeSessionAsync(invalidateAsReplaced: false);
+        await RunRealtimeSessionAsync(invalidateAsReplaced: false, isSyntheticBot: false);
     }
 
     [Fact]
     public async Task ReplacedAccountSessionReceivesTheSpecificServerDisconnectReason()
     {
-        await RunRealtimeSessionAsync(invalidateAsReplaced: true);
+        await RunRealtimeSessionAsync(invalidateAsReplaced: true, isSyntheticBot: false);
     }
 
-    private static async Task RunRealtimeSessionAsync(bool invalidateAsReplaced)
+    [Fact]
+    public async Task SyntheticBotJoinIsSeparatedFromRealPlayerPopulation()
+    {
+        await RunRealtimeSessionAsync(invalidateAsReplaced: false, isSyntheticBot: true);
+    }
+
+    private static async Task RunRealtimeSessionAsync(
+        bool invalidateAsReplaced,
+        bool isSyntheticBot)
     {
         var port = FindAvailableUdpPort();
-        var authHandler = new SimulationSessionAuthHandler();
+        var authHandler = new SimulationSessionAuthHandler(isSyntheticBot);
         using var httpClient = new HttpClient(authHandler)
         {
             BaseAddress = new Uri("http://auth-service.test")
@@ -61,6 +69,7 @@ public sealed class RealtimeSimulationServiceTests
         var collisionWorld = new CompositeCollisionWorld(
             staticCollisionWorld,
             new DynamicCollisionWorld(staticCollisionWorld.ChunkSize));
+        using var networkMetrics = new RealtimeNetworkMetrics();
         var server = new RealtimeSimulationService(
             config,
             new SimulationJoinService(authClient, sessionStore, config, identity),
@@ -71,7 +80,8 @@ public sealed class RealtimeSimulationServiceTests
             new RealtimeTransportReadiness(),
             staticCollisionWorld,
             collisionWorld,
-            NullLogger<RealtimeSimulationService>.Instance);
+            NullLogger<RealtimeSimulationService>.Instance,
+            providedNetworkMetrics: networkMetrics);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await server.StartAsync(timeout.Token);
@@ -111,6 +121,10 @@ public sealed class RealtimeSimulationServiceTests
                         packet,
                         out var session,
                         out var error), error);
+                    var population = networkMetrics.Capture();
+                    Assert.Equal(isSyntheticBot ? 0 : 1, population.ActiveRealPlayers);
+                    Assert.Equal(isSyntheticBot ? 1 : 0, population.ActiveSyntheticBots);
+                    Assert.Equal(0, population.UnauthenticatedPeers);
                     joinAccepted.TrySetResult(session);
                     peer.Send(
                         RealtimeProtocol.EncodeMovementInputBatch(new[]
@@ -238,6 +252,9 @@ public sealed class RealtimeSimulationServiceTests
             Assert.Equal(55f, joined.MovementSettings.MaximumFallSpeed);
             Assert.Equal(1u, movedPlayer.LastProcessedInputSequence);
             Assert.Empty(sessionStore.ListActiveSessions());
+            var finalPopulation = networkMetrics.Capture();
+            Assert.Equal(0, finalPopulation.ActiveRealPlayers);
+            Assert.Equal(0, finalPopulation.ActiveSyntheticBots);
             if (invalidateAsReplaced)
             {
                 var reason = await serverDisconnect.Task.WaitAsync(timeout.Token);
@@ -305,7 +322,7 @@ public sealed class RealtimeSimulationServiceTests
         return ((IPEndPoint)socket.Client.LocalEndPoint!).Port;
     }
 
-    private sealed class SimulationSessionAuthHandler : HttpMessageHandler
+    private sealed class SimulationSessionAuthHandler(bool isSyntheticBot) : HttpMessageHandler
     {
         public Guid AccountId { get; } = Guid.NewGuid();
 
@@ -334,7 +351,10 @@ public sealed class RealtimeSimulationServiceTests
                     SimulationSessionId,
                     SimulationSessionToken,
                     DateTime.UtcNow.AddSeconds(30),
-                    false)));
+                    false)
+                {
+                    IsSyntheticBot = isSyntheticBot
+                }));
             }
 
             if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal))

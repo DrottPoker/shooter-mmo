@@ -3,8 +3,6 @@ namespace AuthService.Config;
 public sealed record DevelopmentSimulationBotOptions(
     bool Enabled,
     string AuthoritySecret,
-    int MaximumActiveBots,
-    int ReservedPlayerSlots,
     TimeSpan JoinTicketLifetime,
     TimeSpan SessionLeaseLifetime,
     string CharacterNamePrefix)
@@ -22,8 +20,6 @@ public sealed record DevelopmentSimulationBotOptions(
         var section = configuration.GetSection(SectionName);
         var enabled = section.GetValue("Enabled", false);
         var secret = configuration[SecretEnvironmentVariable] ?? string.Empty;
-        var maximumActiveBots = section.GetValue("MaximumActiveBots", 200);
-        var reservedPlayerSlots = section.GetValue("ReservedPlayerSlots", 8);
         var joinTicketLifetimeSeconds = section.GetValue("JoinTicketLifetimeSeconds", 30);
         var sessionLeaseLifetimeSeconds = section.GetValue("SessionLeaseLifetimeSeconds", 30);
         var characterNamePrefix = section.GetValue("CharacterNamePrefix", "Active Bot")?.Trim()
@@ -40,16 +36,6 @@ public sealed record DevelopmentSimulationBotOptions(
                 || secret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase)))
         {
             errors.Add($"{SecretEnvironmentVariable} must contain a non-placeholder secret of at least 32 characters when development simulation bots are enabled.");
-        }
-
-        if (maximumActiveBots is < 1 or > 10_000)
-        {
-            errors.Add($"{SectionName}:MaximumActiveBots must be between 1 and 10000.");
-        }
-
-        if (reservedPlayerSlots is < 0 or > 10_000)
-        {
-            errors.Add($"{SectionName}:ReservedPlayerSlots must be between 0 and 10000.");
         }
 
         if (joinTicketLifetimeSeconds is < 5 or > 300)
@@ -78,8 +64,6 @@ public sealed record DevelopmentSimulationBotOptions(
         return new DevelopmentSimulationBotOptions(
             enabled,
             secret,
-            maximumActiveBots,
-            reservedPlayerSlots,
             TimeSpan.FromSeconds(joinTicketLifetimeSeconds),
             TimeSpan.FromSeconds(sessionLeaseLifetimeSeconds),
             characterNamePrefix);

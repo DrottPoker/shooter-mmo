@@ -16,6 +16,8 @@ public sealed record ActiveSimulationSession(
     DateTime SessionExpiresAt,
     bool IsReconnect)
 {
+    public bool IsSyntheticBot { get; init; }
+
     public static ActiveSimulationSession FromJoinTicket(
         ConsumedSimulationJoinTicketResponse ticket)
     {
@@ -31,6 +33,9 @@ public sealed record ActiveSimulationSession(
             ticket.WorkerRuntimeId,
             DateTime.UtcNow,
             ticket.SessionExpiresAt,
-            ticket.IsReconnect);
+            ticket.IsReconnect)
+        {
+            IsSyntheticBot = ticket.IsSyntheticBot
+        };
     }
 }
