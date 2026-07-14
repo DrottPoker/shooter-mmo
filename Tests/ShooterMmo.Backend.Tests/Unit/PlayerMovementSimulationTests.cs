@@ -40,7 +40,7 @@ public sealed class PlayerMovementSimulationTests
     }
 
     [Fact]
-    public void SprintCannotStartWhileAirborne()
+    public void AirborneInputCannotStartMovementOrSprint()
     {
         var airborne = new PlayerMovementState(
             0f,
@@ -63,7 +63,38 @@ public sealed class PlayerMovementSimulationTests
         var result = PlayerMovementSimulation.Step(airborne, input, Settings, CollisionWorld);
 
         Assert.False(result.IsSprinting);
-        Assert.Equal(Settings.WalkSpeed, result.VelocityZ);
+        Assert.Equal(0f, result.VelocityX);
+        Assert.Equal(0f, result.VelocityZ);
+        Assert.Equal(0f, result.YawDegrees);
+    }
+
+    [Fact]
+    public void AirborneInputCannotRedirectExistingMomentumOrFacing()
+    {
+        var airborne = new PlayerMovementState(
+            0f,
+            2f,
+            0f,
+            2f,
+            1f,
+            6f,
+            35f,
+            false,
+            true);
+        var input = new PlayerMovementInput(
+            1,
+            1,
+            -1f,
+            -1f,
+            180f,
+            PlayerMovementButtons.Aim);
+
+        var result = PlayerMovementSimulation.Step(airborne, input, Settings, CollisionWorld);
+
+        Assert.False(result.IsSprinting);
+        Assert.Equal(2f, result.VelocityX);
+        Assert.Equal(6f, result.VelocityZ);
+        Assert.Equal(35f, result.YawDegrees);
     }
 
     [Fact]

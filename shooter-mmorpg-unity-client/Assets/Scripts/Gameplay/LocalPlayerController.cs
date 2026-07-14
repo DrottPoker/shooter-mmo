@@ -22,6 +22,7 @@ namespace ShooterMmo.Gameplay
         private CharacterController characterController;
         private LocalPlayerInput playerInput;
         private float verticalVelocity;
+        private Vector3 airbornePlanarVelocity;
         private bool isSprinting;
         private RealtimeWorldClient realtimeClient;
         private ClientMovementPrediction movementPrediction;
@@ -102,21 +103,32 @@ namespace ShooterMmo.Gameplay
 
         private void UpdateOfflineMovement()
         {
-
+            var wasGrounded = characterController.isGrounded;
             var moveInput = Vector2.ClampMagnitude(playerInput.Move, 1f);
             var planarMove = BuildCameraRelativeMove(moveInput);
             UpdateSprintState();
             var speed = isSprinting ? sprintSpeed : walkSpeed;
+            var requestedPlanarVelocity = planarMove * speed;
+            if (wasGrounded)
+            {
+                airbornePlanarVelocity = requestedPlanarVelocity;
+            }
 
             ApplyGravityAndJump();
 
-            var velocity = planarMove * speed;
+            var velocity = wasGrounded
+                ? requestedPlanarVelocity
+                : airbornePlanarVelocity;
             velocity.y = verticalVelocity;
             characterController.Move(velocity * Time.deltaTime);
 
-            var facingDirection = playerInput.AimHeld
-                ? GetCameraPlanarForward()
-                : planarMove;
+            var facingDirection = Vector3.zero;
+            if (wasGrounded)
+            {
+                facingDirection = playerInput.AimHeld
+                    ? GetCameraPlanarForward()
+                    : planarMove;
+            }
             if (facingDirection.sqrMagnitude > 0.001f)
             {
                 var targetRotation = Quaternion.LookRotation(facingDirection, Vector3.up);

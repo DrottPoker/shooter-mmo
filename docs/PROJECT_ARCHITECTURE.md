@@ -305,6 +305,8 @@ session token and cannot release the newer lease.
    collision world. Clients send input, never accepted positions. If no newer
    input arrives for the configured timeout, WorldServer neutralizes movement
    and action buttons instead of replaying stale input indefinitely.
+   While airborne, the shared simulation preserves horizontal momentum and
+   facing and ignores new planar control until grounded.
 4. WorldServer rebuilds a spatial hash from authoritative positions, applies
    enter and exit radii per connection, and sends reliable spawn or despawn
    transitions when visibility changes.

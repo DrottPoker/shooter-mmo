@@ -375,6 +375,7 @@ namespace ShooterMmo.GameSimulation
                 out var cameraYaw);
 
             var isGrounded = state.IsGrounded;
+            var acceptsPlanarControl = isGrounded;
             var isSprinting = state.IsSprinting;
             if (input.AimHeld || !input.SprintHeld)
             {
@@ -386,10 +387,15 @@ namespace ShooterMmo.GameSimulation
             }
 
             var speed = isSprinting ? settings.SprintSpeed : settings.WalkSpeed;
-            var velocity = new SimulationVector3(
-                directionX * speed,
-                state.VelocityY,
-                directionZ * speed);
+            var velocity = acceptsPlanarControl
+                ? new SimulationVector3(
+                    directionX * speed,
+                    state.VelocityY,
+                    directionZ * speed)
+                : new SimulationVector3(
+                    state.VelocityX,
+                    state.VelocityY,
+                    state.VelocityZ);
             if (isGrounded && velocity.Y < 0f)
             {
                 velocity = new SimulationVector3(
@@ -427,11 +433,11 @@ namespace ShooterMmo.GameSimulation
                 ? settings.GroundedVerticalVelocity
                 : movement.Velocity.Y;
             var targetYaw = state.YawDegrees;
-            if (input.AimHeld)
+            if (acceptsPlanarControl && input.AimHeld)
             {
                 targetYaw = cameraYaw;
             }
-            else if (directionLength > 0.001f)
+            else if (acceptsPlanarControl && directionLength > 0.001f)
             {
                 targetYaw = NormalizeAngle(
                     (float)(Math.Atan2(directionX, directionZ) * (180d / Math.PI)));

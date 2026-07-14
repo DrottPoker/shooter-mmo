@@ -309,6 +309,9 @@ fixed-step capsule simulation and baked collision world. Normal movement faces
 its travel direction. Aim faces the camera heading so left and right movement
 become shooter-style strafing. Sprint is a grounded state transition: it may
 remain active through a jump but cannot start while airborne.
+Both direct scene preview and authenticated prediction preserve takeoff momentum
+and facing while airborne. Movement input resumes only after grounded state is
+restored, while the third-person camera remains independently controllable.
 `RefreshCharacterDimensions` remains the runtime entry point when a future
 character system changes collider dimensions.
 

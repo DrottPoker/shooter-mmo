@@ -86,6 +86,9 @@ Status: Server-authoritative movement and test-map collision implemented
   continue through a jump while Shift remains held.
 - Releasing Shift in the air ends sprint, and pressing it again cannot restart
   sprint until the player reaches the ground.
+- Airborne movement input cannot accelerate, stop, redirect, or rotate the
+  character. A jump or fall preserves its horizontal takeoff momentum until the
+  character is grounded again. The camera remains independently controllable.
 - Camera-relative movement follows the current mouse-controlled view.
 - While aiming, the player faces the camera direction so lateral movement
   behaves as shooter strafing.

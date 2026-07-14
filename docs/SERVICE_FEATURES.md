@@ -192,6 +192,8 @@ Status: Fixed-tick movement and authored collision implemented
   vector, camera yaw, and bounded button flags.
 - Aim is an authoritative movement state modifier. It cancels sprint and causes
   WorldServer to ignore sprint and jump flags until Aim is released.
+- Airborne simulation preserves authoritative horizontal velocity and facing
+  while ignoring planar movement and camera-yaw input until grounded.
 - Clients send up to four current unacknowledged inputs per batch. WorldServer
   ignores duplicate and older sequences and preserves a jump edge until the next
   simulation tick.
