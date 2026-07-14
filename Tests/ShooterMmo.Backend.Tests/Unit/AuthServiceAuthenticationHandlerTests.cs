@@ -1,14 +1,14 @@
 using System.Net;
 using ShooterMmo.GameSimulation;
-using WorldServer.Auth;
-using WorldServer.Config;
+using SimulationWorker.Auth;
+using SimulationWorker.Config;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
 public sealed class AuthServiceAuthenticationHandlerTests
 {
     [Fact]
-    public async Task AddsWorldServerIdentityToAuthServiceRequests()
+    public async Task AddsSimulationWorkerIdentityToAuthServiceRequests()
     {
         var recorder = new HeaderRecordingHandler();
         var authenticationHandler = new AuthServiceAuthenticationHandler(CreateConfig())
@@ -23,13 +23,17 @@ public sealed class AuthServiceAuthenticationHandlerTests
         using var response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("local-world-1", recorder.WorldServerId);
-        Assert.Equal("test-service-secret", recorder.WorldServerSecret);
+        Assert.Equal("local-simulation-worker-1", recorder.SimulationWorkerId);
+        Assert.Equal("test-service-secret", recorder.SimulationWorkerSecret);
     }
 
-    private static WorldServerConfig CreateConfig()
+    private static SimulationWorkerConfig CreateConfig()
     {
-        return new WorldServerConfig(
+        return new SimulationWorkerConfig(
+            "local-simulation-worker-1",
+            "local-fleet",
+            "local-node-1",
+            "local-shard-1",
             "local-world-1",
             "CollisionData",
             27015,
@@ -65,18 +69,18 @@ public sealed class AuthServiceAuthenticationHandlerTests
 
     private sealed class HeaderRecordingHandler : HttpMessageHandler
     {
-        public string? WorldServerId { get; private set; }
+        public string? SimulationWorkerId { get; private set; }
 
-        public string? WorldServerSecret { get; private set; }
+        public string? SimulationWorkerSecret { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            WorldServerId = request.Headers.GetValues(
-                AuthServiceAuthenticationHandler.WorldServerIdHeader).Single();
-            WorldServerSecret = request.Headers.GetValues(
-                AuthServiceAuthenticationHandler.WorldServerSecretHeader).Single();
+            SimulationWorkerId = request.Headers.GetValues(
+                AuthServiceAuthenticationHandler.SimulationWorkerIdHeader).Single();
+            SimulationWorkerSecret = request.Headers.GetValues(
+                AuthServiceAuthenticationHandler.SimulationWorkerSecretHeader).Single();
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         }

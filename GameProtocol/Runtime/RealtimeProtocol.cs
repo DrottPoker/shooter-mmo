@@ -14,7 +14,7 @@ namespace ShooterMmo.GameProtocol
         LeaveRejected = 6,
         ServerDisconnect = 7,
         MovementInputBatch = 8,
-        WorldSnapshot = 9,
+        SimulationSnapshot = 9,
         EntitySpawn = 10,
         EntityDespawn = 11
     }
@@ -36,10 +36,11 @@ namespace ShooterMmo.GameProtocol
     public sealed class RealtimeJoinAccepted
     {
         public RealtimeJoinAccepted(
-            string worldSessionId,
+            string simulationSessionId,
             string accountId,
             string characterId,
             string characterName,
+            string shardId,
             string worldId,
             ulong controlledEntityId,
             string simulationRevision,
@@ -50,10 +51,11 @@ namespace ShooterMmo.GameProtocol
             RealtimeMovementSettings movementSettings,
             RealtimePlayerState initialPlayerState)
         {
-            WorldSessionId = worldSessionId;
+            SimulationSessionId = simulationSessionId;
             AccountId = accountId;
             CharacterId = characterId;
             CharacterName = characterName;
+            ShardId = shardId;
             WorldId = worldId;
             ControlledEntityId = controlledEntityId;
             SimulationRevision = simulationRevision;
@@ -65,13 +67,15 @@ namespace ShooterMmo.GameProtocol
             InitialPlayerState = initialPlayerState;
         }
 
-        public string WorldSessionId { get; }
+        public string SimulationSessionId { get; }
 
         public string AccountId { get; }
 
         public string CharacterId { get; }
 
         public string CharacterName { get; }
+
+        public string ShardId { get; }
 
         public string WorldId { get; }
 
@@ -324,9 +328,9 @@ namespace ShooterMmo.GameProtocol
         public RealtimePlayerState State { get; }
     }
 
-    public sealed class RealtimeWorldSnapshot
+    public sealed class RealtimeSimulationSnapshot
     {
-        public RealtimeWorldSnapshot(
+        public RealtimeSimulationSnapshot(
             uint snapshotSequence,
             uint serverTick,
             ushort chunkIndex,
@@ -381,8 +385,8 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 5;
-        public const string ConnectionKey = "ShooterMmo.Realtime.v5";
+        public const ushort Version = 6;
+        public const string ConnectionKey = "ShooterMmo.Realtime.v6";
         public const int MaximumPacketSize = 1200;
 
         public static byte[] EncodeJoinRequest(string joinTicket)
@@ -417,10 +421,11 @@ namespace ShooterMmo.GameProtocol
         {
             return Encode(RealtimeMessageType.JoinAccepted, writer =>
             {
-                WriteString(writer, session.WorldSessionId, MaximumIdentifierLength, nameof(session.WorldSessionId));
+                WriteString(writer, session.SimulationSessionId, MaximumIdentifierLength, nameof(session.SimulationSessionId));
                 WriteString(writer, session.AccountId, MaximumIdentifierLength, nameof(session.AccountId));
                 WriteString(writer, session.CharacterId, MaximumIdentifierLength, nameof(session.CharacterId));
                 WriteString(writer, session.CharacterName, MaximumNameLength, nameof(session.CharacterName));
+                WriteString(writer, session.ShardId, MaximumIdentifierLength, nameof(session.ShardId));
                 WriteString(writer, session.WorldId, MaximumIdentifierLength, nameof(session.WorldId));
                 if (session.ControlledEntityId == 0)
                 {
@@ -460,10 +465,11 @@ namespace ShooterMmo.GameProtocol
             using (stream)
             using (reader)
             {
-                if (!TryReadString(reader, MaximumIdentifierLength, out var worldSessionId, out error)
+                if (!TryReadString(reader, MaximumIdentifierLength, out var simulationSessionId, out error)
                     || !TryReadString(reader, MaximumIdentifierLength, out var accountId, out error)
                     || !TryReadString(reader, MaximumIdentifierLength, out var characterId, out error)
                     || !TryReadString(reader, MaximumNameLength, out var characterName, out error)
+                    || !TryReadString(reader, MaximumIdentifierLength, out var shardId, out error)
                     || !TryReadString(reader, MaximumIdentifierLength, out var worldId, out error)
                     || !TryReadUInt64(reader, out var controlledEntityId, out error)
                     || !TryReadString(
@@ -497,10 +503,11 @@ namespace ShooterMmo.GameProtocol
                 }
 
                 session = new RealtimeJoinAccepted(
-                    worldSessionId,
+                    simulationSessionId,
                     accountId,
                     characterId,
                     characterName,
+                    shardId,
                     worldId,
                     controlledEntityId,
                     simulationRevision,
@@ -524,17 +531,17 @@ namespace ShooterMmo.GameProtocol
             return TryDecodeError(data, RealtimeMessageType.JoinRejected, out rejection, out error);
         }
 
-        public static byte[] EncodeLeaveRequest(string worldSessionId)
+        public static byte[] EncodeLeaveRequest(string simulationSessionId)
         {
             return Encode(RealtimeMessageType.LeaveRequest, writer =>
             {
-                WriteString(writer, worldSessionId, MaximumIdentifierLength, nameof(worldSessionId));
+                WriteString(writer, simulationSessionId, MaximumIdentifierLength, nameof(simulationSessionId));
             });
         }
 
-        public static bool TryDecodeLeaveRequest(byte[] data, out string worldSessionId, out string error)
+        public static bool TryDecodeLeaveRequest(byte[] data, out string simulationSessionId, out string error)
         {
-            worldSessionId = string.Empty;
+            simulationSessionId = string.Empty;
             if (!TryCreateReader(data, RealtimeMessageType.LeaveRequest, out var stream, out var reader, out error))
             {
                 return false;
@@ -543,7 +550,7 @@ namespace ShooterMmo.GameProtocol
             using (stream)
             using (reader)
             {
-                if (!TryReadString(reader, MaximumIdentifierLength, out worldSessionId, out error))
+                if (!TryReadString(reader, MaximumIdentifierLength, out simulationSessionId, out error))
                 {
                     return false;
                 }
@@ -763,7 +770,7 @@ namespace ShooterMmo.GameProtocol
             }
         }
 
-        public static byte[] EncodeWorldSnapshot(RealtimeWorldSnapshot snapshot)
+        public static byte[] EncodeSimulationSnapshot(RealtimeSimulationSnapshot snapshot)
         {
             if (snapshot == null
                 || snapshot.ChunkCount == 0
@@ -772,10 +779,10 @@ namespace ShooterMmo.GameProtocol
                 || snapshot.Entities.Length == 0
                 || snapshot.Entities.Length > MaximumSnapshotEntitiesPerChunk)
             {
-                throw new ArgumentException("World snapshot metadata is invalid.", nameof(snapshot));
+                throw new ArgumentException("Simulation snapshot metadata is invalid.", nameof(snapshot));
             }
 
-            return Encode(RealtimeMessageType.WorldSnapshot, writer =>
+            return Encode(RealtimeMessageType.SimulationSnapshot, writer =>
             {
                 writer.Write(snapshot.SnapshotSequence);
                 writer.Write(snapshot.ServerTick);
@@ -789,15 +796,15 @@ namespace ShooterMmo.GameProtocol
             });
         }
 
-        public static bool TryDecodeWorldSnapshot(
+        public static bool TryDecodeSimulationSnapshot(
             byte[] data,
-            out RealtimeWorldSnapshot snapshot,
+            out RealtimeSimulationSnapshot snapshot,
             out string error)
         {
             snapshot = null;
             if (!TryCreateReader(
                     data,
-                    RealtimeMessageType.WorldSnapshot,
+                    RealtimeMessageType.SimulationSnapshot,
                     out var stream,
                     out var reader,
                     out error))
@@ -822,7 +829,7 @@ namespace ShooterMmo.GameProtocol
                     || entityCount == 0
                     || entityCount > MaximumSnapshotEntitiesPerChunk)
                 {
-                    error = "World snapshot metadata is invalid.";
+                    error = "Simulation snapshot metadata is invalid.";
                     return false;
                 }
 
@@ -840,7 +847,7 @@ namespace ShooterMmo.GameProtocol
                     return false;
                 }
 
-                snapshot = new RealtimeWorldSnapshot(
+                snapshot = new RealtimeSimulationSnapshot(
                     snapshotSequence,
                     serverTick,
                     chunkIndex,

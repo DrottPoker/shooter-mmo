@@ -29,6 +29,7 @@ public sealed class RealtimeProtocolTests
             Guid.NewGuid().ToString("D"),
             Guid.NewGuid().ToString("D"),
             "Protocol Hero",
+            "local-shard-1",
             "local-world-1",
             42,
             GameSimulationCompatibility.Revision,
@@ -45,9 +46,10 @@ public sealed class RealtimeProtocolTests
             out var error);
 
         Assert.True(decoded, error);
-        Assert.Equal(expected.WorldSessionId, actual.WorldSessionId);
+        Assert.Equal(expected.SimulationSessionId, actual.SimulationSessionId);
         Assert.Equal(expected.CharacterId, actual.CharacterId);
         Assert.Equal(expected.CharacterName, actual.CharacterName);
+        Assert.Equal(expected.ShardId, actual.ShardId);
         Assert.Equal(expected.WorldId, actual.WorldId);
         Assert.Equal(42ul, actual.ControlledEntityId);
         Assert.Equal(expected.SimulationRevision, actual.SimulationRevision);
@@ -143,19 +145,19 @@ public sealed class RealtimeProtocolTests
         Assert.Equal("player.default", spawn.ArchetypeId);
         Assert.Equal(90u, spawn.ServerTick);
 
-        var expectedDespawn = new RealtimeEntityDespawn(73, "left_world");
+        var expectedDespawn = new RealtimeEntityDespawn(73, "left_shard");
         Assert.True(RealtimeProtocol.TryDecodeEntityDespawn(
             RealtimeProtocol.EncodeEntityDespawn(expectedDespawn),
             out var despawn,
             out var despawnError), despawnError);
         Assert.Equal(73ul, despawn.EntityId);
-        Assert.Equal("left_world", despawn.Reason);
+        Assert.Equal("left_shard", despawn.Reason);
     }
 
     [Fact]
-    public void WorldSnapshotRoundTripsChunkMetadataAndEntities()
+    public void SimulationSnapshotRoundTripsChunkMetadataAndEntities()
     {
-        var expected = new RealtimeWorldSnapshot(
+        var expected = new RealtimeSimulationSnapshot(
             4,
             90,
             1,
@@ -165,8 +167,8 @@ public sealed class RealtimeProtocolTests
                 new RealtimeEntitySnapshot(73, 12, CreatePlayerState(3f))
             });
 
-        var decoded = RealtimeProtocol.TryDecodeWorldSnapshot(
-            RealtimeProtocol.EncodeWorldSnapshot(expected),
+        var decoded = RealtimeProtocol.TryDecodeSimulationSnapshot(
+            RealtimeProtocol.EncodeSimulationSnapshot(expected),
             out var actual,
             out var error);
 
@@ -192,9 +194,9 @@ public sealed class RealtimeProtocolTests
                 1,
                 CreatePlayerState(0f))));
         Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntityDespawn(
-            new RealtimeEntityDespawn(0, "left_world")));
-        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeWorldSnapshot(
-            new RealtimeWorldSnapshot(
+            new RealtimeEntityDespawn(0, "left_shard")));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshot(
+            new RealtimeSimulationSnapshot(
                 1,
                 1,
                 0,

@@ -26,9 +26,9 @@ namespace ShooterMmo
                         + error.ToDisplayMessage()
                     : "The account session is no longer authorized. Clearing local session state and returning to LoginMenu. "
                         + error.ToDisplayMessage());
-            if (ShooterMmoClientBootstrap.WorldClient != null)
+            if (ShooterMmoClientBootstrap.SimulationClient != null)
             {
-                ShooterMmoClientBootstrap.WorldClient.Abort();
+                ShooterMmoClientBootstrap.SimulationClient.Abort();
             }
 
             ShooterMmoClientSession.Clear();

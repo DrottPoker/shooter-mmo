@@ -10,7 +10,7 @@ namespace ShooterMmo.Ui
     {
         private readonly ClientOperationState operationState = new ClientOperationState();
 
-        private string status = "Realtime world connection active.";
+        private string status = "Realtime simulation connection active.";
         private Vector2 scrollPosition;
         private LocalPlayerInput localPlayerInput;
         private bool isVisible = true;
@@ -18,7 +18,7 @@ namespace ShooterMmo.Ui
         private void Start()
         {
             localPlayerInput = FindAnyObjectByType<LocalPlayerInput>();
-            if (ShooterMmoClientSession.ActiveWorldSession == null)
+            if (ShooterMmoClientSession.ActiveSimulationSession == null)
             {
 #if UNITY_EDITOR
                 status = "Offline Editor movement preview. Realtime is disconnected.";
@@ -29,10 +29,10 @@ namespace ShooterMmo.Ui
 #endif
             }
 
-            if (ShooterMmoClientBootstrap.WorldClient == null
-                || !ShooterMmoClientBootstrap.WorldClient.IsJoined)
+            if (ShooterMmoClientBootstrap.SimulationClient == null
+                || !ShooterMmoClientBootstrap.SimulationClient.IsJoined)
             {
-                ShooterMmoClientSession.ActiveWorldSession = null;
+                ShooterMmoClientSession.ActiveSimulationSession = null;
                 SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
             }
         }
@@ -80,20 +80,23 @@ namespace ShooterMmo.Ui
         {
             GUILayout.Label("Local Session");
 
-            var session = ShooterMmoClientSession.ActiveWorldSession;
+            var session = ShooterMmoClientSession.ActiveSimulationSession;
             if (session != null)
             {
                 GUILayout.Label("Character: " + session.characterName);
+                GUILayout.Label("Shard: " + session.shardId);
                 GUILayout.Label("World: " + session.worldId);
-                GUILayout.Label("Session: " + session.worldSessionId);
+                GUILayout.Label("Worker: " + session.workerId);
+                GUILayout.Label("Runtime: " + session.workerRuntimeId);
+                GUILayout.Label("Session: " + session.simulationSessionId);
                 GUILayout.Label("Reconnect: " + session.isReconnect);
             }
             else
             {
-                GUILayout.Label("No local world session.");
+                GUILayout.Label("No local simulation session.");
             }
 
-            if (GUILayout.Button("Leave World", GUILayout.Height(28f)))
+            if (GUILayout.Button("Leave Shard", GUILayout.Height(28f)))
             {
                 BeginLeave();
             }
@@ -104,28 +107,28 @@ namespace ShooterMmo.Ui
         private void DrawTransportSection()
         {
             GUILayout.Label("Realtime Transport");
-            var worldClient = ShooterMmoClientBootstrap.WorldClient;
-            if (worldClient == null)
+            var simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            if (simulationClient == null)
             {
                 GUILayout.Label("Client unavailable");
                 return;
             }
 
-            GUILayout.Label("State: " + worldClient.State);
-            GUILayout.Label("Endpoint: " + worldClient.ConnectedHost + ":" + worldClient.ConnectedPort + "/udp");
-            if (worldClient.MovementSession != null)
+            GUILayout.Label("State: " + simulationClient.State);
+            GUILayout.Label("Endpoint: " + simulationClient.ConnectedHost + ":" + simulationClient.ConnectedPort + "/udp");
+            if (simulationClient.MovementSession != null)
             {
-                GUILayout.Label("Authority: WorldServer");
-                GUILayout.Label("Server Tick: " + worldClient.LatestServerTick);
+                GUILayout.Label("Authority: SimulationWorker");
+                GUILayout.Label("Server Tick: " + simulationClient.LatestServerTick);
                 GUILayout.Label(
-                    "Simulation: " + worldClient.MovementSession.Settings.TickRateHz
-                    + " Hz / Snapshots: " + worldClient.MovementSession.SnapshotRateHz + " Hz");
+                    "Simulation: " + simulationClient.MovementSession.Settings.TickRateHz
+                    + " Hz / Snapshots: " + simulationClient.MovementSession.SnapshotRateHz + " Hz");
             }
         }
 
         private void BeginLeave()
         {
-            if (!operationState.TryBegin(ClientOperation.LeaveWorld))
+            if (!operationState.TryBegin(ClientOperation.LeaveShard))
             {
                 return;
             }
@@ -135,38 +138,38 @@ namespace ShooterMmo.Ui
 
         private IEnumerator RunLeaveOperation()
         {
-            yield return LeaveWorldRoutine();
-            operationState.Complete(ClientOperation.LeaveWorld);
+            yield return LeaveShardRoutine();
+            operationState.Complete(ClientOperation.LeaveShard);
         }
 
-        private IEnumerator LeaveWorldRoutine()
+        private IEnumerator LeaveShardRoutine()
         {
-            var session = ShooterMmoClientSession.ActiveWorldSession;
-            var worldClient = ShooterMmoClientBootstrap.WorldClient;
-            if (session == null || worldClient == null)
+            var session = ShooterMmoClientSession.ActiveSimulationSession;
+            var simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            if (session == null || simulationClient == null)
             {
-                ShooterMmoClientSession.ActiveWorldSession = null;
+                ShooterMmoClientSession.ActiveSimulationSession = null;
                 SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
                 yield break;
             }
 
             RealtimeClientError error = null;
-            yield return worldClient.Leave(
-                session.worldSessionId,
+            yield return simulationClient.Leave(
+                session.simulationSessionId,
                 () => { },
                 value => error = value);
 
             if (error != null)
             {
                 SetError(error);
-                if (worldClient.IsJoined)
+                if (simulationClient.IsJoined)
                 {
                     yield break;
                 }
             }
 
-            ShooterMmoClientSession.ActiveWorldSession = null;
-            status = "Left world.";
+            ShooterMmoClientSession.ActiveSimulationSession = null;
+            status = "Left shard.";
             SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
         }
 

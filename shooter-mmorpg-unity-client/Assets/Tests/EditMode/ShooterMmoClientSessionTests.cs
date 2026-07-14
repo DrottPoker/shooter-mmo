@@ -12,7 +12,7 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
-        public void ClearRemovesAuthenticationAndWorldSelection()
+        public void ClearRemovesAuthenticationAndShardSelection()
         {
             ShooterMmoClientSession.Auth = new AuthResponse
             {
@@ -27,14 +27,16 @@ namespace ShooterMmo.Tests.EditMode
                 id = "character-1",
                 name = "Hero One"
             };
-            ShooterMmoClientSession.SelectedWorld = new WorldResponse
+            ShooterMmoClientSession.SelectedShard = new ShardResponse
             {
-                id = "local-world-1",
-                displayName = "Local World 1"
+                id = "local-shard-1",
+                displayName = "Local Shard 1",
+                worldId = "local-world-1"
             };
-            ShooterMmoClientSession.ActiveWorldSession = new ActivePlayerSessionResponse
+            ShooterMmoClientSession.ActiveSimulationSession = new ActiveSimulationSessionResponse
             {
                 characterId = "character-1",
+                shardId = "local-shard-1",
                 worldId = "local-world-1"
             };
 
@@ -43,8 +45,8 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(ShooterMmoClientSession.IsAuthenticated, Is.False);
             Assert.That(ShooterMmoClientSession.Auth, Is.Null);
             Assert.That(ShooterMmoClientSession.SelectedCharacter, Is.Null);
-            Assert.That(ShooterMmoClientSession.SelectedWorld, Is.Null);
-            Assert.That(ShooterMmoClientSession.ActiveWorldSession, Is.Null);
+            Assert.That(ShooterMmoClientSession.SelectedShard, Is.Null);
+            Assert.That(ShooterMmoClientSession.ActiveSimulationSession, Is.Null);
         }
     }
 }

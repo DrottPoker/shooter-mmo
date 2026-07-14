@@ -64,13 +64,13 @@ namespace ShooterMmo.Networking
                 || accepted.MovementSettings == null
                 || accepted.InitialPlayerState == null)
             {
-                error = "WorldServer did not provide movement simulation configuration.";
+                error = "SimulationWorker did not provide movement simulation configuration.";
                 return false;
             }
 
             if (accepted.ControlledEntityId == 0)
             {
-                error = "WorldServer did not assign a controlled network entity.";
+                error = "SimulationWorker did not assign a controlled network entity.";
                 return false;
             }
 
@@ -79,7 +79,7 @@ namespace ShooterMmo.Networking
                     GameSimulationCompatibility.Revision,
                     StringComparison.Ordinal))
             {
-                error = "Client movement simulation revision does not match WorldServer. Client: "
+                error = "Client movement simulation revision does not match SimulationWorker. Client: "
                     + GameSimulationCompatibility.Revision + ", server: "
                     + accepted.SimulationRevision + ".";
                 return false;
@@ -98,7 +98,7 @@ namespace ShooterMmo.Networking
                     collisionStream.CollisionWorld.Revision,
                     StringComparison.OrdinalIgnoreCase))
             {
-                error = "Client collision revision does not match WorldServer. Client: "
+                error = "Client collision revision does not match SimulationWorker. Client: "
                     + collisionStream.CollisionWorld.Revision + ", server: " + accepted.CollisionRevision + ".";
                 return false;
             }
@@ -153,7 +153,7 @@ namespace ShooterMmo.Networking
                     || source.SnapshotRateHz > source.TickRateHz
                     || source.TickRateHz % source.SnapshotRateHz != 0)
                 {
-                    error = "WorldServer movement snapshot rate is invalid.";
+                    error = "SimulationWorker movement snapshot rate is invalid.";
                     return false;
                 }
 
@@ -178,7 +178,7 @@ namespace ShooterMmo.Networking
             }
             catch (ArgumentException exception)
             {
-                error = "WorldServer movement configuration is invalid: " + exception.Message;
+                error = "SimulationWorker movement configuration is invalid: " + exception.Message;
                 return false;
             }
         }

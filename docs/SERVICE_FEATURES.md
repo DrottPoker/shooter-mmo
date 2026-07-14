@@ -1,371 +1,342 @@
 # Service Features
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Purpose
 
-This document records implemented backend, networking, persistence, security,
-and operational behavior. It does not describe planned gameplay.
+This document records implemented service, networking, persistence, and
+operational behavior. Product intent that is not implemented belongs in the MVP
+specification. Player-facing behavior belongs in [Game Features](GAME_FEATURES.md).
 
-## Accounts And Authentication
+## Service Topology
 
-Status: Implemented
+The implemented topology is:
 
-- Register with email, username, and password.
-- Login with username or email.
-- BCrypt password hashing.
-- Opaque database-backed session tokens with only SHA-256 hashes stored.
-- Exactly one active session per account, enforced by a partial unique database
-  index and an account-locked login transaction.
-- A successful later login revokes the previous session with the stable
-  `account_session_replaced` code and invalidates all pending tickets and active
-  world leases owned by that account.
-- Authenticated current-account lookup.
-- Current-session logout and account-owned targeted session revocation.
-- Five login or registration attempts per client IP per 60-second fixed window.
-- No-store headers wherever a session or access token is returned.
+```text
+Global AuthService and PostgreSQL
+  Fleet
+    Node
+      SimulationWorker logical id
+        Worker runtime generation
+        SimulationAssignment -> Shard
+          Shard -> World content definition
+```
 
-Revocation also invalidates unconsumed join tickets and releases character
-world-session leases created by the revoked account session.
+There are no realms. Account and character records are global. Fleets identify
+compute placement and region, while shards are the player-selectable simulation
+copies. World identifies shared content.
+
+The current runtime permits one active worker per shard and one active shard per
+worker. Zone and layer partitioning are not implemented.
 
 ## AuthService HTTP Surface
 
-AuthService is the only ASP.NET application.
-
-| Method and route | Caller | Purpose |
+| Route | Authority | Behavior |
 | --- | --- | --- |
-| `POST /api/accounts/register` | Public client | Create account and session |
-| `POST /api/accounts/login` | Public client | Create account session |
-| `GET /api/accounts/session` | Authenticated player | Validate current session |
-| `GET /api/accounts/me` | Authenticated player | Read current account |
-| `POST /api/accounts/logout` | Authenticated player | Revoke current session |
-| `DELETE /api/accounts/sessions/{sessionId}` | Authenticated player | Revoke an owned session |
-| `GET /api/characters` | Authenticated player | List owned characters |
-| `POST /api/characters` | Authenticated player | Create character |
-| `GET /api/worlds` | Public client | List worlds and online state |
-| `POST /api/worlds/{worldId}/join` | Authenticated player | Create join ticket |
-| `POST /api/worlds/{worldId}/heartbeat` | Authenticated WorldServer | Refresh registry entry |
-| `POST /api/worlds/{worldId}/offline` | Authenticated WorldServer | Unregister exact process instance |
-| `POST /api/world-join-tickets/consume` | Authenticated WorldServer | Consume ticket and claim lease |
-| `POST /api/world-sessions/{id}/heartbeat` | Authenticated WorldServer | Extend exact lease generation |
-| `POST /api/world-sessions/{id}/release` | Authenticated WorldServer | Release exact lease generation |
-| `GET /health/live` | Operator | Check process liveness |
-| `GET /health/ready` | Operator | Check mandatory dependencies |
+| `POST /api/accounts/register` | Public, rate limited | Create account and login session |
+| `POST /api/accounts/login` | Public, rate limited | Replace the active login session |
+| `GET /api/accounts/me` | Account session | Return account profile |
+| `GET /api/accounts/session` | Account session | Validate the current session |
+| `POST /api/accounts/logout` | Account session | Revoke current session and dependent access |
+| `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
+| `GET /api/characters` | Account session | List owned characters |
+| `POST /api/characters` | Account session | Create a character |
+| `GET /api/shards` | Public | List logical shards, status, players, and capacity |
+| `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
+| `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew exact worker runtime |
+| `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release exact worker runtime authority |
+| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
+| `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
+| `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
+| `GET /health/live` | Public | Report process liveness |
+| `GET /health/ready` | Public | Verify obligatory dependencies |
 
-WorldServer has no HTTP routes and no debug join surface.
+The public shard list never exposes a SimulationWorker host, port, or runtime id.
+That endpoint appears only in a successful short-lived placement response.
 
-## Characters
+## Accounts And Authentication
 
-Status: Implemented
+- Email and username are normalized and unique.
+- Passwords use ASP.NET Core `PasswordHasher`.
+- Account tokens are opaque and only their SHA-256 hashes are stored.
+- PostgreSQL enforces one unrevoked account session per account.
+- A successful login locks the account, revokes the older session with
+  `account_session_replaced`, consumes its pending tickets, releases its active
+  simulation sessions, and creates the replacement session transactionally.
+- Logout and manual revoke use explicit revocation reasons and dependent cleanup.
+- The Unity client periodically validates its account token and handles
+  replacement as a controlled disconnect.
 
-- Create and list characters owned by the authenticated account.
-- Maximum of five characters per account.
-- Globally unique names between 3 and 24 characters.
-- Names support letters, numbers, spaces, hyphens, and underscores.
+Login and registration use independent fixed-window limits keyed by remote IP.
+Rejected requests return HTTP 429 with structured Problem Details and
+`Retry-After`.
 
-Character deletion and restoration are not implemented.
+## Character Access
 
-## World Registry
+- Character names are validated and normalized.
+- Character ownership is checked on every protected operation.
+- The configured maximum character count is enforced transactionally.
+- Soft-deleted characters are excluded from active queries.
+- Simulation placement locks both account and character rows.
 
-Status: Implemented
+PostgreSQL permits only one active simulation session per character and one per
+account. A copied account token therefore cannot run two different characters
+at the same time.
 
-- Public world listing with host, UDP port, ruleset, and heartbeat metadata.
-- Service-authenticated WorldServer heartbeat.
-- Registration begins only after the UDP transport has bound successfully.
-- Each heartbeat publishes the advertised host and UDP port, process instance
-  id, protocol version, simulation revision, and collision revision.
-- Database-generated heartbeat timestamps.
-- Timeout-derived online status.
-- Seeded and stale worlds remain offline until a fresh heartbeat exists.
-- Default 10-second heartbeat interval and 30-second online timeout.
-- Graceful shutdown marks the matching instance offline immediately. Instance
-  matching prevents an older process from unregistering its replacement.
+## Topology Bootstrap
 
-## World Join Tickets
+`AuthService/Config/appsettings.json` owns the checked-in topology bootstrap:
 
-Status: Implemented
+- World definitions.
+- Fleets with display names and region codes.
+- Nodes assigned to fleets.
+- Shards assigned to a World and Fleet with a rule set.
 
-- Authenticated players request a short-lived ticket for an owned character.
-- Ticket creation locks the character and invalidates older unconsumed tickets.
-- Only one active unconsumed ticket can exist per character.
-- WorldServer consumes tickets through a service-authenticated endpoint.
-- Wrong-world consumption is rejected without consuming the ticket.
-- Ticket consumption and world-session claim share one PostgreSQL transaction.
-- Current ticket lifetime is 30 seconds.
+Startup validation rejects empty collections, invalid identifiers, duplicates,
+unknown references, invalid display names, and invalid region codes. After
+migrations, `SimulationTopologySeeder` idempotently upserts configured records.
+It does not manufacture online workers. A seeded shard remains offline until a
+valid heartbeat and active assignment exist.
 
-## Character World Sessions
+## Worker Registration And Assignment
 
-Status: Implemented
+Each SimulationWorker has:
 
-- One active world-session lease per character across every world.
-- Same-world reconnect preserves the world-session id and rotates the secret
-  session token.
-- WorldServer heartbeat extends the lease from the database clock.
-- Explicit release is idempotent.
-- Expired leases can be replaced.
-- Exact world-session identity and token generation protect newer reconnects
-  from delayed leave or disconnect work.
-- Account-session revocation releases related leases.
-- A replaced account session fails world heartbeat with
-  `account_session_replaced`; WorldServer forwards that reason to the displaced
-  UDP client before disconnecting it.
-- WorldServer disconnects a local peer with `session_expired` when its cached
-  database lease reaches its expiry before a successful renewal.
+- A stable `SimulationWorkerId`.
+- A generated `RuntimeId` for the current process generation.
+- Fleet, Node, Shard, and World configuration.
+- An advertised UDP endpoint.
+- Maximum and active connection counts.
+- Protocol, simulation, and collision revisions.
+- A process start timestamp.
 
-PostgreSQL constraints, transactions, character locks, and advisory migration
-locks enforce consistency.
+AuthService validates identifiers, topology consistency, endpoint metadata,
+capacity, revisions, and service identity. The heartbeat transaction locks the
+target shard and applies these rules:
+
+- A different healthy assigned worker causes `shard_assignment_conflict`.
+- A timed-out or explicitly offline owner can be replaced.
+- Replacement invalidates old-runtime tickets and simulation sessions even when
+  the logical worker moves to another shard.
+- A newer runtime can replace an older runtime for the same worker id.
+- The older runtime is fenced by `worker_runtime_changed`.
+- A stale process cannot mark a newer runtime offline.
+- Active assignment indexes prevent two worker or shard owners.
+
+SimulationWorker stores the database-issued lease duration locally. It rejects
+new UDP joins without a valid registration lease. A one-second monitor stops the
+process after lease expiry. Definitive topology, assignment, runtime, or service
+credential rejection also stops the process.
+
+## Shard Discovery And Placement
+
+`GET /api/shards` derives status from fresh, online, actively assigned workers.
+It aggregates active players and maximum capacity. A shard is online only when
+at least one assigned worker is fresh and has free capacity. The current unique
+assignment constraint means that aggregate contains at most one worker.
+
+Join placement:
+
+1. Validates account session and character ownership.
+2. Locks the account and character.
+3. Releases expired account simulation sessions.
+4. Rejects another active character or cross-shard active session.
+5. Selects the assigned worker only when its heartbeat is fresh and it has room.
+   Capacity uses the greater of worker-reported connections and authoritative
+   unexpired simulation sessions, then adds pending tickets in PostgreSQL.
+6. Invalidates older pending tickets for the account.
+7. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
+   account session.
+8. Computes expiry after placement locks are acquired.
+9. Returns the shard and exact endpoint metadata.
+
+Selection serializes reservations on the target shard, then locks the selected
+worker. A waiting request recalculates session and ticket usage from a fresh
+database snapshot before reserving capacity. Different shards remain parallel.
+
+## Join Tickets And Simulation Sessions
+
+Join tickets are short lived, one use, and stored only as hashes. A worker must
+present the ticket together with its own worker id, runtime id, and shard id.
+
+Consumption locks the account and character, validates account session status,
+checks exact placement binding, and creates or rotates the simulation-session
+token in one transaction.
+
+Simulation session properties:
+
+- Global account and character uniqueness.
+- Exact shard, worker, and worker runtime ownership.
+- Opaque token with only a stored hash.
+- Database-generated expiry.
+- Periodic worker heartbeat.
+- Idempotent exact-generation release.
+- Reconnect token rotation.
+- Safe stale-token rejection after reconnect.
+
+The worker also enforces cached lease expiry locally so an AuthService outage
+cannot leave a connected player active forever.
 
 ## Realtime UDP Transport
 
-Status: Session and authoritative movement foundation implemented
+SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 
-- WorldServer runs as a headless .NET Generic Host console application.
-- LiteNetLib 2.1.4 provides reliable UDP connection management.
-- Default UDP port is `27015`.
-- Maximum peer count, join timeout, and network poll interval are validated at
-  startup.
-- A connection key rejects unrelated traffic before application admission.
-- Join tickets are sent through a bounded versioned binary protocol.
-- Join authentication runs asynchronously so the UDP poll loop is not blocked
-  by AuthService requests.
-- Every peer must complete one join handshake before its timeout.
-- Accepted peers are bound one-to-one to an exact server-owned network entity.
-- Same-character reconnect disconnects the older peer.
-- Normal leave, unexpected disconnect, revoked lease, and process shutdown all
-  converge on exact-session cleanup.
-- Structured join, leave, and server-disconnect errors are returned to Unity.
-- Movement input is isolated from control traffic on a sequenced channel.
+- Connection key validation happens before application messages.
+- New peers must send one reliable ordered join request before the handshake
+  timeout.
+- Join ticket consumption is asynchronous and does not block the UDP poll loop.
+- Control messages use reliable ordered delivery.
+- Movement input uses sequenced delivery.
+- Simulation snapshots use unreliable delivery.
+- Packet magic, version, type, bounds, lengths, and finite numeric values are
+  validated.
+- Protocol violations receive a stable error where possible and are then
+  disconnected.
+
+Protocol version 6 carries both Shard and World identity. A standalone client
+must be rebuilt when the protocol version changes.
+
+## Entity Registry And Replication
+
+- `SimulationEntityRegistry` owns nonzero network entity ids.
+- Persistent character id and transient network entity id are separate.
+- `ConnectionEntityBindingRegistry` enforces one peer per entity and one entity
+  per peer.
+- Same-character reconnect preserves the entity and movement state while
+  replacing the peer binding.
 - Entity spawn and despawn use reliable ordered control messages.
-- World snapshots use unchanneled unreliable delivery with bounded packet size
-  and application-level tick and chunk metadata.
-- Per-peer token buckets bound inbound packet rate, inbound byte rate, and
-  unreliable snapshot byte output. Reliable lifecycle control is not delayed by
-  snapshot pressure.
-- Active-session heartbeat and shutdown release calls use validated bounded
-  concurrency instead of serial work or unbounded fan-out.
+- Unity receives a reliable baseline before relying on snapshots.
+- Remote presentation lives under a separate Unity presentation root.
 
-Protocol version 5 reserves reliable ordered channel 0 for control, sequenced
-channel 1 for player input, and LiteNetLib's unchanneled `Unreliable` delivery
-for world snapshots. Unreliable receive callbacks report channel 0, so snapshot
-validation relies on the protocol message type and delivery method.
+## Interest Management
 
-## World Entity Lifecycle
+`SimulationInterestManager` rebuilds a spatial hash from authoritative entity
+positions. Each peer has a visibility set:
 
-Status: Player entity foundation implemented
+- Enter radius adds entities.
+- A larger exit radius prevents boundary flapping.
+- Visibility changes emit reliable spawn or despawn.
+- Snapshots contain only visible entity ids.
+- Cell size and radii are worker-owned config values.
 
-- `WorldEntityRegistry` is the WorldServer authority for live player entities.
-- Every new entity receives a nonzero monotonically increasing `ulong` network
-  id. Ids are process-local, are never derived from database ids, and are not
-  reused while the WorldServer process remains alive.
-- Persistent character ids remain metadata. Movement input and snapshots use
-  the network entity id after admission.
-- `ConnectionEntityBindingRegistry` enforces a one-to-one relationship between
-  a LiteNetLib peer id and its controlled entity id.
-- A same-world-session reconnect keeps the entity id and movement object while
-  replacing only the controlling connection and refreshed secret generation.
-- A different session for the same character removes the old entity before the
-  replacement receives a new network id.
-- Join acceptance identifies the controlled entity. The joining peer then
-  receives a reliable ordered baseline of its current visible entity set.
-- A spatial hash evaluates visibility from authoritative XZ positions. New
-  visibility uses the configured enter radius, while existing visibility uses a
-  larger exit radius to prevent boundary churn.
-- Reliable ordered spawn and despawn messages update each peer when an entity
-  enters or leaves its interest set, or when the exact entity leaves,
-  disconnects, expires, or is replaced.
-- Unreliable snapshots contain only connected entity ids in that peer's current
-  interest set. They do not create entities and cannot keep a despawned entity
-  alive.
-- The current registry owns player entities only. The network id and lifecycle
-  boundary are designed to add NPCs, projectiles, and dynamic world objects
-  without using character database ids as transport identity.
+This is process-local interest management for one complete shard. Cross-worker
+zone interest is deferred until zones exist.
 
 ## Server-Authoritative Movement
 
-Status: Fixed-tick movement and authored collision implemented
+- Clients send input sequences, camera yaw, and action buttons, never accepted
+  positions.
+- SimulationWorker runs the shared movement code at a fixed 30 Hz by default.
+- It accepts only newer input sequences and neutralizes stale input.
+- Aiming blocks sprint and jump.
+- New planar control is ignored while airborne.
+- Collision, slopes, steps, ground support, and bounds are server-owned.
+- Snapshots are sent at 15 Hz by default with input acknowledgement.
+- Unity predicts with the same source and reconciles to authoritative snapshots.
 
-- WorldServer owns the live movement state for every joined character.
-- The simulation runs at a validated fixed 30 Hz by default and limits catch-up
-  work to five ticks per poll cycle.
-- World snapshots are emitted at a validated 15 Hz by default.
-- Each input command carries an unsigned sequence, client tick, normalized move
-  vector, camera yaw, and bounded button flags.
-- Aim is an authoritative movement state modifier. It cancels sprint and causes
-  WorldServer to ignore sprint and jump flags until Aim is released.
-- Airborne simulation preserves authoritative horizontal velocity and facing
-  while ignoring planar movement and camera-yaw input until grounded.
-- Clients send up to four current unacknowledged inputs per batch. WorldServer
-  ignores duplicate and older sequences and preserves a jump edge until the next
-  simulation tick.
-- The default 500 ms input-silence timeout neutralizes stale movement, sprint,
-  aim, and jump state until a newer sequence arrives.
-- Each snapshot entity record includes the authoritative movement state and the
-  newest processed input sequence required for reconciliation.
-- Snapshot chunks contain at most 20 entities and remain below the protocol's
-  1200-byte packet limit.
-- Same-character reconnect preserves the current in-memory movement state while
-  the older peer is replaced.
-- Tick rate, snapshot rate, speeds, rotation, gravity, terminal fall speed,
-  jump, bounds, spawn, capsule dimensions, slope limit, step height, ground
-  snap, movement substep, and penetration iteration budget are fail-fast
-  configuration values.
-- WorldServer accepts client input commands only. It never accepts a client
-  position as authority.
-- The server simulates a vertical capsule against the composite static and
-  dynamic collision world. Movement is subdivided to prevent normal sprint and
-  fall speeds from tunneling through thin authored objects.
-- Walkable rotated ramps, configured steps, walls, cover, ground, ceilings, and
-  map boundaries are resolved by the shared kinematic motor.
-- Walkable ramps use slope-aware capsule support heights, preventing stationary
-  characters from being pushed downhill by penetration resolution. Surfaces
-  above the configured slope limit are not accepted as ground support.
-- Authoritative snapshots correct client prediction through acknowledged-input
-  replay and reconciliation.
+## Collision Data And Streaming
 
-`GameSimulation/Runtime` is compiled unchanged into WorldServer through
-`Shared/DotNet/GameSimulation` and into Unity through a local package. It
-contains the neutral collision format, chunk codec, oriented-box queries,
-spatial indexes, and capsule motor in addition to movement integration.
+- `WorldData/Authoring` contains neutral JSON source.
+- `Tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest.
+- Each chunk has a SHA-256 checksum.
+- The manifest has a deterministic complete collision revision.
+- SimulationWorker validates format, World id, checksums, coordinates, and
+  revision before binding UDP.
+- Unity validates and loads the same data before prediction.
+- Static shapes are assigned to every intersected chunk and deduplicated by
+  stable id during queries.
+- Position-driven load and larger unload radii provide streaming hysteresis.
+- A composite collision world combines static chunks and mutable dynamic shapes.
 
-## World Collision Data
+The current test World uses oriented boxes for ground, boundaries, a camera
+wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
+are not implemented.
 
-Status: Static test-map pipeline and dynamic registry foundation implemented
+## UDP Resilience And Quotas
 
-- `WorldData` stores neutral authoring JSON, a versioned manifest, and binary
-  chunks shared with Unity builds.
-- `Tools/WorldCollisionCompiler` bakes and verifies the data outside Unity.
-- The current `local-world-1` revision contains 12 authored BoxColliders in four
-  32-meter chunks.
-- Every chunk has a SHA-256 checksum. The manifest revision is derived from the
-  world id, format, chunk size, chunk coordinates, and checksums.
-- WorldServer validates the manifest, file presence, and checksums before
-  starting realtime transport. It decodes only chunks inside the configured
-  load radius around spawn and live entities.
-- Join acceptance includes the collision revision. A client with different map
-  data cannot enable prediction for that session.
-- Static objects are queried only from intersected chunks and deduplicated by
-  stable id.
-- Static chunks are loaded through a shared coordinate planner and unloaded only
-  after leaving a larger retention radius.
-- `DynamicCollisionWorld` supports thread-safe upsert and removal through a
-  spatial hash. It is registered in the server's composite collision world for
-  future doors, lifts, platforms, and server-owned kinematic objects.
-- The current binary format supports oriented boxes. Terrain and cave triangle
-  meshes require a later format extension behind the existing query interface.
+Per-peer token buckets enforce configured packet and byte rates with burst
+allowance. Sustained inbound abuse is rejected. Excess unreliable snapshot
+output may be dropped without delaying reliable lifecycle messages.
 
-## Operational Diagnostics
+Session heartbeats use bounded concurrency so one worker cannot create an
+unbounded AuthService request fan-out. HTTP calls map timeout, connection,
+invalid-response, authentication, and domain failures to structured results.
 
-Status: Implemented
+## Metrics And Logs
 
-- AuthService logs credential validation without recording login input,
-  passwords, email addresses, bearer tokens, or session-token values.
-- Successful registration, login, logout, and session revocation logs contain
-  stable account and public session identifiers.
-- WorldServer logs UDP admission, authenticated account and character joins,
-  graceful leaves, disconnects, protocol rejections, and cleanup failures.
-- WorldServer emits periodic structured realtime totals for active peers and
-  entities, packets, bytes, quota rejects, snapshot drops, lifecycle packets,
-  joins, and snapshot entity records. The meter does not use per-player labels.
-- Domain events use `[AUTH]` and `[WORLDSERVER]` prefixes so local service
-  consoles can be filtered independently from framework logs.
-- Join-ticket values, service credentials, and secret world-session tokens are
-  never logged.
+The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
 
-## Shared Realtime Protocol
+- Active peers and entities.
+- Sent and received packets and bytes.
+- Quota rejections and dropped snapshots.
+- Accepted and rejected joins.
+- Spawn and despawn packet counts.
+- Snapshot entity record counts.
 
-Status: Implemented
+Periodic structured logs expose the same totals. Metrics deliberately avoid
+account, character, session, entity, and peer identifiers as labels.
 
-The local `com.shootermmo.game-protocol` Unity package and the
-`Shared/DotNet/GameProtocol` build project compile the same source contract.
-Packet decoding validates:
+Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
+`[SIMULATION]` in the Unity console.
 
-- Magic value and protocol version.
-- Known message type.
-- Maximum packet size of 1200 bytes.
-- Bounded UTF-8 strings.
-- Complete payloads with no trailing data.
-- Finite normalized movement input and known movement flags.
-- Valid snapshot chunk metadata and finite player state.
-- Nonzero network entity ids and valid reliable spawn or despawn payloads.
-- The accepted join includes an explicit movement-simulation revision so an
-  incompatible client fails before prediction starts.
+## HTTP Security And Error Handling
 
-Keeping Unity package contents separate from .NET `bin` and `obj` output avoids
-duplicate Unity assembly imports.
-
-## API Security And Error Handling
-
-Status: Implemented
-
-- Separate ASP.NET schemes and policies for account sessions and WorldServer
-  identities.
-- World identity binding on service operations.
-- Central RFC Problem Details responses.
-- Stable application error codes.
-- `X-Correlation-ID` propagation.
-- Explicit WorldServer mapping for AuthService timeout, network, invalid JSON,
-  invalid payload, and service-authentication failures.
+- Account routes use the `AccountSession` authentication handler and policy.
+- Worker routes use the `SimulationWorker` handler and policy.
+- Worker credentials use `X-Simulation-Worker-ID` and
+  `X-Simulation-Worker-Secret`.
+- Secrets are compared in fixed time.
+- Central middleware converts unhandled failures into RFC Problem Details.
+- Responses carry `X-Correlation-ID`.
+- Token-bearing responses use `Cache-Control: no-store` and `Pragma: no-cache`.
+- No debug HTTP endpoint is registered in the current service surface.
 
 ## Health And Configuration
 
-Status: Implemented
+AuthService liveness confirms the process loop. Readiness runs PostgreSQL
+`select 1` and Redis `PING` within configured timeouts and returns HTTP 503 if an
+obligatory dependency fails.
 
-- AuthService exposes separate `/health/live` and `/health/ready` routes.
-- AuthService readiness performs PostgreSQL `select 1` and Redis `PING`.
-- AuthService readiness returns HTTP 503 when a dependency is unavailable.
-- WorldServer `--health-check-only` checks Redis, AuthService readiness, and UDP
-  port availability without starting the long-running host.
-- WorldServer loads and validates the configured collision manifest and chunks
-  before either normal startup or the health-only path can continue.
-- The WorldServer health command exits with code 0 on success and 1 on failure.
-- Application-owned configuration fails fast at startup.
-- Checked-in AuthService settings live under `AuthService/Config` and checked-in
-  WorldServer settings live under `WorldServer/Config`.
-- Optional root `.env` loading supports local development.
-- Compose exposes PostgreSQL and Redis only on `127.0.0.1`.
+SimulationWorker `--health-check-only` checks AuthService readiness, Redis, and
+UDP port availability and exits 0 only when all checks pass.
+
+All application settings fail fast. Checked-in non-secret defaults live in each
+service's `Config` folder. The ignored root `.env` contains local credentials
+and overrides. Environment variables and command-line options have higher
+precedence.
 
 ## Persistence And Migrations
 
-Status: Implemented
+Migrations run under a PostgreSQL advisory transaction lock. Each migration id
+is inserted only after its SQL succeeds. The topology migration preserves older
+data while separating World content from Shard and SimulationWorker runtime
+metadata. A later migration enforces one active simulation session per account.
+Previously shipped migration ids and their source-schema references retain their
+historical names because changing an applied migration would break upgrade
+compatibility. The resulting current schema uses only the canonical topology
+names listed above.
 
-AuthService owns ordered migrations for accounts, account sessions, characters,
-worlds, join tickets, character world sessions, and migration metadata. Startup
-migration execution is configurable and protected against concurrent service
-startup. The advisory lock is acquired before the migration metadata table is
-created, so two completely fresh service instances cannot race during database
-bootstrap.
+Integration tests reset only a database whose name contains `test`. Never point
+the test connection variable at development or production data.
 
 ## Quality Coverage
 
-Status: Implemented
-
-- Unit tests cover validation, configuration, authentication handlers, API
-  resilience, protocol encoding, malformed packet rejection, and session stores.
-- Socket-level tests start the real LiteNetLib WorldServer transport and prove
-  join, authoritative movement snapshot acknowledgement, leave, and reliable
-  spawn and despawn delivery between two peers against controlled AuthService
-  responses.
-- Isolated PostgreSQL integration tests cover migration concurrency, auth and
-  character flow, ticket concurrency, wrong-world protection, reconnect,
-  heartbeat, cross-world exclusion, revocation, and idempotent release.
-- Unity tests cover client state, input, authored assets, and runtime bootstrap.
-- Collision tests cover deterministic baking, binary round trips, static and
-  dynamic spatial queries, wall blocking, ramp traversal, and configured steps.
-- Resilience tests cover bounded concurrency, token-bucket refill behavior,
-  AOI hysteresis, metrics, and collision chunk planning.
-- A deterministic network pipeline load test exercises 25,000 entities and
-  1,000 observers through spatial interest selection and snapshot encoding.
-- CI runs backend gates on GitHub-hosted runners and can run Unity EditMode and
-  PlayMode gates on a licensed Windows self-hosted runner.
+- Configuration validation tests.
+- Authentication, token, and session replacement tests.
+- Protocol codec and invalid-packet tests.
+- Entity lifecycle, interest, quota, metrics, and movement tests.
+- Runtime heartbeat and exact-runtime fencing tests.
+- Isolated PostgreSQL tests for migrations, placement, reconnect, global
+  session constraints, worker failover, and transactional races.
+- Unity EditMode tests for contracts, state, input, movement, and authored assets.
+- Unity PlayMode bootstrap smoke tests.
+- Socket-level realtime and load-test coverage.
 
 ## Not Yet Implemented
 
-- Triangle-mesh collision chunks for terrain, caves, and complex rock meshes.
-- Replication of dynamic collision transforms to client prediction.
-- General rigid-body simulation for physics-driven world objects.
-- Durable WorldServer simulation state.
-- Redis-backed domain state.
-- Character deletion.
-- Production deployment, metric export, dashboards, and alerting.
-
-See [Local Development](LOCAL_DEVELOPMENT.md) for commands and manual tests.
+- Zones, cross-zone handoff, or layers.
+- Multiple workers cooperating on one shard.
+- Production scheduler or fleet autoscaler.
+- Metric exporter, dashboards, and alerting.
+- Persistent NPC or combat simulation.
+- General terrain mesh and rigid-body collision.

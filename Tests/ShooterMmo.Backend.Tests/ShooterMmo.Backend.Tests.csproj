@@ -26,7 +26,7 @@
     <ProjectReference Include="..\..\Shared\DotNet\GameProtocol\ShooterMmo.GameProtocol.csproj" />
     <ProjectReference Include="..\..\Shared\DotNet\GameSimulation\ShooterMmo.GameSimulation.csproj" />
     <ProjectReference Include="..\..\Shared\ShooterMmo.Shared.csproj" />
-    <ProjectReference Include="..\..\WorldServer\WorldServer.csproj" />
+    <ProjectReference Include="..\..\SimulationWorker\SimulationWorker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Purpose
 
@@ -30,7 +30,7 @@ generation code.
 ShooterMmoClientBootstrap
   +-- ShooterMmoClientSession
   +-- ShooterMmoApiClient
-  +-- RealtimeWorldClient
+  +-- RealtimeSimulationClient
   +-- ShooterMmoClientConfig
   +-- scene lifecycle recovery
 
@@ -70,13 +70,13 @@ Realtime movement
 ## Persistent Client Bootstrap
 
 `ShooterMmoClientBootstrap` creates the persistent runtime root and survives scene
-changes. It initializes configuration, owns one `RealtimeWorldClient`, observes
+changes. It initializes configuration, owns one `RealtimeSimulationClient`, observes
 scene transitions, and performs fallback leave when an active WorldScene is left
 outside the normal panel flow.
 
-The fallback release is bound to the exact world-session identity. Completion of
+The fallback release is bound to the exact simulation-session identity. Completion of
 an older request cannot clear a newer local reconnect state. If graceful leave
-fails after the scene already changed, the client closes UDP so WorldServer can
+fails after the scene already changed, the client closes UDP so SimulationWorker can
 run disconnect cleanup.
 
 ## Configuration
@@ -90,7 +90,8 @@ in `Assets/Scripts/Config`. It currently contains:
 - Realtime operation timeout in seconds.
 - Account-session validation interval in seconds.
 
-WorldServer host and UDP port come from AuthService world discovery. They are not
+SimulationWorker host, runtime, and UDP port come from AuthService's short-lived
+shard placement response. They are not part of the public shard list and are not
 duplicated in client configuration. Different environments should use
 build-specific configuration assets or a future build configuration pipeline.
 
@@ -100,10 +101,10 @@ build-specific configuration assets or a future build configuration pipeline.
 
 - AuthService endpoint.
 - Account and bearer session details.
-- Selected character and world.
-- Active world-session id and lease metadata.
+- Selected character and shard.
+- Active simulation-session, shard, World, worker, and worker-runtime metadata.
 
-This state is a client cache, not an authority. AuthService and WorldServer remain
+This state is a client cache, not an authority. AuthService and SimulationWorker remain
 authoritative. The persistent bootstrap validates an authenticated account
 session every five seconds, including outside WorldScene. HTTP 401 clears all
 local session state before loading LoginMenu.
@@ -130,7 +131,7 @@ diagnostics. It assigns one stable category prefix to each entry:
 
 - `[AUTH]` for account authentication, session logout, and join-ticket issuance.
 - `[CLIENT]` for local API flow, transport state, and recovery actions.
-- `[WORLDSERVER]` for accepted world joins, accepted leaves, and server
+- `[SIMULATION]` for accepted simulation joins, accepted leaves, and server
   rejections.
 
 Information entries confirm expected state transitions. Failed operations use
@@ -138,13 +139,14 @@ Unity error entries, while recovery details that follow an already reported
 failure use warnings. Line breaks are normalized before output so remote error
 messages cannot create misleading log entries.
 
-Passwords, bearer tokens, join-ticket values, service secrets, and secret world
-session tokens must never be passed to `ClientLog`. Stable account, character,
-world, and public world-session identifiers may be logged for local diagnosis.
+Passwords, bearer tokens, join-ticket values, service secrets, and secret
+simulation-session tokens must never be passed to `ClientLog`. Stable account,
+character, shard, World, worker, runtime, and public simulation-session
+identifiers may be logged for local diagnosis.
 
 ## Realtime Networking Layer
 
-`RealtimeWorldClient` is a persistent MonoBehaviour owned by the bootstrap. It
+`RealtimeSimulationClient` is a persistent MonoBehaviour owned by the bootstrap. It
 wraps one LiteNetLib `NetManager` and polls network events on Unity's main thread.
 It owns an explicit connection state:
 
@@ -153,29 +155,32 @@ Disconnected -> Connecting -> Joining -> Joined -> Leaving -> Disconnected
 ```
 
 Join and leave are coroutine operations with configured deadlines, structured
-errors, and one completion path. A join connects to the selected world's
-registry-provided host and UDP port, then sends the short-lived join ticket in a
-versioned reliable ordered packet. Only accepted non-secret session metadata is
-copied into `ShooterMmoClientSession`.
+errors, and one completion path. A join consumes the complete `JoinShardResponse`,
+checks ticket expiry, protocol version, simulation revision, shard identity,
+World identity, and exact worker runtime placement, then connects to the provided
+UDP endpoint. It sends the short-lived join ticket in a versioned reliable
+ordered packet. Join acceptance must match the placed character, shard, World,
+simulation revision, and collision revision before non-secret metadata is copied
+into `ShooterMmoClientSession`.
 
-Unexpected disconnect clears the active world view and returns an authenticated
+Unexpected disconnect clears the active shard view and returns an authenticated
 player to CharacterSelect. Join rejection stays in CharacterSelect and displays
 the structured server code. Protocol decoding rejects wrong versions, invalid
 types, oversized values, and trailing data.
 
-If another client logs into the same account, WorldServer can send
+If another client logs into the same account, SimulationWorker can send
 `account_session_replaced` over the reliable control path. The client aborts its
 transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
-the displaced client is not connected to a world.
+the displaced client is not connected to a shard.
 
-Protocol version 5 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 6 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
   spawn, and entity despawn control messages.
 - Channel 1 uses sequenced delivery for redundant movement input batches.
-- World snapshot chunks use LiteNetLib's unchanneled `Unreliable` delivery.
+- Simulation snapshot chunks use LiteNetLib's unchanneled `Unreliable` delivery.
   LiteNetLib reports these packets with receive channel 0. Server tick, snapshot
   sequence, message type, and chunk metadata provide application-level ordering
   without confusing snapshots with reliable control messages.
@@ -184,8 +189,8 @@ snapshot delivery:
   state. They are not protocol failures because LiteNetLib delivery methods do
   not provide ordering relative to each other.
 
-Every accepted world session identifies the local player's server-assigned
-nonzero network entity id. `RealtimeWorldClient` owns an in-memory registry of
+Every accepted simulation session identifies the local player's server-assigned
+nonzero network entity id. `RealtimeSimulationClient` owns an in-memory registry of
 the reliable spawn baseline and subsequent spawn or despawn changes. The
 registry survives the CharacterSelect to WorldScene transition, so entities
 that spawned before scene loading are still presented. Conflicting reuse of an
@@ -226,8 +231,9 @@ loads CharacterSelect after successful authentication.
 
 ### CharacterSelect
 
-`CharacterSelectPanel` loads characters and worlds sequentially. It supports
-character creation, selection, refresh, logout, and world join. Join ticket
+`CharacterSelectPanel` loads characters and shards sequentially. Each shard row
+shows its region, fleet, status, active players, and capacity. The panel supports
+character creation, selection, refresh, logout, and simulation join. Join ticket
 creation and the UDP handshake run inside one coroutine so the operation cannot
 be partially overlapped by another click.
 
@@ -235,10 +241,10 @@ be partially overlapped by another click.
 
 `WorldScenePanel` displays compact active-session diagnostics in the bottom-left
 corner. F2 toggles its visibility through the Player Input Actions asset. Its
-Leave World action waits for an exact-session UDP leave acknowledgement before
+Leave Shard action waits for an exact-session UDP leave acknowledgement before
 loading CharacterSelect. It displays connection state and the active UDP
-endpoint instead of relying on a WorldServer debug HTTP route. When movement is
-active it also displays WorldServer authority, the latest server tick, and the
+endpoint instead of relying on a SimulationWorker debug HTTP route. When movement is
+active it also displays SimulationWorker authority, the latest server tick, and the
 simulation and snapshot rates.
 
 ## Operation Serialization
@@ -252,7 +258,7 @@ join, leave, or authentication requests.
 
 `ClientSessionRecovery` centralizes HTTP 401 handling:
 
-1. Clear account, selection, and active world-session state.
+1. Clear account, selection, and active simulation-session state.
 2. Load LoginMenu.
 3. Stop the failed panel flow from continuing with stale data.
 
@@ -300,11 +306,11 @@ height. Its `GroundedVerticalPresentation` applies a bounded 100 ms blend to
 small height changes on flat walkable support, covering steps and short grounded
 drops. Ramps, jumps, airborne movement, teleports, and large corrections bypass
 this extra blend. Presentation never feeds back into prediction, reconciliation,
-input packets, or WorldServer state.
+input packets, or SimulationWorker state.
 
 `LocalPlayerController` has two explicit execution paths. Direct scene preview
 uses the existing CharacterController path for local map and camera testing. An
-authenticated world session uses `ClientMovementPrediction` and the exact shared
+authenticated simulation session uses `ClientMovementPrediction` and the exact shared
 fixed-step capsule simulation and baked collision world. Normal movement faces
 its travel direction. Aim faces the camera heading so left and right movement
 become shooter-style strafing. Sprint is a grounded state transition: it may
@@ -331,14 +337,14 @@ the shared simulation. The shared simulation source is installed as
 `com.shootermmo.world-data` package. `UnityWorldCollisionStream` then loads and
 checksum-validates chunks around the initial player, local prediction, and
 visible remote entities. It retains a larger chunk ring before unloading, which
-prevents boundary churn. The join response carries WorldServer's collision
+prevents boundary churn. The join response carries SimulationWorker's collision
 revision, and `NetworkMovementSession` does not start when the local revision
 differs. A missing, corrupt, or coordinate-mismatched streamed chunk closes the
 active session through the normal structured client failure path.
 
 `ClientMovementPrediction`, reconciliation, grounded presentation, and remote
 presentation all query the same mutable `ChunkedStaticCollisionWorld`. Loading
-changes which authored chunks are resident but never changes WorldServer
+changes which authored chunks are resident but never changes SimulationWorker
 authority or feeds presentation positions back into prediction.
 
 `WorldCollisionAuthoring` defines the world id, chunk size, collision root, and
@@ -407,7 +413,7 @@ Manual flows and expected results are documented in
 
 - Keep HTTP serialization and failure mapping inside the API layer.
 - Keep realtime transport state and packet handling inside
-  `RealtimeWorldClient`, not scene panels.
+  `RealtimeSimulationClient`, not scene panels.
 - Keep deterministic movement rules in `GameSimulation`, not in transport or
   presentation components.
 - Keep authored collision in `WorldData`; never duplicate scene geometry as

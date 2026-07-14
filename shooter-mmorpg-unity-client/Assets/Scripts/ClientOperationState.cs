@@ -8,10 +8,10 @@ namespace ShooterMmo
         LoadSelection,
         CreateCharacter,
         RefreshCharacters,
-        RefreshWorlds,
-        JoinWorld,
-        RefreshWorldSession,
-        LeaveWorld
+        RefreshShards,
+        JoinShard,
+        RefreshSimulationSession,
+        LeaveShard
     }
 
     public sealed class ClientOperationState

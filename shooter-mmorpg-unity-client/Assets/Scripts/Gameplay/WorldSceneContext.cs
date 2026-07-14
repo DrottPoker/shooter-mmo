@@ -17,7 +17,7 @@ namespace ShooterMmo.Gameplay
 
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
-        private RealtimeWorldClient worldClient;
+        private RealtimeSimulationClient simulationClient;
 
         private void Start()
         {
@@ -27,12 +27,12 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            if (ShooterMmoClientSession.ActiveWorldSession != null)
+            if (ShooterMmoClientSession.ActiveSimulationSession != null)
             {
-                worldClient = ShooterMmoClientBootstrap.WorldClient;
-                if (worldClient == null
-                    || worldClient.MovementSession == null
-                    || !localPlayer.EnableServerAuthoritativeMovement(worldClient))
+                simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+                if (simulationClient == null
+                    || simulationClient.MovementSession == null
+                    || !localPlayer.EnableServerAuthoritativeMovement(simulationClient))
                 {
                     Debug.LogError(
                         "WorldSceneContext cannot start server-authoritative movement because the realtime movement session is unavailable.",
@@ -41,10 +41,10 @@ namespace ShooterMmo.Gameplay
                     return;
                 }
 
-                worldClient.EntitySpawned += OnEntitySpawned;
-                worldClient.EntityDespawned += OnEntityDespawned;
-                worldClient.WorldSnapshotReceived += OnWorldSnapshotReceived;
-                foreach (var spawn in worldClient.SpawnedEntities)
+                simulationClient.EntitySpawned += OnEntitySpawned;
+                simulationClient.EntityDespawned += OnEntityDespawned;
+                simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+                foreach (var spawn in simulationClient.SpawnedEntities)
                 {
                     OnEntitySpawned(spawn);
                 }
@@ -59,11 +59,11 @@ namespace ShooterMmo.Gameplay
 
         private void OnDestroy()
         {
-            if (worldClient != null)
+            if (simulationClient != null)
             {
-                worldClient.EntitySpawned -= OnEntitySpawned;
-                worldClient.EntityDespawned -= OnEntityDespawned;
-                worldClient.WorldSnapshotReceived -= OnWorldSnapshotReceived;
+                simulationClient.EntitySpawned -= OnEntitySpawned;
+                simulationClient.EntityDespawned -= OnEntityDespawned;
+                simulationClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
             }
 
             remotePlayers.Clear();
@@ -76,7 +76,7 @@ namespace ShooterMmo.Gameplay
 
         private void OnEntitySpawned(RealtimeEntitySpawn spawn)
         {
-            var movementSession = worldClient != null ? worldClient.MovementSession : null;
+            var movementSession = simulationClient != null ? simulationClient.MovementSession : null;
             if (movementSession == null || spawn.EntityId == movementSession.ControlledEntityId)
             {
                 return;
@@ -105,7 +105,7 @@ namespace ShooterMmo.Gameplay
                     },
                     out var collisionError))
             {
-                worldClient.DisconnectForClientFailure(
+                simulationClient.DisconnectForClientFailure(
                     "collision_stream_failed",
                     collisionError);
                 return;
@@ -143,9 +143,9 @@ namespace ShooterMmo.Gameplay
             Destroy(remotePlayer.gameObject);
         }
 
-        private void OnWorldSnapshotReceived(RealtimeWorldSnapshot snapshot)
+        private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
         {
-            var movementSession = worldClient != null ? worldClient.MovementSession : null;
+            var movementSession = simulationClient != null ? simulationClient.MovementSession : null;
             if (movementSession == null)
             {
                 return;
@@ -160,7 +160,7 @@ namespace ShooterMmo.Gameplay
                     collisionAnchors,
                     out var collisionError))
             {
-                worldClient.DisconnectForClientFailure(
+                simulationClient.DisconnectForClientFailure(
                     "collision_stream_failed",
                     collisionError);
                 return;

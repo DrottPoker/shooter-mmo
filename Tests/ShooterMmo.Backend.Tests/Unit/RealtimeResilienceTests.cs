@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using ShooterMmo.GameSimulation;
-using WorldServer.Config;
-using WorldServer.Realtime;
-using WorldServer.Sessions;
-using WorldServer.WorldCollision;
+using SimulationWorker.Config;
+using SimulationWorker.Realtime;
+using SimulationWorker.Sessions;
+using SimulationWorker.WorldCollision;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
@@ -47,12 +47,12 @@ public sealed class RealtimeResilienceTests
     [Fact]
     public void InterestManagerUsesEnterAndExitHysteresis()
     {
-        var manager = new WorldInterestManager(
+        var manager = new SimulationInterestManager(
             new InterestManagementConfig(10f, 20f, 25f));
         manager.Rebuild([
-            new WorldInterestEntity(1, 0f, 0f),
-            new WorldInterestEntity(2, 19f, 0f),
-            new WorldInterestEntity(3, 30f, 0f)
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 19f, 0f),
+            new SimulationInterestEntity(3, 30f, 0f)
         ]);
 
         var initial = manager.Refresh(7, 1);
@@ -61,17 +61,17 @@ public sealed class RealtimeResilienceTests
         Assert.DoesNotContain((ulong)3, initial.Visible);
 
         manager.Rebuild([
-            new WorldInterestEntity(1, 0f, 0f),
-            new WorldInterestEntity(2, 24f, 0f),
-            new WorldInterestEntity(3, 21f, 0f)
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 24f, 0f),
+            new SimulationInterestEntity(3, 21f, 0f)
         ]);
         var hysteresis = manager.Refresh(7, 1);
         Assert.Contains((ulong)2, hysteresis.Visible);
         Assert.DoesNotContain((ulong)3, hysteresis.Visible);
 
         manager.Rebuild([
-            new WorldInterestEntity(1, 0f, 0f),
-            new WorldInterestEntity(2, 26f, 0f)
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 26f, 0f)
         ]);
         var exited = manager.Refresh(7, 1);
         Assert.Contains((ulong)2, exited.Exited);

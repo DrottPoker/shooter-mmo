@@ -1,109 +1,148 @@
 # Project Overview
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## What Shooter MMO Is
 
-Shooter MMO is an early classless, profession-driven open-world MMORPG with a
-modern third-person shooter direction. The project is currently establishing a
-stable account, character, world access, local service, and Unity client
-foundation before persistent gameplay systems are expanded.
+Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
+modern third-person shooter direction. The project is currently focused on a
+stable technical foundation for identity, character access, regional compute,
+server-authoritative simulation, and a Unity client before larger gameplay
+systems are added.
 
-The current playable path is intentionally small:
+The current playable flow is intentionally small:
 
-1. A player registers or logs in.
+1. A player registers or logs in through AuthService.
 2. The player creates and selects a character.
-3. The client lists available worlds and requests a short-lived join ticket.
-4. Unity connects to WorldServer over LiteNetLib UDP and sends the ticket.
-5. WorldServer validates the ticket and claims the character's world session.
-6. Unity loads WorldScene and predicts movement while WorldServer owns the
-   authoritative player state.
-7. Leaving the world releases the server session before returning to character
-   selection.
+3. The client lists logical shards and selects one.
+4. AuthService places the character on the healthy SimulationWorker assigned to
+   that shard and returns a short-lived ticket plus its UDP endpoint.
+5. Unity connects through LiteNetLib, presents the ticket, and enters WorldScene.
+6. Unity predicts local movement while SimulationWorker remains authoritative.
+7. Leaving the shard releases the exact simulation session before returning to
+   character selection.
+
+## Shared World And Global Player Data
+
+There are no realms in this architecture. Accounts, characters, progression,
+and the future economy are global services shared by all fleets and shards. A
+character is not permanently owned by an EU or US shard and can later choose a
+different region with the same durable data.
+
+The word `World` means game content and world data, such as map identity,
+collision data, terrain, and future content definitions. It does not mean a
+machine, process, region, or player-facing server.
+
+The runtime topology uses these terms:
+
+| Term | Meaning |
+| --- | --- |
+| Fleet | A regional or operational group of compute, such as EU or US |
+| Node | One machine or container host inside a fleet |
+| SimulationWorker | One headless simulation process running on a node |
+| SimulationAssignment | The authoritative mapping between a worker and a shard |
+| Shard | A player-selectable copy of the shared world simulation |
+| World | Shared content and data consumed by one or more shards |
+
+Zones and layers are reserved for future spatial partitioning and population
+scaling. They are not implemented and are not faked in the current runtime.
 
 ## Main Components
 
-- **Unity client** provides temporary menus, structured cross-scene session state,
-  API access, scene flow, local player controls, and world preview.
-- **AuthService** owns accounts, authentication sessions, characters, the world
-  registry, join tickets, and authoritative character world-session leases.
-- **WorldServer** validates joins, maintains active local simulation sessions,
-  heartbeats authoritative leases, and owns the headless realtime UDP transport.
-- **PostgreSQL** is the durable source of truth for account, character, ticket,
-  registry, and world-session data.
-- **Redis** is currently an operational dependency used by readiness checks. It
-  does not yet own gameplay or authentication state.
-- **Shared** contains framework-neutral .NET configuration and health helpers.
+- **Unity client** owns presentation, input, prediction, reconciliation, remote
+  interpolation, scene flow, and temporary UI.
+- **AuthService** owns accounts, account sessions, characters, topology,
+  SimulationWorker registration, shard discovery, placement, join tickets, and
+  global character simulation-session leases.
+- **SimulationWorker** is a headless .NET console process that owns the realtime
+  UDP transport, active entities, interest management, and authoritative
+  movement for its assigned shard.
+- **PostgreSQL** is the durable authority for identity, topology, assignments,
+  tickets, and session leases.
+- **Redis** is currently an operational readiness dependency. It does not yet
+  own gameplay or authentication state.
 - **GameProtocol** is the versioned binary contract shared by Unity and
-  WorldServer.
-- **GameSimulation** is the fixed-step movement implementation compiled from the
-  same source for WorldServer and Unity prediction.
-- **WorldData** contains the neutral collision authoring and checksummed chunks
-  consumed by WorldServer and Unity.
+  SimulationWorker.
+- **GameSimulation** is the fixed-step movement and collision implementation
+  compiled from the same source for server authority and client prediction.
+- **WorldData** contains neutral world collision authoring and checksummed
+  runtime chunks shared by SimulationWorker and Unity.
+- **Shared** contains framework-neutral configuration, networking, and health
+  helpers for backend processes.
 
-## Current State
+## Current Foundation
 
-The foundation currently supports:
+The repository currently supports:
 
-- Database-backed registration, login, logout, and single-active-account-session
-  enforcement. A later login replaces the earlier client session.
+- PostgreSQL-backed registration, login, logout, session revocation, and one
+  active client session per account.
 - Character creation and listing.
-- Readiness-gated world registration with advertised UDP endpoints,
-  compatibility metadata, timeout-based status, and graceful offline updates.
-- Secure, transactional world join tickets and single-world character leases.
-- Reconnect, heartbeat, expiry, and safe release behavior.
-- A persistent LiteNetLib UDP client and headless WorldServer join and leave
-  handshake.
-- A server-owned world entity registry with nonzero network entity ids,
-  one-to-one connection ownership, and reliable spawn and despawn lifecycle.
-- Spatial per-client interest sets, UDP traffic quotas, bounded heartbeat fan-out,
-  and structured low-cardinality realtime metrics.
-- Sequenced movement input, a fixed 30 Hz authoritative server simulation, 15 Hz
-  world snapshots, stale-input neutralization, local reconciliation, and
-  stall-recovering remote interpolation.
-- A Unity-side entity cache that survives scene loading and creates remote views
-  only under a dedicated presentation root.
-- Versioned, chunked test-map collision shared by WorldServer and Unity
-  prediction, with authoritative capsule movement across walls, ramps, steps,
-  and cover. Server and client keep only position-relevant chunks decoded.
-- Split liveness and readiness health checks.
-- A timeout-aware Unity API client with structured errors and 401 recovery.
-- A three-scene client flow with temporary UI and a server-authoritative
-  third-person movement replication foundation.
-- Backend unit and PostgreSQL integration tests plus Unity EditMode and PlayMode
-  smoke tests.
+- Explicit World, Fleet, Node, Shard, SimulationWorker, and
+  SimulationAssignment records.
+- Seeded shards that remain offline until a valid worker heartbeat exists.
+- Worker runtime generations, exact-runtime service authentication, heartbeat
+  leases, graceful offline registration, and stale-worker failover.
+- Split-brain protection that stops a worker after its local registration lease
+  expires or AuthService rejects its authority.
+- Capacity-aware shard placement that exposes a worker endpoint only in the
+  short-lived join response.
+- Join tickets bound to an exact character, shard, worker, and worker runtime.
+- One active simulation session per character across every shard and region.
+- Reconnect, heartbeat, expiry, runtime fencing, and exact release behavior.
+- LiteNetLib UDP join, leave, structured disconnect, and reliable entity
+  lifecycle messages.
+- Server-assigned network entity ids and one-to-one connection ownership.
+- Spatial interest management, per-peer UDP quotas, bounded heartbeat
+  concurrency, and low-cardinality network metrics.
+- Sequenced movement input, a fixed 30 Hz authoritative simulation, 15 Hz
+  snapshots, local prediction, reconciliation, and remote interpolation.
+- Shared capsule collision against the authored test map, including walls,
+  ramps, steps, cover, slope handling, and position-driven collision chunks.
+- Split liveness and readiness checks with real PostgreSQL and Redis probes.
+- Structured HTTP errors, correlation ids, authentication rate limits, and
+  no-store token responses.
+- Unity API timeouts, serialized operations, duplicate-click protection, 401
+  recovery, and persistent realtime state across scene changes.
+- Backend unit and isolated PostgreSQL integration tests plus Unity EditMode and
+  PlayMode coverage.
+
+## Current Scale Boundary
+
+The data model and contracts separate logical topology from process runtime, but
+the current executable deliberately uses one active SimulationWorker per shard.
+The database enforces one active assignment per worker and one active worker per
+shard. This is the safe base unit before a shard is split spatially.
+
+When required, the next scale step is to add zones as authoritative spatial
+partitions and layers as controlled population copies inside a shard. That work
+will extend SimulationAssignment and placement. It must not redefine World or
+introduce isolated realms.
 
 ## Intentionally Deferred
 
-The following areas are not implemented yet:
-
-- Terrain and cave triangle-mesh collision beyond the current oriented-box test
-  map format.
-- Dynamic collision transform replication and general rigid-body simulation.
+- Zone ownership, cross-zone handoff, and layer orchestration.
+- Triangle-mesh terrain and cave collision beyond the oriented-box test map.
+- Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
 - Inventory, equipment, loot, crafting, gathering, professions, and economy.
-- Persistent world simulation, NPCs, quests, social systems, and guilds.
-- Production deployment, cross-process world partitioning, metric export,
-  dashboards, alerting, and live operations.
+- Persistent NPCs, quests, guilds, social systems, and world events.
+- Production orchestration, metric export, dashboards, alerts, and live
+  operations.
 
 ## Engineering Standard
 
-Only the current UI is intentionally temporary while the custom interface is
-being designed. Service boundaries, client state, networking contracts, scene
-flow, gameplay code, input, camera systems, persistence, and tooling must be
-built as maintainable foundations from the start.
-
-Early content can be visually simple, but its implementation must still have a
-clear owner, testable behavior, and a safe extension path. Disposable shortcuts
-outside the UI require an explicit decision and documentation before they are
-introduced.
+Only UI is intentionally temporary while the custom interface is designed.
+Networking, state ownership, service boundaries, gameplay systems, persistence,
+configuration, and tooling are maintainable foundations from their first
+implementation.
 
 ## Where To Read Next
 
-- [Project Architecture](PROJECT_ARCHITECTURE.md) explains the complete system.
+- [Project Architecture](PROJECT_ARCHITECTURE.md) is the system-wide source of
+  truth.
 - [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) explains the client
   in detail.
-- [Service Features](SERVICE_FEATURES.md) records implemented server behavior.
-- [Game Features](GAME_FEATURES.md) records implemented gameplay behavior.
-- [Local Development](LOCAL_DEVELOPMENT.md) explains how to run and test it.
+- [Service Features](SERVICE_FEATURES.md) records implemented backend behavior.
+- [Game Features](GAME_FEATURES.md) records implemented player-facing behavior.
+- [Local Development](LOCAL_DEVELOPMENT.md) explains setup and verification.
 - [MVP Specification](MVP_SPEC.md) defines the current product scope.

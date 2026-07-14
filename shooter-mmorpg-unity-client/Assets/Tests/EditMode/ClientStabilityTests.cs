@@ -13,14 +13,14 @@ namespace ShooterMmo.Tests.EditMode
         {
             var state = new ClientOperationState();
 
-            Assert.That(state.TryBegin(ClientOperation.JoinWorld), Is.True);
-            Assert.That(state.TryBegin(ClientOperation.RefreshWorlds), Is.False);
-            Assert.That(state.Current, Is.EqualTo(ClientOperation.JoinWorld));
+            Assert.That(state.TryBegin(ClientOperation.JoinShard), Is.True);
+            Assert.That(state.TryBegin(ClientOperation.RefreshShards), Is.False);
+            Assert.That(state.Current, Is.EqualTo(ClientOperation.JoinShard));
 
-            state.Complete(ClientOperation.RefreshWorlds);
+            state.Complete(ClientOperation.RefreshShards);
             Assert.That(state.IsBusy, Is.True);
 
-            state.Complete(ClientOperation.JoinWorld);
+            state.Complete(ClientOperation.JoinShard);
             Assert.That(state.IsBusy, Is.False);
         }
 
@@ -55,16 +55,16 @@ namespace ShooterMmo.Tests.EditMode
         public void SnapshotsOutsideJoinedStateAreIgnoredAsInFlightPackets()
         {
             Assert.That(
-                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Joining),
+                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Joining),
                 Is.True);
             Assert.That(
-                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Leaving),
+                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Leaving),
                 Is.True);
             Assert.That(
-                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Disconnected),
+                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Disconnected),
                 Is.True);
             Assert.That(
-                RealtimeWorldClient.ShouldIgnoreWorldSnapshot(RealtimeConnectionState.Joined),
+                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Joined),
                 Is.False);
         }
 
@@ -83,12 +83,12 @@ namespace ShooterMmo.Tests.EditMode
         public void ClientLogFormatsCategoryAndNeutralizesLineBreaks()
         {
             var message = ClientLog.Format(
-                ClientLogCategory.WorldServer,
+                ClientLogCategory.Simulation,
                 "Connection rejected.\r\nTry again.");
 
             Assert.That(
                 message,
-                Is.EqualTo("[WORLDSERVER] Connection rejected.  Try again."));
+                Is.EqualTo("[SIMULATION] Connection rejected.  Try again."));
         }
     }
 }

@@ -24,7 +24,7 @@ namespace ShooterMmo.Tests.PlayMode
             yield return null;
 
             Assert.That(Object.FindAnyObjectByType<ShooterMmoClientBootstrap>(), Is.Not.Null);
-            Assert.That(Object.FindAnyObjectByType<RealtimeWorldClient>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<RealtimeSimulationClient>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
         }
     }

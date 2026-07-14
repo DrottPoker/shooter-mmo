@@ -77,21 +77,21 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration c
             transaction,
             cancellationToken: cancellationToken));
 
-        const string releaseWorldSessionsSql = """
-            update character_world_sessions
+        const string releaseSimulationSessionsSql = """
+            update character_simulation_sessions
             set released_at = coalesce(released_at, now())
             where account_id = @AccountId
               and released_at is null;
             """;
 
         await connection.ExecuteAsync(new CommandDefinition(
-            releaseWorldSessionsSql,
+            releaseSimulationSessionsSql,
             new { AccountId = accountId },
             transaction,
             cancellationToken: cancellationToken));
 
         const string revokeTicketsSql = """
-            update world_join_tickets
+            update simulation_join_tickets
             set consumed_at = now()
             where account_id = @AccountId
               and consumed_at is null;
@@ -206,20 +206,20 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IConfiguration c
             transaction,
             cancellationToken: cancellationToken));
 
-        const string releaseWorldSessionsSql = """
-            update character_world_sessions
+        const string releaseSimulationSessionsSql = """
+            update character_simulation_sessions
             set released_at = coalesce(released_at, now())
             where account_session_id = @SessionId and released_at is null;
             """;
 
         await connection.ExecuteAsync(new CommandDefinition(
-            releaseWorldSessionsSql,
+            releaseSimulationSessionsSql,
             new { SessionId = sessionId },
             transaction,
             cancellationToken: cancellationToken));
 
         const string revokeTicketsSql = """
-            update world_join_tickets
+            update simulation_join_tickets
             set consumed_at = now()
             where account_session_id = @SessionId and consumed_at is null;
             """;

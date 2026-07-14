@@ -5,11 +5,12 @@ using LiteNetLib;
 using Microsoft.Extensions.Logging.Abstractions;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
-using WorldServer.Auth;
-using WorldServer.Config;
-using WorldServer.Entities;
-using WorldServer.Realtime;
-using WorldServer.Sessions;
+using SimulationWorker.Auth;
+using SimulationWorker.Config;
+using SimulationWorker.Entities;
+using SimulationWorker.Realtime;
+using SimulationWorker.Registry;
+using SimulationWorker.Sessions;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
@@ -21,28 +22,33 @@ public sealed class RealtimeEntityLifecycleTests
         var port = FindAvailableUdpPort();
         var firstTicket = new TicketSession("ticket-one", "First Hero");
         var secondTicket = new TicketSession("ticket-two", "Second Hero");
-        using var httpClient = new HttpClient(new MultipleWorldSessionAuthHandler(
+        using var httpClient = new HttpClient(new MultipleSimulationSessionAuthHandler(
             firstTicket,
             secondTicket))
         {
             BaseAddress = new Uri("http://auth-service.test")
         };
-        var sessionStore = new ActivePlayerSessionStore();
+        var sessionStore = new ActiveSimulationSessionStore();
         var config = CreateConfig(port);
+        var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
         var staticCollisionWorld = CollisionTestWorldFactory.Create();
-        var server = new RealtimeServerService(
+        var server = new RealtimeSimulationService(
             config,
-            new WorldJoinService(new AuthServiceClient(httpClient), sessionStore, config),
-            new WorldSessionReleaseService(new AuthServiceClient(httpClient), sessionStore),
+            new SimulationJoinService(
+                new AuthServiceClient(httpClient),
+                sessionStore,
+                config,
+                identity),
+            new SimulationSessionReleaseService(new AuthServiceClient(httpClient), sessionStore),
             sessionStore,
-            new WorldEntityRegistry(),
+            new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),
             staticCollisionWorld,
             new CompositeCollisionWorld(
                 staticCollisionWorld,
                 new DynamicCollisionWorld(staticCollisionWorld.ChunkSize)),
-            NullLogger<RealtimeServerService>.Instance);
+            NullLogger<RealtimeSimulationService>.Instance);
         using var firstClient = new RealtimeTestClient(firstTicket.Ticket);
         using var secondClient = new RealtimeTestClient(secondTicket.Ticket);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -77,7 +83,7 @@ public sealed class RealtimeEntityLifecycleTests
                 firstClient,
                 secondClient);
 
-            secondClient.SendLeave(secondJoin.WorldSessionId);
+            secondClient.SendLeave(secondJoin.SimulationSessionId);
             await PollUntilAsync(
                 () => secondClient.LeaveAccepted.IsCompletedSuccessfully
                     && firstClient.Despawns.Any(despawn =>
@@ -89,7 +95,7 @@ public sealed class RealtimeEntityLifecycleTests
             var despawn = Assert.Single(
                 firstClient.Despawns,
                 value => value.EntityId == secondJoin.ControlledEntityId);
-            Assert.Equal("left_world", despawn.Reason);
+            Assert.Equal("left_shard", despawn.Reason);
             Assert.NotEqual(firstJoin.ControlledEntityId, secondJoin.ControlledEntityId);
         }
         finally
@@ -124,9 +130,13 @@ public sealed class RealtimeEntityLifecycleTests
         }
     }
 
-    private static WorldServerConfig CreateConfig(int port)
+    private static SimulationWorkerConfig CreateConfig(int port)
     {
-        return new WorldServerConfig(
+        return new SimulationWorkerConfig(
+            "local-simulation-worker-1",
+            "local-fleet",
+            "local-node-1",
+            "local-shard-1",
             "local-world-1",
             "CollisionData",
             port,
@@ -153,7 +163,7 @@ public sealed class RealtimeEntityLifecycleTests
             new MovementSpawnConfig(0f, 0f, -1f, 0f),
             new Uri("http://auth-service.test"),
             TimeSpan.FromSeconds(2),
-            "test-world-server-secret-at-least-32-characters",
+            "test-simulation-worker-secret-at-least-32-characters",
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(10),
             "127.0.0.1:6379",
@@ -204,11 +214,11 @@ public sealed class RealtimeEntityLifecycleTests
             client.Connect("127.0.0.1", port, RealtimeProtocol.ConnectionKey);
         }
 
-        public void SendLeave(string worldSessionId)
+        public void SendLeave(string simulationSessionId)
         {
             Assert.NotNull(peer);
             peer.Send(
-                RealtimeProtocol.EncodeLeaveRequest(worldSessionId),
+                RealtimeProtocol.EncodeLeaveRequest(simulationSessionId),
                 DeliveryMethod.ReliableOrdered);
         }
 
@@ -253,7 +263,7 @@ public sealed class RealtimeEntityLifecycleTests
             {
                 var packet = reader.GetRemainingBytes();
                 Assert.True(RealtimeProtocol.TryReadMessageType(packet, out var messageType));
-                if (messageType == RealtimeMessageType.WorldSnapshot)
+                if (messageType == RealtimeMessageType.SimulationSnapshot)
                 {
                     return;
                 }
@@ -310,48 +320,54 @@ public sealed class RealtimeEntityLifecycleTests
 
         public Guid CharacterId { get; } = Guid.NewGuid();
 
-        public Guid WorldSessionId { get; } = Guid.NewGuid();
+        public Guid SimulationSessionId { get; } = Guid.NewGuid();
 
-        public string WorldSessionToken { get; } = Guid.NewGuid().ToString("N");
+        public string SimulationSessionToken { get; } = Guid.NewGuid().ToString("N");
     }
 
-    private sealed class MultipleWorldSessionAuthHandler(
+    private sealed class MultipleSimulationSessionAuthHandler(
         params TicketSession[] sessions) : HttpMessageHandler
     {
         private readonly IReadOnlyDictionary<string, TicketSession> sessionsByTicket =
             sessions.ToDictionary(session => session.Ticket, StringComparer.Ordinal);
         private readonly IReadOnlyDictionary<Guid, TicketSession> sessionsById =
-            sessions.ToDictionary(session => session.WorldSessionId);
+            sessions.ToDictionary(session => session.SimulationSessionId);
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            if (request.RequestUri!.AbsolutePath == "/api/world-join-tickets/consume")
+            if (request.RequestUri!.AbsolutePath == "/api/simulation-join-tickets/consume")
             {
-                var consume = await request.Content!.ReadFromJsonAsync<ConsumeJoinTicketRequest>(
+                var consume = await request.Content!
+                    .ReadFromJsonAsync<ConsumeSimulationJoinTicketRequest>(
                     cancellationToken);
                 Assert.NotNull(consume);
                 Assert.True(sessionsByTicket.TryGetValue(consume.Ticket, out var session));
-                return JsonResponse(new ConsumedJoinTicketResponse(
+                return JsonResponse(new ConsumedSimulationJoinTicketResponse(
                     session.AccountId,
                     session.CharacterId,
                     session.CharacterName,
+                    "local-shard-1",
                     "local-world-1",
-                    session.WorldSessionId,
-                    session.WorldSessionToken,
+                    "local-simulation-worker-1",
+                    "test-runtime",
+                    session.SimulationSessionId,
+                    session.SimulationSessionToken,
                     DateTime.UtcNow.AddSeconds(30),
                     false));
             }
 
             if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal))
             {
-                var worldSessionId = Guid.Parse(request.RequestUri.Segments[^2].TrimEnd('/'));
-                Assert.True(sessionsById.TryGetValue(worldSessionId, out var session));
-                return JsonResponse(new WorldSessionLeaseResponse(
-                    worldSessionId,
+                var simulationSessionId = Guid.Parse(request.RequestUri.Segments[^2].TrimEnd('/'));
+                Assert.True(sessionsById.TryGetValue(simulationSessionId, out var session));
+                return JsonResponse(new SimulationSessionLeaseResponse(
+                    simulationSessionId,
                     session.CharacterId,
-                    "local-world-1",
+                    "local-shard-1",
+                    "local-simulation-worker-1",
+                    "test-runtime",
                     DateTime.UtcNow,
                     true));
             }

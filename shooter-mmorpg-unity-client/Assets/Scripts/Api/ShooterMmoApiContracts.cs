@@ -52,28 +52,43 @@ namespace ShooterMmo.Api
     }
 
     [Serializable]
-    public sealed class WorldResponse
+    public sealed class ShardResponse
     {
         public string id;
         public string displayName;
-        public string host;
-        public int udpPort;
+        public string worldId;
+        public string fleetId;
+        public string fleetDisplayName;
+        public string regionCode;
         public string ruleSet;
         public bool isOnline;
-        public string lastHeartbeatAt;
-        public string onlineUntil;
+        public int activePlayers;
+        public int capacity;
     }
 
     [Serializable]
-    public sealed class JoinWorldRequest
+    public sealed class SimulationEndpointResponse
+    {
+        public string workerId;
+        public string runtimeId;
+        public string host;
+        public int udpPort;
+        public int protocolVersion;
+        public string simulationRevision;
+        public string collisionRevision;
+    }
+
+    [Serializable]
+    public sealed class JoinShardRequest
     {
         public string characterId;
     }
 
     [Serializable]
-    public sealed class JoinWorldResponse
+    public sealed class JoinShardResponse
     {
-        public WorldResponse world;
+        public ShardResponse shard;
+        public SimulationEndpointResponse endpoint;
         public string characterId;
         public string joinTicket;
         public string expiresAt;
@@ -81,13 +96,16 @@ namespace ShooterMmo.Api
     }
 
     [Serializable]
-    public sealed class ActivePlayerSessionResponse
+    public sealed class ActiveSimulationSessionResponse
     {
-        public string worldSessionId;
+        public string simulationSessionId;
         public string accountId;
         public string characterId;
         public string characterName;
+        public string shardId;
         public string worldId;
+        public string workerId;
+        public string workerRuntimeId;
         public string joinedAt;
         public string sessionExpiresAt;
         public bool isReconnect;

@@ -1,6 +1,6 @@
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
-using WorldServer.Realtime;
+using SimulationWorker.Realtime;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 

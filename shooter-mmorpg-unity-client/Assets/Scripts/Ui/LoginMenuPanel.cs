@@ -119,8 +119,8 @@ namespace ShooterMmo.Ui
         {
             ShooterMmoClientSession.Auth = response;
             ShooterMmoClientSession.SelectedCharacter = null;
-            ShooterMmoClientSession.SelectedWorld = null;
-            ShooterMmoClientSession.ActiveWorldSession = null;
+            ShooterMmoClientSession.SelectedShard = null;
+            ShooterMmoClientSession.ActiveSimulationSession = null;
             status = "Authenticated as " + response.username + ".";
             ClientLog.Info(
                 ClientLogCategory.Auth,

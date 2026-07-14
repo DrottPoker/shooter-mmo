@@ -10,8 +10,8 @@ namespace ShooterMmo
         public static int SessionValidationIntervalSeconds { get; private set; } = 5;
         public static AuthResponse Auth;
         public static CharacterResponse SelectedCharacter;
-        public static WorldResponse SelectedWorld;
-        public static ActivePlayerSessionResponse ActiveWorldSession;
+        public static ShardResponse SelectedShard;
+        public static ActiveSimulationSessionResponse ActiveSimulationSession;
 
         public static string SessionToken
         {
@@ -40,8 +40,8 @@ namespace ShooterMmo
         {
             Auth = null;
             SelectedCharacter = null;
-            SelectedWorld = null;
-            ActiveWorldSession = null;
+            SelectedShard = null;
+            ActiveSimulationSession = null;
         }
     }
 }

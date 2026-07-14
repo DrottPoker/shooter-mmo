@@ -1,40 +1,55 @@
 # Shooter MMO
 
-Shooter MMO is an early classless, profession-driven open-world MMORPG with a
-modern third-person shooter direction. The current repository contains the
-account, character, world join, local WorldServer, and Unity client
-foundation for the first playable MVP.
+Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
+modern third-person shooter direction. This repository contains the global
+identity, regional simulation topology, authoritative movement, shared collision,
+and Unity client foundation for the first playable MVP.
+
+## Architecture In One Minute
+
+The canonical runtime hierarchy is:
+
+```text
+Global Services -> Fleet -> Node -> SimulationWorker -> SimulationAssignment -> Shard
+```
+
+- Global accounts and characters can use any region or shard.
+- A Fleet groups regional compute, such as EU or US.
+- A Node is one machine or container host.
+- A SimulationWorker is one headless authoritative process.
+- A Shard is a player-selectable copy of the shared game simulation.
+- World means shared map and content data, not a server process.
+- There are no realms.
+- Zones and layers are future scaling units and are not implemented yet.
+
+See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 
 ## Current Foundation
 
-- ASP.NET Core AuthService backed by PostgreSQL.
-- Headless .NET WorldServer with LiteNetLib UDP session and movement transport.
-- Transactional PostgreSQL world-session leases with reconnect, heartbeat, and
-  idempotent release.
-- One active session per account, replacement-aware client disconnects,
-  authentication rate limits, and service-authenticated WorldServer calls.
-- RFC Problem Details responses with correlation identifiers and dependency failure
-  mapping.
-- UDP-readiness-gated world registration with advertised endpoints, build
-  compatibility metadata, timeout-based status, and graceful offline updates.
-- Split liveness and protocol-level dependency readiness checks.
-- A versioned realtime protocol and fixed-step movement simulation shared by
-  .NET and Unity.
-- Framework-neutral .NET helpers plus an AuthService-only HTTP helper project.
-- Unity 6 client scenes for login, character selection, and a local world preview.
-- Timeout-aware Unity API handling, serialized UI operations, and automatic 401
-  recovery.
-- Server-authoritative Input Action movement with prediction, reconciliation,
-  stale-input neutralization, snapshots, stall-recovering remote interpolation,
-  shared test-map collision, and collision-safe third-person camera controls.
-- Spatial interest management with reliable visibility transitions, per-peer UDP
-  quotas, bounded session heartbeats, and low-cardinality network metrics.
-- Versioned collision baking with checksummed chunks consumed by both
-  WorldServer and Unity prediction through position-driven chunk streaming.
-- PostgreSQL and Redis development infrastructure through Docker Compose.
+- ASP.NET Core AuthService with PostgreSQL authority.
+- Headless .NET SimulationWorker with LiteNetLib UDP.
+- Explicit World, Fleet, Node, Shard, Worker, runtime, and assignment records.
+- Capacity-aware shard discovery and exact-runtime placement.
+- Worker heartbeat leases, graceful offline handling, stale-owner failover, and
+  split-brain process shutdown.
+- One active account login and one active simulated character per account.
+- Short-lived join tickets bound to character, shard, worker, and runtime.
+- Transactional reconnect, heartbeat, expiry, and exact session release.
+- Versioned realtime protocol shared by .NET and Unity.
+- Server-assigned network entity ids, reliable spawn and despawn, spatial
+  interest management, UDP quotas, and network metrics.
+- Fixed-step server-authoritative movement with Unity prediction,
+  reconciliation, and remote interpolation.
+- Shared checksummed World collision chunks with ramps, walls, steps, slope
+  handling, and position-driven streaming.
+- Structured API errors, correlation ids, rate limits, no-store token responses,
+  and split health checks.
+- Unity 6 login, character selection, shard selection, and WorldScene flow.
+- Temporary UI only. Networking, gameplay, state, service, and tooling code are
+  maintained as long-term foundations.
 
-Inventory, combat, persistent world simulation, complex terrain collision, and
-dynamic rigid-body simulation are intentionally deferred.
+Combat, inventory, persistent NPCs, zones, layers, complex terrain meshes, and
+production orchestration are intentionally deferred.
 
 ## Requirements
 
@@ -44,38 +59,46 @@ dynamic rigid-body simulation are intentionally deferred.
 
 ## Quick Start
 
-Create the ignored local environment file and replace its placeholder secrets:
+Create the ignored local environment file if it does not already exist, then
+replace placeholder credentials:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Start local infrastructure:
+Start PostgreSQL and Redis:
 
 ```powershell
 docker compose up -d --wait
 ```
 
-Run the backend services in separate terminals:
+Run the two backend processes in separate PowerShell terminals:
 
 ```powershell
 dotnet run --project AuthService
-dotnet run --project WorldServer
 ```
 
-AuthService and WorldServer load the repository-root `.env` file for local
-development. Real environment variables and command-line configuration override
-the file. Never commit `.env`.
+```powershell
+dotnet run --project SimulationWorker
+```
+
+Expected result:
+
+- AuthService listens on `http://localhost:5000`.
+- SimulationWorker binds UDP `27015`, registers
+  `local-simulation-worker-1`, and receives assignment to `local-shard-1`.
+- `GET http://localhost:5000/api/shards` reports the local shard online.
 
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
-See [Project Overview](docs/PROJECT_OVERVIEW.md) for a short orientation and
-[Local Development](docs/LOCAL_DEVELOPMENT.md) for the complete manual flow.
+AuthService and SimulationWorker load the root `.env` for local development.
+Real environment variables and command-line values override it. Never commit
+`.env`.
 
-## Quality Checks
+## Standard Quality Checks
 
-Run the standard backend checks from the repository root:
+Run from the repository root:
 
 ```powershell
 dotnet restore ShooterMmo.slnx --locked-mode
@@ -89,8 +112,7 @@ dotnet run --project Tools/WorldCollisionCompiler -- `
   --verify
 ```
 
-The PostgreSQL integration test is skipped unless a dedicated test connection is
-configured. Start the isolated test database and run all tests with:
+Start the isolated PostgreSQL test database before running integration tests:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
@@ -100,48 +122,38 @@ docker compose -f docker-compose.test.yml down
 Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
 ```
 
-The integration test resets the `public` schema. Never point
-`SHOOTER_MMO_TEST_POSTGRES` at a development, staging, or production database.
+The integration suite resets the `public` schema. It refuses a database name
+that does not contain `test`, but the variable must still never target shared or
+production data.
 
-Run Unity tests from `Window > General > Test Runner`:
-
-- EditMode validates client serialization, session state, input, and authored
-  gameplay assets.
-- PlayMode validates the persistent runtime and realtime client bootstrap.
-
-The same suites can run headlessly with `Tools/Run-UnityTests.ps1`. CI enables
-the Unity job on a licensed Windows self-hosted runner when the repository
-variable `UNITY_CI_ENABLED` is `true`.
+Run Unity tests through `Window > General > Test Runner`, or use the licensed
+headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 ## Repository Layout
 
-- `AuthService`: account, session, character, world, join ticket, HTTP pipeline,
-  and service-owned configuration.
-- `WorldServer`: headless realtime transport, authoritative simulation, active
-  local sessions, and service-owned configuration.
-- `Shared`: framework-neutral backend helpers and .NET adapters for shared game
-  source under `Shared/DotNet`.
-- `GameProtocol`: local Unity package containing the realtime binary contract.
-- `GameSimulation`: local Unity package containing shared fixed-step movement.
-- `WorldData`: neutral authoring and baked collision chunks shared by the server
-  and Unity.
-- `Tools/WorldCollisionCompiler`: command-line collision bake and verification
-  tool.
-- `Tests`: backend unit and PostgreSQL integration tests.
-- `shooter-mmorpg-unity-client`: Unity client project and Unity tests.
-- `docs`: project overview, architecture, features, product scope, and local
-  development documentation.
+| Path | Responsibility |
+| --- | --- |
+| `AuthService` | Identity, characters, topology, placement, tickets, sessions, HTTP, and owned config |
+| `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, and owned config |
+| `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
+| `GameProtocol` | Local Unity package containing protocol source |
+| `GameSimulation` | Local Unity package containing shared simulation source |
+| `WorldData` | World content authoring and compiled collision chunks |
+| `Tools` | Repository-wide verification and collision compiler |
+| `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
+| `shooter-mmorpg-unity-client` | Unity project and Unity tests |
+| `docs` | Architecture, implemented features, setup, and product references |
 
-Repository-wide tool configuration remains in root: `.env.example`, Compose,
-`Directory.Build.props`, `global.json`, and `ShooterMmo.slnx`. Service settings
-belong under each service's `Config` folder. Unity runtime settings belong under
-`Assets/Resources/Config` with their C# definitions under `Assets/Scripts/Config`.
+Repository-wide Compose, SDK, solution, build, and environment contracts remain
+in root. Service-specific settings live under each service's `Config` folder.
+Unity runtime settings live under `Assets/Resources/Config` with definitions in
+`Assets/Scripts/Config`.
 
-The complete documentation map is available in
-[docs/README.md](docs/README.md).
+## Documentation
 
-## Development Rules
+Start with [Project Overview](docs/PROJECT_OVERVIEW.md), then use the complete
+[documentation index](docs/README.md).
 
-Repository-specific contribution rules are defined in [AGENTS.md](AGENTS.md).
-Behavior, configuration, architecture, and user-facing workflow changes must be
-documented and manually testable.
+Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,
+configuration, architecture, and user workflows must be documented and manually
+testable in the same change.

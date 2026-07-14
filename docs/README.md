@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -11,7 +11,7 @@ operations, and future design do not drift into duplicate descriptions.
 1. [Project Overview](PROJECT_OVERVIEW.md) for a short explanation of the current
    project and its status.
 2. [Project Architecture](PROJECT_ARCHITECTURE.md) for system boundaries, data
-   ownership, and communication flows.
+   ownership, canonical topology terminology, and communication flows.
 3. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for detailed Unity
    runtime structure and client flows.
 4. [Service Features](SERVICE_FEATURES.md) for implemented backend and
@@ -38,6 +38,9 @@ feature documents describe what is actually implemented in the repository.
   feature.
 - Document only implemented behavior as implemented. Keep planned work clearly
   marked as planned or deferred.
+- Use World, Fleet, Node, SimulationWorker, SimulationAssignment, Shard, Zone,
+  and Layer exactly as defined in `PROJECT_ARCHITECTURE.md`. Do not introduce a
+  Realm or reuse World as a process name.
 - Put commands and operator workflows in `LOCAL_DEVELOPMENT.md` instead of
   duplicating them across architecture and feature documents.
 - Keep this index and the root `README.md` links current when documents are

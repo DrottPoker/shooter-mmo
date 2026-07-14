@@ -13,11 +13,11 @@ namespace ShooterMmo.Ui
 
         private ShooterMmoApiClient apiClient;
         private string characterName = "Hero One";
-        private string status = "Select or create a character, then join a world.";
+        private string status = "Select or create a character, then join a shard.";
         private CharacterResponse[] characters = new CharacterResponse[0];
-        private WorldResponse[] worlds = new WorldResponse[0];
+        private ShardResponse[] shards = new ShardResponse[0];
         private int selectedCharacterIndex;
-        private int selectedWorldIndex;
+        private int selectedShardIndex;
         private bool operationStepFailed;
         private Vector2 scrollPosition;
 
@@ -45,7 +45,7 @@ namespace ShooterMmo.Ui
             GUI.enabled = previousGuiState && !operationState.IsBusy;
             DrawAccountSection();
             DrawCharacterSection();
-            DrawWorldSection();
+            DrawShardSection();
             GUI.enabled = previousGuiState;
 
             GUILayout.Space(12f);
@@ -136,39 +136,42 @@ namespace ShooterMmo.Ui
             GUILayout.Space(12f);
         }
 
-        private void DrawWorldSection()
+        private void DrawShardSection()
         {
-            GUILayout.Label("Worlds");
+            GUILayout.Label("Shards");
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Refresh Worlds", GUILayout.Height(32f)))
+            if (GUILayout.Button("Refresh Shards", GUILayout.Height(32f)))
             {
-                BeginOperation(ClientOperation.RefreshWorlds, RefreshWorldsRoutine());
+                BeginOperation(ClientOperation.RefreshShards, RefreshShardsRoutine());
             }
 
-            if (GUILayout.Button("Join Selected World", GUILayout.Height(32f)))
+            if (GUILayout.Button("Join Selected Shard", GUILayout.Height(32f)))
             {
                 BeginJoin();
             }
             GUILayout.EndHorizontal();
 
-            if (worlds.Length > 0)
+            if (shards.Length > 0)
             {
-                selectedWorldIndex = Mathf.Clamp(selectedWorldIndex, 0, worlds.Length - 1);
-                var labels = new string[worlds.Length];
-                for (var index = 0; index < worlds.Length; index++)
+                selectedShardIndex = Mathf.Clamp(selectedShardIndex, 0, shards.Length - 1);
+                var labels = new string[shards.Length];
+                for (var index = 0; index < shards.Length; index++)
                 {
-                    labels[index] = worlds[index].displayName
-                        + " (" + worlds[index].id + ") "
-                        + (worlds[index].isOnline ? "Online" : "Offline");
+                    var shard = shards[index];
+                    labels[index] = shard.displayName
+                        + " (" + shard.regionCode + ", " + shard.fleetDisplayName + ") "
+                        + (shard.isOnline
+                            ? "Online " + shard.activePlayers + "/" + shard.capacity
+                            : "Offline");
                 }
 
-                selectedWorldIndex = GUILayout.SelectionGrid(selectedWorldIndex, labels, 1);
-                ShooterMmoClientSession.SelectedWorld = worlds[selectedWorldIndex];
+                selectedShardIndex = GUILayout.SelectionGrid(selectedShardIndex, labels, 1);
+                ShooterMmoClientSession.SelectedShard = shards[selectedShardIndex];
             }
             else
             {
-                GUILayout.Label("No worlds loaded.");
+                GUILayout.Label("No shards loaded.");
             }
         }
 
@@ -180,8 +183,8 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            yield return RefreshWorldsRoutine();
-            status = "Character and world data loaded.";
+            yield return RefreshShardsRoutine();
+            status = "Character and shard data loaded.";
         }
 
         private IEnumerator CreateCharacterRoutine()
@@ -239,11 +242,11 @@ namespace ShooterMmo.Ui
             status = "Loaded " + characters.Length + " characters.";
         }
 
-        private IEnumerator RefreshWorldsRoutine()
+        private IEnumerator RefreshShardsRoutine()
         {
-            WorldResponse[] result = null;
+            ShardResponse[] result = null;
             ShooterMmoApiError error = null;
-            yield return apiClient.GetWorlds(
+            yield return apiClient.GetShards(
                 ShooterMmoClientSession.AuthServiceBaseUrl,
                 value => result = value,
                 value => error = value);
@@ -253,50 +256,50 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            worlds = result ?? new WorldResponse[0];
-            selectedWorldIndex = Mathf.Clamp(selectedWorldIndex, 0, Mathf.Max(0, worlds.Length - 1));
-            ShooterMmoClientSession.SelectedWorld = worlds.Length > 0
-                ? worlds[selectedWorldIndex]
+            shards = result ?? new ShardResponse[0];
+            selectedShardIndex = Mathf.Clamp(selectedShardIndex, 0, Mathf.Max(0, shards.Length - 1));
+            ShooterMmoClientSession.SelectedShard = shards.Length > 0
+                ? shards[selectedShardIndex]
                 : null;
-            status = "Loaded " + worlds.Length + " worlds.";
+            status = "Loaded " + shards.Length + " shards.";
         }
 
         private void BeginJoin()
         {
-            if (!EnsureAuthenticated() || characters.Length == 0 || worlds.Length == 0)
+            if (!EnsureAuthenticated() || characters.Length == 0 || shards.Length == 0)
             {
-                status = "Load a character and a world before joining.";
+                status = "Load a character and a shard before joining.";
                 return;
             }
 
-            var world = worlds[selectedWorldIndex];
-            if (!world.isOnline)
+            var shard = shards[selectedShardIndex];
+            if (!shard.isOnline)
             {
-                status = world.displayName + " is offline.";
+                status = shard.displayName + " is offline.";
                 return;
             }
 
-            BeginOperation(ClientOperation.JoinWorld, JoinSelectedWorldRoutine());
+            BeginOperation(ClientOperation.JoinShard, JoinSelectedShardRoutine());
         }
 
-        private IEnumerator JoinSelectedWorldRoutine()
+        private IEnumerator JoinSelectedShardRoutine()
         {
             var character = characters[selectedCharacterIndex];
-            var world = worlds[selectedWorldIndex];
+            var shard = shards[selectedShardIndex];
             ShooterMmoClientSession.SelectedCharacter = character;
-            ShooterMmoClientSession.SelectedWorld = world;
+            ShooterMmoClientSession.SelectedShard = shard;
             ClientLog.Info(
                 ClientLogCategory.Client,
-                "Character '" + character.name + "' (" + character.id + ") is requesting access to world '"
-                + world.id + "'.");
+                "Character '" + character.name + "' (" + character.id + ") is requesting access to shard '"
+                + shard.id + "'.");
 
-            JoinWorldResponse joinTicket = null;
+            JoinShardResponse joinTicket = null;
             ShooterMmoApiError error = null;
             yield return apiClient.CreateJoinTicket(
                 ShooterMmoClientSession.AuthServiceBaseUrl,
                 ShooterMmoClientSession.SessionToken,
-                world.id,
-                new JoinWorldRequest { characterId = character.id },
+                shard.id,
+                new JoinShardRequest { characterId = character.id },
                 result => joinTicket = result,
                 result => error = result);
 
@@ -308,14 +311,14 @@ namespace ShooterMmo.Ui
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "AuthService issued a short-lived join ticket for character '" + character.name
-                + "' and world '" + world.id + "'.");
+                + "' on shard '" + shard.id + "'.");
 
-            var worldClient = ShooterMmoClientBootstrap.WorldClient;
-            if (worldClient == null)
+            var simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            if (simulationClient == null)
             {
                 ClientLog.Error(
                     ClientLogCategory.Client,
-                    "The persistent realtime client is unavailable, so the world join cannot start.");
+                    "The persistent realtime client is unavailable, so the simulation join cannot start.");
                 HandleRealtimeError(new RealtimeClientError(
                     RealtimeClientErrorKind.Network,
                     "realtime_client_missing",
@@ -323,12 +326,10 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            ActivePlayerSessionResponse activeSession = null;
+            ActiveSimulationSessionResponse activeSession = null;
             RealtimeClientError realtimeError = null;
-            yield return worldClient.Join(
-                world.host,
-                world.udpPort,
-                joinTicket.joinTicket,
+            yield return simulationClient.Join(
+                joinTicket,
                 result => activeSession = result,
                 result => realtimeError = result);
 
@@ -337,8 +338,8 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            ShooterMmoClientSession.ActiveWorldSession = activeSession;
-            status = "Joined " + activeSession.worldId + " as " + activeSession.characterName + ".";
+            ShooterMmoClientSession.ActiveSimulationSession = activeSession;
+            status = "Joined shard " + activeSession.shardId + " as " + activeSession.characterName + ".";
             SceneManager.LoadScene(ShooterMmoSceneNames.WorldScene);
         }
 

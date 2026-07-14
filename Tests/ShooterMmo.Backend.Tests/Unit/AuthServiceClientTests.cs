@@ -1,68 +1,76 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using WorldServer.Auth;
+using SimulationWorker.Auth;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
 public sealed class AuthServiceClientTests
 {
     [Fact]
-    public async Task ConsumeJoinTicketSendsTheExpectedWorldId()
+    public async Task ConsumeJoinTicketSendsExactWorkerRuntimeAndShardBinding()
     {
-        var worldSessionId = Guid.NewGuid();
+        var simulationSessionId = Guid.NewGuid();
         var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
             accountId = Guid.NewGuid(),
             characterId = Guid.NewGuid(),
             characterName = "Hero One",
+            shardId = "local-shard-1",
             worldId = "local-world-1",
-            worldSessionId,
-            worldSessionToken = "world-session-token",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId,
+            simulationSessionToken = "simulation-session-token",
             sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
             isReconnect = false
         }));
         var client = CreateClient(handler);
 
-        var result = await client.ConsumeJoinTicketAsync(
-            "join-ticket",
-            "local-world-1",
-            CancellationToken.None);
+        var result = await ConsumeAsync(client);
 
         Assert.True(result.Succeeded, result.Error?.Message);
-        Assert.Equal(worldSessionId, result.Value!.WorldSessionId);
+        Assert.Equal(simulationSessionId, result.Value!.SimulationSessionId);
         var request = Assert.Single(handler.Requests);
-        Assert.Equal("/api/world-join-tickets/consume", request.Path);
+        Assert.Equal("/api/simulation-join-tickets/consume", request.Path);
 
         using var body = JsonDocument.Parse(request.Body);
         Assert.Equal("join-ticket", body.RootElement.GetProperty("ticket").GetString());
-        Assert.Equal("local-world-1", body.RootElement.GetProperty("worldId").GetString());
+        Assert.Equal(
+            "local-simulation-worker-1",
+            body.RootElement.GetProperty("workerId").GetString());
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
+        Assert.Equal("local-shard-1", body.RootElement.GetProperty("shardId").GetString());
     }
 
     [Fact]
-    public async Task WorldSessionLifecycleUsesTheSessionSpecificRoutes()
+    public async Task SimulationSessionLifecycleUsesRuntimeBoundRoutes()
     {
-        var worldSessionId = Guid.NewGuid();
+        var simulationSessionId = Guid.NewGuid();
         var characterId = Guid.NewGuid();
         var handler = new RecordingHttpMessageHandler(request => CreateJsonResponse(new
         {
-            worldSessionId,
+            simulationSessionId,
             characterId,
-            worldId = "local-world-1",
+            shardId = "local-shard-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
             expiresAt = DateTime.UtcNow.AddMinutes(1),
-            released = request.RequestUri!.AbsolutePath.EndsWith("/release", StringComparison.Ordinal)
+            released = request.RequestUri!.AbsolutePath.EndsWith(
+                "/release",
+                StringComparison.Ordinal)
         }));
         var client = CreateClient(handler);
 
-        var heartbeat = await client.HeartbeatWorldSessionAsync(
-            worldSessionId,
-            "local-world-1",
-            "world-session-token",
+        var heartbeat = await client.HeartbeatSimulationSessionAsync(
+            simulationSessionId,
+            "runtime-1",
+            "simulation-session-token",
             CancellationToken.None);
-        var release = await client.ReleaseWorldSessionAsync(
-            worldSessionId,
-            "local-world-1",
-            "world-session-token",
+        var release = await client.ReleaseSimulationSessionAsync(
+            simulationSessionId,
+            "runtime-1",
+            "simulation-session-token",
             CancellationToken.None);
 
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
@@ -71,26 +79,30 @@ public sealed class AuthServiceClientTests
         Assert.True(release.Value!.Released);
         Assert.Collection(
             handler.Requests,
-            request => Assert.Equal($"/api/world-sessions/{worldSessionId}/heartbeat", request.Path),
-            request => Assert.Equal($"/api/world-sessions/{worldSessionId}/release", request.Path));
+            request => Assert.Equal(
+                $"/api/simulation-sessions/{simulationSessionId}/heartbeat",
+                request.Path),
+            request => Assert.Equal(
+                $"/api/simulation-sessions/{simulationSessionId}/release",
+                request.Path));
     }
 
     [Fact]
-    public async Task WorldHeartbeatUsesTheAuthenticatedWorldRoute()
+    public async Task SimulationWorkerHeartbeatSendsCompleteTopologyIdentity()
     {
-        var requestBody = new WorldHeartbeatRequest(
-            "world.example.test",
-            28015,
-            "world-instance-1",
-            4,
-            "movement-simulation-v1",
-            "collision-revision-1");
-        var handler = new RecordingHttpMessageHandler(request => CreateJsonResponse(new
+        var requestBody = CreateHeartbeatRequest();
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
+            workerId = "local-simulation-worker-1",
+            runtimeId = requestBody.RuntimeId,
+            fleetId = requestBody.FleetId,
+            nodeId = requestBody.NodeId,
+            shardId = requestBody.ShardId,
             worldId = "local-world-1",
             host = requestBody.Host,
             udpPort = requestBody.UdpPort,
-            instanceId = requestBody.InstanceId,
+            maxConnections = requestBody.MaxConnections,
+            activeConnections = requestBody.ActiveConnections,
             protocolVersion = requestBody.ProtocolVersion,
             simulationRevision = requestBody.SimulationRevision,
             collisionRevision = requestBody.CollisionRevision,
@@ -99,54 +111,55 @@ public sealed class AuthServiceClientTests
         }));
         var client = CreateClient(handler);
 
-        var result = await client.HeartbeatWorldAsync(
-            "local-world-1",
+        var result = await client.HeartbeatSimulationWorkerAsync(
+            "local-simulation-worker-1",
             requestBody,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
         var request = Assert.Single(handler.Requests);
-        Assert.Equal("/api/worlds/local-world-1/heartbeat", request.Path);
+        Assert.Equal(
+            "/api/simulation-workers/local-simulation-worker-1/heartbeat",
+            request.Path);
         using var body = JsonDocument.Parse(request.Body);
-        Assert.Equal("world.example.test", body.RootElement.GetProperty("host").GetString());
-        Assert.Equal(28015, body.RootElement.GetProperty("udpPort").GetInt32());
-        Assert.Equal("world-instance-1", body.RootElement.GetProperty("instanceId").GetString());
-        Assert.Equal(4, body.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal("local-fleet", body.RootElement.GetProperty("fleetId").GetString());
+        Assert.Equal("local-node-1", body.RootElement.GetProperty("nodeId").GetString());
+        Assert.Equal("local-shard-1", body.RootElement.GetProperty("shardId").GetString());
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
+        Assert.Equal(6, body.RootElement.GetProperty("protocolVersion").GetInt32());
     }
 
     [Fact]
-    public async Task WorldOfflineUsesTheInstanceGuardedRoute()
+    public async Task SimulationWorkerOfflineUsesRuntimeGuardedRoute()
     {
         var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
-            worldId = "local-world-1",
-            instanceId = "world-instance-1",
+            workerId = "local-simulation-worker-1",
+            runtimeId = "runtime-1",
             offlineAt = DateTime.UtcNow
         }));
         var client = CreateClient(handler);
 
-        var result = await client.MarkWorldOfflineAsync(
-            "local-world-1",
-            "world-instance-1",
+        var result = await client.MarkSimulationWorkerOfflineAsync(
+            "local-simulation-worker-1",
+            "runtime-1",
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
         var request = Assert.Single(handler.Requests);
-        Assert.Equal("/api/worlds/local-world-1/offline", request.Path);
+        Assert.Equal(
+            "/api/simulation-workers/local-simulation-worker-1/offline",
+            request.Path);
         using var body = JsonDocument.Parse(request.Body);
-        Assert.Equal("world-instance-1", body.RootElement.GetProperty("instanceId").GetString());
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
     }
 
     [Fact]
     public async Task NetworkFailureReturnsServiceUnavailable()
     {
-        var handler = new RecordingHttpMessageHandler(_ => throw new HttpRequestException("offline"));
-        var client = CreateClient(handler);
-
-        var result = await client.ConsumeJoinTicketAsync(
-            "join-ticket",
-            "local-world-1",
-            CancellationToken.None);
+        var handler = new RecordingHttpMessageHandler(
+            _ => throw new HttpRequestException("offline"));
+        var result = await ConsumeAsync(CreateClient(handler));
 
         Assert.False(result.Succeeded);
         Assert.Equal(503, result.StatusCode);
@@ -156,13 +169,9 @@ public sealed class AuthServiceClientTests
     [Fact]
     public async Task TimeoutReturnsGatewayTimeout()
     {
-        var handler = new RecordingHttpMessageHandler(_ => throw new TaskCanceledException("timeout"));
-        var client = CreateClient(handler);
-
-        var result = await client.ConsumeJoinTicketAsync(
-            "join-ticket",
-            "local-world-1",
-            CancellationToken.None);
+        var handler = new RecordingHttpMessageHandler(
+            _ => throw new TaskCanceledException("timeout"));
+        var result = await ConsumeAsync(CreateClient(handler));
 
         Assert.False(result.Succeeded);
         Assert.Equal(504, result.StatusCode);
@@ -177,12 +186,7 @@ public sealed class AuthServiceClientTests
             accountId = Guid.Empty,
             characterId = Guid.Empty
         }));
-        var client = CreateClient(handler);
-
-        var result = await client.ConsumeJoinTicketAsync(
-            "join-ticket",
-            "local-world-1",
-            CancellationToken.None);
+        var result = await ConsumeAsync(CreateClient(handler));
 
         Assert.False(result.Succeeded);
         Assert.Equal(502, result.StatusCode);
@@ -192,28 +196,54 @@ public sealed class AuthServiceClientTests
     [Fact]
     public async Task ProblemDetailsErrorIsMappedWithoutLosingItsCode()
     {
-        var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict)
+        var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(
+            HttpStatusCode.Conflict)
         {
             Content = JsonContent.Create(new
             {
                 type = "about:blank",
                 title = "Conflict",
                 status = 409,
-                detail = "The ticket belongs to another world.",
-                code = "wrong_world"
+                detail = "The ticket belongs to another worker runtime.",
+                code = "wrong_simulation_worker"
             })
         });
-        var client = CreateClient(handler);
-
-        var result = await client.ConsumeJoinTicketAsync(
-            "join-ticket",
-            "local-world-1",
-            CancellationToken.None);
+        var result = await ConsumeAsync(CreateClient(handler));
 
         Assert.False(result.Succeeded);
         Assert.Equal(409, result.StatusCode);
-        Assert.Equal("wrong_world", result.Error!.Code);
-        Assert.Equal("The ticket belongs to another world.", result.Error.Message);
+        Assert.Equal("wrong_simulation_worker", result.Error!.Code);
+        Assert.Equal(
+            "The ticket belongs to another worker runtime.",
+            result.Error.Message);
+    }
+
+    private static Task<AuthServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeAsync(
+        AuthServiceClient client)
+    {
+        return client.ConsumeJoinTicketAsync(
+            "join-ticket",
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            CancellationToken.None);
+    }
+
+    private static SimulationWorkerHeartbeatRequest CreateHeartbeatRequest()
+    {
+        return new SimulationWorkerHeartbeatRequest(
+            "local-fleet",
+            "local-node-1",
+            "local-shard-1",
+            "runtime-1",
+            DateTime.UtcNow.AddMinutes(-1),
+            "worker.example.test",
+            28015,
+            100,
+            4,
+            6,
+            "movement-simulation-v2",
+            "collision-revision-1");
     }
 
     private static AuthServiceClient CreateClient(HttpMessageHandler handler)

@@ -24,7 +24,7 @@ namespace ShooterMmo.Gameplay
         private float verticalVelocity;
         private Vector3 airbornePlanarVelocity;
         private bool isSprinting;
-        private RealtimeWorldClient realtimeClient;
+        private RealtimeSimulationClient realtimeClient;
         private ClientMovementPrediction movementPrediction;
         private readonly LocalMovementPresentation movementPresentation =
             new LocalMovementPresentation();
@@ -139,23 +139,23 @@ namespace ShooterMmo.Gameplay
             }
         }
 
-        public bool EnableServerAuthoritativeMovement(RealtimeWorldClient worldClient)
+        public bool EnableServerAuthoritativeMovement(RealtimeSimulationClient simulationClient)
         {
-            if (worldClient == null
-                || !worldClient.IsJoined
-                || worldClient.MovementSession == null)
+            if (simulationClient == null
+                || !simulationClient.IsJoined
+                || simulationClient.MovementSession == null)
             {
                 return false;
             }
 
             DisableServerAuthoritativeMovement();
-            realtimeClient = worldClient;
-            networkSettings = worldClient.MovementSession.Settings;
+            realtimeClient = simulationClient;
+            networkSettings = simulationClient.MovementSession.Settings;
             movementPrediction = new ClientMovementPrediction(
-                worldClient.MovementSession.InitialState,
+                simulationClient.MovementSession.InitialState,
                 networkSettings,
-                worldClient.MovementSession.CollisionWorld);
-            realtimeClient.WorldSnapshotReceived += OnWorldSnapshotReceived;
+                simulationClient.MovementSession.CollisionWorld);
+            realtimeClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
             networkTickAccumulator = 0f;
             isInitialNetworkTickPending = true;
             nextInputSequence = 0;
@@ -173,7 +173,7 @@ namespace ShooterMmo.Gameplay
         {
             if (realtimeClient != null)
             {
-                realtimeClient.WorldSnapshotReceived -= OnWorldSnapshotReceived;
+                realtimeClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
             }
 
             realtimeClient = null;
@@ -299,7 +299,7 @@ namespace ShooterMmo.Gameplay
             realtimeClient.TrySendMovementInputs(movementPrediction.CreateRedundantInputBatch());
         }
 
-        private void OnWorldSnapshotReceived(RealtimeWorldSnapshot snapshot)
+        private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
         {
             var movementSession = realtimeClient != null ? realtimeClient.MovementSession : null;
             if (movementSession == null)

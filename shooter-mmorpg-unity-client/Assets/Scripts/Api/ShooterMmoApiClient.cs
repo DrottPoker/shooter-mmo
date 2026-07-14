@@ -122,14 +122,14 @@ namespace ShooterMmo.Api
                 onError);
         }
 
-        public IEnumerator GetWorlds(
+        public IEnumerator GetShards(
             string authServiceBaseUrl,
-            Action<WorldResponse[]> onSuccess,
+            Action<ShardResponse[]> onSuccess,
             Action<ShooterMmoApiError> onError)
         {
             return SendArray(
                 "GET",
-                CombineUrl(authServiceBaseUrl, "/api/worlds"),
+                CombineUrl(authServiceBaseUrl, "/api/shards"),
                 null,
                 null,
                 onSuccess,
@@ -139,14 +139,14 @@ namespace ShooterMmo.Api
         public IEnumerator CreateJoinTicket(
             string authServiceBaseUrl,
             string sessionToken,
-            string worldId,
-            JoinWorldRequest request,
-            Action<JoinWorldResponse> onSuccess,
+            string shardId,
+            JoinShardRequest request,
+            Action<JoinShardResponse> onSuccess,
             Action<ShooterMmoApiError> onError)
         {
             return SendJson(
                 "POST",
-                CombineUrl(authServiceBaseUrl, "/api/worlds/" + Uri.EscapeDataString(worldId) + "/join"),
+                CombineUrl(authServiceBaseUrl, "/api/shards/" + Uri.EscapeDataString(shardId) + "/join"),
                 JsonUtility.ToJson(request),
                 sessionToken,
                 onSuccess,

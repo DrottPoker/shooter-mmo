@@ -2,7 +2,7 @@ using AuthService.Auth;
 using AuthService.Characters;
 using AuthService.Config;
 using AuthService.Database;
-using AuthService.Worlds;
+using AuthService.Simulation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,9 +24,13 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             SessionService,
             NullLogger<AccountService>.Instance);
         CharacterService = new CharacterService(dataSource, configuration);
-        WorldService = new WorldService(dataSource, configuration, authServiceConfig);
-        WorldSessionService = new WorldSessionService(dataSource, configuration);
-        WorldRegistryService = new WorldRegistryService(dataSource, authServiceConfig);
+        ShardService = new ShardService(dataSource, configuration, authServiceConfig);
+        SimulationSessionService = new SimulationSessionService(dataSource, configuration);
+        SimulationWorkerRegistryService = new SimulationWorkerRegistryService(dataSource, authServiceConfig);
+        SimulationTopologySeeder = new SimulationTopologySeeder(
+            dataSource,
+            authServiceConfig,
+            NullLogger<SimulationTopologySeeder>.Instance);
     }
 
     public NpgsqlDataSource DataSource { get; }
@@ -37,15 +41,17 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public CharacterService CharacterService { get; }
 
-    public WorldService WorldService { get; }
+    public ShardService ShardService { get; }
 
-    public WorldSessionService WorldSessionService { get; }
+    public SimulationSessionService SimulationSessionService { get; }
 
-    public WorldRegistryService WorldRegistryService { get; }
+    public SimulationWorkerRegistryService SimulationWorkerRegistryService { get; }
+
+    public SimulationTopologySeeder SimulationTopologySeeder { get; }
 
     public static async Task<PostgresIntegrationTestContext> CreateAsync(
         bool initializeDatabase = true,
-        bool heartbeatSeedWorld = true)
+        bool heartbeatSeedShard = true)
     {
         var connectionString = Environment.GetEnvironmentVariable(
             PostgresIntegrationFactAttribute.ConnectionStringVariable)!;
@@ -63,25 +69,36 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 {
                     ["Auth:SessionLifetimeHours"] = "24",
                     ["Game:MaxCharactersPerAccount"] = "5",
-                    ["WorldJoin:TicketLifetimeSeconds"] = "30",
-                    ["WorldSession:LeaseLifetimeSeconds"] = "60",
-                    ["WorldRegistry:HeartbeatTimeoutSeconds"] = "30"
+                    ["Simulation:JoinTicketLifetimeSeconds"] = "30",
+                    ["Simulation:SessionLeaseLifetimeSeconds"] = "60",
+                    ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30"
                 })
                 .Build();
 
+            var topology = new SimulationTopologyConfig(
+                [new WorldDefinitionBootstrapConfig("local-world-1", "Local Test World")],
+                [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
+                [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
+                [new ShardBootstrapConfig(
+                    "local-shard-1",
+                    "local-world-1",
+                    "local-fleet",
+                    "Local Shard 1",
+                    "mvp-open-risk")]);
             var authServiceConfig = new AuthServiceConfig(
                 connectionString,
                 "localhost:6379",
                 TimeSpan.FromSeconds(1),
-                TimeSpan.FromSeconds(30));
+                TimeSpan.FromSeconds(30),
+                topology);
             var context = new PostgresIntegrationTestContext(dataSource, configuration, authServiceConfig);
             if (initializeDatabase)
             {
                 await context.InitializeDatabaseAsync();
-                if (heartbeatSeedWorld)
+                if (heartbeatSeedShard)
                 {
-                    var heartbeat = await context.WorldRegistryService.HeartbeatAsync(
-                        "local-world-1",
+                    var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+                        "local-simulation-worker-1",
                         CreateHeartbeatRequest(),
                         CancellationToken.None);
                     Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
@@ -97,26 +114,34 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         }
     }
 
-    public Task InitializeDatabaseAsync()
+    public async Task InitializeDatabaseAsync()
     {
         var initializer = new DatabaseInitializer(
             DataSource,
             NullLogger<DatabaseInitializer>.Instance);
 
-        return initializer.InitializeAsync(CancellationToken.None);
+        await initializer.InitializeAsync(CancellationToken.None);
+        await SimulationTopologySeeder.SeedAsync(CancellationToken.None);
     }
 
-    public static WorldHeartbeatRequest CreateHeartbeatRequest(
-        string instanceId = "integration-world-instance",
+    public static SimulationWorkerHeartbeatRequest CreateHeartbeatRequest(
+        string runtimeId = "integration-worker-runtime",
         string host = "127.0.0.1",
-        int udpPort = 27015)
+        int udpPort = 27015,
+        string workerShardId = "local-shard-1")
     {
-        return new WorldHeartbeatRequest(
+        return new SimulationWorkerHeartbeatRequest(
+            "local-fleet",
+            "local-node-1",
+            workerShardId,
+            runtimeId,
+            DateTime.UtcNow.AddMinutes(-1),
             host,
             udpPort,
-            instanceId,
-            4,
-            "movement-simulation-v1",
+            100,
+            0,
+            6,
+            "movement-simulation-v2",
             "integration-collision-revision");
     }
 
@@ -150,41 +175,27 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             character.Value!);
     }
 
-    public async Task AddWorldAsync(string worldId)
+    public async Task AddShardAsync(string shardId)
     {
         await using var command = DataSource.CreateCommand(
             """
-            insert into worlds (
-                id,
-                display_name,
-                host,
-                udp_port,
-                rule_set,
-                is_online,
-                instance_id,
-                protocol_version,
-                simulation_revision,
-                collision_revision)
-            values (
-                @WorldId,
-                @DisplayName,
-                '127.0.0.1',
-                27016,
-                'mvp-open-risk',
-                true,
-                'integration-secondary-instance',
-                4,
-                'movement-simulation-v1',
-                'integration-collision-revision');
-
-            update worlds
-            set last_heartbeat_at = now()
-            where id = @WorldId;
+            insert into shards (id, display_name, world_id, fleet_id, rule_set)
+            values (@ShardId, @DisplayName, 'local-world-1', 'local-fleet', 'mvp-open-risk');
             """);
 
-        command.Parameters.AddWithValue("WorldId", worldId);
-        command.Parameters.AddWithValue("DisplayName", worldId);
+        command.Parameters.AddWithValue("ShardId", shardId);
+        command.Parameters.AddWithValue("DisplayName", shardId);
         await command.ExecuteNonQueryAsync();
+
+        var workerId = $"worker-{shardId}";
+        var heartbeat = await SimulationWorkerRegistryService.HeartbeatAsync(
+            workerId,
+            CreateHeartbeatRequest(
+                runtimeId: $"runtime-{shardId}",
+                udpPort: 27016,
+                workerShardId: shardId),
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
     }
 
     public async Task<int> ExecuteScalarIntAsync(string sql)

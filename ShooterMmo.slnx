@@ -5,7 +5,7 @@
     <Project Path="Shared/ShooterMmo.Shared.csproj" />
   </Folder>
   <Project Path="AuthService/AuthService.csproj" />
+  <Project Path="SimulationWorker/SimulationWorker.csproj" />
   <Project Path="Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj" />
   <Project Path="Tools/WorldCollisionCompiler/WorldCollisionCompiler.csproj" />
-  <Project Path="WorldServer/WorldServer.csproj" />
 </Solution>

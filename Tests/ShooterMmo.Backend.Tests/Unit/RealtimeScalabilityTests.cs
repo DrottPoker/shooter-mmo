@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using ShooterMmo.GameProtocol;
-using WorldServer.Config;
-using WorldServer.Realtime;
+using SimulationWorker.Config;
+using SimulationWorker.Realtime;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
@@ -13,10 +13,10 @@ public sealed class RealtimeScalabilityTests
     {
         const int entityCount = 25_000;
         const int observerCount = 1_000;
-        var manager = new WorldInterestManager(
+        var manager = new SimulationInterestManager(
             new InterestManagementConfig(64f, 96f, 112f));
         var entities = Enumerable.Range(1, entityCount)
-            .Select(index => new WorldInterestEntity(
+            .Select(index => new SimulationInterestEntity(
                 (ulong)index,
                 (index % 250) * 16f,
                 (index / 250) * 16f))
@@ -37,9 +37,9 @@ public sealed class RealtimeScalabilityTests
                     1,
                     new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true, false)))
                 .ToArray();
-            var packet = RealtimeProtocol.EncodeWorldSnapshot(
-                new RealtimeWorldSnapshot(1, 1, 0, 1, snapshotEntities));
-            Assert.True(RealtimeProtocol.TryDecodeWorldSnapshot(packet, out _, out var error), error);
+            var packet = RealtimeProtocol.EncodeSimulationSnapshot(
+                new RealtimeSimulationSnapshot(1, 1, 0, 1, snapshotEntities));
+            Assert.True(RealtimeProtocol.TryDecodeSimulationSnapshot(packet, out _, out var error), error);
         }
 
         stopwatch.Stop();

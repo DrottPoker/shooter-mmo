@@ -6,7 +6,7 @@ namespace ShooterMmo.Diagnostics
     {
         Auth,
         Client,
-        WorldServer
+        Simulation
     }
 
     public static class ClientLog

@@ -14,10 +14,11 @@ public static class AuthenticationPrincipalExtensions
         return ReadGuidClaim(principal, AuthenticationConstants.SessionIdClaim);
     }
 
-    public static string GetWorldId(this ClaimsPrincipal principal)
+    public static string GetSimulationWorkerId(this ClaimsPrincipal principal)
     {
-        return principal.FindFirstValue(AuthenticationConstants.WorldIdClaim)
-            ?? throw new InvalidOperationException("The authenticated WorldServer has no world id claim.");
+        return principal.FindFirstValue(AuthenticationConstants.SimulationWorkerIdClaim)
+            ?? throw new InvalidOperationException(
+                "The authenticated simulation worker has no worker id claim.");
     }
 
     private static Guid ReadGuidClaim(ClaimsPrincipal principal, string claimType)

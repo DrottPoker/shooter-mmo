@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Purpose
 
@@ -16,7 +16,7 @@ The temporary LoginMenu UI allows a player to register or log in. A successful
 request stores the account session in the persistent Unity client state and loads
 CharacterSelect. Duplicate submissions are blocked while a request is active.
 Only one client session may remain active for an account. A successful login on
-a second client replaces the first client, disconnects its active world peer if
+a second client replaces the first client, disconnects its active shard peer if
 needed, clears its local account state, and returns it to LoginMenu with a
 temporary Unity Console explanation.
 
@@ -30,27 +30,30 @@ The temporary CharacterSelect UI supports:
 
 - Loading the account's characters.
 - Creating a character.
-- Selecting one character for world entry.
-- Loading and selecting an online world.
-- Requesting and validating a world join in one sequential operation.
+- Selecting one character for shard entry.
+- Loading and selecting an online shard with region, fleet, player count, and
+  capacity information.
+- Requesting and validating a simulation join in one sequential operation.
 - Logging out before returning to LoginMenu.
 
 Character appearance, customization, deletion, progression, and statistics are
 not implemented.
 
-## World Entry And Exit
+## Shard Entry And Exit
 
 Status: Foundation implemented with temporary UI
 
-A selected character can enter an online local world through the authenticated
-join-ticket flow. The client connects to the selected host and UDP port with
-LiteNetLib, sends the ticket through the shared versioned protocol, and loads
-WorldScene only after WorldServer accepts the session. WorldScene displays the
-selected character, world, session metadata, and current UDP connection state.
+A selected character can enter an online local shard through the authenticated
+placement and join-ticket flow. AuthService selects the assigned healthy worker
+runtime and returns its endpoint only with the ticket. The client validates the
+placement, connects with LiteNetLib, sends the ticket through the shared
+versioned protocol, and loads WorldScene only after SimulationWorker accepts the
+session. WorldScene displays character, shard, World, worker, runtime, session,
+and UDP connection state.
 
-Leave sends the exact world-session id over the active peer and waits for server
+Leave sends the exact simulation-session id over the active peer and waits for server
 acknowledgement before returning to CharacterSelect. Unexpected disconnects
-clear world state and return an authenticated player to CharacterSelect. HTTP
+clear shard state and return an authenticated player to CharacterSelect. HTTP
 401 from AuthService still clears account state and returns the player to
 LoginMenu.
 
@@ -64,14 +67,14 @@ Runtime code validates and connects these authored objects but does not generate
 them. The map includes static boundaries, a slope, three step heights, cover, and
 a dedicated camera-collision wall.
 
-The world has no persistent simulation yet. During authenticated play, other
+The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
-rendered from interpolated WorldServer snapshots. WorldServer assigns each live
+rendered from interpolated SimulationWorker snapshots. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
 Remote instances are kept under WorldScene's separate
 `EntityPresentationRoot`, outside the authored LocalPlayer hierarchy.
-WorldServer uses distance-based interest management, so distant entities are
+SimulationWorker uses distance-based interest management, so distant entities are
 removed reliably and recreated reliably when they enter the configured area of
 interest. Snapshot loss never decides whether a remote player exists.
 
@@ -93,14 +96,14 @@ Status: Server-authoritative movement and test-map collision implemented
 - While aiming, the player faces the camera direction so lateral movement
   behaves as shooter strafing.
 - Aim cancels sprint and blocks both sprint and jump until Aim is released. The
-  shared simulation enforces this rule for prediction and WorldServer authority.
+  shared simulation enforces this rule for prediction and SimulationWorker authority.
 - Movement uses a PlayerInput-owned Unity Input Actions asset.
 - The local player predicts each fixed input tick immediately. A separate local
   presentation state interpolates those predictions at the render frame rate so
   the player and camera do not move in 30 Hz steps.
-- WorldServer owns the accepted position, velocity, facing, grounded state, and
+- SimulationWorker owns the accepted position, velocity, facing, grounded state, and
   sprint state.
-- WorldServer resolves the player capsule against the baked ground, boundaries,
+- SimulationWorker resolves the player capsule against the baked ground, boundaries,
   ramp, steps, cover, and camera test wall.
 - Walkable slopes up to the configured 45 degree limit hold a grounded character
   in place when movement input stops. Steeper surfaces are not treated as ground.
@@ -117,14 +120,14 @@ Status: Server-authoritative movement and test-map collision implemented
   snapshot buffer approximately 100 ms behind server time. Bounded clock
   correction restores that delay after a network stall instead of accumulating
   permanent latency.
-- WorldServer neutralizes movement and action state after 500 ms without a
+- SimulationWorker neutralizes movement and action state after 500 ms without a
   newer input sequence, then resumes from the next valid input.
 
 Gamepad bindings and player-configurable rebinding are not implemented yet.
 
 Movement speed, gravity, terminal fall speed, jump, facing, capsule dimensions,
 slope and step rules, authored collision, and world bounds are validated and
-simulated by WorldServer.
+simulated by SimulationWorker.
 The active UDP connection carries sequenced input and periodic movement
 snapshots in addition to session control.
 The character root is the shared logical ground point for players and NPCs.
@@ -138,7 +141,7 @@ renders an interpolated presentation state at the same root convention.
 
 The current test map is baked into versioned collision chunks shared by the
 server and client prediction. Authenticated movement therefore collides with all
-12 current BoxColliders. WorldServer sends the authoritative collision revision
+12 current BoxColliders. SimulationWorker sends the authoritative collision revision
 when the character joins, and the client refuses to predict against a different
 revision. Direct WorldScene preview still uses Unity CharacterController for a
 fast offline authoring check, but it is not the network authority.
@@ -163,11 +166,10 @@ Status: Local foundation implemented
 - Normal framing uses an explicit vertical offset and a closer follow distance
   to keep the character lower and left of center in a modern shooter composition.
 - Aim smoothly tightens the right-shoulder framing and changes camera FOV from
-  60 to 50 degrees.
+  60 to 45 degrees.
 - Camera distance is fixed. Mouse-wheel zoom is not available.
 - Camera focus follows a single player CameraTarget height.
-- Vertical look supports a wider range from 50 degrees upward to 75 degrees
-  downward.
+- Vertical look is clamped from -50 to 75 degrees.
 - Spherecast collision moves the camera in front of walls and restores its
   desired distance after the obstruction clears.
 - The collision filter ignores the local player hierarchy.
@@ -184,9 +186,9 @@ Status: Gameplay contract implemented with temporary UI presentation
 - The temporary World Debug panel is compact and anchored to the bottom-left
   corner.
 - F2 hides or restores the World Debug panel.
-- During an authenticated world session, World Debug shows WorldServer as the
+- During an authenticated simulation session, World Debug shows SimulationWorker as the
   movement authority, the latest server tick, and the configured tick and
-  snapshot rates.
+  snapshot rates. It also shows the active shard, World, worker, and runtime.
 - The crosshair is hidden while F1 has released the cursor.
 
 ## Planned Feature Categories
@@ -201,6 +203,7 @@ They remain in the MVP specification until working behavior is available:
 - Gathering, crafting, professions, and player economy.
 - NPCs, enemies, quests, events, and world activities.
 - Character progression and long-term persistence.
+- Zone partitioning, cross-zone handoff, and population layers.
 - Social, grouping, guild, chat, and trading systems.
 - Final UI, audio, visual effects, animation, and accessibility.
 

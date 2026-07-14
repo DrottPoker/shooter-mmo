@@ -5,7 +5,7 @@ using AuthService.Config;
 using AuthService.Database;
 using AuthService.Health;
 using AuthService.Http;
-using AuthService.Worlds;
+using AuthService.Simulation;
 using Microsoft.AspNetCore.Authentication;
 using Npgsql;
 using ShooterMmo.Shared.Configuration;
@@ -42,22 +42,23 @@ builder.Services.AddSingleton(_ =>
 
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton<DatabaseInitializer>();
+builder.Services.AddSingleton<SimulationTopologySeeder>();
 builder.Services.AddSingleton<PostgresHealthProbe>();
 builder.Services.AddSingleton<AuthServiceHealthService>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<CharacterService>();
 builder.Services.AddScoped<SessionService>();
-builder.Services.AddScoped<WorldService>();
-builder.Services.AddScoped<WorldSessionService>();
-builder.Services.AddScoped<WorldRegistryService>();
+builder.Services.AddScoped<ShardService>();
+builder.Services.AddScoped<SimulationSessionService>();
+builder.Services.AddScoped<SimulationWorkerRegistryService>();
 builder.Services.AddApiProblemDetails();
 builder.Services
     .AddAuthentication()
     .AddScheme<AuthenticationSchemeOptions, AccountSessionAuthenticationHandler>(
         AuthenticationConstants.AccountSessionScheme,
         _ => { })
-    .AddScheme<AuthenticationSchemeOptions, WorldServerAuthenticationHandler>(
-        AuthenticationConstants.WorldServerScheme,
+    .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(
+        AuthenticationConstants.SimulationWorkerScheme,
         _ => { });
 builder.Services.AddAuthorization(options =>
 {
@@ -66,9 +67,9 @@ builder.Services.AddAuthorization(options =>
         policy.AddAuthenticationSchemes(AuthenticationConstants.AccountSessionScheme);
         policy.RequireAuthenticatedUser();
     });
-    options.AddPolicy(AuthenticationConstants.WorldServerPolicy, policy =>
+    options.AddPolicy(AuthenticationConstants.SimulationWorkerPolicy, policy =>
     {
-        policy.AddAuthenticationSchemes(AuthenticationConstants.WorldServerScheme);
+        policy.AddAuthenticationSchemes(AuthenticationConstants.SimulationWorkerScheme);
         policy.RequireAuthenticatedUser();
     });
 });
@@ -107,6 +108,8 @@ if (app.Configuration.GetValue("Database:RunMigrationsOnStartup", true))
 {
     var initializer = app.Services.GetRequiredService<DatabaseInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);
+    var topologySeeder = app.Services.GetRequiredService<SimulationTopologySeeder>();
+    await topologySeeder.SeedAsync(CancellationToken.None);
 }
 
 app.MapGet("/", () => Results.Redirect("/health/ready"));
@@ -130,7 +133,7 @@ app.MapGet("/health/ready", async (
 
 app.MapAccountEndpoints();
 app.MapCharacterEndpoints();
-app.MapWorldEndpoints();
+app.MapSimulationEndpoints();
 
 app.Run();
 

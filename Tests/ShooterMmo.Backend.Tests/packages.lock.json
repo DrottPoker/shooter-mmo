@@ -207,7 +207,7 @@
       "shootermmo.shared": {
         "type": "Project"
       },
-      "worldserver": {
+      "simulationworker": {
         "type": "Project",
         "dependencies": {
           "LiteNetLib": "[2.1.4, )",

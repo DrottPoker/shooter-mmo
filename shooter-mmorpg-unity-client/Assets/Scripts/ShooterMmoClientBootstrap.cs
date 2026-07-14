@@ -14,7 +14,7 @@ namespace ShooterMmo
         private ShooterMmoApiClient apiClient;
         private Coroutine accountSessionMonitor;
 
-        public static RealtimeWorldClient WorldClient { get; private set; }
+        public static RealtimeSimulationClient SimulationClient { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -34,13 +34,13 @@ namespace ShooterMmo
         private void Awake()
         {
             apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
-            WorldClient = GetComponent<RealtimeWorldClient>();
-            if (WorldClient == null)
+            SimulationClient = GetComponent<RealtimeSimulationClient>();
+            if (SimulationClient == null)
             {
-                WorldClient = gameObject.AddComponent<RealtimeWorldClient>();
+                SimulationClient = gameObject.AddComponent<RealtimeSimulationClient>();
             }
 
-            WorldClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
+            SimulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
         }
 
@@ -63,40 +63,40 @@ namespace ShooterMmo
 
         private void OnDestroy()
         {
-            if (WorldClient != null)
+            if (SimulationClient != null)
             {
-                WorldClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
+                SimulationClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
             }
 
-            WorldClient = null;
+            SimulationClient = null;
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             if (previousSceneName == ShooterMmoSceneNames.WorldScene
                 && scene.name != ShooterMmoSceneNames.WorldScene
-                && ShooterMmoClientSession.ActiveWorldSession != null)
+                && ShooterMmoClientSession.ActiveSimulationSession != null)
             {
-                StartCoroutine(ReleaseAbandonedWorldSessionRoutine());
+                StartCoroutine(ReleaseAbandonedSimulationSessionRoutine());
             }
 
             previousSceneName = scene.name;
             EnsureSceneController(scene.name);
         }
 
-        private IEnumerator ReleaseAbandonedWorldSessionRoutine()
+        private IEnumerator ReleaseAbandonedSimulationSessionRoutine()
         {
-            var session = ShooterMmoClientSession.ActiveWorldSession;
+            var session = ShooterMmoClientSession.ActiveSimulationSession;
             if (session == null)
             {
                 yield break;
             }
 
             RealtimeClientError error = null;
-            if (WorldClient != null && WorldClient.IsJoined)
+            if (SimulationClient != null && SimulationClient.IsJoined)
             {
-                yield return WorldClient.Leave(
-                    session.worldSessionId,
+                yield return SimulationClient.Leave(
+                    session.simulationSessionId,
                     () => { },
                     value => error = value);
             }
@@ -105,17 +105,17 @@ namespace ShooterMmo
             {
                 ClientLog.Warning(
                     ClientLogCategory.Client,
-                    "Fallback world leave did not complete. Closing UDP locally: " + error.ToDisplayMessage());
-                if (WorldClient != null)
+                    "Fallback shard leave did not complete. Closing UDP locally: " + error.ToDisplayMessage());
+                if (SimulationClient != null)
                 {
-                    WorldClient.Abort();
+                    SimulationClient.Abort();
                 }
             }
 
-            if (ShooterMmoClientSession.ActiveWorldSession != null
-                && ShooterMmoClientSession.ActiveWorldSession.worldSessionId == session.worldSessionId)
+            if (ShooterMmoClientSession.ActiveSimulationSession != null
+                && ShooterMmoClientSession.ActiveSimulationSession.simulationSessionId == session.simulationSessionId)
             {
-                ShooterMmoClientSession.ActiveWorldSession = null;
+                ShooterMmoClientSession.ActiveSimulationSession = null;
             }
         }
 
@@ -141,9 +141,9 @@ namespace ShooterMmo
 
             ClientLog.Warning(
                 ClientLogCategory.Client,
-                "The active world connection closed. Clearing local world state and leaving WorldScene: "
+                "The active simulation connection closed. Clearing local shard state and leaving WorldScene: "
                 + error.ToDisplayMessage());
-            ShooterMmoClientSession.ActiveWorldSession = null;
+            ShooterMmoClientSession.ActiveSimulationSession = null;
 
             if (SceneManager.GetActiveScene().name == ShooterMmoSceneNames.WorldScene)
             {

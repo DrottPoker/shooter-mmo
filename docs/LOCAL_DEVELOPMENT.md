@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Requirements
 
@@ -17,10 +17,14 @@ backend service:
 Copy-Item .env.example .env
 ```
 
-Replace every `replace-with-...` placeholder in `.env`. AuthService and WorldServer
-share `WORLD_SERVER_ID` and `WORLD_SERVER_SERVICE_SECRET`. Both services search
-their content root and parent directories for `.env`. Process environment
-variables and command-line values take precedence.
+Replace every `replace-with-...` placeholder in `.env`. AuthService and
+SimulationWorker share `SIMULATION_WORKER_ID` and
+`SIMULATION_WORKER_SERVICE_SECRET`. The local worker also receives
+`SIMULATION_FLEET_ID`, `SIMULATION_NODE_ID`, `SIMULATION_SHARD_ID`, and
+`SIMULATION_WORLD_ID`. These values must match the topology in
+`AuthService/Config/appsettings.json`. Both services search their content root
+and parent directories for `.env`. Process environment variables and
+command-line values take precedence.
 
 If the PostgreSQL Docker volume already exists, changing `POSTGRES_PASSWORD` does
 not change the password stored inside PostgreSQL. Either keep the current local
@@ -61,7 +65,7 @@ NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
 let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
 quality gate before merging. `LiteNetLib` must stay aligned between
-`WorldServer.csproj` and the Unity manifest.
+`SimulationWorker/SimulationWorker.csproj` and the Unity manifest.
 
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
@@ -100,8 +104,9 @@ dotnet test ShooterMmo.slnx --configuration Release
 Expected result:
 
 - All unit tests pass.
-- PostgreSQL migration concurrency, ticket concurrency, wrong-world protection,
-  reconnect, heartbeat, cross-world exclusion, and idempotent release tests pass
+- PostgreSQL migration concurrency, ticket concurrency, wrong-worker protection,
+  reconnect, heartbeat, cross-shard and cross-character exclusion, assignment
+  failover, and idempotent release tests pass
   instead of being skipped.
 
 Clean up the isolated environment:
@@ -124,18 +129,19 @@ The local services use these ports:
 - PostgreSQL: `localhost:5432`
 - Redis: `127.0.0.1:6379`
 - AuthService: `http://localhost:5000`
-- WorldServer realtime transport: `0.0.0.0:27015/udp`
-- WorldServer advertised client endpoint: `127.0.0.1:27015/udp`
+- SimulationWorker realtime transport: `0.0.0.0:27015/udp`
+- SimulationWorker advertised client endpoint: `127.0.0.1:27015/udp`
 
-Local PostgreSQL credentials and WorldServer service credentials live only in
+Local PostgreSQL credentials and SimulationWorker service credentials live only in
 the ignored `.env` file. `.env.example` documents every required key without
 placing active credentials in application settings or Compose YAML.
-`WORLD_ADVERTISED_HOST` and `WORLD_ADVERTISED_UDP_PORT` override the client-facing
-endpoint without changing the local bind port.
+`SIMULATION_WORKER_ADVERTISED_HOST` and
+`SIMULATION_WORKER_ADVERTISED_UDP_PORT` override the client-facing endpoint
+without changing the local bind port.
 
 ## Backend Services
 
-Run AuthService:
+Run AuthService in the first terminal:
 
 ```powershell
 dotnet run --project AuthService
@@ -151,7 +157,7 @@ Invoke-RestMethod http://localhost:5000/health/ready
 Expected result: liveness reports `live`. Readiness reports `ready` only after a
 real PostgreSQL `select 1` query and Redis `PING` both succeed.
 
-Register a test account:
+Register a test account and keep the returned account session active:
 
 ```powershell
 $body = @{
@@ -175,29 +181,6 @@ $headers = @{ Authorization = "Bearer $($auth.sessionToken)" }
 The response also contains `sessionId`. Token-bearing responses include
 `Cache-Control: no-store` and `Pragma: no-cache`.
 
-Logout the current session:
-
-```powershell
-Invoke-RestMethod http://localhost:5000/api/accounts/logout `
-  -Method Post `
-  -Headers $headers
-```
-
-Expected result: the endpoint returns `204 No Content`, and the same bearer token
-returns `401 Unauthorized` on the next authenticated request.
-
-An authenticated session can revoke another session owned by the same account:
-
-```powershell
-Invoke-RestMethod "http://localhost:5000/api/accounts/sessions/$sessionId" `
-  -Method Delete `
-  -Headers $headers
-```
-
-Expected result: the endpoint returns `204 No Content`. Any unconsumed join ticket
-issued by the revoked session is invalidated, and any world-session lease owned by
-that account session is released.
-
 Create a character:
 
 ```powershell
@@ -210,17 +193,18 @@ $character = Invoke-RestMethod http://localhost:5000/api/characters `
   -ContentType "application/json"
 ```
 
-Run WorldServer:
+Run SimulationWorker in the second terminal:
 
 ```powershell
-dotnet run --project WorldServer
+dotnet run --project SimulationWorker
 ```
 
-WorldServer is a headless .NET Generic Host. It does not expose HTTP routes. A
-successful start logs that `local-world-1` is listening on UDP port `27015` with
-realtime protocol version 5, the movement-simulation revision, the advertised
-endpoint, and the loaded collision revision. Every 30 seconds it also logs
-aggregate realtime packet, byte, entity, peer, quota, and snapshot counters.
+SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
+A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
+node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
+`27015`, runtime id, realtime protocol version 6, simulation revision, collision
+revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
+realtime packet, byte, entity, peer, quota, and snapshot counters.
 
 The default resilience settings allow eight concurrent active-session
 heartbeats, 120 inbound packets per second with a 240-packet burst, 128 KiB per
@@ -229,10 +213,11 @@ snapshots with a 512 KiB burst. Interest enters at 128 meters and exits at 144
 meters. Collision loads within two chunks of active anchors and unloads outside
 three chunks. Invalid values fail startup.
 
-Run a one-time WorldServer startup health check:
+Run a one-time SimulationWorker startup health check while the normal worker is
+stopped:
 
 ```powershell
-dotnet run --project WorldServer -- --health-check-only
+dotnet run --project SimulationWorker -- --health-check-only
 ```
 
 Expected result: PostgreSQL is verified through AuthService readiness, Redis is
@@ -245,35 +230,36 @@ repeat to verify a nonzero exit:
 $LASTEXITCODE
 ```
 
-Verify that WorldServer owns its UDP socket:
+Verify that SimulationWorker owns its UDP socket:
 
 ```powershell
 Get-NetUDPEndpoint -LocalPort 27015
 ```
 
 Expected result: the command lists IPv4 and optionally IPv6 listeners for port
-27015. WorldServer health is an executable startup check rather than an HTTP
+27015. SimulationWorker health is an executable startup check rather than an HTTP
 surface.
 
-World registry test:
+Simulation topology and registration test:
 
-1. Start AuthService without WorldServer and call `GET /api/worlds`.
-2. Start WorldServer and call the endpoint again.
-3. Stop WorldServer normally with Ctrl+C and call the endpoint again.
-4. Start WorldServer, then terminate it without graceful shutdown. Wait longer
+1. Start AuthService without SimulationWorker and call `GET /api/shards`.
+2. Start SimulationWorker and call the endpoint again.
+3. Stop SimulationWorker normally with Ctrl+C and call the endpoint again.
+4. Start SimulationWorker, then terminate it without graceful shutdown. Wait longer
    than the configured 30-second timeout and call the endpoint again.
 
-Expected result: `local-world-1` is offline before the first heartbeat, online
+Expected result: `local-shard-1` is offline before the first heartbeat, online
 while fresh heartbeats arrive, immediately offline after graceful shutdown, and
-offline after the heartbeat timeout following an ungraceful stop. While online,
-the response uses the advertised host and UDP port.
+offline after the heartbeat timeout following an ungraceful stop. The public
+response includes World, fleet, region, player count, and capacity, but does not
+expose worker host, port, or runtime.
 
-Create a join ticket after WorldServer has heartbeated the world online:
+Create a join ticket after SimulationWorker has heartbeated the shard online:
 
 ```powershell
 $joinBody = @{ characterId = $character.id } | ConvertTo-Json
 
-$join = Invoke-RestMethod http://localhost:5000/api/worlds/local-world-1/join `
+$join = Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join `
   -Method Post `
   -Headers $headers `
   -Body $joinBody `
@@ -281,18 +267,38 @@ $join = Invoke-RestMethod http://localhost:5000/api/worlds/local-world-1/join `
 
 ```
 
+Expected result: `join.shard.id` is `local-shard-1`, `join.shard.worldId` is
+`local-world-1`, and `join.endpoint` identifies
+`local-simulation-worker-1`, its current runtime, and `127.0.0.1:27015`. The
+public shard list did not contain that endpoint.
+
 The ticket is intentionally short-lived and is consumed by the Unity UDP
-handshake. Do not attempt to send it to an HTTP WorldServer endpoint. The backend
+handshake. Do not attempt to send it to an HTTP SimulationWorker endpoint. The backend
 socket tests verify join, leave, and the reliable entity lifecycle with:
 
 ```powershell
 dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
-  --filter "FullyQualifiedName~RealtimeServerServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests"
+  --filter "FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests"
 ```
 
 Expected result: the authenticated client joins, moves, and leaves with exact
 session cleanup. The two-client lifecycle test also proves that an existing peer
 receives reliable ordered spawn and despawn for the other player.
+
+Optional logout test after the join flow is complete:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/api/accounts/logout `
+  -Method Post `
+  -Headers $headers
+```
+
+Expected result: the endpoint returns `204 No Content`. The bearer token then
+returns `401 Unauthorized`, pending tickets are consumed, and active simulation
+sessions owned by that account session are released.
+
+An authenticated session can similarly revoke an owned session with
+`DELETE /api/accounts/sessions/{sessionId}`.
 
 ## Unity Client Flow
 
@@ -542,7 +548,7 @@ Before using the Unity client, start these services:
 ```powershell
 docker compose up -d
 dotnet run --project AuthService
-dotnet run --project WorldServer
+dotnet run --project SimulationWorker
 ```
 
 Then open `shooter-mmorpg-unity-client` in Unity and start from:
@@ -556,17 +562,18 @@ open while they were first added, exit Play Mode and wait for package resolution
 and script compilation to finish. If Unity still displays the old duplicate
 `ShooterMmo.GameProtocol` assembly error after compilation, close and reopen the
 project once so its package cache is rebuilt. The persistent bootstrap adds
-`RealtimeWorldClient` to its own runtime object. The only new authored movement
+`RealtimeSimulationClient` to its own runtime object. The only new authored movement
 reference is the Remote Player Prefab field on WorldSceneContext, described
 above.
 
-World snapshots use LiteNetLib's unchanneled `Unreliable` delivery. LiteNetLib
+Simulation snapshots use LiteNetLib's unchanneled `Unreliable` delivery. LiteNetLib
 reports these receive events as channel 0 even if a channel number was supplied
 to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
-restart WorldServer so both processes use the current protocol implementation.
-Protocol version 5 also validates the compiled movement-simulation revision,
+restart SimulationWorker so both processes use the current protocol implementation.
+Protocol version 6 also validates shard and World identity, the exact placement,
+the compiled movement-simulation revision,
 server-assigned network entity ids, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
@@ -597,13 +604,14 @@ Manual Unity test flow:
 3. Unity loads `CharacterSelect`.
 4. Create a character if none exists.
 5. Select a character.
-6. Select `Local World 1`.
-7. Click `Join Selected World`.
+6. Select `Local Shard 1`.
+7. Click `Join Selected Shard`.
 8. Unity loads `WorldScene`.
 
 Expected result:
 
-- `WorldScene` shows the selected character on `local-world-1`.
+- `WorldScene` shows the selected character on shard `local-shard-1` using
+  World `local-world-1`.
 - A local test player spawns at the authored PlayerSpawn in the test map.
 - You can move with `WASD`, sprint with `Shift`, jump with `Space`, control the
   camera continuously with the mouse, and hold the right mouse button to aim.
@@ -611,33 +619,35 @@ Expected result:
 - F1 releases or recaptures the debug cursor, and F2 hides or restores the
   compact bottom-left World Debug panel.
 - World Debug displays `Joined` and `127.0.0.1:27015/udp`.
-- World Debug displays `Authority: WorldServer`, an increasing server tick, and
+- World Debug displays shard `local-shard-1`, World `local-world-1`, worker
+  `local-simulation-worker-1`, and the current runtime id.
+- World Debug displays `Authority: SimulationWorker`, an increasing server tick, and
   `Simulation: 30 Hz / Snapshots: 15 Hz`.
 - Local movement responds immediately through prediction and remains corrected
-  to WorldServer snapshots without repeated visible snapping on flat ground.
-- `Leave World` receives server acknowledgement, closes UDP, and returns to
+  to SimulationWorker snapshots without repeated visible snapping on flat ground.
+- `Leave Shard` receives server acknowledgement, closes UDP, and returns to
   `CharacterSelect`.
-- WorldServer logs the joined and released world-session ids.
+- SimulationWorker logs the joined and released simulation-session ids.
 - `Back To Login` revokes the current AuthService session before clearing local
   client state.
 
-Expected Unity Console sequence for a successful login and world join:
+Expected Unity Console sequence for a successful login and simulation join:
 
 ```text
 [AUTH] Validating login credentials for username 'player_one'.
 [AUTH] Account 'player_one' (<account-id>) logged in.
-[CLIENT] Character 'Hero One' (<character-id>) is requesting access to world 'local-world-1'.
-[AUTH] AuthService issued a short-lived join ticket for character 'Hero One' and world 'local-world-1'.
-[CLIENT] Opening UDP connection to 127.0.0.1:27015/udp.
-[CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to WorldServer.
-[WORLDSERVER] Account '<account-id>' with character 'Hero One' (<character-id>) connected to world 'local-world-1'. World session '<world-session-id>' controls network entity '<entity-id>'.
+[CLIENT] Character 'Hero One' (<character-id>) is requesting access to shard 'local-shard-1'.
+[AUTH] AuthService issued a short-lived join ticket for character 'Hero One' on shard 'local-shard-1'.
+[CLIENT] Opening UDP connection to SimulationWorker 'local-simulation-worker-1' runtime '<worker-runtime-id>' at 127.0.0.1:27015/udp for shard 'local-shard-1'.
+[CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to SimulationWorker.
+[SIMULATION] Account '<account-id>' with character 'Hero One' (<character-id>) connected to shard 'local-shard-1' for world 'local-world-1' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
 [CLIENT] Server-authoritative movement is active at 30 ticks per second with 15 snapshots per second.
 ```
 
-An authentication, API, transport, timeout, protocol, or WorldServer rejection
+An authentication, API, transport, timeout, protocol, or SimulationWorker rejection
 appears as a red Unity Console error with the responsible category and stable
 error code. Passwords, bearer tokens, join-ticket values, service secrets, and
-secret world-session tokens are never written to the console.
+secret simulation-session tokens are never written to the console.
 
 ### LiteNetLib Package Signature Warning
 
@@ -657,17 +667,17 @@ Unity client stability test:
 
 1. Double-click `Register`, `Create Character`, refresh, join, and leave buttons.
 2. Verify only one operation starts and controls remain disabled until it ends.
-3. Stop WorldServer, click `Join Selected World`, and wait for the realtime
+3. Stop SimulationWorker, click `Join Selected Shard`, and wait for the realtime
    timeout.
 4. Verify CharacterSelect shows a structured realtime network or timeout error
    and does not load WorldScene.
-5. Restart WorldServer, join again, and use `Leave World`.
+5. Restart SimulationWorker, join again, and use `Leave Shard`.
 6. Verify only one leave runs, CharacterSelect loads after acknowledgement, and
-   WorldServer logs the released session.
-7. Verify that an in-flight world snapshot during leave does not produce
+   SimulationWorker logs the released session.
+7. Verify that an in-flight simulation snapshot during leave does not produce
    `invalid_snapshot_delivery`.
-8. Join again and stop WorldServer while WorldScene is active.
-9. Verify the client clears world state and returns to CharacterSelect after the
+8. Join again and stop SimulationWorker while WorldScene is active.
+9. Verify the client clears shard state and returns to CharacterSelect after the
    unexpected disconnect.
 10. Revoke the current account session, then refresh characters.
 11. Verify the client clears all local state and returns to LoginMenu after HTTP
@@ -676,18 +686,18 @@ Unity client stability test:
 Single active account session test with a standalone build:
 
 1. Restart AuthService so it applies the latest database migration, then start
-   WorldServer.
+   SimulationWorker.
 2. Rebuild the standalone development client so it contains the current session
    monitor and realtime disconnect handling.
-3. Start the standalone client and enter `local-world-1` with character one.
+3. Start the standalone client and enter `local-shard-1` with character one.
 4. In Unity Play Mode, log into the same account. Selecting character two is
    allowed only after this new login has replaced the first session.
 5. Wait up to five seconds and inspect the first client's Unity log.
-6. Join `local-world-1` with character two from the newly authenticated client.
+6. Join `local-shard-1` with character two from the newly authenticated client.
 
 Expected result:
 
-- The first client is disconnected, clears its account and world state, and
+- The first client is disconnected, clears its account and shard state, and
   returns to LoginMenu.
 - Its Console contains an `[AUTH]` message explaining that the account logged in
   from another client and includes `account_session_replaced`.
@@ -743,30 +753,30 @@ Expected result:
 
 Server-authoritative movement test:
 
-1. Start PostgreSQL, Redis, AuthService, and WorldServer with the commands above.
+1. Start PostgreSQL, Redis, AuthService, and SimulationWorker with the commands above.
 2. Enter WorldScene through LoginMenu and CharacterSelect. Do not start directly
    from WorldScene for this test.
-3. Confirm World Debug shows `Authority: WorldServer` and an increasing Server
+3. Confirm World Debug shows `Authority: SimulationWorker` and an increasing Server
    Tick value.
 4. Move, rotate, sprint, jump, release movement, and change direction sharply.
 5. Walk into the four boundaries, CameraTestWall, LowCover, and HighCover.
 6. Walk up and down Ramp, release all movement input while standing halfway up,
    wait for at least three seconds, then traverse Step01, Step02, and Step03.
-7. Watch the Unity Console and WorldServer terminal while moving for at least
+7. Watch the Unity Console and SimulationWorker terminal while moving for at least
    30 seconds.
-8. Stop WorldServer while the character is moving.
+8. Stop SimulationWorker while the character is moving.
 
 Expected result:
 
 - Input remains responsive because the client predicts the same fixed-step rules
-  used by WorldServer.
+  used by SimulationWorker.
 - Normal snapshots do not cause repeated large position snaps on flat ground,
   the ramp, or steps.
 - Sprint cannot begin in the air and jump remains responsive even if the input
   batch containing its edge is duplicated.
 - The server tick increases continuously and snapshots acknowledge input without
   protocol errors.
-- If input packets stop for more than the configured 500 ms timeout, WorldServer
+- If input packets stop for more than the configured 500 ms timeout, SimulationWorker
   neutralizes movement and action state instead of continuing the last command.
 - The capsule stops at walls and cover, follows the walkable ramp, and climbs
   the configured step heights in both the predicted and authoritative state.
@@ -777,10 +787,10 @@ Expected result:
 - Jump takeoff, airborne falling, and landing from heights above the ground snap
   range remain responsive and are not delayed by step presentation smoothing.
 - The client refuses to activate movement and reports a collision revision error
-  if its baked world data differs from WorldServer.
+  if its baked world data differs from SimulationWorker.
 - The client refuses to activate movement and reports a simulation revision
-  error if its compiled movement rules differ from WorldServer.
-- Stopping WorldServer clears the active world session and returns the client to
+  error if its compiled movement rules differ from SimulationWorker.
+- Stopping SimulationWorker clears the active simulation session and returns the client to
   CharacterSelect through the existing disconnect recovery flow.
 
 Remote interpolation test with a standalone build:
@@ -789,8 +799,8 @@ Remote interpolation test with a standalone build:
    and WorldScene in that order.
 2. Run the build and keep Unity Editor available as the second client.
 3. Log in with two different accounts and select two different characters on
-   `local-world-1`.
-4. Join the world from both clients.
+   `local-shard-1`.
+4. Join the shard from both clients.
 5. Move each character while watching it from the other client.
 
 Expected result: each client owns one predicted local player and creates one
@@ -813,7 +823,7 @@ Expected result:
 - The scene-authored test map, LocalPlayer prefab instance, camera, and spawn point
   are used without runtime object generation.
 - Movement works without starting the backend, but server session data only
-  appears after the full login and world join flow.
+  appears after the full login and simulation join flow.
 - Direct scene preview uses Unity CharacterController collision. It is an
   offline authoring check and does not exercise prediction or server authority.
 

@@ -7,7 +7,8 @@ public sealed record AuthServiceConfig(
     string PostgresConnectionString,
     string RedisConnectionString,
     TimeSpan HealthCheckTimeout,
-    TimeSpan WorldHeartbeatTimeout)
+    TimeSpan SimulationWorkerHeartbeatTimeout,
+    SimulationTopologyConfig SimulationTopology)
 {
     public static AuthServiceConfig FromConfiguration(IConfiguration configuration)
     {
@@ -20,8 +21,8 @@ public sealed record AuthServiceConfig(
         ValidateBoolean(configuration, "Database:RunMigrationsOnStartup", errors);
         ValidatePositiveInt(configuration, "Auth:SessionLifetimeHours", errors);
         ValidatePositiveInt(configuration, "Game:MaxCharactersPerAccount", errors);
-        ValidatePositiveInt(configuration, "WorldJoin:TicketLifetimeSeconds", errors);
-        ValidatePositiveInt(configuration, "WorldSession:LeaseLifetimeSeconds", errors);
+        ValidatePositiveInt(configuration, "Simulation:JoinTicketLifetimeSeconds", errors);
+        ValidatePositiveInt(configuration, "Simulation:SessionLeaseLifetimeSeconds", errors);
         ValidatePositiveInt(configuration, "RateLimiting:Authentication:PermitLimit", errors);
         ValidatePositiveInt(configuration, "RateLimiting:Authentication:WindowSeconds", errors);
 
@@ -29,34 +30,52 @@ public sealed record AuthServiceConfig(
             configuration,
             "HealthChecks:TimeoutMilliseconds",
             errors);
-        var worldHeartbeatTimeoutSeconds = ValidatePositiveInt(
+        var workerHeartbeatTimeoutSeconds = ValidatePositiveInt(
             configuration,
-            "WorldRegistry:HeartbeatTimeoutSeconds",
+            "Simulation:WorkerHeartbeatTimeoutSeconds",
             errors);
 
-        var worldServers = configuration.GetSection("ServiceAuthentication:WorldServers").GetChildren().ToArray();
-        if (worldServers.Length == 0)
+        var simulationTopology = SimulationTopologyConfig.FromConfiguration(
+            configuration,
+            errors);
+
+        var simulationWorkers = configuration
+            .GetSection("ServiceAuthentication:SimulationWorkers")
+            .GetChildren()
+            .ToArray();
+        if (simulationWorkers.Length == 0)
         {
-            var worldServerId = configuration["WORLD_SERVER_ID"];
-            var worldServerSecret = configuration["WORLD_SERVER_SERVICE_SECRET"];
-            if (string.IsNullOrWhiteSpace(worldServerId))
+            var workerId = configuration["SIMULATION_WORKER_ID"];
+            var workerSecret = configuration["SIMULATION_WORKER_SERVICE_SECRET"];
+            if (string.IsNullOrWhiteSpace(workerId))
             {
-                errors.Add("WORLD_SERVER_ID is required when no WorldServer credential map is configured.");
+                errors.Add(
+                    "SIMULATION_WORKER_ID is required when no simulation worker credential map is configured.");
+            }
+            else if (!IsValidIdentifier(workerId))
+            {
+                errors.Add("SIMULATION_WORKER_ID must be a valid identifier.");
             }
 
-            if (string.IsNullOrWhiteSpace(worldServerSecret) || worldServerSecret.Length < 32)
+            if (string.IsNullOrWhiteSpace(workerSecret) || workerSecret.Length < 32)
             {
-                errors.Add("WORLD_SERVER_SERVICE_SECRET must be at least 32 characters.");
+                errors.Add("SIMULATION_WORKER_SERVICE_SECRET must be at least 32 characters.");
             }
         }
 
-        foreach (var worldServer in worldServers)
+        foreach (var simulationWorker in simulationWorkers)
         {
-            if (string.IsNullOrWhiteSpace(worldServer.Key)
-                || string.IsNullOrWhiteSpace(worldServer.Value)
-                || worldServer.Value.Length < 32)
+            if (!IsValidIdentifier(simulationWorker.Key))
             {
-                errors.Add($"ServiceAuthentication:WorldServers:{worldServer.Key} must be at least 32 characters.");
+                errors.Add(
+                    $"ServiceAuthentication:SimulationWorkers:{simulationWorker.Key} must use a valid worker identifier.");
+            }
+
+            if (string.IsNullOrWhiteSpace(simulationWorker.Value)
+                || simulationWorker.Value.Length < 32)
+            {
+                errors.Add(
+                    $"ServiceAuthentication:SimulationWorkers:{simulationWorker.Key} must be at least 32 characters.");
             }
         }
 
@@ -71,7 +90,8 @@ public sealed record AuthServiceConfig(
             postgres!,
             redis!,
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds),
-            TimeSpan.FromSeconds(worldHeartbeatTimeoutSeconds));
+            TimeSpan.FromSeconds(workerHeartbeatTimeoutSeconds),
+            simulationTopology);
     }
 
     private static string? RequireConnectionString(
@@ -153,5 +173,13 @@ public sealed record AuthServiceConfig(
         {
             errors.Add($"{key} must be true or false.");
         }
+    }
+
+    private static bool IsValidIdentifier(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Length <= 128
+            && value.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 }
