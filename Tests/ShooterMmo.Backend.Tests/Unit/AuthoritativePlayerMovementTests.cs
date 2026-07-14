@@ -85,6 +85,33 @@ public sealed class AuthoritativePlayerMovementTests
         Assert.Equal(2u, movement.LastProcessedInputSequence);
     }
 
+    [Fact]
+    public void SimulationTicksReuseOneCollisionQueryBuffer()
+    {
+        var collisionWorld = new RecordingCollisionWorld(
+            CollisionTestWorldFactory.Create());
+        var initialState = PlayerMovementSimulation.CreateInitialState(
+            Settings,
+            collisionWorld,
+            0f,
+            0f,
+            -1f,
+            0f);
+        collisionWorld.ResetObservedBuffers();
+        var movement = new AuthoritativePlayerMovement(
+            initialState,
+            Settings,
+            collisionWorld,
+            15);
+
+        for (var tick = 0; tick < 20; tick++)
+        {
+            movement.SimulateTick();
+        }
+
+        Assert.Equal(1, collisionWorld.ObservedBufferCount);
+    }
+
     private static AuthoritativePlayerMovement CreateMovement(int maximumInputSilenceTicks = 15)
     {
         var collisionWorld = CollisionTestWorldFactory.Create();
@@ -108,5 +135,26 @@ public sealed class AuthoritativePlayerMovementTests
         RealtimeMovementButtons buttons)
     {
         return new RealtimeMovementInput(sequence, sequence, moveX, moveY, 0f, buttons);
+    }
+
+    private sealed class RecordingCollisionWorld(ICollisionWorld inner) : ICollisionWorld
+    {
+        private readonly HashSet<CollisionQueryBuffer> observedBuffers = [];
+
+        public int ObservedBufferCount => observedBuffers.Count;
+
+        public void QueryBoxes(
+            CollisionAabb bounds,
+            uint layerMask,
+            CollisionQueryBuffer buffer)
+        {
+            observedBuffers.Add(buffer);
+            inner.QueryBoxes(bounds, layerMask, buffer);
+        }
+
+        public void ResetObservedBuffers()
+        {
+            observedBuffers.Clear();
+        }
     }
 }

@@ -81,9 +81,13 @@ public sealed class RealtimeMetricsReporterService(
 
             var performance = performanceMetrics.CaptureAndReset();
             logger.LogInformation(
-                "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}.",
+                "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}.",
                 Format(performance.NetworkPoll),
                 Format(performance.CompletedOperations),
+                Format(performance.JoinQueueDelay),
+                Format(performance.JoinFinalization),
+                performance.CompletedOperationBacklog,
+                performance.MaximumCompletedOperationBacklog,
                 Format(performance.SimulationTick),
                 Format(performance.SimulationTickLag),
                 Format(performance.CollisionStreaming),

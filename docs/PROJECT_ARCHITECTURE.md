@@ -332,9 +332,13 @@ revision, and collision revision.
    identity.
 3. Ticket consumption and session claim occur in one PostgreSQL transaction.
 4. SimulationWorker creates or reconnects the entity and binds it to the peer.
-5. Join acceptance returns topology, compatibility, movement, entity, and
+5. A new entity is added incrementally to the spatial interest index. Existing
+   visibility sets are updated only for nearby observers instead of globally
+   refreshing every peer.
+6. Join acceptance returns topology, compatibility, movement, entity, and
    non-secret session metadata.
-6. Reliable spawn baselines establish presentation state before snapshots.
+7. A reliable spawn baseline establishes the joining peer's presentation state,
+   while only affected existing peers receive the new entity spawn.
 
 A reconnect is valid only for the exact active shard, worker, and runtime. It
 preserves session and entity state, rotates the secret simulation-session token,

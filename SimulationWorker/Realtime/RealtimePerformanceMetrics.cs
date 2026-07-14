@@ -12,12 +12,16 @@ public sealed record RealtimeDurationSummary(
 public sealed record RealtimePerformanceMetricsSnapshot(
     RealtimeDurationSummary? NetworkPoll,
     RealtimeDurationSummary? CompletedOperations,
+    RealtimeDurationSummary? JoinQueueDelay,
+    RealtimeDurationSummary? JoinFinalization,
     RealtimeDurationSummary? SimulationTick,
     RealtimeDurationSummary? SimulationTickLag,
     RealtimeDurationSummary? CollisionStreaming,
     RealtimeDurationSummary? MovementSimulation,
     RealtimeDurationSummary? InterestRefresh,
     RealtimeDurationSummary? SnapshotBroadcast,
+    int CompletedOperationBacklog,
+    int MaximumCompletedOperationBacklog,
     long TickResynchronizations,
     long ProcessAllocatedBytes,
     int Generation0Collections,
@@ -37,6 +41,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Meter meter = new(MeterName);
     private readonly Histogram<double> networkPollHistogram;
     private readonly Histogram<double> completedOperationsHistogram;
+    private readonly Histogram<double> joinQueueDelayHistogram;
+    private readonly Histogram<double> joinFinalizationHistogram;
     private readonly Histogram<double> simulationTickHistogram;
     private readonly Histogram<double> simulationTickLagHistogram;
     private readonly Histogram<double> collisionStreamingHistogram;
@@ -49,12 +55,16 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Counter<long> snapshotPacketSendCounter;
     private readonly DurationAccumulator networkPoll = new();
     private readonly DurationAccumulator completedOperations = new();
+    private readonly DurationAccumulator joinQueueDelay = new();
+    private readonly DurationAccumulator joinFinalization = new();
     private readonly DurationAccumulator simulationTick = new();
     private readonly DurationAccumulator simulationTickLag = new();
     private readonly DurationAccumulator collisionStreaming = new();
     private readonly DurationAccumulator movementSimulation = new();
     private readonly DurationAccumulator interestRefresh = new();
     private readonly DurationAccumulator snapshotBroadcast = new();
+    private int completedOperationBacklog;
+    private int maximumCompletedOperationBacklog;
     private long tickResynchronizations;
     private long previousAllocatedBytes = GC.GetTotalAllocatedBytes(false);
     private int previousGeneration0Collections = GC.CollectionCount(0);
@@ -68,6 +78,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     {
         networkPollHistogram = CreateHistogram("simulation_worker.loop.network_poll.duration");
         completedOperationsHistogram = CreateHistogram("simulation_worker.loop.completed_operations.duration");
+        joinQueueDelayHistogram = CreateHistogram("simulation_worker.join.queue_delay.duration");
+        joinFinalizationHistogram = CreateHistogram("simulation_worker.join.finalization.duration");
         simulationTickHistogram = CreateHistogram("simulation_worker.simulation.tick.duration");
         simulationTickLagHistogram = CreateHistogram("simulation_worker.simulation.tick.lag");
         collisionStreamingHistogram = CreateHistogram("simulation_worker.simulation.collision_streaming.duration");
@@ -89,6 +101,36 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
     public void RecordCompletedOperations(TimeSpan duration) =>
         Record(completedOperations, completedOperationsHistogram, duration);
+
+    public void RecordJoinFinalization(TimeSpan duration) =>
+        Record(joinFinalization, joinFinalizationHistogram, duration);
+
+    public void RecordJoinQueueDelay(TimeSpan duration) =>
+        Record(joinQueueDelay, joinQueueDelayHistogram, duration);
+
+    public void ObserveCompletedOperationBacklog(int count)
+    {
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count));
+        }
+
+        Volatile.Write(ref completedOperationBacklog, count);
+        var observedMaximum = Volatile.Read(ref maximumCompletedOperationBacklog);
+        while (count > observedMaximum)
+        {
+            var previous = Interlocked.CompareExchange(
+                ref maximumCompletedOperationBacklog,
+                count,
+                observedMaximum);
+            if (previous == observedMaximum)
+            {
+                break;
+            }
+
+            observedMaximum = previous;
+        }
+    }
 
     public void RecordSimulationTick(TimeSpan duration) =>
         Record(simulationTick, simulationTickHistogram, duration);
@@ -139,15 +181,26 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         var generation1Collections = GC.CollectionCount(1);
         var generation2Collections = GC.CollectionCount(2);
         var memoryInfo = GC.GetGCMemoryInfo();
+        var currentCompletedOperationBacklog = Volatile.Read(
+            ref completedOperationBacklog);
+        var maximumBacklog = Math.Max(
+            currentCompletedOperationBacklog,
+            Interlocked.Exchange(
+                ref maximumCompletedOperationBacklog,
+                currentCompletedOperationBacklog));
         return new RealtimePerformanceMetricsSnapshot(
             networkPoll.CaptureAndReset(),
             completedOperations.CaptureAndReset(),
+            joinQueueDelay.CaptureAndReset(),
+            joinFinalization.CaptureAndReset(),
             simulationTick.CaptureAndReset(),
             simulationTickLag.CaptureAndReset(),
             collisionStreaming.CaptureAndReset(),
             movementSimulation.CaptureAndReset(),
             interestRefresh.CaptureAndReset(),
             snapshotBroadcast.CaptureAndReset(),
+            currentCompletedOperationBacklog,
+            maximumBacklog,
             Interlocked.Exchange(ref tickResynchronizations, 0),
             Math.Max(0, allocatedBytes - Interlocked.Exchange(ref previousAllocatedBytes, allocatedBytes)),
             Math.Max(

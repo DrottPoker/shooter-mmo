@@ -120,6 +120,48 @@ public sealed class RealtimeResilienceTests
     }
 
     [Fact]
+    public void IncrementalEntityAddUpdatesOnlyNearbyExistingConnections()
+    {
+        var manager = new SimulationInterestManager(
+            new InterestManagementConfig(10f, 20f, 25f));
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 100f, 0f)
+        ]);
+        manager.Refresh(10, 1);
+        manager.Refresh(20, 2);
+
+        var enteredConnections = manager.AddEntity(
+            new SimulationInterestEntity(3, 10f, 0f));
+
+        Assert.Equal([10], enteredConnections);
+        Assert.Equal([1ul, 3ul], manager.GetVisibleOrdered(10));
+        Assert.Equal([2ul], manager.GetVisibleOrdered(20));
+        var unchanged = manager.Refresh(10, 1);
+        Assert.Empty(unchanged.Entered);
+        Assert.Empty(unchanged.Exited);
+    }
+
+    [Fact]
+    public void IncrementalEntityUpdateMovesTheSpatialIndexEntry()
+    {
+        var manager = new SimulationInterestManager(
+            new InterestManagementConfig(10f, 20f, 25f));
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 50f, 0f)
+        ]);
+        var initial = manager.Refresh(10, 1);
+        Assert.DoesNotContain((ulong)2, initial.Visible);
+
+        manager.UpdateEntity(new SimulationInterestEntity(2, 10f, 0f));
+        var moved = manager.Refresh(10, 1);
+
+        Assert.Equal([2ul], moved.Entered);
+        Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(10));
+    }
+
+    [Fact]
     public void CollisionStreamingPlannerRetainsHysteresisRing()
     {
         var planner = new CollisionChunkStreamingPlanner(32f, 1, 2);

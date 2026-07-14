@@ -116,7 +116,11 @@ public sealed class RealtimeSimulationService(
                     Stopwatch.GetElapsedTime(phaseStarted));
 
                 phaseStarted = Stopwatch.GetTimestamp();
+                performanceMetrics.ObserveCompletedOperationBacklog(
+                    completedOperations.Count);
                 ProcessCompletedOperations(completedOperationBudget);
+                performanceMetrics.ObserveCompletedOperationBacklog(
+                    completedOperations.Count);
                 performanceMetrics.RecordCompletedOperations(
                     Stopwatch.GetElapsedTime(phaseStarted));
                 ProcessSimulationTicks(
@@ -151,7 +155,7 @@ public sealed class RealtimeSimulationService(
         peers[peer.Id] = new PeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
-        logger.LogInformation(
+        logger.LogDebug(
             "[SIMULATION] UDP peer {PeerId} connected from {EndPoint} and must authenticate before joining.",
             peer.Id,
             peer.Address);
@@ -174,7 +178,7 @@ public sealed class RealtimeSimulationService(
             TrackOperation(ReleaseDisconnectedSessionAsync(context.Session));
         }
 
-        logger.LogInformation(
+        logger.LogDebug(
             "[SIMULATION] UDP peer {PeerId} disconnected: {Reason}.",
             peer.Id,
             disconnectInfo.Reason);
@@ -360,7 +364,10 @@ public sealed class RealtimeSimulationService(
         try
         {
             var result = await joinService.JoinAsync(joinTicket, CancellationToken.None);
-            completedOperations.Enqueue(new JoinCompleted(context, result));
+            completedOperations.Enqueue(new JoinCompleted(
+                context,
+                result,
+                Stopwatch.GetTimestamp()));
         }
         catch (Exception exception)
         {
@@ -373,7 +380,8 @@ public sealed class RealtimeSimulationService(
                 SimulationJoinResult<ActiveSimulationSession>.Failure(
                     500,
                     "join_failed",
-                    "SimulationWorker could not complete the join request.")));
+                    "SimulationWorker could not complete the join request."),
+                Stopwatch.GetTimestamp()));
         }
     }
 
@@ -429,8 +437,24 @@ public sealed class RealtimeSimulationService(
             switch (operation)
             {
                 case JoinCompleted joinCompleted:
-                    ProcessJoinCompleted(joinCompleted);
-                    break;
+                    {
+                        var joinStarted = Stopwatch.GetTimestamp();
+                        performanceMetrics.RecordJoinQueueDelay(
+                            Stopwatch.GetElapsedTime(
+                                joinCompleted.EnqueuedTimestamp,
+                                joinStarted));
+                        try
+                        {
+                            ProcessJoinCompleted(joinCompleted);
+                        }
+                        finally
+                        {
+                            performanceMetrics.RecordJoinFinalization(
+                                Stopwatch.GetElapsedTime(joinStarted));
+                        }
+
+                        break;
+                    }
                 case LeaveCompleted leaveCompleted:
                     ProcessLeaveCompleted(leaveCompleted);
                     break;
@@ -511,7 +535,18 @@ public sealed class RealtimeSimulationService(
         RefreshPeerPopulationMetrics();
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
-        RebuildInterestIndex();
+        IReadOnlyList<int> connectionsEnteringNewEntity;
+        var interestEntity = ToInterestEntity(entity);
+        if (registration.IsNewEntity)
+        {
+            connectionsEnteringNewEntity = interestManager.AddEntity(interestEntity);
+        }
+        else
+        {
+            interestManager.UpdateEntity(interestEntity);
+            connectionsEnteringNewEntity = Array.Empty<int>();
+        }
+
         var joiningInterest = interestManager.Refresh(
             completed.Context.PeerId,
             entity.NetworkEntityId);
@@ -534,20 +569,33 @@ public sealed class RealtimeSimulationService(
                 ToRealtimeMovementSettings(),
                 ToRealtimePlayerState(entity.Movement.State))));
         SendEntityBaseline(peer, joiningInterest.Visible);
-        RefreshInterests(completed.Context.PeerId);
+        SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();
         networkMetrics.SetActiveEntities(entityRegistry.PlayerCount);
 
-        logger.LogInformation(
-            "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to shard {ShardId} for world {WorldId}. Simulation session {SimulationSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
-            response.AccountId,
-            response.CharacterName,
-            response.CharacterId,
-            response.ShardId,
-            response.WorldId,
-            response.SimulationSessionId,
-            entity.NetworkEntityId,
-            completed.Context.PeerId);
+        if (session.IsSyntheticBot)
+        {
+            logger.LogDebug(
+                "[SIMULATION] Synthetic bot {CharacterName} joined shard {ShardId}. Simulation session {SimulationSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
+                response.CharacterName,
+                response.ShardId,
+                response.SimulationSessionId,
+                entity.NetworkEntityId,
+                completed.Context.PeerId);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to shard {ShardId} for world {WorldId}. Simulation session {SimulationSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
+                response.AccountId,
+                response.CharacterName,
+                response.CharacterId,
+                response.ShardId,
+                response.WorldId,
+                response.SimulationSessionId,
+                entity.NetworkEntityId,
+                completed.Context.PeerId);
+        }
     }
 
     private void ProcessLeaveCompleted(LeaveCompleted completed)
@@ -579,14 +627,26 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        logger.LogInformation(
-            "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
-            completed.Session.AccountId,
-            completed.Session.CharacterName,
-            completed.Session.CharacterId,
-            completed.Session.ShardId,
-            completed.Session.SimulationSessionId,
-            completed.Context.PeerId);
+        if (completed.Session.IsSyntheticBot)
+        {
+            logger.LogDebug(
+                "[SIMULATION] Synthetic bot {CharacterName} left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
+                completed.Session.CharacterName,
+                completed.Session.ShardId,
+                completed.Session.SimulationSessionId,
+                completed.Context.PeerId);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
+                completed.Session.AccountId,
+                completed.Session.CharacterName,
+                completed.Session.CharacterId,
+                completed.Session.ShardId,
+                completed.Session.SimulationSessionId,
+                completed.Context.PeerId);
+        }
         RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
         completed.Context.Session = null;
         RefreshPeerPopulationMetrics();
@@ -823,6 +883,8 @@ public sealed class RealtimeSimulationService(
             RefreshPeerPopulationMetrics();
             previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
+
+        interestManager.RemoveConnection(replacedConnectionId.Value);
     }
 
     private void EnforcePeerState()
@@ -945,6 +1007,21 @@ public sealed class RealtimeSimulationService(
         }
     }
 
+    private void SendEntitySpawnToConnections(
+        PlayerSimulationEntity entity,
+        IReadOnlyList<int> connectionIds)
+    {
+        foreach (var connectionId in connectionIds)
+        {
+            if (peers.TryGetValue(connectionId, out var context)
+                && context.Session is not null
+                && TryGetCurrentPeer(context, out var peer))
+            {
+                SendSpawn(peer, entity);
+            }
+        }
+    }
+
     private void RefreshInterests(int? excludedConnectionId)
     {
         foreach (var context in peers.Values)
@@ -1006,6 +1083,7 @@ public sealed class RealtimeSimulationService(
         }
 
         connectionBindings.UnbindConnection(context.PeerId, out _);
+        interestManager.RemoveConnection(context.PeerId);
         BroadcastEntityDespawn(entityId, reason, context.PeerId);
         networkMetrics.SetActiveEntities(entityRegistry.PlayerCount);
     }
@@ -1037,6 +1115,15 @@ public sealed class RealtimeSimulationService(
             PlayerSimulationEntity.DefaultArchetypeId,
             serverTick,
             ToRealtimePlayerState(entity.Movement.State));
+    }
+
+    private static SimulationInterestEntity ToInterestEntity(
+        PlayerSimulationEntity entity)
+    {
+        return new SimulationInterestEntity(
+            entity.NetworkEntityId,
+            entity.Movement.State.PositionX,
+            entity.Movement.State.PositionZ);
     }
 
     private bool TryGetCurrentPeer(PeerContext context, out NetPeer peer)
@@ -1096,12 +1183,6 @@ public sealed class RealtimeSimulationService(
             config.MovementSpawn.Y,
             config.MovementSpawn.Z));
         collisionStreamingStore.Refresh(collisionAnchorBuffer);
-    }
-
-    private void RebuildInterestIndex()
-    {
-        entityRegistry.CopyPlayersTo(playerBuffer);
-        RebuildInterestIndex(playerBuffer);
     }
 
     private void RebuildInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)
@@ -1199,7 +1280,8 @@ public sealed class RealtimeSimulationService(
 
     private sealed record JoinCompleted(
         PeerContext PeerContext,
-        SimulationJoinResult<ActiveSimulationSession> Result)
+        SimulationJoinResult<ActiveSimulationSession> Result,
+        long EnqueuedTimestamp)
         : RealtimeOperationResult(PeerContext);
 
     private sealed record LeaveCompleted(

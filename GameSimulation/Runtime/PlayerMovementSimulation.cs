@@ -361,9 +361,29 @@ namespace ShooterMmo.GameSimulation
             MovementSimulationSettings settings,
             ICollisionWorld collisionWorld)
         {
+            return Step(
+                state,
+                input,
+                settings,
+                collisionWorld,
+                new CollisionQueryBuffer());
+        }
+
+        public static PlayerMovementState Step(
+            PlayerMovementState state,
+            PlayerMovementInput input,
+            MovementSimulationSettings settings,
+            ICollisionWorld collisionWorld,
+            CollisionQueryBuffer queryBuffer)
+        {
             if (collisionWorld == null)
             {
                 throw new ArgumentNullException(nameof(collisionWorld));
+            }
+
+            if (queryBuffer == null)
+            {
+                throw new ArgumentNullException(nameof(queryBuffer));
             }
 
             CalculatePlanarMovement(
@@ -425,7 +445,8 @@ namespace ShooterMmo.GameSimulation
                 new SimulationVector3(state.PositionX, state.PositionY, state.PositionZ),
                 velocity * settings.FixedDeltaTime,
                 velocity,
-                isGrounded);
+                isGrounded,
+                queryBuffer);
 
             var positionX = Clamp(movement.Position.X, settings.MinimumX, settings.MaximumX);
             var positionZ = Clamp(movement.Position.Z, settings.MinimumZ, settings.MaximumZ);

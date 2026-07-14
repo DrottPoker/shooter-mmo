@@ -135,6 +135,25 @@ namespace ShooterMmo.GameSimulation
             SimulationVector3 velocity,
             bool wasGrounded)
         {
+            return Move(
+                collisionWorld,
+                settings,
+                position,
+                displacement,
+                velocity,
+                wasGrounded,
+                new CollisionQueryBuffer());
+        }
+
+        public static KinematicCharacterMoveResult Move(
+            ICollisionWorld collisionWorld,
+            CharacterCollisionSettings settings,
+            SimulationVector3 position,
+            SimulationVector3 displacement,
+            SimulationVector3 velocity,
+            bool wasGrounded,
+            CollisionQueryBuffer queryBuffer)
+        {
             if (collisionWorld == null)
             {
                 throw new ArgumentNullException(nameof(collisionWorld));
@@ -143,6 +162,11 @@ namespace ShooterMmo.GameSimulation
             if (settings == null)
             {
                 throw new ArgumentNullException(nameof(settings));
+            }
+
+            if (queryBuffer == null)
+            {
+                throw new ArgumentNullException(nameof(queryBuffer));
             }
 
             if (!SimulationVector3.IsFinite(position)
@@ -171,7 +195,6 @@ namespace ShooterMmo.GameSimulation
             var currentVelocity = velocity;
             var grounded = wasGrounded;
             var groundNormal = SimulationVector3.UnitY;
-            var queryBuffer = new CollisionQueryBuffer();
 
             for (var substepIndex = 0; substepIndex < substepCount; substepIndex++)
             {

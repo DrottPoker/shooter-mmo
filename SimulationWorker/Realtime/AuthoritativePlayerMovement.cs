@@ -12,6 +12,7 @@ public sealed class AuthoritativePlayerMovement(
     private readonly int inputSilenceTickLimit = maximumInputSilenceTicks > 0
         ? maximumInputSilenceTicks
         : throw new ArgumentOutOfRangeException(nameof(maximumInputSilenceTicks));
+    private readonly CollisionQueryBuffer collisionQueryBuffer = new();
     private PlayerMovementInput latestInput = new(
         0,
         0,
@@ -83,7 +84,12 @@ public sealed class AuthoritativePlayerMovement(
             inputIsStale ? 0f : latestInput.MoveY,
             latestInput.CameraYawDegrees,
             buttons);
-        State = PlayerMovementSimulation.Step(State, input, settings, collisionWorld);
+        State = PlayerMovementSimulation.Step(
+            State,
+            input,
+            settings,
+            collisionWorld,
+            collisionQueryBuffer);
         LastProcessedInputSequence = LastReceivedInputSequence;
         jumpPending = false;
         if (ticksSinceLatestInput < int.MaxValue)

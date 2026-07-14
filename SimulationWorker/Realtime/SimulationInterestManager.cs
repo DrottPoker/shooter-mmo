@@ -22,6 +22,7 @@ public sealed class SimulationInterestManager
     private readonly Dictionary<long, List<ulong>> entityIdsByCell = [];
     private readonly Stack<List<ulong>> cellListPool = [];
     private readonly Dictionary<int, ConnectionInterestState> interestsByConnection = [];
+    private readonly Dictionary<ulong, int> connectionIdsByControlledEntityId = [];
 
     public SimulationInterestManager(InterestManagementConfig config)
     {
@@ -56,21 +57,63 @@ public sealed class SimulationInterestManager
         entityIdsByCell.Clear();
         foreach (var entity in currentEntities)
         {
-            if (entity.EntityId == 0 || !IsFinite(entity.X) || !IsFinite(entity.Z))
-            {
-                throw new ArgumentException("Interest entities must have a nonzero id and finite positions.", nameof(currentEntities));
-            }
-
-            entities[entity.EntityId] = entity;
-            var key = CellKey(ToCell(entity.X), ToCell(entity.Z));
-            if (!entityIdsByCell.TryGetValue(key, out var cellEntities))
-            {
-                cellEntities = cellListPool.TryPop(out var pooled) ? pooled : [];
-                entityIdsByCell.Add(key, cellEntities);
-            }
-
-            cellEntities.Add(entity.EntityId);
+            ValidateEntity(entity, nameof(currentEntities));
+            AddToSpatialIndex(entity);
         }
+    }
+
+    public IReadOnlyList<int> AddEntity(SimulationInterestEntity entity)
+    {
+        ValidateEntity(entity, nameof(entity));
+        if (entities.ContainsKey(entity.EntityId))
+        {
+            throw new InvalidOperationException(
+                $"Interest entity {entity.EntityId} is already registered.");
+        }
+
+        AddToSpatialIndex(entity);
+        var enteredConnections = new List<int>();
+        VisitNearbyEntityIds(entity, candidateEntityId =>
+        {
+            if (candidateEntityId == entity.EntityId
+                || !connectionIdsByControlledEntityId.TryGetValue(
+                    candidateEntityId,
+                    out var connectionId)
+                || !interestsByConnection.TryGetValue(connectionId, out var state)
+                || !IsWithinRadius(
+                    entities[candidateEntityId],
+                    entity,
+                    enterRadiusSquared)
+                || !state.Visible.Add(entity.EntityId))
+            {
+                return;
+            }
+
+            InsertOrdered(state.OrderedVisible, entity.EntityId);
+            enteredConnections.Add(connectionId);
+        });
+        enteredConnections.Sort();
+        return enteredConnections;
+    }
+
+    public void UpdateEntity(SimulationInterestEntity entity)
+    {
+        ValidateEntity(entity, nameof(entity));
+        if (!entities.TryGetValue(entity.EntityId, out var previous))
+        {
+            throw new InvalidOperationException(
+                $"Interest entity {entity.EntityId} is not registered.");
+        }
+
+        var previousCell = CellKey(ToCell(previous.X), ToCell(previous.Z));
+        var nextCell = CellKey(ToCell(entity.X), ToCell(entity.Z));
+        if (previousCell != nextCell)
+        {
+            RemoveFromCell(previousCell, entity.EntityId);
+            AddToCell(nextCell, entity.EntityId);
+        }
+
+        entities[entity.EntityId] = entity;
     }
 
     public SimulationInterestUpdate Refresh(int connectionId, ulong controlledEntityId)
@@ -86,6 +129,8 @@ public sealed class SimulationInterestManager
             state = new ConnectionInterestState();
             interestsByConnection.Add(connectionId, state);
         }
+
+        BindControlledEntity(connectionId, state, controlledEntityId);
 
         state.Candidates.Clear();
         state.Candidates.Add(controlledEntityId);
@@ -139,23 +184,36 @@ public sealed class SimulationInterestManager
 
     public bool RemoveConnection(int connectionId)
     {
-        return interestsByConnection.Remove(connectionId);
+        if (!interestsByConnection.Remove(connectionId, out var state))
+        {
+            return false;
+        }
+
+        if (connectionIdsByControlledEntityId.TryGetValue(
+                state.ControlledEntityId,
+                out var currentConnectionId)
+            && currentConnectionId == connectionId)
+        {
+            connectionIdsByControlledEntityId.Remove(state.ControlledEntityId);
+        }
+
+        return true;
     }
 
     public IReadOnlyList<int> ForgetEntity(ulong entityId)
     {
         if (entities.Remove(entityId, out var entity))
         {
-            var cellKey = CellKey(ToCell(entity.X), ToCell(entity.Z));
-            if (entityIdsByCell.TryGetValue(cellKey, out var cellEntities))
-            {
-                cellEntities.Remove(entityId);
-                if (cellEntities.Count == 0)
-                {
-                    entityIdsByCell.Remove(cellKey);
-                    cellListPool.Push(cellEntities);
-                }
-            }
+            RemoveFromCell(
+                CellKey(ToCell(entity.X), ToCell(entity.Z)),
+                entityId);
+        }
+
+        if (connectionIdsByControlledEntityId.Remove(entityId, out var connectionId)
+            && interestsByConnection.TryGetValue(connectionId, out var controlledState)
+            && controlledState.ControlledEntityId == entityId)
+        {
+            controlledState.ControlledEntityId = 0;
         }
 
         var affectedConnections = new List<int>();
@@ -191,6 +249,125 @@ public sealed class SimulationInterestManager
 
         entityIdsByCell.Clear();
         interestsByConnection.Clear();
+        connectionIdsByControlledEntityId.Clear();
+    }
+
+    private void BindControlledEntity(
+        int connectionId,
+        ConnectionInterestState state,
+        ulong controlledEntityId)
+    {
+        if (state.ControlledEntityId == controlledEntityId)
+        {
+            return;
+        }
+
+        if (state.ControlledEntityId != 0
+            && connectionIdsByControlledEntityId.TryGetValue(
+                state.ControlledEntityId,
+                out var previousConnectionId)
+            && previousConnectionId == connectionId)
+        {
+            connectionIdsByControlledEntityId.Remove(state.ControlledEntityId);
+        }
+
+        if (connectionIdsByControlledEntityId.TryGetValue(
+                controlledEntityId,
+                out var replacedConnectionId)
+            && replacedConnectionId != connectionId
+            && interestsByConnection.TryGetValue(replacedConnectionId, out var replacedState))
+        {
+            replacedState.ControlledEntityId = 0;
+        }
+
+        state.ControlledEntityId = controlledEntityId;
+        connectionIdsByControlledEntityId[controlledEntityId] = connectionId;
+    }
+
+    private void AddToSpatialIndex(SimulationInterestEntity entity)
+    {
+        entities.Add(entity.EntityId, entity);
+        AddToCell(CellKey(ToCell(entity.X), ToCell(entity.Z)), entity.EntityId);
+    }
+
+    private void AddToCell(long cellKey, ulong entityId)
+    {
+        if (!entityIdsByCell.TryGetValue(cellKey, out var cellEntities))
+        {
+            cellEntities = cellListPool.TryPop(out var pooled) ? pooled : [];
+            entityIdsByCell.Add(cellKey, cellEntities);
+        }
+
+        cellEntities.Add(entityId);
+    }
+
+    private void RemoveFromCell(long cellKey, ulong entityId)
+    {
+        if (!entityIdsByCell.TryGetValue(cellKey, out var cellEntities))
+        {
+            return;
+        }
+
+        cellEntities.Remove(entityId);
+        if (cellEntities.Count == 0)
+        {
+            entityIdsByCell.Remove(cellKey);
+            cellListPool.Push(cellEntities);
+        }
+    }
+
+    private void VisitNearbyEntityIds(
+        SimulationInterestEntity observer,
+        Action<ulong> visitor)
+    {
+        var observerCellX = ToCell(observer.X);
+        var observerCellZ = ToCell(observer.Z);
+        for (var z = observerCellZ - cellRadius; z <= observerCellZ + cellRadius; z++)
+        {
+            for (var x = observerCellX - cellRadius; x <= observerCellX + cellRadius; x++)
+            {
+                if (!entityIdsByCell.TryGetValue(CellKey(x, z), out var candidates))
+                {
+                    continue;
+                }
+
+                foreach (var entityId in candidates)
+                {
+                    visitor(entityId);
+                }
+            }
+        }
+    }
+
+    private static bool IsWithinRadius(
+        SimulationInterestEntity left,
+        SimulationInterestEntity right,
+        float radiusSquared)
+    {
+        var deltaX = right.X - left.X;
+        var deltaZ = right.Z - left.Z;
+        return ((deltaX * deltaX) + (deltaZ * deltaZ)) <= radiusSquared;
+    }
+
+    private static void InsertOrdered(List<ulong> values, ulong value)
+    {
+        var index = values.BinarySearch(value);
+        if (index < 0)
+        {
+            values.Insert(~index, value);
+        }
+    }
+
+    private static void ValidateEntity(
+        SimulationInterestEntity entity,
+        string parameterName)
+    {
+        if (entity.EntityId == 0 || !IsFinite(entity.X) || !IsFinite(entity.Z))
+        {
+            throw new ArgumentException(
+                "Interest entities must have a nonzero id and finite positions.",
+                parameterName);
+        }
     }
 
     private void AddNearbyEntities(
@@ -244,6 +421,8 @@ public sealed class SimulationInterestManager
 
     private sealed class ConnectionInterestState
     {
+        public ulong ControlledEntityId { get; set; }
+
         public HashSet<ulong> Visible { get; } = [];
 
         public HashSet<ulong> Candidates { get; } = [];

@@ -23,6 +23,7 @@ namespace ShooterMmo.Networking
     {
         private const int MaximumPendingInputs = 256;
         private readonly List<PlayerMovementInput> pendingInputs = new List<PlayerMovementInput>();
+        private readonly CollisionQueryBuffer collisionQueryBuffer = new CollisionQueryBuffer();
         private readonly MovementSimulationSettings settings;
         private readonly ICollisionWorld collisionWorld;
 
@@ -45,7 +46,12 @@ namespace ShooterMmo.Networking
 
         public void Predict(PlayerMovementInput input)
         {
-            State = PlayerMovementSimulation.Step(State, input, settings, collisionWorld);
+            State = PlayerMovementSimulation.Step(
+                State,
+                input,
+                settings,
+                collisionWorld,
+                collisionQueryBuffer);
             pendingInputs.Add(input);
             if (pendingInputs.Count > MaximumPendingInputs)
             {
@@ -68,7 +74,8 @@ namespace ShooterMmo.Networking
                     replayed,
                     pendingInputs[index],
                     settings,
-                    collisionWorld);
+                    collisionWorld,
+                    collisionQueryBuffer);
             }
 
             State = replayed;

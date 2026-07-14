@@ -143,11 +143,17 @@ Expected result:
 - The tool ramps to at least the configured minimum target.
 - AuthService logs successful development ticket requests without creating bot
   account or character rows.
-- SimulationWorker logs joined characters named `Active Bot 1`, `Active Bot 2`,
-  and so on.
+- ActiveSimulationBots logs joined characters named `Active Bot 1`,
+  `Active Bot 2`, and so on. SimulationWorker reports their aggregate count
+  without emitting one information log per successful synthetic join.
 - Every metrics interval, SimulationWorker's worker status line separates the
   joined synthetic bot count from joined real players and reports worker CPU,
   working set, traffic rates, snapshot drops, and quota rejections.
+- The performance line reports join queue delay, join-finalization latency, and
+  the current and maximum completed-operation backlog. Queue delay separates
+  time waiting for the simulation loop from finalization work. A healthy ramp
+  returns the backlog to zero instead of allowing joins to wait behind growing
+  lifecycle work.
 - Bots send movement input at the tick rate returned by SimulationWorker.
 - The target population changes within the configured range.
 - Individual bots issue a normal reliable leave, disappear, wait for a random

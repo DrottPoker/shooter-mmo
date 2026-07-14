@@ -222,8 +222,11 @@ must be rebuilt when the protocol version changes.
 
 ## Interest Management
 
-`SimulationInterestManager` rebuilds a spatial hash from authoritative entity
-positions. Each peer has a visibility set:
+`SimulationInterestManager` maintains a spatial hash from authoritative entity
+positions. Snapshot refreshes synchronize moving entities, while joins add one
+entity incrementally and update only existing nearby observers. A join no longer
+rebuilds and refreshes every peer visibility set. Each peer has a visibility
+set:
 
 - Enter radius adds entities.
 - A larger exit radius prevents boundary flapping.
@@ -246,6 +249,9 @@ zone interest is deferred until zones exist.
 - Aiming blocks sprint and jump.
 - New planar control is ignored while airborne.
 - Collision, slopes, steps, ground support, and bounds are server-owned.
+- Each authoritative entity owns one reusable collision-query workspace, so
+  fixed ticks reuse broadphase list and stable-id set capacity instead of
+  allocating them again for every movement step.
 - Snapshots are sent at 15 Hz by default with input acknowledgement.
 - Unity predicts with the same source and reconciles to authoritative snapshots.
 
@@ -308,11 +314,13 @@ drops, quota rejections, and the sample window. Metrics deliberately avoid
 account, character, session, entity, and peer identifiers as labels.
 
 The performance meter `ShooterMmo.SimulationWorker.Performance` records network
-poll, completed-operation, simulation-tick, tick-lag, collision-streaming,
-movement, interest, and snapshot-broadcast durations plus fixed-tick
-resynchronizations. The periodic metrics log reports interval averages,
-approximate p95 and p99 upper bounds, and maximum durations. Snapshot broadcast
-is the complete snapshot pipeline and includes the separately reported interest
+poll, completed-operation, join-queue-delay, join-finalization, simulation-tick,
+tick-lag, collision-streaming, movement, interest, and snapshot-broadcast
+durations plus fixed-tick resynchronizations. The periodic metrics log reports
+interval averages, approximate p95 and p99 upper bounds, and maximum durations.
+It also reports the current and interval-maximum completed-operation backlog so
+admission congestion is distinguishable from UDP loss. Snapshot broadcast is
+the complete snapshot pipeline and includes the separately reported interest
 phase. The same interval log reports process allocation, GC collection counts,
 managed heap size and fragmentation, live managed memory, distinct visibility
 groups, encoded snapshot packet count, and sent snapshot packet count.
@@ -325,6 +333,11 @@ SimulationWorker filters routine successful `AuthServiceClient` HTTP pipeline
 messages below `Warning`. Domain failures and HTTP warnings remain visible, but
 high-frequency bot heartbeat and release requests do not drown out worker
 status, performance, lifecycle, or error logs.
+
+Routine UDP connect and disconnect events plus successful synthetic bot joins
+and leaves are logged at `Debug`. Successful real-player lifecycle events remain
+at `Information`, and all admission failures remain visible. Synthetic bot
+population is reported by the aggregate worker status line.
 
 Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
 `[SIMULATION]` in the Unity console.

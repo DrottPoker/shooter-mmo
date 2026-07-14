@@ -338,6 +338,9 @@ command receives an input sequence and client tick. The local state is predicted
 immediately and up to four newest unacknowledged commands are sent in each batch.
 On an authoritative snapshot, `ClientMovementPrediction` removes acknowledged
 commands, starts from the server state, and replays the remaining commands.
+Prediction and reconciliation replay share one reusable collision-query
+workspace, avoiding per-step broadphase collection allocation without changing
+the deterministic movement result.
 `LocalMovementPresentation` interpolates consecutive predicted states at the
 render frame rate, while `LocalPlayerController` smooths reconciliation
 corrections smaller than three meters and applies larger corrections immediately.

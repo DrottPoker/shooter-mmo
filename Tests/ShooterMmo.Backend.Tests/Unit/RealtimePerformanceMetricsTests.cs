@@ -12,6 +12,11 @@ public sealed class RealtimePerformanceMetricsTests
         metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(5));
         metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(40));
         metrics.RecordInterestRefresh(TimeSpan.FromMilliseconds(2));
+        metrics.RecordJoinQueueDelay(TimeSpan.FromMilliseconds(4));
+        metrics.RecordJoinFinalization(TimeSpan.FromMilliseconds(3));
+        metrics.ObserveCompletedOperationBacklog(2);
+        metrics.ObserveCompletedOperationBacklog(7);
+        metrics.ObserveCompletedOperationBacklog(3);
         metrics.RecordTickResynchronization();
         metrics.RecordSnapshotPacketReuse(2, 4, 40);
 
@@ -21,6 +26,10 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Equal(40, snapshot.SimulationTick.MaximumMilliseconds, 3);
         Assert.Equal(50, snapshot.SimulationTick.P95UpperBoundMilliseconds, 3);
         Assert.Equal(1, snapshot.InterestRefresh!.Samples);
+        Assert.Equal(1, snapshot.JoinQueueDelay!.Samples);
+        Assert.Equal(1, snapshot.JoinFinalization!.Samples);
+        Assert.Equal(3, snapshot.CompletedOperationBacklog);
+        Assert.Equal(7, snapshot.MaximumCompletedOperationBacklog);
         Assert.Equal(1, snapshot.TickResynchronizations);
         Assert.True(snapshot.ProcessAllocatedBytes >= 0);
         Assert.True(snapshot.Generation0Collections >= 0);
@@ -36,6 +45,10 @@ public sealed class RealtimePerformanceMetricsTests
         var reset = metrics.CaptureAndReset();
         Assert.Null(reset.SimulationTick);
         Assert.Null(reset.InterestRefresh);
+        Assert.Null(reset.JoinQueueDelay);
+        Assert.Null(reset.JoinFinalization);
+        Assert.Equal(3, reset.CompletedOperationBacklog);
+        Assert.Equal(3, reset.MaximumCompletedOperationBacklog);
         Assert.Equal(0, reset.TickResynchronizations);
         Assert.Equal(0, reset.SnapshotVisibilityGroups);
         Assert.Equal(0, reset.SnapshotPacketsEncoded);

@@ -178,6 +178,8 @@ SimulationWorker logs interval timing for:
 
 - Network polling.
 - Completed asynchronous operations.
+- Join queue delay and finalization, plus current and interval-maximum
+  completed-operation backlog.
 - Complete simulation ticks.
 - Simulation tick lag.
 - Collision streaming.
@@ -192,6 +194,11 @@ managed heap size and fragmentation, live managed memory, distinct snapshot
 visibility groups, encoded snapshot packets, and sent snapshot packets. Network
 metrics report total dropped snapshot packets and the subset dropped by the
 worker-wide aggregate snapshot budget.
+
+Authoritative movement owns one reusable collision-query workspace per entity.
+The broadphase list and stable-id set retain capacity across fixed ticks, which
+removes one collision workspace allocation per simulated entity per tick while
+preserving the existing collision algorithm and deterministic ordering.
 
 Timing metrics are also published through the
 `ShooterMmo.SimulationWorker.Performance` meter. Existing network counters remain
@@ -247,6 +254,13 @@ removed the repeatable admission-completion burst that previously caused a tick
 clock resynchronization at 250 bots. The generator also uses separate bounded
 latency reservoirs for interval and cumulative summaries, preventing a long run
 from retaining every input acknowledgement sample.
+
+Active population joins now add one entity to the spatial interest index and
+notify only nearby existing observers. They no longer rebuild the entire index
+and globally refresh every peer for each completed join. This specifically
+prevents dense population ramps from turning join finalization into repeated
+all-peer visibility reconstruction. The existing baseline table predates this
+join-path optimization and must be rerun before recording a new supported tier.
 
 Snapshot output now has two levels of protection. Per-peer quotas remain in
 place, while a worker-wide token bucket admits complete snapshot chunk batches

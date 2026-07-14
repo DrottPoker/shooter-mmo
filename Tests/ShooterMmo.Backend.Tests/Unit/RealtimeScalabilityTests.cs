@@ -9,6 +9,34 @@ public sealed class RealtimeScalabilityTests
 {
     [Fact]
     [Trait("Category", "Load")]
+    public void IncrementalDenseJoinsBuildVisibilityWithoutGlobalRefreshes()
+    {
+        const int entityCount = 500;
+        var manager = new SimulationInterestManager(
+            new InterestManagementConfig(64f, 128f, 144f));
+        var stopwatch = Stopwatch.StartNew();
+
+        for (var index = 1; index <= entityCount; index++)
+        {
+            var enteredConnections = manager.AddEntity(
+                new SimulationInterestEntity((ulong)index, 0f, 0f));
+            Assert.Equal(index - 1, enteredConnections.Count);
+
+            var joiningInterest = manager.Refresh(index, (ulong)index);
+            Assert.Equal(index, joiningInterest.Visible.Count);
+        }
+
+        stopwatch.Stop();
+
+        Assert.Equal(entityCount, manager.GetVisibleOrdered(1).Count);
+        Assert.Equal(entityCount, manager.GetVisibleOrdered(entityCount).Count);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+            $"Incremental dense join workload exceeded its five-second budget: {stopwatch.Elapsed}.");
+    }
+
+    [Fact]
+    [Trait("Category", "Load")]
     public void SpatialInterestAndSnapshotEncodingRemainBoundedAtLargeEntityCounts()
     {
         const int entityCount = 25_000;
