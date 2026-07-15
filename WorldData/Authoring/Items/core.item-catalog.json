@@ -1,288 +1,296 @@
 {
-  "formatVersion": 2,
-  "catalogId": "core",
   "baseSecureContainerTierId": "secure_container.base",
+  "catalogId": "core",
   "categories": [
     {
-      "id": "material",
-      "displayName": "Material"
+      "displayName": "Material",
+      "id": "material"
     },
     {
-      "id": "medical",
-      "displayName": "Medical"
+      "displayName": "Medical",
+      "id": "medical"
     },
     {
-      "id": "weapon",
-      "displayName": "Weapon"
+      "displayName": "Weapon",
+      "id": "weapon"
     },
     {
-      "id": "ammunition",
-      "displayName": "Ammunition"
+      "displayName": "Ammunition",
+      "id": "ammunition"
     },
     {
-      "id": "armor",
-      "displayName": "Armor"
+      "displayName": "Armor",
+      "id": "armor"
     },
     {
-      "id": "tool",
-      "displayName": "Tool"
+      "displayName": "Tool",
+      "id": "tool"
     },
     {
-      "id": "bag",
-      "displayName": "Bag"
+      "displayName": "Bag",
+      "id": "bag"
     },
     {
-      "id": "quest_item",
-      "displayName": "Quest Item"
-    }
-  ],
-  "tags": [
-    {
-      "id": "medical",
-      "displayName": "Medical"
-    },
-    {
-      "id": "material",
-      "displayName": "Material"
-    },
-    {
-      "id": "ammunition",
-      "displayName": "Ammunition"
-    }
-  ],
-  "equipmentSlots": [
-    {
-      "id": "head",
-      "displayName": "Head"
-    },
-    {
-      "id": "body_armor",
-      "displayName": "Body Armor"
-    },
-    {
-      "id": "primary_weapon",
-      "displayName": "Primary Weapon"
-    },
-    {
-      "id": "secondary_weapon",
-      "displayName": "Secondary Weapon"
-    },
-    {
-      "id": "tool",
-      "displayName": "Tool"
-    },
-    {
-      "id": "ring_1",
-      "displayName": "Ring 1"
-    },
-    {
-      "id": "ring_2",
-      "displayName": "Ring 2"
-    },
-    {
-      "id": "bag",
-      "displayName": "Bag"
+      "displayName": "Quest Item",
+      "id": "quest_item"
     }
   ],
   "definitions": [
     {
-      "id": "ammunition.training_556",
-      "displayName": "Training 5.56 Ammunition",
+      "bag": null,
       "category": "ammunition",
+      "defaultPolicies": [ ],
+      "displayName": "Training 5.56 Ammunition",
+      "equipmentSlots": [ ],
+      "id": "ammunition.training_556",
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "maximumStackSize": 60,
+      "playerDestroyable": true,
       "tags": [
         "ammunition"
       ],
-      "unitWeight": 1,
-      "maximumStackSize": 60,
-      "equipmentSlots": [],
-      "playerDestroyable": true,
-      "locationEligibility": {
-        "secureContainer": true
-      },
-      "defaultPolicies": []
+      "unitWeight": 1
     },
     {
-      "id": "armor.starter_vest",
-      "displayName": "Starter Vest",
+      "bag": null,
       "category": "armor",
-      "tags": [],
-      "unitWeight": 20,
-      "maximumStackSize": 1,
+      "defaultPolicies": [ ],
+      "displayName": "Starter Vest",
       "equipmentSlots": [
         "body_armor"
       ],
-      "playerDestroyable": true,
+      "id": "armor.starter_vest",
       "locationEligibility": {
         "secureContainer": true
       },
-      "defaultPolicies": []
+      "maximumStackSize": 1,
+      "playerDestroyable": true,
+      "tags": [ ],
+      "unitWeight": 20
     },
     {
-      "id": "bag.field_pack",
-      "displayName": "Field Pack",
-      "category": "bag",
-      "tags": [],
-      "unitWeight": 10,
-      "maximumStackSize": 1,
-      "equipmentSlots": [
-        "bag"
-      ],
-      "playerDestroyable": true,
-      "locationEligibility": {
-        "secureContainer": false
-      },
-      "defaultPolicies": [],
       "bag": {
         "carryCapacityBonus": 50,
         "slots": [
           {
+            "acceptedTags": [ ],
             "index": 0,
-            "kind": "general",
-            "acceptedTags": []
+            "kind": "general"
           },
           {
+            "acceptedTags": [ ],
             "index": 1,
-            "kind": "general",
-            "acceptedTags": []
+            "kind": "general"
           },
           {
+            "acceptedTags": [ ],
             "index": 2,
-            "kind": "general",
-            "acceptedTags": []
+            "kind": "general"
           },
           {
+            "acceptedTags": [ ],
             "index": 3,
-            "kind": "general",
-            "acceptedTags": []
+            "kind": "general"
           },
           {
-            "index": 4,
-            "kind": "specialized",
             "acceptedTags": [
               "medical"
-            ]
+            ],
+            "index": 4,
+            "kind": "specialized"
           },
           {
-            "index": 5,
-            "kind": "specialized",
             "acceptedTags": [
               "material"
-            ]
+            ],
+            "index": 5,
+            "kind": "specialized"
           },
           {
-            "index": 6,
-            "kind": "specialized",
             "acceptedTags": [
               "ammunition"
-            ]
+            ],
+            "index": 6,
+            "kind": "specialized"
           }
         ]
-      }
+      },
+      "category": "bag",
+      "defaultPolicies": [ ],
+      "displayName": "Field Pack",
+      "equipmentSlots": [
+        "bag"
+      ],
+      "id": "bag.field_pack",
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "maximumStackSize": 1,
+      "playerDestroyable": true,
+      "tags": [ ],
+      "unitWeight": 10
     },
     {
-      "id": "material.iron_ore",
-      "displayName": "Iron Ore",
+      "bag": null,
       "category": "material",
+      "defaultPolicies": [ ],
+      "displayName": "Iron Ore",
+      "equipmentSlots": [ ],
+      "id": "material.iron_ore",
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "maximumStackSize": 100,
+      "playerDestroyable": true,
       "tags": [
         "material"
       ],
-      "unitWeight": 5,
-      "maximumStackSize": 100,
-      "equipmentSlots": [],
-      "playerDestroyable": true,
+      "unitWeight": 6
+    },
+    {
+      "bag": null,
+      "category": "medical",
+      "defaultPolicies": [ ],
+      "displayName": "Field Dressing",
+      "equipmentSlots": [ ],
+      "id": "medical.field_dressing",
       "locationEligibility": {
         "secureContainer": true
       },
-      "defaultPolicies": []
-    },
-    {
-      "id": "medical.field_dressing",
-      "displayName": "Field Dressing",
-      "category": "medical",
+      "maximumStackSize": 10,
+      "playerDestroyable": true,
       "tags": [
         "medical"
       ],
-      "unitWeight": 2,
-      "maximumStackSize": 10,
-      "equipmentSlots": [],
-      "playerDestroyable": true,
-      "locationEligibility": {
-        "secureContainer": true
-      },
-      "defaultPolicies": []
+      "unitWeight": 2
     },
     {
-      "id": "quest_item.signal_transponder",
-      "displayName": "Signal Transponder",
+      "bag": null,
       "category": "quest_item",
-      "tags": [],
-      "unitWeight": 1,
-      "maximumStackSize": 1,
-      "equipmentSlots": [],
-      "playerDestroyable": false,
-      "locationEligibility": {
-        "secureContainer": true
-      },
       "defaultPolicies": [
         "protected_on_death"
-      ]
+      ],
+      "displayName": "Signal Transponder",
+      "equipmentSlots": [ ],
+      "id": "quest_item.signal_transponder",
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "maximumStackSize": 1,
+      "playerDestroyable": false,
+      "tags": [ ],
+      "unitWeight": 1
     },
     {
-      "id": "ring.starter_band",
-      "displayName": "Starter Band",
+      "bag": null,
       "category": "armor",
-      "tags": [],
-      "unitWeight": 1,
-      "maximumStackSize": 1,
+      "defaultPolicies": [ ],
+      "displayName": "Starter Band",
       "equipmentSlots": [
         "ring_1",
         "ring_2"
       ],
-      "playerDestroyable": true,
+      "id": "ring.starter_band",
       "locationEligibility": {
         "secureContainer": true
       },
-      "defaultPolicies": []
+      "maximumStackSize": 1,
+      "playerDestroyable": true,
+      "tags": [ ],
+      "unitWeight": 1
     },
     {
-      "id": "tool.starter_pickaxe",
-      "displayName": "Starter Pickaxe",
+      "bag": null,
       "category": "tool",
-      "tags": [],
-      "unitWeight": 15,
-      "maximumStackSize": 1,
+      "defaultPolicies": [ ],
+      "displayName": "Starter Pickaxe",
       "equipmentSlots": [
         "tool"
       ],
-      "playerDestroyable": true,
+      "id": "tool.starter_pickaxe",
       "locationEligibility": {
         "secureContainer": true
       },
-      "defaultPolicies": []
+      "maximumStackSize": 1,
+      "playerDestroyable": true,
+      "tags": [ ],
+      "unitWeight": 15
     },
     {
-      "id": "weapon.training_rifle",
-      "displayName": "Training Rifle",
+      "bag": null,
       "category": "weapon",
-      "tags": [],
-      "unitWeight": 25,
-      "maximumStackSize": 1,
+      "defaultPolicies": [ ],
+      "displayName": "Training Rifle",
       "equipmentSlots": [
         "primary_weapon",
         "secondary_weapon"
       ],
-      "playerDestroyable": true,
+      "id": "weapon.training_rifle",
       "locationEligibility": {
         "secureContainer": false
       },
-      "defaultPolicies": []
+      "maximumStackSize": 1,
+      "playerDestroyable": true,
+      "tags": [ ],
+      "unitWeight": 25
     }
   ],
+  "equipmentSlots": [
+    {
+      "displayName": "Head",
+      "id": "head"
+    },
+    {
+      "displayName": "Body Armor",
+      "id": "body_armor"
+    },
+    {
+      "displayName": "Primary Weapon",
+      "id": "primary_weapon"
+    },
+    {
+      "displayName": "Secondary Weapon",
+      "id": "secondary_weapon"
+    },
+    {
+      "displayName": "Tool",
+      "id": "tool"
+    },
+    {
+      "displayName": "Ring 1",
+      "id": "ring_1"
+    },
+    {
+      "displayName": "Ring 2",
+      "id": "ring_2"
+    },
+    {
+      "displayName": "Bag",
+      "id": "bag"
+    }
+  ],
+  "formatVersion": 2,
   "secureContainerTiers": [
     {
-      "id": "secure_container.base",
       "displayName": "Secure Container",
+      "id": "secure_container.base",
       "slotCapacity": 4
+    }
+  ],
+  "tags": [
+    {
+      "displayName": "Medical",
+      "id": "medical"
+    },
+    {
+      "displayName": "Material",
+      "id": "material"
+    },
+    {
+      "displayName": "Ammunition",
+      "id": "ammunition"
     }
   ]
 }

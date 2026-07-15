@@ -1,7 +1,7 @@
 {
   "formatVersion": 2,
   "catalogId": "core",
-  "revision": "b8039cce17e09fd7751ff1a087a2acec2d50013e1d3984d31619843f26aef7b0",
+  "revision": "8e6e263ed9597d79aef43848b70251124d951ba240921c02f2d79e2d25ce61a4",
   "baseSecureContainerTierId": "secure_container.base",
   "categories": [
     {
@@ -190,7 +190,7 @@
       "tags": [
         "material"
       ],
-      "unitWeight": 5,
+      "unitWeight": 6,
       "maximumStackSize": 100,
       "equipmentSlots": [],
       "playerDestroyable": true,
@@ -198,7 +198,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "186da1f320bcb930a876e05d728268fdd82435970c609edd95d4c514813d94de"
+      "structuralFingerprint": "578999a4497cde43950d800051f36994edab9ebc3e1e2560b86497891a61f625"
     },
     {
       "id": "medical.field_dressing",
