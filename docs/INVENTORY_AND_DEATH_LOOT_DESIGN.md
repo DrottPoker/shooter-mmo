@@ -2,8 +2,9 @@
 
 Last updated: 2026-07-15
 
-Status: Locked design target; Phases 1 through 3 content, authoring, schema, and
-character bootstrap implemented, durable gameplay operations planned
+Status: Locked design target; Phases 1 through 4 content, authoring, schema,
+character bootstrap, and authoritative reads implemented, durable gameplay
+operations planned
 
 ## Purpose
 
@@ -140,6 +141,13 @@ and reuses the result across scenes and inventory refreshes.
 Server snapshots and mutation results send definition ids and changed instance
 state. They do not repeatedly send icons, complete definitions, or Unity asset
 references. AuthService never serves image bytes as part of inventory state.
+
+The implemented account read boundary exposes the current catalog separately
+from one complete owned-character inventory snapshot. Character reads require
+exact account ownership and use a read-only repeatable-read PostgreSQL
+transaction. An owning account may inspect its bank and Recovery Storage, but
+that read access does not authorize any mutation or bypass later city-service
+validation.
 
 At session or inventory bootstrap, the server provides its authoritative catalog
 revision. The MVP client requires its bundled gameplay catalog and presentation
@@ -640,14 +648,16 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 3 now implement the neutral catalog, structural
+claim. Phases 1 through 4 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
-state for every active character.
+state for every active character. AuthService also exposes authenticated,
+read-only current-catalog and owned-character inventory snapshots with stable
+definition references and active policy summaries.
 
 The repository does not yet create gameplay item instances or expose item
-snapshots and mutations. Equipment changes, Bag instances and contents, bank or
-Secure Container interaction, Recovery Storage claims, authoritative carried
-state updates, insurance lifecycle, death partition, persistent corpse identity,
-and corpse looting remain later phases.
+mutations. Equipment changes, Bag instances and contents, bank or Secure
+Container mutation, Recovery Storage claims, authoritative carried-state
+updates, insurance lifecycle, death partition, persistent corpse identity, and
+corpse looting remain later phases.

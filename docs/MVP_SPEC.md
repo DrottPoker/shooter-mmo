@@ -418,10 +418,14 @@ Current implementation note:
   slot, container, equipment, policy, recovery, operation, and audit schema,
   canonical equipment-slot seed, active-character backfill, and atomic new
   character bootstrap.
-- Gameplay-created item instances, item reads and mutations, equipment and Bag
-  operations, bank and Secure Container interaction, Recovery Storage claims,
-  carry-state integration, policy lifecycle, combat, mobs, death, corpses, and
-  loot are not implemented.
+- Phase 4 adds account-authenticated current-catalog and complete
+  owned-character inventory reads. Queries use coherent PostgreSQL read-only
+  snapshots and return definition ids instead of repeated definitions or client
+  presentation data.
+- Gameplay-created item instances, item mutations, equipment and Bag operations,
+  bank and Secure Container interaction, Recovery Storage claims, carry-state
+  integration, policy lifecycle, combat, mobs, death, corpses, and loot are not
+  implemented.
 
 ## Persistence Principles
 
@@ -469,7 +473,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 3 complete
+Status: In progress, item-plan Phases 1 through 4 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -479,8 +483,9 @@ Status: In progress, item-plan Phases 1 through 3 complete
 - The PostgreSQL definition mirror, exact custody schema, character item state,
   top-level empty containers, operation and audit foundation, and structural
   compatibility startup fence are complete.
-- Read models, development fixtures, gameplay item creation, and the mutation
-  transaction kernel remain planned.
+- Read-only catalog and complete owned-character inventory snapshots plus
+  test-only development fixtures are complete.
+- Gameplay item creation and the mutation transaction kernel remain planned.
 - Slot-based permanent inventory.
 - Equipment and Bag aggregates.
 - Per-character bank.

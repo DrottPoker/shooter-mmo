@@ -102,6 +102,7 @@ relationship.
 - Global simulation-session leases.
 - Transactional item catalog mirroring, constrained durable item schema, and
   complete empty character item-state bootstrap.
+- Read-only current-catalog and owned-character inventory snapshots.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
   ids, sensitive response caching rules, and health routes.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
@@ -250,14 +251,25 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 3 content, authoring, schema, catalog mirror, and
-character bootstrap implemented; runtime inventory integration planned
+Status: Phases 1 through 4 content, authoring, schema, catalog mirror, character
+bootstrap, and authoritative reads implemented; runtime mutation integration
+planned
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
 and the future transaction boundary. PostgreSQL remains the authority. The
-schema is present before item traffic so later read and mutation phases build on
-one constrained custody model instead of inventing endpoint-local state.
+schema and read model are present before item mutation traffic so later phases
+build on one constrained custody model instead of inventing endpoint-local
+state.
+
+AuthService account-session routes expose the current catalog and a complete
+snapshot only when the requested active character belongs to that account. Each
+query uses one PostgreSQL `REPEATABLE READ`, read-only transaction. Inventory
+instance rows contain stable definition ids and active policy summaries rather
+than repeated definitions, presentation data, policy sources, or operation
+metadata. Full owned bank and Recovery Storage reads do not authorize any
+mutation. City-service and live-session checks remain part of the Phase 8
+mutation boundary.
 
 SimulationWorker will own live proximity, interaction, combat, corpse
 presentation, and authoritative encumbrance for its assigned shard. While a
@@ -271,11 +283,10 @@ restored by a replacement worker. Normal NPC corpses may remain worker-owned and
 disappear on restart, while content-selected bosses may use the durable corpse
 path. These choices do not introduce Zone or Layer ownership.
 
-Phase 3 adds no AuthService item route, gameplay item grant, transaction kernel,
-worker item state, or Unity inventory state. It adds the transactional catalog
-mirror, exact location-union schema, constraints, indexes, and complete empty
-character bootstrap. The Unity content tooling remains presentation and
-authoring support, not item authority.
+Phase 4 adds only authenticated `GET` routes, focused query services, player DTOs,
+and test-project fixtures. It adds no gameplay item grant, transaction kernel,
+worker item state, or Unity inventory state. The Unity content tooling remains
+presentation and authoring support, not item authority.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the

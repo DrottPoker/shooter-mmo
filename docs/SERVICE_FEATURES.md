@@ -41,6 +41,8 @@ worker. Zone and layer partitioning are not implemented.
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
 | `GET /api/characters` | Account session | List owned characters |
 | `POST /api/characters` | Account session | Create a character |
+| `GET /api/items/catalog` | Account session | Return the current mirrored item catalog |
+| `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent read-only character inventory snapshot |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew exact worker runtime |
@@ -273,10 +275,10 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
-## Item Catalog, Pure Domain Rules, Unity Authoring, And Persistence Schema
+## Item Catalog, Pure Domain Rules, Persistence, And Read Models
 
-Phases 1 through 3 of the approved item plan are implemented without adding an
-item HTTP surface:
+Phases 1 through 4 of the approved item plan are implemented without adding an
+item mutation surface:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -325,12 +327,24 @@ item HTTP surface:
   Account deletion also removes the account Secure Container entitlement.
   Operation and change audit rows remain with deleted actor or item references
   set to null.
+- `ItemCatalogQueryService` returns the current relational catalog graph in a
+  read-only repeatable-read transaction. Definitions are present exactly once
+  in that response.
+- `ItemQueryService` first verifies exact account and active-character
+  ownership, then reads permanent inventory, equipment, equipped Bag contents,
+  bank, Secure Container, Recovery deliveries, revisions, and encumbrance state
+  from one repeatable-read snapshot.
+- Item instance DTOs contain only instance id, stable definition id, quantity,
+  revision, and active policy kind and status. Policy sources, recovery source
+  event ids, operation payloads, structural fingerprints, credentials, icons,
+  and other client presentation data are excluded.
+- Weight and capacity remain unitless integers. Load ratio and movement
+  multiplier are returned as deterministic basis points.
 
 The rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime
 dependency. The Editor assembly is isolated from runtime WorldData assemblies.
-AuthService exposes no item route and accepts no item traffic yet. The
-PostgreSQL schema and bootstrap are its durable boundary, not a gameplay grant
-or mutation implementation.
+AuthService exposes only authenticated item reads. It has no public or
+development item grant route and no mutation implementation.
 SimulationWorker has no inventory database access, and Unity is not an item-rule
 authority.
 
@@ -464,11 +478,15 @@ the test connection variable at development or production data.
   complete and idempotent character backfill, catalog reconciliation and
   compatibility fencing, exact custody constraints, delete behavior, and
   atomic character bootstrap.
+- Isolated PostgreSQL read-model tests for cross-account denial, complete and
+  ordered empty state, every owned snapshot section, definition and policy
+  resolution, catalog metadata deduplication, secret exclusion, and read-only
+  behavior.
 
 ## Not Yet Implemented
 
-- Item snapshot routes, development grants, mutation transaction kernel, or
-  gameplay-created item instances and stacks.
+- Development item grants, mutation transaction kernel, or gameplay-created
+  item instances and stacks.
 - Player-controlled equipment assignments, physical Bag instances and contents,
   bank or Secure Container interaction, or Recovery Storage claims.
 - Authoritative carried-weight aggregation, persisted carry revisions,

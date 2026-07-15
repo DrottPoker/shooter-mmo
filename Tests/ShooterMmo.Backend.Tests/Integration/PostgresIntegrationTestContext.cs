@@ -25,6 +25,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             CatalogSource,
             NullLogger<ItemCatalogSeeder>.Instance);
         CharacterItemStateBootstrapper = new CharacterItemStateBootstrapper(dataSource);
+        ItemCatalogQueryService = new ItemCatalogQueryService(dataSource);
+        ItemQueryService = new ItemQueryService(dataSource);
         DatabaseInitializer = new DatabaseInitializer(
             dataSource,
             ItemCatalogSeeder,
@@ -57,6 +59,10 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     public ItemCatalogSeeder ItemCatalogSeeder { get; }
 
     public CharacterItemStateBootstrapper CharacterItemStateBootstrapper { get; }
+
+    public ItemCatalogQueryService ItemCatalogQueryService { get; }
+
+    public ItemQueryService ItemQueryService { get; }
 
     public SessionService SessionService { get; }
 

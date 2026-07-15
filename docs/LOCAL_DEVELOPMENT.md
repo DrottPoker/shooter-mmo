@@ -224,6 +224,76 @@ Stop the isolated test database when finished:
 docker compose -f docker-compose.test.yml down
 ```
 
+## Phase 4 Item Read Model Verification
+
+Start the isolated PostgreSQL database, configure the dedicated test connection
+as shown in the Phase 3 section, then run the read-model suite:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$values = @{}
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    $values[$matches[1]] = $matches[2]
+  }
+}
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  "Host=127.0.0.1;Port=55432;" + `
+  "Database=$($values['TEST_POSTGRES_DB']);" + `
+  "Username=$($values['TEST_POSTGRES_USER']);" + `
+  "Password=$($values['TEST_POSTGRES_PASSWORD'])"
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~ItemReadModelIntegrationTests"
+docker compose -f docker-compose.test.yml down
+```
+
+Expected result: seven tests pass. They verify the current catalog graph,
+cross-account denial, complete empty state, stable slot ordering, all owned
+snapshot sections, fixed-point encumbrance, definition-id deduplication,
+secret exclusion, and read-only behavior. Fixture items are written only by
+test-project helpers to the dedicated test database. AuthService exposes no
+grant route.
+
+To exercise the two real HTTP reads, start local PostgreSQL and Redis with
+`docker compose up -d --wait`, then run `dotnet run --project AuthService`. In a
+second PowerShell terminal, create a disposable account and character:
+
+```powershell
+$suffix = [Guid]::NewGuid().ToString("N").Substring(0, 16)
+$registration = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:5000/api/accounts/register `
+  -ContentType application/json `
+  -Body (@{
+    email = "phase4-$suffix@example.test"
+    username = "phase4_$suffix"
+    password = "TestPass123!"
+  } | ConvertTo-Json)
+$headers = @{ Authorization = "Bearer $($registration.sessionToken)" }
+$character = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:5000/api/characters/ `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body (@{ name = "Phase Four $($suffix.Substring(0, 8))" } | ConvertTo-Json)
+$catalog = Invoke-RestMethod `
+  -Uri http://localhost:5000/api/items/catalog `
+  -Headers $headers
+$snapshot = Invoke-RestMethod `
+  -Uri "http://localhost:5000/api/characters/$($character.id)/inventory" `
+  -Headers $headers
+$catalog.definitions.Count
+$snapshot.permanentInventory.slots.Count
+$snapshot.bank.slots.Count
+$snapshot.secureContainer.contents.slots.Count
+```
+
+Expected result: the values are `9`, `20`, `40`, and `4`. The snapshot is empty
+but complete, reports capacity `200`, and contains no operation payload,
+credentials, client icon, or repeated definition metadata. No Unity Editor
+action is required for Phase 4 verification.
+
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 

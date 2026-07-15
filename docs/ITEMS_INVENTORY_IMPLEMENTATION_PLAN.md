@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-Status: Approved delivery baseline, Phases 1 through 3 completed, Phase 4 next
+Status: Approved delivery baseline, Phases 1 through 4 completed, Phase 5 next
 
 ## Purpose
 
@@ -542,9 +542,12 @@ cannot represent the common duplicate-location states.
 - No item HTTP endpoint, query snapshot, mutation transaction kernel,
   SimulationWorker inventory state, or Unity inventory behavior was added.
 
-The Phase 3 exit gate is satisfied. Phase 4 remains not started.
+The Phase 3 exit gate is satisfied. Phase 4 is now also complete as documented
+below.
 
 ## Phase 4: Read Model And Development Fixtures
+
+Status: Completed 2026-07-15
 
 ### Work
 
@@ -580,6 +583,36 @@ The Phase 3 exit gate is satisfied. Phase 4 remains not started.
 
 The backend exposes a coherent authoritative snapshot without permitting item
 mutation.
+
+### Implementation Result
+
+- AuthService exposes account-session-protected `GET /api/items/catalog` and
+  `GET /api/characters/{characterId}/inventory` routes. No item write, grant,
+  or development route was added.
+- `ItemCatalogQueryService` reads the current mirrored PostgreSQL catalog with
+  categories, tags, equipment slots, definitions, Bag layouts, default
+  policies, location eligibility, and Secure Container tiers in one coherent
+  `REPEATABLE READ` read-only transaction.
+- `ItemQueryService` requires exact account and active-character ownership
+  before reading any character container or policy. The same transaction
+  returns permanent inventory, equipment, equipped Bag contents, full owned
+  bank, Secure Container tier and contents, Recovery deliveries, revisions,
+  and fixed-point encumbrance state.
+- Item-state rows contain stable definition ids, quantity, revision, and active
+  policy kind and status. Complete definitions, presentation metadata, policy
+  source ids, recovery source event ids, operation payloads, credentials, and
+  structural fingerprints are not present in the snapshot DTO.
+- Load ratio and movement multiplier use deterministic basis points. Weight and
+  capacity remain unitless integer values.
+- Item creation helpers exist only in
+  `Tests/ShooterMmo.Backend.Tests/Integration/ItemReadModelTestFixture.cs` and
+  cannot be reached through AuthService HTTP.
+- Isolated PostgreSQL tests verify the current catalog graph, cross-account
+  denial, complete empty state, stable slot ordering, every authorized snapshot
+  section, definition and policy resolution, metadata deduplication, secret
+  exclusion, and read-only behavior.
+
+The Phase 4 exit gate is satisfied. Phase 5 remains not started.
 
 ## Phase 5: Core Item Transaction Kernel
 

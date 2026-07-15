@@ -54,7 +54,8 @@ scaling. They are not implemented and are not faked in the current runtime.
 - **AuthService** owns accounts, account sessions, characters, topology,
   SimulationWorker registration, shard discovery, placement, join tickets, and
   global character simulation-session leases. It also owns the PostgreSQL item
-  schema, catalog mirror, and character item-state bootstrap.
+  schema, catalog mirror, character item-state bootstrap, and authenticated
+  read models.
 - **SimulationWorker** is a headless .NET console process that owns the realtime
   UDP transport, active entities, interest management, and authoritative
   movement for its assigned shard.
@@ -121,6 +122,8 @@ The repository currently supports:
 - A transactional PostgreSQL catalog mirror, exact item location and occupancy
   constraints, and idempotent active-character bootstrap with empty inventory,
   bank, Secure Container, and Recovery Storage identities.
+- Authenticated, read-only catalog and complete owned-character inventory
+  snapshots that resolve instance definition ids against one catalog revision.
 
 ## Current Scale Boundary
 
@@ -136,23 +139,24 @@ introduce isolated realms.
 
 ## Item Foundation Status And Next Step
 
-Phases 1 through 3 of the durable item and inventory plan are complete. The
+Phases 1 through 4 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
 mirror. The schema now represents item location, containers, slots, equipment,
 policies, recovery, operations, and audit. Every active character receives
 empty permanent inventory, bank, Secure Container, and Recovery Storage state
-with base carry capacity `200`.
+with base carry capacity `200`. Account-authenticated reads expose the current
+catalog and one coherent owned-character snapshot without permitting mutation.
 
-The foundation intentionally has no item HTTP surface or player-facing
-inventory behavior. The next approved step is Phase 4 read models and
-development fixtures.
+The foundation intentionally has no item mutation HTTP surface or player-facing
+inventory behavior. The next approved step is Phase 5's internal transaction
+kernel.
 
 The remaining locked direction is slot-based rather than grid-based and includes:
 
-- Read models and mutation services built on the implemented PostgreSQL
-  item-definition, item instance, slot, operation, audit, and policy schema.
+- Mutation services built on the implemented PostgreSQL item-definition, item
+  instance, slot, operation, audit, policy, and read-model foundation.
 - Permanent character inventory, per-character bank, equipment, physical Bag
   items, per-character Secure Container contents, and account-selected Secure
   Container tiers.
@@ -164,8 +168,9 @@ The remaining locked direction is slot-based rather than grid-based and includes
 - Transactional death partition, durable five-minute player corpses, concurrent
   looting, one-death insurance, and configurable NPC corpse persistence.
 
-The persistent schema and empty character custody identities exist, but item
-granting, reads, mutations, and player-facing behavior remain planned. See
+The persistent schema, empty character custody identities, and authoritative
+reads exist, but item granting, mutations, and player-facing behavior remain
+planned. See
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
@@ -175,9 +180,9 @@ granting, reads, mutations, and player-facing behavior remain planned. See
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Gameplay-created item instances, inventory reads and mutations, equipped Bag
-  contents, Secure Container and bank interaction, Recovery Storage claims,
-  carry-state integration, corpse identity, and loot transactions.
+- Gameplay-created item instances, inventory mutations, equipped Bag changes,
+  Secure Container and bank interaction, Recovery Storage claims, carry-state
+  integration, corpse identity, and loot transactions.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live
