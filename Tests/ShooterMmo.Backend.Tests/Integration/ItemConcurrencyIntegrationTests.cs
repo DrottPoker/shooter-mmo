@@ -694,6 +694,30 @@ public sealed class ItemConcurrencyIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public Task BagSwapRejectsAProtectedBagWithoutChangingEitherAggregate()
+    {
+        return AssertPolicyRestrictedBagSwapAsync(BagSwapPolicyScenario.ProtectedBag);
+    }
+
+    [PostgresIntegrationFact]
+    public Task BagSwapRejectsAnInsuredBagWithoutChangingEitherAggregate()
+    {
+        return AssertPolicyRestrictedBagSwapAsync(BagSwapPolicyScenario.InsuredBag);
+    }
+
+    [PostgresIntegrationFact]
+    public Task BagSwapRejectsAProtectedChildWithoutChangingEitherAggregate()
+    {
+        return AssertPolicyRestrictedBagSwapAsync(BagSwapPolicyScenario.ProtectedChild);
+    }
+
+    [PostgresIntegrationFact]
+    public Task BagSwapRejectsAnInsuredChildWithoutChangingEitherAggregate()
+    {
+        return AssertPolicyRestrictedBagSwapAsync(BagSwapPolicyScenario.InsuredChild);
+    }
+
+    [PostgresIntegrationFact]
     public async Task AuthorizationAndEffectivePolicyLineageAreValidatedInsideTheKernel()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -1240,6 +1264,115 @@ public sealed class ItemConcurrencyIntegrationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await operation);
     }
 
+    private static async Task AssertPolicyRestrictedBagSwapAsync(
+        BagSwapPolicyScenario scenario)
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+        var secondCharacterResult = await context.CharacterService.CreateAsync(
+            player.Registration.AccountId,
+            new CreateCharacterRequest("Policy Bag Partner"),
+            CancellationToken.None);
+        Assert.True(secondCharacterResult.Succeeded, secondCharacterResult.Error?.Message);
+        var secondCharacter = secondCharacterResult.Value!;
+        var firstBagId = await GrantAndEquipBagAsync(
+            context,
+            player.Registration.AccountId,
+            player.Character.Id);
+        var secondBagId = await GrantAndEquipBagAsync(
+            context,
+            player.Registration.AccountId,
+            secondCharacter.Id);
+        var firstBagContainer = await LoadBagContainerAsync(context, firstBagId);
+        var policyItemId = scenario is BagSwapPolicyScenario.ProtectedBag
+            or BagSwapPolicyScenario.InsuredBag
+                ? firstBagId
+                : await GrantAsync(
+                    context,
+                    player.Registration.AccountId,
+                    player.Character.Id,
+                    "armor.starter_vest",
+                    1,
+                    firstBagContainer.ContainerId,
+                    0);
+
+        var policyState = await LoadStateAsync(context, player.Character.Id);
+        var policyItem = await LoadItemAsync(context, policyItemId);
+        ItemTransactionResult policyResult;
+        if (scenario is BagSwapPolicyScenario.InsuredBag
+            or BagSwapPolicyScenario.InsuredChild)
+        {
+            policyResult = await context.ItemPolicyService.ApplyInsuranceAsync(
+                Guid.NewGuid(),
+                player.Character.Id,
+                policyState.Revision,
+                policyItemId,
+                policyItem.Revision,
+                $"bag-swap-policy-{scenario}",
+                CancellationToken.None);
+        }
+        else
+        {
+            policyResult = await context.ItemPolicyService.ApplyProtectedOnDeathAsync(
+                Guid.NewGuid(),
+                player.Character.Id,
+                policyState.Revision,
+                policyItemId,
+                policyItem.Revision,
+                ItemPolicySourceKinds.CatalogDefault,
+                $"bag-swap-policy-{scenario}",
+                CancellationToken.None);
+        }
+
+        AssertSucceeded(policyResult);
+
+        var firstStateBefore = await LoadStateAsync(context, player.Character.Id);
+        var secondStateBefore = await LoadStateAsync(context, secondCharacter.Id);
+        var firstBagBefore = await LoadItemAsync(context, firstBagId);
+        var secondBagBefore = await LoadItemAsync(context, secondBagId);
+        var policyItemBefore = await LoadItemAsync(context, policyItemId);
+        firstBagContainer = await LoadBagContainerAsync(context, firstBagId);
+        var secondBagContainer = await LoadBagContainerAsync(context, secondBagId);
+
+        var swap = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<SwapBagAggregatesCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                new SwapBagAggregatesCommand(
+                    player.Character.Id,
+                    firstStateBefore.Revision,
+                    firstBagId,
+                    firstBagBefore.Revision,
+                    firstBagContainer.Revision,
+                    secondCharacter.Id,
+                    secondStateBefore.Revision,
+                    secondBagId,
+                    secondBagBefore.Revision,
+                    secondBagContainer.Revision)),
+            CancellationToken.None);
+
+        AssertRejected(swap, ItemTransactionErrorCodes.ItemPolicyRestricted);
+        Assert.Equal(firstStateBefore, await LoadStateAsync(context, player.Character.Id));
+        Assert.Equal(secondStateBefore, await LoadStateAsync(context, secondCharacter.Id));
+        var firstBagAfter = await LoadItemAsync(context, firstBagId);
+        var secondBagAfter = await LoadItemAsync(context, secondBagId);
+        var policyItemAfter = await LoadItemAsync(context, policyItemId);
+        Assert.Equal(firstBagBefore.Revision, firstBagAfter.Revision);
+        Assert.Equal(firstBagBefore.EquippedCharacterId, firstBagAfter.EquippedCharacterId);
+        Assert.Equal(secondBagBefore.Revision, secondBagAfter.Revision);
+        Assert.Equal(secondBagBefore.EquippedCharacterId, secondBagAfter.EquippedCharacterId);
+        Assert.Equal(policyItemBefore.Revision, policyItemAfter.Revision);
+        Assert.Equal(policyItemBefore.Quantity, policyItemAfter.Quantity);
+        Assert.Equal(policyItemBefore.ContainerId, policyItemAfter.ContainerId);
+        Assert.Equal(policyItemBefore.EquippedCharacterId, policyItemAfter.EquippedCharacterId);
+        Assert.Equal(
+            firstBagContainer.Revision,
+            (await LoadBagContainerAsync(context, firstBagId)).Revision);
+        Assert.Equal(
+            secondBagContainer.Revision,
+            (await LoadBagContainerAsync(context, secondBagId)).Revision);
+    }
+
     private static async Task<Guid> GrantAsync(
         PostgresIntegrationTestContext context,
         Guid accountId,
@@ -1468,5 +1601,13 @@ public sealed class ItemConcurrencyIntegrationTests
         public Guid ItemInstanceId { get; set; }
 
         public int ItemOrder { get; set; }
+    }
+
+    private enum BagSwapPolicyScenario
+    {
+        ProtectedBag,
+        InsuredBag,
+        ProtectedChild,
+        InsuredChild
     }
 }

@@ -312,9 +312,9 @@ phases:
   changes, locks baked ids, and writes authoring plus deterministic bake output
   transactionally.
 - The client presentation catalog is bundled under Unity Resources. It maps
-  stable definition ids to icons, localization keys, fallback text, and optional
-  prefab presentation keys with its own deterministic revision tied to the
-  exact gameplay catalog revision.
+  stable definition ids to optional icons, localization keys, fallback text,
+  and optional prefab presentation keys with its own deterministic revision
+  tied to the exact gameplay catalog revision.
 - AuthService bundles the checked-in runtime gameplay catalog, revalidates its
   revision and structural fingerprints, then mirrors the full relational
   definition structure in one advisory-locked PostgreSQL transaction before
@@ -355,6 +355,9 @@ phases:
   merge, quantity consumption, allowed destruction, empty Bag storage, complete
   Bag aggregate swap, Recovery delivery add and claim, Secure Container tier
   change, policy application and removal, and quest-grant abandonment cleanup.
+- Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
+  child. A protected or insured Bag or child rejects the complete swap without
+  changing custody, quantity, or revisions.
 - Every command uses exactly one Npgsql connection and one `READ COMMITTED`
   transaction. It claims a global operation id, hashes a canonical request,
   acquires character, Bag, container, item, policy, and delivery locks in stable

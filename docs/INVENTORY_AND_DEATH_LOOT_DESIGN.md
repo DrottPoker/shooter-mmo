@@ -470,6 +470,9 @@ policy to protect it.
 ### Bag Policy Scope
 
 A Bag policy protects only the Bag item. Child items are evaluated independently.
+Any complete Bag aggregate transfer that changes the owning character evaluates
+the Bag and every child. An active protected or insured policy on any aggregate
+member rejects the transfer atomically.
 At death, normal child items remain lootable, protected child items move to
 Recovery Storage, and insured child items move to Recovery Storage with their
 insurance consumed. The protected or insured real Bag is moved only after its

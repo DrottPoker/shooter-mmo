@@ -360,10 +360,11 @@ before persistent item definitions depend on it.
   presentation revision in the baked presentation catalog. Unity rejects a
   mismatched gameplay pair, while icon-only changes advance only the
   presentation revision.
-- Bundle the MVP presentation catalog and icon assets with the Unity client.
-  Do not add remote Addressables delivery in this phase, but keep stable
-  presentation keys so it can be added later without changing item ids or
-  server contracts.
+- Bundle the MVP presentation catalog with the Unity client. Icons remain
+  optional local presentation assets and may be added as approved art becomes
+  available. Do not add remote Addressables delivery in this phase, but keep
+  stable presentation keys so it can be added later without changing item ids
+  or server contracts.
 - Keep categories, tags, equipment slots, policies, location eligibility, and
   Bag slot acceptance visually and structurally separate.
 - Lock the id of every definition already present in the baked runtime catalog.
@@ -424,20 +425,20 @@ gameplay catalog authority.
 ### Manual Test Gate
 
 1. Open `Tools > Shooter MMO > Item Catalog` in Unity.
-2. Create the approved development pistol definition with stable id
-   `weapon.starter_pistol`, weight `10`, its equipment compatibility, and its
-   icon.
-3. Run `Validate` and confirm the new item has no errors.
-4. Run `Save And Bake` and confirm authoring and runtime gameplay JSON update,
-   the client presentation entry is generated, and it records the source
-   gameplay revision plus its own presentation revision.
-5. Change only the display name, bake, and confirm the structural fingerprint
-   remains unchanged. Restore the intended display name through the Editor.
-6. Change weight and confirm the tool reports a structural change, then cancel
-   that edit without saving it.
-7. Create an invalid draft with a duplicate id or invalid Bag slot and confirm
+2. Select `weapon.training_rifle`, use `Duplicate`, assign the temporary draft
+   id `weapon.catalog_validation_draft`, and confirm `Validate` accepts its
+   integer weight and equipment compatibility without requiring an icon.
+3. Remove the unbaked draft and confirm the checked-in catalog still contains
+   the original nine stable definitions.
+4. Change only the training rifle display name, run `Save And Bake`, and confirm
+   the structural fingerprint remains unchanged while the gameplay and
+   presentation revisions remain correctly paired. Restore the intended display
+   name with a second bake.
+5. Change weight and confirm the tool reports a structural change, then use
+   `Reload` to discard that edit without saving it.
+6. Create an invalid draft with a duplicate id or invalid Bag slot and confirm
    save and bake are blocked without changing either checked-in JSON file.
-8. Discard the invalid draft and confirm command-line `--verify` succeeds.
+7. Discard the invalid draft and confirm command-line `--verify` succeeds.
 
 ### Exit Gate
 
@@ -459,6 +460,9 @@ client presentation remains local, and no persistence work has started.
 - The checked-in client presentation catalog covers all nine gameplay
   definitions. Gameplay and presentation revisions are independent, so
   icon-only changes cannot alter gameplay fingerprints.
+- The manual workflow uses an unbaked disposable draft and display-only edits
+  to validate the Editor without requiring a new canonical item identity or an
+  approved icon asset.
 - EditMode coverage exercises Editor round-tripping, valid and invalid content,
   locked identities, deterministic baking and command-line verification,
   rollback, assembly dependency direction, presentation coverage, revision
@@ -783,6 +787,9 @@ The complete durable out-of-world item foundation is usable and policy safe.
   the existing idempotent transaction kernel and explicitly removes active
   insurance without replacing the item. Policy changes advance item and
   character revisions and append relational audit state.
+- A complete Bag aggregate swap locks the Bag roots, containers, child items,
+  and policy rows in canonical order. Active protected or insured policy state
+  on either Bag or any child rejects a cross-character swap atomically.
 - `QuestItemService` grants required protected items with exact quest-grant
   source ids. A second active grant with the same lineage is a successful
   idempotent no-op. Abandon removes only protected quest items bound to that
@@ -815,9 +822,10 @@ The complete durable out-of-world item foundation is usable and policy safe.
   policy, Recovery, entitlement, operation, and audit tables.
 - Pure unit tests cover transfer, destruction, death-disposition, stacking, and
   insurance eligibility. Isolated PostgreSQL and real HTTP-host tests cover
-  policy removal, exact quest cleanup and reaccept, ETag `304`, no-store headers,
-  owner scoping, tier access, stable Problem Details, offline fencing, Recovery
-  deposit rejection, system delivery, successful claim, and hard-cap rollback.
+  protected and insured Bag roots and children during aggregate swaps, policy
+  removal, exact quest cleanup and reaccept, ETag `304`, no-store headers, owner
+  scoping, tier access, stable Problem Details, offline fencing, Recovery deposit
+  rejection, system delivery, successful claim, and hard-cap rollback.
 - No SimulationWorker inventory state, worker mutation endpoint, GameProtocol
   item message, Unity inventory UI, corpse schema, death partition, Zone, Layer,
   Realm, or Phase 7 behavior was added.

@@ -1424,6 +1424,44 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
             policy.SourceId));
     }
 
+    private static async Task EnsureBagAggregateTransferAllowedAsync(
+        ItemTransactionContext context,
+        LockedItem bag,
+        CancellationToken cancellationToken)
+    {
+        var aggregateItemIds = await context.LoadBagAggregateItemIdsAsync(
+            bag.ItemInstanceId,
+            cancellationToken);
+        foreach (var itemInstanceId in aggregateItemIds)
+        {
+            var item = itemInstanceId == bag.ItemInstanceId
+                ? bag
+                : await context.LoadItemAsync(itemInstanceId, cancellationToken);
+            if (item is null)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.BagStateChanged,
+                    "A Bag aggregate item changed before policy validation completed.");
+            }
+
+            var definition = await context.LoadDefinitionAsync(
+                item.DefinitionId,
+                cancellationToken);
+            var policies = await context.LoadPoliciesAsync(
+                item.ItemInstanceId,
+                cancellationToken);
+            var capabilities = ItemPolicyRules.Evaluate(
+                definition.RuntimeDefinition,
+                ToPolicyStates(policies));
+            if (!capabilities.CanChangeOwningCharacter)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.ItemPolicyRestricted,
+                    "An active item policy prevents the Bag aggregate from changing character ownership.");
+            }
+        }
+    }
+
     private static async Task ExecuteSwapBagAggregatesAsync(
         ItemTransactionContext context,
         SwapBagAggregatesCommand command,
@@ -1469,6 +1507,8 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
             secondBag,
             command.SecondCharacterId,
             command.ExpectedSecondBagContentsRevision);
+        await EnsureBagAggregateTransferAllowedAsync(context, firstBag, cancellationToken);
+        await EnsureBagAggregateTransferAllowedAsync(context, secondBag, cancellationToken);
 
         var beforeFirst = await context.CaptureItemStateJsonAsync(
             firstBag.ItemInstanceId,

@@ -317,7 +317,32 @@ internal sealed class ItemTransactionContext(
                 cancellationToken: cancellationToken));
         }
 
-        var ordinaryItemIds = requestedItemIds.Except(bagRootIds).Order().ToArray();
+        var aggregateContainerIds = discoveryRows
+            .Where(row => row.ItemBagRootId is not null
+                && row.BagContentsContainerId is not null)
+            .Select(row => row.BagContentsContainerId!.Value)
+            .Distinct()
+            .Order()
+            .ToArray();
+        var aggregateChildItemIds = aggregateContainerIds.Length == 0
+            ? []
+            : (await Connection.QueryAsync<Guid>(new CommandDefinition(
+                """
+                select id
+                from item_instances
+                where container_id = any(@ContainerIds)
+                order by id;
+                """,
+                new { ContainerIds = aggregateContainerIds },
+                Transaction,
+                cancellationToken: cancellationToken))).ToArray();
+
+        var ordinaryItemIds = requestedItemIds
+            .Except(bagRootIds)
+            .Concat(aggregateChildItemIds)
+            .Distinct()
+            .Order()
+            .ToArray();
         if (ordinaryItemIds.Length > 0)
         {
             await Connection.QueryAsync<Guid>(new CommandDefinition(
@@ -333,7 +358,12 @@ internal sealed class ItemTransactionContext(
                 cancellationToken: cancellationToken));
         }
 
-        var policyItemIds = requestedItemIds.Concat(bagRootIds).Distinct().Order().ToArray();
+        var policyItemIds = requestedItemIds
+            .Concat(bagRootIds)
+            .Concat(aggregateChildItemIds)
+            .Distinct()
+            .Order()
+            .ToArray();
         if (policyItemIds.Length > 0)
         {
             await Connection.QueryAsync<Guid>(new CommandDefinition(
@@ -734,6 +764,27 @@ internal sealed class ItemTransactionContext(
             new { ContainerId = item.BagContentsContainerId.Value },
             Transaction,
             cancellationToken: cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<Guid>> LoadBagAggregateItemIdsAsync(
+        Guid bagItemInstanceId,
+        CancellationToken cancellationToken)
+    {
+        return (await Connection.QueryAsync<Guid>(new CommandDefinition(
+            """
+            select item.id
+            from item_instances item
+            where item.id = @BagItemInstanceId
+               or item.container_id in (
+                    select container.id
+                    from item_containers container
+                    where container.bound_bag_item_instance_id = @BagItemInstanceId
+                      and container.container_type = 'bag_contents')
+            order by item.id;
+            """,
+            new { BagItemInstanceId = bagItemInstanceId },
+            Transaction,
+            cancellationToken: cancellationToken))).ToArray();
     }
 
     public Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesAsync(

@@ -100,9 +100,10 @@ The canonical content workflow is available in Unity at
 1. Use the searchable definition list and category filter to select an item.
 2. Edit gameplay fields and the separate client presentation fields in the same
    window. Baked definition ids are read-only and cannot be deleted or reused.
-3. Choose an icon Sprite below an `Assets/Resources` folder, with one Sprite per
-   asset file. The tool stores its extension-free Resources path, not the image
-   data, in the presentation JSON.
+3. Optionally choose an icon Sprite below an `Assets/Resources` folder, with one
+   Sprite per asset file. The tool stores its extension-free Resources path, not
+   the image data, in the presentation JSON. An item may remain iconless until
+   approved client art is available.
 4. Select `Validate` to run the strict shared compiler without writing files.
 5. Select `Save` to write editable authoring and presentation content without
    replacing the runtime gameplay catalog.

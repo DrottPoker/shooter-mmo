@@ -82,6 +82,7 @@ public sealed class ItemRulesTests
             Definition("weapon.training_rifle"),
             [new ItemPolicyState(policyKind, "active", "test", "source-1")]);
 
+        Assert.False(capabilities.CanChangeOwningCharacter);
         Assert.False(capabilities.CanTrade);
         Assert.False(capabilities.CanListOnAuction);
         Assert.False(capabilities.CanSellToVendor);
@@ -94,6 +95,7 @@ public sealed class ItemRulesTests
             Definition("weapon.training_rifle"),
             [new ItemPolicyState(ItemPolicyIds.Insured, "removed", "test", "source-1")]);
 
+        Assert.True(capabilities.CanChangeOwningCharacter);
         Assert.True(capabilities.CanTrade);
         Assert.True(capabilities.CanListOnAuction);
         Assert.True(capabilities.CanSellToVendor);

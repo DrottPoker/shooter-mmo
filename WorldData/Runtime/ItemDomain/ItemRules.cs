@@ -187,6 +187,7 @@ namespace ShooterMmo.WorldData.Items
     public sealed class ItemPolicyCapabilities
     {
         public ItemPolicyCapabilities(
+            bool canChangeOwningCharacter,
             bool canTrade,
             bool canListOnAuction,
             bool canSellToVendor,
@@ -194,6 +195,7 @@ namespace ShooterMmo.WorldData.Items
             ItemDeathDisposition deathDisposition,
             bool canStack)
         {
+            CanChangeOwningCharacter = canChangeOwningCharacter;
             CanTrade = canTrade;
             CanListOnAuction = canListOnAuction;
             CanSellToVendor = canSellToVendor;
@@ -201,6 +203,8 @@ namespace ShooterMmo.WorldData.Items
             DeathDisposition = deathDisposition;
             CanStack = canStack;
         }
+
+        public bool CanChangeOwningCharacter { get; }
 
         public bool CanTrade { get; }
 
@@ -266,6 +270,7 @@ namespace ShooterMmo.WorldData.Items
                     : ItemDeathDisposition.Lootable;
 
             return new ItemPolicyCapabilities(
+                transferAllowed,
                 transferAllowed,
                 transferAllowed,
                 transferAllowed,
