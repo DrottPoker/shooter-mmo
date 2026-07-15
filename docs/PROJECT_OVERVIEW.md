@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## What Shooter MMO Is
 
@@ -121,13 +121,35 @@ partitions and layers as controlled population copies inside a shard. That work
 will extend SimulationAssignment and placement. It must not redefine World or
 introduce isolated realms.
 
+## Next Planned Foundation
+
+The next backend foundation is the durable item and inventory system. The locked
+direction is slot-based rather than grid-based and includes:
+
+- Stable item definitions, item instances, stacks, categories, tags, and
+  server-owned item policies.
+- Permanent character inventory, per-character bank, equipment, physical Bag
+  items, per-character Secure Container contents, and account-selected Secure
+  Container tiers.
+- Integer carry weight, a 140 percent hard cap, and shared authoritative
+  encumbrance behavior.
+- System-write-only Recovery Storage.
+- Transactional death partition, durable five-minute player corpses, concurrent
+  looting, one-death insurance, and configurable NPC corpse persistence.
+
+These systems are planned and are not present in the current executable. See
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
+[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+
 ## Intentionally Deferred
 
 - Zone ownership, cross-zone handoff, and layer orchestration.
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Inventory, equipment, loot, crafting, gathering, professions, and economy.
+- The planned item, inventory, equipment, Bag, Secure Container, bank, recovery,
+  carry-weight, corpse, and loot foundation described above.
+- Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live
   operations.
@@ -151,3 +173,7 @@ implementation.
 - [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) explains local visual
   population and connection churn testing.
 - [MVP Specification](MVP_SPEC.md) defines the current product scope.
+- [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) defines
+  the locked planned inventory and death-loot rules.
+- [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
+  defines how that foundation will be delivered and verified.

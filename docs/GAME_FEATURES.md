@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Purpose
 
@@ -206,13 +206,21 @@ They remain in the MVP specification until working behavior is available:
 - Dynamic collision transform replication.
 - Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
-- Inventory, equipment, item stats, and loot.
+- Slot-based inventory, equipment, Bags, Secure Container, bank, Recovery
+  Storage, carry weight, item policies, and loot.
+- Durable player corpses, configurable NPC corpses, concurrent looting, and
+  one-death insurance.
 - Gathering, crafting, professions, and player economy.
 - NPCs, enemies, quests, events, and world activities.
 - Character progression and long-term persistence.
 - Zone partitioning, cross-zone handoff, and population layers.
 - Social, grouping, guild, chat, and trading systems.
 - Final UI, audio, visual effects, animation, and accessibility.
+
+The planned player rules are defined in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
+not implemented behavior and therefore do not yet have a feature-status section
+in this document.
 
 ## Feature Documentation Template
 

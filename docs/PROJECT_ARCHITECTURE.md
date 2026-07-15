@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Purpose
 
@@ -69,14 +69,11 @@ objects exist today.
 
 ```text
                       HTTPS or local HTTP
-Unity Client ------------------------------------> AuthService
-     |                                                  |
-     | LiteNetLib UDP                                   | durable authority
-     v                                                  v
-SimulationWorker --------------------------------> PostgreSQL
-     |
-     | service-authenticated HTTP
-     +--------------------------------------------> AuthService
+Unity Client ------------------------------------> AuthService --------> PostgreSQL
+     |                                                  ^
+     | LiteNetLib UDP                                   | service-authenticated HTTP
+     v                                                  |
+SimulationWorker --------------------------------------+
      |
      +--------------------------------------------> Redis readiness
 
@@ -185,6 +182,11 @@ SimulationWorker and Unity. Static collision is deterministic and shared.
 Dynamic collision uses a mutable spatial hash behind the same collision-query
 interface, leaving room for doors, lifts, and other server-owned objects.
 
+The planned item catalog also belongs to neutral shared content under
+`WorldData`, while durable item instances and ownership remain global PostgreSQL
+state. The item catalog is not implemented yet. See
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
+
 ### Unity Client
 
 `shooter-mmorpg-unity-client` owns presentation, input, prediction,
@@ -216,6 +218,32 @@ route in-memory bot credentials to that authority and all other credentials to
 the unchanged PostgreSQL services. Reserved worker capacity prevents bots from
 occupying every connection slot needed by real local players.
 
+### Planned Durable Item Boundary
+
+Status: Planned and not implemented
+
+AuthService will own durable item instances, stacks, slot assignments,
+equipment, Bag aggregates, character bank, Secure Container contents, account
+Secure Container tiers, Recovery Storage, item policies, player corpse custody,
+and item transaction audit. PostgreSQL remains the authority.
+
+SimulationWorker will own live proximity, interaction, combat, corpse
+presentation, and authoritative encumbrance for its assigned shard. While a
+character is active, the worker will request durable item mutations through an
+authenticated AuthService boundary fenced to the exact character, simulation
+session, worker, runtime, and Shard. SimulationWorker will not write inventory
+tables directly.
+
+Player corpses will use durable custody with an absolute expiry and can be
+restored by a replacement worker. Normal NPC corpses may remain worker-owned and
+disappear on restart, while content-selected bosses may use the durable corpse
+path. These choices do not introduce Zone or Layer ownership.
+
+The complete planned contract is defined in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
+proposed schema and delivery order in
+[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+
 ## Durable Data Model
 
 | Table | Responsibility |
@@ -237,6 +265,11 @@ Active account login sessions are unique by account. Active simulation sessions
 are unique by both character and account. This prevents one account token from
 running multiple characters simultaneously, even if the token is copied to a
 second client.
+
+This table lists the implemented schema only. Planned item, container, policy,
+recovery, operation, and corpse tables are documented separately in
+[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
+and must not be treated as deployed schema.
 
 ## Runtime Identity And Assignment Safety
 
@@ -369,6 +402,23 @@ and disconnects the older peer generation.
 6. SimulationWorker sends visible authoritative states at 15 Hz.
 7. The local client acknowledges, rewinds, and replays prediction. Remote clients
    interpolate behind the latest server tick.
+
+### Planned In-World Item Mutation
+
+Status: Planned and not implemented
+
+1. Unity sends an item or corpse interaction intent to its assigned
+   SimulationWorker.
+2. SimulationWorker validates the exact live session, proximity, interaction,
+   and service-access rules.
+3. The worker calls AuthService over its service-authenticated channel with an
+   idempotent operation id and exact worker-runtime fencing.
+4. AuthService locks and validates durable PostgreSQL item state, commits the
+   complete transaction, and returns new inventory and carry-state revisions.
+5. SimulationWorker updates authoritative encumbrance only from the committed
+   result and forwards the result to Unity.
+
+No database transaction remains open across a client network round trip.
 
 ## Configuration Ownership
 

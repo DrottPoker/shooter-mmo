@@ -1,6 +1,12 @@
 # MMO Project Brief for Codex
 
-_Last updated: 2026-07-06_
+_Original brief: 2026-07-06. Current-design alignment: 2026-07-15._
+
+> This is the original broad vision document. Current terminology and
+> architecture are defined in `PROJECT_ARCHITECTURE.md`. Current item,
+> inventory, carry-weight, insurance, corpse, and death-loot decisions are
+> defined in `INVENTORY_AND_DEATH_LOOT_DESIGN.md` and supersede conflicting
+> historical ideas below.
 
 ## Purpose
 
@@ -48,11 +54,12 @@ The game can include fantasy/magic elements later, but the current direction is 
 
 ## World Structure
 
-The game world should support multiple RuneScape-style worlds/servers.
+The game should support multiple player-selectable Shards running shared World
+content.
 
 Players can choose a world to join, but key character data is shared globally.
 
-Shared across worlds:
+Global across Fleets and Shards:
 
 - Account
 - Characters
@@ -66,7 +73,7 @@ Shared across worlds:
 - Guilds
 - Social systems
 
-World-specific/live state:
+Shard-specific live state:
 
 - Player position
 - Live combat
@@ -76,13 +83,18 @@ World-specific/live state:
 - Loot containers in the world
 - Resource node state, depending on implementation
 
-The player should be able to join different worlds with the same character, but the same character must not be logged into multiple worlds at the same time.
+The player should be able to join different Shards with the same character, but
+the same account and character must not have more than one active simulation
+session.
 
-## Zone Model
+## Gameplay Rule Areas
+
+These are authored gameplay policies. They are not the future topological Zone
+or Layer scaling systems.
 
 The world should be divided into legal/safety zones rather than only simple PvP-on/PvP-off areas.
 
-### 1. City Zones
+### 1. City Rule Areas
 
 Cities are safe hubs.
 
@@ -100,7 +112,7 @@ Expected features:
 
 Large cities should restrict or deny access to heavily criminal players.
 
-### 2. Normal / Civilized Zones
+### 2. Normal / Civilized Rule Areas
 
 Normal zones are safer open-world areas outside cities.
 
@@ -207,38 +219,27 @@ The goal is to make criminal play a dangerous lifestyle, not a dead end.
 
 ## Death and Loot Rules
 
-Core direction:
+Current direction:
 
-- In dangerous PvP contexts, the player drops everything.
-- Secure bag contents are protected.
-- Insurance may protect or return some items.
-- Quest items do not drop.
-- Currency is kept.
+- Inventory is slot-based rather than grid-based.
+- Currency remains with the character.
+- Secure Container contents remain with the character and are hidden from
+  looters.
+- Protected-on-death items move to Recovery Storage and remain hidden.
+- Insurance provides one-death protection, moves the actual item to Recovery
+  Storage, consumes the policy, and may leave a non-interactive corpse snapshot.
+- Remaining permanent inventory, equipment, Bag, and Bag contents become
+  lootable corpse custody.
+- Player corpse custody remains durable for an absolute five-minute lifetime,
+  including when the corpse is empty.
+- Multiple players can loot the same corpse through transactional item requests.
 
-### Secure Bag
-
-The secure bag works similarly in spirit to Escape from Tarkov's secure container.
-
-Design direction:
-
-- Small capacity.
-- Protects selected items from being looted on death.
-- Should not be large enough to remove the risk of full loot.
-- Likely limited to small valuables, keys, special materials, or similar items.
-
-### Insurance
-
-Insurance may protect some items, but should not remove risk entirely.
-
-Preferred direction:
-
-- Insured items may be returned only if no other player loots them.
-- Insurance may be worse or more expensive for criminals.
-- Insurance should not make PvP loot meaningless.
+The complete current rules are maintained in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
 ### Quest Items and Currency
 
-- Quest-critical items should not drop.
+- Protected quest items do not enter lootable corpse custody.
 - Currency is kept on death.
 
 This prevents death from completely blocking progression or griefing important quests.
@@ -269,7 +270,7 @@ Professions should create real interdependence between players.
 Examples:
 
 - Miners gather rare materials.
-- Engineers craft attachments or tools.
+- Engineers craft tools or other equipment components.
 - Medics create healing items.
 - Traders move goods between cities.
 - Criminals may smuggle or rob.
@@ -307,10 +308,11 @@ The project currently uses / should continue toward:
 - Unity client.
 - C#.
 - ASP.NET Core / .NET backend.
-- .NET WorldServer.
+- Headless .NET SimulationWorker.
 - LiteNetLib UDP for gameplay networking.
 - PostgreSQL as source of truth.
-- Redis for sessions, presence, world registry, cache, and short-lived state.
+- Redis for readiness and future transient coordination where it has a clear
+  benefit, never as durable item or session authority.
 - Docker Compose for local/professional dev infrastructure.
 - Linux VPS for online testing/staging.
 
@@ -322,12 +324,12 @@ Responsible for:
 
 - Accounts
 - Login/register
-- JWT tokens
+- Revocable opaque account sessions
 - Character list/select
-- World join ticket flow
+- Shard placement and exact-runtime join-ticket flow
 - Session validation
 
-#### WorldServer
+#### SimulationWorker
 
 Responsible for:
 
@@ -335,16 +337,18 @@ Responsible for:
 - Combat
 - Mobs
 - PvP
-- Zones
+- Authored gameplay rule areas when implemented
 - Death handling
-- Live world simulation
+- Live Shard simulation
 - Loot containers/world objects
 
-WorldServer should not permanently own inventory, auction house, or social systems.
+SimulationWorker must not permanently own player inventory, auction house, or
+social systems.
 
 #### SocialService
 
-Should be separate from WorldServer so chat/friends remain online even if a world server restarts.
+Should be separate from SimulationWorker so chat and friends remain online when
+a simulation process restarts.
 
 Responsible for:
 
@@ -354,26 +358,30 @@ Responsible for:
 - Party chat
 - Private messages
 - Presence
-- Cross-world communication
+- Cross-Shard communication
 - Moderation basics
 
 Preferred client connections:
 
 - HTTPS for Auth/API.
 - WebSocket/WSS for SocialService.
-- UDP for WorldServer gameplay.
+- UDP for SimulationWorker gameplay.
 
-#### Inventory/Economy Backend
+#### Inventory And Economy Boundary
 
-May start as modules inside Auth/API, but should be designed so it can become its own service later.
+Starts as focused AuthService feature modules behind a durable transaction
+boundary. A later service extraction must preserve the same authority and
+idempotency contracts.
 
 Responsible for:
 
 - Inventory
 - Bank
 - Item instances
-- Secure bag
-- Insurance
+- Bag and Secure Container
+- Recovery Storage and one-death insurance
+- Carry weight and item policies
+- Durable player corpse custody
 - Loot transfers
 - Crafting
 - Auction house
@@ -395,7 +403,9 @@ Important persistent data:
 - Item instances
 - Inventory containers
 - Bank containers
-- Secure bag containers
+- Bag, Secure Container, and Recovery Storage state
+- Item policies and transaction audit
+- Durable player corpse custody
 - Auction listings
 - Currency balances
 - Quest state
@@ -406,8 +416,8 @@ Important persistent data:
 Use Redis only for fast/temporary state:
 
 - Online presence
-- Active world registry
-- Join tickets
+- Cache and future transient coordination
+- Short-lived operational observations
 - Rate limits
 - Cache
 - Short-lived locks/leases
@@ -439,10 +449,10 @@ Preferred professional setup:
 Local example:
 
 - AuthService runs locally on HTTP.
-- WorldServer runs locally with UDP.
+- SimulationWorker runs locally with UDP.
 - PostgreSQL runs in Docker.
 - Redis runs in Docker.
-- Unity connects to local AuthService and WorldServer.
+- Unity connects to local AuthService and SimulationWorker.
 
 ## Online Testing / Staging Setup
 
@@ -455,8 +465,8 @@ Example staging stack:
 - Nginx for HTTPS/WSS reverse proxy.
 - AuthService container.
 - SocialService container.
-- WorldServer 1 container.
-- WorldServer 2 container later.
+- SimulationWorker 1 container.
+- Additional SimulationWorker containers later.
 - PostgreSQL container.
 - Redis container.
 
@@ -505,4 +515,3 @@ PvP should create risk and stories, but the long-term glue of the game is:
 - Social systems
 - Exploration
 - Risk/reward decisions
-

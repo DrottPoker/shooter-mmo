@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Purpose
 
@@ -399,9 +399,22 @@ the test connection variable at development or production data.
 
 ## Not Yet Implemented
 
+- Item definitions, item instances, stacks, or slot inventory.
+- Equipment, physical Bag items, per-character bank, Secure Container, or
+  Recovery Storage.
+- Carry weight, the planned 140 percent encumbrance curve, or inventory-driven
+  movement restrictions.
+- Protected-on-death policy, one-death insurance, death partition, persistent
+  player corpses, concurrent corpse looting, or configurable NPC corpse
+  persistence.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.
 - Metric exporter, dashboards, and alerting.
 - Persistent NPC or combat simulation.
 - General terrain mesh and rigid-body collision.
+
+The locked product design and implementation phases for the unimplemented item
+foundation are documented in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
+[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).

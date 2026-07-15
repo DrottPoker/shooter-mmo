@@ -60,8 +60,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Combat, inventory, persistent NPCs, zones, layers, complex terrain meshes, and
-production orchestration are intentionally deferred.
+The durable slot-based item and inventory foundation is the next planned backend
+milestone but is not implemented. Combat, persistent NPCs, zones, layers,
+complex terrain meshes, and production orchestration remain deferred.
 
 ## Requirements
 
@@ -150,7 +151,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |
-| `WorldData` | World content authoring and compiled collision chunks |
+| `WorldData` | Shared World content authoring and runtime data, currently checksummed collision chunks |
 | `Tools` | Verification, content compiler, stress benchmark, shared headless bot client, and active bot population |
 | `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `shooter-mmorpg-unity-client` | Unity project and Unity tests |
@@ -165,6 +166,12 @@ Unity runtime settings live under `Assets/Resources/Config` with definitions in
 
 Start with [Project Overview](docs/PROJECT_OVERVIEW.md), then use the complete
 [documentation index](docs/README.md).
+
+The locked planned item, inventory, carry-weight, death-loot, corpse, insurance,
+and recovery rules are in
+[Inventory And Death Loot Design](docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
+complete dependency-ordered delivery plan is in
+[Items And Inventory Implementation Plan](docs/ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
 Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,
 configuration, architecture, and user workflows must be documented and manually

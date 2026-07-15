@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -28,8 +28,16 @@ operations, and future design do not drift into duplicate descriptions.
 
 - [MVP Specification](MVP_SPEC.md) defines the working MVP scope and product
   decisions.
+- [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
+  current product and domain source of truth for planned items, slot inventory,
+  Bags, Secure Container, carry weight, death loot, corpses, insurance, and
+  Recovery Storage.
+- [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
+  defines the dependency-ordered delivery phases, proposed persistence model,
+  service boundaries, and verification gates for that design.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
-  project vision and broader design context.
+  project vision and broader historical design context. Current architecture and
+  feature-specific design documents supersede conflicting details in that brief.
 
 These product documents are working design references. The architecture and
 feature documents describe what is actually implemented in the repository.

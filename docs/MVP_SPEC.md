@@ -1,15 +1,21 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-12
+Last updated: 2026-07-15
 
 ## Purpose
 
-This document defines the current MVP direction for the shooter MMO project.
+This document defines the current MVP direction for Shooter MMO.
 
-The spec is a working agreement, not a permanent design lock. Decisions here can
+The spec is a working agreement, not a permanent design lock. Decisions can
 change when implementation, playtesting, or better design ideas expose a better
 path. The goal is to keep the first build focused enough to become playable
 without losing the long-term game identity.
+
+Detailed planned item, inventory, carry-weight, corpse, insurance, and recovery
+rules are defined in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
+dependency-ordered delivery plan is
+[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
 ## Core MVP Goal
 
@@ -18,12 +24,14 @@ The MVP should prove the core loop:
 1. Player creates or selects a character.
 2. Player selects and joins a shard running the shared World content.
 3. Player spawns in a safe city.
-4. Player leaves the city into an unsafe open-world area.
-5. Player gathers or loots a resource.
-6. Player sells to a simple NPC vendor or uses the item later for crafting.
-7. Player fights a simple mob or another player.
-8. Player death applies the current loot rules.
-9. Player returns to the city to bank, sell, equip, and prepare again.
+4. Player prepares inventory, equipment, Bag, Secure Container, and bank.
+5. Player leaves the city into an unsafe open-world area.
+6. Player gathers or loots a resource.
+7. Player sells to a simple NPC vendor or retains the item for later crafting.
+8. Player fights a simple mob or another player.
+9. Player death applies transactional protection and corpse-loot rules.
+10. Player returns to a city to claim Recovery Storage, bank, sell, equip, and
+    prepare again.
 
 The MVP should avoid becoming a large feature collection before this loop works.
 
@@ -32,11 +40,14 @@ The MVP should avoid becoming a large feature collection before this loop works.
 - Accounts support multiple characters from the beginning.
 - Maximum characters per account in the MVP: 5.
 - Character data is persistent and stored in PostgreSQL.
-- Each character owns its own bank, inventory, equipment, secure bag, currency,
-  profession progress, quest state, and reputation state.
-- The bank is per character, not account-wide.
+- Each character owns its inventory, equipment, Bag custody, bank, Secure
+  Container contents, Recovery Storage, currency, profession progress, quest
+  state, and reputation state.
+- The account owns the entitlement that selects Secure Container name, tier, and
+  slot capacity for its characters.
+- Bank contents and capacity state are per character, not account-wide.
 - One account and one character may have only one active simulation session at a
-  time across every fleet and shard.
+  time across every Fleet and Shard.
 - Shard switching is allowed only after the character has fully left its current
   simulation session.
 
@@ -48,17 +59,19 @@ The MVP should avoid becoming a large feature collection before this loop works.
 - A `Shard` is a player-selectable copy of the shared World simulation and may
   have its own rule set.
 - A `Fleet` groups regional or operational compute. A `Node` is one machine or
-  container host inside a fleet.
+  container host inside a Fleet.
 - A `SimulationWorker` is one headless authoritative process. Its active
-  `SimulationAssignment` determines which shard it simulates.
-- The current safe scale unit is one active SimulationWorker per shard and one
-  active shard per SimulationWorker.
-- Accounts, characters, progression, inventory, and the future economy are
-  global and use the same persistent services across every fleet and shard.
-- Shard-specific live state includes movement, combat, mobs, loot containers,
-  gameplay rule state, and active player presence.
+  `SimulationAssignment` determines which Shard it simulates.
+- The current safe scale unit is one active SimulationWorker per Shard and one
+  active Shard per SimulationWorker.
+- Accounts, characters, persistent items, inventory, progression, and the
+  future economy are global across every Fleet and Shard.
+- Shard-specific live state includes movement, combat, mobs, interactions, and
+  live corpse presentation.
+- Durable player corpse custody remains global PostgreSQL data with a Shard
+  reference used for restoration by the assigned SimulationWorker.
 - There are no Realms. Topological Zones and Layers are future scaling systems
-  and are not implemented in the current MVP foundation.
+  and are not implemented or faked by inventory or corpse ownership.
 
 ## Gameplay Rule Areas
 
@@ -72,8 +85,8 @@ movement test map does not define these areas.
 
 When the map is ready, the first playable version should keep rule areas simple:
 
-- Safe City Rule Area
-- Open Risk Rule Area
+- Safe City Rule Area.
+- Open Risk Rule Area.
 
 Civilized and wilderness rule areas can be split into separate policies later.
 For the first implementation, everything outside the safe city should be treated
@@ -83,8 +96,7 @@ as unsafe.
 
 - No PvP.
 - Instant logout.
-- NPC vendor access.
-- Bank access.
+- NPC vendor, bank, Recovery Storage, and insurance NPC access.
 - Equipment and inventory management.
 - Future location for crafting stations, quest NPCs, and social services.
 
@@ -93,7 +105,10 @@ as unsafe.
 - PvP is allowed.
 - Simple mobs can exist.
 - Gathering and loot containers can exist.
-- Player death can drop loot based on the current death rules.
+- The character can manage carried inventory and eligible Secure Container
+  items, subject to server-authoritative action and policy rules.
+- Player death creates durable corpse custody and applies the current protection
+  rules.
 - Logout leaves the character in the world for a risk timer.
 
 ## Logout And Disconnect Rules
@@ -101,7 +116,7 @@ as unsafe.
 Logout behavior will depend on the character's current gameplay rule area.
 
 - Safe City Rule Area: instant logout.
-- Open Risk Rule Area in MVP: the character body remains in the shard simulation
+- Open Risk Rule Area in MVP: the character body remains in the Shard simulation
   for 5 minutes.
 - Future Civilized Rule Area: the character body remains for about 30 seconds.
 - Future Wilderness Rule Area: the character body remains for about 5 minutes.
@@ -110,58 +125,151 @@ If the player reconnects while the character body is still active, the player
 should resume control of that same character body.
 
 Combat should reset or extend the logout timer so players cannot use logout or
-disconnects to avoid danger.
+disconnect to avoid danger.
 
-## Inventory Rules
+## Item And Inventory Rules
 
-- Inventory is grid or cell based, similar in spirit to Escape from Tarkov.
-- Items have width and height.
-- Item rotation should be supported from the beginning.
-- Item placement must be validated server-side.
-- Item ownership must be stored transactionally in PostgreSQL.
-- Redis must not be the source of truth for persistent item ownership.
+- Inventory is slot-based, not grid-based.
+- One non-stackable item occupies one slot.
+- A compatible stack occupies one slot up to the definition's server-controlled
+  stack maximum.
+- Every character has a permanent general inventory independent of the equipped
+  Bag. The initial target is approximately 20 slots.
+- Weapons use normal general slots when not equipped.
+- There are no weapon attachments in the current design.
+- Item definitions provide one primary category, zero or more tags, unit weight
+  in integer grams, stack rules, equipment compatibility, location eligibility,
+  and optional default policy behavior.
+- The first specialized Bag slot tags are medical, material, and ammunition.
+- Matching items may use specialized or general Bag slots.
+- Every item instance has exactly one current custody assignment.
+- Item quantity, policy, ownership, slot assignment, and weight are always
+  server-authoritative.
+- Persistent item ownership and every important transfer are transactional in
+  PostgreSQL.
+- Redis is never the source of truth for persistent item custody.
 
-The inventory system should support these container types:
+## Equipment And Bags
 
-- Character inventory
-- Character bank
-- Secure bag
-- Loot containers
-- Vendor inventory
+Required initial equipment slots:
 
-## Secure Bag
+- Head.
+- Body armor.
+- Primary weapon.
+- Secondary weapon.
+- Tool.
+- Ring 1.
+- Ring 2.
+- Bag.
 
-- Secure bag exists in the MVP.
-- Secure bag is a small protected grid container.
-- Items inside the secure bag are protected from normal death loot drops.
-- Secure bag capacity should be small enough that it does not remove the risk of
-  unsafe zones.
-- Secure bag placement follows the same grid and rotation rules as inventory.
+Equipment is item ownership plus a mutually exclusive slot assignment. An
+equipped item does not also occupy permanent inventory.
 
-## Equipment Slots
+A physical Bag may provide general slots, specialized slots, and a carry-
+capacity bonus. A Bag instance owns its contents.
 
-Characters should support equipment slots from the beginning.
+- An empty Bag acts as an ordinary one-slot item and may use compatible general
+  inventory, Bag, bank, recovery, and future economy locations.
+- A Bag with contents may move only between valid Bag slots through an atomic
+  aggregate swap or through a server-owned death partition that first removes
+  every child item.
+- A non-empty Bag cannot be stored inside permanent inventory, another Bag,
+  bank, trade, auction, mail, or vendor storage.
+- Active container nesting and cycles are forbidden.
+- A Bag policy protects only the Bag item. Every child item is evaluated
+  independently.
 
-Required MVP equipment slots:
+## Character Bank
 
-- Head
-- Body armor
-- Primary weapon
-- Secondary weapon
-- Tool slot
-- Ring slot 1
-- Ring slot 2
+- Bank ownership is per character.
+- Bank storage is slot-based and contributes no carry weight.
+- The initial target is approximately 40 base slots.
+- Further slots can be unlocked by later progression or entitlement systems.
+- Only empty Bags may be stored in bank.
+- Bank access requires a major-city service.
 
-The tool slot is used for tools such as a pickaxe or axe so the player can
-gather resources.
+## Secure Container
 
-Equipment should be represented as item ownership plus slot assignment, not as a
-separate non-item system.
+- Secure Container contents belong to the character.
+- The account-selected tier defines name and slot capacity for its characters.
+- The base tier starts with four slots.
+- Secure Container is not a physical Bag item and cannot be dropped, traded, or
+  looted.
+- Its contents contribute to carried weight.
+- Eligible items may be moved into and out of Secure Container while in the
+  world.
+- Eligibility is definition-driven. Weapons are not allowed.
+- A move is rejected when slots, policy, stack, or the 140 percent weight cap
+  would be violated.
+- A corpse exposes only a non-interactive snapshot of Secure Container name and
+  tier. It never exposes the contents.
+- If an account tier loses slots, items in removed slots move transactionally
+  and deterministically to Recovery Storage. They are never deleted.
+
+## Recovery Storage
+
+- Recovery Storage is one global per-character queue accessible from every major
+  city.
+- Players can withdraw but cannot deposit.
+- System deliveries can always be appended, so death processing cannot fail due
+  to storage capacity.
+- Recovery contents contribute no carry weight.
+- Withdrawals target inventory or bank and validate slot and weight rules.
+- Every delivery records source and source event id.
+- Initial sources include death protection, insurance, protected Bag,
+  insufficient respawn capacity, secure-tier reduction, and future restoration.
+
+## Carry Weight And Encumbrance
+
+Carried weight includes permanent inventory, equipment, equipped Bag, Bag
+contents, carried empty Bags, Secure Container contents, and full stack
+quantities. Bank, Recovery Storage, corpse, and future non-carried economy
+custody do not count.
+
+Carry capacity is primarily character-based. The equipped Bag may add a bonus.
+
+- At or below 100 percent, movement uses base speed and sprint is available.
+- Above 100 percent, sprint is disabled.
+- Movement speed decreases linearly from 100 percent base speed at 100 percent
+  load to 20 percent base speed at 140 percent load.
+- Exactly 140 percent is allowed.
+- No action may increase carried weight beyond 140 percent.
+- Weight and capacity use integer grams and exact integer comparisons.
+- Structural content changes that could create an invalid over-cap state require
+  an explicit data migration.
+
+## Item Policies
+
+Category and policy are separate. Policies are server-owned item-instance state.
+
+### Protected On Death
+
+- The actual item moves to Recovery Storage at death unless it was already in
+  Secure Container.
+- It cannot be traded, auctioned, or sold to a vendor.
+- It is hidden from looters.
+- Protected quest items cannot be destroyed by the player.
+- Abandoning the owning quest removes associated quest items transactionally,
+  and reaccepting the quest may grant them again.
+- A non-quest protected item may be explicitly destroyed only if its definition
+  permits it.
+
+### Insured
+
+- Insurance is one-death protection.
+- The actual item moves to Recovery Storage when insurance protects it.
+- The insurance policy is consumed by that death.
+- A non-interactive insured snapshot may remain on the corpse to show equipment
+  the character carried.
+- An insured item cannot be traded, auctioned, or sold to a vendor.
+- The player must remove insurance through the insurance NPC before those
+  actions become legal again.
+- Initial insurance targets non-stackable equipment.
 
 ## Combat Direction
 
 - Combat is third-person and projectile based.
-- The server should be authoritative for combat outcomes.
+- SimulationWorker is authoritative for combat outcomes.
 - The client sends fire intent.
 - The server validates weapon state, ammo, cooldown, position, direction, and
   hit results.
@@ -174,16 +282,14 @@ The first combat implementation should include:
 - Basic hit detection.
 - Basic health and damage.
 - Reload or ammo consumption.
-- Death handling.
+- Authoritative death event generation.
 
-Advanced ballistics, limb damage, armor penetration, complex recoil, and detailed
-weapon attachment systems should wait until the basic combat loop works.
+Advanced ballistics, limb damage, armor penetration, and complex recoil should
+wait until the basic combat loop works.
 
 ## Mob MVP
 
-The MVP should include one simple mob type.
-
-The mob only needs enough behavior to test combat and loot:
+The first mob needs enough behavior to test combat and loot:
 
 - Spawn.
 - Idle or patrol.
@@ -195,51 +301,55 @@ The mob only needs enough behavior to test combat and loot:
 - Drop simple loot.
 - Respawn after a timer.
 
+Normal NPC corpses default to approximately two minutes of live
+SimulationWorker state and may disappear on restart. NPC content can override
+lifetime and persistence. Bosses may use the durable corpse path.
+
 ## Economy MVP
 
-The first economy should be simple and NPC-driven.
-
-Required MVP economy features:
+The first economy should be simple and NPC-driven:
 
 - One NPC vendor.
 - Player can sell basic loot or gathered resources.
 - Player can buy basic supplies.
-- Currency is stored persistently.
+- Currency is stored persistently and remains with the character on death.
+- One insurance NPC can grant and remove one-death insurance later in the
+  death-loot milestone.
 
 Auction house, direct player trading, regional markets, and advanced crafting
-should wait until the core item and economy rules are stable.
+should wait until core item and economy transactions are stable.
 
 ## Gathering MVP
-
-The MVP should include at least one gathering interaction.
 
 Recommended first gathering loop:
 
 - Equip a tool in the tool slot.
 - Interact with a resource node in the Open Risk Rule Area.
-- Server validates the required tool.
-- Server grants a resource item into inventory if space exists.
+- SimulationWorker validates the required tool and live interaction.
+- AuthService grants a resource item transactionally into a compatible slot when
+  capacity and weight allow it.
 - Resource can be sold to the NPC vendor.
 
 ## Death And Loot Rules
 
-MVP death rules:
+Player death is an idempotent transaction:
 
-- Currency does not drop.
-- Quest-critical items do not drop.
-- Secure bag contents do not drop.
-- Equipped items can be protected or dropped depending on the first balance pass.
-- Normal inventory items drop in unsafe areas.
-- Dropped items appear in a loot container in the world.
+- Currency remains with the character.
+- Secure Container contents remain in place.
+- Protected-on-death items move to Recovery Storage.
+- Insured items move to Recovery Storage and consume insurance.
+- Remaining permanent inventory, equipment, Bag, and Bag contents become
+  lootable corpse custody.
+- The corpse has separate general inventory, equipment, and Bag sections.
+- Multiple players, including the dead player, may loot the corpse concurrently.
+- One player may have only one active loot interaction at a time.
+- Partial-stack looting is supported.
+- Bag swaps are atomic and lock both Bag aggregates.
 
-For the first implementation, the simplest recommended rule is:
-
-- Safe City Rule Area: no PvP deaths.
-- Open Risk Rule Area: normal inventory drops, while secure bag contents and
-  currency are kept.
-
-Equipment drop behavior can be tuned after the basic death and loot container
-flow works.
+Player corpse custody persists in PostgreSQL for an absolute five-minute lifetime
+even when empty. SimulationWorker restores unexpired player corpses after a
+restart, optionally with a generic loot-crate presentation. At expiry, remaining
+loot is destroyed with audit records.
 
 ## Backend And Service Scope
 
@@ -247,52 +357,50 @@ The intended architecture remains:
 
 - Unity client.
 - ASP.NET Core AuthService for global durable services and HTTP APIs.
-- Headless .NET SimulationWorker for authoritative shard simulation.
+- Headless .NET SimulationWorker for authoritative Shard simulation.
 - LiteNetLib UDP for gameplay networking.
 - PostgreSQL as the persistent source of truth.
-- Redis for operational readiness today and future transient coordination where
-  it provides a clear benefit.
+- Redis only for temporary or operational state where it has a clear benefit.
 
-For MVP, the practical service split should be:
+Planned item service split:
 
-- AuthService handles accounts, login, characters, topology, shard placement,
-  join tickets, simulation-session leases, inventory, bank, secure bag,
-  equipment, vendor, and persistent item transactions.
-- SimulationWorker handles realtime admission, movement, combat, mobs, gameplay
-  rule areas, logout timers, death, and live loot containers for its assigned
-  shard.
-- SocialService can exist in the repository but does not need to be part of the
-  first playable loop.
+- AuthService owns item definitions mirrored from shared content, item
+  instances, policies, slot and equipment assignments, bank, Secure Container,
+  Recovery Storage, durable player corpse custody, audit, and all durable item
+  transactions.
+- SimulationWorker owns live inventory and corpse interaction validation,
+  proximity, combat, death-event production, active corpse presentation,
+  one-active-loot-interaction enforcement, and authoritative encumbrance.
+- While a character is active, SimulationWorker requests durable mutations over
+  a service-authenticated AuthService boundary fenced to exact session, worker,
+  runtime, character, and Shard.
+- SimulationWorker never writes item tables directly.
+- Unity sends intents and displays committed state.
 
 Current implementation note:
 
-- AuthService stores account sessions, topology, exact-runtime join tickets, and
-  global simulation-session leases in PostgreSQL.
-- The canonical runtime hierarchy is Global Services, Fleet, Node,
-  SimulationWorker, SimulationAssignment, and Shard. World remains shared
-  content, and there are no Realms.
-- SimulationWorker registers and heartbeats its exact runtime generation through
-  an authenticated service channel. Assignment loss or lease expiry fences the
-  process.
-- Unity requests shard placement through AuthService and then connects directly
-  to the assigned SimulationWorker over LiteNetLib UDP.
-- Join, leave, reconnect, reliable entity lifecycle, movement input, and
-  simulation snapshots use the shared versioned GameProtocol contract.
-- SimulationWorker owns fixed-step authoritative movement, interest management,
-  connection quotas, and collision against checksummed WorldData chunks.
-- Unity owns input, local prediction, reconciliation, remote interpolation,
-  presentation, and temporary UI. It does not own authoritative gameplay state.
-- Persistent items, inventory, bank, secure bag, equipment, vendor, combat,
-  mobs, gameplay rule areas, logout bodies, death, and loot are not implemented.
+- AuthService currently stores identity, topology, exact-runtime join tickets,
+  and global simulation-session leases in PostgreSQL.
+- SimulationWorker currently owns movement, interest management, connection
+  quotas, and collision against checksummed WorldData chunks.
+- Unity currently owns input, prediction, reconciliation, interpolation,
+  presentation, and temporary UI.
+- Persistent items, inventory, equipment, Bag, bank, Secure Container, Recovery
+  Storage, carry weight, item policies, combat, mobs, death, corpses, and loot
+  are not implemented.
 
 ## Persistence Principles
 
 - PostgreSQL is the source of truth for persistent gameplay data.
 - Redis is only for fast, temporary, or lease-based state.
-- Inventory, bank, secure bag, equipment, loot transfers, and vendor
-  transactions must be designed to prevent dupes.
-- Database identifiers should use snake_case.
-- JSON over the wire should use camelCase.
+- Inventory, bank, Secure Container, Recovery Storage, equipment, Bag, death,
+  corpse, loot, vendor, insurance, trade, and auction mutations must prevent
+  duplication and loss.
+- Every extant item has exactly one current custody assignment.
+- Important mutations use idempotent operation ids, stable lock order, expected
+  revisions, complete rollback, and audit records.
+- Database identifiers use snake_case.
+- JSON over the wire uses camelCase.
 
 ## Suggested Implementation Phases
 
@@ -300,83 +408,64 @@ Current implementation note:
 
 Status: Completed
 
-- Confirm repository structure.
-- Create the backend solution and service boundaries.
-- Add local Docker Compose for PostgreSQL and Redis.
-- Add baseline configuration conventions.
-- Establish the canonical topology and terminology.
+- Repository structure, backend solution, local infrastructure, configuration,
+  and canonical topology.
 
 ### Phase 2: Account, Character, And Shard Join
 
 Status: Completed
 
-- Account registration, login, logout, and revocable opaque sessions.
-- Character create, list, and select.
-- Enforce the configured character limit.
-- Capacity-aware shard placement and exact-runtime join tickets.
-- One active account login and one active simulation session per account and
-  character.
+- Registration, login, characters, placement, exact-runtime tickets, and global
+  one-active-session rules.
 
 ### Phase 3: Unity Connection And Movement
 
 Status: Completed
 
-- Unity connects to Auth/API.
-- Unity requests shard placement.
-- Unity connects directly to SimulationWorker over UDP.
-- Server-assigned entity lifecycle and spatial interest management.
-- Shared server-authoritative movement, prediction, reconciliation, remote
-  interpolation, and checksummed collision.
+- Unity API and UDP flow, entity lifecycle, spatial interest, shared
+  authoritative movement, prediction, reconciliation, interpolation, and
+  checksummed collision.
 
 ### Phase 3.5: SimulationWorker Performance Baseline
 
 Status: Completed
 
-- Headless bots run through real ticket consumption and LiteNetLib UDP admission
-  without persistent stress accounts or characters.
-- The optimized same-machine hotspot baseline keeps simulation-tick p99 within
-  the 33.34 ms budget with 250 mutually visible bots in a short run.
-- Reusable interest buffers, visibility-set packet sharing, bounded join
-  completion work, and a fair aggregate snapshot budget address the first
-  repeatable bottlenecks.
-- A two-minute 400-bot overload run completes every join and leave without tick
-  resynchronization or transport collapse. It intentionally drops unreliable
-  snapshots and remains outside the supported quality boundary.
-- Bot latency, packet flow, process resources, simulation phase timing, and
-  steady-state memory boundaries are recorded for repeatable comparisons.
-- Keep the permanent regression scenario, require a 30 to 60 minute soak before
-  declaring production capacity, and rerun the baseline after major realtime
-  gameplay systems are added.
+- External headless stress clients, active bots, optimized visibility and packet
+  reuse, bounded backpressure, process sampling, and repeatable baseline tools.
 
-### Phase 4: Items, Inventory, Secure Bag, And Equipment
+### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
 Status: Next
 
-- Item definitions.
-- Item instances.
-- Grid inventory with rotation.
-- Secure bag grid.
+- Item catalog, definitions, instances, categories, tags, stacks, and policies.
+- Slot-based permanent inventory.
+- Equipment and Bag aggregates.
 - Per-character bank.
-- Equipment slots.
-- Server-side validation for item placement and slot compatibility.
-- Transactional ownership and movement rules that prevent duplication across
-  inventory, bank, secure bag, and equipment.
+- Per-character Secure Container with account-selected tier.
+- Recovery Storage.
+- Transaction kernel, idempotency, revisions, audit, and PostgreSQL race tests.
+- Integer carry weight, 140 percent hard cap, and shared encumbrance.
+- Account and in-world service boundaries.
+- Initial Unity inventory presentation.
+
+The complete subphase order and exit gates are defined in
+[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
 ### Phase 5: Vendor And Gathering
 
 - Add one NPC vendor.
 - Add one resource node type.
 - Add one tool item.
-- Gather into inventory.
-- Sell gathered resource to vendor.
+- Gather into inventory through the item transaction service.
+- Sell a gathered resource to the vendor.
 
 ### Phase 6: Projectile Combat And Simple Mob
 
 - Add one simple ranged weapon.
 - Add projectile simulation.
 - Add health and damage.
-- Add one simple mob.
-- Add mob loot.
+- Add authoritative death event generation.
+- Add one simple mob and live NPC loot.
 
 ### Phase 7: Gameplay Rule Areas And Presence Lifecycle
 
@@ -388,15 +477,20 @@ Status: Deferred until a larger authored map exists
 - Keep the character body active for 5 minutes after disconnect in the Open Risk
   Rule Area.
 - Support reconnect to the same active simulation entity and state.
-- Keep connection lifetime, simulation-session lifetime, and entity lifetime as
-  explicit separate concepts.
+- Keep connection, simulation-session, entity, logout-body, and corpse lifetime
+  as explicit separate concepts.
 
-### Phase 8: Death And Loot Containers
+### Phase 8: Death, Recovery, And Corpse Looting
 
-- Apply death rules in the Open Risk Rule Area.
-- Create loot containers from dropped inventory.
-- Allow players to loot containers.
-- Preserve secure bag and currency.
+- Partition player items transactionally from an authoritative death event.
+- Apply protected-on-death and one-death insurance policies.
+- Create Recovery Storage deliveries.
+- Create durable five-minute player corpse custody and presentation snapshots.
+- Restore player corpses after SimulationWorker restart.
+- Allow concurrent item and partial-stack looting.
+- Support atomic Bag swaps.
+- Add configurable live or durable NPC corpse behavior.
+- Add insurance NPC lifecycle.
 
 ## Deferred Features
 
@@ -404,28 +498,24 @@ These should not block the first playable MVP:
 
 - Civilized and wilderness gameplay rule-area split.
 - Topological Zones, cross-zone handoff, and Layers.
-- Criminal reputation.
-- Bounty hunting.
-- Guilds.
-- Auction house.
-- Direct player trading.
-- Complex crafting.
-- Multiple professions.
-- Advanced mobs.
-- Bosses.
+- Criminal reputation and bounty hunting.
+- Guilds and SocialService chat.
+- Auction house and direct player trading.
+- Complex crafting and multiple professions.
+- Advanced mobs and bosses beyond the first persistence test.
 - Complex quests.
-- SocialService chat.
-- Insurance.
-- Advanced weapon attachments.
+- Insured stack quantities.
 - Detailed armor and penetration systems.
 
 ## Current Open Design Questions
 
-- Should equipped items drop in the Open Risk Rule Area MVP, or only inventory
-  items?
 - Should character deletion be available in the MVP?
-- Should shard switching have a cooldown after logout?
-- Should resource nodes be per-shard live state only, or persisted with respawn
+- Should Shard switching have a cooldown after logout?
+- Should resource nodes be per-Shard live state only, or persisted with respawn
   timestamps?
 - Should the first tool be a pickaxe, axe, or generic starter tool?
 - Should the first mob be hostile by default or only aggressive when attacked?
+- Which non-weapon definitions are initially eligible for Secure Container?
+- What progression unlocks additional bank slots?
+- What expiry policy should Recovery Storage use after the initial unlimited
+  system-delivery implementation is stable?
