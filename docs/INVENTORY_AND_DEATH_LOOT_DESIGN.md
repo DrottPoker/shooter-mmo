@@ -2,9 +2,10 @@
 
 Last updated: 2026-07-15
 
-Status: Locked design target; Phases 1 through 5 content, authoring, schema,
-character bootstrap, authoritative reads, and internal durable transaction
-kernel implemented; player and realtime mutation integration planned
+Status: Locked design target; Phases 1 through 6 content, authoring, schema,
+character bootstrap, authoritative reads, policy lifecycle, internal durable
+transaction kernel, and offline account APIs implemented; realtime mutation and
+Unity inventory integration planned
 
 ## Purpose
 
@@ -648,7 +649,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 5 now implement the neutral catalog, structural
+claim. Phases 1 through 6 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -659,8 +660,14 @@ kernel now creates and mutates durable item instances atomically, owns canonical
 idempotency and lock order, maintains item, container, Bag, character, carry, and
 entitlement revisions, and appends relational audit changes.
 
-No account, SimulationWorker, quest, vendor, gathering, or other gameplay path
-calls that transaction kernel yet. Player mutation APIs, live-session fencing,
-SimulationWorker carry-state integration, Unity inventory state and UI, complete
-policy capabilities, insurance lifecycle, death partition, persistent corpse
-identity, and corpse looting remain later phases.
+Phase 6 also implements pure policy capability evaluation, system-only insurance
+application and removal, exact quest-grant cleanup and reaccept, conditionally
+cached catalog responses, focused bank and Recovery reads, and offline account
+mutation APIs. Those account mutations reject active simulation ownership under
+the same character row lock used by session admission.
+
+No SimulationWorker, vendor, gathering, insurance NPC, or quest gameplay path
+calls the kernel yet. Worker item mutation, SimulationWorker carry-state
+integration, Unity inventory state and UI, insurance pricing and death
+consumption, death partition, persistent corpse identity, and corpse looting
+remain later phases.

@@ -51,7 +51,20 @@ public sealed record EquippedBagSnapshotResponse(
 
 public sealed record SecureContainerSnapshotResponse(
     string TierId,
+    long EntitlementRevision,
     ItemContainerSnapshotResponse Contents);
+
+public sealed record CharacterBankSnapshotResponse(
+    Guid CharacterId,
+    string CatalogRevision,
+    long ItemStateRevision,
+    ItemContainerSnapshotResponse Bank);
+
+public sealed record CharacterRecoverySnapshotResponse(
+    Guid CharacterId,
+    string CatalogRevision,
+    long ItemStateRevision,
+    RecoveryStorageSnapshotResponse RecoveryStorage);
 
 public sealed record RecoveryStorageSnapshotResponse(
     Guid ContainerId,

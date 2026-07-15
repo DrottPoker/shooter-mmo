@@ -41,8 +41,16 @@ worker. Zone and layer partitioning are not implemented.
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
 | `GET /api/characters` | Account session | List owned characters |
 | `POST /api/characters` | Account session | Create a character |
-| `GET /api/items/catalog` | Account session | Return the current mirrored item catalog |
-| `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent read-only character inventory snapshot |
+| `GET /api/item-catalog` and `GET /api/items/catalog` | Account session | Return the neutral current catalog with revision ETag validation |
+| `GET /api/characters/{characterId}/item-state` and `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent no-store character item-state snapshot |
+| `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
+| `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store Recovery Storage deliveries |
+| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel |
+| `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
+| `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
+| `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
+| `POST /api/characters/{characterId}/recovery/{deliveryId}/claim` | Owning offline account session | Claim a complete available delivery to inventory or bank |
+| `POST /api/items/secure-container-tier` | Offline account session | Apply an account Secure Container tier with every character revision |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew exact worker runtime |
@@ -275,10 +283,11 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
-## Item Catalog, Domain Rules, Persistence, Reads, And Transactions
+## Item Catalog, Domain Rules, Persistence, Policies, And Account APIs
 
-Phases 1 through 5 of the approved item plan are implemented without adding a
-player or worker mutation surface:
+Phases 1 through 6 of the approved item plan are implemented. Offline account
+mutations are available, while worker and Unity item integration remain later
+phases:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -329,7 +338,8 @@ player or worker mutation surface:
   set to null.
 - `ItemCatalogQueryService` returns the current relational catalog graph in a
   read-only repeatable-read transaction. Definitions are present exactly once
-  in that response.
+  in that response. The HTTP response uses the catalog revision as a strong ETag,
+  is revalidated by clients, and returns `304 Not Modified` when unchanged.
 - `ItemQueryService` first verifies exact account and active-character
   ownership, then reads permanent inventory, equipment, equipped Bag contents,
   bank, Secure Container, Recovery deliveries, revisions, and encumbrance state
@@ -343,8 +353,8 @@ player or worker mutation surface:
 - `ItemTransactionService` is the only durable item mutation kernel. Typed
   internal commands cover grant, relocation, equip, unequip, stack split and
   merge, quantity consumption, allowed destruction, empty Bag storage, complete
-  Bag aggregate swap, Recovery delivery add and claim, and Secure Container tier
-  change.
+  Bag aggregate swap, Recovery delivery add and claim, Secure Container tier
+  change, policy application and removal, and quest-grant abandonment cleanup.
 - Every command uses exactly one Npgsql connection and one `READ COMMITTED`
   transaction. It claims a global operation id, hashes a canonical request,
   acquires character, Bag, container, item, policy, and delivery locks in stable
@@ -370,12 +380,28 @@ player or worker mutation surface:
   `secure_capacity_reduction` Recovery deliveries before the slots are removed.
   Character bootstrap and tier changes share one account-entitlement advisory
   key so a concurrently created character receives a coherent tier.
+- `ItemPolicyRules` independently evaluates trade, auction, vendor sale, player
+  destruction, death disposition, insurance eligibility, and stacking
+  capability. Protected and insured items block every transfer capability.
+- `ItemPolicyService` and `QuestItemService` are system-only adapters over the
+  same transaction kernel. Insurance removal changes policy lifecycle without
+  replacing the item. Quest abandon removes only active protected items with the
+  exact quest-grant source id, and reaccept suppresses duplicate active grants.
+- Account mutation requests derive authority from the authenticated principal
+  and use an offline-required actor. Character and item-state rows are locked
+  before checking active simulation sessions, using the same character lock as
+  simulation admission. Active ownership returns
+  `item_offline_access_required` without partial mutation.
+- Character-specific reads and writes return `Cache-Control: no-store` and
+  `Pragma: no-cache`. Domain failures use RFC Problem Details with stable `code`
+  values. AuthService never returns icon bytes, Unity references, or client
+  presentation entries.
 
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
-AuthService exposes only authenticated item reads. Its mutation kernel is an
-internal service with no account, development, or worker item write route.
+AuthService exposes authenticated owned-character reads and offline account item
+write routes. It exposes no development grant or worker item write route.
 SimulationWorker has no inventory database access, and Unity is not an item-rule
 authority.
 
@@ -518,18 +544,22 @@ the test connection variable at development or production data.
   competing item and slot mutations, stack quantity races, shared Bag locks,
   failed aggregate swaps, Recovery claims, and account-wide Secure Container
   reduction without item loss.
+- Isolated policy and HTTP tests for insurance removal, exact quest-grant cleanup
+  and reaccept, ETag `304`, no-store responses, owner scoping, stable Problem
+  Details, offline session fencing, Recovery deposit rejection, system delivery,
+  successful claims, and hard-cap claim rollback.
 
 ## Not Yet Implemented
 
-- Development or gameplay item grant routes, account mutation APIs, worker
-  mutation APIs, or gameplay systems that invoke the internal kernel.
-- Player-controlled equipment, Bag, bank, Secure Container, or Recovery Storage
-  interaction through AuthService, SimulationWorker, or Unity.
+- Development or gameplay item grant routes, worker mutation APIs, or gameplay
+  systems that invoke the internal kernel.
+- In-world equipment, Bag, bank, Secure Container, or Recovery Storage
+  interaction through SimulationWorker or Unity.
 - Carry-revision delivery to SimulationWorker, inventory-driven movement
   restrictions, or encumbrance integration with the live simulation.
-- Protected-on-death policy, one-death insurance, death partition, persistent
-  player corpses, concurrent corpse looting, or configurable NPC corpse
-  persistence.
+- Insurance NPC pricing and access, insurance consumption on death, death
+  partition, persistent player corpses, concurrent corpse looting, or
+  configurable NPC corpse persistence.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.

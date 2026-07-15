@@ -158,6 +158,42 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
             cancellationToken);
     }
 
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<ApplyItemPolicyCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteInternalAsync(
+            request,
+            ItemOperationKinds.ApplyItemPolicy,
+            request.Command.CharacterId,
+            ExecuteApplyItemPolicyAsync,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<RemoveInsurancePolicyCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteInternalAsync(
+            request,
+            ItemOperationKinds.RemoveInsurancePolicy,
+            request.Command.CharacterId,
+            ExecuteRemoveInsurancePolicyAsync,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AbandonQuestItemsCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteInternalAsync(
+            request,
+            ItemOperationKinds.AbandonQuestItems,
+            request.Command.CharacterId,
+            ExecuteAbandonQuestItemsAsync,
+            cancellationToken);
+    }
+
     private static async Task ExecuteGrantAsync(
         ItemTransactionContext context,
         GrantItemCommand command,
@@ -178,6 +214,83 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStackLimitExceeded,
                 "The grant quantity is outside the definition stack limit.");
+        }
+
+        var hasPolicySourceKind = !string.IsNullOrWhiteSpace(command.PolicySourceKind);
+        var hasPolicySourceId = !string.IsNullOrWhiteSpace(command.PolicySourceId);
+        if (hasPolicySourceKind != hasPolicySourceId)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.QuestGrantInvalid,
+                "An explicit policy source requires both source kind and source id.");
+        }
+
+        var policySourceKind = hasPolicySourceKind
+            ? command.PolicySourceKind!.Trim()
+            : ItemPolicySourceKinds.CatalogDefault;
+        var policySourceId = hasPolicySourceId
+            ? command.PolicySourceId!.Trim()
+            : definition.RuntimeDefinition.Id;
+        if (hasPolicySourceKind)
+        {
+            context.EnsureSystemAuthority();
+            if (!string.Equals(
+                    policySourceKind,
+                    ItemPolicySourceKinds.QuestGrant,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    definition.RuntimeDefinition.Category,
+                    ItemCategoryIds.QuestItem,
+                    StringComparison.Ordinal)
+                || !definition.RuntimeDefinition.DefaultPolicies.Contains(
+                    ItemPolicyIds.ProtectedOnDeath,
+                    StringComparer.Ordinal))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.QuestGrantInvalid,
+                    "Explicit grant lineage is limited to protected quest item grants.");
+            }
+
+            var existingQuestItemId = await context.Connection.QuerySingleOrDefaultAsync<Guid?>(
+                new CommandDefinition(
+                    """
+                    select item.id
+                    from item_instances item
+                    left join item_containers container on container.id = item.container_id
+                    left join item_instances source_bag
+                      on source_bag.id = container.bound_bag_item_instance_id
+                    join item_instance_policies policy
+                      on policy.item_instance_id = item.id
+                     and policy.policy_kind = 'protected_on_death'
+                     and policy.status = 'active'
+                    where coalesce(
+                            item.equipped_character_id,
+                            container.owner_character_id,
+                            source_bag.equipped_character_id) = @CharacterId
+                      and item.definition_id = @DefinitionId
+                      and policy.source_kind = @SourceKind
+                      and policy.source_id = @SourceId
+                    order by item.id
+                    limit 1;
+                    """,
+                    new
+                    {
+                        command.CharacterId,
+                        DefinitionId = definition.RuntimeDefinition.Id,
+                        SourceKind = policySourceKind,
+                        SourceId = policySourceId
+                    },
+                    context.Transaction,
+                    cancellationToken: cancellationToken));
+            if (existingQuestItemId is not null)
+            {
+                context.AddMetadataAudit(
+                    "quest_grant_already_satisfied",
+                    new { QuestGrantId = policySourceId, ItemInstanceId = existingQuestItemId },
+                    new { QuestGrantId = policySourceId, ItemInstanceId = existingQuestItemId });
+                context.IncludeResultItem(existingQuestItemId.Value);
+                return;
+            }
         }
 
         var destination = await context.LoadOwnedContainerAsync(
@@ -233,15 +346,16 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
                     @PolicyId,
                     @ItemInstanceId,
                     @PolicyKind,
-                    'catalog_default',
-                    @DefinitionId);
+                    @SourceKind,
+                    @SourceId);
                 """,
                 new
                 {
                     PolicyId = Guid.NewGuid(),
                     ItemInstanceId = itemInstanceId,
                     PolicyKind = policyKind,
-                    DefinitionId = definition.RuntimeDefinition.Id
+                    SourceKind = policySourceKind,
+                    SourceId = policySourceId
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
@@ -757,6 +871,19 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
         var definition = await context.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
         var sourcePolicies = await context.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
         var targetPolicies = await context.LoadPoliciesAsync(target.ItemInstanceId, cancellationToken);
+        var sourceCapabilities = ItemPolicyRules.Evaluate(
+            definition.RuntimeDefinition,
+            ToPolicyStates(sourcePolicies));
+        var targetCapabilities = ItemPolicyRules.Evaluate(
+            definition.RuntimeDefinition,
+            ToPolicyStates(targetPolicies));
+        if (!sourceCapabilities.CanStack || !targetCapabilities.CanStack)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "The effective item policy does not permit stacking.");
+        }
+
         var sourceState = new ItemStackState(
             source.DefinitionId,
             source.Quantity,
@@ -946,28 +1073,26 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
         }
 
         var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
-        if (!definition.RuntimeDefinition.PlayerDestroyable)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemDestroyForbidden,
-                "The item definition does not permit player destruction.");
-        }
-
         var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
+        var capabilities = ItemPolicyRules.Evaluate(
+            definition.RuntimeDefinition,
+            ToPolicyStates(policies));
         if (string.Equals(
                 definition.RuntimeDefinition.Category,
                 ItemCategoryIds.QuestItem,
                 StringComparison.Ordinal)
-            && policies.Any(policy =>
-                string.Equals(policy.Status, "active", StringComparison.Ordinal)
-                && string.Equals(
-                    policy.PolicyKind,
-                    ItemPolicyIds.ProtectedOnDeath,
-                    StringComparison.Ordinal)))
+            && capabilities.DeathDisposition == ItemDeathDisposition.ProtectedRecovery)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemPolicyRestricted,
                 "A protected quest item cannot use direct player destruction.");
+        }
+
+        if (!capabilities.CanPlayerDestroy)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemDestroyForbidden,
+                "The item definition does not permit player destruction.");
         }
 
         if (await context.BagHasContentsAsync(item, cancellationToken))
@@ -1015,6 +1140,288 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
             null);
         context.TouchContainer(item.ContainerId);
         context.TouchCharacter(command.CharacterId);
+    }
+
+    private static async Task ExecuteApplyItemPolicyAsync(
+        ItemTransactionContext context,
+        ApplyItemPolicyCommand command,
+        CancellationToken cancellationToken)
+    {
+        context.EnsureSystemAuthority();
+        if (string.IsNullOrWhiteSpace(command.PolicyKind)
+            || string.IsNullOrWhiteSpace(command.SourceKind)
+            || string.IsNullOrWhiteSpace(command.SourceId))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "Policy kind and source lineage are required.");
+        }
+
+        await context.LockCharacterStatesAsync(
+            [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
+            cancellationToken);
+        await context.LockMutationScopeAsync(
+            [command.ItemInstanceId],
+            [],
+            cancellationToken);
+        var item = await context.LoadOwnedItemAsync(
+            command.ItemInstanceId,
+            command.CharacterId,
+            command.ExpectedItemRevision,
+            cancellationToken);
+        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var policyKind = command.PolicyKind.Trim();
+        if (string.Equals(policyKind, ItemPolicyIds.Insured, StringComparison.Ordinal))
+        {
+            if (!ItemPolicyRules.CanApplyInsurance(definition.RuntimeDefinition))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.ItemPolicyRestricted,
+                    "Insurance requires a non-stackable equipment-compatible item definition.");
+            }
+        }
+        else if (!string.Equals(
+                     policyKind,
+                     ItemPolicyIds.ProtectedOnDeath,
+                     StringComparison.Ordinal))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "The requested item policy kind is unsupported.");
+        }
+
+        var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
+        if (policies.Any(policy =>
+                string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal)
+                && string.Equals(policy.PolicyKind, policyKind, StringComparison.Ordinal)))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "The item already has an active policy of the requested kind.");
+        }
+
+        var beforeState = await context.CaptureItemStateJsonAsync(
+            item.ItemInstanceId,
+            cancellationToken);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            insert into item_instance_policies (
+                id,
+                item_instance_id,
+                policy_kind,
+                source_kind,
+                source_id)
+            values (
+                @PolicyId,
+                @ItemInstanceId,
+                @PolicyKind,
+                @SourceKind,
+                @SourceId);
+
+            update item_instances
+            set revision = revision + 1,
+                updated_at = now()
+            where id = @ItemInstanceId;
+            """,
+            new
+            {
+                PolicyId = Guid.NewGuid(),
+                item.ItemInstanceId,
+                PolicyKind = policyKind,
+                SourceKind = command.SourceKind.Trim(),
+                SourceId = command.SourceId.Trim()
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        var afterState = await context.CaptureItemStateJsonAsync(
+            item.ItemInstanceId,
+            cancellationToken);
+        context.AddItemAudit("item_policy_applied", item.ItemInstanceId, beforeState, afterState);
+        context.TouchContainer(item.ContainerId);
+        context.TouchCharacter(command.CharacterId);
+        context.IncludeResultItem(item.ItemInstanceId);
+    }
+
+    private static async Task ExecuteRemoveInsurancePolicyAsync(
+        ItemTransactionContext context,
+        RemoveInsurancePolicyCommand command,
+        CancellationToken cancellationToken)
+    {
+        context.EnsureSystemAuthority();
+        await context.LockCharacterStatesAsync(
+            [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
+            cancellationToken);
+        await context.LockMutationScopeAsync(
+            [command.ItemInstanceId],
+            [],
+            cancellationToken);
+        var item = await context.LoadOwnedItemAsync(
+            command.ItemInstanceId,
+            command.CharacterId,
+            command.ExpectedItemRevision,
+            cancellationToken);
+        var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
+        var insurance = policies.SingleOrDefault(policy =>
+            string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal)
+            && string.Equals(policy.PolicyKind, ItemPolicyIds.Insured, StringComparison.Ordinal));
+        if (insurance is null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyNotFound,
+                "The item does not have active insurance.");
+        }
+
+        var beforeState = await context.CaptureItemStateJsonAsync(
+            item.ItemInstanceId,
+            cancellationToken);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            update item_instance_policies
+            set status = 'removed',
+                revision = revision + 1,
+                removed_at = now()
+            where id = @PolicyId;
+
+            update item_instances
+            set revision = revision + 1,
+                updated_at = now()
+            where id = @ItemInstanceId;
+            """,
+            new
+            {
+                insurance.PolicyId,
+                item.ItemInstanceId
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        var afterState = await context.CaptureItemStateJsonAsync(
+            item.ItemInstanceId,
+            cancellationToken);
+        context.AddItemAudit("item_insurance_removed", item.ItemInstanceId, beforeState, afterState);
+        context.TouchContainer(item.ContainerId);
+        context.TouchCharacter(command.CharacterId);
+        context.IncludeResultItem(item.ItemInstanceId);
+    }
+
+    private static async Task ExecuteAbandonQuestItemsAsync(
+        ItemTransactionContext context,
+        AbandonQuestItemsCommand command,
+        CancellationToken cancellationToken)
+    {
+        context.EnsureSystemAuthority();
+        if (string.IsNullOrWhiteSpace(command.QuestGrantId))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.QuestGrantInvalid,
+                "A quest grant id is required.");
+        }
+
+        await context.LockCharacterStatesAsync(
+            [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
+            cancellationToken);
+        var questGrantId = command.QuestGrantId.Trim();
+        var itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
+            QuestGrantItemIdsSql,
+            new
+            {
+                command.CharacterId,
+                QuestGrantId = questGrantId,
+                SourceKind = ItemPolicySourceKinds.QuestGrant
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken))).ToArray();
+        await context.LockMutationScopeAsync(itemIds, [], cancellationToken);
+        itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
+            QuestGrantItemIdsSql,
+            new
+            {
+                command.CharacterId,
+                QuestGrantId = questGrantId,
+                SourceKind = ItemPolicySourceKinds.QuestGrant
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken))).ToArray();
+
+        if (itemIds.Length == 0)
+        {
+            var unchanged = new { QuestGrantId = questGrantId, RemovedItemCount = 0 };
+            context.AddMetadataAudit("quest_items_already_absent", unchanged, unchanged);
+            return;
+        }
+
+        foreach (var itemInstanceId in itemIds.Order())
+        {
+            var item = await context.LoadItemAsync(itemInstanceId, cancellationToken)
+                ?? throw new InvalidOperationException(
+                    $"Quest item '{itemInstanceId}' disappeared while its owner was locked.");
+            var beforeState = await context.CaptureItemStateJsonAsync(
+                item.ItemInstanceId,
+                cancellationToken);
+            await context.Connection.ExecuteAsync(new CommandDefinition(
+                """
+                insert into item_destructions (
+                    item_instance_id,
+                    definition_id,
+                    source_operation_id,
+                    quantity,
+                    reason)
+                values (
+                    @ItemInstanceId,
+                    @DefinitionId,
+                    @OperationId,
+                    @Quantity,
+                    'quest_abandoned');
+
+                delete from item_instances
+                where id = @ItemInstanceId;
+                """,
+                new
+                {
+                    item.ItemInstanceId,
+                    item.DefinitionId,
+                    context.OperationId,
+                    item.Quantity
+                },
+                context.Transaction,
+                cancellationToken: cancellationToken));
+            context.AddItemAudit("quest_item_removed", item.ItemInstanceId, beforeState, null);
+            context.TouchContainer(item.ContainerId);
+        }
+
+        context.TouchCharacter(command.CharacterId);
+    }
+
+    private const string QuestGrantItemIdsSql =
+        """
+        select item.id
+        from item_instances item
+        join item_definitions definition
+          on definition.id = item.definition_id
+         and definition.category_id = 'quest_item'
+        left join item_containers container on container.id = item.container_id
+        left join item_instances source_bag
+          on source_bag.id = container.bound_bag_item_instance_id
+        join item_instance_policies policy
+          on policy.item_instance_id = item.id
+         and policy.policy_kind = 'protected_on_death'
+         and policy.status = 'active'
+         and policy.source_kind = @SourceKind
+        where coalesce(
+                item.equipped_character_id,
+                container.owner_character_id,
+                source_bag.equipped_character_id) = @CharacterId
+          and policy.source_id = @QuestGrantId
+        order by item.id;
+        """;
+
+    private static IEnumerable<ItemPolicyState> ToPolicyStates(
+        IEnumerable<LockedItemPolicy> policies)
+    {
+        return policies.Select(policy => new ItemPolicyState(
+            policy.PolicyKind,
+            policy.Status,
+            policy.SourceKind,
+            policy.SourceId));
     }
 
     private static async Task ExecuteSwapBagAggregatesAsync(

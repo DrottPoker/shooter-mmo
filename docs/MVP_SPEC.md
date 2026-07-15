@@ -427,9 +427,15 @@ Current implementation note:
   aggregates, Recovery deliveries, Secure Container tiers, carried state,
   revisions, idempotency results, and audit rows under canonical PostgreSQL
   locks.
-- Gameplay-created item instances, player and worker mutation routes, bank and
-  Secure Container service access, live carry-state integration, complete policy
-  lifecycle, combat, mobs, death, corpses, and loot are not implemented.
+- Item-plan Phase 6 adds pure policy capability evaluation, auditable insurance
+  removal and quest-grant cleanup, conditionally cached catalog reads, focused
+  bank and Recovery reads, and offline-safe account mutation routes. Active
+  simulation ownership is fenced under the same character row lock as session
+  admission.
+- Gameplay-created item instances, worker mutation routes, in-world bank and
+  Secure Container service access, live carry-state integration, insurance NPC
+  pricing and death consumption, combat, mobs, death, corpses, and loot are not
+  implemented.
 
 ## Persistence Principles
 
@@ -477,7 +483,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 5 complete
+Status: In progress, item-plan Phases 1 through 6 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -492,12 +498,16 @@ Status: In progress, item-plan Phases 1 through 5 complete
 - The internal mutation transaction kernel, canonical idempotency, optimistic
   revisions, stable lock order, relational audit, PostgreSQL race tests, and
   authoritative carried-state recomputation are complete.
+- Policy capability evaluation, protected and insured lifecycle records,
+  insurance removal, exact quest-grant cleanup, offline account APIs, stable
+  Problem Details, ETag catalog caching, and no-store character responses are
+  complete.
 - Slot-based permanent inventory.
 - Equipment and Bag aggregates.
 - Per-character bank.
 - Per-character Secure Container with account-selected tier.
 - Recovery Storage.
-- Player and worker mutation boundaries plus policy-safe account APIs.
+- Worker mutation boundary for active simulation sessions.
 - Shared SimulationWorker and Unity encumbrance integration.
 - Account and in-world service boundaries.
 - Initial Unity inventory presentation.

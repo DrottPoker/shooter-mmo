@@ -54,13 +54,13 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - A transactional PostgreSQL item catalog mirror, constrained item custody
   schema, and idempotent empty item-state bootstrap for existing and new
   characters.
-- Account-authenticated read-only item catalog and complete owned-character
-  inventory snapshots with stable definition references and fixed-point
-  encumbrance state.
+- Account-authenticated conditionally cached item catalog, complete item-state,
+  focused bank and Recovery Storage reads, and offline-safe item mutation APIs
+  with stable Problem Details codes.
 - One internal AuthService item transaction kernel with canonical idempotency,
   stable PostgreSQL lock order, optimistic revisions, atomic item and Bag
   commands, Recovery deliveries, Secure Container tier changes, carried-state
-  recomputation, and relational audit.
+  recomputation, policy lifecycle, quest-grant cleanup, and relational audit.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
@@ -78,14 +78,16 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 5 of the slot-based item foundation are implemented. Shared
+Phases 1 through 6 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
-character item-state bootstrap now exist. AuthService also exposes read-only
-catalog and owned-character inventory snapshots. Its internal transaction kernel
-can create and mutate durable item instances without exposing a player write
-route. Policy APIs, SimulationWorker integration, and player-facing inventory
-remain later phases. Combat,
+character item-state bootstrap now exist. AuthService exposes revision-cached
+catalog reads, owned item-state, bank and Recovery Storage reads, and
+account-authenticated offline mutation routes. The same transaction kernel owns
+policy records, insurance removal, quest-grant cleanup, Secure Container tier
+changes, Recovery claims, idempotency, revisions, weight, and audit. In-world
+SimulationWorker integration and player-facing Unity inventory remain later
+phases. Combat,
 persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 
@@ -177,7 +179,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item persistence, read models, internal item transactions, HTTP, and owned config |
+| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item persistence, policy-safe offline item APIs, internal item transactions, HTTP, and owned config |
 | `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, and owned config |
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |

@@ -50,6 +50,13 @@ internal sealed class ItemTransactionContext(
                 "A system item operation cannot impersonate an account.");
         }
 
+        if (Actor.Authority == ItemTransactionAuthority.System && Actor.RequiresOfflineCharacter)
+        {
+            Reject(
+                ItemTransactionErrorCodes.AuthorityRequired,
+                "A system item operation cannot require account offline access.");
+        }
+
         if (Actor.Authority is not ItemTransactionAuthority.Account
             and not ItemTransactionAuthority.System)
         {
@@ -137,6 +144,7 @@ internal sealed class ItemTransactionContext(
             where state.character_id = any(@CharacterIds)
               and character.deleted_at is null
             order by state.character_id
+            for no key update of character
             for update of state;
             """,
             new { CharacterIds = requested.Select(request => request.CharacterId).ToArray() },
@@ -167,6 +175,30 @@ internal sealed class ItemTransactionContext(
                 Reject(
                     ItemTransactionErrorCodes.ItemStateConflict,
                     $"Character item state '{row.CharacterId}' changed before the operation committed.");
+            }
+        }
+
+        if (Actor.RequiresOfflineCharacter)
+        {
+            var activeCharacterId = await Connection.QuerySingleOrDefaultAsync<Guid?>(
+                new CommandDefinition(
+                    """
+                    select character_id
+                    from character_simulation_sessions
+                    where character_id = any(@CharacterIds)
+                      and released_at is null
+                      and expires_at > now()
+                    order by character_id
+                    limit 1;
+                    """,
+                    new { CharacterIds = requested.Select(request => request.CharacterId).ToArray() },
+                    Transaction,
+                    cancellationToken: cancellationToken));
+            if (activeCharacterId is not null)
+            {
+                Reject(
+                    ItemTransactionErrorCodes.OfflineAccessRequired,
+                    $"Character '{activeCharacterId}' is owned by an active simulation session.");
             }
         }
 

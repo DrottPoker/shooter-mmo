@@ -41,7 +41,8 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
                         state.bank_container_id as "BankContainerId",
                         state.secure_container_id as "SecureContainerId",
                         state.recovery_storage_container_id as "RecoveryStorageContainerId",
-                        entitlement.tier_id as "SecureContainerTierId"
+                        entitlement.tier_id as "SecureContainerTierId",
+                        entitlement.revision as "SecureContainerEntitlementRevision"
                     from characters character
                     join character_item_states state on state.character_id = character.id
                     join item_system_settings settings on settings.id = 'character_default'
@@ -123,6 +124,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 bank,
                 new SecureContainerSnapshotResponse(
                     state.SecureContainerTierId,
+                    state.SecureContainerEntitlementRevision,
                     secureContainer),
                 recoveryStorage,
                 state.CarriedWeight,
@@ -141,6 +143,152 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    public async Task<ServiceResult<CharacterBankSnapshotResponse>> GetCharacterBankAsync(
+        Guid accountId,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            IsolationLevel.RepeatableRead,
+            cancellationToken);
+
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "set transaction read only;",
+                transaction: transaction,
+                cancellationToken: cancellationToken));
+            var state = await LoadOwnedCharacterStateAsync(
+                connection,
+                transaction,
+                accountId,
+                characterId,
+                cancellationToken);
+            if (state is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return ServiceResult<CharacterBankSnapshotResponse>.NotFound(
+                    "character_bank_not_found",
+                    "Character bank was not found.");
+            }
+
+            var bank = await LoadContainerAsync(
+                connection,
+                transaction,
+                state.BankContainerId,
+                "bank",
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<CharacterBankSnapshotResponse>.Ok(
+                new CharacterBankSnapshotResponse(
+                    characterId,
+                    state.CatalogRevision,
+                    state.ItemStateRevision,
+                    bank));
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<ServiceResult<CharacterRecoverySnapshotResponse>> GetCharacterRecoveryAsync(
+        Guid accountId,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            IsolationLevel.RepeatableRead,
+            cancellationToken);
+
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "set transaction read only;",
+                transaction: transaction,
+                cancellationToken: cancellationToken));
+            var state = await LoadOwnedCharacterStateAsync(
+                connection,
+                transaction,
+                accountId,
+                characterId,
+                cancellationToken);
+            if (state is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return ServiceResult<CharacterRecoverySnapshotResponse>.NotFound(
+                    "character_recovery_not_found",
+                    "Character Recovery Storage was not found.");
+            }
+
+            var recoveryContainer = await LoadContainerAsync(
+                connection,
+                transaction,
+                state.RecoveryStorageContainerId,
+                "recovery_storage",
+                cancellationToken);
+            var recovery = await LoadRecoveryStorageAsync(
+                connection,
+                transaction,
+                characterId,
+                recoveryContainer,
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<CharacterRecoverySnapshotResponse>.Ok(
+                new CharacterRecoverySnapshotResponse(
+                    characterId,
+                    state.CatalogRevision,
+                    state.ItemStateRevision,
+                    recovery));
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    private static Task<CharacterStateRow?> LoadOwnedCharacterStateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        return connection.QuerySingleOrDefaultAsync<CharacterStateRow>(new CommandDefinition(
+            """
+            select
+                character.id as "CharacterId",
+                revision.revision as "CatalogRevision",
+                state.revision as "ItemStateRevision",
+                state.carried_weight as "CarriedWeight",
+                state.carry_capacity as "CarryCapacity",
+                state.permanent_inventory_container_id as "PermanentInventoryContainerId",
+                state.bank_container_id as "BankContainerId",
+                state.secure_container_id as "SecureContainerId",
+                state.recovery_storage_container_id as "RecoveryStorageContainerId",
+                entitlement.tier_id as "SecureContainerTierId",
+                entitlement.revision as "SecureContainerEntitlementRevision"
+            from characters character
+            join character_item_states state on state.character_id = character.id
+            join item_system_settings settings on settings.id = 'character_default'
+            join item_catalog_revisions revision
+              on revision.catalog_id = settings.catalog_id
+             and revision.is_current
+            left join account_secure_container_entitlements entitlement
+              on entitlement.account_id = character.account_id
+            where character.id = @CharacterId
+              and character.account_id = @AccountId
+              and character.deleted_at is null;
+            """,
+            new { AccountId = accountId, CharacterId = characterId },
+            transaction,
+            cancellationToken: cancellationToken));
     }
 
     private static async Task<ItemContainerSnapshotResponse> LoadContainerAsync(
@@ -456,6 +604,8 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
         public Guid RecoveryStorageContainerId { get; set; }
 
         public string? SecureContainerTierId { get; set; }
+
+        public long SecureContainerEntitlementRevision { get; set; }
     }
 
     private sealed class ContainerRow

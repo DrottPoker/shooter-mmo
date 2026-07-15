@@ -220,14 +220,16 @@ They remain in the MVP specification until working behavior is available:
 
 The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
 PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
-and Phase 5 internal transaction kernel now exist. The kernel can mutate durable
-item, Bag, Recovery, Secure Container, revision, carry, idempotency, and audit
-state, but no player, worker, quest, gathering, or vendor path calls it. These
-foundations create no player-visible inventory behavior and therefore do not have
-a feature-status section in this document. The planned player rules are defined in
+Phase 5 internal transaction kernel, and Phase 6 policy-safe offline account APIs
+now exist. AuthService supports owned item-state, bank, Secure Container, and
+Recovery access plus offline relocation, split, merge, allowed destruction,
+Recovery claim, and tier-change operations. Internal policy and quest services
+apply auditable lineage without adding a gameplay quest or insurance NPC path.
+These foundations still create no Unity player-visible inventory behavior and
+therefore do not have a feature-status section in this document. The planned
+player rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
-not yet connected to item mutation routes, SimulationWorker, or Unity inventory
-presentation.
+not yet connected to SimulationWorker or Unity inventory presentation.
 
 The planned inventory presentation keeps character equipment on the left. The
 right side is split with contextual containers such as bank, corpse, Recovery

@@ -73,6 +73,91 @@ public sealed class ItemRulesTests
         Assert.True(SecureContainerRules.IsEligible(Definition("medical.field_dressing")));
     }
 
+    [Theory]
+    [InlineData(ItemPolicyIds.ProtectedOnDeath)]
+    [InlineData(ItemPolicyIds.Insured)]
+    public void ActiveProtectionPoliciesBlockTransferCapabilities(string policyKind)
+    {
+        var capabilities = ItemPolicyRules.Evaluate(
+            Definition("weapon.training_rifle"),
+            [new ItemPolicyState(policyKind, "active", "test", "source-1")]);
+
+        Assert.False(capabilities.CanTrade);
+        Assert.False(capabilities.CanListOnAuction);
+        Assert.False(capabilities.CanSellToVendor);
+    }
+
+    [Fact]
+    public void RemovedInsuranceRestoresNormalCapabilities()
+    {
+        var capabilities = ItemPolicyRules.Evaluate(
+            Definition("weapon.training_rifle"),
+            [new ItemPolicyState(ItemPolicyIds.Insured, "removed", "test", "source-1")]);
+
+        Assert.True(capabilities.CanTrade);
+        Assert.True(capabilities.CanListOnAuction);
+        Assert.True(capabilities.CanSellToVendor);
+        Assert.Equal(ItemDeathDisposition.Lootable, capabilities.DeathDisposition);
+    }
+
+    [Fact]
+    public void ProtectedPolicyTakesDeathPriorityAndBlocksQuestItemDestruction()
+    {
+        var capabilities = ItemPolicyRules.Evaluate(
+            Definition("quest_item.signal_transponder"),
+            [
+                new ItemPolicyState(
+                    ItemPolicyIds.Insured,
+                    "active",
+                    "insurance_test",
+                    "insurance-1"),
+                new ItemPolicyState(
+                    ItemPolicyIds.ProtectedOnDeath,
+                    "active",
+                    "quest_test",
+                    "quest-1")
+            ]);
+
+        Assert.False(capabilities.CanPlayerDestroy);
+        Assert.Equal(ItemDeathDisposition.ProtectedRecovery, capabilities.DeathDisposition);
+    }
+
+    [Fact]
+    public void InsuranceIsLimitedToNonStackableEquipmentDefinitions()
+    {
+        Assert.True(ItemPolicyRules.CanApplyInsurance(Definition("weapon.training_rifle")));
+        Assert.True(ItemPolicyRules.CanApplyInsurance(Definition("bag.field_pack")));
+        Assert.False(ItemPolicyRules.CanApplyInsurance(Definition("ammunition.training_556")));
+        Assert.False(ItemPolicyRules.CanApplyInsurance(Definition("quest_item.signal_transponder")));
+    }
+
+    [Fact]
+    public void StackingCapabilityKeepsProtectionSeparateFromExactLineageCompatibility()
+    {
+        var definition = Definition("material.iron_ore");
+        var protectedCapabilities = ItemPolicyRules.Evaluate(
+            definition,
+            [
+                new ItemPolicyState(
+                    ItemPolicyIds.ProtectedOnDeath,
+                    "active",
+                    "system_grant",
+                    "lineage-1")
+            ]);
+        var malformedInsuredCapabilities = ItemPolicyRules.Evaluate(
+            definition,
+            [
+                new ItemPolicyState(
+                    ItemPolicyIds.Insured,
+                    "active",
+                    "insurance_test",
+                    "insurance-1")
+            ]);
+
+        Assert.True(protectedCapabilities.CanStack);
+        Assert.False(malformedInsuredCapabilities.CanStack);
+    }
+
     [Fact]
     public void EmptyBagCanUseGeneralSlotsAndNonEmptyBagCannot()
     {

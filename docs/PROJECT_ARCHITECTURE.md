@@ -102,7 +102,8 @@ relationship.
 - Global simulation-session leases.
 - Transactional item catalog mirroring, constrained durable item schema, and
   complete empty character item-state bootstrap.
-- Read-only current-catalog and owned-character inventory snapshots.
+- Conditionally cached current-catalog reads, no-store owned item-state, bank,
+  and Recovery Storage reads, and offline-safe account item mutations.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
   ids, sensitive response caching rules, and health routes.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
@@ -251,9 +252,9 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 5 content, authoring, schema, catalog mirror, character
-bootstrap, authoritative reads, and internal transaction kernel implemented;
-player and realtime mutation integration planned
+Status: Phases 1 through 6 content, authoring, schema, catalog mirror, character
+bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
+and offline account APIs implemented; realtime mutation integration planned
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -262,14 +263,24 @@ authority. The schema, read model, and command kernel are present before player
 item traffic so later routes build on one constrained custody model instead of
 inventing endpoint-local state or SQL.
 
-AuthService account-session routes expose the current catalog and a complete
-snapshot only when the requested active character belongs to that account. Each
-query uses one PostgreSQL `REPEATABLE READ`, read-only transaction. Inventory
+AuthService account-session routes expose the current catalog, complete
+item-state, focused bank state, and focused Recovery Storage state only when the
+requested active character belongs to that account. Each query uses one
+PostgreSQL `REPEATABLE READ`, read-only transaction. Character responses use
+`no-store`. The neutral catalog uses its deterministic revision as an ETag and
+returns `304 Not Modified` when the supplied ETag still matches. Inventory
 instance rows contain stable definition ids and active policy summaries rather
 than repeated definitions, presentation data, policy sources, or operation
-metadata. Full owned bank and Recovery Storage reads do not authorize any
-mutation. City-service and live-session checks remain part of the Phase 8
-mutation boundary.
+metadata.
+
+Account-session mutation routes cover relocation, stack split and merge,
+allowed destruction, Recovery claims, and account Secure Container tier changes.
+They submit only an account actor derived from authentication and require the
+character to be offline. The transaction locks both the character and its item
+state before checking active simulation-session ownership. Simulation admission
+uses the same character row lock, so a mutation and session acquisition cannot
+both pass concurrently. In-world proximity and city-service validation remain
+part of the Phase 8 worker boundary.
 
 All durable commands enter `ItemTransactionService`. One command opens one
 connection and one `READ COMMITTED` transaction, claims the operation row, and
@@ -281,11 +292,18 @@ capacity, advance revisions, append relational audit changes, and persist a
 replayable result in the same transaction.
 
 The transaction context resolves current definitions and slot data from the
-mirrored catalog but delegates stack, equipment, Bag, Secure Container, and
-integer-weight decisions to the existing WorldData rules. It does not depend on
-HTTP, a simulation session, Unity, or SimulationWorker state. Account and system
-authorization contexts are explicit command inputs. Phase 6 and Phase 8 routes
-will add their access and live-session checks before calling this same kernel.
+mirrored catalog but delegates stack, equipment, Bag, Secure Container, policy
+capability, and integer-weight decisions to WorldData rules. The kernel does not
+depend on HTTP, Unity, or SimulationWorker runtime state. Account and system
+authorization contexts are explicit command inputs. Offline access is an actor
+requirement enforced while the durable character lock is held.
+
+`ItemPolicyService` applies protected-on-death and eligible one-death insurance
+records and removes active insurance through idempotent system transactions.
+`QuestItemService` grants protected quest items with exact quest-grant lineage,
+suppresses duplicate active grants, and removes only that lineage on abandon.
+These internal services do not add an insurance NPC, quest gameplay runtime, or
+public grant route.
 
 Bag content containers and Bag item rows form one aggregate. Every child command
 locks the Bag item before its child container or item, and aggregate swaps verify
@@ -305,11 +323,11 @@ restored by a replacement worker. Normal NPC corpses may remain worker-owned and
 disappear on restart, while content-selected bosses may use the durable corpse
 path. These choices do not introduce Zone or Layer ownership.
 
-Phase 4 added only authenticated `GET` routes, focused query services, player
-DTOs, and test-project fixtures. Phase 5 adds only the internal transaction
-kernel and its PostgreSQL integration tests. Neither phase adds a gameplay item
-grant or mutation route, worker item state, or Unity inventory state. The Unity
-content tooling remains presentation and authoring support, not item authority.
+Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel.
+Phase 6 adds policy-safe account reads and offline mutations on that kernel.
+There is still no gameplay grant route, worker item state, service-authenticated
+worker item mutation route, or Unity inventory state. The Unity content tooling
+remains presentation and authoring support, not item authority.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the

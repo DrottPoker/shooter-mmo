@@ -19,6 +19,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         AuthServiceConfig authServiceConfig)
     {
         DataSource = dataSource;
+        Configuration = configuration;
         CatalogSource = ItemCatalogSource.FromConfiguration(configuration);
         ItemCatalogSeeder = new ItemCatalogSeeder(
             dataSource,
@@ -28,6 +29,9 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         ItemCatalogQueryService = new ItemCatalogQueryService(dataSource);
         ItemQueryService = new ItemQueryService(dataSource);
         ItemTransactionService = new ItemTransactionService(dataSource);
+        AccountItemMutationService = new AccountItemMutationService(ItemTransactionService);
+        ItemPolicyService = new ItemPolicyService(ItemTransactionService);
+        QuestItemService = new QuestItemService(ItemTransactionService);
         DatabaseInitializer = new DatabaseInitializer(
             dataSource,
             ItemCatalogSeeder,
@@ -66,6 +70,14 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     public ItemQueryService ItemQueryService { get; }
 
     public ItemTransactionService ItemTransactionService { get; }
+
+    public AccountItemMutationService AccountItemMutationService { get; }
+
+    public ItemPolicyService ItemPolicyService { get; }
+
+    public QuestItemService QuestItemService { get; }
+
+    public IConfiguration Configuration { get; }
 
     public SessionService SessionService { get; }
 

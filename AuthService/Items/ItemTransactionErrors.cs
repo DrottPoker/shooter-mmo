@@ -7,11 +7,14 @@ public static class ItemTransactionErrorCodes
     public const string ItemNotOwned = "item_not_owned";
     public const string ItemStateConflict = "item_state_conflict";
     public const string ItemOperationConflict = "item_operation_conflict";
+    public const string OfflineAccessRequired = "item_offline_access_required";
     public const string ItemSlotOccupied = "item_slot_occupied";
     public const string ItemSlotIncompatible = "item_slot_incompatible";
     public const string ItemStackIncompatible = "item_stack_incompatible";
     public const string ItemStackLimitExceeded = "item_stack_limit_exceeded";
     public const string ItemPolicyRestricted = "item_policy_restricted";
+    public const string ItemPolicyNotFound = "item_policy_not_found";
+    public const string QuestGrantInvalid = "quest_grant_invalid";
     public const string ItemDestroyForbidden = "item_destroy_forbidden";
     public const string BagNotEmpty = "bag_not_empty";
     public const string BagStateChanged = "bag_state_changed";

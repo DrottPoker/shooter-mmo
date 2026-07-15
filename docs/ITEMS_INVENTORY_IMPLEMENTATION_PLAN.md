@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-Status: Approved delivery baseline, Phases 1 through 5 completed, Phase 6 next
+Status: Approved delivery baseline, Phases 1 through 6 completed, Phase 7 next
 
 ## Purpose
 
@@ -713,9 +713,12 @@ concurrency cannot duplicate or lose quantity.
   PostgreSQL access outside AuthService, Unity inventory state, policy lifecycle
   API, corpse table, or Phase 6 behavior was added.
 
-The Phase 5 exit gate is satisfied. Phase 6 remains not started.
+The Phase 5 exit gate is satisfied. Phase 6 is now also complete as documented
+below.
 
 ## Phase 6: Policies, Bank, Secure Container, And Recovery APIs
+
+Status: Completed 2026-07-15
 
 ### Work
 
@@ -767,6 +770,59 @@ service contract, authority checks, and error codes are the stable boundary.
 ### Exit Gate
 
 The complete durable out-of-world item foundation is usable and policy safe.
+
+### Implementation Result
+
+- WorldData now evaluates policy capabilities independently from HTTP,
+  PostgreSQL, Unity, SimulationWorker, and runtime session state. Active
+  protected or insured policies block trade, auction, and vendor sale.
+  Definition destroyability and protected quest lineage control direct player
+  destruction, protected recovery takes death priority over insured recovery,
+  and insurance is limited to non-stackable equipment-compatible definitions.
+- `ItemPolicyService` applies protected-on-death and one-death insurance through
+  the existing idempotent transaction kernel and explicitly removes active
+  insurance without replacing the item. Policy changes advance item and
+  character revisions and append relational audit state.
+- `QuestItemService` grants required protected items with exact quest-grant
+  source ids. A second active grant with the same lineage is a successful
+  idempotent no-op. Abandon removes only protected quest items bound to that
+  source id and records each destruction.
+- AuthService exposes both `GET /api/item-catalog` and the existing
+  `GET /api/items/catalog`. The neutral response uses its deterministic catalog
+  revision as a strong ETag, is conditionally cacheable, and returns
+  `304 Not Modified` when unchanged. It contains no icon bytes, Unity asset
+  references, or client presentation records.
+- Owned `item-state`, `inventory`, `bank`, and `recovery` reads are available to
+  an account session. Bank and Recovery routes use focused repeatable-read
+  queries. All character-specific responses use `Cache-Control: no-store` and
+  `Pragma: no-cache`.
+- Account-session routes now expose offline relocation, split, merge, allowed
+  destruction, Recovery claim, and account Secure Container tier changes. The
+  authenticated account is the only actor source, every request carries an
+  operation id and expected revisions, and domain failures return RFC Problem
+  Details with stable codes.
+- Offline account actors lock both the character row and character item-state
+  row before checking `character_simulation_sessions`. Simulation admission
+  locks the same character row, so session acquisition and an offline item
+  mutation cannot both pass. Active ownership returns
+  `item_offline_access_required` with no partial mutation.
+- Recovery Storage remains system-write-only. Player deposits are rejected,
+  system delivery creation remains internal, and account claims preserve item
+  identity and policy lineage while enforcing destination slots and the exact
+  140 percent hard cap. Bank and Recovery custody remain excluded from carried
+  weight, while Secure Container custody remains included.
+- Phase 6 required no migration because Phase 3 already created the constrained
+  policy, Recovery, entitlement, operation, and audit tables.
+- Pure unit tests cover transfer, destruction, death-disposition, stacking, and
+  insurance eligibility. Isolated PostgreSQL and real HTTP-host tests cover
+  policy removal, exact quest cleanup and reaccept, ETag `304`, no-store headers,
+  owner scoping, tier access, stable Problem Details, offline fencing, Recovery
+  deposit rejection, system delivery, successful claim, and hard-cap rollback.
+- No SimulationWorker inventory state, worker mutation endpoint, GameProtocol
+  item message, Unity inventory UI, corpse schema, death partition, Zone, Layer,
+  Realm, or Phase 7 behavior was added.
+
+The Phase 6 exit gate is satisfied. Phase 7 remains not started.
 
 ## Phase 7: Carry State And Shared Encumbrance
 

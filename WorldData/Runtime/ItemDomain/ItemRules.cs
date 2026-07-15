@@ -154,6 +154,135 @@ namespace ShooterMmo.WorldData.Items
         }
     }
 
+    public sealed class ItemPolicyState
+    {
+        public ItemPolicyState(
+            string policyKind,
+            string status,
+            string sourceKind,
+            string sourceId)
+        {
+            PolicyKind = policyKind;
+            Status = status;
+            SourceKind = sourceKind;
+            SourceId = sourceId;
+        }
+
+        public string PolicyKind { get; }
+
+        public string Status { get; }
+
+        public string SourceKind { get; }
+
+        public string SourceId { get; }
+    }
+
+    public enum ItemDeathDisposition
+    {
+        Lootable = 1,
+        ProtectedRecovery = 2,
+        InsuredRecovery = 3
+    }
+
+    public sealed class ItemPolicyCapabilities
+    {
+        public ItemPolicyCapabilities(
+            bool canTrade,
+            bool canListOnAuction,
+            bool canSellToVendor,
+            bool canPlayerDestroy,
+            ItemDeathDisposition deathDisposition,
+            bool canStack)
+        {
+            CanTrade = canTrade;
+            CanListOnAuction = canListOnAuction;
+            CanSellToVendor = canSellToVendor;
+            CanPlayerDestroy = canPlayerDestroy;
+            DeathDisposition = deathDisposition;
+            CanStack = canStack;
+        }
+
+        public bool CanTrade { get; }
+
+        public bool CanListOnAuction { get; }
+
+        public bool CanSellToVendor { get; }
+
+        public bool CanPlayerDestroy { get; }
+
+        public ItemDeathDisposition DeathDisposition { get; }
+
+        public bool CanStack { get; }
+    }
+
+    public static class ItemPolicyRules
+    {
+        public const string ActiveStatus = "active";
+
+        public static ItemPolicyCapabilities Evaluate(
+            ItemDefinition definition,
+            IEnumerable<ItemPolicyState> policies)
+        {
+            if (definition == null)
+            {
+                throw new ArgumentNullException(nameof(definition));
+            }
+
+            if (policies == null)
+            {
+                throw new ArgumentNullException(nameof(policies));
+            }
+
+            var hasProtectedPolicy = false;
+            var hasInsurancePolicy = false;
+            foreach (var policy in policies)
+            {
+                if (policy == null
+                    || !string.Equals(policy.Status, ActiveStatus, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                hasProtectedPolicy |= string.Equals(
+                    policy.PolicyKind,
+                    ItemPolicyIds.ProtectedOnDeath,
+                    StringComparison.Ordinal);
+                hasInsurancePolicy |= string.Equals(
+                    policy.PolicyKind,
+                    ItemPolicyIds.Insured,
+                    StringComparison.Ordinal);
+            }
+
+            var transferAllowed = !hasProtectedPolicy && !hasInsurancePolicy;
+            var protectedQuestItem = hasProtectedPolicy
+                && string.Equals(
+                    definition.Category,
+                    ItemCategoryIds.QuestItem,
+                    StringComparison.Ordinal);
+            var deathDisposition = hasProtectedPolicy
+                ? ItemDeathDisposition.ProtectedRecovery
+                : hasInsurancePolicy
+                    ? ItemDeathDisposition.InsuredRecovery
+                    : ItemDeathDisposition.Lootable;
+
+            return new ItemPolicyCapabilities(
+                transferAllowed,
+                transferAllowed,
+                transferAllowed,
+                definition.PlayerDestroyable && !protectedQuestItem,
+                deathDisposition,
+                definition.MaximumStackSize > 1 && !hasInsurancePolicy);
+        }
+
+        public static bool CanApplyInsurance(ItemDefinition definition)
+        {
+            return definition != null
+                && definition.MaximumStackSize == 1
+                && definition.EquipmentSlots != null
+                && definition.EquipmentSlots.Length > 0;
+        }
+    }
+
     public enum BagDestinationKind
     {
         PermanentInventoryGeneralSlot = 1,

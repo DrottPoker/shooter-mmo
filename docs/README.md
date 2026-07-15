@@ -35,10 +35,10 @@ operations, and future design do not drift into duplicate descriptions.
 - [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   defines the dependency-ordered delivery phases, proposed persistence model,
   service boundaries, and verification gates for that design. Phases 1 through
-  5 are complete, including the item catalog, Unity authoring, PostgreSQL schema,
-  transactional catalog mirror, character item-state bootstrap, read-only
-  catalog and inventory snapshots, and the internal race-safe transaction
-  kernel. Phase 6 is next.
+  6 are complete, including the item catalog, Unity authoring, PostgreSQL schema,
+  transactional catalog mirror, character item-state bootstrap, authoritative
+  reads, the race-safe transaction kernel, policy and quest-grant lifecycle,
+  and offline-safe account APIs. Phase 7 is next.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and
   feature-specific design documents supersede conflicting details in that brief.

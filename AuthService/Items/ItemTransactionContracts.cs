@@ -8,11 +8,20 @@ public enum ItemTransactionAuthority
 
 public sealed record ItemTransactionActor(
     ItemTransactionAuthority Authority,
-    Guid? AccountId)
+    Guid? AccountId,
+    bool RequiresOfflineCharacter = false)
 {
     public static ItemTransactionActor ForAccount(Guid accountId)
     {
         return new ItemTransactionActor(ItemTransactionAuthority.Account, accountId);
+    }
+
+    public static ItemTransactionActor ForOfflineAccount(Guid accountId)
+    {
+        return new ItemTransactionActor(
+            ItemTransactionAuthority.Account,
+            accountId,
+            RequiresOfflineCharacter: true);
     }
 
     public static ItemTransactionActor ForSystem()
@@ -41,7 +50,9 @@ public sealed record GrantItemCommand(
     string DefinitionId,
     int Quantity,
     Guid DestinationContainerId,
-    int? DestinationSlotIndex);
+    int? DestinationSlotIndex,
+    string? PolicySourceKind = null,
+    string? PolicySourceId = null);
 
 public sealed record RelocateItemCommand(
     Guid CharacterId,
@@ -132,6 +143,26 @@ public sealed record ChangeSecureContainerTierCommand(
     string TierId,
     IReadOnlyList<CharacterRevisionExpectation> CharacterRevisions);
 
+public sealed record ApplyItemPolicyCommand(
+    Guid CharacterId,
+    long? ExpectedCharacterRevision,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    string PolicyKind,
+    string SourceKind,
+    string SourceId);
+
+public sealed record RemoveInsurancePolicyCommand(
+    Guid CharacterId,
+    long? ExpectedCharacterRevision,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision);
+
+public sealed record AbandonQuestItemsCommand(
+    Guid CharacterId,
+    long? ExpectedCharacterRevision,
+    string QuestGrantId);
+
 public sealed record ItemTransactionResult(
     Guid OperationId,
     string OperationKind,
@@ -175,4 +206,7 @@ public static class ItemOperationKinds
     public const string AddRecoveryDelivery = "add_recovery_delivery";
     public const string ClaimRecoveryDelivery = "claim_recovery_delivery";
     public const string ChangeSecureContainerTier = "change_secure_container_tier";
+    public const string ApplyItemPolicy = "apply_item_policy";
+    public const string RemoveInsurancePolicy = "remove_insurance_policy";
+    public const string AbandonQuestItems = "abandon_quest_items";
 }

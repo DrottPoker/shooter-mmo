@@ -34,6 +34,11 @@ public sealed record ServiceResult<T>(T? Value, ErrorResponse? Error, int Status
         return Failure(StatusCodes.Status409Conflict, code, message);
     }
 
+    public static ServiceResult<T> UnprocessableEntity(string code, string message)
+    {
+        return Failure(StatusCodes.Status422UnprocessableEntity, code, message);
+    }
+
     private static ServiceResult<T> Failure(int statusCode, string code, string message)
     {
         return new ServiceResult<T>(default, new ErrorResponse(code, message), statusCode);

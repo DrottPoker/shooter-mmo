@@ -122,11 +122,15 @@ The repository currently supports:
 - A transactional PostgreSQL catalog mirror, exact item location and occupancy
   constraints, and idempotent active-character bootstrap with empty inventory,
   bank, Secure Container, and Recovery Storage identities.
-- Authenticated, read-only catalog and complete owned-character inventory
-  snapshots that resolve instance definition ids against one catalog revision.
+- Authenticated item-state, bank, and Recovery Storage reads plus a neutral
+  item catalog with revision ETag validation and no client presentation assets.
 - An internal AuthService item transaction kernel that owns idempotency,
   authorization context, optimistic revisions, stable row locking, slot and Bag
   validation, prospective weight, carried-state updates, and audit.
+- Offline-safe account item operations for relocation, split, merge,
+  destruction, Recovery claims, and account Secure Container tier changes.
+- Pure policy capability evaluation, auditable protected and insured records,
+  insurance removal, and exact quest-grant cleanup and reaccept behavior.
 
 ## Current Scale Boundary
 
@@ -142,7 +146,7 @@ introduce isolated realms.
 
 ## Item Foundation Status And Next Step
 
-Phases 1 through 5 of the durable item and inventory plan are complete. The
+Phases 1 through 6 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -150,19 +154,23 @@ mirror. The schema now represents item location, containers, slots, equipment,
 policies, recovery, operations, and audit. Every active character receives
 empty permanent inventory, bank, Secure Container, and Recovery Storage state
 with base carry capacity `200`. Account-authenticated reads expose the current
-catalog and one coherent owned-character snapshot without permitting mutation.
+catalog, one coherent owned-character snapshot, and focused bank and Recovery
+Storage views.
 
 AuthService now also has one internal transaction kernel for grants, relocation,
 equipment, stack changes, consumption, destruction, complete Bag swaps, Recovery
 deliveries and claims, and Secure Container tier changes. It commits item,
 container, character, carry, entitlement, idempotency, and audit state in one
-PostgreSQL transaction. The foundation intentionally has no item mutation HTTP
-surface or player-facing inventory behavior. The next approved step is Phase 6's
-policy-safe account API boundary.
+PostgreSQL transaction. Phase 6 adds policy application and removal, exact
+quest-grant cleanup, conditionally cached catalog reads, stable Problem Details,
+and account-session mutation routes. Account mutations lock the same character
+row as simulation admission and reject an active session with
+`item_offline_access_required`. The next approved step is Phase 7's shared carry
+state and encumbrance integration.
 
 The remaining locked direction is slot-based rather than grid-based and includes:
 
-- Account and worker mutation surfaces built on the implemented internal
+- Worker mutation surfaces built on the implemented internal
   transaction kernel and PostgreSQL item-definition, instance, slot, operation,
   audit, policy, and read-model foundation.
 - Player and gameplay access to permanent character inventory, per-character
@@ -172,13 +180,15 @@ The remaining locked direction is slot-based rather than grid-based and includes
   hard cap at base weight `280`, and shared authoritative encumbrance behavior.
 - A player inventory layout with equipment on the left, contextual containers
   in the upper-right area, and character inventory in the lower-right area.
-- Player-visible claims from the system-write-only Recovery Storage foundation.
+- Unity presentation for claims from the implemented system-write-only Recovery
+  Storage and account claim API foundation.
 - Transactional death partition, durable five-minute player corpses, concurrent
   looting, one-death insurance, and configurable NPC corpse persistence.
 
-The persistent schema, character custody identities, authoritative reads, and
-internal item mutations exist, but no gameplay system invokes item grants or
-mutations and no player-facing behavior exists. See
+The persistent schema, character custody identities, authoritative reads,
+offline account mutations, policy services, and internal item mutations exist,
+but no gameplay system invokes item grants and no player-facing Unity inventory
+exists. See
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
@@ -188,8 +198,8 @@ mutations and no player-facing behavior exists. See
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Gameplay-created item instances, player or worker mutation routes, bank service
-  access, live carry-state integration, Unity inventory behavior, corpse
+- Gameplay-created item instances, worker mutation routes, in-world bank service
+  validation, live carry-state integration, Unity inventory behavior, corpse
   identity, and loot transactions.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.

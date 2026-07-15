@@ -330,6 +330,102 @@ failed-swap rollback. The dedicated database is reset between tests.
 No AuthService item write endpoint should be manually invoked because Phase 5
 does not expose one. No Unity Editor action is required for Phase 5 verification.
 
+## Phase 6 Policy And Offline Item API Verification
+
+Run the Phase 6 policy and HTTP integration suites against the isolated test
+database:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$values = @{}
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    $values[$matches[1]] = $matches[2]
+  }
+}
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  "Host=127.0.0.1;Port=55432;" + `
+  "Database=$($values['TEST_POSTGRES_DB']);" + `
+  "Username=$($values['TEST_POSTGRES_USER']);" + `
+  "Password=$($values['TEST_POSTGRES_PASSWORD'])"
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~ItemPolicyLifecycleIntegrationTests|FullyQualifiedName~ItemApiIntegrationTests"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+```
+
+Expected result: eight tests pass. They verify insurance application and
+removal, exact quest-grant cleanup and reaccept, catalog ETag and `304`, no-store
+headers, owner scoping, Secure Container tier access, stable Problem Details,
+offline session fencing, stable split, merge, and destroy validation, Recovery
+deposit rejection, system delivery, successful bank claim, and hard-cap claim
+rollback. The test host uses the real account
+session authentication handler and item endpoints over loopback HTTP.
+
+To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and
+Redis with `docker compose up -d --wait`, run
+`dotnet run --project AuthService`, and use the Phase 4 registration commands to
+create `$headers` and `$character`. Then run:
+
+```powershell
+$catalogResponse = Invoke-WebRequest `
+  -Uri http://localhost:5000/api/item-catalog `
+  -Headers $headers
+$etag = $catalogResponse.Headers.ETag
+$conditionalHeaders = $headers.Clone()
+$conditionalHeaders['If-None-Match'] = $etag
+$unchangedResponse = Invoke-WebRequest `
+  -SkipHttpErrorCheck `
+  -Uri http://localhost:5000/api/item-catalog `
+  -Headers $conditionalHeaders
+$itemStateResponse = Invoke-WebRequest `
+  -Uri "http://localhost:5000/api/characters/$($character.id)/item-state" `
+  -Headers $headers
+$bankResponse = Invoke-WebRequest `
+  -Uri "http://localhost:5000/api/characters/$($character.id)/bank" `
+  -Headers $headers
+$recoveryResponse = Invoke-WebRequest `
+  -Uri "http://localhost:5000/api/characters/$($character.id)/recovery" `
+  -Headers $headers
+$itemState = $itemStateResponse.Content | ConvertFrom-Json
+$tierResponse = Invoke-WebRequest `
+  -Method Post `
+  -Uri http://localhost:5000/api/items/secure-container-tier `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body (@{
+    operationId = [Guid]::NewGuid()
+    expectedEntitlementRevision = $itemState.secureContainer.entitlementRevision
+    tierId = $itemState.secureContainer.tierId
+    characterRevisions = @(@{
+      characterId = $character.id
+      revision = $itemState.itemStateRevision
+    })
+  } | ConvertTo-Json -Depth 5)
+@(
+  $catalogResponse.StatusCode
+  $unchangedResponse.StatusCode
+  $itemStateResponse.StatusCode
+  $bankResponse.StatusCode
+  $recoveryResponse.StatusCode
+  $tierResponse.StatusCode
+)
+$itemStateResponse.Headers.'Cache-Control'
+$bankResponse.Headers.'Cache-Control'
+$recoveryResponse.Headers.'Cache-Control'
+```
+
+Expected result: the status sequence is `200`, `304`, `200`, `200`, `200`,
+`200`. The catalog has an ETag and the unchanged response has no body. Every
+character response reports `no-store`. The same-tier request succeeds
+idempotently while the character is offline. Item relocation, split, merge,
+destruction, Recovery claims, active-session rejection, and policy lifecycle are
+covered by the isolated integration suite until gameplay grants create real
+items for manual interaction.
+
+No Unity Editor action is required for Phase 6 verification.
+
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 
