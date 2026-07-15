@@ -294,6 +294,42 @@ but complete, reports capacity `200`, and contains no operation payload,
 credentials, client icon, or repeated definition metadata. No Unity Editor
 action is required for Phase 4 verification.
 
+## Phase 5 Item Transaction Kernel Verification
+
+Phase 5 has no HTTP or Unity mutation flow. Verify the internal kernel against
+the isolated PostgreSQL database:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$values = @{}
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    $values[$matches[1]] = $matches[2]
+  }
+}
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  "Host=127.0.0.1;Port=55432;" + `
+  "Database=$($values['TEST_POSTGRES_DB']);" + `
+  "Username=$($values['TEST_POSTGRES_USER']);" + `
+  "Password=$($values['TEST_POSTGRES_PASSWORD'])"
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~ItemConcurrencyIntegrationTests"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+```
+
+Expected result: eleven tests pass. The suite executes every internal command
+and verifies account authorization, effective policy lineage, specific and
+deterministic slots, equipment, empty and non-empty Bag rules, Recovery add and
+claim, account-wide Secure Container tier changes, unitless carried-state
+recomputation, exact hard-cap rollback, canonical operation replay, competing
+item, slot, equipment, and quantity races, the shared Bag aggregate lock, and
+failed-swap rollback. The dedicated database is reset between tests.
+
+No AuthService item write endpoint should be manually invoked because Phase 5
+does not expose one. No Unity Editor action is required for Phase 5 verification.
+
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 

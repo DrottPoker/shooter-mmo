@@ -59,6 +59,7 @@ builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<CharacterService>();
 builder.Services.AddScoped<ItemCatalogQueryService>();
 builder.Services.AddScoped<ItemQueryService>();
+builder.Services.AddScoped<ItemTransactionService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ShardService>();
 builder.Services.AddScoped<SimulationSessionService>();

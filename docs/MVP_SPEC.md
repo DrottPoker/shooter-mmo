@@ -422,10 +422,14 @@ Current implementation note:
   owned-character inventory reads. Queries use coherent PostgreSQL read-only
   snapshots and return definition ids instead of repeated definitions or client
   presentation data.
-- Gameplay-created item instances, item mutations, equipment and Bag operations,
-  bank and Secure Container interaction, Recovery Storage claims, carry-state
-  integration, policy lifecycle, combat, mobs, death, corpses, and loot are not
-  implemented.
+- Item-plan Phase 5 adds the internal AuthService transaction kernel. Its typed
+  commands atomically create and mutate durable item instances, equipment, Bag
+  aggregates, Recovery deliveries, Secure Container tiers, carried state,
+  revisions, idempotency results, and audit rows under canonical PostgreSQL
+  locks.
+- Gameplay-created item instances, player and worker mutation routes, bank and
+  Secure Container service access, live carry-state integration, complete policy
+  lifecycle, combat, mobs, death, corpses, and loot are not implemented.
 
 ## Persistence Principles
 
@@ -473,7 +477,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 4 complete
+Status: In progress, item-plan Phases 1 through 5 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -485,14 +489,16 @@ Status: In progress, item-plan Phases 1 through 4 complete
   compatibility startup fence are complete.
 - Read-only catalog and complete owned-character inventory snapshots plus
   test-only development fixtures are complete.
-- Gameplay item creation and the mutation transaction kernel remain planned.
+- The internal mutation transaction kernel, canonical idempotency, optimistic
+  revisions, stable lock order, relational audit, PostgreSQL race tests, and
+  authoritative carried-state recomputation are complete.
 - Slot-based permanent inventory.
 - Equipment and Bag aggregates.
 - Per-character bank.
 - Per-character Secure Container with account-selected tier.
 - Recovery Storage.
-- Transaction kernel, idempotency, revisions, audit, and PostgreSQL race tests.
-- Integer carry weight, 140 percent hard cap, and shared encumbrance.
+- Player and worker mutation boundaries plus policy-safe account APIs.
+- Shared SimulationWorker and Unity encumbrance integration.
 - Account and in-world service boundaries.
 - Initial Unity inventory presentation.
 

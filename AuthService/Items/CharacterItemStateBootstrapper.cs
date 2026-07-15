@@ -21,6 +21,17 @@ public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
                 cancellationToken: cancellationToken));
             await connection.ExecuteAsync(new CommandDefinition(
                 """
+                select pg_advisory_xact_lock(
+                    hashtextextended(
+                        'item-secure-entitlement:' || cast(account_id as text),
+                        0))
+                from (
+                    select distinct account_id
+                    from characters
+                    where deleted_at is null
+                    order by account_id
+                ) active_accounts;
+
                 select bootstrap_character_item_state(id)
                 from characters
                 where deleted_at is null
@@ -45,7 +56,16 @@ public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
         CancellationToken cancellationToken)
     {
         return connection.ExecuteAsync(new CommandDefinition(
-            "select bootstrap_character_item_state(@CharacterId);",
+            """
+            select pg_advisory_xact_lock(
+                hashtextextended(
+                    'item-secure-entitlement:' || cast(account_id as text),
+                    0))
+            from characters
+            where id = @CharacterId;
+
+            select bootstrap_character_item_state(@CharacterId);
+            """,
             new { CharacterId = characterId },
             transaction,
             cancellationToken: cancellationToken));

@@ -219,10 +219,12 @@ They remain in the MVP specification until working behavior is available:
 - Final UI, audio, visual effects, animation, and accessibility.
 
 The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
-PostgreSQL foundation, and Phase 4 authenticated catalog and owned-character
-inventory reads now exist. They create no player-visible inventory behavior and
-therefore do not have a feature-status section in this document. The planned
-player rules are defined in
+PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
+and Phase 5 internal transaction kernel now exist. The kernel can mutate durable
+item, Bag, Recovery, Secure Container, revision, carry, idempotency, and audit
+state, but no player, worker, quest, gathering, or vendor path calls it. These
+foundations create no player-visible inventory behavior and therefore do not have
+a feature-status section in this document. The planned player rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
 not yet connected to item mutation routes, SimulationWorker, or Unity inventory
 presentation.

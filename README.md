@@ -57,6 +57,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Account-authenticated read-only item catalog and complete owned-character
   inventory snapshots with stable definition references and fixed-point
   encumbrance state.
+- One internal AuthService item transaction kernel with canonical idempotency,
+  stable PostgreSQL lock order, optimistic revisions, atomic item and Bag
+  commands, Recovery deliveries, Secure Container tier changes, carried-state
+  recomputation, and relational audit.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
@@ -74,13 +78,14 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 4 of the slot-based item foundation are implemented. Shared
+Phases 1 through 5 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
 character item-state bootstrap now exist. AuthService also exposes read-only
-catalog and owned-character inventory snapshots without creating gameplay item
-instances. Transactions, SimulationWorker integration, and player-facing
-inventory remain later phases. Combat,
+catalog and owned-character inventory snapshots. Its internal transaction kernel
+can create and mutate durable item instances without exposing a player write
+route. Policy APIs, SimulationWorker integration, and player-facing inventory
+remain later phases. Combat,
 persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 
@@ -172,7 +177,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item persistence and read models, HTTP, and owned config |
+| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item persistence, read models, internal item transactions, HTTP, and owned config |
 | `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, and owned config |
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |

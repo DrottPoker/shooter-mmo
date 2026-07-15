@@ -251,16 +251,16 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 4 content, authoring, schema, catalog mirror, character
-bootstrap, and authoritative reads implemented; runtime mutation integration
-planned
+Status: Phases 1 through 5 content, authoring, schema, catalog mirror, character
+bootstrap, authoritative reads, and internal transaction kernel implemented;
+player and realtime mutation integration planned
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
-and the future transaction boundary. PostgreSQL remains the authority. The
-schema and read model are present before item mutation traffic so later phases
-build on one constrained custody model instead of inventing endpoint-local
-state.
+and the implemented internal transaction boundary. PostgreSQL remains the
+authority. The schema, read model, and command kernel are present before player
+item traffic so later routes build on one constrained custody model instead of
+inventing endpoint-local state or SQL.
 
 AuthService account-session routes expose the current catalog and a complete
 snapshot only when the requested active character belongs to that account. Each
@@ -270,6 +270,28 @@ than repeated definitions, presentation data, policy sources, or operation
 metadata. Full owned bank and Recovery Storage reads do not authorize any
 mutation. City-service and live-session checks remain part of the Phase 8
 mutation boundary.
+
+All durable commands enter `ItemTransactionService`. One command opens one
+connection and one `READ COMMITTED` transaction, claims the operation row, and
+then locks character item states, Bag aggregate roots and containers, item rows,
+and policy or delivery rows in canonical sorted order. A savepoint lets a stable
+domain rejection persist its idempotent result while rolling back the complete
+candidate mutation. Successful commands recompute weight and equipped Bag
+capacity, advance revisions, append relational audit changes, and persist a
+replayable result in the same transaction.
+
+The transaction context resolves current definitions and slot data from the
+mirrored catalog but delegates stack, equipment, Bag, Secure Container, and
+integer-weight decisions to the existing WorldData rules. It does not depend on
+HTTP, a simulation session, Unity, or SimulationWorker state. Account and system
+authorization contexts are explicit command inputs. Phase 6 and Phase 8 routes
+will add their access and live-session checks before calling this same kernel.
+
+Bag content containers and Bag item rows form one aggregate. Every child command
+locks the Bag item before its child container or item, and aggregate swaps verify
+the expected Bag item plus content-container revisions. Secure Container tier
+changes lock every affected character state in character-id order and coordinate
+with character bootstrap through one account-entitlement advisory key.
 
 SimulationWorker will own live proximity, interaction, combat, corpse
 presentation, and authoritative encumbrance for its assigned shard. While a
@@ -283,10 +305,11 @@ restored by a replacement worker. Normal NPC corpses may remain worker-owned and
 disappear on restart, while content-selected bosses may use the durable corpse
 path. These choices do not introduce Zone or Layer ownership.
 
-Phase 4 adds only authenticated `GET` routes, focused query services, player DTOs,
-and test-project fixtures. It adds no gameplay item grant, transaction kernel,
-worker item state, or Unity inventory state. The Unity content tooling remains
-presentation and authoring support, not item authority.
+Phase 4 added only authenticated `GET` routes, focused query services, player
+DTOs, and test-project fixtures. Phase 5 adds only the internal transaction
+kernel and its PostgreSQL integration tests. Neither phase adds a gameplay item
+grant or mutation route, worker item state, or Unity inventory state. The Unity
+content tooling remains presentation and authoring support, not item authority.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the

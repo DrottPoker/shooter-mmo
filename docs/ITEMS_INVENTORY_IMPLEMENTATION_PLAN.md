@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-Status: Approved delivery baseline, Phases 1 through 4 completed, Phase 5 next
+Status: Approved delivery baseline, Phases 1 through 5 completed, Phase 6 next
 
 ## Purpose
 
@@ -612,9 +612,12 @@ mutation.
   section, definition and policy resolution, metadata deduplication, secret
   exclusion, and read-only behavior.
 
-The Phase 4 exit gate is satisfied. Phase 5 remains not started.
+The Phase 4 exit gate is satisfied. Phase 5 is now also complete as documented
+below.
 
 ## Phase 5: Core Item Transaction Kernel
+
+Status: Completed 2026-07-15
 
 ### Work
 
@@ -661,6 +664,56 @@ Every command must:
 
 All durable item mutations use one tested transaction kernel and adversarial
 concurrency cannot duplicate or lose quantity.
+
+### Implementation Result
+
+- `ItemTransactionService` is the single internal AuthService mutation entry
+  point. Its typed commands cover grant, container relocation, equip, unequip,
+  split, merge, consume, destruction, empty Bag movement, complete Bag aggregate
+  swap, Recovery Storage delivery add and claim, and account-wide Secure
+  Container tier changes.
+- Every command opens one Npgsql connection and one `READ COMMITTED` transaction,
+  claims the global operation id before domain locks, stores a SHA-256 canonical
+  request hash, and replays the stored committed or rejected result without a
+  second mutation. Reusing an operation id for another canonical request returns
+  `item_operation_conflict`.
+- A transaction savepoint preserves the claimed operation while any rejected
+  domain mutation, prospective weight calculation, or mapped occupancy conflict
+  rolls back completely. Unexpected database failures roll back the operation
+  claim as well and remain visible to the caller.
+- Character item-state rows lock by character id, Bag aggregate roots and
+  containers lock by stable id, item rows lock by stable id, and policies or
+  Recovery delivery rows lock last. Child-item operations and Bag swaps use the
+  same Bag root lock. Secure Container tier changes also coordinate with
+  character bootstrap through one account-entitlement advisory key.
+- Definition, tag, slot, equipment, Secure Container, Bag, stack, and default
+  policy state resolve from the mirrored catalog. Stack splits copy effective
+  policy lineage, and merges require the same definition and effective policy
+  fingerprint.
+- Successful operations advance touched item, container, Bag aggregate, and
+  character revisions, recompute unitless carried weight and equipped Bag
+  capacity, enforce the exact 140 percent hard cap, append before and after audit
+  rows, and return replayable character, container, item, Recovery delivery, and
+  entitlement revisions.
+- Bag content containers are active only while their Bag is equipped. Empty Bags
+  can move through compatible general storage, while a non-empty Bag is rejected
+  from ordinary storage and can move only through an aggregate swap.
+- Recovery Storage remains system-write-only. Delivery add preserves item
+  identity and policy state, claim is atomic to permanent inventory or bank, and
+  neither custody contributes to carried weight.
+- Secure Container tier changes apply to every active character on the account.
+  A reduction moves items from removed slots in descending slot order into
+  `secure_capacity_reduction` Recovery deliveries before deleting any slot.
+- Isolated PostgreSQL integration coverage exercises every command, account
+  authorization, effective policy lineage, specialized and Secure Container
+  eligibility, hard-cap rollback, canonical replay, all required contention
+  races, shared Bag locks, failed aggregate swaps, and multi-character tier
+  reduction without item or quantity loss.
+- No account or worker mutation route, SimulationWorker inventory state,
+  PostgreSQL access outside AuthService, Unity inventory state, policy lifecycle
+  API, corpse table, or Phase 6 behavior was added.
+
+The Phase 5 exit gate is satisfied. Phase 6 remains not started.
 
 ## Phase 6: Policies, Bank, Secure Container, And Recovery APIs
 
@@ -719,9 +772,13 @@ The complete durable out-of-world item foundation is usable and policy safe.
 
 ### Work
 
-- Add authoritative carried weight and capacity to character item state.
-- Compute base capacity `200` plus the equipped Bag bonus.
-- Return a monotonic carry-state revision after every relevant transaction.
+- Connect the authoritative carried weight, capacity, and monotonic character
+  item-state revision maintained by the Phase 5 transaction kernel to the shared
+  simulation boundary.
+- Preserve base capacity `200` plus the equipped Bag bonus as the cross-process
+  carry-capacity contract.
+- Deliver each committed carry-state revision to the active simulation and
+  client state path.
 - Add encumbrance state to the shared simulation rules used by
   SimulationWorker and Unity prediction.
 - Disable sprint above 100 percent.
@@ -1043,6 +1100,7 @@ The exact list may grow, but planned stable codes include:
 ```text
 item_not_found
 item_not_owned
+item_authority_required
 item_state_conflict
 item_operation_conflict
 item_slot_occupied

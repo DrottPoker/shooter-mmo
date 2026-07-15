@@ -27,6 +27,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         CharacterItemStateBootstrapper = new CharacterItemStateBootstrapper(dataSource);
         ItemCatalogQueryService = new ItemCatalogQueryService(dataSource);
         ItemQueryService = new ItemQueryService(dataSource);
+        ItemTransactionService = new ItemTransactionService(dataSource);
         DatabaseInitializer = new DatabaseInitializer(
             dataSource,
             ItemCatalogSeeder,
@@ -63,6 +64,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     public ItemCatalogQueryService ItemCatalogQueryService { get; }
 
     public ItemQueryService ItemQueryService { get; }
+
+    public ItemTransactionService ItemTransactionService { get; }
 
     public SessionService SessionService { get; }
 

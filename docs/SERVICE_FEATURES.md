@@ -275,10 +275,10 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
-## Item Catalog, Pure Domain Rules, Persistence, And Read Models
+## Item Catalog, Domain Rules, Persistence, Reads, And Transactions
 
-Phases 1 through 4 of the approved item plan are implemented without adding an
-item mutation surface:
+Phases 1 through 5 of the approved item plan are implemented without adding a
+player or worker mutation surface:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -340,11 +340,42 @@ item mutation surface:
   and other client presentation data are excluded.
 - Weight and capacity remain unitless integers. Load ratio and movement
   multiplier are returned as deterministic basis points.
+- `ItemTransactionService` is the only durable item mutation kernel. Typed
+  internal commands cover grant, relocation, equip, unequip, stack split and
+  merge, quantity consumption, allowed destruction, empty Bag storage, complete
+  Bag aggregate swap, Recovery delivery add and claim, and Secure Container tier
+  change.
+- Every command uses exactly one Npgsql connection and one `READ COMMITTED`
+  transaction. It claims a global operation id, hashes a canonical request,
+  acquires character, Bag, container, item, policy, and delivery locks in stable
+  order, validates current ownership and expected revisions, and stores one
+  replayable committed or rejected result.
+- Domain rejection uses a savepoint so no partial item, custody, quantity,
+  policy, delivery, entitlement, carried-state, revision, or audit mutation can
+  survive. Replaying the same operation id and canonical payload returns the
+  stored result. A different payload returns `item_operation_conflict`.
+- Successful commands recompute unitless carried weight and equipped Bag
+  capacity from authoritative custody, enforce the exact 140 percent hard cap,
+  advance touched character, container, Bag, and item revisions, and append
+  before and after audit rows.
+- Bag content containers are closed while an empty Bag is ordinary storage and
+  active only while equipped. Bag and child commands share one aggregate-root
+  lock, and aggregate swaps validate both Bag item and content-container
+  revisions before exchanging complete Bags.
+- Recovery Storage remains system-write-only. Internal delivery creation and
+  complete claims to permanent inventory or bank preserve item identity,
+  quantity, and policy lineage. Recovery custody remains excluded from weight.
+- Secure Container tier changes update every active character on the account.
+  Removed slots are drained in descending order to deterministic
+  `secure_capacity_reduction` Recovery deliveries before the slots are removed.
+  Character bootstrap and tier changes share one account-entitlement advisory
+  key so a concurrently created character receives a coherent tier.
 
-The rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime
-dependency. The Editor assembly is isolated from runtime WorldData assemblies.
-AuthService exposes only authenticated item reads. It has no public or
-development item grant route and no mutation implementation.
+The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
+runtime dependency. The Editor assembly is isolated from runtime WorldData
+assemblies.
+AuthService exposes only authenticated item reads. Its mutation kernel is an
+internal service with no account, development, or worker item write route.
 SimulationWorker has no inventory database access, and Unity is not an item-rule
 authority.
 
@@ -482,16 +513,20 @@ the test connection variable at development or production data.
   ordered empty state, every owned snapshot section, definition and policy
   resolution, catalog metadata deduplication, secret exclusion, and read-only
   behavior.
+- Isolated PostgreSQL transaction tests for every internal command, authorization
+  and policy lineage, atomic hard-cap rejection, canonical operation replay,
+  competing item and slot mutations, stack quantity races, shared Bag locks,
+  failed aggregate swaps, Recovery claims, and account-wide Secure Container
+  reduction without item loss.
 
 ## Not Yet Implemented
 
-- Development item grants, mutation transaction kernel, or gameplay-created
-  item instances and stacks.
-- Player-controlled equipment assignments, physical Bag instances and contents,
-  bank or Secure Container interaction, or Recovery Storage claims.
-- Authoritative carried-weight aggregation, persisted carry revisions,
-  inventory-driven movement restrictions, or encumbrance integration with the
-  live simulation.
+- Development or gameplay item grant routes, account mutation APIs, worker
+  mutation APIs, or gameplay systems that invoke the internal kernel.
+- Player-controlled equipment, Bag, bank, Secure Container, or Recovery Storage
+  interaction through AuthService, SimulationWorker, or Unity.
+- Carry-revision delivery to SimulationWorker, inventory-driven movement
+  restrictions, or encumbrance integration with the live simulation.
 - Protected-on-death policy, one-death insurance, death partition, persistent
   player corpses, concurrent corpse looting, or configurable NPC corpse
   persistence.
@@ -502,7 +537,7 @@ the test connection variable at development or production data.
 - Persistent NPC or combat simulation.
 - General terrain mesh and rigid-body collision.
 
-The locked product design and implementation phases for the unimplemented item
-foundation are documented in
+The locked product design and remaining implementation phases for the item
+system are documented in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
