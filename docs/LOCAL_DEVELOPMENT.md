@@ -26,6 +26,12 @@ SimulationWorker share `SIMULATION_WORKER_ID` and
 and parent directories for `.env`. Process environment variables and
 command-line values take precedence.
 
+AuthService reads `Items:CatalogPath` from its configuration. The checked-in
+default points to `WorldData/Items/core.item-catalog.json`, which the AuthService
+project copies from the deterministic WorldData runtime catalog into build and
+publish output. Use `Items__CatalogPath` only when a deployment places that
+checked-in catalog at another path.
+
 If the PostgreSQL Docker volume already exists, changing `POSTGRES_PASSWORD` does
 not change the password stored inside PostgreSQL. Either keep the current local
 password in both `.env` entries or update the database role interactively:
@@ -65,7 +71,7 @@ Expected result:
 - Item catalog verification reports nine definitions, one base Secure Container
   tier, and the deterministic checked-in revision.
 - Unit tests pass.
-- The PostgreSQL integration test is skipped unless its dedicated connection is
+- PostgreSQL integration tests are skipped unless their dedicated connection is
   configured.
 
 NuGet and GitHub Actions updates are proposed monthly by Dependabot against
@@ -144,9 +150,11 @@ Inspect `structuralFingerprint` for every changed definition and Secure
 Container tier. A display-only edit changes the catalog revision without
 changing an item structural fingerprint. Weight, stack, tag, equipment,
 location, policy-default, Bag-layout, or tier-capacity changes alter the
-relevant structural fingerprint. Once Phase 3 introduces persistent item state,
-such a change will require an explicit data migration rather than only catalog
-regeneration.
+relevant structural fingerprint. AuthService now permits a structural revision
+only when no live item instance or affected Secure Container entitlement depends
+on it. Otherwise startup fails with the affected stable id and requires an
+explicit data migration before the new catalog can become current. Display-only
+changes remain safe because they preserve the structural fingerprint.
 
 The complete authoring contract is documented in
 `WorldData/Authoring/Items/README.md`. No Unity Editor action is required for
@@ -157,6 +165,64 @@ window error. Validation uses temporary candidate files. A failed validation
 writes nothing, and a failed multi-file bake restores every previous catalog
 file. Correct or discard the draft, select `Reload` to return to checked-in
 content when appropriate, and run the command-line `--verify` command above.
+
+## Phase 3 PostgreSQL Item Foundation Verification
+
+Start the isolated temporary PostgreSQL database and run only the Phase 3
+integration suite:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$values = @{}
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    $values[$matches[1]] = $matches[2]
+  }
+}
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  "Host=127.0.0.1;Port=55432;" + `
+  "Database=$($values['TEST_POSTGRES_DB']);" + `
+  "Username=$($values['TEST_POSTGRES_USER']);" + `
+  "Password=$($values['TEST_POSTGRES_PASSWORD'])"
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~ItemPersistenceIntegrationTests"
+```
+
+Expected result: ten tests pass. They reset only the dedicated database whose
+name contains `test`, then verify the complete catalog mirror, legacy backfill,
+atomic new-character bootstrap, uniqueness and location constraints, planned
+custody shapes, explicit delete behavior, and structural catalog startup fence.
+
+To exercise concurrent migration initialization as well, run:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~ConcurrentMigrationInitializationAppliesEachMigrationOnce"
+```
+
+Expected result: the test passes with ten immutable migration ids, one current
+catalog revision, and no duplicate topology or item seed rows.
+
+For an existing local development database, start AuthService normally. Expect
+one log entry if the new migration or a new catalog revision is applied. Inspect
+the resulting foundation without exposing database credentials:
+
+```powershell
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select catalog_id, revision, is_current from item_catalog_revisions order by applied_at;"'
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select count(*) as active_characters_missing_item_state from characters c left join character_item_states s on s.character_id = c.id where c.deleted_at is null and s.character_id is null;"'
+```
+
+Expected result: catalog `core` has exactly one row with `is_current = true`,
+and `active_characters_missing_item_state` is `0`. No Unity Editor action is
+required for Phase 3 verification.
+
+Stop the isolated test database when finished:
+
+```powershell
+docker compose -f docker-compose.test.yml down
+```
 
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:

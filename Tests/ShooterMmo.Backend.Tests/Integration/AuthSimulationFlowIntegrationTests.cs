@@ -1,5 +1,6 @@
 using AuthService.Characters;
 using AuthService.Http;
+using AuthService.Items;
 using AuthService.Simulation;
 using Microsoft.AspNetCore.Http;
 
@@ -18,7 +19,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(9, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(10, await CountAppliedMigrationsAsync(context));
 
         var player = await context.RegisterPlayerAsync();
         var characters = await context.CharacterService.ListAsync(
@@ -267,9 +268,22 @@ public sealed class AuthSimulationFlowIntegrationTests
         await Task.WhenAll(
             context.InitializeDatabaseAsync(),
             context.InitializeDatabaseAsync());
+        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
+            context.CatalogSource.RuntimeCatalogPath,
+            CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(9, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(10, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(
+            1,
+            await context.ExecuteScalarIntAsync(
+                "select count(*) from item_catalog_revisions where is_current;"));
+        Assert.Equal(
+            catalog.Definitions.Length,
+            await context.ExecuteScalarIntAsync("select count(*) from item_definitions;"));
+        Assert.Equal(
+            catalog.EquipmentSlots.Length,
+            await context.ExecuteScalarIntAsync("select count(*) from equipment_slots;"));
         Assert.Equal(
             5,
             await context.ExecuteScalarIntAsync(

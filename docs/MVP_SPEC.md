@@ -402,7 +402,9 @@ Planned item service split:
 Current implementation note:
 
 - AuthService currently stores identity, topology, exact-runtime join tickets,
-  and global simulation-session leases in PostgreSQL.
+  global simulation-session leases, the relational item catalog mirror, and
+  complete empty per-character item-state and container identities in
+  PostgreSQL.
 - SimulationWorker currently owns movement, interest management, connection
   quotas, and collision against checksummed WorldData chunks.
 - Unity currently owns input, prediction, reconciliation, interpolation,
@@ -412,10 +414,14 @@ Current implementation note:
 - Phase 2 adds an Editor-only Unity catalog window and a bundled client
   presentation catalog with exact gameplay-revision pairing and local caching.
   It does not make Unity authoritative for item rules.
-- PostgreSQL item mirrors, persistent item instances, inventory custody,
-  equipment assignments, Bag instances, bank, Secure Container contents,
-  Recovery Storage, carry-state integration, policy lifecycle, combat, mobs,
-  death, corpses, and loot are not implemented.
+- Phase 3 adds the transactional PostgreSQL catalog mirror, constrained item,
+  slot, container, equipment, policy, recovery, operation, and audit schema,
+  canonical equipment-slot seed, active-character backfill, and atomic new
+  character bootstrap.
+- Gameplay-created item instances, item reads and mutations, equipment and Bag
+  operations, bank and Secure Container interaction, Recovery Storage claims,
+  carry-state integration, policy lifecycle, combat, mobs, death, corpses, and
+  loot are not implemented.
 
 ## Persistence Principles
 
@@ -463,15 +469,18 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 and 2 complete
+Status: In progress, item-plan Phases 1 through 3 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
   complete.
 - Unity catalog authoring, deterministic baking, and separately revisioned
   client icon and presentation mapping are complete.
-- PostgreSQL definition mirror, item instances, stacks, and policy state remain
-  planned.
+- The PostgreSQL definition mirror, exact custody schema, character item state,
+  top-level empty containers, operation and audit foundation, and structural
+  compatibility startup fence are complete.
+- Read models, development fixtures, gameplay item creation, and the mutation
+  transaction kernel remain planned.
 - Slot-based permanent inventory.
 - Equipment and Bag aggregates.
 - Per-character bank.

@@ -273,10 +273,10 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
-## Item Catalog, Pure Domain Rules, And Unity Authoring
+## Item Catalog, Pure Domain Rules, Unity Authoring, And Persistence Schema
 
-Phases 1 and 2 of the approved item plan are implemented without adding a
-service or persistence surface:
+Phases 1 through 3 of the approved item plan are implemented without adding an
+item HTTP surface:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -304,10 +304,33 @@ service or persistence surface:
   stable definition ids to icons, localization keys, fallback text, and optional
   prefab presentation keys with its own deterministic revision tied to the
   exact gameplay catalog revision.
+- AuthService bundles the checked-in runtime gameplay catalog, revalidates its
+  revision and structural fingerprints, then mirrors the full relational
+  definition structure in one advisory-locked PostgreSQL transaction before
+  accepting traffic.
+- The item persistence migration adds typed containers, stable slots, an exact
+  container-or-equipment location union, character item state, item policies,
+  recovery deliveries, idempotent operations, and relational audit foundations
+  with explicit CHECK, foreign-key, unique, partial unique, and revision rules.
+- Startup idempotently backfills every active character with base carry capacity
+  `200`, 20 permanent inventory slots, 40 bank slots, the account-entitled
+  Secure Container slots, and one unbounded Recovery Storage identity.
+- New character creation calls the same PostgreSQL bootstrap function before
+  committing its existing transaction, so a character cannot commit through
+  the service without its required item state.
+- Startup permits display-only catalog revisions but rejects structural
+  definition changes with live item instances and tier changes with live
+  entitlements until an explicit data migration resolves them.
+- Character deletion cascades live character item custody and recovery rows.
+  Account deletion also removes the account Secure Container entitlement.
+  Operation and change audit rows remain with deleted actor or item references
+  set to null.
 
 The rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime
 dependency. The Editor assembly is isolated from runtime WorldData assemblies.
-AuthService exposes no item route and accepts no item traffic yet.
+AuthService exposes no item route and accepts no item traffic yet. The
+PostgreSQL schema and bootstrap are its durable boundary, not a gameplay grant
+or mutation implementation.
 SimulationWorker has no inventory database access, and Unity is not an item-rule
 authority.
 
@@ -437,13 +460,17 @@ the test connection variable at development or production data.
 - Item catalog determinism, malformed and duplicate content rejection,
   structural fingerprint detection, pure rule behavior, and exact integer
   encumbrance boundaries.
+- Isolated PostgreSQL item tests for concurrent migration initialization,
+  complete and idempotent character backfill, catalog reconciliation and
+  compatibility fencing, exact custody constraints, delete behavior, and
+  atomic character bootstrap.
 
 ## Not Yet Implemented
 
-- PostgreSQL item-definition mirror, persistent item instances, stacks, or slot
-  inventory custody.
-- Durable equipment assignments, physical Bag instances, per-character bank,
-  Secure Container contents, or Recovery Storage.
+- Item snapshot routes, development grants, mutation transaction kernel, or
+  gameplay-created item instances and stacks.
+- Player-controlled equipment assignments, physical Bag instances and contents,
+  bank or Secure Container interaction, or Recovery Storage claims.
 - Authoritative carried-weight aggregation, persisted carry revisions,
   inventory-driven movement restrictions, or encumbrance integration with the
   live simulation.

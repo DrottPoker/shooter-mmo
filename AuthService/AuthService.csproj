@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Shared\ShooterMmo.Shared.csproj" />
+    <ProjectReference Include="..\Shared\DotNet\WorldData\ShooterMmo.WorldData.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -12,6 +13,10 @@
 
   <ItemGroup>
     <Content Update="Config\appsettings*.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Runtime\Items\core.item-catalog.json"
+             Link="WorldData\Items\core.item-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

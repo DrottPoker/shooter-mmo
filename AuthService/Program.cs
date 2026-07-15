@@ -5,6 +5,7 @@ using AuthService.Config;
 using AuthService.Database;
 using AuthService.Health;
 using AuthService.Http;
+using AuthService.Items;
 using AuthService.Simulation;
 using Microsoft.AspNetCore.Authentication;
 using Npgsql;
@@ -46,7 +47,10 @@ builder.Services.AddSingleton(_ =>
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(developmentSimulationBotOptions);
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(ItemCatalogSource.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton<DevelopmentSimulationBotAuthority>();
+builder.Services.AddSingleton<ItemCatalogSeeder>();
+builder.Services.AddSingleton<CharacterItemStateBootstrapper>();
 builder.Services.AddSingleton<DatabaseInitializer>();
 builder.Services.AddSingleton<SimulationTopologySeeder>();
 builder.Services.AddSingleton<PostgresHealthProbe>();

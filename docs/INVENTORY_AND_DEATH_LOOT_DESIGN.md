@@ -2,8 +2,8 @@
 
 Last updated: 2026-07-15
 
-Status: Locked design target; Phase 1 catalog and pure rules implemented,
-durable gameplay systems planned
+Status: Locked design target; Phases 1 through 3 content, authoring, schema, and
+character bootstrap implemented, durable gameplay operations planned
 
 ## Purpose
 
@@ -640,12 +640,14 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phase 1 now implements the neutral development item definitions,
-deterministic catalog and structural fingerprints, strict content validation,
-and pure stack, slot, equipment, Secure Container, Bag, weight, and encumbrance
-rules.
+claim. Phases 1 through 3 now implement the neutral catalog, structural
+fingerprints, strict validation, pure rules, Unity authoring, transactional
+PostgreSQL definition mirror, constrained custody schema, canonical equipment
+slots, account Secure Container entitlement foundation, and complete empty item
+state for every active character.
 
-The repository does not yet implement the PostgreSQL definition mirror, item
-instances, inventory custody, durable equipment or Bag instances, Secure
-Container contents, bank, Recovery Storage, authoritative carried state,
-insurance lifecycle, death partition, persistent corpses, or corpse looting.
+The repository does not yet create gameplay item instances or expose item
+snapshots and mutations. Equipment changes, Bag instances and contents, bank or
+Secure Container interaction, Recovery Storage claims, authoritative carried
+state updates, insurance lifecycle, death partition, persistent corpse identity,
+and corpse looting remain later phases.

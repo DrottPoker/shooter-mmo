@@ -2,6 +2,7 @@ using AuthService.Auth;
 using AuthService.Characters;
 using AuthService.Config;
 using AuthService.Database;
+using AuthService.Items;
 using AuthService.Simulation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -18,12 +19,26 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         AuthServiceConfig authServiceConfig)
     {
         DataSource = dataSource;
+        CatalogSource = ItemCatalogSource.FromConfiguration(configuration);
+        ItemCatalogSeeder = new ItemCatalogSeeder(
+            dataSource,
+            CatalogSource,
+            NullLogger<ItemCatalogSeeder>.Instance);
+        CharacterItemStateBootstrapper = new CharacterItemStateBootstrapper(dataSource);
+        DatabaseInitializer = new DatabaseInitializer(
+            dataSource,
+            ItemCatalogSeeder,
+            CharacterItemStateBootstrapper,
+            NullLogger<DatabaseInitializer>.Instance);
         SessionService = new SessionService(dataSource, configuration);
         AccountService = new AccountService(
             dataSource,
             SessionService,
             NullLogger<AccountService>.Instance);
-        CharacterService = new CharacterService(dataSource, configuration);
+        CharacterService = new CharacterService(
+            dataSource,
+            configuration,
+            CharacterItemStateBootstrapper);
         ShardService = new ShardService(dataSource, configuration, authServiceConfig);
         SimulationSessionService = new SimulationSessionService(dataSource, configuration);
         SimulationWorkerRegistryService = new SimulationWorkerRegistryService(dataSource, authServiceConfig);
@@ -34,6 +49,14 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     }
 
     public NpgsqlDataSource DataSource { get; }
+
+    public DatabaseInitializer DatabaseInitializer { get; }
+
+    public ItemCatalogSource CatalogSource { get; }
+
+    public ItemCatalogSeeder ItemCatalogSeeder { get; }
+
+    public CharacterItemStateBootstrapper CharacterItemStateBootstrapper { get; }
 
     public SessionService SessionService { get; }
 
@@ -71,7 +94,12 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                     ["Game:MaxCharactersPerAccount"] = "5",
                     ["Simulation:JoinTicketLifetimeSeconds"] = "30",
                     ["Simulation:SessionLeaseLifetimeSeconds"] = "60",
-                    ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30"
+                    ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30",
+                    ["Items:CatalogPath"] = Path.Combine(
+                        AppContext.BaseDirectory,
+                        "WorldData",
+                        "Items",
+                        "core.item-catalog.json")
                 })
                 .Build();
 
@@ -116,11 +144,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public async Task InitializeDatabaseAsync()
     {
-        var initializer = new DatabaseInitializer(
-            DataSource,
-            NullLogger<DatabaseInitializer>.Instance);
-
-        await initializer.InitializeAsync(CancellationToken.None);
+        await DatabaseInitializer.InitializeAsync(CancellationToken.None);
         await SimulationTopologySeeder.SeedAsync(CancellationToken.None);
     }
 

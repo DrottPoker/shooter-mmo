@@ -191,8 +191,8 @@ public sealed class ItemCatalogTests
     public void DecimalWeightFailsJsonValidation()
     {
         var malformed = ItemCatalogTestData.AuthoringJson.Replace(
-            "\"unitWeight\": 1,",
-            "\"unitWeight\": 1.5,",
+            "\"unitWeight\": 1",
+            "\"unitWeight\": 1.5",
             StringComparison.Ordinal);
 
         Assert.Throws<InvalidDataException>(() => ItemCatalogJson.DeserializeAuthoring(malformed));

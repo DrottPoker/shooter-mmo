@@ -1,9 +1,15 @@
+using AuthService.Database.Migrations;
+using AuthService.Items;
 using Dapper;
 using Npgsql;
 
 namespace AuthService.Database;
 
-public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<DatabaseInitializer> logger)
+public sealed class DatabaseInitializer(
+    NpgsqlDataSource dataSource,
+    ItemCatalogSeeder itemCatalogSeeder,
+    CharacterItemStateBootstrapper characterItemStateBootstrapper,
+    ILogger<DatabaseInitializer> logger)
 {
     private const long MigrationLockId = 7_104_202_607_071_600;
 
@@ -19,18 +25,24 @@ public sealed class DatabaseInitializer(NpgsqlDataSource dataSource, ILogger<Dat
         new("202607141200_simulation_topology", SimulationTopologyMigrationSql),
         new(
             "202607141300_single_active_account_simulation_session",
-            SingleActiveAccountSimulationSessionMigrationSql)
+            SingleActiveAccountSimulationSessionMigrationSql),
+        new(ItemPersistenceFoundationMigration.Id, ItemPersistenceFoundationMigration.Sql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await EnsureMigrationTableAsync(connection, cancellationToken);
-
-        foreach (var migration in Migrations)
+        await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
         {
-            await ApplyMigrationAsync(connection, migration, cancellationToken);
+            await EnsureMigrationTableAsync(connection, cancellationToken);
+
+            foreach (var migration in Migrations)
+            {
+                await ApplyMigrationAsync(connection, migration, cancellationToken);
+            }
         }
+
+        await itemCatalogSeeder.SeedAsync(cancellationToken);
+        await characterItemStateBootstrapper.BackfillActiveCharactersAsync(cancellationToken);
     }
 
     private static async Task EnsureMigrationTableAsync(

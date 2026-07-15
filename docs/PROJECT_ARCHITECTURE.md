@@ -84,6 +84,9 @@ Unity uses AuthService for identity, characters, shard discovery, and placement.
 AuthService returns a SimulationWorker endpoint only with a short-lived join
 ticket. Realtime gameplay packets travel directly between Unity and the assigned
 worker. AuthService never proxies realtime traffic.
+AuthService also consumes the deterministic WorldData runtime item catalog as a
+bundled build input. That is a content dependency, not a network authority
+relationship.
 
 ## Repository Boundaries
 
@@ -97,9 +100,11 @@ worker. AuthService never proxies realtime traffic.
 - Worker heartbeats, online status, capacity, runtime fencing, and failover.
 - Capacity-aware shard placement and short-lived join tickets.
 - Global simulation-session leases.
+- Transactional item catalog mirroring, constrained durable item schema, and
+  complete empty character item-state bootstrap.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
   ids, sensitive response caching rules, and health routes.
-- PostgreSQL schema migrations and idempotent topology bootstrap.
+- PostgreSQL schema migrations plus idempotent topology and item bootstrap.
 
 Feature folders remain inside the service that owns them. Configuration lives
 under `AuthService/Config`.
@@ -188,8 +193,9 @@ has stable identities, one complete revision, per-definition and per-tier
 structural fingerprints, and no Shard identity. Framework-neutral catalog and
 pure rule source is compiled for Unity by the `ShooterMmo.WorldData` assembly and
 for .NET tooling and tests through `Shared/DotNet/WorldData`. Neither compilation
-target becomes an authority. Future AuthService transaction paths must reapply
-the authoritative rules before committing durable state.
+target becomes an authority. AuthService validates and mirrors the compiled
+catalog at startup. Future mutation paths must still reapply the authoritative
+rules before committing durable item state.
 
 The current pure rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, Secure Container eligibility, empty and non-empty Bag
@@ -244,13 +250,14 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phase 1 shared catalog and rules plus Phase 2 Unity authoring implemented;
-persistence and runtime inventory integration planned
+Status: Phases 1 through 3 content, authoring, schema, catalog mirror, and
+character bootstrap implemented; runtime inventory integration planned
 
-AuthService will own durable item instances, stacks, slot assignments,
-equipment, Bag aggregates, character bank, Secure Container contents, account
-Secure Container tiers, Recovery Storage, item policies, player corpse custody,
-and item transaction audit. PostgreSQL remains the authority.
+AuthService owns the durable item schema, mirrored definitions, character item
+states, top-level container identities, account Secure Container entitlements,
+and the future transaction boundary. PostgreSQL remains the authority. The
+schema is present before item traffic so later read and mutation phases build on
+one constrained custody model instead of inventing endpoint-local state.
 
 SimulationWorker will own live proximity, interaction, combat, corpse
 presentation, and authoritative encumbrance for its assigned shard. While a
@@ -264,11 +271,11 @@ restored by a replacement worker. Normal NPC corpses may remain worker-owned and
 disappear on restart, while content-selected bosses may use the durable corpse
 path. These choices do not introduce Zone or Layer ownership.
 
-Phases 1 and 2 do not add an AuthService item route, a PostgreSQL catalog mirror,
-item instances, custody, transactions, worker item state, or Unity inventory
-state. The Unity addition is content tooling and client presentation mapping,
-not item authority. Those runtime features remain later phases in the approved
-dependency order.
+Phase 3 adds no AuthService item route, gameplay item grant, transaction kernel,
+worker item state, or Unity inventory state. It adds the transactional catalog
+mirror, exact location-union schema, constraints, indexes, and complete empty
+character bootstrap. The Unity content tooling remains presentation and
+authoring support, not item authority.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
@@ -291,16 +298,43 @@ proposed schema and delivery order in
 | `simulation_join_tickets` | Short-lived exact-runtime admission credentials |
 | `character_simulation_sessions` | Global active simulation leases |
 | `schema_migrations` | Applied migration history |
+| `item_catalog_revisions` | Applied deterministic catalog revisions and one current revision per catalog |
+| `item_categories`, `item_tags`, `equipment_slots` | Stable catalog identities kept separate by domain meaning |
+| `item_definitions` and `item_definition_*` | Mirrored definition data, tags, equipment compatibility, location rules, and default policies |
+| `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Mirrored Bag capacity and specialized slot acceptance |
+| `secure_container_tiers` | Mirrored account-selectable Secure Container tiers |
+| `item_system_settings` | Data-driven base carry, inventory-slot, and bank-slot bootstrap values |
+| `account_secure_container_entitlements` | One selected Secure Container tier per account |
+| `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed custody identities and stable general or specialized slots |
+| `character_item_states` | Character aggregate revision, weight, capacity, and required top-level container ids |
+| `item_instances` | Durable quantity, revision, and exactly one container-slot or equipment assignment |
+| `item_instance_policies` | Protected-on-death and insurance lifecycle foundation |
+| `recovery_deliveries`, `recovery_delivery_items` | Per-character system delivery queue and delivered item membership |
+| `item_operations` | Global idempotency id, canonical request hash, status, and replay result |
+| `item_operation_changes`, `item_destructions` | State-change and destruction audit foundation |
 
 Active account login sessions are unique by account. Active simulation sessions
 are unique by both character and account. This prevents one account token from
 running multiple characters simultaneously, even if the token is copied to a
 second client.
 
-This table lists the implemented schema only. Planned item, container, policy,
-recovery, operation, and corpse tables are documented separately in
-[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
-and must not be treated as deployed schema.
+Every service-created character has exactly one active permanent inventory,
+bank, Secure Container, and Recovery Storage container. The character item-state
+row references those exact owned container types. An item instance must point to
+one existing container slot or one character equipment slot, never both, and
+deferrable unique occupancy constraints allow only one item in either
+assignment while preserving a future atomic swap path.
+
+Deleting a character cascades its item state, owned containers, contained and
+equipped items, policies, and recovery deliveries. The account-level Secure
+Container entitlement remains until the account is deleted. Item operations and
+change audit remain, while deleted actor and item references become null. This
+keeps deletion behavior explicit without retaining live custody rows.
+
+This table lists the implemented schema only. Corpse identity, corpse sections,
+death events, and snapshot tables remain planned for their later phase. The
+current container type contract can represent their future item custody without
+introducing Zone or Layer identity.
 
 ## Runtime Identity And Assignment Safety
 

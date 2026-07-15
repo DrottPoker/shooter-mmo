@@ -1,10 +1,14 @@
 using AuthService.Http;
+using AuthService.Items;
 using Dapper;
 using Npgsql;
 
 namespace AuthService.Characters;
 
-public sealed class CharacterService(NpgsqlDataSource dataSource, IConfiguration configuration)
+public sealed class CharacterService(
+    NpgsqlDataSource dataSource,
+    IConfiguration configuration,
+    CharacterItemStateBootstrapper itemStateBootstrapper)
 {
     public async Task<ServiceResult<IReadOnlyCollection<CharacterResponse>>> ListAsync(
         Guid accountId,
@@ -91,12 +95,13 @@ public sealed class CharacterService(NpgsqlDataSource dataSource, IConfiguration
                 returning id as "Id", name as "Name", currency as "Currency", created_at as "CreatedAt";
                 """;
 
+            var characterId = Guid.NewGuid();
             var character = await connection.QuerySingleAsync<CharacterResponse>(
                 new CommandDefinition(
                     insertSql,
                     new
                     {
-                        Id = Guid.NewGuid(),
+                        Id = characterId,
                         AccountId = accountId,
                         Name = name,
                         NormalizedName = normalizedName
@@ -104,14 +109,26 @@ public sealed class CharacterService(NpgsqlDataSource dataSource, IConfiguration
                     transaction,
                     cancellationToken: cancellationToken));
 
+            await itemStateBootstrapper.BootstrapAsync(
+                connection,
+                transaction,
+                characterId,
+                cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<CharacterResponse>.Ok(character);
         }
-        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+        catch (PostgresException exception) when (
+            exception.SqlState == PostgresErrorCodes.UniqueViolation
+            && exception.ConstraintName == "characters_normalized_name_key")
         {
             await transaction.RollbackAsync(cancellationToken);
             return ServiceResult<CharacterResponse>.Conflict("character_name_taken", "Character name is already taken.");
         }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 }
-

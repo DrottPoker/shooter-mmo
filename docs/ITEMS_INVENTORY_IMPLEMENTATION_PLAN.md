@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-Status: Approved delivery baseline, Phases 1 and 2 completed, Phase 3 next
+Status: Approved delivery baseline, Phases 1 through 3 completed, Phase 4 next
 
 ## Purpose
 
@@ -380,9 +380,9 @@ before persistent item definitions depend on it.
 - Show all validation errors with the relevant definition or field.
 - Show the previous and candidate catalog revisions and classify each changed
   definition as display-only, structural, added, or removed.
-- Require explicit confirmation for structural changes and explain that such
-  changes require migration review after Phase 3 introduces persistent item
-  state.
+- Require explicit confirmation for structural changes and explain that they
+  require migration review whenever Phase 3 persistent state already depends on
+  the affected structure.
 - Refresh Unity assets after a successful bake without changing runtime item
   authority.
 - Keep command-line compilation and `--verify` fully supported so CI and
@@ -466,11 +466,12 @@ client presentation remains local, and no persistence work has started.
 - No migration, item-instance, PostgreSQL inventory, AuthService route,
   SimulationWorker inventory state, or player inventory UI was introduced.
 
-The Phase 2 exit gate is satisfied. Phase 3 remains not started.
+The Phase 2 exit gate is satisfied. Phase 3 is now also complete as documented
+below.
 
 ## Phase 3: Schema, Migrations, And Character Bootstrap
 
-Status: Not started
+Status: Completed 2026-07-15
 
 ### Work
 
@@ -509,6 +510,39 @@ Status: Not started
 
 The schema can represent all planned custody without a live HTTP endpoint and
 cannot represent the common duplicate-location states.
+
+### Implementation Result
+
+- AuthService migration `202607151200_item_persistence_foundation` adds the
+  catalog, definition relation, Bag layout, Secure Container tier, item,
+  container, slot, character state, policy, recovery, operation, audit, and
+  destruction tables without modifying an older migration id.
+- PostgreSQL CHECK, foreign-key, deferrable unique occupancy, partial unique
+  aggregate, revision, lifecycle, and exact location-union constraints reject
+  duplicate slot, equipment, Bag, and operation assignments plus unassigned or
+  multiply assigned items.
+- Stable indexes cover catalog revision lookup, character snapshots, definition
+  and container item lookup, slots, active policies, operation replay, and the
+  Recovery Storage queue.
+- AuthService bundles the checked-in deterministic WorldData runtime catalog,
+  revalidates its revision and structural fingerprints, and mirrors every
+  definition relation transactionally under a dedicated advisory lock.
+- Startup rejects definition changes with live item instances and Secure
+  Container tier changes with live entitlements. Display-only catalog changes
+  remain safe, while identity removal requires an explicit migration.
+- One data-driven PostgreSQL bootstrap function creates base carry capacity
+  `200`, 20 permanent inventory slots, 40 bank slots, the entitled Secure
+  Container tier and slots, and the unbounded Recovery Storage identity.
+  Database startup backfills active characters idempotently, and
+  `CharacterService` calls the same function inside the character transaction.
+- Isolated PostgreSQL coverage verifies concurrent initialization, complete and
+  idempotent backfill, catalog reconciliation, atomic character creation,
+  required uniqueness failures, location and revision checks, deletion rules,
+  planned custody representation, and structural compatibility fencing.
+- No item HTTP endpoint, query snapshot, mutation transaction kernel,
+  SimulationWorker inventory state, or Unity inventory behavior was added.
+
+The Phase 3 exit gate is satisfied. Phase 4 remains not started.
 
 ## Phase 4: Read Model And Development Fixtures
 

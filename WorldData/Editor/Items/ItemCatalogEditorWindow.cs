@@ -623,9 +623,9 @@ namespace ShooterMmo.WorldData.Editor.Items
                 "Confirm Structural Item Changes",
                 "The following changes can affect future persistent item state:\n\n"
                     + string.Join("\n", structuralChanges)
-                    + "\n\nAfter Phase 3 introduces persistent item state, structural changes "
-                    + "require explicit migration review. Confirm that these changes are "
-                    + "intentional before "
+                    + "\n\nAuthService now rejects startup when live item instances depend "
+                    + "on an incompatible structural change. Such changes require an "
+                    + "explicit data migration. Confirm that these changes are intentional before "
                     + action + ".",
                 "Confirm " + action,
                 "Cancel");

@@ -56,9 +56,12 @@ not affect the result.
 - Display-only changes alter the catalog revision but do not alter an item's
   structural fingerprint.
 
-Once persistent item state exists, a changed structural fingerprint must be
-handled by an explicit data migration. Regenerating runtime JSON is never
-sufficient authorization to invalidate persistent state.
+AuthService now mirrors these fingerprints into PostgreSQL. A structural change
+is accepted automatically only when no live item instance or affected Secure
+Container entitlement references it. Otherwise AuthService rejects startup
+until an explicit data migration makes the persistent state compatible.
+Regenerating runtime JSON is never sufficient authorization to invalidate live
+state.
 
 ## Unity Editor Workflow
 
@@ -77,7 +80,7 @@ the separate client presentation mapping.
   runtime gameplay, and client presentation JSON.
 - Display-only, structural, added, and removed definitions are reported against
   the previous runtime catalog. Structural changes require explicit
-  confirmation and, after persistent item state exists, migration review.
+  confirmation and Phase 3 persistence compatibility review.
 
 Client presentation JSON is bundled at
 `shooter-mmorpg-unity-client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
