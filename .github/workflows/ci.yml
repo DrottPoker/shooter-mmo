@@ -59,6 +59,26 @@ jobs:
       - name: Build
         run: dotnet build ShooterMmo.slnx --configuration Release --no-restore
 
+      - name: Verify item catalog
+        run: >-
+          dotnet run --project Tools/ItemCatalogCompiler
+          --configuration Release
+          --no-build
+          --
+          WorldData/Authoring/Items/core.item-catalog.json
+          WorldData/Runtime/Items/core.item-catalog.json
+          --verify
+
+      - name: Verify World collision data
+        run: >-
+          dotnet run --project Tools/WorldCollisionCompiler
+          --configuration Release
+          --no-build
+          --
+          WorldData/Authoring/local-world-1.collision-authoring.json
+          WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1
+          --verify
+
       - name: Test
         run: >-
           dotnet test ShooterMmo.slnx

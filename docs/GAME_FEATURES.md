@@ -206,8 +206,9 @@ They remain in the MVP specification until working behavior is available:
 - Dynamic collision transform replication.
 - Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
-- Slot-based inventory, equipment, Bags, Secure Container, bank, Recovery
-  Storage, carry weight, item policies, and loot.
+- Player-facing slot inventory, durable equipment and Bag instances, Secure
+  Container contents, bank, Recovery Storage, carry-state integration, item
+  policy lifecycle, and loot.
 - Durable player corpses, configurable NPC corpses, concurrent looting, and
   one-death insurance.
 - Gathering, crafting, professions, and player economy.
@@ -217,10 +218,26 @@ They remain in the MVP specification until working behavior is available:
 - Social, grouping, guild, chat, and trading systems.
 - Final UI, audio, visual effects, animation, and accessibility.
 
-The planned player rules are defined in
+The neutral item catalog, pure Phase 1 rules, and Phase 2 Unity authoring and
+client presentation foundation now exist, but they create no player-visible
+inventory behavior and therefore do not have a feature-status section in this
+document. The planned player rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
-not implemented behavior and therefore do not yet have a feature-status section
-in this document.
+not yet connected to persistent item state, service routes, SimulationWorker,
+or Unity inventory presentation.
+
+The planned inventory presentation keeps character equipment on the left. The
+right side is split with contextual containers such as bank, corpse, Recovery
+Storage, or world loot above the character inventory. Permanent inventory,
+equipped Bag contents, and Secure Container access remain in the lower-right
+area while another container is open.
+
+Item icons and other visual metadata are client-owned presentation assets keyed
+by stable definition id. The bundled presentation catalog records the exact
+gameplay source revision and its own deterministic presentation revision. Unity
+validates and caches this catalog once per matching revision, then future
+inventory, bank, corpse, and Recovery Storage views can reuse local lookups for
+state received from the server.
 
 ## Feature Documentation Template
 

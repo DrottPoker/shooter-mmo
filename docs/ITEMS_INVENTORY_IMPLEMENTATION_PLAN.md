@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-Status: Approved planning baseline, implementation not started
+Status: Approved delivery baseline, Phases 1 and 2 completed, Phase 3 next
 
 ## Purpose
 
@@ -21,7 +21,7 @@ Implementation should proceed through four milestones:
 
 | Milestone | Outcome |
 | --- | --- |
-| A | Durable item, slot inventory, equipment, Bag, bank, Secure Container, Recovery Storage, policy, and transaction foundation |
+| A | Unity item-catalog authoring, durable item, slot inventory, equipment, Bag, bank, Secure Container, Recovery Storage, policy, and transaction foundation |
 | B | Carry weight, encumbrance, in-world mutation authority, and Unity inventory flow |
 | C | Idempotent death partition, durable player corpses, concurrent looting, Bag swaps, and one-death insurance |
 | D | NPC corpse variants, client polish, load testing, documentation, and release hardening |
@@ -49,6 +49,10 @@ being postponed until the end.
 - Store neutral item catalog authoring under `WorldData/Authoring/Items`.
 - Compile or validate deterministic runtime catalog data under
   `WorldData/Runtime/Items`.
+- Provide an Editor-only Unity authoring window over the canonical JSON without
+  making Unity assets a second source of truth.
+- Use the same framework-neutral compiler for Unity baking, command-line
+  verification, tests, and CI.
 - Give the catalog a deterministic revision.
 - Seed or reconcile the PostgreSQL definition mirror after schema migration and
   before item traffic is accepted.
@@ -106,6 +110,7 @@ SimulationWorker/
 
 WorldData/
   Authoring/Items/
+  Editor/Items/
   Runtime/Items/
 
 Tests/ShooterMmo.Backend.Tests/
@@ -249,11 +254,13 @@ Exit gate:
 
 ## Phase 1: Item Catalog And Pure Rules
 
+Status: Completed 2026-07-15
+
 ### Work
 
 - Define the neutral authoring format for item definitions, tags, slot
-  compatibility, location eligibility, Bag layouts, unit weight, stack limits,
-  and secure tiers.
+  compatibility, location eligibility, Bag layouts, unitless integer weight,
+  stack limits, and secure tiers.
 - Add representative development definitions:
   - Stackable material.
   - Stackable medical item.
@@ -278,7 +285,7 @@ Exit gate:
 ### Tests
 
 - Duplicate ids and slots fail validation.
-- Invalid weights and stack limits fail validation.
+- Negative or decimal weights and invalid stack limits fail validation.
 - Specialized slots accept configured tags and reject unrelated definitions.
 - Weapons are rejected from Secure Container.
 - An empty Bag can use general slots and a non-empty Bag cannot.
@@ -286,13 +293,184 @@ Exit gate:
   percent.
 - Integer comparisons reject values above 140 percent without floating-point
   rounding.
+- The canonical base character capacity is `200`, with weight `280` as its exact
+  140 percent hard cap.
 
 ### Exit Gate
 
 The catalog and rules are deterministic, framework-neutral where sharing is
 needed, and independent of HTTP, Unity, and PostgreSQL.
 
-## Phase 2: Schema, Migrations, And Character Bootstrap
+Implementation result:
+
+- Strict neutral authoring lives in
+  `WorldData/Authoring/Items/core.item-catalog.json`.
+- Deterministic runtime content lives in
+  `WorldData/Runtime/Items/core.item-catalog.json` with one catalog revision and
+  per-definition and per-tier structural fingerprints.
+- Framework-neutral contracts, compiler validation, and pure rules live under
+  `WorldData/Runtime/ItemDomain` and compile for .NET through
+  `Shared/DotNet/WorldData`.
+- Weight uses a unitless integer scale with ammunition `1`, pistol `10`, base
+  character capacity `200`, and no physical-unit fields.
+- `Tools/ItemCatalogCompiler` compiles and verifies checked-in runtime content.
+- Backend unit tests cover every Phase 1 test case plus malformed JSON,
+  deterministic ordering, structural change detection, stack compatibility,
+  equipment compatibility, integer stack weight, and Bag cycle rejection.
+- No schema, migration, item instance, HTTP route, SimulationWorker item state,
+  or Unity inventory behavior was introduced.
+
+The Phase 1 exit gate is satisfied. The local and CI quality gates verify that
+the runtime catalog still matches authoring.
+
+## Phase 2: Unity Item Catalog Authoring And Bake Tool
+
+Status: Completed 2026-07-15
+
+This phase is intentionally placed before PostgreSQL catalog mirroring. It
+turns the completed Phase 1 catalog contract into a practical content workflow
+before persistent item definitions depend on it.
+
+### Work
+
+- Add an Editor-only assembly under `WorldData/Editor/Items` with no
+  `UnityEditor` reference from runtime assemblies.
+- Add `Tools > Shooter MMO > Item Catalog` as the canonical authoring window.
+- Load and present `WorldData/Authoring/Items/core.item-catalog.json` through:
+  - Searchable and filterable definition list.
+  - Create and duplicate actions.
+  - Stable id and display-name fields.
+  - Category and tag selectors.
+  - Unitless integer weight and stack-limit fields.
+  - Equipment-slot compatibility.
+  - Player-destruction and Secure Container eligibility.
+  - Default policies.
+  - Bag carry-capacity bonus, general slots, specialized slots, accepted tags,
+    and stable slot indices.
+- Add a client-only item presentation catalog under
+  `shooter-mmorpg-unity-client/Assets/Resources/Items/Presentation` keyed by the
+  same stable definition ids. Presentation entries may contain:
+  - Icon Sprite.
+  - Localization key and fallback display text.
+  - Optional UI or world-prefab presentation key.
+  - Other non-authoritative visual metadata.
+- Present gameplay fields and client presentation fields in the same Editor
+  window while saving them to their separate authoritative locations.
+- Store the source gameplay catalog revision and a separate deterministic
+  presentation revision in the baked presentation catalog. Unity rejects a
+  mismatched gameplay pair, while icon-only changes advance only the
+  presentation revision.
+- Bundle the MVP presentation catalog and icon assets with the Unity client.
+  Do not add remote Addressables delivery in this phase, but keep stable
+  presentation keys so it can be added later without changing item ids or
+  server contracts.
+- Keep categories, tags, equipment slots, policies, location eligibility, and
+  Bag slot acceptance visually and structurally separate.
+- Lock the id of every definition already present in the baked runtime catalog.
+  A new definition id may be edited until its first successful bake.
+- Do not expose destructive deletion for an already baked definition in the
+  first version. Retirement requires an explicit inactive-definition or
+  tombstone design before persistent state exists, and ids are never reused.
+- Use the existing framework-neutral catalog compiler as the only validation
+  and structural-fingerprint authority. Do not copy item rules into Editor UI
+  code.
+- Provide `Validate`, `Save`, and `Save And Bake` actions.
+- Write candidate authoring and runtime output safely so a validation or bake
+  failure leaves both checked-in files unchanged.
+- Show all validation errors with the relevant definition or field.
+- Show the previous and candidate catalog revisions and classify each changed
+  definition as display-only, structural, added, or removed.
+- Require explicit confirmation for structural changes and explain that such
+  changes require migration review after Phase 3 introduces persistent item
+  state.
+- Refresh Unity assets after a successful bake without changing runtime item
+  authority.
+- Keep command-line compilation and `--verify` fully supported so CI and
+  backend development never require an open Unity Editor.
+- Document the Editor workflow, command-line fallback, and recovery from a
+  failed bake.
+
+ScriptableObjects may own the client-only presentation mapping and direct Unity
+asset references. They must not duplicate authoritative gameplay fields or
+become required input for backend and CI builds. Canonical JSON remains the sole
+gameplay catalog authority.
+
+### Automated Tests
+
+- Unity EditMode tests load the checked-in authoring catalog into the Editor
+  model and round-trip it without semantic changes.
+- An Editor-created item with valid category, weight, stack, equipment, policy,
+  location, and Bag data passes the shared compiler.
+- Duplicate ids, invalid references, decimal or negative weight, invalid stack
+  limits, and malformed Bag slots block save and bake with actionable errors.
+- An already baked definition id cannot be changed or reused through the
+  Editor.
+- Display-only edits preserve the definition structural fingerprint.
+- Structural edits change the definition structural fingerprint and require
+  confirmation.
+- Repeated baking of identical content produces byte-identical runtime JSON and
+  the same catalog revision.
+- The command-line compiler verifies output produced by the Unity Editor.
+- A failed validation or bake leaves authoring and runtime files unchanged.
+- Runtime WorldData assemblies have no `UnityEditor` dependency.
+- Every gameplay definition has exactly one client presentation entry, and
+  duplicate or unknown presentation definition ids fail validation.
+- The baked presentation catalog records the exact source gameplay revision and
+  its own deterministic presentation revision.
+- Changing an icon or other client-only presentation does not change an item
+  structural fingerprint or gameplay catalog revision, but it changes the
+  presentation revision.
+
+### Manual Test Gate
+
+1. Open `Tools > Shooter MMO > Item Catalog` in Unity.
+2. Create the approved development pistol definition with stable id
+   `weapon.starter_pistol`, weight `10`, its equipment compatibility, and its
+   icon.
+3. Run `Validate` and confirm the new item has no errors.
+4. Run `Save And Bake` and confirm authoring and runtime gameplay JSON update,
+   the client presentation entry is generated, and it records the source
+   gameplay revision plus its own presentation revision.
+5. Change only the display name, bake, and confirm the structural fingerprint
+   remains unchanged. Restore the intended display name through the Editor.
+6. Change weight and confirm the tool reports a structural change, then cancel
+   that edit without saving it.
+7. Create an invalid draft with a duplicate id or invalid Bag slot and confirm
+   save and bake are blocked without changing either checked-in JSON file.
+8. Discard the invalid draft and confirm command-line `--verify` succeeds.
+
+### Exit Gate
+
+A content author can create, duplicate, edit, validate, and bake item definitions
+and select their client presentation without hand-editing JSON. Unity, the
+command-line compiler, tests, and CI all produce or verify the same deterministic
+runtime catalog. Canonical JSON remains the sole gameplay content authority,
+client presentation remains local, and no persistence work has started.
+
+### Implementation Result
+
+- `ShooterMmo.WorldData.Editor` provides the canonical searchable and
+  category-filtered item window, full definition and Bag editing, draft id
+  management, strict validation, safe save and bake actions, change
+  classification, and structural-change confirmation.
+- `ShooterMmo.WorldData.Client` owns deterministic presentation validation,
+  exact gameplay-revision pairing, Resources-based icon lookup, and cached
+  catalog access without becoming an item-rule authority.
+- The checked-in client presentation catalog covers all nine gameplay
+  definitions. Gameplay and presentation revisions are independent, so
+  icon-only changes cannot alter gameplay fingerprints.
+- EditMode coverage exercises Editor round-tripping, valid and invalid content,
+  locked identities, deterministic baking and command-line verification,
+  rollback, assembly dependency direction, presentation coverage, revision
+  pairing, and client caching.
+- No migration, item-instance, PostgreSQL inventory, AuthService route,
+  SimulationWorker inventory state, or player inventory UI was introduced.
+
+The Phase 2 exit gate is satisfied. Phase 3 remains not started.
+
+## Phase 3: Schema, Migrations, And Character Bootstrap
+
+Status: Not started
 
 ### Work
 
@@ -305,6 +483,7 @@ needed, and independent of HTTP, Unity, and PostgreSQL.
 - Mirror the checked-in item catalog transactionally.
 - Backfill every existing active character with:
   - Character item-state row.
+  - Base carry capacity `200` in the neutral integer weight scale.
   - Permanent inventory container and initial slots.
   - Bank container and initial slots.
   - Secure Container and base-tier slots.
@@ -331,7 +510,7 @@ needed, and independent of HTTP, Unity, and PostgreSQL.
 The schema can represent all planned custody without a live HTTP endpoint and
 cannot represent the common duplicate-location states.
 
-## Phase 3: Read Model And Development Fixtures
+## Phase 4: Read Model And Development Fixtures
 
 ### Work
 
@@ -347,6 +526,8 @@ cannot represent the common duplicate-location states.
   - Recovery deliveries when authorized.
   - Carried weight, capacity, load ratio, sprint eligibility, and movement
     multiplier.
+- Return definition ids in item-state rows instead of repeating complete item
+  definitions or presentation data for every instance.
 - Add test-only fixture helpers inside the test project. Do not expose a public
   grant endpoint.
 - Ensure character and policy ownership is enforced in every query.
@@ -357,6 +538,8 @@ cannot represent the common duplicate-location states.
 - A new character returns empty but complete state.
 - Empty slots remain stable and ordered.
 - Definition ids and policy summaries resolve through the catalog revision.
+- Repeated instances of one definition do not duplicate its catalog metadata in
+  the item-state payload.
 - Secrets and internal operation metadata never appear in player DTOs.
 
 ### Exit Gate
@@ -364,7 +547,7 @@ cannot represent the common duplicate-location states.
 The backend exposes a coherent authoritative snapshot without permitting item
 mutation.
 
-## Phase 4: Core Item Transaction Kernel
+## Phase 5: Core Item Transaction Kernel
 
 ### Work
 
@@ -412,7 +595,7 @@ Every command must:
 All durable item mutations use one tested transaction kernel and adversarial
 concurrency cannot duplicate or lose quantity.
 
-## Phase 5: Policies, Bank, Secure Container, And Recovery APIs
+## Phase 6: Policies, Bank, Secure Container, And Recovery APIs
 
 ### Work
 
@@ -426,6 +609,10 @@ concurrency cannot duplicate or lose quantity.
 - Add account-authenticated read and offline-safe mutation endpoints.
 - Add stable Problem Details codes.
 - Mark character-specific responses `no-store`.
+- Make the neutral item-catalog response conditionally cacheable by catalog
+  revision and ETag. An unchanged request returns `304 Not Modified`.
+- Never return icon bytes, Unity asset references, or other client presentation
+  assets from AuthService.
 
 Proposed account HTTP surface:
 
@@ -461,12 +648,12 @@ service contract, authority checks, and error codes are the stable boundary.
 
 The complete durable out-of-world item foundation is usable and policy safe.
 
-## Phase 6: Carry State And Shared Encumbrance
+## Phase 7: Carry State And Shared Encumbrance
 
 ### Work
 
 - Add authoritative carried weight and capacity to character item state.
-- Compute base capacity plus equipped Bag bonus.
+- Compute base capacity `200` plus the equipped Bag bonus.
 - Return a monotonic carry-state revision after every relevant transaction.
 - Add encumbrance state to the shared simulation rules used by
   SimulationWorker and Unity prediction.
@@ -495,7 +682,7 @@ The complete durable out-of-world item foundation is usable and policy safe.
 Movement and item state cannot disagree about encumbrance after join, reconnect,
 or mutation.
 
-## Phase 7: In-World Mutation Boundary
+## Phase 8: In-World Mutation Boundary
 
 ### Work
 
@@ -528,12 +715,22 @@ or mutation.
 All active-character mutations have one live authority and one durable authority
 without direct worker database access.
 
-## Phase 8: Unity Inventory Foundation
+## Phase 9: Unity Inventory Foundation
 
 ### Work
 
 - Add persistent client models for catalog, item state, revisions, operation ids,
   and structured errors.
+- Load the bundled gameplay catalog and client presentation catalog once into a
+  scene-independent, definition-id-indexed client cache.
+- Compare the local gameplay and presentation source revisions before showing
+  item UI.
+- Compare the local catalog revision with the authoritative server revision.
+  The MVP reports a stable update-required error on mismatch instead of using
+  stale item data.
+- Resolve icons, localized labels, and optional presentation prefabs locally.
+  Inventory snapshots and mutation results carry only definition ids and
+  instance state.
 - Implement temporary but complete slot UI for:
   - Permanent inventory.
   - Equipment.
@@ -541,12 +738,22 @@ without direct worker database access.
   - Secure Container.
   - Bank.
   - Recovery Storage.
+- Use the canonical inventory layout:
+  - Character equipment on the left.
+  - Contextual containers such as bank, corpse, Recovery Storage, or world loot
+    in the upper-right area.
+  - Character inventory, equipped Bag contents, and Secure Container in the
+    lower-right area.
+  - Keep the lower-right character inventory visible while a contextual
+    container is open.
 - Show carried weight, capacity, load percentage, movement multiplier, and sprint
   restriction.
 - Disable invalid local targets for usability while still sending every action
   to server authority.
 - Refresh targeted state after stale or concurrency errors.
 - Never optimistically duplicate or destroy a local item instance.
+- Do not reload the catalog or icon assets for each inventory refresh, scene
+  change, slot update, or container operation.
 
 Only the UI presentation may be temporary. Client state, networking,
 idempotency, revisions, and authority handling are long-term code.
@@ -558,6 +765,13 @@ idempotency, revisions, and authority handling are long-term code.
 - Verify a non-empty Bag is rejected from those locations.
 - Use medical, material, and ammunition specialized slots.
 - Verify weapons cannot enter Secure Container.
+- Open bank, corpse, and Recovery Storage views and verify each uses the
+  upper-right area while equipment and lower-right character inventory remain
+  visible.
+- Open and refresh multiple containers and verify each repeated definition uses
+  the same cached icon and catalog entry without another catalog load.
+- Force a catalog-revision mismatch and verify the client reports that an update
+  is required rather than rendering stale item data.
 - Cross 100 percent weight and observe sprint disable and gradual slowdown.
 - Reach exactly 140 percent and verify further weight gain is rejected.
 - Disconnect and reconnect without losing or duplicating state.
@@ -567,7 +781,7 @@ idempotency, revisions, and authority handling are long-term code.
 The first player-facing inventory loop is usable through the real authoritative
 path.
 
-## Phase 9: Death Partition And Durable Player Corpses
+## Phase 10: Death Partition And Durable Player Corpses
 
 This phase depends on a server-authoritative death event producer. The durable
 service and integration tests may be built before combat, but live activation
@@ -609,7 +823,7 @@ waits for authoritative death.
 
 Player death cannot duplicate, lose, or expose protected durable items.
 
-## Phase 10: Concurrent Corpse Looting And Bag Swap
+## Phase 11: Concurrent Corpse Looting And Bag Swap
 
 ### Work
 
@@ -650,7 +864,7 @@ Player death cannot duplicate, lose, or expose protected durable items.
 
 Concurrent corpse interaction is deterministic, refreshable, and dupe safe.
 
-## Phase 11: Insurance And Quest Lifecycle Integration
+## Phase 12: Insurance And Quest Lifecycle Integration
 
 ### Work
 
@@ -677,7 +891,7 @@ Concurrent corpse interaction is deterministic, refreshable, and dupe safe.
 
 Policy lifecycle is explicit, auditable, and independent from item category.
 
-## Phase 12: NPC Corpse Variants
+## Phase 13: NPC Corpse Variants
 
 ### Work
 
@@ -705,7 +919,7 @@ Policy lifecycle is explicit, auditable, and independent from item category.
 NPC persistence is content-controlled and normal NPC volume does not force every
 corpse into PostgreSQL.
 
-## Phase 13: Performance, Operations, And Release Hardening
+## Phase 14: Performance, Operations, And Release Hardening
 
 ### Work
 
@@ -807,4 +1021,3 @@ Update documentation in the same change whenever behavior becomes real:
 
 Until a phase is delivered, its behavior remains planned and must not be listed
 as implemented in feature documents.
-

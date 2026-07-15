@@ -65,8 +65,8 @@ scaling. They are not implemented and are not faked in the current runtime.
   SimulationWorker.
 - **GameSimulation** is the fixed-step movement and collision implementation
   compiled from the same source for server authority and client prediction.
-- **WorldData** contains neutral world collision authoring and checksummed
-  runtime chunks shared by SimulationWorker and Unity.
+- **WorldData** contains neutral world collision authoring, checksummed runtime
+  chunks, deterministic item content, and framework-neutral pure item rules.
 - **Shared** contains framework-neutral configuration, networking, and health
   helpers for backend processes.
 
@@ -108,6 +108,14 @@ The repository currently supports:
 - A finite SimulationWorker benchmark and a separate long-running active bot
   population tool, both using a shared headless UDP client foundation without
   persistent bot accounts.
+- A strict item catalog compiler with nine representative definitions, stable
+  content identities, deterministic catalog and structural revisions, and pure
+  stack, slot, equipment, Secure Container, Bag, unitless integer-weight, and
+  encumbrance rules. The shared base character capacity is `200`.
+- A Unity Editor item catalog workflow that edits the neutral gameplay source,
+  delegates validation and structural fingerprints to the shared compiler,
+  bakes deterministic runtime content, and maps every definition to a bundled
+  client presentation entry with a separate revision.
 
 ## Current Scale Boundary
 
@@ -121,23 +129,37 @@ partitions and layers as controlled population copies inside a shard. That work
 will extend SimulationAssignment and placement. It must not redefine World or
 introduce isolated realms.
 
-## Next Planned Foundation
+## Item Foundation Status And Next Step
 
-The next backend foundation is the durable item and inventory system. The locked
-direction is slot-based rather than grid-based and includes:
+Phases 1 and 2 of the durable item and inventory plan are complete. The
+repository has the neutral WorldData catalog, deterministic runtime content,
+structural change detection, strict shared validation, pure rules, and a custom
+Unity authoring and bake window. Every gameplay definition has a separately
+revisioned client presentation entry. Icons and presentation metadata are
+bundled with the client and cached locally instead of being sent with inventory
+responses.
 
-- Stable item definitions, item instances, stacks, categories, tags, and
-  server-owned item policies.
+The foundation intentionally has no item persistence or player-facing inventory
+behavior. The next approved step is Phase 3 schema, migrations, catalog
+mirroring, and character item-state bootstrap.
+
+The remaining locked direction is slot-based rather than grid-based and includes:
+
+- PostgreSQL item-definition mirror, item instances, stacks, and server-owned
+  item policies built on the stable catalog identities.
 - Permanent character inventory, per-character bank, equipment, physical Bag
   items, per-character Secure Container contents, and account-selected Secure
   Container tiers.
-- Integer carry weight, a 140 percent hard cap, and shared authoritative
-  encumbrance behavior.
+- Unitless integer carry weight, base character capacity `200`, a 140 percent
+  hard cap at base weight `280`, and shared authoritative encumbrance behavior.
+- A player inventory layout with equipment on the left, contextual containers
+  in the upper-right area, and character inventory in the lower-right area.
 - System-write-only Recovery Storage.
 - Transactional death partition, durable five-minute player corpses, concurrent
   looting, one-death insurance, and configurable NPC corpse persistence.
 
-These systems are planned and are not present in the current executable. See
+These persistent and player-facing systems are planned and are not present in
+the current executable. See
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
@@ -147,8 +169,9 @@ These systems are planned and are not present in the current executable. See
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- The planned item, inventory, equipment, Bag, Secure Container, bank, recovery,
-  carry-weight, corpse, and loot foundation described above.
+- Persistent item instances, inventory custody, equipment, Bag instances,
+  Secure Container contents, bank, Recovery Storage, carry-state integration,
+  corpse custody, and loot transactions.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live

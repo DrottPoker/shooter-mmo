@@ -2,7 +2,8 @@
 
 Last updated: 2026-07-15
 
-Status: Planned and not implemented
+Status: Locked design target; Phase 1 catalog and pure rules implemented,
+durable gameplay systems planned
 
 ## Purpose
 
@@ -90,7 +91,7 @@ forbidden definitions remain content-controlled.
 
 Item definitions also own:
 
-- Unit weight in integer grams.
+- Unitless integer weight.
 - Maximum stack size.
 - Equipment-slot compatibility.
 - Whether the item is a Bag.
@@ -104,6 +105,48 @@ instances could become invalid. Content reload must never silently create an
 invalid character state.
 
 The game does not use weapon attachments in the current design.
+
+### Catalog Authoring Workflow
+
+Phase 2 provides a custom Unity Editor window for item authoring. It operates on
+the canonical authoring JSON under `WorldData/Authoring/Items` and invokes the
+same deterministic catalog compiler used by command-line verification and CI.
+
+The Editor is a content-authoring interface, not an item authority. Unity assets
+must not become a second catalog, and backend compilation must not require Unity.
+The first Editor version supports creation, duplication, editing, validation,
+and baking. It does not permit destructive removal or id reuse for definitions
+that already exist in the baked catalog.
+
+### Client Presentation And Catalog Caching
+
+Item data is split by responsibility:
+
+- WorldData gameplay definitions own category, tags, unitless weight, stack
+  rules, equipment compatibility, location eligibility, policies, and Bag
+  layout.
+- Unity client presentation owns icons, localization keys, visual prefabs, and
+  other non-authoritative presentation metadata.
+- AuthService owns durable instance state such as identity, quantity, custody,
+  policy state, and revision.
+
+The client presentation catalog is keyed by stable item definition id and is
+bundled with the MVP Unity client. It records the WorldData catalog revision it
+was baked against plus its own deterministic presentation revision. An icon-only
+change advances the presentation revision without changing gameplay structural
+fingerprints. Unity loads both local catalogs once into a definition-id lookup
+and reuses the result across scenes and inventory refreshes.
+
+Server snapshots and mutation results send definition ids and changed instance
+state. They do not repeatedly send icons, complete definitions, or Unity asset
+references. AuthService never serves image bytes as part of inventory state.
+
+At session or inventory bootstrap, the server provides its authoritative catalog
+revision. The MVP client requires its bundled gameplay catalog and presentation
+catalog to match that revision. A mismatch produces an update-required error
+instead of allowing stale rules or missing presentation. A future remote
+Addressables catalog may download and cache presentation by presentation
+revision, but it must preserve the same definition ids and server contract.
 
 ## Item Instances And Stacks
 
@@ -278,7 +321,16 @@ without requiring a custody redesign.
 
 ## Carry Weight And Encumbrance
 
-Carry weight uses integer grams. Floating-point values are not authoritative.
+Carry weight uses unitless, non-negative integers. Physical measurement units,
+decimal weight values, and floating-point comparisons are not part of the
+authoritative model. The baseline balance scale is:
+
+- One ammunition unit has weight `1`.
+- A pistol has weight `10`.
+- A character has base carry capacity `200`.
+
+The development catalog uses the same scale. Its representative training rifle
+has weight `25`, and its Field Pack grants a `50` carry-capacity bonus.
 
 Carried weight includes:
 
@@ -296,8 +348,9 @@ Carried weight excludes:
 - Corpse contents.
 - Vendor, auction, mail, trade escrow, and other non-carried future custody.
 
-Carry capacity is primarily character-based. An equipped Bag may add a bonus.
-Only the currently equipped Bag grants its carry-capacity bonus.
+Carry capacity is primarily character-based. The base character capacity is
+`200`. An equipped Bag may add a bonus. Only the currently equipped Bag grants
+its carry-capacity bonus.
 
 ### Encumbrance Curve
 
@@ -308,6 +361,9 @@ Only the currently equipped Bag grants its carry-capacity bonus.
 - At 140 percent, movement uses 20 percent of base speed.
 - Exactly 140 percent is allowed.
 - No action may increase carried weight beyond 140 percent.
+
+With base capacity `200`, normal capacity ends at carried weight `200` and the
+140 percent hard cap is carried weight `280`.
 
 The intended linear reference points are:
 
@@ -328,6 +384,36 @@ Every operation computes the prospective numerator and denominator. Equipping a
 different Bag can change item weight, carried contents, and capacity in the same
 transaction. A structural content change that could create an over-cap state
 requires an explicit migration.
+
+## Inventory UI Layout
+
+The Phase 9 Unity inventory presentation uses a stable three-area layout:
+
+```text
++--------------------------+------------------------------------------+
+| Character equipment      | Context container                       |
+| Left side                | Upper right                              |
+|                          | Bank, corpse, Recovery Storage, or       |
+|                          | another opened loot or storage container |
+|                          +------------------------------------------+
+|                          | Character inventory                      |
+|                          | Lower right                              |
+|                          | Permanent slots, equipped Bag contents,  |
+|                          | and Secure Container                     |
++--------------------------+------------------------------------------+
+```
+
+- Character equipment remains on the left.
+- The right side is split vertically.
+- Character-owned inventory remains in the lower-right area.
+- The upper-right area presents the currently relevant external or contextual
+  container, including bank, corpse, Recovery Storage, and world loot
+  containers.
+- The lower-right character area remains visible while another container is
+  open so authoritative transfers have a clear source and destination.
+
+This is a presentation contract only. Server authority, revisions, slot rules,
+and transaction behavior do not depend on screen layout.
 
 ## Item Policies
 
@@ -553,8 +639,13 @@ control flow.
 
 ## Explicitly Not Implemented Yet
 
-This document is a locked design target, not a feature claim. The current
-repository does not yet implement item definitions, item instances, inventory,
-equipment, Bags, Secure Container, bank, Recovery Storage, carry weight,
-encumbrance, insurance, death partition, persistent corpses, or corpse looting.
+This document is primarily a locked design target, not a complete feature
+claim. Phase 1 now implements the neutral development item definitions,
+deterministic catalog and structural fingerprints, strict content validation,
+and pure stack, slot, equipment, Secure Container, Bag, weight, and encumbrance
+rules.
 
+The repository does not yet implement the PostgreSQL definition mirror, item
+instances, inventory custody, durable equipment or Bag instances, Secure
+Container contents, bank, Recovery Storage, authoritative carried state,
+insurance lifecycle, death partition, persistent corpses, or corpse looting.

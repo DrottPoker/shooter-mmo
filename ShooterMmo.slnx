@@ -2,6 +2,7 @@
   <Folder Name="/Shared/">
     <Project Path="Shared/DotNet/GameProtocol/ShooterMmo.GameProtocol.csproj" />
     <Project Path="Shared/DotNet/GameSimulation/ShooterMmo.GameSimulation.csproj" />
+    <Project Path="Shared/DotNet/WorldData/ShooterMmo.WorldData.csproj" />
     <Project Path="Shared/ShooterMmo.Shared.csproj" />
   </Folder>
   <Project Path="AuthService/AuthService.csproj" />
@@ -10,5 +11,6 @@
   <Project Path="Tools/SimulationStressGenerator/SimulationStressGenerator.csproj" />
   <Project Path="Tools/SimulationBotClient/ShooterMmo.Tools.SimulationBotClient.csproj" />
   <Project Path="Tools/ActiveSimulationBots/ActiveSimulationBots.csproj" />
+  <Project Path="Tools/ItemCatalogCompiler/ItemCatalogCompiler.csproj" />
   <Project Path="Tools/WorldCollisionCompiler/WorldCollisionCompiler.csproj" />
 </Solution>

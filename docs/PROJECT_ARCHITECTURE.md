@@ -182,10 +182,34 @@ SimulationWorker and Unity. Static collision is deterministic and shared.
 Dynamic collision uses a mutable spatial hash behind the same collision-query
 interface, leaving room for doors, lifts, and other server-owned objects.
 
-The planned item catalog also belongs to neutral shared content under
-`WorldData`, while durable item instances and ownership remain global PostgreSQL
-state. The item catalog is not implemented yet. See
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
+`WorldData/Authoring/Items` now owns the strict neutral item catalog source, and
+`WorldData/Runtime/Items` contains its deterministic compiled form. The catalog
+has stable identities, one complete revision, per-definition and per-tier
+structural fingerprints, and no Shard identity. Framework-neutral catalog and
+pure rule source is compiled for Unity by the `ShooterMmo.WorldData` assembly and
+for .NET tooling and tests through `Shared/DotNet/WorldData`. Neither compilation
+target becomes an authority. Future AuthService transaction paths must reapply
+the authoritative rules before committing durable state.
+
+The current pure rules cover stack compatibility, Bag slot tag acceptance,
+equipment compatibility, Secure Container eligibility, empty and non-empty Bag
+locations, Bag containment-cycle rejection, unitless integer weight arithmetic,
+base character capacity `200`, the 140 percent hard cap, and the linear
+fixed-point encumbrance multiplier. They have
+no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.
+
+`WorldData/Editor/Items` contains the Editor-only `ShooterMmo.WorldData.Editor`
+assembly and the canonical `Tools > Shooter MMO > Item Catalog` window. It edits
+the neutral authoring JSON and invokes the same strict .NET compiler used by CI.
+Runtime WorldData assemblies do not reference `UnityEditor`.
+
+Unity owns a separate client presentation catalog keyed by stable definition id
+under `Assets/Resources/Items/Presentation`. It references icons, localization
+keys, fallback text, and optional prefab presentation keys, but cannot duplicate
+or override authoritative gameplay fields. Its deterministic presentation
+revision records the exact source gameplay revision. The client validates and
+caches the bundled catalog once per matching revision, while server item state
+uses definition ids instead of transferring presentation assets.
 
 ### Unity Client
 
@@ -203,12 +227,12 @@ and metrics.
 
 `Tests/ShooterMmo.Backend.Tests` contains unit, socket-level, and isolated
 PostgreSQL integration tests. Unity tests live inside the Unity project. `Tools`
-contains repository-wide verification, content build, and external stress
-tools. `SimulationStressGenerator` hosts an in-memory loopback authority and
-manually polled headless UDP clients without adding per-bot transport threads or
-a stress admission path to production services. Its bounded latency reservoirs
-and process samplers make longer local soak tests safe to run without the tool
-itself accumulating every acknowledgement sample.
+contains repository-wide verification, collision and item content builds, and
+external stress tools. `SimulationStressGenerator` hosts an in-memory loopback
+authority and manually polled headless UDP clients without adding per-bot
+transport threads or a stress admission path to production services. Its
+bounded latency reservoirs and process samplers make longer local soak tests
+safe to run without the tool itself accumulating every acknowledgement sample.
 
 `ActiveSimulationBots` reuses the same tool-only headless UDP client core but
 runs beside the real AuthService and SimulationWorker. A Development-only,
@@ -218,9 +242,10 @@ route in-memory bot credentials to that authority and all other credentials to
 the unchanged PostgreSQL services. Reserved worker capacity prevents bots from
 occupying every connection slot needed by real local players.
 
-### Planned Durable Item Boundary
+### Durable Item Boundary
 
-Status: Planned and not implemented
+Status: Phase 1 shared catalog and rules plus Phase 2 Unity authoring implemented;
+persistence and runtime inventory integration planned
 
 AuthService will own durable item instances, stacks, slot assignments,
 equipment, Bag aggregates, character bank, Secure Container contents, account
@@ -238,6 +263,12 @@ Player corpses will use durable custody with an absolute expiry and can be
 restored by a replacement worker. Normal NPC corpses may remain worker-owned and
 disappear on restart, while content-selected bosses may use the durable corpse
 path. These choices do not introduce Zone or Layer ownership.
+
+Phases 1 and 2 do not add an AuthService item route, a PostgreSQL catalog mirror,
+item instances, custody, transactions, worker item state, or Unity inventory
+state. The Unity addition is content tooling and client presentation mapping,
+not item authority. Those runtime features remain later phases in the approved
+dependency order.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the

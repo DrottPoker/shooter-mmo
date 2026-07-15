@@ -5,7 +5,10 @@
     "ShooterMmo.Runtime",
     "Unity.InputSystem",
     "ShooterMmo.GameSimulation",
-    "ShooterMmo.GameProtocol"
+    "ShooterMmo.GameProtocol",
+    "ShooterMmo.WorldData",
+    "ShooterMmo.WorldData.Client",
+    "ShooterMmo.WorldData.Editor"
   ],
   "includePlatforms": [
     "Editor"

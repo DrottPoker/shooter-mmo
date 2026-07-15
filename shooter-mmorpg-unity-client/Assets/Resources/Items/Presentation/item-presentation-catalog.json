@@ -1,0 +1,70 @@
+{
+  "formatVersion": 1,
+  "sourceCatalogRevision": "b8039cce17e09fd7751ff1a087a2acec2d50013e1d3984d31619843f26aef7b0",
+  "presentationRevision": "5ba62e9dec6eebd3f4510fd9383a250fa8c8b615a7e2421becd1a7ee132721bf",
+  "entries": [
+    {
+      "definitionId": "ammunition.training_556",
+      "iconResourcePath": "",
+      "localizationKey": "items.ammunition.training_556.name",
+      "fallbackDisplayName": "Training 5.56 Ammunition",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "armor.starter_vest",
+      "iconResourcePath": "",
+      "localizationKey": "items.armor.starter_vest.name",
+      "fallbackDisplayName": "Starter Vest",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "bag.field_pack",
+      "iconResourcePath": "",
+      "localizationKey": "items.bag.field_pack.name",
+      "fallbackDisplayName": "Field Pack",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "material.iron_ore",
+      "iconResourcePath": "",
+      "localizationKey": "items.material.iron_ore.name",
+      "fallbackDisplayName": "Iron Ore",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "medical.field_dressing",
+      "iconResourcePath": "",
+      "localizationKey": "items.medical.field_dressing.name",
+      "fallbackDisplayName": "Field Dressing",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "quest_item.signal_transponder",
+      "iconResourcePath": "",
+      "localizationKey": "items.quest_item.signal_transponder.name",
+      "fallbackDisplayName": "Signal Transponder",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "ring.starter_band",
+      "iconResourcePath": "",
+      "localizationKey": "items.ring.starter_band.name",
+      "fallbackDisplayName": "Starter Band",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "tool.starter_pickaxe",
+      "iconResourcePath": "",
+      "localizationKey": "items.tool.starter_pickaxe.name",
+      "fallbackDisplayName": "Starter Pickaxe",
+      "prefabPresentationKey": ""
+    },
+    {
+      "definitionId": "weapon.training_rifle",
+      "iconResourcePath": "",
+      "localizationKey": "items.weapon.training_rifle.name",
+      "fallbackDisplayName": "Training Rifle",
+      "prefabPresentationKey": ""
+    }
+  ]
+}

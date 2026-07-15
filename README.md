@@ -43,6 +43,14 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   reconciliation, and remote interpolation.
 - Shared checksummed World collision chunks with ramps, walls, steps, slope
   handling, and position-driven streaming.
+- Strict WorldData item authoring with nine representative definitions,
+  deterministic runtime catalog and structural fingerprints, stable category,
+  tag, equipment-slot, and Secure Container tier identities, and pure item,
+  Bag, unitless integer weight, and encumbrance rules. The shared base character
+  capacity is 200.
+- A Unity item catalog window for searchable gameplay authoring, strict shared
+  validation, deterministic baking, structural-change review, and client-owned
+  icons and presentation metadata cached from a bundled Resources catalog.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
@@ -60,9 +68,13 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-The durable slot-based item and inventory foundation is the next planned backend
-milestone but is not implemented. Combat, persistent NPCs, zones, layers,
-complex terrain meshes, and production orchestration remain deferred.
+Phases 1 and 2 of the slot-based item foundation are implemented. Shared content,
+pure rules, Unity authoring, deterministic baking, and client presentation
+mapping exist without adding persistence or runtime inventory behavior. The
+PostgreSQL item-definition mirror and character bootstrap begin in Phase 3.
+Item instances, custody, transactions, service routes, and player-facing
+inventory remain later phases. Combat, persistent NPCs, zones, layers, complex
+terrain meshes, and production orchestration remain deferred.
 
 ## Requirements
 
@@ -118,6 +130,12 @@ dotnet restore ShooterMmo.slnx --locked-mode
 & ./Tools/Verify-DependencyPolicy.ps1
 dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet run --project Tools/ItemCatalogCompiler `
+  --configuration Release `
+  --no-build -- `
+  WorldData/Authoring/Items/core.item-catalog.json `
+  WorldData/Runtime/Items/core.item-catalog.json `
+  --verify
 dotnet test ShooterMmo.slnx --configuration Release --no-build
 dotnet run --project Tools/WorldCollisionCompiler -- `
   WorldData/Authoring/local-world-1.collision-authoring.json `
@@ -151,8 +169,8 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |
-| `WorldData` | Shared World content authoring and runtime data, currently checksummed collision chunks |
-| `Tools` | Verification, content compiler, stress benchmark, shared headless bot client, and active bot population |
+| `WorldData` | Neutral World content, including checksummed collision chunks and the deterministic item catalog and pure rules |
+| `Tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
 | `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `shooter-mmorpg-unity-client` | Unity project and Unity tests |
 | `docs` | Architecture, implemented features, setup, and product references |

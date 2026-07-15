@@ -1,0 +1,14 @@
+{
+  "name": "ShooterMmo.WorldData.Client",
+  "rootNamespace": "ShooterMmo.WorldData",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

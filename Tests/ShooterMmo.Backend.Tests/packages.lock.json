@@ -205,6 +205,12 @@
           "ShooterMmo.Shared": "[1.0.0, )"
         }
       },
+      "itemcatalogcompiler": {
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
+      },
       "shootermmo.gameprotocol": {
         "type": "Project"
       },
@@ -220,6 +226,9 @@
           "LiteNetLib": "[2.1.4, )",
           "ShooterMmo.GameProtocol": "[1.0.0, )"
         }
+      },
+      "shootermmo.worlddata": {
+        "type": "Project"
       },
       "simulationstressgenerator": {
         "type": "Project",

@@ -263,7 +263,7 @@ namespace ShooterMmo.Tests.EditMode
                 Assert.That(contextProperties.FindProperty("entityPresentationRoot").objectReferenceValue,
                     Is.EqualTo(entityPresentationRoot.transform));
 
-                Assert.That(environment.GetComponentsInChildren<BoxCollider>(true), Has.Length.EqualTo(12));
+                Assert.That(environment.GetComponentsInChildren<BoxCollider>(true), Has.Length.EqualTo(13));
                 Assert.That(environment.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
                 Assert.That(environment.GetComponentsInChildren<Transform>(true)
                     .All(transform => transform.gameObject.isStatic), Is.True);
@@ -302,7 +302,7 @@ namespace ShooterMmo.Tests.EditMode
                     new SimulationVector3(16f, 5f, 16f)),
                 CollisionLayers.CharacterMovement,
                 buffer);
-            Assert.That(buffer.Boxes, Has.Count.EqualTo(12));
+            Assert.That(buffer.Boxes, Has.Count.EqualTo(13));
         }
 
         private static GameObject FindGameObject(Scene scene, string objectName)

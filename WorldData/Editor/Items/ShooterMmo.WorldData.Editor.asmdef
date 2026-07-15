@@ -1,0 +1,19 @@
+{
+  "name": "ShooterMmo.WorldData.Editor",
+  "rootNamespace": "ShooterMmo.WorldData.Editor",
+  "references": [
+    "ShooterMmo.WorldData",
+    "ShooterMmo.WorldData.Client"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

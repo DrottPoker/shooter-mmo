@@ -137,14 +137,20 @@ disconnect to avoid danger.
   Bag. The initial target is approximately 20 slots.
 - Weapons use normal general slots when not equipped.
 - There are no weapon attachments in the current design.
-- Item definitions provide one primary category, zero or more tags, unit weight
-  in integer grams, stack rules, equipment compatibility, location eligibility,
+- Item definitions provide one primary category, zero or more tags, unitless
+  integer weight, stack rules, equipment compatibility, location eligibility,
   and optional default policy behavior.
 - The first specialized Bag slot tags are medical, material, and ammunition.
 - Matching items may use specialized or general Bag slots.
 - Every item instance has exactly one current custody assignment.
 - Item quantity, policy, ownership, slot assignment, and weight are always
   server-authoritative.
+- Item icons, localization keys, and visual prefabs are client presentation
+  assets keyed by stable definition id. They are bundled with the MVP client and
+  are not transferred with each inventory response.
+- Unity loads the gameplay and presentation catalogs once per matching revision.
+  Server inventory state carries definition ids and instance state rather than
+  repeated definitions or image data.
 - Persistent item ownership and every important transfer are transactional in
   PostgreSQL.
 - Redis is never the source of truth for persistent item custody.
@@ -226,7 +232,9 @@ contents, carried empty Bags, Secure Container contents, and full stack
 quantities. Bank, Recovery Storage, corpse, and future non-carried economy
 custody do not count.
 
-Carry capacity is primarily character-based. The equipped Bag may add a bonus.
+Weight is a unitless non-negative integer gameplay value. The baseline scale is
+ammunition `1`, pistol `10`, and base character carry capacity `200`. The
+equipped Bag may add a capacity bonus.
 
 - At or below 100 percent, movement uses base speed and sprint is available.
 - Above 100 percent, sprint is disabled.
@@ -234,9 +242,23 @@ Carry capacity is primarily character-based. The equipped Bag may add a bonus.
   load to 20 percent base speed at 140 percent load.
 - Exactly 140 percent is allowed.
 - No action may increase carried weight beyond 140 percent.
-- Weight and capacity use integer grams and exact integer comparisons.
+- Weight and capacity use unitless integers and exact integer comparisons.
+- Base capacity `200` reaches the 140 percent hard cap at weight `280`.
 - Structural content changes that could create an invalid over-cap state require
   an explicit data migration.
+
+## Inventory UI Layout
+
+- Character equipment occupies the left side.
+- The right side is split vertically.
+- Character inventory occupies the lower-right area and includes permanent
+  inventory, equipped Bag contents, and Secure Container access.
+- The upper-right area presents another active container such as bank, corpse,
+  Recovery Storage, or a world loot container.
+- Character inventory remains visible while another container is open so item
+  transfers have clear source and destination areas.
+
+This layout does not grant Unity authority over item or slot rules.
 
 ## Item Policies
 
@@ -385,9 +407,15 @@ Current implementation note:
   quotas, and collision against checksummed WorldData chunks.
 - Unity currently owns input, prediction, reconciliation, interpolation,
   presentation, and temporary UI.
-- Persistent items, inventory, equipment, Bag, bank, Secure Container, Recovery
-  Storage, carry weight, item policies, combat, mobs, death, corpses, and loot
-  are not implemented.
+- WorldData owns the deterministic Phase 1 item catalog and pure stack, slot,
+  equipment, Secure Container, Bag, integer-weight, and encumbrance rules.
+- Phase 2 adds an Editor-only Unity catalog window and a bundled client
+  presentation catalog with exact gameplay-revision pairing and local caching.
+  It does not make Unity authoritative for item rules.
+- PostgreSQL item mirrors, persistent item instances, inventory custody,
+  equipment assignments, Bag instances, bank, Secure Container contents,
+  Recovery Storage, carry-state integration, policy lifecycle, combat, mobs,
+  death, corpses, and loot are not implemented.
 
 ## Persistence Principles
 
@@ -435,9 +463,15 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: Next
+Status: In progress, item-plan Phases 1 and 2 complete
 
-- Item catalog, definitions, instances, categories, tags, stacks, and policies.
+- Deterministic item catalog, categories, tags, equipment compatibility, Bag
+  layouts, Secure Container tiers, structural fingerprints, and pure rules are
+  complete.
+- Unity catalog authoring, deterministic baking, and separately revisioned
+  client icon and presentation mapping are complete.
+- PostgreSQL definition mirror, item instances, stacks, and policy state remain
+  planned.
 - Slot-based permanent inventory.
 - Equipment and Bag aggregates.
 - Per-character bank.

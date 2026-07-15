@@ -34,7 +34,9 @@ operations, and future design do not drift into duplicate descriptions.
   Recovery Storage.
 - [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   defines the dependency-ordered delivery phases, proposed persistence model,
-  service boundaries, and verification gates for that design.
+  service boundaries, and verification gates for that design. Phase 1 item
+  catalog and pure rules plus Phase 2 Unity catalog authoring and baking are
+  complete. Phase 3 persistence has not started.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and
   feature-specific design documents supersede conflicting details in that brief.

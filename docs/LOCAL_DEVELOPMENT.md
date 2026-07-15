@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Requirements
 
@@ -46,6 +46,12 @@ dotnet restore ShooterMmo.slnx --locked-mode
 & .\Tools\Verify-DependencyPolicy.ps1
 dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet run --project Tools/ItemCatalogCompiler `
+  --configuration Release `
+  --no-build -- `
+  WorldData/Authoring/Items/core.item-catalog.json `
+  WorldData/Runtime/Items/core.item-catalog.json `
+  --verify
 dotnet test ShooterMmo.slnx --configuration Release --no-build
 ```
 
@@ -56,6 +62,8 @@ Expected result:
   package paths, Unity lock coverage, and the absence of tracked client builds.
 - Format reports no files that need changes.
 - Build completes with zero warnings and zero errors.
+- Item catalog verification reports nine definitions, one base Secure Container
+  tier, and the deterministic checked-in revision.
 - Unit tests pass.
 - The PostgreSQL integration test is skipped unless its dedicated connection is
   configured.
@@ -66,6 +74,89 @@ does not own `Packages/manifest.json`. Update Unity packages in a focused branch
 let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
 quality gate before merging. `LiteNetLib` must stay aligned between
 `SimulationWorker/SimulationWorker.csproj` and the Unity manifest.
+
+## Item Catalog Authoring And Verification
+
+The neutral source catalog is
+`WorldData/Authoring/Items/core.item-catalog.json`. It defines stable category,
+tag, equipment-slot, item, Bag-layout, location-eligibility, policy-default, and
+Secure Container tier content. The generated runtime catalog is
+`WorldData/Runtime/Items/core.item-catalog.json`.
+
+Catalog format version 2 uses unitless non-negative integer `unitWeight` and
+`carryCapacityBonus` fields. Do not add physical-unit or decimal weight fields.
+The baseline scale is ammunition `1`, pistol `10`, and base character capacity
+`200`.
+
+The canonical content workflow is available in Unity at
+`Tools > Shooter MMO > Item Catalog`:
+
+1. Use the searchable definition list and category filter to select an item.
+2. Edit gameplay fields and the separate client presentation fields in the same
+   window. Baked definition ids are read-only and cannot be deleted or reused.
+3. Choose an icon Sprite below an `Assets/Resources` folder, with one Sprite per
+   asset file. The tool stores its extension-free Resources path, not the image
+   data, in the presentation JSON.
+4. Select `Validate` to run the strict shared compiler without writing files.
+5. Select `Save` to write editable authoring and presentation content without
+   replacing the runtime gameplay catalog.
+6. Select `Save And Bake` to validate and atomically replace authoring, runtime,
+   and presentation JSON. Structural changes require explicit confirmation.
+
+The gameplay source remains
+`WorldData/Authoring/Items/core.item-catalog.json`. The Editor-only assembly does
+not duplicate its rules. It invokes `Tools/ItemCatalogCompiler`, which remains
+the validation and structural-fingerprint authority used by backend development
+and CI.
+
+Client-only presentation content is bundled at
+`shooter-mmorpg-unity-client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
+It maps every stable gameplay definition id to an optional icon Resources path,
+localization key, fallback display name, and optional prefab presentation key.
+The file records the exact gameplay source revision and a separate deterministic
+presentation revision. Runtime lookup validates the pair once and caches it.
+Inventory responses therefore need definition ids and instance state, not icon
+files or complete definition data.
+
+After an intentional authoring change, compile the runtime catalog:
+
+```powershell
+dotnet run --project Tools/ItemCatalogCompiler -- `
+  WorldData/Authoring/Items/core.item-catalog.json `
+  WorldData/Runtime/Items/core.item-catalog.json
+```
+
+Then verify the checked-in result:
+
+```powershell
+dotnet run --project Tools/ItemCatalogCompiler -- `
+  WorldData/Authoring/Items/core.item-catalog.json `
+  WorldData/Runtime/Items/core.item-catalog.json `
+  --verify
+```
+
+Expected result: both commands report catalog `core`, nine definitions, one
+base Secure Container tier, and the same SHA-256 catalog revision. `--verify`
+returns exit code 1 for malformed authoring, invalid rules, or stale runtime
+JSON.
+
+Inspect `structuralFingerprint` for every changed definition and Secure
+Container tier. A display-only edit changes the catalog revision without
+changing an item structural fingerprint. Weight, stack, tag, equipment,
+location, policy-default, Bag-layout, or tier-capacity changes alter the
+relevant structural fingerprint. Once Phase 3 introduces persistent item state,
+such a change will require an explicit data migration rather than only catalog
+regeneration.
+
+The complete authoring contract is documented in
+`WorldData/Authoring/Items/README.md`. No Unity Editor action is required for
+command-line item catalog compilation or verification.
+
+If `Validate`, `Save`, or `Save And Bake` fails, read the field paths in the
+window error. Validation uses temporary candidate files. A failed validation
+writes nothing, and a failed multi-file bake restores every previous catalog
+file. Correct or discard the draft, select `Reload` to return to checked-in
+content when appropriate, and run the command-line `--verify` command above.
 
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
@@ -486,7 +577,7 @@ authoritative map collider changes.
 7. Wait for asset import and script compilation to complete.
 
 Expected result: Unity Console reports `[WORLD COLLISION] Baked world
-'local-world-1'` with 12 boxes, four chunks, and a SHA-256 revision. The command
+'local-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
 updates:
 
 - `WorldData/Authoring/local-world-1.collision-authoring.json`

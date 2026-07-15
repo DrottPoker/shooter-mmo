@@ -273,6 +273,44 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
+## Item Catalog, Pure Domain Rules, And Unity Authoring
+
+Phases 1 and 2 of the approved item plan are implemented without adding a
+service or persistence surface:
+
+- `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
+  authoring source.
+- `Tools/ItemCatalogCompiler` rejects unknown or duplicate JSON properties,
+  missing values, invalid identifiers and references, duplicate ids and Bag
+  slots, negative or decimal weights, invalid stack limits, and impossible Bag,
+  equipment, policy, or Secure Container combinations.
+- The compiler emits sorted deterministic runtime content under
+  `WorldData/Runtime/Items`, including one catalog revision and structural
+  fingerprints for every item definition and Secure Container tier.
+- The checked-in development catalog has nine representative definitions, all
+  canonical equipment slots, the medical, material, and ammunition tags, one
+  Bag layout with general and specialized slots, and the four-slot base Secure
+  Container tier.
+- Framework-neutral pure rules cover stack compatibility, specialized slot tag
+  acceptance, equipment compatibility, Secure Container eligibility, empty and
+  non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
+  stack weight, base character capacity `200`, exact 140 percent admission, and
+  the fixed-point linear encumbrance multiplier.
+- `Tools > Shooter MMO > Item Catalog` edits definitions through an Editor-only
+  assembly, invokes the strict shared compiler, shows display-only and structural
+  changes, locks baked ids, and writes authoring plus deterministic bake output
+  transactionally.
+- The client presentation catalog is bundled under Unity Resources. It maps
+  stable definition ids to icons, localization keys, fallback text, and optional
+  prefab presentation keys with its own deterministic revision tied to the
+  exact gameplay catalog revision.
+
+The rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime
+dependency. The Editor assembly is isolated from runtime WorldData assemblies.
+AuthService exposes no item route and accepts no item traffic yet.
+SimulationWorker has no inventory database access, and Unity is not an item-rule
+authority.
+
 ## UDP Resilience And Quotas
 
 Per-peer token buckets enforce configured packet and byte rates with burst
@@ -396,14 +434,19 @@ the test connection variable at development or production data.
 - Socket-level realtime and load-test coverage.
 - External headless stress authority and bot coverage for real UDP admission,
   movement, snapshots, graceful leave, process resources, and phase timing.
+- Item catalog determinism, malformed and duplicate content rejection,
+  structural fingerprint detection, pure rule behavior, and exact integer
+  encumbrance boundaries.
 
 ## Not Yet Implemented
 
-- Item definitions, item instances, stacks, or slot inventory.
-- Equipment, physical Bag items, per-character bank, Secure Container, or
-  Recovery Storage.
-- Carry weight, the planned 140 percent encumbrance curve, or inventory-driven
-  movement restrictions.
+- PostgreSQL item-definition mirror, persistent item instances, stacks, or slot
+  inventory custody.
+- Durable equipment assignments, physical Bag instances, per-character bank,
+  Secure Container contents, or Recovery Storage.
+- Authoritative carried-weight aggregation, persisted carry revisions,
+  inventory-driven movement restrictions, or encumbrance integration with the
+  live simulation.
 - Protected-on-death policy, one-death insurance, death partition, persistent
   player corpses, concurrent corpse looting, or configurable NPC corpse
   persistence.
