@@ -178,6 +178,7 @@ public sealed class SimulationEntityRegistryTests
             "worker-runtime-1",
             DateTime.UtcNow,
             DateTime.UtcNow.AddMinutes(1),
+            PlayerCarryState.Default,
             false);
     }
 
@@ -193,6 +194,7 @@ public sealed class SimulationEntityRegistryTests
                 -1f,
                 0f),
             MovementSettings,
+            PlayerCarryState.Default,
             collisionWorld);
     }
 }

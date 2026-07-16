@@ -1,3 +1,5 @@
+using ShooterMmo.GameSimulation;
+
 namespace SimulationWorker.Sessions;
 
 public sealed class ActiveSimulationSessionStore
@@ -91,6 +93,30 @@ public sealed class ActiveSimulationSessionStore
             }
 
             sessionsByCharacterId[characterId] = session with { SessionExpiresAt = sessionExpiresAt };
+            return true;
+        }
+    }
+
+    public bool RefreshCarryState(
+        Guid characterId,
+        Guid simulationSessionId,
+        string simulationSessionToken,
+        PlayerCarryState carryState)
+    {
+        ArgumentNullException.ThrowIfNull(carryState);
+        lock (syncRoot)
+        {
+            if (!sessionsByCharacterId.TryGetValue(characterId, out var session)
+                || session.SimulationSessionId != simulationSessionId
+                || !string.Equals(
+                    session.SimulationSessionToken,
+                    simulationSessionToken,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            sessionsByCharacterId[characterId] = session with { CarryState = carryState };
             return true;
         }
     }

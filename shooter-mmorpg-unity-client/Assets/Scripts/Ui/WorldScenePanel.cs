@@ -218,6 +218,15 @@ namespace ShooterMmo.Ui
                 "Tick / Snapshot Configuration",
                 client.MovementSession.Settings.TickRateHz + " Hz / "
                 + client.MovementSession.SnapshotRateHz + " Hz");
+            var carryState = client.MovementSession.CarryState;
+            DrawMetric(
+                "Carry Weight / Capacity",
+                carryState.CarriedWeight + " / " + carryState.CarryCapacity);
+            DrawMetric(
+                "Item Revision / Movement / Sprint",
+                carryState.ItemStateRevision + " / "
+                + (carryState.MovementMultiplierBasisPoints / 100f).ToString("0.##")
+                + "% / " + (carryState.SprintAllowed ? "Allowed" : "Blocked"));
             DrawMetric(
                 "Client Tick / Entity",
                 localPlayerController.ClientSimulationTick + " / "

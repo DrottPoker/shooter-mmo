@@ -7,6 +7,165 @@ namespace ShooterMmo.Backend.Tests.Integration;
 public sealed class ItemConcurrencyIntegrationTests
 {
     [PostgresIntegrationFact]
+    public async Task CarryStateCountsEveryCarriedCustodyExactlyOnceAndExcludesExternalCustody()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "carry-state@example.com",
+            "carry_state_player",
+            "Carry State Hero");
+        var accountId = player.Registration.AccountId;
+        var characterId = player.Character.Id;
+        var actor = ItemTransactionActor.ForAccount(accountId);
+        var initial = await LoadStateAsync(context, characterId);
+
+        var equippedBagId = await GrantAndEquipBagAsync(
+            context,
+            accountId,
+            characterId);
+        var afterBagEquip = await LoadStateAsync(context, characterId);
+        Assert.True(afterBagEquip.Revision > initial.Revision);
+        Assert.Equal(10, afterBagEquip.CarriedWeight);
+        Assert.Equal(250, afterBagEquip.CarryCapacity);
+
+        await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "material.iron_ore",
+            2,
+            afterBagEquip.PermanentInventoryContainerId,
+            0);
+        await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "bag.field_pack",
+            1,
+            afterBagEquip.PermanentInventoryContainerId,
+            1);
+        var rifleId = await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "weapon.training_rifle",
+            1,
+            afterBagEquip.PermanentInventoryContainerId,
+            2);
+        var state = await LoadStateAsync(context, characterId);
+        var rifle = await LoadItemAsync(context, rifleId);
+        var equipRifle = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<EquipItemCommand>(
+                Guid.NewGuid(),
+                actor,
+                new EquipItemCommand(
+                    characterId,
+                    state.Revision,
+                    rifleId,
+                    rifle.Revision,
+                    "primary_weapon")),
+            CancellationToken.None);
+        AssertSucceeded(equipRifle);
+
+        var bagContainer = await LoadBagContainerAsync(context, equippedBagId);
+        await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "ammunition.training_556",
+            10,
+            bagContainer.ContainerId,
+            6);
+        state = await LoadStateAsync(context, characterId);
+        await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "medical.field_dressing",
+            2,
+            state.SecureContainerId,
+            0);
+        await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "material.iron_ore",
+            3,
+            state.BankContainerId,
+            0);
+
+        state = await LoadStateAsync(context, characterId);
+        var recoveryItemId = await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "medical.field_dressing",
+            1,
+            state.PermanentInventoryContainerId,
+            2);
+        state = await LoadStateAsync(context, characterId);
+        var recoveryItem = await LoadItemAsync(context, recoveryItemId);
+        var addRecovery = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<AddRecoveryDeliveryCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new AddRecoveryDeliveryCommand(
+                    characterId,
+                    state.Revision,
+                    "system_restore",
+                    "carry-state-zero-weight",
+                    null,
+                    null,
+                    [new ItemRevisionExpectation(recoveryItemId, recoveryItem.Revision)])),
+            CancellationToken.None);
+        AssertSucceeded(addRecovery);
+
+        state = await LoadStateAsync(context, characterId);
+        var corpseItemId = await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "material.iron_ore",
+            5,
+            state.PermanentInventoryContainerId,
+            2);
+        var beforeCorpseTransfer = await LoadStateAsync(context, characterId);
+        Assert.Equal(101, beforeCorpseTransfer.CarriedWeight);
+
+        await using (var connection = await context.DataSource.OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                """
+                insert into item_containers (id, container_type, slot_capacity)
+                values (@ContainerId, 'corpse_inventory', 1);
+
+                insert into item_container_slots (container_id, slot_index, slot_kind)
+                values (@ContainerId, 0, 'general');
+
+                update item_instances
+                set container_id = @ContainerId,
+                    container_slot_index = 0
+                where id = @ItemId;
+                """,
+                new { ContainerId = Guid.NewGuid(), ItemId = corpseItemId });
+        }
+
+        state = await LoadStateAsync(context, characterId);
+        await GrantAsync(
+            context,
+            accountId,
+            characterId,
+            "ring.starter_band",
+            1,
+            state.PermanentInventoryContainerId,
+            2);
+
+        var final = await LoadStateAsync(context, characterId);
+        Assert.Equal(72, final.CarriedWeight);
+        Assert.Equal(250, final.CarryCapacity);
+    }
+
+    [PostgresIntegrationFact]
     public async Task CoreCommandsMutateAtomicallyAuditAndRecomputeCarryState()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -691,6 +850,77 @@ public sealed class ItemConcurrencyIntegrationTests
         Assert.Equal(secondBagContainer.ContainerId, (await LoadItemAsync(context, secondChildId)).ContainerId);
         Assert.Equal(firstState, await LoadStateAsync(context, player.Character.Id));
         Assert.Equal(secondState, await LoadStateAsync(context, secondCharacter.Id));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task SwappingToLowerCapacityBagRejectsTheCompleteAggregateAboveHardCap()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        await AddTestBagDefinitionAsync(context, "bag.integration_light", 0);
+        var player = await context.RegisterPlayerAsync(
+            "lower-bag@example.com",
+            "lower_bag_player",
+            "Higher Capacity Hero");
+        var secondCharacterResult = await context.CharacterService.CreateAsync(
+            player.Registration.AccountId,
+            new CreateCharacterRequest("Lower Capacity Hero"),
+            CancellationToken.None);
+        Assert.True(secondCharacterResult.Succeeded, secondCharacterResult.Error?.Message);
+        var secondCharacter = secondCharacterResult.Value!;
+        var higherBagId = await GrantAndEquipBagAsync(
+            context,
+            player.Registration.AccountId,
+            player.Character.Id);
+        var lowerBagId = await GrantAndEquipBagAsync(
+            context,
+            player.Registration.AccountId,
+            secondCharacter.Id,
+            "bag.integration_light");
+        var firstState = await LoadStateAsync(context, player.Character.Id);
+        await GrantAsync(
+            context,
+            player.Registration.AccountId,
+            player.Character.Id,
+            "material.iron_ore",
+            50,
+            firstState.PermanentInventoryContainerId,
+            0);
+
+        firstState = await LoadStateAsync(context, player.Character.Id);
+        var secondState = await LoadStateAsync(context, secondCharacter.Id);
+        Assert.Equal(310, firstState.CarriedWeight);
+        Assert.Equal(250, firstState.CarryCapacity);
+        Assert.Equal(10, secondState.CarriedWeight);
+        Assert.Equal(200, secondState.CarryCapacity);
+        var higherBag = await LoadItemAsync(context, higherBagId);
+        var lowerBag = await LoadItemAsync(context, lowerBagId);
+        var higherContainer = await LoadBagContainerAsync(context, higherBagId);
+        var lowerContainer = await LoadBagContainerAsync(context, lowerBagId);
+
+        var swap = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<SwapBagAggregatesCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                new SwapBagAggregatesCommand(
+                    player.Character.Id,
+                    firstState.Revision,
+                    higherBagId,
+                    higherBag.Revision,
+                    higherContainer.Revision,
+                    secondCharacter.Id,
+                    secondState.Revision,
+                    lowerBagId,
+                    lowerBag.Revision,
+                    lowerContainer.Revision)),
+            CancellationToken.None);
+
+        AssertRejected(swap, ItemTransactionErrorCodes.CarryWeightLimitExceeded);
+        var firstAfter = await LoadStateAsync(context, player.Character.Id);
+        var secondAfter = await LoadStateAsync(context, secondCharacter.Id);
+        Assert.Equal(firstState, firstAfter);
+        Assert.Equal(secondState, secondAfter);
+        Assert.Equal(player.Character.Id, (await LoadItemAsync(context, higherBagId)).EquippedCharacterId);
+        Assert.Equal(secondCharacter.Id, (await LoadItemAsync(context, lowerBagId)).EquippedCharacterId);
     }
 
     [PostgresIntegrationFact]
@@ -1402,14 +1632,15 @@ public sealed class ItemConcurrencyIntegrationTests
     private static async Task<Guid> GrantAndEquipBagAsync(
         PostgresIntegrationTestContext context,
         Guid accountId,
-        Guid characterId)
+        Guid characterId,
+        string definitionId = "bag.field_pack")
     {
         var state = await LoadStateAsync(context, characterId);
         var bagId = await GrantAsync(
             context,
             accountId,
             characterId,
-            "bag.field_pack",
+            definitionId,
             1,
             state.PermanentInventoryContainerId,
             0);
@@ -1428,6 +1659,59 @@ public sealed class ItemConcurrencyIntegrationTests
             CancellationToken.None);
         AssertSucceeded(equip);
         return bagId;
+    }
+
+    private static async Task AddTestBagDefinitionAsync(
+        PostgresIntegrationTestContext context,
+        string definitionId,
+        long carryCapacityBonus)
+    {
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        await connection.ExecuteAsync(
+            """
+            insert into item_definitions (
+                id,
+                catalog_id,
+                catalog_revision,
+                display_name,
+                category_id,
+                unit_weight,
+                maximum_stack_size,
+                player_destroyable,
+                structural_fingerprint)
+            select
+                @DefinitionId,
+                catalog_id,
+                catalog_revision,
+                'Integration Test Bag',
+                category_id,
+                unit_weight,
+                maximum_stack_size,
+                player_destroyable,
+                repeat('c', 64)
+            from item_definitions
+            where id = 'bag.field_pack';
+
+            insert into item_definition_equipment_slots (definition_id, equipment_slot_id)
+            values (@DefinitionId, 'bag');
+
+            insert into item_definition_location_rules (definition_id, location_kind, is_allowed)
+            values (@DefinitionId, 'secure_container', false);
+
+            insert into bag_definitions (definition_id, carry_capacity_bonus)
+            values (@DefinitionId, @CarryCapacityBonus);
+
+            insert into bag_definition_slots (definition_id, slot_index, slot_kind)
+            select @DefinitionId, slot_index, slot_kind
+            from bag_definition_slots
+            where definition_id = 'bag.field_pack';
+
+            insert into bag_definition_slot_tags (definition_id, slot_index, tag_id)
+            select @DefinitionId, slot_index, tag_id
+            from bag_definition_slot_tags
+            where definition_id = 'bag.field_pack';
+            """,
+            new { DefinitionId = definitionId, CarryCapacityBonus = carryCapacityBonus });
     }
 
     private static async Task AddTestSecureTierAsync(

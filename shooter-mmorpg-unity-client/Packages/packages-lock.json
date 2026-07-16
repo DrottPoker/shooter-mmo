@@ -17,7 +17,9 @@
       "version": "file:../../GameSimulation/",
       "depth": 0,
       "source": "local",
-      "dependencies": {}
+      "dependencies": {
+        "com.shootermmo.world-data": "0.3.0"
+      }
     },
     "com.shootermmo.world-data": {
       "version": "file:../../WorldData/",

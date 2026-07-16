@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-Status: Approved delivery baseline, Phases 1 through 6 completed, Phase 7 next
+Status: Approved delivery baseline, Phases 1 through 7 completed, Phase 8 next
 
 ## Purpose
 
@@ -828,11 +828,14 @@ The complete durable out-of-world item foundation is usable and policy safe.
   rejection, system delivery, successful claim, and hard-cap rollback.
 - No SimulationWorker inventory state, worker mutation endpoint, GameProtocol
   item message, Unity inventory UI, corpse schema, death partition, Zone, Layer,
-  Realm, or Phase 7 behavior was added.
+  Realm, or Phase 7 behavior was added during Phase 6.
 
-The Phase 6 exit gate is satisfied. Phase 7 remains not started.
+The Phase 6 exit gate is satisfied. Phase 7 is now also complete as documented
+below.
 
 ## Phase 7: Carry State And Shared Encumbrance
+
+Status: Completed 2026-07-15
 
 ### Work
 
@@ -869,6 +872,44 @@ The Phase 6 exit gate is satisfied. Phase 7 remains not started.
 
 Movement and item state cannot disagree about encumbrance after join, reconnect,
 or mutation.
+
+### Implementation Result
+
+- Simulation admission now locks the character item-state row in the same
+  transaction that consumes the exact-runtime join ticket and creates the
+  simulation lease. The accepted lease therefore contains one fenced
+  `itemStateRevision`, `carriedWeight`, and `carryCapacity` snapshot.
+- Session heartbeat reads the committed carry tuple with the updated lease.
+  SimulationWorker applies only newer revisions to a session-bound
+  `CarryStateStore`; a same-revision conflict invalidates the local lease rather
+  than allowing movement and item state to diverge.
+- GameSimulation now owns the immutable `PlayerCarryState` and deterministic
+  `PlayerEncumbranceRules` used by both SimulationWorker and Unity prediction.
+  Its carry wrapper delegates weight thresholds and multiplier arithmetic to the
+  canonical pure WorldData rules. The shared rules retain base capacity `200`,
+  add the equipped Bag bonus, allow sprint at exactly 100 percent, disable it
+  above 100 percent, and apply the fixed-point linear movement multiplier down
+  to `0.20` at 140 percent.
+- The durable transaction kernel remains the only hard-cap authority for item
+  mutations. Phase 7 cross-checks its exact integer 140 percent admission rule
+  against the shared simulation rule, including lower-capacity Bag rejection.
+- Realtime protocol version `7` includes the initial carry tuple in join
+  acceptance and a reliable ordered carry-state update for later committed
+  revisions. Movement simulation revision `movement-simulation-v3` fences the
+  shared behavior change for server, tools, and Unity.
+- Reconnect restores the authoritative committed tuple through admission.
+  Active-session heartbeat restores any newer committed tuple before movement
+  continues, and the client accepts only monotonic carry revisions.
+- Backend unit, socket, and isolated PostgreSQL tests cover custody contribution,
+  atomic Bag capacity changes, exact sprint and multiplier boundaries, hard-cap
+  rejection, monotonic session propagation, and reconnect restoration. Unity
+  EditMode tests execute the same shared encumbrance reference points and client
+  revision handling.
+- No item intent, item result, worker item-interaction service,
+  service-authenticated mutation endpoint, Unity inventory state or UI, corpse
+  behavior, Zone, Layer, or Realm was added.
+
+The Phase 7 exit gate is satisfied. Phase 8 remains not started.
 
 ## Phase 8: In-World Mutation Boundary
 

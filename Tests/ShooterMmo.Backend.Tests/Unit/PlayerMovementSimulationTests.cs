@@ -19,6 +19,7 @@ public sealed class PlayerMovementSimulationTests
         14f,
         -14f,
         14f);
+    private static readonly PlayerCarryState Unencumbered = PlayerCarryState.Default;
 
     [Fact]
     public void FixedStepMovesRelativeToCameraYaw()
@@ -32,7 +33,12 @@ public sealed class PlayerMovementSimulationTests
             90f,
             PlayerMovementButtons.None);
 
-        var result = PlayerMovementSimulation.Step(initial, input, Settings, CollisionWorld);
+        var result = PlayerMovementSimulation.Step(
+            initial,
+            input,
+            Settings,
+            Unencumbered,
+            CollisionWorld);
 
         Assert.True(result.PositionX > 0f);
         Assert.InRange(Math.Abs(result.PositionZ), 0f, 0.0001f);
@@ -60,7 +66,12 @@ public sealed class PlayerMovementSimulationTests
             0f,
             PlayerMovementButtons.Sprint);
 
-        var result = PlayerMovementSimulation.Step(airborne, input, Settings, CollisionWorld);
+        var result = PlayerMovementSimulation.Step(
+            airborne,
+            input,
+            Settings,
+            Unencumbered,
+            CollisionWorld);
 
         Assert.False(result.IsSprinting);
         Assert.Equal(0f, result.VelocityX);
@@ -89,7 +100,12 @@ public sealed class PlayerMovementSimulationTests
             180f,
             PlayerMovementButtons.Aim);
 
-        var result = PlayerMovementSimulation.Step(airborne, input, Settings, CollisionWorld);
+        var result = PlayerMovementSimulation.Step(
+            airborne,
+            input,
+            Settings,
+            Unencumbered,
+            CollisionWorld);
 
         Assert.False(result.IsSprinting);
         Assert.Equal(2f, result.VelocityX);
@@ -116,8 +132,18 @@ public sealed class PlayerMovementSimulationTests
             0f,
             PlayerMovementButtons.Sprint | PlayerMovementButtons.Jump);
 
-        var sprinting = PlayerMovementSimulation.Step(grounded, sprint, Settings, CollisionWorld);
-        var airborne = PlayerMovementSimulation.Step(sprinting, jump, Settings, CollisionWorld);
+        var sprinting = PlayerMovementSimulation.Step(
+            grounded,
+            sprint,
+            Settings,
+            Unencumbered,
+            CollisionWorld);
+        var airborne = PlayerMovementSimulation.Step(
+            sprinting,
+            jump,
+            Settings,
+            Unencumbered,
+            CollisionWorld);
 
         Assert.True(airborne.IsSprinting);
         Assert.False(airborne.IsGrounded);
@@ -138,6 +164,7 @@ public sealed class PlayerMovementSimulationTests
                 0f,
                 PlayerMovementButtons.Sprint),
             Settings,
+            Unencumbered,
             CollisionWorld);
 
         var aiming = PlayerMovementSimulation.Step(
@@ -150,6 +177,7 @@ public sealed class PlayerMovementSimulationTests
                 0f,
                 PlayerMovementButtons.Sprint | PlayerMovementButtons.Aim),
             Settings,
+            Unencumbered,
             CollisionWorld);
 
         Assert.False(aiming.IsSprinting);
@@ -170,6 +198,7 @@ public sealed class PlayerMovementSimulationTests
                 0f,
                 PlayerMovementButtons.Aim | PlayerMovementButtons.Jump),
             Settings,
+            Unencumbered,
             CollisionWorld);
 
         Assert.True(aimingAndJumping.IsGrounded);
@@ -189,7 +218,12 @@ public sealed class PlayerMovementSimulationTests
             0f,
             PlayerMovementButtons.Sprint);
 
-        var result = PlayerMovementSimulation.Step(initial, input, Settings, CollisionWorld);
+        var result = PlayerMovementSimulation.Step(
+            initial,
+            input,
+            Settings,
+            Unencumbered,
+            CollisionWorld);
 
         Assert.Equal(Settings.MaximumX, result.PositionX);
     }
@@ -219,9 +253,81 @@ public sealed class PlayerMovementSimulationTests
             airborne,
             input,
             Settings,
+            Unencumbered,
             CollisionWorld);
 
         Assert.Equal(-Settings.MaximumFallSpeed, result.VelocityY);
+    }
+
+    [Theory]
+    [InlineData(200, 10000)]
+    [InlineData(210, 9000)]
+    [InlineData(220, 8000)]
+    [InlineData(240, 6000)]
+    [InlineData(260, 4000)]
+    [InlineData(280, 2000)]
+    public void SharedEncumbranceCurveUsesExactFixedPointReferenceValues(
+        long carriedWeight,
+        int expectedBasisPoints)
+    {
+        var carryState = new PlayerCarryState(1, carriedWeight, 200);
+
+        Assert.Equal(expectedBasisPoints, carryState.MovementMultiplierBasisPoints);
+    }
+
+    [Fact]
+    public void SprintIsAllowedAtCapacityAndBlockedAboveCapacity()
+    {
+        var grounded = CreateInitialState(0f, 0f, 0f);
+        var sprintInput = new PlayerMovementInput(
+            1,
+            1,
+            0f,
+            1f,
+            0f,
+            PlayerMovementButtons.Sprint);
+
+        var atCapacity = PlayerMovementSimulation.Step(
+            grounded,
+            sprintInput,
+            Settings,
+            new PlayerCarryState(1, 200, 200),
+            CollisionWorld);
+        var aboveCapacity = PlayerMovementSimulation.Step(
+            grounded,
+            sprintInput,
+            Settings,
+            new PlayerCarryState(2, 210, 200),
+            CollisionWorld);
+
+        Assert.True(atCapacity.IsSprinting);
+        Assert.Equal(Settings.SprintSpeed, atCapacity.VelocityZ);
+        Assert.False(aboveCapacity.IsSprinting);
+        Assert.Equal(Settings.WalkSpeed * 0.9f, aboveCapacity.VelocityZ, 4);
+    }
+
+    [Fact]
+    public void HardCapUsesTwentyPercentOfBaseMovementAndRejectsHigherState()
+    {
+        var grounded = CreateInitialState(0f, 0f, 0f);
+        var input = new PlayerMovementInput(
+            1,
+            1,
+            0f,
+            1f,
+            0f,
+            PlayerMovementButtons.None);
+        var atHardCap = new PlayerCarryState(1, 280, 200);
+
+        var result = PlayerMovementSimulation.Step(
+            grounded,
+            input,
+            Settings,
+            atHardCap,
+            CollisionWorld);
+
+        Assert.Equal(Settings.WalkSpeed * 0.2f, result.VelocityZ, 4);
+        Assert.Throws<ArgumentException>(() => new PlayerCarryState(2, 281, 200));
     }
 
     [Fact]

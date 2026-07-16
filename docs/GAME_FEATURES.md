@@ -198,6 +198,32 @@ Status: Gameplay contract implemented with temporary UI presentation
   gameplay clients.
 - The crosshair is hidden while F1 has released the cursor.
 
+## Carry Weight And Encumbrance
+
+Status: Implemented movement foundation
+
+Every accepted world session receives the character's authoritative unitless
+carried weight, capacity, and item-state revision. Base capacity is `200`, and an
+equipped Bag can add its authored capacity bonus. Permanent inventory,
+equipment, Bag contents, carried empty Bags, and Secure Container contents
+contribute to weight. Bank, Recovery Storage, and corpse custody do not.
+
+Movement remains at full speed through 100 percent capacity. Sprint is allowed
+at exactly 100 percent and disabled above it. Above 100 percent, walk and sprint
+base speed use the same linear multiplier until movement reaches `0.20` at the
+140 percent hard cap. Durable weight-increasing item operations that would
+exceed that cap are rejected atomically.
+
+AuthService owns the persistent tuple. SimulationWorker owns its movement
+effect, and Unity predicts with the same shared GameSimulation rules. Join and
+reconnect restore one fenced committed revision. Later revisions advance over
+the reliable control path. The F2 panel shows the current weight, capacity,
+revision, movement percentage, and sprint eligibility.
+
+There is no player-facing inventory UI or in-world item mutation path yet, so
+normal gameplay cannot currently change carried items while connected. See the
+manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
+
 ## Planned Feature Categories
 
 These categories are defined by the project direction but are not implemented.
@@ -207,8 +233,7 @@ They remain in the MVP specification until working behavior is available:
 - Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
 - Player-facing slot inventory, durable equipment and Bag instances, Secure
-  Container contents, bank, Recovery Storage, carry-state integration, item
-  policy lifecycle, and loot.
+  Container contents, bank, Recovery Storage, item policy interaction, and loot.
 - Durable player corpses, configurable NPC corpses, concurrent looting, and
   one-death insurance.
 - Gathering, crafting, professions, and player economy.
@@ -220,16 +245,16 @@ They remain in the MVP specification until working behavior is available:
 
 The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
 PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
-Phase 5 internal transaction kernel, and Phase 6 policy-safe offline account APIs
-now exist. AuthService supports owned item-state, bank, Secure Container, and
-Recovery access plus offline relocation, split, merge, allowed destruction,
-Recovery claim, and tier-change operations. Internal policy and quest services
-apply auditable lineage without adding a gameplay quest or insurance NPC path.
-These foundations still create no Unity player-visible inventory behavior and
-therefore do not have a feature-status section in this document. The planned
-player rules are defined in
+Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
+and Phase 7 shared live encumbrance now exist. AuthService supports owned
+item-state, bank, Secure Container, and Recovery access plus offline relocation,
+split, merge, allowed destruction, Recovery claim, and tier-change operations.
+Internal policy and quest services apply auditable lineage without adding a
+gameplay quest or insurance NPC path. These foundations still create no Unity
+player-visible inventory collection or interaction behavior. The planned item
+rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
-not yet connected to SimulationWorker or Unity inventory presentation.
+not yet connected to Unity inventory presentation.
 
 The planned inventory presentation keeps character equipment on the left. The
 right side is split with contextual containers such as bank, corpse, Recovery

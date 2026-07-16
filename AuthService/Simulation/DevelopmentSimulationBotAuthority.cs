@@ -1,6 +1,7 @@
 using AuthService.Auth;
 using AuthService.Config;
 using AuthService.Http;
+using ShooterMmo.WorldData.Items;
 
 namespace AuthService.Simulation;
 
@@ -214,6 +215,9 @@ public sealed class DevelopmentSimulationBotAuthority(
                     session.Id,
                     sessionToken,
                     session.ExpiresAt,
+                    0,
+                    0,
+                    CarryWeightDefaults.BaseCharacterCapacity,
                     false)
                 {
                     IsSyntheticBot = true
@@ -316,6 +320,9 @@ public sealed class DevelopmentSimulationBotAuthority(
                     updated.WorkerId,
                     updated.WorkerRuntimeId,
                     release ? now : updated.ExpiresAt,
+                    0,
+                    0,
+                    CarryWeightDefaults.BaseCharacterCapacity,
                     release));
             return true;
         }

@@ -2,6 +2,6 @@ namespace ShooterMmo.GameSimulation
 {
     public static class GameSimulationCompatibility
     {
-        public const string Revision = "movement-simulation-v2";
+        public const string Revision = "movement-simulation-v3";
     }
 }

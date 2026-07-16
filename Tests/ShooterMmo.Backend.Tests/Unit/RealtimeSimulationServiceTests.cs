@@ -8,6 +8,7 @@ using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Config;
 using SimulationWorker.Entities;
+using SimulationWorker.Items;
 using SimulationWorker.Realtime;
 using SimulationWorker.Registry;
 using SimulationWorker.Sessions;
@@ -63,6 +64,7 @@ public sealed class RealtimeSimulationServiceTests
         };
         var authClient = new AuthServiceClient(httpClient);
         var sessionStore = new ActiveSimulationSessionStore();
+        var carryStateStore = new CarryStateStore();
         var config = CreateConfig(port);
         var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
         var staticCollisionWorld = CollisionTestWorldFactory.Create();
@@ -72,9 +74,18 @@ public sealed class RealtimeSimulationServiceTests
         using var networkMetrics = new RealtimeNetworkMetrics();
         var server = new RealtimeSimulationService(
             config,
-            new SimulationJoinService(authClient, sessionStore, config, identity),
-            new SimulationSessionReleaseService(authClient, sessionStore),
+            new SimulationJoinService(
+                authClient,
+                sessionStore,
+                carryStateStore,
+                config,
+                identity),
+            new SimulationSessionReleaseService(
+                authClient,
+                sessionStore,
+                carryStateStore),
             sessionStore,
+            carryStateStore,
             new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),
@@ -95,6 +106,8 @@ public sealed class RealtimeSimulationServiceTests
         var entitySpawn = new TaskCompletionSource<RealtimeEntitySpawn>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var movementSnapshot = new TaskCompletionSource<RealtimeEntitySnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var carryStateChanged = new TaskCompletionSource<RealtimeCarryState>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var listener = new EventBasedNetListener();
         var client = new NetManager(listener)
@@ -126,6 +139,13 @@ public sealed class RealtimeSimulationServiceTests
                     Assert.Equal(isSyntheticBot ? 1 : 0, population.ActiveSyntheticBots);
                     Assert.Equal(0, population.UnauthenticatedPeers);
                     joinAccepted.TrySetResult(session);
+                    Assert.Equal(
+                        CarryStateApplyResult.Applied,
+                        carryStateStore.ApplyCommitted(
+                            authHandler.CharacterId,
+                            authHandler.SimulationSessionId,
+                            new PlayerCarryState(1, 210, 200),
+                            out _));
                     peer.Send(
                         RealtimeProtocol.EncodeMovementInputBatch(new[]
                         {
@@ -135,10 +155,22 @@ public sealed class RealtimeSimulationServiceTests
                                 0f,
                                 1f,
                                 0f,
-                                RealtimeMovementButtons.None)
+                                RealtimeMovementButtons.Sprint)
                         }),
                         RealtimeProtocol.MovementInputChannel,
                         DeliveryMethod.Sequenced);
+                    return;
+                }
+
+                if (messageType == RealtimeMessageType.CarryStateChanged)
+                {
+                    Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                    Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
+                    Assert.True(RealtimeProtocol.TryDecodeCarryStateChanged(
+                        packet,
+                        out var carryState,
+                        out var error), error);
+                    carryStateChanged.TrySetResult(carryState);
                     return;
                 }
 
@@ -156,6 +188,8 @@ public sealed class RealtimeSimulationServiceTests
                     if (entity is not null
                         && entity.LastProcessedInputSequence == 1
                         && entity.State.PositionZ > -1f
+                        && !entity.State.IsSprinting
+                        && carryStateChanged.Task.IsCompletedSuccessfully
                         && movementSnapshot.TrySetResult(entity))
                     {
                         if (invalidateAsReplaced)
@@ -215,6 +249,7 @@ public sealed class RealtimeSimulationServiceTests
                 joinAccepted.TrySetException(exception);
                 entitySpawn.TrySetException(exception);
                 movementSnapshot.TrySetException(exception);
+                carryStateChanged.TrySetException(exception);
                 leaveAccepted.TrySetException(exception);
                 serverDisconnect.TrySetException(exception);
             }
@@ -241,6 +276,7 @@ public sealed class RealtimeSimulationServiceTests
             var joined = await joinAccepted.Task.WaitAsync(timeout.Token);
             var spawned = await entitySpawn.Task.WaitAsync(timeout.Token);
             var movedPlayer = await movementSnapshot.Task.WaitAsync(timeout.Token);
+            var carryState = await carryStateChanged.Task.WaitAsync(timeout.Token);
             await completion.WaitAsync(timeout.Token);
 
             Assert.Equal(authHandler.CharacterId.ToString("D"), joined.CharacterId);
@@ -248,6 +284,12 @@ public sealed class RealtimeSimulationServiceTests
             Assert.Equal(joined.ControlledEntityId, spawned.EntityId);
             Assert.Equal("player.default", spawned.ArchetypeId);
             Assert.Equal(staticCollisionWorld.Revision, joined.CollisionRevision);
+            Assert.Equal(0, joined.CarryState.ItemStateRevision);
+            Assert.Equal(1, carryState.ItemStateRevision);
+            Assert.Equal(210, carryState.CarriedWeight);
+            Assert.Equal(200, carryState.CarryCapacity);
+            Assert.False(movedPlayer.State.IsSprinting);
+            Assert.Equal(4.5f, movedPlayer.State.VelocityZ, 3);
             Assert.Equal(0.35f, joined.MovementSettings.CharacterRadius);
             Assert.Equal(55f, joined.MovementSettings.MaximumFallSpeed);
             Assert.Equal(1u, movedPlayer.LastProcessedInputSequence);
@@ -351,6 +393,9 @@ public sealed class RealtimeSimulationServiceTests
                     SimulationSessionId,
                     SimulationSessionToken,
                     DateTime.UtcNow.AddSeconds(30),
+                    0,
+                    0,
+                    PlayerEncumbranceRules.BaseCharacterCapacity,
                     false)
                 {
                     IsSyntheticBot = isSyntheticBot
@@ -367,6 +412,9 @@ public sealed class RealtimeSimulationServiceTests
                     "local-simulation-worker-1",
                     "test-runtime",
                     DateTime.UtcNow,
+                    0,
+                    0,
+                    PlayerEncumbranceRules.BaseCharacterCapacity,
                     true)));
             }
 

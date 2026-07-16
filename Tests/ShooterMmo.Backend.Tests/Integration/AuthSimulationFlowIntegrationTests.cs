@@ -66,6 +66,9 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(LocalRuntimeId, consumed.Value.WorkerRuntimeId);
         Assert.NotEqual(Guid.Empty, consumed.Value.SimulationSessionId);
         Assert.False(string.IsNullOrWhiteSpace(consumed.Value.SimulationSessionToken));
+        Assert.Equal(0, consumed.Value.CarriedWeight);
+        Assert.Equal(200, consumed.Value.CarryCapacity);
+        Assert.True(consumed.Value.ItemStateRevision >= 0);
         Assert.False(consumed.Value.IsReconnect);
         Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
 
@@ -82,6 +85,9 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
         Assert.False(heartbeat.Value!.Released);
         Assert.True(heartbeat.Value.ExpiresAt >= consumed.Value.SessionExpiresAt);
+        Assert.Equal(consumed.Value.ItemStateRevision, heartbeat.Value.ItemStateRevision);
+        Assert.Equal(consumed.Value.CarriedWeight, heartbeat.Value.CarriedWeight);
+        Assert.Equal(consumed.Value.CarryCapacity, heartbeat.Value.CarryCapacity);
 
         var firstRelease = await context.SimulationSessionService.ReleaseAsync(
             consumed.Value.SimulationSessionId,
@@ -108,6 +114,132 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.False(heartbeatAfterRelease.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, heartbeatAfterRelease.StatusCode);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task CarryStateIsFencedIntoJoinHeartbeatAndReconnect()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "carry-join@example.com",
+            "carry_join_player",
+            "Carry Join Hero");
+        var actor = ItemTransactionActor.ForOfflineAccount(player.Registration.AccountId);
+        var snapshot = (await context.ItemQueryService.GetCharacterInventoryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None)).Value!;
+        var grantBag = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantItemCommand>(
+                Guid.NewGuid(),
+                actor,
+                new GrantItemCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    "bag.field_pack",
+                    1,
+                    snapshot.PermanentInventory.ContainerId,
+                    0)),
+            CancellationToken.None);
+        Assert.True(grantBag.Succeeded, grantBag.Error?.Message);
+        var bag = Assert.Single(grantBag.ItemRevisions);
+
+        snapshot = (await context.ItemQueryService.GetCharacterInventoryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None)).Value!;
+        var equipBag = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<EquipItemCommand>(
+                Guid.NewGuid(),
+                actor,
+                new EquipItemCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    bag.ItemInstanceId,
+                    bag.Revision,
+                    "bag")),
+            CancellationToken.None);
+        Assert.True(equipBag.Succeeded, equipBag.Error?.Message);
+
+        snapshot = (await context.ItemQueryService.GetCharacterInventoryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None)).Value!;
+        var grantAmmunition = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantItemCommand>(
+                Guid.NewGuid(),
+                actor,
+                new GrantItemCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    "ammunition.training_556",
+                    60,
+                    snapshot.EquippedBag!.Contents.ContainerId,
+                    6)),
+            CancellationToken.None);
+        Assert.True(grantAmmunition.Succeeded, grantAmmunition.Error?.Message);
+
+        snapshot = (await context.ItemQueryService.GetCharacterInventoryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None)).Value!;
+        Assert.Equal(70, snapshot.CarriedWeight);
+        Assert.Equal(250, snapshot.CarryCapacity);
+
+        var join = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+        Assert.Equal(snapshot.ItemStateRevision, consumed.Value!.ItemStateRevision);
+        Assert.Equal(snapshot.CarriedWeight, consumed.Value.CarriedWeight);
+        Assert.Equal(snapshot.CarryCapacity, consumed.Value.CarryCapacity);
+
+        var grantWhileActive = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new GrantItemCommand(
+                    player.Character.Id,
+                    consumed.Value.ItemStateRevision,
+                    "ring.starter_band",
+                    1,
+                    snapshot.PermanentInventory.ContainerId,
+                    0)),
+            CancellationToken.None);
+        Assert.True(grantWhileActive.Succeeded, grantWhileActive.Error?.Message);
+        var committedCarry = Assert.Single(grantWhileActive.CharacterRevisions);
+        Assert.True(committedCarry.Revision > consumed.Value.ItemStateRevision);
+        Assert.Equal(71, committedCarry.CarriedWeight);
+        Assert.Equal(250, committedCarry.CarryCapacity);
+
+        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
+            consumed.Value.SimulationSessionId,
+            LocalWorkerId,
+            Credential(consumed.Value.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        Assert.Equal(committedCarry.Revision, heartbeat.Value!.ItemStateRevision);
+        Assert.Equal(committedCarry.CarriedWeight, heartbeat.Value.CarriedWeight);
+        Assert.Equal(committedCarry.CarryCapacity, heartbeat.Value.CarryCapacity);
+
+        var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
+        var reconnect = await ConsumeLocalTicketAsync(
+            context,
+            reconnectTicket.Value!.JoinTicket);
+        Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
+        Assert.True(reconnect.Value!.IsReconnect);
+        Assert.Equal(heartbeat.Value.ItemStateRevision, reconnect.Value.ItemStateRevision);
+        Assert.Equal(heartbeat.Value.CarriedWeight, reconnect.Value.CarriedWeight);
+        Assert.Equal(heartbeat.Value.CarryCapacity, reconnect.Value.CarryCapacity);
     }
 
     [PostgresIntegrationFact]

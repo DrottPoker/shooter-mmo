@@ -216,7 +216,10 @@
         "type": "Project"
       },
       "shootermmo.gamesimulation": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
       },
       "shootermmo.shared": {
         "type": "Project"
@@ -234,7 +237,6 @@
       "simulationstressgenerator": {
         "type": "Project",
         "dependencies": {
-          "LiteNetLib": "[2.1.4, )",
           "ShooterMmo.GameProtocol": "[1.0.0, )",
           "ShooterMmo.Tools.SimulationBotClient": "[1.0.0, )"
         }

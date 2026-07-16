@@ -432,8 +432,11 @@ Current implementation note:
   bank and Recovery reads, and offline-safe account mutation routes. Active
   simulation ownership is fenced under the same character row lock as session
   admission.
+- Item-plan Phase 7 adds admission-fenced and heartbeat-refreshed carry state to
+  SimulationWorker, protocol version `7`, and identical GameSimulation
+  encumbrance behavior in authoritative movement and Unity prediction.
 - Gameplay-created item instances, worker mutation routes, in-world bank and
-  Secure Container service access, live carry-state integration, insurance NPC
+  Secure Container service access, Unity inventory presentation, insurance NPC
   pricing and death consumption, combat, mobs, death, corpses, and loot are not
   implemented.
 
@@ -483,7 +486,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 6 complete
+Status: In progress, item-plan Phases 1 through 7 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -502,13 +505,15 @@ Status: In progress, item-plan Phases 1 through 6 complete
   insurance removal, exact quest-grant cleanup, offline account APIs, stable
   Problem Details, ETag catalog caching, and no-store character responses are
   complete.
+- Shared carry state, exact-session join and heartbeat propagation,
+  authoritative sprint and movement effects, Unity prediction, reconnect
+  restoration, and protocol compatibility fencing are complete.
 - Slot-based permanent inventory.
 - Equipment and Bag aggregates.
 - Per-character bank.
 - Per-character Secure Container with account-selected tier.
 - Recovery Storage.
 - Worker mutation boundary for active simulation sessions.
-- Shared SimulationWorker and Unity encumbrance integration.
 - Account and in-world service boundaries.
 - Initial Unity inventory presentation.
 

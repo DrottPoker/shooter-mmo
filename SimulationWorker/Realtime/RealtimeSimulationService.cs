@@ -8,6 +8,7 @@ using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Config;
 using SimulationWorker.Entities;
+using SimulationWorker.Items;
 using SimulationWorker.Registry;
 using SimulationWorker.Sessions;
 using SimulationWorker.WorldCollision;
@@ -19,6 +20,7 @@ public sealed class RealtimeSimulationService(
     SimulationJoinService joinService,
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
+    CarryStateStore carryStateStore,
     SimulationEntityRegistry entityRegistry,
     ConnectionEntityBindingRegistry connectionBindings,
     RealtimeTransportReadiness transportReadiness,
@@ -142,6 +144,7 @@ public sealed class RealtimeSimulationService(
             interestManager.Clear();
             connectionBindings.Clear();
             entityRegistry.Clear();
+            carryStateStore.Clear();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
             networkMetrics.SetPeerPopulation(0, 0, 0);
@@ -504,6 +507,21 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
+        if (!carryStateStore.TryGet(
+                session.CharacterId,
+                session.SimulationSessionId,
+                out var currentCarryState))
+        {
+            RejectProtocol(
+                peer,
+                completed.Context,
+                "carry_state_missing",
+                "The authoritative carry state is no longer active.");
+            return;
+        }
+
+        session = session with { CarryState = currentCarryState! };
+
         var initialMovementState = PlayerMovementSimulation.CreateInitialState(
                 config.MovementSimulation,
                 collisionWorld,
@@ -516,6 +534,7 @@ public sealed class RealtimeSimulationService(
             () => new AuthoritativePlayerMovement(
                 initialMovementState,
                 config.MovementSimulation,
+                session.CarryState,
                 collisionWorld,
                 Math.Max(
                     1,
@@ -528,6 +547,7 @@ public sealed class RealtimeSimulationService(
         }
 
         var entity = registration.Entity;
+        entity.Movement.ApplyCarryState(session.CarryState);
         var binding = connectionBindings.Bind(
             completed.Context.PeerId,
             entity.NetworkEntityId);
@@ -566,6 +586,7 @@ public sealed class RealtimeSimulationService(
                 response.JoinedAt.ToString("O"),
                 response.SessionExpiresAt.ToString("O"),
                 response.IsReconnect,
+                ToRealtimeCarryState(entity.Movement.CarryState),
                 ToRealtimeMovementSettings(),
                 ToRealtimePlayerState(entity.Movement.State))));
         SendEntityBaseline(peer, joiningInterest.Visible);
@@ -680,6 +701,7 @@ public sealed class RealtimeSimulationService(
             entityRegistry.CopyPlayersTo(playerBuffer);
             foreach (var entity in playerBuffer)
             {
+                ApplyLatestCarryState(entity);
                 entity.Movement.SimulateTick();
             }
             performanceMetrics.RecordMovementSimulation(
@@ -862,6 +884,41 @@ public sealed class RealtimeSimulationService(
             state.YawDegrees,
             state.IsGrounded,
             state.IsSprinting);
+    }
+
+    private static RealtimeCarryState ToRealtimeCarryState(PlayerCarryState carryState)
+    {
+        return new RealtimeCarryState(
+            carryState.ItemStateRevision,
+            carryState.CarriedWeight,
+            carryState.CarryCapacity);
+    }
+
+    private void ApplyLatestCarryState(PlayerSimulationEntity entity)
+    {
+        if (!carryStateStore.TryGet(
+                entity.Session.CharacterId,
+                entity.Session.SimulationSessionId,
+                out var carryState)
+            || !entity.Movement.ApplyCarryState(carryState!))
+        {
+            return;
+        }
+
+        if (!connectionBindings.TryGetConnectionId(
+                entity.NetworkEntityId,
+                out var connectionId)
+            || !peers.TryGetValue(connectionId, out var context)
+            || context.Session?.SimulationSessionId != entity.Session.SimulationSessionId
+            || !TryGetCurrentPeer(context, out var peer))
+        {
+            return;
+        }
+
+        SendControl(
+            peer,
+            RealtimeProtocol.EncodeCarryStateChanged(
+                ToRealtimeCarryState(entity.Movement.CarryState)));
     }
 
     private void DisconnectReplacedConnection(int? replacedConnectionId)
@@ -1082,6 +1139,7 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
+        carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
         connectionBindings.UnbindConnection(context.PeerId, out _);
         interestManager.RemoveConnection(context.PeerId);
         BroadcastEntityDespawn(entityId, reason, context.PeerId);
@@ -1090,6 +1148,9 @@ public sealed class RealtimeSimulationService(
 
     private void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
     {
+        carryStateStore.Remove(
+            replacedEntity.Session.CharacterId,
+            replacedEntity.Session.SimulationSessionId);
         int? replacedConnectionId = null;
         if (connectionBindings.UnbindEntity(
                 replacedEntity.NetworkEntityId,

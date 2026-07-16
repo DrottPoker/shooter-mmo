@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using ShooterMmo.GameProtocol;
+using ShooterMmo.GameSimulation;
 
 namespace ShooterMmo.Backend.Tests.Integration;
 
@@ -185,8 +187,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             udpPort,
             100,
             0,
-            6,
-            "movement-simulation-v2",
+            RealtimeProtocol.Version,
+            GameSimulationCompatibility.Revision,
             "integration-collision-revision");
     }
 

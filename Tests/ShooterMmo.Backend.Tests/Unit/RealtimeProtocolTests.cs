@@ -37,6 +37,7 @@ public sealed class RealtimeProtocolTests
             DateTime.UtcNow.ToString("O"),
             DateTime.UtcNow.AddSeconds(30).ToString("O"),
             true,
+            new RealtimeCarryState(12, 210, 200),
             CreateMovementSettings(),
             CreatePlayerState(1f));
 
@@ -55,6 +56,9 @@ public sealed class RealtimeProtocolTests
         Assert.Equal(expected.SimulationRevision, actual.SimulationRevision);
         Assert.Equal(expected.CollisionRevision, actual.CollisionRevision);
         Assert.True(actual.IsReconnect);
+        Assert.Equal(12, actual.CarryState.ItemStateRevision);
+        Assert.Equal(210, actual.CarryState.CarriedWeight);
+        Assert.Equal(200, actual.CarryState.CarryCapacity);
         Assert.Equal(30, actual.MovementSettings.TickRateHz);
         Assert.Equal(55f, actual.MovementSettings.MaximumFallSpeed);
         Assert.Equal(0.35f, actual.MovementSettings.CharacterRadius);
@@ -75,6 +79,25 @@ public sealed class RealtimeProtocolTests
 
         Assert.False(decoded);
         Assert.Equal("Protocol version is unsupported.", error);
+    }
+
+    [Fact]
+    public void CarryStateChangeRoundTripsMonotonicItemStateFields()
+    {
+        var expected = new RealtimeCarryState(42, 280, 200);
+
+        var decoded = RealtimeProtocol.TryDecodeCarryStateChanged(
+            RealtimeProtocol.EncodeCarryStateChanged(expected),
+            out var actual,
+            out var error);
+
+        Assert.True(decoded, error);
+        Assert.Equal(42, actual.ItemStateRevision);
+        Assert.Equal(280, actual.CarriedWeight);
+        Assert.Equal(200, actual.CarryCapacity);
+        Assert.Throws<ArgumentException>(() =>
+            RealtimeProtocol.EncodeCarryStateChanged(
+                new RealtimeCarryState(43, 281, 200)));
     }
 
     [Fact]

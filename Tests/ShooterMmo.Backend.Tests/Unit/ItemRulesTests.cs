@@ -1,3 +1,4 @@
+using ShooterMmo.GameSimulation;
 using ShooterMmo.WorldData.Items;
 
 namespace ShooterMmo.Backend.Tests.Unit;
@@ -227,12 +228,20 @@ public sealed class ItemRulesTests
             EncumbranceRules.CalculateMovementMultiplierBasisPoints(
                 carriedWeight,
                 CarryWeightDefaults.BaseCharacterCapacity));
+        Assert.Equal(
+            expectedBasisPoints,
+            PlayerEncumbranceRules.CalculateMovementMultiplierBasisPoints(
+                carriedWeight,
+                CarryWeightDefaults.BaseCharacterCapacity));
     }
 
     [Fact]
     public void BaseCharacterCapacityUsesTheCanonicalNeutralWeightScale()
     {
         Assert.Equal(200, CarryWeightDefaults.BaseCharacterCapacity);
+        Assert.Equal(
+            CarryWeightDefaults.BaseCharacterCapacity,
+            PlayerEncumbranceRules.BaseCharacterCapacity);
         Assert.True(EncumbranceRules.IsWithinHardCap(
             280,
             CarryWeightDefaults.BaseCharacterCapacity));

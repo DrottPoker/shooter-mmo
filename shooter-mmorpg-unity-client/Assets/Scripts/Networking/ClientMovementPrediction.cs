@@ -26,14 +26,18 @@ namespace ShooterMmo.Networking
         private readonly CollisionQueryBuffer collisionQueryBuffer = new CollisionQueryBuffer();
         private readonly MovementSimulationSettings settings;
         private readonly ICollisionWorld collisionWorld;
+        private PlayerCarryState carryState;
 
         public ClientMovementPrediction(
             PlayerMovementState initialState,
             MovementSimulationSettings settings,
+            PlayerCarryState carryState,
             ICollisionWorld collisionWorld)
         {
             State = initialState;
             this.settings = settings;
+            this.carryState = carryState
+                ?? throw new System.ArgumentNullException(nameof(carryState));
             this.collisionWorld = collisionWorld;
         }
 
@@ -44,12 +48,41 @@ namespace ShooterMmo.Networking
             get { return pendingInputs.Count; }
         }
 
+        public PlayerCarryState CarryState
+        {
+            get { return carryState; }
+        }
+
+        public void ApplyCarryState(PlayerCarryState candidate)
+        {
+            if (candidate == null)
+            {
+                throw new System.ArgumentNullException(nameof(candidate));
+            }
+
+            if (candidate.ItemStateRevision < carryState.ItemStateRevision)
+            {
+                throw new System.InvalidOperationException(
+                    "Client prediction cannot apply an older carry-state revision.");
+            }
+
+            if (candidate.ItemStateRevision == carryState.ItemStateRevision
+                && !candidate.Equals(carryState))
+            {
+                throw new System.InvalidOperationException(
+                    "Client prediction cannot apply conflicting carry-state values.");
+            }
+
+            carryState = candidate;
+        }
+
         public void Predict(PlayerMovementInput input)
         {
             State = PlayerMovementSimulation.Step(
                 State,
                 input,
                 settings,
+                carryState,
                 collisionWorld,
                 collisionQueryBuffer);
             pendingInputs.Add(input);
@@ -74,6 +107,7 @@ namespace ShooterMmo.Networking
                     replayed,
                     pendingInputs[index],
                     settings,
+                    carryState,
                     collisionWorld,
                     collisionQueryBuffer);
             }

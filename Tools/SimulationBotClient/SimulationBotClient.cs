@@ -242,6 +242,9 @@ public sealed class SimulationBotClient : IDisposable
                 case RealtimeMessageType.EntityDespawn:
                     HandleEntityDespawn(packet);
                     break;
+                case RealtimeMessageType.CarryStateChanged:
+                    HandleCarryStateChanged(packet, channel, deliveryMethod);
+                    break;
                 case RealtimeMessageType.SimulationSnapshot:
                     HandleSnapshot(packet, channel, deliveryMethod);
                     break;
@@ -313,6 +316,25 @@ public sealed class SimulationBotClient : IDisposable
         }
 
         Fail("invalid_join_rejection", error);
+    }
+
+    private void HandleCarryStateChanged(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (State != SimulationBotClientState.Joined
+            || channel != RealtimeProtocol.ControlChannel
+            || deliveryMethod != DeliveryMethod.ReliableOrdered)
+        {
+            Fail("invalid_carry_state", "Carry-state delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeCarryStateChanged(packet, out _, out var error))
+        {
+            Fail("invalid_carry_state", error);
+        }
     }
 
     private void HandleServerDisconnect(byte[] packet)

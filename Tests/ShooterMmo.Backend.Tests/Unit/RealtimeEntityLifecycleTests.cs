@@ -8,6 +8,7 @@ using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Config;
 using SimulationWorker.Entities;
+using SimulationWorker.Items;
 using SimulationWorker.Realtime;
 using SimulationWorker.Registry;
 using SimulationWorker.Sessions;
@@ -29,6 +30,7 @@ public sealed class RealtimeEntityLifecycleTests
             BaseAddress = new Uri("http://auth-service.test")
         };
         var sessionStore = new ActiveSimulationSessionStore();
+        var carryStateStore = new CarryStateStore();
         var config = CreateConfig(port);
         var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
         var staticCollisionWorld = CollisionTestWorldFactory.Create();
@@ -37,10 +39,15 @@ public sealed class RealtimeEntityLifecycleTests
             new SimulationJoinService(
                 new AuthServiceClient(httpClient),
                 sessionStore,
+                carryStateStore,
                 config,
                 identity),
-            new SimulationSessionReleaseService(new AuthServiceClient(httpClient), sessionStore),
+            new SimulationSessionReleaseService(
+                new AuthServiceClient(httpClient),
+                sessionStore,
+                carryStateStore),
             sessionStore,
+            carryStateStore,
             new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),
@@ -355,6 +362,9 @@ public sealed class RealtimeEntityLifecycleTests
                     session.SimulationSessionId,
                     session.SimulationSessionToken,
                     DateTime.UtcNow.AddSeconds(30),
+                    0,
+                    0,
+                    PlayerEncumbranceRules.BaseCharacterCapacity,
                     false));
             }
 
@@ -369,6 +379,9 @@ public sealed class RealtimeEntityLifecycleTests
                     "local-simulation-worker-1",
                     "test-runtime",
                     DateTime.UtcNow,
+                    0,
+                    0,
+                    PlayerEncumbranceRules.BaseCharacterCapacity,
                     true));
             }
 

@@ -58,6 +58,7 @@ public sealed class WorldCollisionTests
                 state,
                 Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.Sprint),
                 MovementSettings,
+                PlayerCarryState.Default,
                 world);
         }
 
@@ -96,6 +97,7 @@ public sealed class WorldCollisionTests
                 state,
                 Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None, 180f),
                 MovementSettings,
+                PlayerCarryState.Default,
                 world);
         }
 
@@ -135,6 +137,7 @@ public sealed class WorldCollisionTests
                 state,
                 Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None, 180f),
                 MovementSettings,
+                PlayerCarryState.Default,
                 world);
         }
 
@@ -147,6 +150,7 @@ public sealed class WorldCollisionTests
                 state,
                 Input((uint)(tick + 19), 0f, 0f, PlayerMovementButtons.None, 180f),
                 MovementSettings,
+                PlayerCarryState.Default,
                 world);
         }
 
@@ -226,6 +230,7 @@ public sealed class WorldCollisionTests
                 state,
                 Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None),
                 MovementSettings,
+                PlayerCarryState.Default,
                 world);
         }
 

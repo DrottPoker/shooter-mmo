@@ -2,8 +2,10 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Config;
+using SimulationWorker.Items;
 
 namespace SimulationWorker.Sessions;
 
@@ -11,6 +13,7 @@ public sealed class SimulationSessionHeartbeatService(
     AuthServiceClient authServiceClient,
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
+    CarryStateStore carryStateStore,
     SimulationWorkerConfig config,
     ILogger<SimulationSessionHeartbeatService> logger) : BackgroundService
 {
@@ -86,11 +89,57 @@ public sealed class SimulationSessionHeartbeatService(
 
             if (result.Succeeded)
             {
-                sessionStore.Refresh(
+                var refreshed = sessionStore.Refresh(
                     session.CharacterId,
                     session.SimulationSessionId,
                     session.SimulationSessionToken,
                     result.Value!.ExpiresAt);
+                if (!refreshed)
+                {
+                    return;
+                }
+
+                var carryState = new PlayerCarryState(
+                    result.Value.ItemStateRevision,
+                    result.Value.CarriedWeight,
+                    result.Value.CarryCapacity);
+                var carryResult = carryStateStore.ApplyCommitted(
+                    session.CharacterId,
+                    session.SimulationSessionId,
+                    carryState,
+                    out var currentCarryState);
+                if (carryResult == CarryStateApplyResult.Conflict)
+                {
+                    var invalidated = sessionStore.Invalidate(
+                        session.CharacterId,
+                        session.SimulationSessionId,
+                        session.SimulationSessionToken,
+                        "carry_state_conflict",
+                        "AuthService returned conflicting carry state for one item-state revision.");
+                    if (invalidated)
+                    {
+                        carryStateStore.Remove(
+                            session.CharacterId,
+                            session.SimulationSessionId);
+                    }
+
+                    logger.LogError(
+                        "Invalidated simulation session {SimulationSessionId} because AuthService returned conflicting carry state revision {ItemStateRevision}.",
+                        session.SimulationSessionId,
+                        carryState.ItemStateRevision);
+                    return;
+                }
+
+                if (carryResult is CarryStateApplyResult.Applied
+                    or CarryStateApplyResult.Unchanged
+                    or CarryStateApplyResult.Stale)
+                {
+                    sessionStore.RefreshCarryState(
+                        session.CharacterId,
+                        session.SimulationSessionId,
+                        session.SimulationSessionToken,
+                        currentCarryState);
+                }
 
                 return;
             }
@@ -108,12 +157,19 @@ public sealed class SimulationSessionHeartbeatService(
                 var message = code == "account_session_replaced"
                     ? "This account logged in from another client."
                     : "The simulation session is no longer active.";
-                sessionStore.Invalidate(
+                var invalidated = sessionStore.Invalidate(
                     session.CharacterId,
                     session.SimulationSessionId,
                     session.SimulationSessionToken,
                     code,
                     message);
+                if (invalidated)
+                {
+                    carryStateStore.Remove(
+                        session.CharacterId,
+                        session.SimulationSessionId);
+                }
+
                 logger.LogWarning(
                     "Invalidated simulation session {SimulationSessionId} with code {Code} after AuthService returned {StatusCode}.",
                     session.SimulationSessionId,

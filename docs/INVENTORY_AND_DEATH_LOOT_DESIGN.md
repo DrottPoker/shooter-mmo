@@ -2,10 +2,11 @@
 
 Last updated: 2026-07-15
 
-Status: Locked design target; Phases 1 through 6 content, authoring, schema,
+Status: Locked design target; Phases 1 through 7 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
-transaction kernel, and offline account APIs implemented; realtime mutation and
-Unity inventory integration planned
+transaction kernel, offline account APIs, carry-state delivery, and shared
+encumbrance implemented; realtime item mutation and Unity inventory integration
+planned
 
 ## Purpose
 
@@ -652,7 +653,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 6 now implement the neutral catalog, structural
+claim. Phases 1 through 7 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -669,8 +670,14 @@ cached catalog responses, focused bank and Recovery reads, and offline account
 mutation APIs. Those account mutations reject active simulation ownership under
 the same character row lock used by session admission.
 
+Phase 7 carries each admission-fenced weight, capacity, and monotonic item-state
+revision into the active SimulationWorker session and Unity movement state. A
+session heartbeat applies later committed revisions monotonically. SimulationWorker
+and Unity use the same GameSimulation encumbrance rules for sprint eligibility
+and movement speed, while AuthService remains the durable item and hard-cap
+authority.
+
 No SimulationWorker, vendor, gathering, insurance NPC, or quest gameplay path
-calls the kernel yet. Worker item mutation, SimulationWorker carry-state
-integration, Unity inventory state and UI, insurance pricing and death
-consumption, death partition, persistent corpse identity, and corpse looting
-remain later phases.
+calls the kernel yet. Worker item mutation, Unity inventory state and UI,
+insurance pricing and death consumption, death partition, persistent corpse
+identity, and corpse looting remain later phases.

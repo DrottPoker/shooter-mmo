@@ -182,8 +182,10 @@ namespace ShooterMmo.Gameplay
             movementPrediction = new ClientMovementPrediction(
                 simulationClient.MovementSession.InitialState,
                 networkSettings,
+                simulationClient.MovementSession.CarryState,
                 simulationClient.MovementSession.CollisionWorld);
             realtimeClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+            realtimeClient.CarryStateChanged += OnCarryStateChanged;
             networkTickAccumulator = 0f;
             isInitialNetworkTickPending = true;
             nextInputSequence = 0;
@@ -205,6 +207,7 @@ namespace ShooterMmo.Gameplay
             if (realtimeClient != null)
             {
                 realtimeClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
+                realtimeClient.CarryStateChanged -= OnCarryStateChanged;
             }
 
             realtimeClient = null;
@@ -365,6 +368,14 @@ namespace ShooterMmo.Gameplay
                     entity.LastProcessedInputSequence);
                 ApplyReconciliationCorrection(reconciliation);
                 return;
+            }
+        }
+
+        private void OnCarryStateChanged(PlayerCarryState carryState)
+        {
+            if (movementPrediction != null)
+            {
+                movementPrediction.ApplyCarryState(carryState);
             }
         }
 

@@ -1,4 +1,5 @@
 using SimulationWorker.Config;
+using SimulationWorker.Items;
 using SimulationWorker.Registry;
 using SimulationWorker.Sessions;
 
@@ -7,6 +8,7 @@ namespace SimulationWorker.Auth;
 public sealed class SimulationJoinService(
     AuthServiceClient authServiceClient,
     ActiveSimulationSessionStore sessionStore,
+    CarryStateStore carryStateStore,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity)
 {
@@ -67,6 +69,41 @@ public sealed class SimulationJoinService(
                 "character_already_active",
                 "Character already has a different active simulation session.");
         }
+
+        var carryRegistration = carryStateStore.Register(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.CarryState,
+            out var currentCarryState);
+        if (carryRegistration == CarryStateApplyResult.Conflict)
+        {
+            var invalidated = sessionStore.Invalidate(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                "carry_state_conflict",
+                "AuthService returned conflicting carry state for one item-state revision.");
+            if (invalidated)
+            {
+                carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+            }
+
+            await authServiceClient.ReleaseSimulationSessionAsync(
+                session.SimulationSessionId,
+                session.WorkerRuntimeId,
+                session.SimulationSessionToken,
+                cancellationToken);
+
+            return SimulationJoinResult<ActiveSimulationSession>.Conflict(
+                "carry_state_conflict",
+                "The authoritative carry state is inconsistent.");
+        }
+
+        sessionStore.RefreshCarryState(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.SimulationSessionToken,
+            currentCarryState);
 
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 

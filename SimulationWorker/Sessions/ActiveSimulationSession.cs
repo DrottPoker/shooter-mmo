@@ -1,3 +1,4 @@
+using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 
 namespace SimulationWorker.Sessions;
@@ -14,6 +15,7 @@ public sealed record ActiveSimulationSession(
     string WorkerRuntimeId,
     DateTime JoinedAt,
     DateTime SessionExpiresAt,
+    PlayerCarryState CarryState,
     bool IsReconnect)
 {
     public bool IsSyntheticBot { get; init; }
@@ -33,6 +35,10 @@ public sealed record ActiveSimulationSession(
             ticket.WorkerRuntimeId,
             DateTime.UtcNow,
             ticket.SessionExpiresAt,
+            new PlayerCarryState(
+                ticket.ItemStateRevision,
+                ticket.CarriedWeight,
+                ticket.CarryCapacity),
             ticket.IsReconnect)
         {
             IsSyntheticBot = ticket.IsSyntheticBot

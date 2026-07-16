@@ -16,7 +16,8 @@ namespace ShooterMmo.GameProtocol
         MovementInputBatch = 8,
         SimulationSnapshot = 9,
         EntitySpawn = 10,
-        EntityDespawn = 11
+        EntityDespawn = 11,
+        CarryStateChanged = 12
     }
 
     [Flags]
@@ -48,6 +49,7 @@ namespace ShooterMmo.GameProtocol
             string joinedAt,
             string sessionExpiresAt,
             bool isReconnect,
+            RealtimeCarryState carryState,
             RealtimeMovementSettings movementSettings,
             RealtimePlayerState initialPlayerState)
         {
@@ -63,6 +65,7 @@ namespace ShooterMmo.GameProtocol
             JoinedAt = joinedAt;
             SessionExpiresAt = sessionExpiresAt;
             IsReconnect = isReconnect;
+            CarryState = carryState;
             MovementSettings = movementSettings;
             InitialPlayerState = initialPlayerState;
         }
@@ -90,6 +93,8 @@ namespace ShooterMmo.GameProtocol
         public string SessionExpiresAt { get; }
 
         public bool IsReconnect { get; }
+
+        public RealtimeCarryState CarryState { get; }
 
         public RealtimeMovementSettings MovementSettings { get; }
 
@@ -185,6 +190,25 @@ namespace ShooterMmo.GameProtocol
         public float MaximumSubstepDistance { get; }
 
         public byte MaximumPenetrationIterations { get; }
+    }
+
+    public sealed class RealtimeCarryState
+    {
+        public RealtimeCarryState(
+            long itemStateRevision,
+            long carriedWeight,
+            long carryCapacity)
+        {
+            ItemStateRevision = itemStateRevision;
+            CarriedWeight = carriedWeight;
+            CarryCapacity = carryCapacity;
+        }
+
+        public long ItemStateRevision { get; }
+
+        public long CarriedWeight { get; }
+
+        public long CarryCapacity { get; }
     }
 
     public sealed class RealtimeMovementInput
@@ -385,8 +409,8 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 6;
-        public const string ConnectionKey = "ShooterMmo.Realtime.v6";
+        public const ushort Version = 7;
+        public const string ConnectionKey = "ShooterMmo.Realtime.v7";
         public const int MaximumPacketSize = 1200;
 
         public static byte[] EncodeJoinRequest(string joinTicket)
@@ -446,6 +470,7 @@ namespace ShooterMmo.GameProtocol
                 WriteString(writer, session.JoinedAt, MaximumTimestampLength, nameof(session.JoinedAt));
                 WriteString(writer, session.SessionExpiresAt, MaximumTimestampLength, nameof(session.SessionExpiresAt));
                 writer.Write(session.IsReconnect);
+                WriteCarryState(writer, session.CarryState);
                 WriteMovementSettings(writer, session.MovementSettings);
                 WritePlayerState(writer, session.InitialPlayerState);
             });
@@ -495,6 +520,7 @@ namespace ShooterMmo.GameProtocol
                 }
 
                 if (!TryReadBoolean(reader, out var isReconnect, out error)
+                    || !TryReadCarryState(reader, out var carryState, out error)
                     || !TryReadMovementSettings(reader, out var movementSettings, out error)
                     || !TryReadPlayerState(reader, out var initialPlayerState, out error)
                     || !TryFinish(stream, out error))
@@ -515,9 +541,42 @@ namespace ShooterMmo.GameProtocol
                     joinedAt,
                     sessionExpiresAt,
                     isReconnect,
+                    carryState,
                     movementSettings,
                     initialPlayerState);
                 return true;
+            }
+        }
+
+        public static byte[] EncodeCarryStateChanged(RealtimeCarryState carryState)
+        {
+            return Encode(RealtimeMessageType.CarryStateChanged, writer =>
+            {
+                WriteCarryState(writer, carryState);
+            });
+        }
+
+        public static bool TryDecodeCarryStateChanged(
+            byte[] data,
+            out RealtimeCarryState carryState,
+            out string error)
+        {
+            carryState = null;
+            if (!TryCreateReader(
+                    data,
+                    RealtimeMessageType.CarryStateChanged,
+                    out var stream,
+                    out var reader,
+                    out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                return TryReadCarryState(reader, out carryState, out error)
+                    && TryFinish(stream, out error);
             }
         }
 
@@ -1094,6 +1153,45 @@ namespace ShooterMmo.GameProtocol
             return true;
         }
 
+        private static void WriteCarryState(BinaryWriter writer, RealtimeCarryState carryState)
+        {
+            if (!IsValidCarryState(carryState))
+            {
+                throw new ArgumentException("Carry state is invalid.", nameof(carryState));
+            }
+
+            writer.Write(carryState.ItemStateRevision);
+            writer.Write(carryState.CarriedWeight);
+            writer.Write(carryState.CarryCapacity);
+        }
+
+        private static bool TryReadCarryState(
+            BinaryReader reader,
+            out RealtimeCarryState carryState,
+            out string error)
+        {
+            carryState = null;
+            if (!TryReadInt64(reader, out var itemStateRevision, out error)
+                || !TryReadInt64(reader, out var carriedWeight, out error)
+                || !TryReadInt64(reader, out var carryCapacity, out error))
+            {
+                return false;
+            }
+
+            var decoded = new RealtimeCarryState(
+                itemStateRevision,
+                carriedWeight,
+                carryCapacity);
+            if (!IsValidCarryState(decoded))
+            {
+                error = "Carry state is invalid.";
+                return false;
+            }
+
+            carryState = decoded;
+            return true;
+        }
+
         private static void WriteMovementSettings(BinaryWriter writer, RealtimeMovementSettings settings)
         {
             if (!AreValidMovementSettings(settings))
@@ -1358,6 +1456,22 @@ namespace ShooterMmo.GameProtocol
             }
         }
 
+        private static bool TryReadInt64(BinaryReader reader, out long value, out string error)
+        {
+            try
+            {
+                value = reader.ReadInt64();
+                error = string.Empty;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                value = 0;
+                error = "Packet integer is incomplete.";
+                return false;
+            }
+        }
+
         private static bool IsValidEntitySpawn(RealtimeEntitySpawn spawn)
         {
             return spawn != null
@@ -1437,6 +1551,22 @@ namespace ShooterMmo.GameProtocol
                 && settings.MaximumSubstepDistance <= settings.CharacterRadius
                 && settings.MaximumPenetrationIterations > 0
                 && settings.MaximumPenetrationIterations <= 16;
+        }
+
+        private static bool IsValidCarryState(RealtimeCarryState carryState)
+        {
+            if (carryState == null
+                || carryState.ItemStateRevision < 0
+                || carryState.CarriedWeight < 0
+                || carryState.CarryCapacity <= 0)
+            {
+                return false;
+            }
+
+            var extraCapacity = ((carryState.CarryCapacity / 5) * 2)
+                + (((carryState.CarryCapacity % 5) * 2) / 5);
+            return carryState.CarryCapacity > long.MaxValue - extraCapacity
+                || carryState.CarriedWeight <= carryState.CarryCapacity + extraCapacity;
         }
 
         private static bool IsValidPlayerState(RealtimePlayerState state)

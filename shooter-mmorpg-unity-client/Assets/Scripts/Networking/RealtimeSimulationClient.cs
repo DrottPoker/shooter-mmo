@@ -43,6 +43,8 @@ namespace ShooterMmo.Networking
 
         public event Action<RealtimeSimulationSnapshot> SimulationSnapshotReceived;
 
+        public event Action<PlayerCarryState> CarryStateChanged;
+
         public event Action<RealtimeEntitySpawn> EntitySpawned;
 
         public event Action<RealtimeEntityDespawn> EntityDespawned;
@@ -538,6 +540,9 @@ namespace ShooterMmo.Networking
                     case RealtimeMessageType.EntityDespawn:
                         HandleEntityDespawn(packet);
                         break;
+                    case RealtimeMessageType.CarryStateChanged:
+                        HandleCarryStateChanged(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -693,6 +698,37 @@ namespace ShooterMmo.Networking
             {
                 LatestServerTick = snapshot.ServerTick;
                 SimulationSnapshotReceived?.Invoke(snapshot);
+            }
+        }
+
+        private void HandleCarryStateChanged(byte[] packet)
+        {
+            if ((State != RealtimeConnectionState.Joined
+                    && State != RealtimeConnectionState.Leaving)
+                || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_carry_state",
+                    "Carry state arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCarryStateChanged(
+                    packet,
+                    out var carryState,
+                    out var error)
+                || !MovementSession.TryApplyCarryState(
+                    carryState,
+                    out var changed,
+                    out error))
+            {
+                FailProtocol("invalid_carry_state", error);
+                return;
+            }
+
+            if (changed && State == RealtimeConnectionState.Joined)
+            {
+                CarryStateChanged?.Invoke(MovementSession.CarryState);
             }
         }
 

@@ -11,6 +11,9 @@ public sealed record ActiveSimulationSessionResponse(
     string WorkerRuntimeId,
     DateTime JoinedAt,
     DateTime SessionExpiresAt,
+    long ItemStateRevision,
+    long CarriedWeight,
+    long CarryCapacity,
     bool IsReconnect)
 {
     public bool IsSyntheticBot { get; init; }
@@ -28,6 +31,9 @@ public sealed record ActiveSimulationSessionResponse(
             session.WorkerRuntimeId,
             session.JoinedAt,
             session.SessionExpiresAt,
+            session.CarryState.ItemStateRevision,
+            session.CarryState.CarriedWeight,
+            session.CarryState.CarryCapacity,
             session.IsReconnect)
         {
             IsSyntheticBot = session.IsSyntheticBot

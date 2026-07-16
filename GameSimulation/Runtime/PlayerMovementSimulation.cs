@@ -359,12 +359,14 @@ namespace ShooterMmo.GameSimulation
             PlayerMovementState state,
             PlayerMovementInput input,
             MovementSimulationSettings settings,
+            PlayerCarryState carryState,
             ICollisionWorld collisionWorld)
         {
             return Step(
                 state,
                 input,
                 settings,
+                carryState,
                 collisionWorld,
                 new CollisionQueryBuffer());
         }
@@ -373,9 +375,15 @@ namespace ShooterMmo.GameSimulation
             PlayerMovementState state,
             PlayerMovementInput input,
             MovementSimulationSettings settings,
+            PlayerCarryState carryState,
             ICollisionWorld collisionWorld,
             CollisionQueryBuffer queryBuffer)
         {
+            if (carryState == null)
+            {
+                throw new ArgumentNullException(nameof(carryState));
+            }
+
             if (collisionWorld == null)
             {
                 throw new ArgumentNullException(nameof(collisionWorld));
@@ -397,7 +405,7 @@ namespace ShooterMmo.GameSimulation
             var isGrounded = state.IsGrounded;
             var acceptsPlanarControl = isGrounded;
             var isSprinting = state.IsSprinting;
-            if (input.AimHeld || !input.SprintHeld)
+            if (!carryState.SprintAllowed || input.AimHeld || !input.SprintHeld)
             {
                 isSprinting = false;
             }
@@ -406,7 +414,8 @@ namespace ShooterMmo.GameSimulation
                 isSprinting = true;
             }
 
-            var speed = isSprinting ? settings.SprintSpeed : settings.WalkSpeed;
+            var speed = (isSprinting ? settings.SprintSpeed : settings.WalkSpeed)
+                * carryState.MovementMultiplier;
             var velocity = acceptsPlanarControl
                 ? new SimulationVector3(
                     directionX * speed,

@@ -14,6 +14,7 @@ namespace ShooterMmo.Networking
             MovementSimulationSettings settings,
             int snapshotRateHz,
             PlayerMovementState initialState,
+            PlayerCarryState carryState,
             UnityWorldCollisionStream collisionStream)
         {
             CharacterId = characterId;
@@ -21,6 +22,7 @@ namespace ShooterMmo.Networking
             Settings = settings;
             SnapshotRateHz = snapshotRateHz;
             InitialState = initialState;
+            CarryState = carryState;
             CollisionStream = collisionStream;
             CollisionWorld = collisionStream.CollisionWorld;
         }
@@ -35,9 +37,44 @@ namespace ShooterMmo.Networking
 
         public PlayerMovementState InitialState { get; private set; }
 
+        public PlayerCarryState CarryState { get; private set; }
+
         public ChunkedStaticCollisionWorld CollisionWorld { get; private set; }
 
         public UnityWorldCollisionStream CollisionStream { get; private set; }
+
+        public bool TryApplyCarryState(
+            RealtimeCarryState source,
+            out bool changed,
+            out string error)
+        {
+            changed = false;
+            if (!TryCreateCarryState(source, out var candidate, out error))
+            {
+                return false;
+            }
+
+            if (candidate.ItemStateRevision < CarryState.ItemStateRevision)
+            {
+                error = "SimulationWorker returned an older carry-state revision.";
+                return false;
+            }
+
+            if (candidate.ItemStateRevision == CarryState.ItemStateRevision)
+            {
+                if (!candidate.Equals(CarryState))
+                {
+                    error = "SimulationWorker returned conflicting values for one carry-state revision.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            CarryState = candidate;
+            changed = true;
+            return true;
+        }
 
         public bool TryRefreshCollisionStreaming(
             IEnumerable<SimulationVector3> anchors,
@@ -61,6 +98,7 @@ namespace ShooterMmo.Networking
             session = null;
             error = string.Empty;
             if (accepted == null
+                || accepted.CarryState == null
                 || accepted.MovementSettings == null
                 || accepted.InitialPlayerState == null)
             {
@@ -125,6 +163,11 @@ namespace ShooterMmo.Networking
 
             try
             {
+                if (!TryCreateCarryState(accepted.CarryState, out var carryState, out error))
+                {
+                    return false;
+                }
+
                 var source = accepted.MovementSettings;
                 var collisionSettings = new CharacterCollisionSettings(
                     source.CharacterRadius,
@@ -173,12 +216,41 @@ namespace ShooterMmo.Networking
                         state.YawDegrees,
                         state.IsGrounded,
                         state.IsSprinting),
+                    carryState,
                     collisionStream);
                 return true;
             }
             catch (ArgumentException exception)
             {
                 error = "SimulationWorker movement configuration is invalid: " + exception.Message;
+                return false;
+            }
+        }
+
+        private static bool TryCreateCarryState(
+            RealtimeCarryState source,
+            out PlayerCarryState carryState,
+            out string error)
+        {
+            carryState = null;
+            error = string.Empty;
+            if (source == null)
+            {
+                error = "SimulationWorker did not provide authoritative carry state.";
+                return false;
+            }
+
+            try
+            {
+                carryState = new PlayerCarryState(
+                    source.ItemStateRevision,
+                    source.CarriedWeight,
+                    source.CarryCapacity);
+                return true;
+            }
+            catch (ArgumentException exception)
+            {
+                error = "SimulationWorker carry state is invalid: " + exception.Message;
                 return false;
             }
         }

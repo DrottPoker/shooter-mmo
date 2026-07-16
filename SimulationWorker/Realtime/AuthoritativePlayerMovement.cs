@@ -6,6 +6,7 @@ namespace SimulationWorker.Realtime;
 public sealed class AuthoritativePlayerMovement(
     PlayerMovementState initialState,
     MovementSimulationSettings settings,
+    PlayerCarryState initialCarryState,
     ICollisionWorld collisionWorld,
     int maximumInputSilenceTicks)
 {
@@ -26,16 +27,49 @@ public sealed class AuthoritativePlayerMovement(
     public AuthoritativePlayerMovement(
         PlayerMovementState initialState,
         MovementSimulationSettings settings,
+        PlayerCarryState initialCarryState,
         ICollisionWorld collisionWorld)
-        : this(initialState, settings, collisionWorld, Math.Max(1, settings.TickRateHz / 2))
+        : this(
+            initialState,
+            settings,
+            initialCarryState,
+            collisionWorld,
+            Math.Max(1, settings.TickRateHz / 2))
     {
     }
 
     public PlayerMovementState State { get; private set; } = initialState;
 
+    public PlayerCarryState CarryState { get; private set; } = initialCarryState
+        ?? throw new ArgumentNullException(nameof(initialCarryState));
+
     public uint LastReceivedInputSequence { get; private set; }
 
     public uint LastProcessedInputSequence { get; private set; }
+
+    public bool ApplyCarryState(PlayerCarryState carryState)
+    {
+        ArgumentNullException.ThrowIfNull(carryState);
+        if (carryState.ItemStateRevision < CarryState.ItemStateRevision)
+        {
+            throw new InvalidOperationException(
+                "Authoritative movement cannot apply an older carry-state revision.");
+        }
+
+        if (carryState.ItemStateRevision == CarryState.ItemStateRevision)
+        {
+            if (!carryState.Equals(CarryState))
+            {
+                throw new InvalidOperationException(
+                    "One carry-state revision cannot contain conflicting values.");
+            }
+
+            return false;
+        }
+
+        CarryState = carryState;
+        return true;
+    }
 
     public void AcceptInputs(RealtimeMovementInput[] inputs)
     {
@@ -88,6 +122,7 @@ public sealed class AuthoritativePlayerMovement(
             State,
             input,
             settings,
+            CarryState,
             collisionWorld,
             collisionQueryBuffer);
         LastProcessedInputSequence = LastReceivedInputSequence;

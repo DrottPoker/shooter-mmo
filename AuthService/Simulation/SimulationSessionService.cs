@@ -27,30 +27,44 @@ public sealed class SimulationSessionService(
             30);
 
         const string sql = """
-            update character_simulation_sessions
-            set last_heartbeat_at = now(),
-                expires_at = now() + make_interval(secs => @LeaseLifetimeSeconds)
-            where id = @SimulationSessionId
-              and simulation_worker_id = @WorkerId
-              and worker_runtime_id = @WorkerRuntimeId
-              and session_token_hash = @SessionTokenHash
-              and released_at is null
-              and expires_at > now()
-              and (
-                  account_session_id is null
-                  or exists (
-                      select 1
-                      from account_sessions
-                      where id = character_simulation_sessions.account_session_id
-                        and revoked_at is null
-                        and expires_at > now()))
-            returning id as "SimulationSessionId",
-                      character_id as "CharacterId",
-                      shard_id as "ShardId",
-                      simulation_worker_id as "WorkerId",
-                      worker_runtime_id as "WorkerRuntimeId",
-                      expires_at as "ExpiresAt",
-                      false as "Released";
+            with refreshed_session as (
+                update character_simulation_sessions
+                set last_heartbeat_at = now(),
+                    expires_at = now() + make_interval(secs => @LeaseLifetimeSeconds)
+                where id = @SimulationSessionId
+                  and simulation_worker_id = @WorkerId
+                  and worker_runtime_id = @WorkerRuntimeId
+                  and session_token_hash = @SessionTokenHash
+                  and released_at is null
+                  and expires_at > now()
+                  and (
+                      account_session_id is null
+                      or exists (
+                          select 1
+                          from account_sessions
+                          where id = character_simulation_sessions.account_session_id
+                            and revoked_at is null
+                            and expires_at > now()))
+                returning id,
+                          character_id,
+                          shard_id,
+                          simulation_worker_id,
+                          worker_runtime_id,
+                          expires_at
+            )
+            select refreshed.id as "SimulationSessionId",
+                   refreshed.character_id as "CharacterId",
+                   refreshed.shard_id as "ShardId",
+                   refreshed.simulation_worker_id as "WorkerId",
+                   refreshed.worker_runtime_id as "WorkerRuntimeId",
+                   refreshed.expires_at as "ExpiresAt",
+                   item_state.revision as "ItemStateRevision",
+                   item_state.carried_weight as "CarriedWeight",
+                   item_state.carry_capacity as "CarryCapacity",
+                   false as "Released"
+            from refreshed_session refreshed
+            join character_item_states item_state
+              on item_state.character_id = refreshed.character_id;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -121,19 +135,33 @@ public sealed class SimulationSessionService(
         var sessionTokenHash = TokenGenerator.HashToken(request.SessionToken!.Trim());
 
         const string sql = """
-            update character_simulation_sessions
-            set released_at = coalesce(released_at, now())
-            where id = @SimulationSessionId
-              and simulation_worker_id = @WorkerId
-              and worker_runtime_id = @WorkerRuntimeId
-              and session_token_hash = @SessionTokenHash
-            returning id as "SimulationSessionId",
-                      character_id as "CharacterId",
-                      shard_id as "ShardId",
-                      simulation_worker_id as "WorkerId",
-                      worker_runtime_id as "WorkerRuntimeId",
-                      expires_at as "ExpiresAt",
-                      true as "Released";
+            with released_session as (
+                update character_simulation_sessions
+                set released_at = coalesce(released_at, now())
+                where id = @SimulationSessionId
+                  and simulation_worker_id = @WorkerId
+                  and worker_runtime_id = @WorkerRuntimeId
+                  and session_token_hash = @SessionTokenHash
+                returning id,
+                          character_id,
+                          shard_id,
+                          simulation_worker_id,
+                          worker_runtime_id,
+                          expires_at
+            )
+            select released.id as "SimulationSessionId",
+                   released.character_id as "CharacterId",
+                   released.shard_id as "ShardId",
+                   released.simulation_worker_id as "WorkerId",
+                   released.worker_runtime_id as "WorkerRuntimeId",
+                   released.expires_at as "ExpiresAt",
+                   item_state.revision as "ItemStateRevision",
+                   item_state.carried_weight as "CarriedWeight",
+                   item_state.carry_capacity as "CarryCapacity",
+                   true as "Released"
+            from released_session released
+            join character_item_states item_state
+              on item_state.character_id = released.character_id;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

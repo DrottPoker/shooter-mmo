@@ -1,3 +1,4 @@
+using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Sessions;
 
@@ -19,6 +20,9 @@ public sealed class ActiveSimulationSessionStoreTests
             Guid.NewGuid(),
             "session-token",
             DateTime.UtcNow.AddMinutes(1),
+            0,
+            0,
+            PlayerEncumbranceRules.BaseCharacterCapacity,
             false)
         {
             IsSyntheticBot = true
@@ -180,6 +184,7 @@ public sealed class ActiveSimulationSessionStoreTests
             "worker-runtime-1",
             DateTime.UtcNow,
             sessionExpiresAt ?? DateTime.UtcNow.AddMinutes(1),
+            PlayerCarryState.Default,
             false);
     }
 }

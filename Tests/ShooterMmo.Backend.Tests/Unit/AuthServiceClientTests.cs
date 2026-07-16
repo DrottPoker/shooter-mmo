@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ShooterMmo.GameProtocol;
+using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 
 namespace ShooterMmo.Backend.Tests.Unit;
@@ -23,6 +25,9 @@ public sealed class AuthServiceClientTests
             simulationSessionId,
             simulationSessionToken = "simulation-session-token",
             sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            itemStateRevision = 12,
+            carriedWeight = 210,
+            carryCapacity = 200,
             isReconnect = false
         }));
         var client = CreateClient(handler);
@@ -56,6 +61,9 @@ public sealed class AuthServiceClientTests
             workerId = "local-simulation-worker-1",
             workerRuntimeId = "runtime-1",
             expiresAt = DateTime.UtcNow.AddMinutes(1),
+            itemStateRevision = 12,
+            carriedWeight = 210,
+            carryCapacity = 200,
             released = request.RequestUri!.AbsolutePath.EndsWith(
                 "/release",
                 StringComparison.Ordinal)
@@ -126,7 +134,9 @@ public sealed class AuthServiceClientTests
         Assert.Equal("local-node-1", body.RootElement.GetProperty("nodeId").GetString());
         Assert.Equal("local-shard-1", body.RootElement.GetProperty("shardId").GetString());
         Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
-        Assert.Equal(6, body.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(
+            RealtimeProtocol.Version,
+            body.RootElement.GetProperty("protocolVersion").GetInt32());
     }
 
     [Fact]
@@ -194,6 +204,34 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
+    public async Task CarryStateAboveTheHardCapReturnsBadGateway()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            accountId = Guid.NewGuid(),
+            characterId = Guid.NewGuid(),
+            characterName = "Hero One",
+            shardId = "local-shard-1",
+            worldId = "local-world-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId = Guid.NewGuid(),
+            simulationSessionToken = "simulation-session-token",
+            sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            itemStateRevision = 1,
+            carriedWeight = 281,
+            carryCapacity = 200,
+            isReconnect = false
+        }));
+
+        var result = await ConsumeAsync(CreateClient(handler));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
+    }
+
+    [Fact]
     public async Task ProblemDetailsErrorIsMappedWithoutLosingItsCode()
     {
         var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(
@@ -241,8 +279,8 @@ public sealed class AuthServiceClientTests
             28015,
             100,
             4,
-            6,
-            "movement-simulation-v2",
+            RealtimeProtocol.Version,
+            GameSimulationCompatibility.Revision,
             "collision-revision-1");
     }
 

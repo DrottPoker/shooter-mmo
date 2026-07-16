@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ShooterMmo.GameSimulation;
 using ShooterMmo.Shared.Health;
 
 namespace SimulationWorker.Auth;
@@ -230,7 +231,11 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && string.Equals(response.WorkerId, workerId, StringComparison.Ordinal)
             && string.Equals(response.WorkerRuntimeId, runtimeId, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(response.SimulationSessionToken)
-            && response.SessionExpiresAt != default;
+            && response.SessionExpiresAt != default
+            && IsValidCarryState(
+                response.ItemStateRevision,
+                response.CarriedWeight,
+                response.CarryCapacity);
     }
 
     private static bool IsValidSimulationSessionLease(
@@ -241,6 +246,21 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && !string.IsNullOrWhiteSpace(response.ShardId)
             && !string.IsNullOrWhiteSpace(response.WorkerId)
             && !string.IsNullOrWhiteSpace(response.WorkerRuntimeId)
-            && response.ExpiresAt != default;
+            && response.ExpiresAt != default
+            && IsValidCarryState(
+                response.ItemStateRevision,
+                response.CarriedWeight,
+                response.CarryCapacity);
+    }
+
+    private static bool IsValidCarryState(
+        long itemStateRevision,
+        long carriedWeight,
+        long carryCapacity)
+    {
+        return itemStateRevision >= 0
+            && carriedWeight >= 0
+            && carryCapacity > 0
+            && PlayerEncumbranceRules.IsWithinHardCap(carriedWeight, carryCapacity);
     }
 }

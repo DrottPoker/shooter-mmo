@@ -427,6 +427,68 @@ items for manual interaction.
 
 No Unity Editor action is required for Phase 6 verification.
 
+## Phase 7 Carry State And Shared Encumbrance Verification
+
+Run the carry-state unit, protocol, worker, and isolated PostgreSQL coverage
+against the dedicated test database:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$values = @{}
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    $values[$matches[1]] = $matches[2]
+  }
+}
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  "Host=127.0.0.1;Port=55432;" + `
+  "Database=$($values['TEST_POSTGRES_DB']);" + `
+  "Username=$($values['TEST_POSTGRES_USER']);" + `
+  "Password=$($values['TEST_POSTGRES_PASSWORD'])"
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~PlayerMovementSimulationTests|FullyQualifiedName~CarryStateStoreTests|FullyQualifiedName~SimulationSessionReleaseServiceTests|FullyQualifiedName~AuthoritativePlayerMovementTests|FullyQualifiedName~RealtimeProtocolTests|FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~CarryStateIsFencedIntoJoinHeartbeatAndReconnect|FullyQualifiedName~CarryStateCountsEveryCarriedCustodyExactlyOnceAndExcludesExternalCustody|FullyQualifiedName~SwappingToLowerCapacityBagRejectsTheCompleteAggregateAboveHardCap"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+```
+
+Expected result: every selected test passes. The suite verifies base capacity
+`200`, equipped Bag capacity, exact custody contribution, exclusion of bank,
+Recovery Storage, and corpse custody, lower-capacity Bag rollback, sprint at and
+above 100 percent, the linear multiplier through `0.20` at 140 percent,
+monotonic active-session propagation, protocol validation, and reconnect
+restoration.
+
+Run all Unity tests through the repository script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: all EditMode and PlayMode tests pass. The EditMode suite runs
+the same shared GameSimulation reference points and verifies monotonic client
+carry-state updates.
+
+For a manual default-state and reconnect check:
+
+1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
+2. Run `dotnet run --project AuthService` in one terminal.
+3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
+   startup reports realtime protocol version `7` and simulation revision
+   `movement-simulation-v3`.
+4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
+   enter Play Mode, register or log in, select a character and shard, and join.
+5. Press F2 in WorldScene. A new empty character shows weight `0 / 200`, movement
+   `100%`, sprint allowed, and its committed item-state revision.
+6. Leave to CharacterSelect and join the same character again. The carry tuple
+   and revision are restored and movement remains available.
+7. Exit Play Mode and stop both backend processes and Compose services.
+
+No Inspector, scene, prefab, package, input-action, or build-setting change is
+required for Phase 7. Weighted carry-state transitions are intentionally tested
+through the isolated fixtures because Phase 8 has not added an in-world item
+mutation route.
+
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 
@@ -577,7 +639,7 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 6, simulation revision, collision
+`27015`, runtime id, realtime protocol version 7, simulation revision, collision
 revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
 interval logs a worker status line with connected real players, synthetic bots,
@@ -962,9 +1024,10 @@ to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
 restart SimulationWorker so both processes use the current protocol implementation.
-Protocol version 6 also validates shard and World identity, the exact placement,
-the compiled movement-simulation revision,
-server-assigned network entity ids, and reliable entity lifecycle messages.
+Protocol version 7 also validates shard and World identity, the exact placement,
+the compiled movement-simulation revision, the initial carry tuple,
+server-assigned network entity ids, reliable carry-state updates, and reliable
+entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
 directories and must never be committed.

@@ -1,7 +1,9 @@
 {
   "name": "ShooterMmo.GameSimulation",
   "rootNamespace": "ShooterMmo.GameSimulation",
-  "references": [],
+  "references": [
+    "ShooterMmo.WorldData"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

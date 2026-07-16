@@ -101,6 +101,7 @@ public sealed class AuthoritativePlayerMovementTests
         var movement = new AuthoritativePlayerMovement(
             initialState,
             Settings,
+            PlayerCarryState.Default,
             collisionWorld,
             15);
 
@@ -110,6 +111,27 @@ public sealed class AuthoritativePlayerMovementTests
         }
 
         Assert.Equal(1, collisionWorld.ObservedBufferCount);
+    }
+
+    [Fact]
+    public void CommittedCarryRevisionChangesAuthoritativeSprintAndSpeed()
+    {
+        var movement = CreateMovement();
+        movement.AcceptInputs(new[]
+        {
+            Input(1, 0f, 1f, RealtimeMovementButtons.Sprint)
+        });
+
+        Assert.True(movement.ApplyCarryState(new PlayerCarryState(1, 210, 200)));
+        movement.SimulateTick();
+
+        Assert.False(movement.State.IsSprinting);
+        Assert.Equal(Settings.WalkSpeed * 0.9f, movement.State.VelocityZ, 4);
+        Assert.False(movement.ApplyCarryState(new PlayerCarryState(1, 210, 200)));
+        Assert.Throws<InvalidOperationException>(() =>
+            movement.ApplyCarryState(new PlayerCarryState(0, 0, 200)));
+        Assert.Throws<InvalidOperationException>(() =>
+            movement.ApplyCarryState(new PlayerCarryState(1, 200, 200)));
     }
 
     private static AuthoritativePlayerMovement CreateMovement(int maximumInputSilenceTicks = 15)
@@ -124,6 +146,7 @@ public sealed class AuthoritativePlayerMovementTests
                 -1f,
                 0f),
             Settings,
+            PlayerCarryState.Default,
             collisionWorld,
             maximumInputSilenceTicks);
     }

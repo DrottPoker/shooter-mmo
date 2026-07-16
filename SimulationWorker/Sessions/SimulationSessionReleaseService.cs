@@ -1,11 +1,13 @@
 using System.Net;
 using SimulationWorker.Auth;
+using SimulationWorker.Items;
 
 namespace SimulationWorker.Sessions;
 
 public sealed class SimulationSessionReleaseService(
     AuthServiceClient authServiceClient,
-    ActiveSimulationSessionStore sessionStore)
+    ActiveSimulationSessionStore sessionStore,
+    CarryStateStore carryStateStore)
 {
     public async Task<SimulationSessionReleaseResult> ReleaseAsync(
         ActiveSimulationSession session,
@@ -22,10 +24,17 @@ public sealed class SimulationSessionReleaseService(
                 or (int)HttpStatusCode.NotFound
                 or (int)HttpStatusCode.Conflict)
         {
-            sessionStore.Remove(
+            var removed = sessionStore.Remove(
                 session.CharacterId,
                 session.SimulationSessionId,
                 session.SimulationSessionToken);
+            if (removed)
+            {
+                carryStateStore.Remove(
+                    session.CharacterId,
+                    session.SimulationSessionId);
+            }
+
             return SimulationSessionReleaseResult.Success();
         }
 

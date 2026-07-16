@@ -131,6 +131,9 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `7`,
+  movement revision `movement-simulation-v3`, and identical authoritative and
+  predicted encumbrance behavior.
 
 ## Current Scale Boundary
 
@@ -146,7 +149,7 @@ introduce isolated realms.
 
 ## Item Foundation Status And Next Step
 
-Phases 1 through 6 of the durable item and inventory plan are complete. The
+Phases 1 through 7 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -165,8 +168,12 @@ PostgreSQL transaction. Phase 6 adds policy application and removal, exact
 quest-grant cleanup, conditionally cached catalog reads, stable Problem Details,
 and account-session mutation routes. Account mutations lock the same character
 row as simulation admission and reject an active session with
-`item_offline_access_required`. The next approved step is Phase 7's shared carry
-state and encumbrance integration.
+`item_offline_access_required`. Phase 7 carries the committed item-state
+revision, weight, and base plus Bag capacity through admission and heartbeat to
+SimulationWorker. The shared GameSimulation rules now apply the exact sprint
+threshold and linear movement multiplier in both authoritative movement and
+Unity prediction. The next approved step is Phase 8's in-world mutation
+boundary.
 
 The remaining locked direction is slot-based rather than grid-based and includes:
 
@@ -176,8 +183,9 @@ The remaining locked direction is slot-based rather than grid-based and includes
 - Player and gameplay access to permanent character inventory, per-character
   bank, equipment, physical Bag items, per-character Secure Container contents,
   and account-selected Secure Container tiers.
-- Unitless integer carry weight, base character capacity `200`, a 140 percent
-  hard cap at base weight `280`, and shared authoritative encumbrance behavior.
+- Player-visible inventory collection state and item operations built on the
+  implemented unitless integer carry weight, base character capacity `200`,
+  140 percent hard cap, and shared authoritative encumbrance behavior.
 - A player inventory layout with equipment on the left, contextual containers
   in the upper-right area, and character inventory in the lower-right area.
 - Unity presentation for claims from the implemented system-write-only Recovery
@@ -199,8 +207,7 @@ exists. See
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
 - Gameplay-created item instances, worker mutation routes, in-world bank service
-  validation, live carry-state integration, Unity inventory behavior, corpse
-  identity, and loot transactions.
+  validation, Unity inventory behavior, corpse identity, and loot transactions.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live

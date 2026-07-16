@@ -12,4 +12,8 @@
              Link="Runtime\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\WorldData\ShooterMmo.WorldData.csproj" />
+  </ItemGroup>
+
 </Project>

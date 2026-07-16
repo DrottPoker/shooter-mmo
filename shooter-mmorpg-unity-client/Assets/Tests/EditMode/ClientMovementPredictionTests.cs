@@ -36,13 +36,18 @@ namespace ShooterMmo.Tests.EditMode
                 0f,
                 -1f,
                 0f);
-            var prediction = new ClientMovementPrediction(initial, Settings, world);
+            var prediction = new ClientMovementPrediction(
+                initial,
+                Settings,
+                PlayerCarryState.Default,
+                world);
             prediction.Predict(first);
             prediction.Predict(second);
             var authoritativeAfterFirst = PlayerMovementSimulation.Step(
                 initial,
                 first,
                 Settings,
+                PlayerCarryState.Default,
                 world);
 
             prediction.Reconcile(authoritativeAfterFirst, 1);
@@ -51,6 +56,7 @@ namespace ShooterMmo.Tests.EditMode
                 authoritativeAfterFirst,
                 second,
                 Settings,
+                PlayerCarryState.Default,
                 world);
             Assert.That(prediction.PendingInputCount, Is.EqualTo(1));
             Assert.That(prediction.State.PositionX, Is.EqualTo(expected.PositionX).Within(0.0001f));
@@ -68,7 +74,11 @@ namespace ShooterMmo.Tests.EditMode
                 0f,
                 -1f,
                 0f);
-            var prediction = new ClientMovementPrediction(initial, Settings, world);
+            var prediction = new ClientMovementPrediction(
+                initial,
+                Settings,
+                PlayerCarryState.Default,
+                world);
             for (uint sequence = 1; sequence <= 6; sequence++)
             {
                 prediction.Predict(Input(sequence, 0f, 1f));
@@ -79,6 +89,57 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(batch.Length, Is.EqualTo(4));
             Assert.That(batch[0].InputSequence, Is.EqualTo(3));
             Assert.That(batch[3].InputSequence, Is.EqualTo(6));
+        }
+
+        [TestCase(200, 10000)]
+        [TestCase(210, 9000)]
+        [TestCase(220, 8000)]
+        [TestCase(240, 6000)]
+        [TestCase(260, 4000)]
+        [TestCase(280, 2000)]
+        public void SharedEncumbranceUsesTheAuthoritativeFixedPointCurve(
+            long carriedWeight,
+            int expectedBasisPoints)
+        {
+            var carryState = new PlayerCarryState(1, carriedWeight, 200);
+
+            Assert.That(
+                carryState.MovementMultiplierBasisPoints,
+                Is.EqualTo(expectedBasisPoints));
+        }
+
+        [Test]
+        public void PredictionAppliesCarryRevisionToSprintAndMovementSpeed()
+        {
+            var world = LoadCollisionWorld();
+            var initial = PlayerMovementSimulation.CreateInitialState(
+                Settings,
+                world,
+                0f,
+                0f,
+                -1f,
+                0f);
+            var prediction = new ClientMovementPrediction(
+                initial,
+                Settings,
+                PlayerCarryState.Default,
+                world);
+            var carryState = new PlayerCarryState(1, 210, 200);
+            prediction.ApplyCarryState(carryState);
+
+            prediction.Predict(new PlayerMovementInput(
+                1,
+                1,
+                0f,
+                1f,
+                0f,
+                PlayerMovementButtons.Sprint));
+
+            Assert.That(prediction.CarryState, Is.SameAs(carryState));
+            Assert.That(prediction.State.IsSprinting, Is.False);
+            Assert.That(
+                prediction.State.VelocityZ,
+                Is.EqualTo(Settings.WalkSpeed * 0.9f).Within(0.0001f));
         }
 
         [Test]
@@ -245,6 +306,36 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(error, Does.Contain("simulation revision"));
         }
 
+        [Test]
+        public void NetworkSessionAppliesOnlyNewerCarryRevisions()
+        {
+            var accepted = CreateJoinAccepted(
+                GameSimulationCompatibility.Revision,
+                LoadCollisionWorld().Revision);
+            Assert.That(
+                NetworkMovementSession.TryCreate(accepted, out var session, out var createError),
+                Is.True,
+                createError);
+
+            Assert.That(
+                session.TryApplyCarryState(
+                    new RealtimeCarryState(1, 210, 200),
+                    out var changed,
+                    out var updateError),
+                Is.True,
+                updateError);
+            Assert.That(changed, Is.True);
+            Assert.That(session.CarryState.ItemStateRevision, Is.EqualTo(1));
+
+            Assert.That(
+                session.TryApplyCarryState(
+                    new RealtimeCarryState(0, 0, 200),
+                    out _,
+                    out var staleError),
+                Is.False);
+            Assert.That(staleError, Does.Contain("older carry-state revision"));
+        }
+
         private static RealtimeJoinAccepted CreateJoinAccepted(
             string simulationRevision,
             string collisionRevision)
@@ -262,6 +353,7 @@ namespace ShooterMmo.Tests.EditMode
                 DateTime.UtcNow.ToString("O"),
                 DateTime.UtcNow.AddSeconds(30).ToString("O"),
                 false,
+                new RealtimeCarryState(0, 0, 200),
                 new RealtimeMovementSettings(
                     30,
                     15,

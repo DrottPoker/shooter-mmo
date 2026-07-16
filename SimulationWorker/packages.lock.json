@@ -311,13 +311,19 @@
         "type": "Project"
       },
       "shootermmo.gamesimulation": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
       },
       "shootermmo.shared": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Configuration": "[10.0.9, )"
         }
+      },
+      "shootermmo.worlddata": {
+        "type": "Project"
       }
     }
   }

@@ -19,6 +19,9 @@ public sealed record ConsumedSimulationJoinTicketResponse(
     Guid SimulationSessionId,
     string SimulationSessionToken,
     DateTime SessionExpiresAt,
+    long ItemStateRevision,
+    long CarriedWeight,
+    long CarryCapacity,
     bool IsReconnect)
 {
     public bool IsSyntheticBot { get; init; }
@@ -35,6 +38,9 @@ public sealed record SimulationSessionLeaseResponse(
     string WorkerId,
     string WorkerRuntimeId,
     DateTime ExpiresAt,
+    long ItemStateRevision,
+    long CarriedWeight,
+    long CarryCapacity,
     bool Released);
 
 public sealed record SimulationWorkerHeartbeatResponse(

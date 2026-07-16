@@ -152,7 +152,7 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
-Protocol version 6 includes:
+Protocol version 7 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
@@ -162,6 +162,8 @@ Protocol version 6 includes:
 - Chunked simulation snapshots with server tick, snapshot sequence, and input
   acknowledgement.
 - Movement, simulation revision, and collision revision metadata.
+- Admission-fenced carry state in join acceptance and reliable ordered updates
+  for newer committed item-state revisions.
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
@@ -174,9 +176,11 @@ chunk metadata.
 it directly as a local package and `Shared/DotNet/GameSimulation` compiles it
 for SimulationWorker.
 
-It owns movement integration, action restrictions, gravity, facing, capsule
-collision, steps, slopes, bounds, and collision-data codecs. It has no Unity,
-transport, database, or presentation dependency.
+It owns movement integration, carry-state encumbrance, sprint restrictions,
+gravity, facing, capsule collision, steps, slopes, bounds, and collision-data
+codecs. Its carry wrapper delegates capacity, hard-cap, and multiplier arithmetic
+to the pure WorldData item rules. It has no Unity, transport, database, or
+presentation dependency.
 
 ### WorldData
 
@@ -203,7 +207,9 @@ The current pure rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, Secure Container eligibility, empty and non-empty Bag
 locations, Bag containment-cycle rejection, unitless integer weight arithmetic,
 base character capacity `200`, the 140 percent hard cap, and the linear
-fixed-point encumbrance multiplier. They have
+fixed-point encumbrance multiplier. GameSimulation wraps the carry tuple in an
+immutable shared movement state and applies the same multiplier and sprint
+threshold in SimulationWorker and Unity prediction. These rules have
 no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.
 
 `WorldData/Editor/Items` contains the Editor-only `ShooterMmo.WorldData.Editor`
@@ -252,9 +258,10 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 6 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 7 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
-and offline account APIs implemented; realtime mutation integration planned
+offline account APIs, carry-state delivery, and shared encumbrance implemented;
+realtime item mutation integration planned
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -311,12 +318,17 @@ the expected Bag item plus content-container revisions. Secure Container tier
 changes lock every affected character state in character-id order and coordinate
 with character bootstrap through one account-entitlement advisory key.
 
-SimulationWorker will own live proximity, interaction, combat, corpse
-presentation, and authoritative encumbrance for its assigned shard. While a
-character is active, the worker will request durable item mutations through an
-authenticated AuthService boundary fenced to the exact character, simulation
-session, worker, runtime, and Shard. SimulationWorker will not write inventory
-tables directly.
+SimulationWorker owns authoritative encumbrance for its assigned Shard. Join
+admission returns a character-row and item-state-row fenced carry tuple, and
+session heartbeat can advance that tuple only by its monotonic item-state
+revision. The worker applies it to movement through shared GameSimulation rules
+and sends committed revisions to Unity over the reliable control channel.
+
+SimulationWorker will also own live proximity, interaction, combat, and corpse
+presentation. While a character is active, the worker will request durable item
+mutations through an authenticated AuthService boundary fenced to the exact
+character, simulation session, worker, runtime, and Shard. SimulationWorker
+will not write inventory tables directly.
 
 Player corpses will use durable custody with an absolute expiry and can be
 restored by a replacement worker. Normal NPC corpses may remain worker-owned and
@@ -325,9 +337,11 @@ path. These choices do not introduce Zone or Layer ownership.
 
 Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel.
 Phase 6 adds policy-safe account reads and offline mutations on that kernel.
-There is still no gameplay grant route, worker item state, service-authenticated
-worker item mutation route, or Unity inventory state. The Unity content tooling
-remains presentation and authoring support, not item authority.
+Phase 7 adds session-bound carry state and shared SimulationWorker and Unity
+encumbrance. There is still no gameplay grant route, worker inventory state,
+service-authenticated worker item mutation route, or Unity inventory state. The
+Unity content tooling remains presentation and authoring support, not item
+authority.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
@@ -508,16 +522,20 @@ and disconnects the older peer generation.
 
 ### Authoritative Movement
 
-1. SimulationWorker sends validated movement settings and shared-data revisions
-   on join.
+1. SimulationWorker sends validated movement settings, shared-data revisions,
+   and the admission-fenced carry tuple on join.
 2. Unity samples Input Actions at the provided fixed rate, predicts locally,
    and sends redundant batches of recent unacknowledged inputs.
 3. SimulationWorker processes only newer sequences at 30 Hz. Clients send input,
    never accepted positions.
-4. Static and dynamic collision queries run through the shared simulation.
-5. Interest management determines which entities each connection can observe.
-6. SimulationWorker sends visible authoritative states at 15 Hz.
-7. The local client acknowledges, rewinds, and replays prediction. Remote clients
+4. Static and dynamic collision plus carry-state sprint and speed rules run
+   through the shared simulation. Both server and Unity use the exact committed
+   item-state revision, weight, capacity, and fixed-point multiplier.
+5. Session heartbeat advances carry state monotonically. SimulationWorker sends
+   a reliable carry-state update before the newer state affects local movement.
+6. Interest management determines which entities each connection can observe.
+7. SimulationWorker sends visible authoritative states at 15 Hz.
+8. The local client acknowledges, rewinds, and replays prediction. Remote clients
    interpolate behind the latest server tick.
 
 ### Planned In-World Item Mutation

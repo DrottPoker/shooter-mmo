@@ -61,6 +61,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   stable PostgreSQL lock order, optimistic revisions, atomic item and Bag
   commands, Recovery deliveries, Secure Container tier changes, carried-state
   recomputation, policy lifecycle, quest-grant cleanup, and relational audit.
+- Exact-session carry-state admission and heartbeat propagation, with base and
+  Bag capacity, monotonic item-state revisions, authoritative sprint limits, and
+  one shared encumbrance calculation for SimulationWorker and Unity prediction.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
@@ -78,7 +81,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 6 of the slot-based item foundation are implemented. Shared
+Phases 1 through 7 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
 character item-state bootstrap now exist. AuthService exposes revision-cached
@@ -86,9 +89,9 @@ catalog reads, owned item-state, bank and Recovery Storage reads, and
 account-authenticated offline mutation routes. The same transaction kernel owns
 policy records, insurance removal, quest-grant cleanup, Secure Container tier
 changes, Recovery claims, idempotency, revisions, weight, and audit. In-world
-SimulationWorker integration and player-facing Unity inventory remain later
-phases. Combat,
-persistent NPCs, zones, layers, complex terrain meshes, and production
+SimulationWorker item mutation and player-facing Unity inventory remain later
+phases. Carry state already drives shared authoritative and predicted movement.
+Combat, persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 
 ## Requirements

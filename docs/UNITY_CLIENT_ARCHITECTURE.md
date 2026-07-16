@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Purpose
 
@@ -175,7 +175,7 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 6 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 7 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
@@ -200,9 +200,12 @@ remove entities. They update only ids already admitted by the reliable
 lifecycle.
 
 `NetworkMovementSession` is created only from a validated join response. It owns
-the server-provided movement settings and initial state used by the client. The
-client does not maintain a second editable copy of movement speed, tick rate,
-gravity, bounds, or snapshot frequency for an active network session.
+the server-provided movement settings, initial state, and admission-fenced carry
+tuple used by the client. The tuple contains the monotonic item-state revision,
+unitless carried weight, and capacity. Reliable carry-state updates advance the
+tuple only when their revision is newer. The client does not maintain a second
+editable copy of movement speed, tick rate, gravity, bounds, snapshot frequency,
+weight, or capacity for an active network session.
 The join response must also match the client's compiled movement-simulation
 revision and baked collision revision. Either mismatch aborts activation with a
 structured client error.
@@ -333,6 +336,14 @@ while the third-person camera remains independently controllable.
 `RefreshCharacterDimensions` remains the runtime entry point when a future
 character system changes collider dimensions.
 
+Authenticated prediction also consumes the exact carry tuple owned by
+`NetworkMovementSession`. The shared simulation allows sprint at exactly 100
+percent capacity, disables sprint above it, and linearly reduces movement to
+`0.20` at the 140 percent hard cap. A reliable newer revision is applied before
+subsequent prediction and reconciliation replay. The temporary F2 panel exposes
+weight, capacity, item-state revision, movement percentage, and sprint
+eligibility for observation without becoming inventory state or authority.
+
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
 immediately and up to four newest unacknowledged commands are sent in each batch.
@@ -416,7 +427,9 @@ Problem Details parsing, diagnostic prefix formatting, configuration loading,
 PlayerInput action binding, invalid array rejection, dynamic crosshair
 configuration, local reconciliation, redundant input batches, remote
 interpolation, collision resource loading, authored player prefab contracts, and
-WorldScene composition.
+WorldScene composition. They also execute the shared encumbrance reference
+points, sprint threshold, movement prediction, and monotonic carry-revision
+handling used by SimulationWorker.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, persistent realtime client, and runtime login panel.

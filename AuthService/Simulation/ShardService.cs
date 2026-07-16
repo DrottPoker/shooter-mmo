@@ -336,6 +336,12 @@ public sealed class ShardService(
                 "Join ticket is bound to another shard or simulation worker runtime.");
         }
 
+        var carryState = await LockCarryStateAsync(
+            connection,
+            transaction,
+            joinTicket.CharacterId,
+            cancellationToken);
+
         await ReleaseExpiredSimulationSessionsForAccountAsync(
             connection,
             transaction,
@@ -434,7 +440,30 @@ public sealed class ShardService(
                 simulationSession.Id,
                 sessionToken,
                 simulationSession.ExpiresAt,
+                carryState.ItemStateRevision,
+                carryState.CarriedWeight,
+                carryState.CarryCapacity,
                 isReconnect));
+    }
+
+    private static Task<CharacterCarryStateRow> LockCarryStateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        return connection.QuerySingleAsync<CharacterCarryStateRow>(new CommandDefinition(
+            """
+            select revision as "ItemStateRevision",
+                   carried_weight as "CarriedWeight",
+                   carry_capacity as "CarryCapacity"
+            from character_item_states
+            where character_id = @CharacterId
+            for update;
+            """,
+            new { CharacterId = characterId },
+            transaction,
+            cancellationToken: cancellationToken));
     }
 
     private static async Task<PlacementRow?> SelectPlacementAsync(
@@ -898,6 +927,11 @@ public sealed class ShardService(
         string SimulationWorkerId,
         string WorkerRuntimeId,
         DateTime ExpiresAt);
+
+    private sealed record CharacterCarryStateRow(
+        long ItemStateRevision,
+        long CarriedWeight,
+        long CarryCapacity);
 
     private sealed record PlacementRow(
         string ShardId,

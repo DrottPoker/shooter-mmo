@@ -178,9 +178,12 @@ database snapshot before reserving capacity. Different shards remain parallel.
 Join tickets are short lived, one use, and stored only as hashes. A worker must
 present the ticket together with its own worker id, runtime id, and shard id.
 
-Consumption locks the account and character, validates account session status,
-checks exact placement binding, and creates or rotates the simulation-session
-token in one transaction.
+Consumption locks the account, character, and character item-state row, validates
+account session status, checks exact placement binding, and creates or rotates
+the simulation-session token in one transaction. The response includes the
+fenced item-state revision, carried weight, and capacity. Heartbeat updates the
+lease and reads the current committed carry tuple in the same statement so a
+worker can advance active movement state monotonically.
 
 Simulation session properties:
 
@@ -215,8 +218,10 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
 
-Protocol version 6 carries both Shard and World identity. A standalone client
-must be rebuilt when the protocol version changes.
+Protocol version 7 carries Shard and World identity plus the initial carry tuple
+in join acceptance. Reliable ordered carry-state updates deliver later committed
+item-state revisions. A standalone client must be rebuilt when the protocol
+version changes.
 
 ## Entity Registry And Replication
 
@@ -283,11 +288,11 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
-## Item Catalog, Domain Rules, Persistence, Policies, And Account APIs
+## Item Catalog, Persistence, Account APIs, And Shared Encumbrance
 
-Phases 1 through 6 of the approved item plan are implemented. Offline account
-mutations are available, while worker and Unity item integration remain later
-phases:
+Phases 1 through 7 of the approved item plan are implemented. Offline account
+mutations and shared live encumbrance are available, while in-world item
+mutation and Unity inventory presentation remain later phases:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -399,14 +404,29 @@ phases:
   `Pragma: no-cache`. Domain failures use RFC Problem Details with stable `code`
   values. AuthService never returns icon bytes, Unity references, or client
   presentation entries.
+- Admission returns one item-state-row-fenced carry tuple with the accepted
+  session lease. Heartbeat returns the current committed tuple with the renewed
+  lease. Reconnect reads the tuple again under the admission lock.
+- SimulationWorker stores carry state by exact simulation-session identity and
+  applies only increasing item-state revisions. Same-revision conflicts
+  invalidate the local lease instead of accepting contradictory weight or
+  capacity.
+- GameSimulation revision `movement-simulation-v3` owns the immutable carry
+  state and deterministic encumbrance calculation used by worker movement and
+  Unity prediction. Sprint is allowed through exactly 100 percent load, then
+  disabled, while the movement multiplier falls linearly to `0.20` at the exact
+  140 percent hard cap.
+- Realtime protocol version `7` includes carry state on join and carries later
+  committed revisions on the reliable ordered control path. Unity treats this
+  as movement state, not as an inventory snapshot or mutation authority.
 
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
 AuthService exposes authenticated owned-character reads and offline account item
 write routes. It exposes no development grant or worker item write route.
-SimulationWorker has no inventory database access, and Unity is not an item-rule
-authority.
+SimulationWorker has no inventory database access and holds no item collection.
+Unity is not an item-rule authority.
 
 ## UDP Resilience And Quotas
 
@@ -551,6 +571,10 @@ the test connection variable at development or production data.
   and reaccept, ETag `304`, no-store responses, owner scoping, stable Problem
   Details, offline session fencing, Recovery deposit rejection, system delivery,
   successful claims, and hard-cap claim rollback.
+- Shared carry and movement tests for exact custody contribution, base and Bag
+  capacity, lower-capacity Bag rejection, sprint at and above 100 percent,
+  fixed-point movement reference points, monotonic active-session propagation,
+  protocol validation, and reconnect restoration.
 
 ## Not Yet Implemented
 
@@ -558,8 +582,8 @@ the test connection variable at development or production data.
   systems that invoke the internal kernel.
 - In-world equipment, Bag, bank, Secure Container, or Recovery Storage
   interaction through SimulationWorker or Unity.
-- Carry-revision delivery to SimulationWorker, inventory-driven movement
-  restrictions, or encumbrance integration with the live simulation.
+- Player-visible inventory collections, item operations, equipment changes, or
+  service interactions through the live SimulationWorker and Unity path.
 - Insurance NPC pricing and access, insurance consumption on death, death
   partition, persistent player corpses, concurrent corpse looting, or
   configurable NPC corpse persistence.
