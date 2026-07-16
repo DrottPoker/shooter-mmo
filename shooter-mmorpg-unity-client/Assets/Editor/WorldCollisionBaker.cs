@@ -12,7 +12,7 @@ namespace ShooterMmo.Editor
 {
     public static class WorldCollisionBaker
     {
-        private const string MenuPath = "Shooter MMO/World Collision/Bake Open Scene";
+        public const string MenuPath = "Shooter MMO/Tools/World Collision/Bake Open Scene";
 
         [MenuItem(MenuPath)]
         public static void BakeOpenScene()

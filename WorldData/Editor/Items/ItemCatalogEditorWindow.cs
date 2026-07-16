@@ -11,6 +11,8 @@ namespace ShooterMmo.WorldData.Editor.Items
 {
     public sealed class ItemCatalogEditorWindow : EditorWindow
     {
+        public const string MenuPath = "Shooter MMO/Tools/Item Catalog";
+
         private const float CatalogListWidth = 290f;
 
         private readonly Dictionary<string, Sprite> iconCache =
@@ -29,7 +31,7 @@ namespace ShooterMmo.WorldData.Editor.Items
         private MessageType statusType = MessageType.Info;
         private bool loadScheduled;
 
-        [MenuItem("Tools/Shooter MMO/Item Catalog")]
+        [MenuItem(MenuPath)]
         public static void Open()
         {
             var window = GetWindow<ItemCatalogEditorWindow>();

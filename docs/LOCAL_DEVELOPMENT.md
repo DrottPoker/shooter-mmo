@@ -95,7 +95,7 @@ The baseline scale is ammunition `1`, pistol `10`, and base character capacity
 `200`.
 
 The canonical content workflow is available in Unity at
-`Tools > Shooter MMO > Item Catalog`:
+`Shooter MMO > Tools > Item Catalog`:
 
 1. Use the searchable definition list and category filter to select an item.
 2. Edit gameplay fields and the separate client presentation fields in the same
@@ -560,65 +560,100 @@ $env:SHOOTER_MMO_TEST_POSTGRES = `
   }).Split("=", 2)[1]
 dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
   --configuration Release `
-  --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~ItemReadModelIntegrationTests"
+  --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
 Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
 
 Expected result: every selected backend test passes, including one real
-PostgreSQL transaction-service fixture flow, readback, Recovery revision, and
-replay refusal. Both Unity suites pass. Phase 9 EditMode coverage verifies the
+PostgreSQL transaction-service fixture flow, Editor-tool list and grant flows,
+exact 140 percent package weight, hard-cap rejection, readback, Recovery
+revision, and replay refusal. Both Unity suites pass. Phase 9 EditMode coverage
+verifies the shared Editor menu root and machine-readable tool response, the
 presentation catalog cache, catalog mismatch, complete and focused snapshots,
 monotonic and divergent revisions, operation correlation, specialized targets,
 Secure Container eligibility, non-empty Bag rejection, split weight, and the
 140 percent hard cap. PlayMode verifies the persistent controller and runtime
 uGUI root.
 
-### Create The Manual Phase 9 Fixture
+### Give A Character Development Items
 
-The fixture is intentionally not an endpoint. It is a guarded one-shot process
-command that uses `ItemTransactionService`, accepts only Development, requires a
-loopback PostgreSQL host and non-production-like database name, and refuses any
-character that is active or already owns an item or Recovery delivery.
+The Unity Editor window is the primary workflow. It never writes directly to
+PostgreSQL. It starts a guarded AuthService command that uses
+`ItemTransactionService`, accepts only Development, requires a loopback
+PostgreSQL host with a non-production-like database name, and refuses an active
+character. Individual grants are repeatable. Exact test packages require a
+character with no items or Recovery deliveries.
 
-1. Start normal local infrastructure and AuthService:
+1. Build Release once, then start normal local infrastructure and AuthService:
 
    ```powershell
+   dotnet build ShooterMmo.slnx --configuration Release
    docker compose up -d --wait
    dotnet run --project AuthService
    ```
 
 2. Open LoginMenu in Unity, enter Play Mode, register a disposable local account,
-   and create a new character. Do not join a shard. Exit Play Mode and stop
-   AuthService.
-3. List local characters and copy the new character id:
+   and create a new character. Do not join a shard. Exit Play Mode. AuthService
+   may remain running.
+3. Select `Shooter MMO > Tools > Inventory Item Grants` from Unity's top menu.
+   The window refreshes automatically. Select the new offline character. The
+   row shows account, online state, item count, weight, and capacity.
+4. For a custom grant, choose an item definition, quantity, and Permanent
+   Inventory, Bank, or Secure Container destination. Click `Give Item`.
+   Expected result: the status reports the committed grant and the character row
+   immediately shows the updated item count, weight, capacity, and revision.
+5. For a complete scenario, choose a package and click `Give Package`. Available
+   packages are:
 
-   ```powershell
-   docker compose exec postgres sh -lc `
-     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select id, name from characters where deleted_at is null order by created_at desc;"'
-   $characterId = [Guid]"paste-the-new-character-id"
-   ```
+   - Phase 9 Full Test Pack
+   - Equipment Test Pack
+   - Stack Split And Merge Pack
+   - Encumbrance 100% Pack
+   - Encumbrance 140% Pack
+   - Secure Container Pack
+   - Recovery Delivery Pack
 
-4. Seed that character once:
-
-   ```powershell
-   dotnet run --project AuthService -- --seed-phase9-items $characterId
-   ```
-
-   Expected result: the process exits after logging 17 granted item instances,
-   one Recovery delivery, the committed item-state revision, and carry
-   `132/250`. Running the same command again must fail with the new-character
-   guard instead of duplicating items.
-5. Start AuthService and SimulationWorker in separate terminals, then enter Play
-   Mode, log into the fixture account, select its character and join the local
-   shard. The default spawn is inside the configured Bank and Recovery service
-   points.
+   Expected result: an empty offline character receives the selected
+   deterministic state. The full Phase 9 pack reports weight `132 / 250`. The
+   encumbrance packs report `200 / 200` and `280 / 200`. Package controls become
+   unavailable once that character owns items, while individual grants remain
+   available. Invalid stack, Secure Container, slot, or hard-cap requests are
+   rejected by AuthService without a partial item transaction.
+6. Start SimulationWorker, enter Play Mode, log into the target account, select
+   its character, and join the local shard. The default spawn is inside the
+   configured Bank and Recovery service points.
 
 No Inspector, scene, prefab, package, input-action, or build-setting edit is
-required. The gameplay catalog reference, `I` binding, persistent controller,
-EventSystem, Canvas, and temporary uGUI hierarchy are already authored or
-created by the runtime foundation.
+required. The Editor window, gameplay catalog reference, `I` binding, persistent
+controller, EventSystem, Canvas, and temporary uGUI hierarchy are already
+authored or created by the maintained foundation.
+
+The terminal interface remains available as a fallback or for automation. It
+uses the same guardrails and transaction service:
+
+```powershell
+dotnet run --project AuthService --configuration Release --no-build -- `
+  --dev-items-list
+
+dotnet run --project AuthService --configuration Release --no-build -- `
+  --dev-items-grant <characterId> material.iron_ore 20 bank
+
+dotnet run --project AuthService --configuration Release --no-build -- `
+  --dev-items-package <characterId> phase9_full
+```
+
+The original full-fixture command remains compatible:
+
+```powershell
+dotnet run --project AuthService -- --seed-phase9-items <characterId>
+```
+
+Expected result: the process exits after logging 17 granted item instances, one
+Recovery delivery, the committed item-state revision, and carry `132/250`.
+Running it again fails with the empty-character guard instead of duplicating
+items.
 
 ### Manual Player Loop
 
@@ -1083,7 +1118,7 @@ authoritative map collider changes.
    - Collision Root: drag the same `Environment` object into this field
    - Layer Mask: `3`
 5. Save WorldScene.
-6. Select `Shooter MMO > World Collision > Bake Open Scene` from Unity's top
+6. Select `Shooter MMO > Tools > World Collision > Bake Open Scene` from Unity's top
    menu.
 7. Wait for asset import and script compilation to complete.
 

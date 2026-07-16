@@ -215,9 +215,16 @@ threshold in SimulationWorker and Unity prediction. These rules have
 no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.
 
 `WorldData/Editor/Items` contains the Editor-only `ShooterMmo.WorldData.Editor`
-assembly and the canonical `Tools > Shooter MMO > Item Catalog` window. It edits
+assembly and the canonical `Shooter MMO > Tools > Item Catalog` window. It edits
 the neutral authoring JSON and invokes the same strict .NET compiler used by CI.
 Runtime WorldData assemblies do not reference `UnityEditor`.
+
+`Assets/Editor` contains project-local orchestration tools below the shared
+`Shooter MMO > Tools` menu root. `Inventory Item Grants` invokes guarded,
+machine-readable AuthService Development commands and renders their response. It
+never references PostgreSQL or item persistence directly. AuthService routes
+every requested grant through `ItemTransactionService`, so catalog, slot,
+policy, revision, weight, and hard-cap authority remain in the backend.
 
 Unity owns a separate client presentation catalog keyed by stable definition id
 under `Assets/Resources/Items/Presentation`. It references icons, localization

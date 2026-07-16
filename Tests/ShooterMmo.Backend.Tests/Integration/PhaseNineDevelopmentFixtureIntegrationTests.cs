@@ -52,6 +52,7 @@ public sealed class PhaseNineDevelopmentFixtureIntegrationTests
 
         Assert.Equal("material.iron_ore", snapshot.Bank.Slots[0].Item!.DefinitionId);
         Assert.Equal(20, snapshot.Bank.Slots[0].Item!.Quantity);
+        Assert.Equal(0, snapshot.Bank.Slots[0].Item!.Revision);
         Assert.Equal(16, snapshot.Bank.Slots[1].Item!.Quantity);
         Assert.Equal("medical.field_dressing", snapshot.Bank.Slots[2].Item!.DefinitionId);
         Assert.Equal("ammunition.training_556", snapshot.Bank.Slots[3].Item!.DefinitionId);

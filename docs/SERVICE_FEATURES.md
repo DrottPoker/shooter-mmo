@@ -314,10 +314,16 @@ available:
   non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
   stack weight, base character capacity `200`, exact 140 percent admission, and
   the fixed-point linear encumbrance multiplier.
-- `Tools > Shooter MMO > Item Catalog` edits definitions through an Editor-only
+- `Shooter MMO > Tools > Item Catalog` edits definitions through an Editor-only
   assembly, invokes the strict shared compiler, shows display-only and structural
   changes, locks baked ids, and writes authoring plus deterministic bake output
   transactionally.
+- `Shooter MMO > Tools > Inventory Item Grants` lists initialized local
+  characters and active definitions, grants individual stacks, and applies
+  deterministic inventory, equipment, stack, encumbrance, Secure Container, and
+  Recovery packages. Its short-lived Development command is loopback-only,
+  requires offline targets, uses `ItemTransactionService`, and adds no gameplay
+  HTTP or realtime protocol surface.
 - The client presentation catalog is bundled under Unity Resources. It maps
   stable definition ids to optional icons, localization keys, fallback text,
   and optional prefab presentation keys with its own deterministic revision

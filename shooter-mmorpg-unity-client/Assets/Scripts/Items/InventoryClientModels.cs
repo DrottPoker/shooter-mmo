@@ -1137,13 +1137,28 @@ namespace ShooterMmo.Items
         {
             bag = null;
             error = string.Empty;
-            if (response == null || response.item == null)
+            if (response == null)
             {
                 return true;
             }
 
-            if (!TryMapItem(response.item, catalog, out var item, out error)
-                || !TryMapContainer(response.contents, catalog, out var contents, out error))
+            if (!TryMapItem(response.item, catalog, out var item, out error))
+            {
+                return false;
+            }
+
+            if (item == null)
+            {
+                if (IsJsonNullPlaceholder(response.contents))
+                {
+                    return true;
+                }
+
+                error = "The equipped Bag snapshot is missing its Bag item.";
+                return false;
+            }
+
+            if (!TryMapContainer(response.contents, catalog, out var contents, out error))
             {
                 return false;
             }
@@ -1270,19 +1285,34 @@ namespace ShooterMmo.Items
         {
             item = null;
             error = string.Empty;
-            if (response == null)
+            if (response == null || IsJsonNullPlaceholder(response))
             {
                 return true;
             }
 
             if (!Guid.TryParse(response.itemInstanceId, out var itemId)
-                || itemId == Guid.Empty
-                || string.IsNullOrWhiteSpace(response.definitionId)
-                || !catalog.TryGetDefinition(response.definitionId, out _)
-                || response.quantity <= 0
-                || response.revision <= 0)
+                || itemId == Guid.Empty)
             {
-                error = "The inventory snapshot contains an invalid item instance.";
+                error = "The inventory snapshot contains an item instance with an invalid id.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(response.definitionId)
+                || !catalog.TryGetDefinition(response.definitionId, out _))
+            {
+                error = "The inventory snapshot references an unknown item definition.";
+                return false;
+            }
+
+            if (response.quantity <= 0)
+            {
+                error = "The inventory snapshot contains a non-positive item quantity.";
+                return false;
+            }
+
+            if (response.revision < 0)
+            {
+                error = "The inventory snapshot contains a negative item revision.";
                 return false;
             }
 
@@ -1299,6 +1329,26 @@ namespace ShooterMmo.Items
                 response.revision,
                 policies);
             return true;
+        }
+
+        private static bool IsJsonNullPlaceholder(ItemInstanceSnapshotResponse response)
+        {
+            return response != null
+                && string.IsNullOrEmpty(response.itemInstanceId)
+                && string.IsNullOrEmpty(response.definitionId)
+                && response.quantity == 0
+                && response.revision == 0
+                && (response.policies == null || response.policies.Length == 0);
+        }
+
+        private static bool IsJsonNullPlaceholder(ItemContainerSnapshotResponse response)
+        {
+            return response == null
+                || (string.IsNullOrEmpty(response.containerId)
+                    && string.IsNullOrEmpty(response.containerType)
+                    && response.revision == 0
+                    && response.slotCapacity == 0
+                    && (response.slots == null || response.slots.Length == 0));
         }
 
         private static bool ValidateCatalog(

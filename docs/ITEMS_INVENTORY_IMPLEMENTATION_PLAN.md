@@ -335,7 +335,7 @@ before persistent item definitions depend on it.
 
 - Add an Editor-only assembly under `WorldData/Editor/Items` with no
   `UnityEditor` reference from runtime assemblies.
-- Add `Tools > Shooter MMO > Item Catalog` as the canonical authoring window.
+- Add `Shooter MMO > Tools > Item Catalog` as the canonical authoring window.
 - Load and present `WorldData/Authoring/Items/core.item-catalog.json` through:
   - Searchable and filterable definition list.
   - Create and duplicate actions.
@@ -424,7 +424,7 @@ gameplay catalog authority.
 
 ### Manual Test Gate
 
-1. Open `Tools > Shooter MMO > Item Catalog` in Unity.
+1. Open `Shooter MMO > Tools > Item Catalog` in Unity.
 2. Select `weapon.training_rifle`, use `Duplicate`, assign the temporary draft
    id `weapon.catalog_validation_draft`, and confirm `Validate` accepts its
    integer weight and equipment compatibility without requiring an icon.
@@ -1045,6 +1045,10 @@ idempotency, revisions, and authority handling are long-term code.
   becomes available. Every server item-state response must match the bundled
   gameplay revision. A mismatch clears renderable item state and reports the
   stable `item_catalog_update_required` error instead of using stale data.
+- Item revision `0` remains valid for newly granted and split instances. The
+  mapper normalizes Unity `JsonUtility` all-default placeholders only in optional
+  empty item and equipped-Bag fields, while required or partially malformed item
+  payloads remain rejected.
 - Every UI mutation creates a new protocol-v8 operation id and sends a typed
   intent through the joined `RealtimeSimulationClient`. One pending operation is
   journaled at a time. The client never changes item custody or quantity
@@ -1073,11 +1077,19 @@ idempotency, revisions, and authority handling are long-term code.
 - Recovery delivery snapshots now expose their existing durable revision to
   Unity as an additive HTTP field. Realtime protocol version `8` and every
   existing packet remain unchanged.
-- A one-shot `--seed-phase9-items <characterId>` Development command creates the
-  deterministic manual fixture through `ItemTransactionService`. It is limited
-  to a loopback PostgreSQL host, rejects production-like database names, requires
-  a new offline empty character, exposes no HTTP grant route, and refuses a
-  second run.
+- `Shooter MMO > Tools > Inventory Item Grants` is the primary local item setup
+  workflow. The Editor window lists initialized characters and canonical active
+  item definitions, grants an individual stack to Permanent inventory, Bank, or
+  Secure Container, and provides deterministic packages for the complete Phase
+  9 fixture, equipment, stack operations, 100 and 140 percent encumbrance,
+  Secure Container, and Recovery delivery testing.
+- The Editor window starts machine-readable Development commands in AuthService.
+  Those commands use `ItemTransactionService`, require an offline character and
+  loopback non-production-like PostgreSQL, and expose no gameplay HTTP route.
+  Individual grants are repeatable. Packages require a character with no items
+  or Recovery deliveries so their result stays deterministic. The original
+  one-shot `--seed-phase9-items <characterId>` command remains compatible as a
+  terminal fallback for the full Phase 9 fixture.
 - The fixture starts at weight `132 / 250` and includes equipment candidates,
   one non-empty equipped Bag, empty Bags in Permanent inventory and Bank,
   medical, material, and ammunition specialized-slot items, a protected Secure
@@ -1088,9 +1100,12 @@ idempotency, revisions, and authority handling are long-term code.
   corpse snapshots, proximity, custody, or mutations. Atomic non-empty Bag swaps
   stay on the existing durable command foundation until a later phase exposes
   the required live source and destination contract.
-- Backend coverage now includes fixture argument guardrails, a real PostgreSQL
-  fixture transaction, readback, Recovery delivery revision, and one-shot
-  rejection. Unity EditMode coverage verifies catalog and icon cache reuse,
+- Backend coverage now includes fixture and Editor-command argument guardrails,
+  development list and repeatable custom-grant behavior, exact 140 percent
+  package weight, authoritative hard-cap rejection, a real PostgreSQL fixture
+  transaction, readback, Recovery delivery revision, and one-shot rejection.
+  Unity EditMode coverage verifies the shared `Shooter MMO/Tools` menu root,
+  machine-readable development responses, catalog and icon cache reuse,
   catalog mismatch, snapshot validation, monotonic and divergent revisions,
   operation correlation, specialized slots, Secure Container eligibility,
   non-empty Bag rules, split quantities, and the hard cap. PlayMode coverage

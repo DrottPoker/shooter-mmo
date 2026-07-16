@@ -378,6 +378,13 @@ definitions. Icons, localization keys, fallback labels, and optional prefab
 presentation keys resolve locally. HTTP responses carry only stable definition
 ids and instance state.
 
+Durable item-instance revisions are non-negative, and a newly granted or split
+item begins at revision `0`. Unity `JsonUtility` can materialize an exact
+all-default object for a JSON `null` in an optional item or equipped-Bag field.
+The snapshot mapper normalizes only that exact optional placeholder back to no
+item. Required Recovery delivery items and every partially populated malformed
+item still fail validation.
+
 `InventoryClientState` owns immutable complete and focused snapshots plus the
 latest observed character, Bank, and Recovery revisions. A focused response may
 advance its slice, but any newer focused revision marks the complete snapshot
@@ -421,6 +428,31 @@ adapters when later phases provide live identity, proximity, custody, and
 revision contracts. Non-empty Bag swaps likewise wait for their live protocol
 contract instead of being simulated in UI.
 
+### Development Item Tools
+
+`Shooter MMO > Tools > Inventory Item Grants` is an Editor-only local
+development window. It discovers initialized characters and active definitions
+through a short-lived AuthService command, then invokes individual grants or
+deterministic test packages through the authoritative `ItemTransactionService`.
+The Editor owns only process orchestration and presentation. It does not connect
+to PostgreSQL, reproduce catalog rules, mutate runtime client state, or add a
+gameplay endpoint.
+
+The command boundary is available only in the Development environment against a
+loopback, non-production-like PostgreSQL database. Every target character must
+be offline. Individual grants can extend an existing character, while packages
+require an empty character so their exact test state is reproducible. Backend
+validation remains authoritative for stack limits, destination eligibility,
+weight, the 140 percent hard cap, revisions, policies, and container slots. The
+response is machine-readable and refreshes the Editor view after a successful
+mutation. This tooling does not change HTTP DTOs, realtime packets, or protocol
+versions.
+
+All Unity Editor commands owned by the project use the shared
+`Shooter MMO > Tools` root. The item catalog authoring window is at
+`Shooter MMO > Tools > Item Catalog`, and collision baking is at
+`Shooter MMO > Tools > World Collision > Bake Open Scene`.
+
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
 immediately and up to four newest unacknowledged commands are sent in each batch.
@@ -452,7 +484,7 @@ authority or feeds presentation positions back into prediction.
 
 `WorldCollisionAuthoring` defines the world id, chunk size, collision root, and
 layer mask on an authored scene object. The Editor command
-`Shooter MMO > World Collision > Bake Open Scene` scans enabled, non-trigger
+`Shooter MMO > Tools > World Collision > Bake Open Scene` scans enabled, non-trigger
 BoxColliders below that root and writes neutral authoring JSON plus versioned
 binary resources into `WorldData`. Unsupported collider types fail the bake
 explicitly. Runtime code never scans the Unity scene or treats PhysX as network

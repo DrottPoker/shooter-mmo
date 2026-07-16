@@ -5,6 +5,7 @@ using ShooterMmo.Config;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.Items;
 using ShooterMmo.WorldData.Items.Presentation;
+using UnityEngine;
 
 namespace ShooterMmo.Tests.EditMode
 {
@@ -124,6 +125,82 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(state.Error.Code, Is.EqualTo("item_catalog_update_required"));
             state.ClearAll();
             Assert.That(state.Status, Is.EqualTo(InventoryClientStatus.UpdateRequired));
+        }
+
+        [Test]
+        public void JsonRoundTripMapsEmptySlotsWithoutPhantomItems()
+        {
+            var response = CreateFullResponse(Guid.NewGuid(), 0);
+            var json = JsonUtility.ToJson(response);
+            var roundTripped = JsonUtility.FromJson<CharacterInventorySnapshotResponse>(json);
+
+            Assert.That(
+                InventorySnapshotMapper.TryMap(
+                    roundTripped,
+                    catalog,
+                    out var snapshot,
+                    out var error),
+                Is.True,
+                error);
+            Assert.That(snapshot.PermanentInventory.Slots[0].Item, Is.Null);
+            Assert.That(snapshot.EquippedBag, Is.Null);
+        }
+
+        [Test]
+        public void MapperAcceptsCanonicalZeroRevisionItemInstances()
+        {
+            var response = CreateFullResponse(Guid.NewGuid(), 0);
+            response.bank.slots[0].item = new ItemInstanceSnapshotResponse
+            {
+                itemInstanceId = Guid.NewGuid().ToString(),
+                definitionId = "material.iron_ore",
+                quantity = 1,
+                revision = 0,
+                policies = Array.Empty<ItemPolicySummaryResponse>()
+            };
+
+            Assert.That(
+                InventorySnapshotMapper.TryMap(
+                    response,
+                    catalog,
+                    out var snapshot,
+                    out var error),
+                Is.True,
+                error);
+            Assert.That(snapshot.Bank.Slots[0].Item.Revision, Is.Zero);
+        }
+
+        [Test]
+        public void RequiredRecoveryItemsRejectJsonNullPlaceholders()
+        {
+            var response = CreateFullResponse(Guid.NewGuid(), 0);
+            response.recoveryStorage.deliveries = new[]
+            {
+                new RecoveryDeliverySnapshotResponse
+                {
+                    deliveryId = Guid.NewGuid().ToString(),
+                    revision = 0,
+                    sourceKind = "test",
+                    items = new[]
+                    {
+                        new RecoveryDeliveryItemSnapshotResponse
+                        {
+                            itemOrder = 0,
+                            containerSlotIndex = 0,
+                            item = new ItemInstanceSnapshotResponse()
+                        }
+                    }
+                }
+            };
+
+            Assert.That(
+                InventorySnapshotMapper.TryMap(
+                    response,
+                    catalog,
+                    out _,
+                    out var error),
+                Is.False);
+            Assert.That(error, Does.Contain("invalid item"));
         }
 
         [Test]

@@ -65,6 +65,7 @@ builder.Services.AddScoped<SimulationItemMutationService>();
 builder.Services.AddScoped<ItemPolicyService>();
 builder.Services.AddScoped<QuestItemService>();
 builder.Services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
+builder.Services.AddScoped<DevelopmentItemToolService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ShardService>();
 builder.Services.AddScoped<SimulationSessionService>();
@@ -153,6 +154,44 @@ if (PhaseNineDevelopmentFixtureCommand.TryParse(
         result.RecoveryDeliveryCount,
         result.CarriedWeight,
         result.CarryCapacity);
+    return;
+}
+
+if (DevelopmentItemToolCommandParser.TryParse(
+        args,
+        out var developmentItemToolCommand,
+        out var developmentItemToolError))
+{
+    DevelopmentItemToolResponse response;
+    if (!string.IsNullOrWhiteSpace(developmentItemToolError)
+        || developmentItemToolCommand is null)
+    {
+        response = new DevelopmentItemToolResponse(
+            false,
+            developmentItemToolError.Length == 0
+                ? "The development item tool command is invalid."
+                : developmentItemToolError,
+            null);
+        Environment.ExitCode = 1;
+    }
+    else
+    {
+        try
+        {
+            await using var scope = app.Services.CreateAsyncScope();
+            var service = scope.ServiceProvider.GetRequiredService<DevelopmentItemToolService>();
+            response = await service.ExecuteAsync(
+                developmentItemToolCommand,
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            response = new DevelopmentItemToolResponse(false, exception.Message, null);
+            Environment.ExitCode = 1;
+        }
+    }
+
+    Console.WriteLine(DevelopmentItemToolProtocol.Serialize(response));
     return;
 }
 

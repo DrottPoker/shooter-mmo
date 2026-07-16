@@ -8,7 +8,8 @@
     "ShooterMmo.GameProtocol",
     "ShooterMmo.WorldData",
     "ShooterMmo.WorldData.Client",
-    "ShooterMmo.WorldData.Editor"
+    "ShooterMmo.WorldData.Editor",
+    "ShooterMmo.Editor"
   ],
   "includePlatforms": [
     "Editor"

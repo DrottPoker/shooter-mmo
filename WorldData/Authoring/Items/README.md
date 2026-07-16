@@ -65,7 +65,7 @@ state.
 
 ## Unity Editor Workflow
 
-Open `Tools > Shooter MMO > Item Catalog` in the Unity project. The Editor-only
+Open `Shooter MMO > Tools > Item Catalog` in the Unity project. The Editor-only
 tool provides a searchable definition list with a category filter, create and
 duplicate actions, every gameplay field in this contract, Bag slot editing, and
 the separate client presentation mapping.
