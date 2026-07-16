@@ -1,15 +1,19 @@
+using System.Text.Json.Serialization;
+
 namespace AuthService.Items;
 
 public enum ItemTransactionAuthority
 {
     Account = 1,
-    System = 2
+    System = 2,
+    SimulationWorker = 3
 }
 
 public sealed record ItemTransactionActor(
     ItemTransactionAuthority Authority,
     Guid? AccountId,
-    bool RequiresOfflineCharacter = false)
+    bool RequiresOfflineCharacter = false,
+    SimulationItemTransactionAuthority? Simulation = null)
 {
     public static ItemTransactionActor ForAccount(Guid accountId)
     {
@@ -28,6 +32,46 @@ public sealed record ItemTransactionActor(
     {
         return new ItemTransactionActor(ItemTransactionAuthority.System, null);
     }
+
+    public static ItemTransactionActor ForSimulationWorker(
+        Guid accountId,
+        Guid characterId,
+        Guid simulationSessionId,
+        string workerId,
+        string workerRuntimeId,
+        string shardId,
+        string sessionTokenHash,
+        ItemTransactionLiveAccess liveAccess)
+    {
+        return new ItemTransactionActor(
+            ItemTransactionAuthority.SimulationWorker,
+            accountId,
+            Simulation: new SimulationItemTransactionAuthority(
+                simulationSessionId,
+                characterId,
+                workerId,
+                workerRuntimeId,
+                shardId,
+                sessionTokenHash,
+                liveAccess));
+    }
+}
+
+public sealed record SimulationItemTransactionAuthority(
+    Guid SimulationSessionId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    [property: JsonIgnore] string SessionTokenHash,
+    [property: JsonIgnore] ItemTransactionLiveAccess LiveAccess);
+
+public sealed record ItemTransactionLiveAccess(
+    bool Bank,
+    bool RecoveryStorage,
+    bool InsuranceNpc)
+{
+    public static ItemTransactionLiveAccess None { get; } = new(false, false, false);
 }
 
 public sealed record ItemTransactionRequest<TCommand>(

@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -200,7 +200,7 @@ Status: Gameplay contract implemented with temporary UI presentation
 
 ## Carry Weight And Encumbrance
 
-Status: Implemented movement foundation
+Status: Implemented authority and transport foundation
 
 Every accepted world session receives the character's authoritative unitless
 carried weight, capacity, and item-state revision. Base capacity is `200`, and an
@@ -220,9 +220,17 @@ reconnect restore one fenced committed revision. Later revisions advance over
 the reliable control path. The F2 panel shows the current weight, capacity,
 revision, movement percentage, and sprint eligibility.
 
-There is no player-facing inventory UI or in-world item mutation path yet, so
-normal gameplay cannot currently change carried items while connected. See the
-manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
+Active characters now have one authoritative in-world mutation path for
+relocation, equip, unequip, stack split and merge, allowed destruction, Secure
+Container access, and complete Recovery Storage claims. Bank and Recovery
+Storage require proximity to their configured worker service points. Secure
+Container access has no city requirement. Only committed AuthService results can
+change the live carry tuple, and reconnect restores the same committed revision.
+
+There is still no player-facing inventory UI. Unity exposes the typed networking
+boundary for future Phase 9 state and presentation, so normal players do not yet
+have controls that create these item intents. See the manual and automated checks
+in [Local Development](LOCAL_DEVELOPMENT.md).
 
 ## Planned Feature Categories
 
@@ -232,8 +240,8 @@ They remain in the MVP specification until working behavior is available:
 - Dynamic collision transform replication.
 - Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
-- Player-facing slot inventory, durable equipment and Bag instances, Secure
-  Container contents, bank, Recovery Storage, item policy interaction, and loot.
+- Player-facing slot inventory presentation, item controls, catalog caching,
+  contextual bank and Recovery views, item policy interaction, and loot.
 - Durable player corpses, configurable NPC corpses, concurrent looting, and
   one-death insurance.
 - Gathering, crafting, professions, and player economy.
@@ -246,13 +254,16 @@ They remain in the MVP specification until working behavior is available:
 The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
 PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
 Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
-and Phase 7 shared live encumbrance now exist. AuthService supports owned
+Phase 7 shared live encumbrance, and Phase 8 active-character mutation now exist.
+AuthService supports owned
 item-state, bank, Secure Container, and Recovery access plus offline relocation,
 split, merge, allowed destruction, Recovery claim, and tier-change operations.
 Internal policy and quest services apply auditable lineage without adding a
-gameplay quest or insurance NPC path. These foundations still create no Unity
-player-visible inventory collection or interaction behavior. The planned item
-rules are defined in
+gameplay quest or insurance NPC operation. SimulationWorker now serializes
+reliable item intents, validates live service access, uses the exact-session
+service boundary, and advances encumbrance only from a committed result. These
+foundations still create no Unity player-visible inventory collection or controls.
+The planned item rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
 not yet connected to Unity inventory presentation.
 

@@ -43,6 +43,61 @@ public sealed record SimulationSessionLeaseResponse(
     long CarryCapacity,
     bool Released);
 
+public sealed record SimulationItemAccessRequest(
+    bool Bank,
+    bool RecoveryStorage,
+    bool InsuranceNpc);
+
+public sealed record SimulationItemRevisionExpectation(
+    Guid ItemInstanceId,
+    long Revision);
+
+public sealed record SimulationItemOperationRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    SimulationItemAccessRequest Access,
+    string OperationKind,
+    long ExpectedCharacterRevision,
+    Guid? ItemInstanceId = null,
+    long? ExpectedItemRevision = null,
+    Guid? TargetItemInstanceId = null,
+    long? ExpectedTargetItemRevision = null,
+    Guid? DestinationContainerId = null,
+    int? DestinationSlotIndex = null,
+    int? Quantity = null,
+    string? EquipmentSlotId = null,
+    Guid? RecoveryDeliveryId = null,
+    long? ExpectedRecoveryDeliveryRevision = null,
+    IReadOnlyList<SimulationItemRevisionExpectation>? Items = null);
+
+public sealed record SimulationItemTransactionResponse(
+    Guid OperationId,
+    string OperationKind,
+    bool Succeeded,
+    SimulationItemTransactionError? Error,
+    IReadOnlyList<SimulationItemCharacterRevision> CharacterRevisions,
+    IReadOnlyList<SimulationItemContainerRevision> ContainerRevisions,
+    IReadOnlyList<SimulationItemInstanceRevision> ItemRevisions,
+    IReadOnlyList<Guid> RecoveryDeliveryIds,
+    long? SecureContainerEntitlementRevision);
+
+public sealed record SimulationItemTransactionError(string Code, string Message);
+
+public sealed record SimulationItemCharacterRevision(
+    Guid CharacterId,
+    long Revision,
+    long CarriedWeight,
+    long CarryCapacity);
+
+public sealed record SimulationItemContainerRevision(Guid ContainerId, long Revision);
+
+public sealed record SimulationItemInstanceRevision(Guid ItemInstanceId, long Revision);
+
 public sealed record SimulationWorkerHeartbeatResponse(
     string WorkerId,
     string RuntimeId,

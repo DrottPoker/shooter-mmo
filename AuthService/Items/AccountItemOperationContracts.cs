@@ -3,6 +3,7 @@ namespace AuthService.Items;
 public static class ItemApiErrorCodes
 {
     public const string OperationIdRequired = "item_operation_id_required";
+    public const string SimulationOperationInvalid = "item_simulation_operation_invalid";
     public const string RecoveryClaimItemsRequired = "item_recovery_claim_items_required";
     public const string SecureTierRequestInvalid = "item_secure_tier_request_invalid";
 }

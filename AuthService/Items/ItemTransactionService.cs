@@ -2433,7 +2433,7 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
 
         var requestPayload = JsonSerializer.Serialize(
             new CanonicalOperationRequest(
-                request.Actor,
+                CanonicalizeActor(request.Actor),
                 CanonicalizeCommand(request.Command)),
             OperationJsonOptions);
         var requestHash = Convert.ToHexStringLower(
@@ -2446,6 +2446,29 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
 
         try
         {
+            var context = new ItemTransactionContext(
+                connection,
+                transaction,
+                request.OperationId,
+                operationKind,
+                request.Actor);
+            try
+            {
+                context.EnsureActorIsValid();
+                await context.ValidateLiveAuthorityAsync(
+                    actorCharacterId,
+                    cancellationToken);
+            }
+            catch (ItemTransactionRejectedException exception)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return CreateRejectedResult(
+                    request.OperationId,
+                    operationKind,
+                    exception.Code,
+                    exception.Message);
+            }
+
             var replay = await ClaimOperationAsync(
                 connection,
                 transaction,
@@ -2467,15 +2490,8 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
                 transaction: transaction,
                 cancellationToken: cancellationToken));
 
-            var context = new ItemTransactionContext(
-                connection,
-                transaction,
-                request.OperationId,
-                operationKind,
-                request.Actor);
             try
             {
-                context.EnsureActorIsValid();
                 await handler(context, request.Command, cancellationToken);
                 var result = await context.FinalizeSuccessAsync(cancellationToken);
                 await CompleteOperationAsync(
@@ -2735,9 +2751,32 @@ public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
         };
     }
 
+    private static CanonicalOperationActor CanonicalizeActor(ItemTransactionActor actor)
+    {
+        return new CanonicalOperationActor(
+            actor.Authority,
+            actor.AccountId,
+            actor.RequiresOfflineCharacter,
+            actor.Simulation?.SimulationSessionId,
+            actor.Simulation?.CharacterId,
+            actor.Simulation?.WorkerId,
+            actor.Simulation?.WorkerRuntimeId,
+            actor.Simulation?.ShardId);
+    }
+
     private sealed record CanonicalOperationRequest(
-        ItemTransactionActor Actor,
+        CanonicalOperationActor Actor,
         object Command);
+
+    private sealed record CanonicalOperationActor(
+        ItemTransactionAuthority Authority,
+        Guid? AccountId,
+        bool RequiresOfflineCharacter,
+        Guid? SimulationSessionId,
+        Guid? CharacterId,
+        string? WorkerId,
+        string? WorkerRuntimeId,
+        string? ShardId);
 
     private sealed class OperationRow
     {

@@ -35,34 +35,218 @@ internal sealed class ItemTransactionContext(
 
     public void EnsureActorIsValid()
     {
-        if (Actor.Authority == ItemTransactionAuthority.Account
-            && (Actor.AccountId is null || Actor.AccountId == Guid.Empty))
+        if (Actor.Authority == ItemTransactionAuthority.Account)
         {
-            Reject(
-                ItemTransactionErrorCodes.AuthorityRequired,
-                "An account-authorized item operation requires an account id.");
+            if (Actor.AccountId is null || Actor.AccountId == Guid.Empty)
+            {
+                Reject(
+                    ItemTransactionErrorCodes.AuthorityRequired,
+                    "An account-authorized item operation requires an account id.");
+            }
+
+            if (Actor.Simulation is not null)
+            {
+                Reject(
+                    ItemTransactionErrorCodes.AuthorityRequired,
+                    "An account-authorized item operation cannot supply simulation authority.");
+            }
+
+            return;
         }
 
-        if (Actor.Authority == ItemTransactionAuthority.System && Actor.AccountId is not null)
+        if (Actor.Authority == ItemTransactionAuthority.System)
         {
-            Reject(
-                ItemTransactionErrorCodes.AuthorityRequired,
-                "A system item operation cannot impersonate an account.");
+            if (Actor.AccountId is not null
+                || Actor.RequiresOfflineCharacter
+                || Actor.Simulation is not null)
+            {
+                Reject(
+                    ItemTransactionErrorCodes.AuthorityRequired,
+                    "A system item operation cannot impersonate account or simulation authority.");
+            }
+
+            return;
         }
 
-        if (Actor.Authority == ItemTransactionAuthority.System && Actor.RequiresOfflineCharacter)
+        if (Actor.Authority == ItemTransactionAuthority.SimulationWorker)
         {
-            Reject(
-                ItemTransactionErrorCodes.AuthorityRequired,
-                "A system item operation cannot require account offline access.");
+            var simulation = Actor.Simulation;
+            if (Actor.AccountId is null
+                || Actor.AccountId == Guid.Empty
+                || Actor.RequiresOfflineCharacter
+                || simulation is null
+                || simulation.SimulationSessionId == Guid.Empty
+                || simulation.CharacterId == Guid.Empty
+                || !IsValidIdentifier(simulation.WorkerId)
+                || !IsValidIdentifier(simulation.WorkerRuntimeId)
+                || !IsValidIdentifier(simulation.ShardId)
+                || string.IsNullOrWhiteSpace(simulation.SessionTokenHash)
+                || simulation.LiveAccess is null)
+            {
+                Reject(
+                    ItemTransactionErrorCodes.AuthorityRequired,
+                    "A simulation-authorized item operation requires complete live authority.");
+            }
+
+            return;
         }
 
-        if (Actor.Authority is not ItemTransactionAuthority.Account
-            and not ItemTransactionAuthority.System)
+        Reject(
+            ItemTransactionErrorCodes.AuthorityRequired,
+            "The item operation authority is invalid.");
+    }
+
+    public async Task ValidateLiveAuthorityAsync(
+        Guid? actorCharacterId,
+        CancellationToken cancellationToken)
+    {
+        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker)
+        {
+            return;
+        }
+
+        var simulation = Actor.Simulation!;
+        if (actorCharacterId is null
+            || actorCharacterId == Guid.Empty
+            || actorCharacterId != simulation.CharacterId)
         {
             Reject(
-                ItemTransactionErrorCodes.AuthorityRequired,
-                "The item operation authority is invalid.");
+                ItemTransactionErrorCodes.SimulationSessionInvalid,
+                "The item operation character does not match the simulation session.");
+        }
+
+        var characterAccountId = await Connection.QuerySingleOrDefaultAsync<Guid?>(
+            new CommandDefinition(
+                """
+                select account_id
+                from characters
+                where id = @CharacterId
+                  and deleted_at is null
+                for no key update;
+                """,
+                new { CharacterId = simulation.CharacterId },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (characterAccountId is null || characterAccountId != Actor.AccountId)
+        {
+            Reject(
+                ItemTransactionErrorCodes.ItemNotOwned,
+                "The simulation account does not own the requested character.");
+        }
+
+        var session = await Connection.QuerySingleOrDefaultAsync<LiveSimulationSessionRow>(
+            new CommandDefinition(
+                """
+                select
+                    simulation_session.account_id as "AccountId",
+                    simulation_session.character_id as "CharacterId",
+                    simulation_session.shard_id as "ShardId",
+                    simulation_session.simulation_worker_id as "WorkerId",
+                    simulation_session.worker_runtime_id as "WorkerRuntimeId",
+                    simulation_session.session_token_hash as "SessionTokenHash",
+                    simulation_session.released_at is null
+                        and simulation_session.expires_at > now()
+                        and (
+                            simulation_session.account_session_id is null
+                            or exists (
+                                select 1
+                                from account_sessions account_session
+                                where account_session.id = simulation_session.account_session_id
+                                  and account_session.revoked_at is null
+                                  and account_session.expires_at > now())) as "IsActive"
+                from character_simulation_sessions simulation_session
+                where simulation_session.id = @SimulationSessionId
+                for update of simulation_session;
+                """,
+                new { simulation.SimulationSessionId },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (session is null || !session.IsActive)
+        {
+            Reject(
+                ItemTransactionErrorCodes.SimulationSessionInvalid,
+                "The simulation session is invalid, released, or expired.");
+        }
+
+        if (session.AccountId != Actor.AccountId
+            || session.CharacterId != simulation.CharacterId)
+        {
+            Reject(
+                ItemTransactionErrorCodes.ItemNotOwned,
+                "The simulation session does not own the requested character item state.");
+        }
+
+        if (!string.Equals(session.WorkerId, simulation.WorkerId, StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The simulation session is owned by another simulation worker.");
+        }
+
+        if (!string.Equals(
+                session.WorkerRuntimeId,
+                simulation.WorkerRuntimeId,
+                StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WorkerRuntimeChanged,
+                "The simulation session is owned by another worker runtime.");
+        }
+
+        if (!string.Equals(session.ShardId, simulation.ShardId, StringComparison.Ordinal)
+            || !HashesMatch(session.SessionTokenHash, simulation.SessionTokenHash))
+        {
+            Reject(
+                ItemTransactionErrorCodes.SimulationSessionInvalid,
+                "The simulation session credentials or Shard binding are invalid.");
+        }
+
+        var worker = await Connection.QuerySingleOrDefaultAsync<LiveSimulationWorkerRow>(
+            new CommandDefinition(
+                """
+                select
+                    worker.runtime_id as "RuntimeId",
+                    worker.is_online as "IsOnline"
+                from simulation_workers worker
+                where worker.id = @WorkerId;
+                """,
+                new { WorkerId = simulation.WorkerId },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (worker is null
+            || !worker.IsOnline
+            || !string.Equals(
+                worker.RuntimeId,
+                simulation.WorkerRuntimeId,
+                StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WorkerRuntimeChanged,
+                "The simulation worker runtime no longer owns live authority.");
+        }
+
+        var assignmentId = await Connection.QuerySingleOrDefaultAsync<string>(
+            new CommandDefinition(
+                """
+                select assignment.id
+                from simulation_assignments assignment
+                where assignment.worker_id = @WorkerId
+                  and assignment.shard_id = @ShardId
+                  and assignment.released_at is null
+                for share of assignment;
+                """,
+                new
+                {
+                    WorkerId = simulation.WorkerId,
+                    ShardId = simulation.ShardId
+                },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (string.IsNullOrWhiteSpace(assignmentId))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The simulation worker no longer owns the requested Shard assignment.");
         }
     }
 
@@ -78,7 +262,8 @@ internal sealed class ItemTransactionContext(
 
     public void EnsureAccountAuthority(Guid accountId)
     {
-        if (Actor.Authority == ItemTransactionAuthority.Account
+        if ((Actor.Authority is ItemTransactionAuthority.Account
+                or ItemTransactionAuthority.SimulationWorker)
             && Actor.AccountId != accountId)
         {
             Reject(
@@ -163,7 +348,7 @@ internal sealed class ItemTransactionContext(
         {
             EnsureAccountAuthority(row.AccountId);
             var expected = expectedByCharacter[row.CharacterId].ExpectedRevision;
-            if (Actor.Authority == ItemTransactionAuthority.Account && expected is null)
+            if (Actor.Authority != ItemTransactionAuthority.System && expected is null)
             {
                 Reject(
                     ItemTransactionErrorCodes.ItemStateConflict,
@@ -175,6 +360,14 @@ internal sealed class ItemTransactionContext(
                 Reject(
                     ItemTransactionErrorCodes.ItemStateConflict,
                     $"Character item state '{row.CharacterId}' changed before the operation committed.");
+            }
+
+            if (Actor.Authority == ItemTransactionAuthority.SimulationWorker
+                && Actor.Simulation!.CharacterId != row.CharacterId)
+            {
+                Reject(
+                    ItemTransactionErrorCodes.SimulationSessionInvalid,
+                    "The item state does not belong to the active simulation character.");
             }
         }
 
@@ -404,6 +597,8 @@ internal sealed class ItemTransactionContext(
                 $"Item '{itemInstanceId}' changed before the operation committed.");
         }
 
+        EnsureLiveContainerAccess(item.SourceContainerType);
+
         return item;
     }
 
@@ -487,7 +682,61 @@ internal sealed class ItemTransactionContext(
             Reject(ItemTransactionErrorCodes.ItemNotOwned, "The character does not own the item container.");
         }
 
+        EnsureLiveContainerAccess(container.ContainerType);
+
         return container;
+    }
+
+    public void EnsureInsuranceNpcAccess()
+    {
+        if (Actor.Authority == ItemTransactionAuthority.SimulationWorker
+            && !Actor.Simulation!.LiveAccess.InsuranceNpc)
+        {
+            Reject(
+                ItemTransactionErrorCodes.AuthorityRequired,
+                "The character is outside validated insurance NPC access.");
+        }
+    }
+
+    private void EnsureLiveContainerAccess(string? containerType)
+    {
+        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
+            || string.IsNullOrWhiteSpace(containerType))
+        {
+            return;
+        }
+
+        if (string.Equals(containerType, "bank", StringComparison.Ordinal)
+            && !Actor.Simulation!.LiveAccess.Bank)
+        {
+            Reject(
+                ItemTransactionErrorCodes.BankAccessRequired,
+                "The character is outside validated bank access.");
+        }
+
+        if (string.Equals(containerType, "recovery_storage", StringComparison.Ordinal)
+            && !Actor.Simulation!.LiveAccess.RecoveryStorage)
+        {
+            Reject(
+                ItemTransactionErrorCodes.RecoveryAccessRequired,
+                "The character is outside validated Recovery Storage access.");
+        }
+    }
+
+    private static bool IsValidIdentifier(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Length <= 128
+            && value.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+    }
+
+    private static bool HashesMatch(string expected, string supplied)
+    {
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        var suppliedBytes = Encoding.UTF8.GetBytes(supplied);
+        return expectedBytes.Length == suppliedBytes.Length
+            && CryptographicOperations.FixedTimeEquals(expectedBytes, suppliedBytes);
     }
 
     public async Task<ResolvedItemDefinition> LoadDefinitionAsync(
@@ -1273,6 +1522,30 @@ internal sealed class ItemTransactionContext(
     private sealed record CalculatedCarryState(
         long CarriedWeight,
         long CarryCapacity);
+
+    private sealed class LiveSimulationSessionRow
+    {
+        public Guid AccountId { get; set; }
+
+        public Guid CharacterId { get; set; }
+
+        public string ShardId { get; set; } = string.Empty;
+
+        public string WorkerId { get; set; } = string.Empty;
+
+        public string WorkerRuntimeId { get; set; } = string.Empty;
+
+        public string SessionTokenHash { get; set; } = string.Empty;
+
+        public bool IsActive { get; set; }
+    }
+
+    private sealed class LiveSimulationWorkerRow
+    {
+        public string? RuntimeId { get; set; }
+
+        public bool IsOnline { get; set; }
+    }
 }
 
 internal sealed record CharacterLockRequest(

@@ -81,16 +81,18 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 7 of the slot-based item foundation are implemented. Shared
+Phases 1 through 8 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
 character item-state bootstrap now exist. AuthService exposes revision-cached
 catalog reads, owned item-state, bank and Recovery Storage reads, and
 account-authenticated offline mutation routes. The same transaction kernel owns
 policy records, insurance removal, quest-grant cleanup, Secure Container tier
-changes, Recovery claims, idempotency, revisions, weight, and audit. In-world
-SimulationWorker item mutation and player-facing Unity inventory remain later
-phases. Carry state already drives shared authoritative and predicted movement.
+changes, Recovery claims, idempotency, revisions, weight, and audit. Active
+characters now mutate through an exact-session, exact-worker SimulationWorker
+boundary with live service access and committed carry propagation. Player-facing
+Unity inventory state and UI remain a later phase. Carry state drives shared
+authoritative and predicted movement.
 Combat, persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 

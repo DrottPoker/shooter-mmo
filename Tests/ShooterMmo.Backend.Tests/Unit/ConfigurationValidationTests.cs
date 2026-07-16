@@ -1,6 +1,7 @@
 using AuthService.Config;
 using Microsoft.Extensions.Configuration;
 using SimulationWorker.Config;
+using SimulationWorker.Items;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 
@@ -97,6 +98,13 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(15, config.SnapshotRateHz);
         Assert.Equal(TimeSpan.FromMilliseconds(500), config.MovementInputSilenceTimeout);
         Assert.Equal(0.35f, config.MovementSimulation.CharacterCollision.Radius);
+        Assert.Equal(3, config.ItemInteraction.ServicePoints.Count);
+
+        var access = new ItemInteractionAccessService(config);
+        Assert.True(access.Evaluate(0f, 0f, -1f).Bank);
+        Assert.True(access.Evaluate(0f, 0f, -1f).RecoveryStorage);
+        Assert.False(access.Evaluate(0f, 0f, -1f).InsuranceNpc);
+        Assert.False(access.Evaluate(4f, 0f, -1f).Bank);
     }
 
     [Fact]
@@ -119,6 +127,24 @@ public sealed class ConfigurationValidationTests
         Assert.Contains("aggregate snapshot quota exceeds", exception.Message);
         Assert.Contains("no more than 64 searched cells", exception.Message);
         Assert.Contains("UnloadRadiusChunks must not exceed 16", exception.Message);
+    }
+
+    [Fact]
+    public void SimulationWorkerRejectsInvalidItemServicePoints()
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:ItemInteraction:ServicePoints:0:Radius"] = "101";
+        settings["SimulationWorker:ItemInteraction:ServicePoints:1:Id"] =
+            "local_city_bank";
+        settings["SimulationWorker:ItemInteraction:ServicePoints:2:Kind"] = "corpse";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+
+        Assert.Contains("Radius must be greater than 0 and at most 100", exception.Message);
+        Assert.Contains("Id must be unique", exception.Message);
+        Assert.Contains("Kind must be bank, recovery_storage, or insurance_npc", exception.Message);
     }
 
     private static Dictionary<string, string?> AuthSettings(bool includeSecrets)
@@ -197,6 +223,24 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:InterestManagement:ExitRadius"] = "144",
             ["SimulationWorker:CollisionStreaming:LoadRadiusChunks"] = "2",
             ["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "3",
+            ["SimulationWorker:ItemInteraction:ServicePoints:0:Id"] = "local_city_bank",
+            ["SimulationWorker:ItemInteraction:ServicePoints:0:Kind"] = "bank",
+            ["SimulationWorker:ItemInteraction:ServicePoints:0:X"] = "0",
+            ["SimulationWorker:ItemInteraction:ServicePoints:0:Y"] = "0",
+            ["SimulationWorker:ItemInteraction:ServicePoints:0:Z"] = "-1",
+            ["SimulationWorker:ItemInteraction:ServicePoints:0:Radius"] = "3",
+            ["SimulationWorker:ItemInteraction:ServicePoints:1:Id"] = "local_city_recovery",
+            ["SimulationWorker:ItemInteraction:ServicePoints:1:Kind"] = "recovery_storage",
+            ["SimulationWorker:ItemInteraction:ServicePoints:1:X"] = "0",
+            ["SimulationWorker:ItemInteraction:ServicePoints:1:Y"] = "0",
+            ["SimulationWorker:ItemInteraction:ServicePoints:1:Z"] = "-1",
+            ["SimulationWorker:ItemInteraction:ServicePoints:1:Radius"] = "3",
+            ["SimulationWorker:ItemInteraction:ServicePoints:2:Id"] = "local_insurance_npc",
+            ["SimulationWorker:ItemInteraction:ServicePoints:2:Kind"] = "insurance_npc",
+            ["SimulationWorker:ItemInteraction:ServicePoints:2:X"] = "2",
+            ["SimulationWorker:ItemInteraction:ServicePoints:2:Y"] = "0",
+            ["SimulationWorker:ItemInteraction:ServicePoints:2:Z"] = "-1",
+            ["SimulationWorker:ItemInteraction:ServicePoints:2:Radius"] = "1",
             ["SimulationWorker:Movement:TickRateHz"] = "30",
             ["SimulationWorker:Movement:SnapshotRateHz"] = "15",
             ["SimulationWorker:Movement:InputSilenceTimeoutMilliseconds"] = "500",

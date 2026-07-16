@@ -52,6 +52,162 @@ public sealed class RealtimeSimulationServiceTests
         await RunRealtimeSessionAsync(invalidateAsReplaced: false, isSyntheticBot: true);
     }
 
+    [Fact]
+    public async Task DuplicateReliableItemIntentsReplayOneCommittedCarryRevision()
+    {
+        var port = FindAvailableUdpPort();
+        var authHandler = new ItemOperationAuthHandler();
+        using var httpClient = new HttpClient(authHandler)
+        {
+            BaseAddress = new Uri("http://auth-service.test")
+        };
+        var authClient = new AuthServiceClient(httpClient);
+        var sessionStore = new ActiveSimulationSessionStore();
+        var carryStateStore = new CarryStateStore();
+        var config = CreateConfig(port);
+        var identity = new SimulationWorkerIdentity(
+            "test-runtime",
+            DateTime.UtcNow.AddMinutes(-1));
+        var staticCollisionWorld = CollisionTestWorldFactory.Create();
+        var collisionWorld = new CompositeCollisionWorld(
+            staticCollisionWorld,
+            new DynamicCollisionWorld(staticCollisionWorld.ChunkSize));
+        var server = new RealtimeSimulationService(
+            config,
+            new SimulationJoinService(
+                authClient,
+                sessionStore,
+                carryStateStore,
+                config,
+                identity),
+            new SimulationSessionReleaseService(
+                authClient,
+                sessionStore,
+                carryStateStore),
+            sessionStore,
+            carryStateStore,
+            new SimulationItemInteractionService(
+                authClient,
+                new ItemInteractionAccessService(config)),
+            new SimulationEntityRegistry(),
+            new ConnectionEntityBindingRegistry(),
+            new RealtimeTransportReadiness(),
+            staticCollisionWorld,
+            collisionWorld,
+            NullLogger<RealtimeSimulationService>.Instance);
+        var operationId = Guid.NewGuid();
+        var intent = RealtimeItemOperationIntent.CreateDestroy(
+            operationId,
+            0,
+            authHandler.ItemInstanceId,
+            1);
+        var results = new List<RealtimeItemOperationResult>();
+        var leaveAccepted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var listener = new EventBasedNetListener();
+        var client = new NetManager(listener)
+        {
+            ChannelsCount = RealtimeProtocol.ChannelCount
+        };
+
+        listener.PeerConnectedEvent += peer => peer.Send(
+            RealtimeProtocol.EncodeJoinRequest("item-operation-ticket"),
+            DeliveryMethod.ReliableOrdered);
+        listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
+        {
+            try
+            {
+                var packet = reader.GetRemainingBytes();
+                Assert.True(RealtimeProtocol.TryReadMessageType(packet, out var messageType));
+                if (messageType == RealtimeMessageType.JoinAccepted)
+                {
+                    Assert.True(RealtimeProtocol.TryDecodeJoinAccepted(
+                        packet,
+                        out _,
+                        out var error), error);
+                    var intentPacket = RealtimeProtocol.EncodeItemOperationIntent(intent);
+                    peer.Send(
+                        intentPacket,
+                        RealtimeProtocol.ControlChannel,
+                        DeliveryMethod.ReliableOrdered);
+                    peer.Send(
+                        intentPacket,
+                        RealtimeProtocol.ControlChannel,
+                        DeliveryMethod.ReliableOrdered);
+                    return;
+                }
+
+                if (messageType == RealtimeMessageType.ItemOperationResult)
+                {
+                    Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                    Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
+                    Assert.True(RealtimeProtocol.TryDecodeItemOperationResult(
+                        packet,
+                        out var result,
+                        out var error), error);
+                    results.Add(result);
+                    if (results.Count == 2)
+                    {
+                        peer.Send(
+                            RealtimeProtocol.EncodeLeaveRequest(
+                                authHandler.SimulationSessionId.ToString("D")),
+                            DeliveryMethod.ReliableOrdered);
+                    }
+
+                    return;
+                }
+
+                if (messageType == RealtimeMessageType.LeaveAccepted)
+                {
+                    Assert.True(RealtimeProtocol.TryDecodeLeaveAccepted(
+                        packet,
+                        out var error), error);
+                    leaveAccepted.TrySetResult();
+                }
+            }
+            catch (Exception exception)
+            {
+                leaveAccepted.TrySetException(exception);
+            }
+            finally
+            {
+                reader.Recycle();
+            }
+        };
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await server.StartAsync(timeout.Token);
+        try
+        {
+            Assert.True(client.Start());
+            client.Connect("127.0.0.1", port, RealtimeProtocol.ConnectionKey);
+            while (!leaveAccepted.Task.IsCompleted)
+            {
+                client.PollEvents();
+                await Task.Delay(10, timeout.Token);
+            }
+
+            await leaveAccepted.Task.WaitAsync(timeout.Token);
+            Assert.Equal(2, authHandler.ItemMutationCount);
+            Assert.Equal(2, results.Count);
+            Assert.All(results, result =>
+            {
+                Assert.True(result.Succeeded);
+                Assert.False(result.RequiresInventoryRefresh);
+                Assert.Equal(operationId, result.OperationId);
+                Assert.Equal(1, result.CarryState.ItemStateRevision);
+                Assert.Equal(0, result.CarryState.CarriedWeight);
+                Assert.Equal(200, result.CarryState.CarryCapacity);
+            });
+        }
+        finally
+        {
+            client.Stop();
+            await server.StopAsync(CancellationToken.None);
+            server.Dispose();
+        }
+    }
+
     private static async Task RunRealtimeSessionAsync(
         bool invalidateAsReplaced,
         bool isSyntheticBot)
@@ -86,6 +242,9 @@ public sealed class RealtimeSimulationServiceTests
                 carryStateStore),
             sessionStore,
             carryStateStore,
+            new SimulationItemInteractionService(
+                authClient,
+                new ItemInteractionAccessService(config)),
             new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),
@@ -419,6 +578,101 @@ public sealed class RealtimeSimulationServiceTests
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
+
+        private static HttpResponseMessage JsonResponse<T>(T value)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(value)
+            };
+        }
+    }
+
+    private sealed class ItemOperationAuthHandler : HttpMessageHandler
+    {
+        public Guid AccountId { get; } = Guid.NewGuid();
+
+        public Guid CharacterId { get; } = Guid.NewGuid();
+
+        public Guid SimulationSessionId { get; } = Guid.NewGuid();
+
+        public Guid ItemInstanceId { get; } = Guid.NewGuid();
+
+        public int ItemMutationCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/simulation-join-tickets/consume")
+            {
+                return JsonResponse(new ConsumedSimulationJoinTicketResponse(
+                    AccountId,
+                    CharacterId,
+                    "Item Operation Hero",
+                    "local-shard-1",
+                    "local-world-1",
+                    "local-simulation-worker-1",
+                    "test-runtime",
+                    SimulationSessionId,
+                    "exact-item-operation-session-token",
+                    DateTime.UtcNow.AddSeconds(30),
+                    0,
+                    60,
+                    200,
+                    false));
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith(
+                    "/item-operations",
+                    StringComparison.Ordinal))
+            {
+                var operation = await request.Content!.ReadFromJsonAsync<
+                    SimulationItemOperationRequest>(cancellationToken);
+                Assert.NotNull(operation);
+                Assert.Equal(AccountId, operation.AccountId);
+                Assert.Equal(CharacterId, operation.CharacterId);
+                Assert.Equal("local-simulation-worker-1", operation.WorkerId);
+                Assert.Equal("test-runtime", operation.WorkerRuntimeId);
+                Assert.Equal("local-shard-1", operation.ShardId);
+                Assert.Equal("exact-item-operation-session-token", operation.SessionToken);
+                Assert.False(operation.Access.Bank);
+                Assert.False(operation.Access.RecoveryStorage);
+                Assert.False(operation.Access.InsuranceNpc);
+                ItemMutationCount++;
+                return JsonResponse(new SimulationItemTransactionResponse(
+                    operation.OperationId,
+                    operation.OperationKind,
+                    true,
+                    null,
+                    [new SimulationItemCharacterRevision(
+                        CharacterId,
+                        1,
+                        0,
+                        200)],
+                    [],
+                    [],
+                    [],
+                    null));
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal))
+            {
+                return JsonResponse(new SimulationSessionLeaseResponse(
+                    SimulationSessionId,
+                    CharacterId,
+                    "local-shard-1",
+                    "local-simulation-worker-1",
+                    "test-runtime",
+                    DateTime.UtcNow,
+                    1,
+                    0,
+                    200,
+                    true));
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
 
         private static HttpResponseMessage JsonResponse<T>(T value)

@@ -42,6 +42,8 @@ public sealed record SimulationWorkerConfig(
     public CollisionStreamingConfig CollisionStreaming { get; init; } =
         CollisionStreamingConfig.Default;
 
+    public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
+
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
         var errors = new List<string>();
@@ -440,6 +442,11 @@ public sealed record SimulationWorkerConfig(
             errors.Add($"SimulationWorker:Movement is invalid: {exception.Message}");
         }
 
+        var itemInteraction = ItemInteractionConfig.FromConfiguration(
+            section.GetSection("ItemInteraction"),
+            movementSimulation,
+            errors);
+
         if (movementSimulation is not null
             && (spawnX < movementSimulation.MinimumX
                 || spawnX > movementSimulation.MaximumX
@@ -518,7 +525,8 @@ public sealed record SimulationWorkerConfig(
                 interestExitRadius),
             CollisionStreaming = new CollisionStreamingConfig(
                 collisionLoadRadiusChunks,
-                collisionUnloadRadiusChunks)
+                collisionUnloadRadiusChunks),
+            ItemInteraction = itemInteraction
         };
     }
 

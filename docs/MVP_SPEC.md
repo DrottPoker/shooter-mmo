@@ -1,6 +1,6 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -486,7 +486,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 7 complete
+Status: In progress, item-plan Phases 1 through 8 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -508,14 +508,11 @@ Status: In progress, item-plan Phases 1 through 7 complete
 - Shared carry state, exact-session join and heartbeat propagation,
   authoritative sprint and movement effects, Unity prediction, reconnect
   restoration, and protocol compatibility fencing are complete.
-- Slot-based permanent inventory.
-- Equipment and Bag aggregates.
-- Per-character bank.
-- Per-character Secure Container with account-selected tier.
-- Recovery Storage.
-- Worker mutation boundary for active simulation sessions.
-- Account and in-world service boundaries.
-- Initial Unity inventory presentation.
+- The exact-session worker mutation boundary, service-authenticated durable
+  authority, live bank and Recovery access, world-available Secure Container
+  operations, idempotent reliable intents, and committed carry propagation are
+  complete.
+- Initial Unity inventory state and presentation remain next.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).

@@ -57,6 +57,8 @@ builder.Services.AddSingleton(collisionWorld);
 builder.Services.AddSingleton<ICollisionWorld>(collisionWorld);
 builder.Services.AddSingleton<ActiveSimulationSessionStore>();
 builder.Services.AddSingleton<CarryStateStore>();
+builder.Services.AddSingleton<ItemInteractionAccessService>();
+builder.Services.AddSingleton<SimulationItemInteractionService>();
 builder.Services.AddSingleton<SimulationEntityRegistry>();
 builder.Services.AddSingleton<ConnectionEntityBindingRegistry>();
 builder.Services.AddSingleton<RealtimeTransportReadiness>();

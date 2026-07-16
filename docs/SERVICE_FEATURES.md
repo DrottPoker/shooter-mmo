@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -58,6 +58,7 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
+| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation through the durable kernel |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -218,10 +219,10 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
 
-Protocol version 7 carries Shard and World identity plus the initial carry tuple
+Protocol version 8 carries Shard and World identity plus the initial carry tuple
 in join acceptance. Reliable ordered carry-state updates deliver later committed
-item-state revisions. A standalone client must be rebuilt when the protocol
-version changes.
+item-state revisions, and typed item intents and results share that control path.
+A standalone client must be rebuilt when the protocol version changes.
 
 ## Entity Registry And Replication
 
@@ -288,11 +289,12 @@ The current test World uses oriented boxes for ground, boundaries, a camera
 wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
-## Item Catalog, Persistence, Account APIs, And Shared Encumbrance
+## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 7 of the approved item plan are implemented. Offline account
-mutations and shared live encumbrance are available, while in-world item
-mutation and Unity inventory presentation remain later phases:
+Phases 1 through 8 of the approved item plan are implemented. Offline account
+mutations, shared live encumbrance, and the authoritative in-world mutation
+boundary are available. Unity inventory state and presentation remain later
+phases:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -416,17 +418,43 @@ mutation and Unity inventory presentation remain later phases:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `7` includes carry state on join and carries later
-  committed revisions on the reliable ordered control path. Unity treats this
-  as movement state, not as an inventory snapshot or mutation authority.
+- Realtime protocol version `8` includes carry state on join, later committed
+  carry updates, and bounded item-operation intents and results on the reliable
+  ordered control path. Supported operations are relocate, equip, unequip,
+  split stack, merge stacks, allowed destruction, and complete Recovery Storage
+  claim. Corpse operations remain reserved for their later phase.
+- SimulationWorker accepts item intents only from an exact joined player on
+  channel 0, processes at most one per peer at a time, and bounds each pending
+  queue to eight operations. Synthetic development bots cannot mutate durable
+  items.
+- Configured `bank`, `recovery_storage`, and `insurance_npc` service points are
+  evaluated against the worker's authoritative player position. Bank and
+  Recovery Storage custody require the matching access flag. Secure Container
+  custody has no city requirement. The insurance flag is available to the
+  boundary, but no insurance purchase operation exists yet.
+- The worker service-authenticated endpoint carries the exact account,
+  character, simulation session token, worker id, runtime id, and Shard. The
+  authenticated worker id must match the body. AuthService locks and validates
+  the character, item state, active simulation session, active account session,
+  online worker runtime, and current assignment inside the same transaction
+  that calls `ItemTransactionService`.
+- Worker and account APIs cannot both own carried mutation authority. Offline
+  account routes and live worker routes coordinate through the character lock,
+  and operation ids remain globally idempotent through the existing kernel.
+- SimulationWorker updates its carry-state store only from committed AuthService
+  results. A newer tuple is sent reliably before it affects movement. Conflicting
+  same-revision data or stale live authority causes a targeted refresh response
+  or safe disconnect.
+- Unity treats the result as transport and movement state only. It has no item
+  collection, mutation cache, or inventory UI in Phase 8.
 
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
-AuthService exposes authenticated owned-character reads and offline account item
-write routes. It exposes no development grant or worker item write route.
-SimulationWorker has no inventory database access and holds no item collection.
-Unity is not an item-rule authority.
+AuthService exposes authenticated owned-character reads, offline account item
+write routes, and one service-authenticated active-session item route. It exposes
+no development grant route. SimulationWorker has no inventory database access
+and holds no item collection. Unity is not an item-rule authority.
 
 ## UDP Resilience And Quotas
 
@@ -575,17 +603,21 @@ the test connection variable at development or production data.
   capacity, lower-capacity Bag rejection, sprint at and above 100 percent,
   fixed-point movement reference points, monotonic active-session propagation,
   protocol validation, and reconnect restoration.
+- Phase 8 protocol, HTTP client, worker socket, configuration, and isolated
+  PostgreSQL tests for bounded intent decoding, committed results, every exact
+  identity mismatch, stale assignment, duplicate intent replay, account-versus-
+  worker races, bank and Recovery access, Secure Container carry changes, and
+  reconnect restoration.
 
 ## Not Yet Implemented
 
-- Development or gameplay item grant routes, worker mutation APIs, or gameplay
-  systems that invoke the internal kernel.
-- In-world equipment, Bag, bank, Secure Container, or Recovery Storage
-  interaction through SimulationWorker or Unity.
-- Player-visible inventory collections, item operations, equipment changes, or
-  service interactions through the live SimulationWorker and Unity path.
-- Insurance NPC pricing and access, insurance consumption on death, death
-  partition, persistent player corpses, concurrent corpse looting, or
+- Development or gameplay item grant routes.
+- Player-visible inventory collections, item-operation controls, equipment
+  screens, service views, catalog caching, or targeted refresh orchestration.
+- Corpse operation intents, corpse proximity, corpse views, or loot mutation
+  through SimulationWorker or Unity.
+- Insurance NPC pricing and purchase behavior, insurance consumption on death,
+  death partition, persistent player corpses, concurrent corpse looting, or
   configurable NPC corpse persistence.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.

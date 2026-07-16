@@ -101,6 +101,149 @@ public sealed class RealtimeProtocolTests
     }
 
     [Fact]
+    public void ItemOperationIntentsRoundTripEveryPhaseEightMutationKind()
+    {
+        var operationId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var targetItemId = Guid.NewGuid();
+        var destinationId = Guid.NewGuid();
+        var deliveryId = Guid.NewGuid();
+        var intents = new[]
+        {
+            RealtimeItemOperationIntent.CreateRelocate(
+                operationId,
+                10,
+                itemId,
+                20,
+                destinationId,
+                3),
+            RealtimeItemOperationIntent.CreateEquip(
+                operationId,
+                10,
+                itemId,
+                20,
+                "primary_weapon"),
+            RealtimeItemOperationIntent.CreateUnequip(
+                operationId,
+                10,
+                itemId,
+                20,
+                destinationId),
+            RealtimeItemOperationIntent.CreateSplitStack(
+                operationId,
+                10,
+                itemId,
+                20,
+                5,
+                destinationId,
+                4),
+            RealtimeItemOperationIntent.CreateMergeStacks(
+                operationId,
+                10,
+                itemId,
+                20,
+                targetItemId,
+                21),
+            RealtimeItemOperationIntent.CreateDestroy(
+                operationId,
+                10,
+                itemId,
+                20),
+            RealtimeItemOperationIntent.CreateClaimRecoveryDelivery(
+                operationId,
+                10,
+                deliveryId,
+                30,
+                destinationId,
+                [new RealtimeItemRevisionExpectation(itemId, 20)])
+        };
+
+        foreach (var expected in intents)
+        {
+            var decoded = RealtimeProtocol.TryDecodeItemOperationIntent(
+                RealtimeProtocol.EncodeItemOperationIntent(expected),
+                out var actual,
+                out var error);
+
+            Assert.True(decoded, error);
+            Assert.Equal(expected.OperationId, actual.OperationId);
+            Assert.Equal(expected.OperationKind, actual.OperationKind);
+            Assert.Equal(expected.ExpectedCharacterRevision, actual.ExpectedCharacterRevision);
+            Assert.Equal(expected.ItemInstanceId, actual.ItemInstanceId);
+            Assert.Equal(expected.DestinationContainerId, actual.DestinationContainerId);
+            Assert.Equal(expected.DestinationSlotIndex, actual.DestinationSlotIndex);
+            Assert.Equal(expected.EquipmentSlotId, actual.EquipmentSlotId);
+            Assert.Equal(expected.RecoveryDeliveryId, actual.RecoveryDeliveryId);
+            Assert.Equal(expected.Items.Length, actual.Items.Length);
+        }
+    }
+
+    [Fact]
+    public void ItemOperationResultRoundTripsCommittedRevisionsAndRefreshSignal()
+    {
+        var expected = new RealtimeItemOperationResult(
+            Guid.NewGuid(),
+            RealtimeItemOperationKind.Relocate,
+            true,
+            true,
+            null!,
+            new RealtimeCarryState(42, 210, 250),
+            [new RealtimeItemRevision(Guid.NewGuid(), 7)],
+            [new RealtimeContainerRevision(Guid.NewGuid(), 8)],
+            [Guid.NewGuid()]);
+
+        var decoded = RealtimeProtocol.TryDecodeItemOperationResult(
+            RealtimeProtocol.EncodeItemOperationResult(expected),
+            out var actual,
+            out var error);
+
+        Assert.True(decoded, error);
+        Assert.True(actual.Succeeded);
+        Assert.True(actual.RequiresInventoryRefresh);
+        Assert.Null(actual.Error);
+        Assert.Equal(expected.OperationId, actual.OperationId);
+        Assert.Equal(42, actual.CarryState.ItemStateRevision);
+        Assert.Equal(expected.ItemRevisions[0].ItemInstanceId, actual.ItemRevisions[0].ItemInstanceId);
+        Assert.Equal(expected.ContainerRevisions[0].ContainerId, actual.ContainerRevisions[0].ContainerId);
+        Assert.Equal(expected.RecoveryDeliveryIds[0], actual.RecoveryDeliveryIds[0]);
+
+        var rejected = new RealtimeItemOperationResult(
+            Guid.NewGuid(),
+            RealtimeItemOperationKind.Equip,
+            false,
+            true,
+            new RealtimeError("item_state_conflict", "Refresh required."),
+            new RealtimeCarryState(42, 210, 250),
+            [],
+            [],
+            []);
+        Assert.True(RealtimeProtocol.TryDecodeItemOperationResult(
+            RealtimeProtocol.EncodeItemOperationResult(rejected),
+            out var rejectedActual,
+            out error), error);
+        Assert.False(rejectedActual.Succeeded);
+        Assert.Equal("item_state_conflict", rejectedActual.Error.Code);
+    }
+
+    [Fact]
+    public void ItemOperationIntentRejectsUnboundedRecoveryClaims()
+    {
+        var items = Enumerable.Range(0, 25)
+            .Select(_ => new RealtimeItemRevisionExpectation(Guid.NewGuid(), 1))
+            .ToArray();
+        var intent = RealtimeItemOperationIntent.CreateClaimRecoveryDelivery(
+            Guid.NewGuid(),
+            1,
+            Guid.NewGuid(),
+            1,
+            Guid.NewGuid(),
+            items);
+
+        Assert.Throws<ArgumentException>(() =>
+            RealtimeProtocol.EncodeItemOperationIntent(intent));
+    }
+
+    [Fact]
     public void DecoderRejectsTrailingPacketData()
     {
         var packet = RealtimeProtocol.EncodeLeaveAccepted();

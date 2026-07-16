@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -175,11 +175,12 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 7 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 8 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
-  spawn, and entity despawn control messages.
+  lifecycle, carry-state updates, and item-operation intent and result control
+  messages.
 - Channel 1 uses sequenced delivery for redundant movement input batches.
 - Simulation snapshot chunks use LiteNetLib's unchanneled `Unreliable` delivery.
   LiteNetLib reports these packets with receive channel 0. Server tick, snapshot
@@ -344,6 +345,14 @@ subsequent prediction and reconciliation replay. The temporary F2 panel exposes
 weight, capacity, item-state revision, movement percentage, and sprint
 eligibility for observation without becoming inventory state or authority.
 
+`RealtimeSimulationClient.TrySendItemOperation` accepts only a typed Phase 8
+protocol intent while joined and sends it on the reliable ordered control path.
+Committed or rejected results are decoded only in the joined state. A committed
+newer carry revision advances `NetworkMovementSession` before
+`ItemOperationCompleted` is raised. This is a transport boundary only. Unity has
+no persistent item collection, operation journal, catalog cache, targeted state
+refresh controller, or inventory UI until Phase 9.
+
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
 immediately and up to four newest unacknowledged commands are sent in each batch.
@@ -429,7 +438,9 @@ configuration, local reconciliation, redundant input batches, remote
 interpolation, collision resource loading, authored player prefab contracts, and
 WorldScene composition. They also execute the shared encumbrance reference
 points, sprint threshold, movement prediction, and monotonic carry-revision
-handling used by SimulationWorker.
+handling used by SimulationWorker. Phase 8 EditMode coverage also round-trips
+typed Secure Container intents and committed item results without adding client
+authority fields.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, persistent realtime client, and runtime login panel.

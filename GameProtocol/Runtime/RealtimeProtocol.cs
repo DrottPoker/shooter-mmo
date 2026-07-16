@@ -17,7 +17,9 @@ namespace ShooterMmo.GameProtocol
         SimulationSnapshot = 9,
         EntitySpawn = 10,
         EntityDespawn = 11,
-        CarryStateChanged = 12
+        CarryStateChanged = 12,
+        ItemOperationIntent = 13,
+        ItemOperationResult = 14
     }
 
     [Flags]
@@ -32,6 +34,17 @@ namespace ShooterMmo.GameProtocol
     public enum RealtimeEntityKind : byte
     {
         Player = 1
+    }
+
+    public enum RealtimeItemOperationKind : byte
+    {
+        Relocate = 1,
+        Equip = 2,
+        Unequip = 3,
+        SplitStack = 4,
+        MergeStacks = 5,
+        Destroy = 6,
+        ClaimRecoveryDelivery = 7
     }
 
     public sealed class RealtimeJoinAccepted
@@ -209,6 +222,336 @@ namespace ShooterMmo.GameProtocol
         public long CarriedWeight { get; }
 
         public long CarryCapacity { get; }
+    }
+
+    public sealed class RealtimeItemRevisionExpectation
+    {
+        public RealtimeItemRevisionExpectation(Guid itemInstanceId, long revision)
+        {
+            ItemInstanceId = itemInstanceId;
+            Revision = revision;
+        }
+
+        public Guid ItemInstanceId { get; }
+
+        public long Revision { get; }
+    }
+
+    public sealed class RealtimeItemOperationIntent
+    {
+        internal RealtimeItemOperationIntent(
+            Guid operationId,
+            RealtimeItemOperationKind operationKind,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid targetItemInstanceId,
+            long expectedTargetItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex,
+            int quantity,
+            string equipmentSlotId,
+            Guid recoveryDeliveryId,
+            long expectedRecoveryDeliveryRevision,
+            RealtimeItemRevisionExpectation[] items)
+        {
+            OperationId = operationId;
+            OperationKind = operationKind;
+            ExpectedCharacterRevision = expectedCharacterRevision;
+            ItemInstanceId = itemInstanceId;
+            ExpectedItemRevision = expectedItemRevision;
+            TargetItemInstanceId = targetItemInstanceId;
+            ExpectedTargetItemRevision = expectedTargetItemRevision;
+            DestinationContainerId = destinationContainerId;
+            DestinationSlotIndex = destinationSlotIndex;
+            Quantity = quantity;
+            EquipmentSlotId = equipmentSlotId;
+            RecoveryDeliveryId = recoveryDeliveryId;
+            ExpectedRecoveryDeliveryRevision = expectedRecoveryDeliveryRevision;
+            Items = items;
+        }
+
+        public Guid OperationId { get; }
+
+        public RealtimeItemOperationKind OperationKind { get; }
+
+        public long ExpectedCharacterRevision { get; }
+
+        public Guid ItemInstanceId { get; }
+
+        public long ExpectedItemRevision { get; }
+
+        public Guid TargetItemInstanceId { get; }
+
+        public long ExpectedTargetItemRevision { get; }
+
+        public Guid DestinationContainerId { get; }
+
+        public int DestinationSlotIndex { get; }
+
+        public int Quantity { get; }
+
+        public string EquipmentSlotId { get; }
+
+        public Guid RecoveryDeliveryId { get; }
+
+        public long ExpectedRecoveryDeliveryRevision { get; }
+
+        public RealtimeItemRevisionExpectation[] Items { get; }
+
+        public static RealtimeItemOperationIntent CreateRelocate(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex = -1)
+        {
+            return CreateItemDestinationOperation(
+                operationId,
+                RealtimeItemOperationKind.Relocate,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                destinationContainerId,
+                destinationSlotIndex);
+        }
+
+        public static RealtimeItemOperationIntent CreateEquip(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            string equipmentSlotId)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                RealtimeItemOperationKind.Equip,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1,
+                0,
+                equipmentSlotId,
+                Guid.Empty,
+                0,
+                Array.Empty<RealtimeItemRevisionExpectation>());
+        }
+
+        public static RealtimeItemOperationIntent CreateUnequip(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex = -1)
+        {
+            return CreateItemDestinationOperation(
+                operationId,
+                RealtimeItemOperationKind.Unequip,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                destinationContainerId,
+                destinationSlotIndex);
+        }
+
+        public static RealtimeItemOperationIntent CreateSplitStack(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            int quantity,
+            Guid destinationContainerId,
+            int destinationSlotIndex = -1)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                RealtimeItemOperationKind.SplitStack,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                Guid.Empty,
+                0,
+                destinationContainerId,
+                destinationSlotIndex,
+                quantity,
+                string.Empty,
+                Guid.Empty,
+                0,
+                Array.Empty<RealtimeItemRevisionExpectation>());
+        }
+
+        public static RealtimeItemOperationIntent CreateMergeStacks(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid sourceItemInstanceId,
+            long expectedSourceItemRevision,
+            Guid targetItemInstanceId,
+            long expectedTargetItemRevision)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                RealtimeItemOperationKind.MergeStacks,
+                expectedCharacterRevision,
+                sourceItemInstanceId,
+                expectedSourceItemRevision,
+                targetItemInstanceId,
+                expectedTargetItemRevision,
+                Guid.Empty,
+                -1,
+                0,
+                string.Empty,
+                Guid.Empty,
+                0,
+                Array.Empty<RealtimeItemRevisionExpectation>());
+        }
+
+        public static RealtimeItemOperationIntent CreateDestroy(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                RealtimeItemOperationKind.Destroy,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1,
+                0,
+                string.Empty,
+                Guid.Empty,
+                0,
+                Array.Empty<RealtimeItemRevisionExpectation>());
+        }
+
+        public static RealtimeItemOperationIntent CreateClaimRecoveryDelivery(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid recoveryDeliveryId,
+            long expectedRecoveryDeliveryRevision,
+            Guid destinationContainerId,
+            RealtimeItemRevisionExpectation[] items)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                RealtimeItemOperationKind.ClaimRecoveryDelivery,
+                expectedCharacterRevision,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                0,
+                destinationContainerId,
+                -1,
+                0,
+                string.Empty,
+                recoveryDeliveryId,
+                expectedRecoveryDeliveryRevision,
+                items);
+        }
+
+        private static RealtimeItemOperationIntent CreateItemDestinationOperation(
+            Guid operationId,
+            RealtimeItemOperationKind operationKind,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                operationKind,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                Guid.Empty,
+                0,
+                destinationContainerId,
+                destinationSlotIndex,
+                0,
+                string.Empty,
+                Guid.Empty,
+                0,
+                Array.Empty<RealtimeItemRevisionExpectation>());
+        }
+    }
+
+    public sealed class RealtimeItemRevision
+    {
+        public RealtimeItemRevision(Guid itemInstanceId, long revision)
+        {
+            ItemInstanceId = itemInstanceId;
+            Revision = revision;
+        }
+
+        public Guid ItemInstanceId { get; }
+
+        public long Revision { get; }
+    }
+
+    public sealed class RealtimeContainerRevision
+    {
+        public RealtimeContainerRevision(Guid containerId, long revision)
+        {
+            ContainerId = containerId;
+            Revision = revision;
+        }
+
+        public Guid ContainerId { get; }
+
+        public long Revision { get; }
+    }
+
+    public sealed class RealtimeItemOperationResult
+    {
+        public RealtimeItemOperationResult(
+            Guid operationId,
+            RealtimeItemOperationKind operationKind,
+            bool succeeded,
+            bool requiresInventoryRefresh,
+            RealtimeError error,
+            RealtimeCarryState carryState,
+            RealtimeItemRevision[] itemRevisions,
+            RealtimeContainerRevision[] containerRevisions,
+            Guid[] recoveryDeliveryIds)
+        {
+            OperationId = operationId;
+            OperationKind = operationKind;
+            Succeeded = succeeded;
+            RequiresInventoryRefresh = requiresInventoryRefresh;
+            Error = error;
+            CarryState = carryState;
+            ItemRevisions = itemRevisions;
+            ContainerRevisions = containerRevisions;
+            RecoveryDeliveryIds = recoveryDeliveryIds;
+        }
+
+        public Guid OperationId { get; }
+
+        public RealtimeItemOperationKind OperationKind { get; }
+
+        public bool Succeeded { get; }
+
+        public bool RequiresInventoryRefresh { get; }
+
+        public RealtimeError Error { get; }
+
+        public RealtimeCarryState CarryState { get; }
+
+        public RealtimeItemRevision[] ItemRevisions { get; }
+
+        public RealtimeContainerRevision[] ContainerRevisions { get; }
+
+        public Guid[] RecoveryDeliveryIds { get; }
     }
 
     public sealed class RealtimeMovementInput
@@ -401,6 +744,11 @@ namespace ShooterMmo.GameProtocol
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
+        private const int MaximumEquipmentSlotIdLength = 64;
+        private const int MaximumItemOperationItems = 24;
+        private const int MaximumItemResultItemRevisions = 32;
+        private const int MaximumItemResultContainerRevisions = 8;
+        private const int MaximumItemResultRecoveryDeliveries = 8;
 
         public const int MaximumInputBatchSize = 4;
         public const int MaximumSnapshotEntitiesPerChunk = 20;
@@ -409,8 +757,8 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 7;
-        public const string ConnectionKey = "ShooterMmo.Realtime.v7";
+        public const ushort Version = 8;
+        public const string ConnectionKey = "ShooterMmo.Realtime.v8";
         public const int MaximumPacketSize = 1200;
 
         public static byte[] EncodeJoinRequest(string joinTicket)
@@ -577,6 +925,483 @@ namespace ShooterMmo.GameProtocol
             {
                 return TryReadCarryState(reader, out carryState, out error)
                     && TryFinish(stream, out error);
+            }
+        }
+
+        public static byte[] EncodeItemOperationIntent(RealtimeItemOperationIntent intent)
+        {
+            if (!IsValidItemOperationIntent(intent))
+            {
+                throw new ArgumentException("Item operation intent is invalid.", nameof(intent));
+            }
+
+            return Encode(RealtimeMessageType.ItemOperationIntent, writer =>
+            {
+                WriteGuid(writer, intent.OperationId);
+                writer.Write((byte)intent.OperationKind);
+                writer.Write(intent.ExpectedCharacterRevision);
+                switch (intent.OperationKind)
+                {
+                    case RealtimeItemOperationKind.Relocate:
+                    case RealtimeItemOperationKind.Unequip:
+                        WriteItemExpectation(
+                            writer,
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision);
+                        WriteGuid(writer, intent.DestinationContainerId);
+                        writer.Write(intent.DestinationSlotIndex);
+                        break;
+                    case RealtimeItemOperationKind.Equip:
+                        WriteItemExpectation(
+                            writer,
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision);
+                        WriteString(
+                            writer,
+                            intent.EquipmentSlotId,
+                            MaximumEquipmentSlotIdLength,
+                            nameof(intent.EquipmentSlotId));
+                        break;
+                    case RealtimeItemOperationKind.SplitStack:
+                        WriteItemExpectation(
+                            writer,
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision);
+                        writer.Write(intent.Quantity);
+                        WriteGuid(writer, intent.DestinationContainerId);
+                        writer.Write(intent.DestinationSlotIndex);
+                        break;
+                    case RealtimeItemOperationKind.MergeStacks:
+                        WriteItemExpectation(
+                            writer,
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision);
+                        WriteItemExpectation(
+                            writer,
+                            intent.TargetItemInstanceId,
+                            intent.ExpectedTargetItemRevision);
+                        break;
+                    case RealtimeItemOperationKind.Destroy:
+                        WriteItemExpectation(
+                            writer,
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision);
+                        break;
+                    case RealtimeItemOperationKind.ClaimRecoveryDelivery:
+                        WriteGuid(writer, intent.RecoveryDeliveryId);
+                        writer.Write(intent.ExpectedRecoveryDeliveryRevision);
+                        WriteGuid(writer, intent.DestinationContainerId);
+                        writer.Write((byte)intent.Items.Length);
+                        for (var index = 0; index < intent.Items.Length; index++)
+                        {
+                            WriteItemExpectation(
+                                writer,
+                                intent.Items[index].ItemInstanceId,
+                                intent.Items[index].Revision);
+                        }
+
+                        break;
+                    default:
+                        throw new ArgumentException(
+                            "Item operation kind is invalid.",
+                            nameof(intent));
+                }
+            });
+        }
+
+        public static bool TryDecodeItemOperationIntent(
+            byte[] data,
+            out RealtimeItemOperationIntent intent,
+            out string error)
+        {
+            intent = null;
+            if (!TryCreateReader(
+                    data,
+                    RealtimeMessageType.ItemOperationIntent,
+                    out var stream,
+                    out var reader,
+                    out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadGuid(reader, out var operationId, out error)
+                    || !TryReadByte(reader, out var rawOperationKind, out error)
+                    || !TryReadInt64(reader, out var expectedCharacterRevision, out error))
+                {
+                    return false;
+                }
+
+                var operationKind = (RealtimeItemOperationKind)rawOperationKind;
+                RealtimeItemOperationIntent decoded;
+                switch (operationKind)
+                {
+                    case RealtimeItemOperationKind.Relocate:
+                    case RealtimeItemOperationKind.Unequip:
+                        if (!TryReadItemExpectation(
+                                reader,
+                                out var itemId,
+                                out var itemRevision,
+                                out error)
+                            || !TryReadGuid(reader, out var destinationId, out error)
+                            || !TryReadInt32(reader, out var destinationSlot, out error))
+                        {
+                            return false;
+                        }
+
+                        decoded = new RealtimeItemOperationIntent(
+                            operationId,
+                            operationKind,
+                            expectedCharacterRevision,
+                            itemId,
+                            itemRevision,
+                            Guid.Empty,
+                            0,
+                            destinationId,
+                            destinationSlot,
+                            0,
+                            string.Empty,
+                            Guid.Empty,
+                            0,
+                            Array.Empty<RealtimeItemRevisionExpectation>());
+                        break;
+                    case RealtimeItemOperationKind.Equip:
+                        if (!TryReadItemExpectation(
+                                reader,
+                                out itemId,
+                                out itemRevision,
+                                out error)
+                            || !TryReadString(
+                                reader,
+                                MaximumEquipmentSlotIdLength,
+                                out var equipmentSlotId,
+                                out error))
+                        {
+                            return false;
+                        }
+
+                        decoded = RealtimeItemOperationIntent.CreateEquip(
+                            operationId,
+                            expectedCharacterRevision,
+                            itemId,
+                            itemRevision,
+                            equipmentSlotId);
+                        break;
+                    case RealtimeItemOperationKind.SplitStack:
+                        if (!TryReadItemExpectation(
+                                reader,
+                                out itemId,
+                                out itemRevision,
+                                out error)
+                            || !TryReadInt32(reader, out var quantity, out error)
+                            || !TryReadGuid(reader, out destinationId, out error)
+                            || !TryReadInt32(reader, out destinationSlot, out error))
+                        {
+                            return false;
+                        }
+
+                        decoded = RealtimeItemOperationIntent.CreateSplitStack(
+                            operationId,
+                            expectedCharacterRevision,
+                            itemId,
+                            itemRevision,
+                            quantity,
+                            destinationId,
+                            destinationSlot);
+                        break;
+                    case RealtimeItemOperationKind.MergeStacks:
+                        if (!TryReadItemExpectation(
+                                reader,
+                                out itemId,
+                                out itemRevision,
+                                out error)
+                            || !TryReadItemExpectation(
+                                reader,
+                                out var targetItemId,
+                                out var targetItemRevision,
+                                out error))
+                        {
+                            return false;
+                        }
+
+                        decoded = RealtimeItemOperationIntent.CreateMergeStacks(
+                            operationId,
+                            expectedCharacterRevision,
+                            itemId,
+                            itemRevision,
+                            targetItemId,
+                            targetItemRevision);
+                        break;
+                    case RealtimeItemOperationKind.Destroy:
+                        if (!TryReadItemExpectation(
+                                reader,
+                                out itemId,
+                                out itemRevision,
+                                out error))
+                        {
+                            return false;
+                        }
+
+                        decoded = RealtimeItemOperationIntent.CreateDestroy(
+                            operationId,
+                            expectedCharacterRevision,
+                            itemId,
+                            itemRevision);
+                        break;
+                    case RealtimeItemOperationKind.ClaimRecoveryDelivery:
+                        if (!TryReadGuid(reader, out var recoveryDeliveryId, out error)
+                            || !TryReadInt64(
+                                reader,
+                                out var expectedRecoveryRevision,
+                                out error)
+                            || !TryReadGuid(reader, out destinationId, out error)
+                            || !TryReadByte(reader, out var itemCount, out error)
+                            || itemCount == 0
+                            || itemCount > MaximumItemOperationItems)
+                        {
+                            if (string.IsNullOrEmpty(error))
+                            {
+                                error = "Recovery claim item count is invalid.";
+                            }
+
+                            return false;
+                        }
+
+                        var items = new RealtimeItemRevisionExpectation[itemCount];
+                        for (var index = 0; index < itemCount; index++)
+                        {
+                            if (!TryReadItemExpectation(
+                                    reader,
+                                    out var recoveryItemId,
+                                    out var recoveryItemRevision,
+                                    out error))
+                            {
+                                return false;
+                            }
+
+                            items[index] = new RealtimeItemRevisionExpectation(
+                                recoveryItemId,
+                                recoveryItemRevision);
+                        }
+
+                        decoded = RealtimeItemOperationIntent.CreateClaimRecoveryDelivery(
+                            operationId,
+                            expectedCharacterRevision,
+                            recoveryDeliveryId,
+                            expectedRecoveryRevision,
+                            destinationId,
+                            items);
+                        break;
+                    default:
+                        error = "Item operation kind is invalid.";
+                        return false;
+                }
+
+                if (!IsValidItemOperationIntent(decoded) || !TryFinish(stream, out error))
+                {
+                    if (string.IsNullOrEmpty(error))
+                    {
+                        error = "Item operation intent values are invalid.";
+                    }
+
+                    return false;
+                }
+
+                intent = decoded;
+                return true;
+            }
+        }
+
+        public static byte[] EncodeItemOperationResult(RealtimeItemOperationResult result)
+        {
+            if (!IsValidItemOperationResult(result))
+            {
+                throw new ArgumentException("Item operation result is invalid.", nameof(result));
+            }
+
+            return Encode(RealtimeMessageType.ItemOperationResult, writer =>
+            {
+                WriteGuid(writer, result.OperationId);
+                writer.Write((byte)result.OperationKind);
+                writer.Write(result.Succeeded);
+                writer.Write(result.RequiresInventoryRefresh);
+                WriteCarryState(writer, result.CarryState);
+                if (!result.Succeeded)
+                {
+                    WriteString(
+                        writer,
+                        result.Error.Code,
+                        MaximumErrorCodeLength,
+                        nameof(result.Error.Code));
+                    WriteString(
+                        writer,
+                        result.Error.Message,
+                        MaximumErrorMessageLength,
+                        nameof(result.Error.Message));
+                }
+
+                writer.Write((byte)result.ItemRevisions.Length);
+                for (var index = 0; index < result.ItemRevisions.Length; index++)
+                {
+                    WriteItemExpectation(
+                        writer,
+                        result.ItemRevisions[index].ItemInstanceId,
+                        result.ItemRevisions[index].Revision);
+                }
+
+                writer.Write((byte)result.ContainerRevisions.Length);
+                for (var index = 0; index < result.ContainerRevisions.Length; index++)
+                {
+                    WriteGuid(writer, result.ContainerRevisions[index].ContainerId);
+                    writer.Write(result.ContainerRevisions[index].Revision);
+                }
+
+                writer.Write((byte)result.RecoveryDeliveryIds.Length);
+                for (var index = 0; index < result.RecoveryDeliveryIds.Length; index++)
+                {
+                    WriteGuid(writer, result.RecoveryDeliveryIds[index]);
+                }
+            });
+        }
+
+        public static bool TryDecodeItemOperationResult(
+            byte[] data,
+            out RealtimeItemOperationResult result,
+            out string error)
+        {
+            result = null;
+            if (!TryCreateReader(
+                    data,
+                    RealtimeMessageType.ItemOperationResult,
+                    out var stream,
+                    out var reader,
+                    out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadGuid(reader, out var operationId, out error)
+                    || !TryReadByte(reader, out var rawOperationKind, out error)
+                    || !TryReadBoolean(reader, out var succeeded, out error)
+                    || !TryReadBoolean(reader, out var requiresRefresh, out error)
+                    || !TryReadCarryState(reader, out var carryState, out error))
+                {
+                    return false;
+                }
+
+                RealtimeError operationError = null;
+                if (!succeeded)
+                {
+                    if (!TryReadString(
+                            reader,
+                            MaximumErrorCodeLength,
+                            out var errorCode,
+                            out error)
+                        || !TryReadString(
+                            reader,
+                            MaximumErrorMessageLength,
+                            out var errorMessage,
+                            out error))
+                    {
+                        return false;
+                    }
+
+                    operationError = new RealtimeError(errorCode, errorMessage);
+                }
+
+                if (!TryReadByte(reader, out var itemRevisionCount, out error)
+                    || itemRevisionCount > MaximumItemResultItemRevisions)
+                {
+                    error = string.IsNullOrEmpty(error)
+                        ? "Item result revision count is invalid."
+                        : error;
+                    return false;
+                }
+
+                var itemRevisions = new RealtimeItemRevision[itemRevisionCount];
+                for (var index = 0; index < itemRevisionCount; index++)
+                {
+                    if (!TryReadItemExpectation(
+                            reader,
+                            out var itemId,
+                            out var revision,
+                            out error))
+                    {
+                        return false;
+                    }
+
+                    itemRevisions[index] = new RealtimeItemRevision(itemId, revision);
+                }
+
+                if (!TryReadByte(reader, out var containerRevisionCount, out error)
+                    || containerRevisionCount > MaximumItemResultContainerRevisions)
+                {
+                    error = string.IsNullOrEmpty(error)
+                        ? "Item result container count is invalid."
+                        : error;
+                    return false;
+                }
+
+                var containerRevisions = new RealtimeContainerRevision[containerRevisionCount];
+                for (var index = 0; index < containerRevisionCount; index++)
+                {
+                    if (!TryReadGuid(reader, out var containerId, out error)
+                        || !TryReadInt64(reader, out var revision, out error))
+                    {
+                        return false;
+                    }
+
+                    containerRevisions[index] = new RealtimeContainerRevision(
+                        containerId,
+                        revision);
+                }
+
+                if (!TryReadByte(reader, out var deliveryCount, out error)
+                    || deliveryCount > MaximumItemResultRecoveryDeliveries)
+                {
+                    error = string.IsNullOrEmpty(error)
+                        ? "Item result Recovery delivery count is invalid."
+                        : error;
+                    return false;
+                }
+
+                var recoveryDeliveryIds = new Guid[deliveryCount];
+                for (var index = 0; index < deliveryCount; index++)
+                {
+                    if (!TryReadGuid(reader, out recoveryDeliveryIds[index], out error))
+                    {
+                        return false;
+                    }
+                }
+
+                var decoded = new RealtimeItemOperationResult(
+                    operationId,
+                    (RealtimeItemOperationKind)rawOperationKind,
+                    succeeded,
+                    requiresRefresh,
+                    operationError,
+                    carryState,
+                    itemRevisions,
+                    containerRevisions,
+                    recoveryDeliveryIds);
+                if (!IsValidItemOperationResult(decoded) || !TryFinish(stream, out error))
+                {
+                    if (string.IsNullOrEmpty(error))
+                    {
+                        error = "Item operation result values are invalid.";
+                    }
+
+                    return false;
+                }
+
+                result = decoded;
+                return true;
             }
         }
 
@@ -1102,6 +1927,55 @@ namespace ShooterMmo.GameProtocol
             }
         }
 
+        private static void WriteGuid(BinaryWriter writer, Guid value)
+        {
+            writer.Write(value.ToByteArray());
+        }
+
+        private static bool TryReadGuid(BinaryReader reader, out Guid value, out string error)
+        {
+            try
+            {
+                var bytes = reader.ReadBytes(16);
+                if (bytes.Length != 16)
+                {
+                    value = Guid.Empty;
+                    error = "Packet identifier is incomplete.";
+                    return false;
+                }
+
+                value = new Guid(bytes);
+                error = string.Empty;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                value = Guid.Empty;
+                error = "Packet identifier is incomplete.";
+                return false;
+            }
+        }
+
+        private static void WriteItemExpectation(
+            BinaryWriter writer,
+            Guid itemInstanceId,
+            long revision)
+        {
+            WriteGuid(writer, itemInstanceId);
+            writer.Write(revision);
+        }
+
+        private static bool TryReadItemExpectation(
+            BinaryReader reader,
+            out Guid itemInstanceId,
+            out long revision,
+            out string error)
+        {
+            revision = 0;
+            return TryReadGuid(reader, out itemInstanceId, out error)
+                && TryReadInt64(reader, out revision, out error);
+        }
+
         private static void WriteMovementInput(BinaryWriter writer, RealtimeMovementInput input)
         {
             if (input == null
@@ -1456,6 +2330,22 @@ namespace ShooterMmo.GameProtocol
             }
         }
 
+        private static bool TryReadInt32(BinaryReader reader, out int value, out string error)
+        {
+            try
+            {
+                value = reader.ReadInt32();
+                error = string.Empty;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                value = 0;
+                error = "Packet integer is incomplete.";
+                return false;
+            }
+        }
+
         private static bool TryReadInt64(BinaryReader reader, out long value, out string error)
         {
             try
@@ -1481,6 +2371,127 @@ namespace ShooterMmo.GameProtocol
                 && !string.IsNullOrWhiteSpace(spawn.DisplayName)
                 && !string.IsNullOrWhiteSpace(spawn.ArchetypeId)
                 && IsValidPlayerState(spawn.InitialState);
+        }
+
+        private static bool IsValidItemOperationIntent(RealtimeItemOperationIntent intent)
+        {
+            if (intent == null
+                || intent.OperationId == Guid.Empty
+                || intent.ExpectedCharacterRevision < 0
+                || !Enum.IsDefined(typeof(RealtimeItemOperationKind), intent.OperationKind))
+            {
+                return false;
+            }
+
+            switch (intent.OperationKind)
+            {
+                case RealtimeItemOperationKind.Relocate:
+                case RealtimeItemOperationKind.Unequip:
+                    return IsValidItemExpectation(
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision)
+                        && intent.DestinationContainerId != Guid.Empty
+                        && IsValidDestinationSlot(intent.DestinationSlotIndex);
+                case RealtimeItemOperationKind.Equip:
+                    return IsValidItemExpectation(
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision)
+                        && !string.IsNullOrWhiteSpace(intent.EquipmentSlotId)
+                        && intent.EquipmentSlotId.Length <= MaximumEquipmentSlotIdLength;
+                case RealtimeItemOperationKind.SplitStack:
+                    return IsValidItemExpectation(
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision)
+                        && intent.Quantity > 0
+                        && intent.DestinationContainerId != Guid.Empty
+                        && IsValidDestinationSlot(intent.DestinationSlotIndex);
+                case RealtimeItemOperationKind.MergeStacks:
+                    return IsValidItemExpectation(
+                            intent.ItemInstanceId,
+                            intent.ExpectedItemRevision)
+                        && IsValidItemExpectation(
+                            intent.TargetItemInstanceId,
+                            intent.ExpectedTargetItemRevision)
+                        && intent.ItemInstanceId != intent.TargetItemInstanceId;
+                case RealtimeItemOperationKind.Destroy:
+                    return IsValidItemExpectation(
+                        intent.ItemInstanceId,
+                        intent.ExpectedItemRevision);
+                case RealtimeItemOperationKind.ClaimRecoveryDelivery:
+                    return intent.RecoveryDeliveryId != Guid.Empty
+                        && intent.ExpectedRecoveryDeliveryRevision >= 0
+                        && intent.DestinationContainerId != Guid.Empty
+                        && intent.Items != null
+                        && intent.Items.Length > 0
+                        && intent.Items.Length <= MaximumItemOperationItems
+                        && Array.TrueForAll(
+                            intent.Items,
+                            item => item != null
+                                && IsValidItemExpectation(
+                                    item.ItemInstanceId,
+                                    item.Revision));
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsValidItemOperationResult(RealtimeItemOperationResult result)
+        {
+            if (result == null
+                || result.OperationId == Guid.Empty
+                || !Enum.IsDefined(typeof(RealtimeItemOperationKind), result.OperationKind)
+                || !IsValidCarryState(result.CarryState)
+                || result.ItemRevisions == null
+                || result.ItemRevisions.Length > MaximumItemResultItemRevisions
+                || result.ContainerRevisions == null
+                || result.ContainerRevisions.Length > MaximumItemResultContainerRevisions
+                || result.RecoveryDeliveryIds == null
+                || result.RecoveryDeliveryIds.Length > MaximumItemResultRecoveryDeliveries)
+            {
+                return false;
+            }
+
+            if (result.Succeeded != (result.Error == null))
+            {
+                return false;
+            }
+
+            if (!result.Succeeded
+                && (string.IsNullOrWhiteSpace(result.Error.Code)
+                    || result.Error.Code.Length > MaximumErrorCodeLength
+                    || string.IsNullOrWhiteSpace(result.Error.Message)
+                    || result.Error.Message.Length > MaximumErrorMessageLength
+                    || result.ItemRevisions.Length != 0
+                    || result.ContainerRevisions.Length != 0
+                    || result.RecoveryDeliveryIds.Length != 0))
+            {
+                return false;
+            }
+
+            return Array.TrueForAll(
+                    result.ItemRevisions,
+                    revision => revision != null
+                        && IsValidItemExpectation(
+                            revision.ItemInstanceId,
+                            revision.Revision))
+                && Array.TrueForAll(
+                    result.ContainerRevisions,
+                    revision => revision != null
+                        && revision.ContainerId != Guid.Empty
+                        && revision.Revision >= 0)
+                && Array.TrueForAll(
+                    result.RecoveryDeliveryIds,
+                    deliveryId => deliveryId != Guid.Empty);
+        }
+
+        private static bool IsValidItemExpectation(Guid itemInstanceId, long revision)
+        {
+            return itemInstanceId != Guid.Empty && revision >= 0;
+        }
+
+        private static bool IsValidDestinationSlot(int slotIndex)
+        {
+            return slotIndex >= -1;
         }
 
         private static bool TryReadSingle(BinaryReader reader, out float value, out string error)

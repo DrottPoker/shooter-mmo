@@ -61,6 +61,7 @@ builder.Services.AddScoped<ItemCatalogQueryService>();
 builder.Services.AddScoped<ItemQueryService>();
 builder.Services.AddScoped<ItemTransactionService>();
 builder.Services.AddScoped<AccountItemMutationService>();
+builder.Services.AddScoped<SimulationItemMutationService>();
 builder.Services.AddScoped<ItemPolicyService>();
 builder.Services.AddScoped<QuestItemService>();
 builder.Services.AddScoped<SessionService>();
@@ -152,6 +153,7 @@ app.MapGet("/health/ready", async (
 app.MapAccountEndpoints();
 app.MapCharacterEndpoints();
 app.MapItemEndpoints();
+app.MapSimulationItemEndpoints();
 app.MapSimulationEndpoints();
 app.MapDevelopmentSimulationBotEndpoints(developmentSimulationBotOptions);
 

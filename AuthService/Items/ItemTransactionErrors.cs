@@ -22,9 +22,13 @@ public static class ItemTransactionErrorCodes
     public const string EquipmentSlotOccupied = "equipment_slot_occupied";
     public const string EquipmentSlotIncompatible = "equipment_slot_incompatible";
     public const string SecureContainerItemForbidden = "secure_container_item_forbidden";
+    public const string BankAccessRequired = "bank_access_required";
     public const string RecoveryAccessRequired = "recovery_access_required";
     public const string RecoveryDeliveryNotFound = "recovery_delivery_not_found";
     public const string ItemQuantityChanged = "item_quantity_changed";
+    public const string WrongSimulationWorker = "wrong_simulation_worker";
+    public const string WorkerRuntimeChanged = "worker_runtime_changed";
+    public const string SimulationSessionInvalid = "simulation_session_invalid";
 }
 
 internal sealed class ItemTransactionRejectedException(

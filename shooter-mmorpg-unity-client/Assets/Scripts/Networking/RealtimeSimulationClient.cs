@@ -45,6 +45,8 @@ namespace ShooterMmo.Networking
 
         public event Action<PlayerCarryState> CarryStateChanged;
 
+        public event Action<RealtimeItemOperationResult> ItemOperationCompleted;
+
         public event Action<RealtimeEntitySpawn> EntitySpawned;
 
         public event Action<RealtimeEntityDespawn> EntityDespawned;
@@ -413,6 +415,35 @@ namespace ShooterMmo.Networking
             }
         }
 
+        public bool TrySendItemOperation(RealtimeItemOperationIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeItemOperationIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "Item operation could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public void Abort()
         {
             State = RealtimeConnectionState.Disconnected;
@@ -542,6 +573,9 @@ namespace ShooterMmo.Networking
                         break;
                     case RealtimeMessageType.CarryStateChanged:
                         HandleCarryStateChanged(packet);
+                        break;
+                    case RealtimeMessageType.ItemOperationResult:
+                        HandleItemOperationResult(packet);
                         break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
@@ -730,6 +764,37 @@ namespace ShooterMmo.Networking
             {
                 CarryStateChanged?.Invoke(MovementSession.CarryState);
             }
+        }
+
+        private void HandleItemOperationResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_item_operation_result",
+                    "An item operation result arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeItemOperationResult(
+                    packet,
+                    out var result,
+                    out var error)
+                || !MovementSession.TryApplyCarryState(
+                    result.CarryState,
+                    out var carryChanged,
+                    out error))
+            {
+                FailProtocol("invalid_item_operation_result", error);
+                return;
+            }
+
+            if (carryChanged)
+            {
+                CarryStateChanged?.Invoke(MovementSession.CarryState);
+            }
+
+            ItemOperationCompleted?.Invoke(result);
         }
 
         private void HandleEntitySpawn(byte[] packet)

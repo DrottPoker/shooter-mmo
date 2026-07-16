@@ -32,22 +32,26 @@ public sealed class RealtimeEntityLifecycleTests
         var sessionStore = new ActiveSimulationSessionStore();
         var carryStateStore = new CarryStateStore();
         var config = CreateConfig(port);
+        var authClient = new AuthServiceClient(httpClient);
         var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
         var staticCollisionWorld = CollisionTestWorldFactory.Create();
         var server = new RealtimeSimulationService(
             config,
             new SimulationJoinService(
-                new AuthServiceClient(httpClient),
+                authClient,
                 sessionStore,
                 carryStateStore,
                 config,
                 identity),
             new SimulationSessionReleaseService(
-                new AuthServiceClient(httpClient),
+                authClient,
                 sessionStore,
                 carryStateStore),
             sessionStore,
             carryStateStore,
+            new SimulationItemInteractionService(
+                authClient,
+                new ItemInteractionAccessService(config)),
             new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),

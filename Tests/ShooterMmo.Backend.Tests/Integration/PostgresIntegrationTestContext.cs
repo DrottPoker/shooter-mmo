@@ -32,6 +32,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         ItemQueryService = new ItemQueryService(dataSource);
         ItemTransactionService = new ItemTransactionService(dataSource);
         AccountItemMutationService = new AccountItemMutationService(ItemTransactionService);
+        SimulationItemMutationService = new SimulationItemMutationService(ItemTransactionService);
         ItemPolicyService = new ItemPolicyService(ItemTransactionService);
         QuestItemService = new QuestItemService(ItemTransactionService);
         DatabaseInitializer = new DatabaseInitializer(
@@ -74,6 +75,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     public ItemTransactionService ItemTransactionService { get; }
 
     public AccountItemMutationService AccountItemMutationService { get; }
+
+    public SimulationItemMutationService SimulationItemMutationService { get; }
 
     public ItemPolicyService ItemPolicyService { get; }
 

@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Requirements
 
@@ -474,7 +474,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `7` and simulation revision
+   startup reports realtime protocol version `8` and simulation revision
    `movement-simulation-v3`.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -485,9 +485,66 @@ For a manual default-state and reconnect check:
 7. Exit Play Mode and stop both backend processes and Compose services.
 
 No Inspector, scene, prefab, package, input-action, or build-setting change is
-required for Phase 7. Weighted carry-state transitions are intentionally tested
-through the isolated fixtures because Phase 8 has not added an in-world item
-mutation route.
+required for Phase 7.
+
+## Phase 8 In-World Mutation Boundary Verification
+
+Run the Phase 8 protocol, worker, HTTP client, and isolated PostgreSQL coverage:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$values = @{}
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    $values[$matches[1]] = $matches[2]
+  }
+}
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  "Host=127.0.0.1;Port=55432;" + `
+  "Database=$($values['TEST_POSTGRES_DB']);" + `
+  "Username=$($values['TEST_POSTGRES_USER']);" + `
+  "Password=$($values['TEST_POSTGRES_PASSWORD'])"
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~SimulationItemMutationIntegrationTests|FullyQualifiedName~DuplicateReliableItemIntentsReplayOneCommittedCarryRevision|FullyQualifiedName~ItemOperationIntentsRoundTripEveryPhaseEightMutationKind|FullyQualifiedName~ItemOperationResultRoundTripsCommittedRevisionsAndRefreshSignal|FullyQualifiedName~ItemOperationIntentRejectsUnboundedRecoveryClaims|FullyQualifiedName~SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry|FullyQualifiedName~SimulationWorkerRejectsInvalidItemServicePoints"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+```
+
+Expected result: every selected test passes. The integration suite rejects every
+wrong account, character, session, token, worker, runtime, Shard, active account
+session, and stale assignment. It also verifies service authentication,
+idempotent duplicate intents, account-versus-worker race safety, bank and
+Recovery access, world-available Secure Container mutation, carry propagation,
+heartbeat, and reconnect restoration.
+
+Run all Unity tests:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: all EditMode and PlayMode tests pass. Phase 8 EditMode tests
+round-trip typed item intents and committed results through the same protocol
+source compiled by the backend and Unity.
+
+For a manual runtime smoke check:
+
+1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
+2. Run `dotnet run --project AuthService` in one terminal.
+3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
+   reports realtime protocol version `8` and loads the configured local bank,
+   Recovery Storage, and insurance NPC service points without a configuration
+   error.
+4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
+   enter Play Mode, log in, select a character and shard, and join WorldScene.
+5. Press F2 and confirm movement and the admitted carry tuple remain available.
+   No inventory panel is expected because that is Phase 9.
+6. Leave and reconnect. Confirm the same committed carry revision is restored.
+7. Exit Play Mode and stop both backend processes and Compose services.
+
+No Inspector, scene, prefab, package, input-action, or build-setting changes are
+required for Phase 8. No manual Unity Editor setup is required.
 
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
@@ -639,7 +696,7 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 7, simulation revision, collision
+`27015`, runtime id, realtime protocol version 8, simulation revision, collision
 revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
 interval logs a worker status line with connected real players, synthetic bots,
@@ -1024,10 +1081,10 @@ to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
 restart SimulationWorker so both processes use the current protocol implementation.
-Protocol version 7 also validates shard and World identity, the exact placement,
+Protocol version 8 also validates shard and World identity, the exact placement,
 the compiled movement-simulation revision, the initial carry tuple,
-server-assigned network entity ids, reliable carry-state updates, and reliable
-entity lifecycle messages.
+server-assigned network entity ids, reliable carry-state updates, reliable item
+operation intents and results, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
 directories and must never be committed.

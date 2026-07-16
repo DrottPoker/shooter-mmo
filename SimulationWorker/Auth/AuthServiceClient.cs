@@ -130,6 +130,19 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
+    public Task<AuthServiceResult<SimulationItemTransactionResponse>>
+        MutateSimulationItemsAsync(
+            Guid simulationSessionId,
+            SimulationItemOperationRequest request,
+            CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationItemOperationRequest, SimulationItemTransactionResponse>(
+            $"/api/simulation-sessions/{simulationSessionId}/item-operations",
+            request,
+            response => IsValidSimulationItemTransaction(response, request),
+            cancellationToken);
+    }
+
     private async Task<AuthServiceResult<TResponse>> PostAsync<TRequest, TResponse>(
         string path,
         TRequest requestBody,
@@ -251,6 +264,44 @@ public sealed class AuthServiceClient(HttpClient httpClient)
                 response.ItemStateRevision,
                 response.CarriedWeight,
                 response.CarryCapacity);
+    }
+
+    private static bool IsValidSimulationItemTransaction(
+        SimulationItemTransactionResponse response,
+        SimulationItemOperationRequest request)
+    {
+        if (response.OperationId != request.OperationId
+            || !string.Equals(
+                response.OperationKind,
+                request.OperationKind,
+                StringComparison.Ordinal)
+            || !response.Succeeded
+            || response.Error is not null
+            || response.CharacterRevisions is null
+            || response.ContainerRevisions is null
+            || response.ItemRevisions is null
+            || response.RecoveryDeliveryIds is null
+            || response.CharacterRevisions.Count != 1
+            || response.ContainerRevisions.Count > 8
+            || response.ItemRevisions.Count > 32
+            || response.RecoveryDeliveryIds.Count > 8
+            || response.SecureContainerEntitlementRevision is not null)
+        {
+            return false;
+        }
+
+        var character = response.CharacterRevisions[0];
+        return character.CharacterId == request.CharacterId
+            && character.Revision >= request.ExpectedCharacterRevision
+            && IsValidCarryState(
+                character.Revision,
+                character.CarriedWeight,
+                character.CarryCapacity)
+            && response.ContainerRevisions.All(
+                revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
+            && response.ItemRevisions.All(
+                revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
+            && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty);
     }
 
     private static bool IsValidCarryState(

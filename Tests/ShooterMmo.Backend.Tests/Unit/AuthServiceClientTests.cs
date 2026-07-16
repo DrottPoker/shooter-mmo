@@ -96,6 +96,71 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
+    public async Task SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var containerId = Guid.NewGuid();
+        var requestBody = new SimulationItemOperationRequest(
+            operationId,
+            accountId,
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            new SimulationItemAccessRequest(true, false, false),
+            "relocate",
+            12,
+            itemId,
+            3,
+            DestinationContainerId: containerId,
+            DestinationSlotIndex: 2);
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            operationId,
+            operationKind = "relocate",
+            succeeded = true,
+            error = (object?)null,
+            characterRevisions = new[]
+            {
+                new
+                {
+                    characterId,
+                    revision = 13,
+                    carriedWeight = 25,
+                    carryCapacity = 200
+                }
+            },
+            containerRevisions = new[] { new { containerId, revision = 4 } },
+            itemRevisions = new[] { new { itemInstanceId = itemId, revision = 4 } },
+            recoveryDeliveryIds = Array.Empty<Guid>(),
+            secureContainerEntitlementRevision = (long?)null
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.MutateSimulationItemsAsync(
+            simulationSessionId,
+            requestBody,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(13, result.Value!.CharacterRevisions[0].Revision);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(
+            $"/api/simulation-sessions/{simulationSessionId}/item-operations",
+            request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal(accountId, body.RootElement.GetProperty("accountId").GetGuid());
+        Assert.Equal(characterId, body.RootElement.GetProperty("characterId").GetGuid());
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("workerRuntimeId").GetString());
+        Assert.True(body.RootElement.GetProperty("access").GetProperty("bank").GetBoolean());
+    }
+
+    [Fact]
     public async Task SimulationWorkerHeartbeatSendsCompleteTopologyIdentity()
     {
         var requestBody = CreateHeartbeatRequest();

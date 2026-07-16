@@ -1,8 +1,8 @@
 # Items And Inventory Implementation Plan
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
-Status: Approved delivery baseline, Phases 1 through 7 completed, Phase 8 next
+Status: Approved delivery baseline, Phases 1 through 8 completed, Phase 9 next
 
 ## Purpose
 
@@ -909,9 +909,11 @@ or mutation.
   service-authenticated mutation endpoint, Unity inventory state or UI, corpse
   behavior, Zone, Layer, or Realm was added.
 
-The Phase 7 exit gate is satisfied. Phase 8 remains not started.
+The Phase 7 exit gate is satisfied.
 
 ## Phase 8: In-World Mutation Boundary
+
+Status: Completed 2026-07-16
 
 ### Work
 
@@ -939,10 +941,48 @@ The Phase 7 exit gate is satisfied. Phase 8 remains not started.
 - Secure Container mutation updates encumbrance while the character is active.
 - Reconnect retrieves the same committed item and carry revision.
 
+### Implemented Outcome
+
+- GameProtocol version `8` adds bounded, typed, reliable ordered item-operation
+  intents and committed or rejected results for relocation, equip, unequip,
+  stack split, stack merge, allowed destruction, and complete Recovery Storage
+  claims. Corpse mutation remains reserved for its later phase.
+- SimulationWorker accepts intents only from the exact joined player session,
+  serializes a bounded per-peer queue, evaluates configured bank, Recovery
+  Storage, and insurance NPC service points from the authoritative player
+  position, and sends no client-provided identity or access claim to authority.
+- The worker calls one service-authenticated AuthService endpoint. AuthService
+  validates account, character, simulation session and token, active account
+  session, worker id, worker runtime id, Shard, and current assignment inside the
+  same PostgreSQL transaction that invokes `ItemTransactionService`.
+- Bank and Recovery Storage custody require worker-validated live access. Secure
+  Container custody remains available without city access. The insurance NPC
+  access capability is fenced now for the later insurance operation, but no
+  insurance purchase behavior is introduced.
+- Account-session mutations still require offline ownership. Character-row
+  locking linearizes account admission, account mutations, and worker mutations
+  so one item cannot commit to two locations through competing authorities.
+- SimulationWorker changes authoritative carry state only after a committed
+  AuthService result. New revisions are delivered before the next movement
+  step. Same-revision disagreement, stale worker authority, and invalid session
+  fencing trigger a safe refresh or disconnect instead of accepting divergent
+  state.
+- Unity exposes only the versioned transport send method, committed-result event,
+  and monotonic carry-state application required by this boundary. Persistent
+  inventory models, catalog caches, state refresh orchestration, and UI remain
+  Phase 9 work.
+- Backend protocol, HTTP client, worker socket, configuration, and isolated
+  PostgreSQL tests cover every Phase 8 authority mismatch, stale assignment,
+  duplicate intent replay, account-versus-worker race, live service access,
+  Secure Container carry updates, and reconnect restoration. Unity EditMode
+  tests cover the shared intent and result wire contract.
+
 ### Exit Gate
 
 All active-character mutations have one live authority and one durable authority
 without direct worker database access.
+
+The Phase 8 exit gate is satisfied. Phase 9 remains not started.
 
 ## Phase 9: Unity Inventory Foundation
 

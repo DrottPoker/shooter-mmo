@@ -21,6 +21,7 @@ public sealed class RealtimeSimulationService(
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
     CarryStateStore carryStateStore,
+    SimulationItemInteractionService itemInteractionService,
     SimulationEntityRegistry entityRegistry,
     ConnectionEntityBindingRegistry connectionBindings,
     RealtimeTransportReadiness transportReadiness,
@@ -332,6 +333,71 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
+        if (messageType == RealtimeMessageType.ItemOperationIntent)
+        {
+            if (channel != RealtimeProtocol.ControlChannel
+                || deliveryMethod != DeliveryMethod.ReliableOrdered)
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "invalid_item_operation_delivery",
+                    "Item operation intents require the reliable ordered control channel.");
+                return;
+            }
+
+            if (!TryGetBoundPlayer(context, out var playerEntity))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "item_operation_unavailable",
+                    "Item interaction is not active for this peer.");
+                return;
+            }
+
+            if (!carryStateStore.TryGet(
+                    playerEntity.Session.CharacterId,
+                    playerEntity.Session.SimulationSessionId,
+                    out _))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "carry_state_missing",
+                    "Authoritative carry state is unavailable for item interaction.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeItemOperationIntent(
+                    packet,
+                    out var intent,
+                    out var itemError))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "invalid_item_operation",
+                    itemError);
+                return;
+            }
+
+            if (context.ItemOperationQueue.Count >= PeerContext.MaximumQueuedItemOperations)
+            {
+                SendItemOperationRejection(
+                    peer,
+                    playerEntity.Session,
+                    intent,
+                    "item_operation_queue_full",
+                    "Too many item operations are waiting for authority.");
+                return;
+            }
+
+            context.ItemOperationQueue.Enqueue(intent);
+            StartNextItemOperation(context);
+            return;
+        }
+
         if (messageType != RealtimeMessageType.LeaveRequest
             || channel != RealtimeProtocol.ControlChannel
             || deliveryMethod != DeliveryMethod.ReliableOrdered
@@ -410,6 +476,44 @@ public sealed class RealtimeSimulationService(
         }
     }
 
+    private async Task CompleteItemOperationAsync(
+        PeerContext context,
+        ActiveSimulationSession session,
+        RealtimeItemOperationIntent intent,
+        float positionX,
+        float positionY,
+        float positionZ)
+    {
+        try
+        {
+            var result = await itemInteractionService.ExecuteAsync(
+                session,
+                intent,
+                positionX,
+                positionY,
+                positionZ,
+                CancellationToken.None);
+            completedOperations.Enqueue(new ItemOperationCompleted(
+                context,
+                session,
+                result));
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "[SIMULATION] Unhandled error while mutating items for simulation session {SimulationSessionId}.",
+                session.SimulationSessionId);
+            completedOperations.Enqueue(new ItemOperationCompleted(
+                context,
+                session,
+                SimulationItemInteractionResult.Rejected(
+                    intent,
+                    "item_operation_failed",
+                    "SimulationWorker could not complete the item operation.")));
+        }
+    }
+
     private async Task ReleaseDisconnectedSessionAsync(ActiveSimulationSession session)
     {
         try
@@ -460,6 +564,9 @@ public sealed class RealtimeSimulationService(
                     }
                 case LeaveCompleted leaveCompleted:
                     ProcessLeaveCompleted(leaveCompleted);
+                    break;
+                case ItemOperationCompleted itemCompleted:
+                    ProcessItemOperationCompleted(itemCompleted);
                     break;
             }
 
@@ -673,6 +780,200 @@ public sealed class RealtimeSimulationService(
         RefreshPeerPopulationMetrics();
         SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
         completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+    }
+
+    private void ProcessItemOperationCompleted(ItemOperationCompleted completed)
+    {
+        completed.Context.ItemOperationInFlight = false;
+        if (!TryGetCurrentPeer(completed.Context, out var peer)
+            || completed.Context.Session is null
+            || completed.Context.Session.SimulationSessionId
+                != completed.Session.SimulationSessionId
+            || !string.Equals(
+                completed.Context.Session.SimulationSessionToken,
+                completed.Session.SimulationSessionToken,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!carryStateStore.TryGet(
+                completed.Session.CharacterId,
+                completed.Session.SimulationSessionId,
+                out _))
+        {
+            DisconnectForItemAuthorityFailure(
+                peer,
+                completed.Context,
+                completed.Session,
+                "carry_state_missing",
+                "Authoritative carry state disappeared during the item operation.");
+            return;
+        }
+
+        if (completed.Result.ShouldDisconnect)
+        {
+            SendItemOperationResult(
+                peer,
+                completed.Session,
+                completed.Result,
+                requiresInventoryRefresh: true);
+            DisconnectForItemAuthorityFailure(
+                peer,
+                completed.Context,
+                completed.Session,
+                completed.Result.Error!.Code,
+                completed.Result.Error.Message);
+            return;
+        }
+
+        var requiresRefresh = completed.Result.RequiresInventoryRefresh;
+        if (completed.Result.Succeeded)
+        {
+            var characterRevision = completed.Result.Transaction!.CharacterRevisions.Single();
+            var committedCarry = new PlayerCarryState(
+                characterRevision.Revision,
+                characterRevision.CarriedWeight,
+                characterRevision.CarryCapacity);
+            var carryResult = carryStateStore.ApplyCommitted(
+                completed.Session.CharacterId,
+                completed.Session.SimulationSessionId,
+                committedCarry,
+                out var currentCarry);
+            if (carryResult is CarryStateApplyResult.Conflict
+                or CarryStateApplyResult.SessionMismatch)
+            {
+                DisconnectForItemAuthorityFailure(
+                    peer,
+                    completed.Context,
+                    completed.Session,
+                    "item_state_diverged",
+                    "Committed item and carry revisions diverged from the active simulation state.");
+                return;
+            }
+
+            requiresRefresh |= carryResult == CarryStateApplyResult.Stale;
+            sessionStore.RefreshCarryState(
+                completed.Session.CharacterId,
+                completed.Session.SimulationSessionId,
+                completed.Session.SimulationSessionToken,
+                currentCarry);
+            if (entityRegistry.TryGetPlayerByCharacterId(
+                    completed.Session.CharacterId,
+                    out var entity))
+            {
+                ApplyLatestCarryState(entity!);
+            }
+        }
+
+        SendItemOperationResult(
+            peer,
+            completed.Session,
+            completed.Result,
+            requiresRefresh);
+        StartNextItemOperation(completed.Context);
+    }
+
+    private void StartNextItemOperation(PeerContext context)
+    {
+        if (context.ItemOperationInFlight
+            || context.ItemOperationQueue.Count == 0
+            || context.Session is null
+            || !TryGetBoundPlayer(context, out var entity))
+        {
+            return;
+        }
+
+        var intent = context.ItemOperationQueue.Dequeue();
+        var state = entity.Movement.State;
+        context.ItemOperationInFlight = true;
+        TrackOperation(CompleteItemOperationAsync(
+            context,
+            context.Session,
+            intent,
+            state.PositionX,
+            state.PositionY,
+            state.PositionZ));
+    }
+
+    private void SendItemOperationResult(
+        NetPeer peer,
+        ActiveSimulationSession session,
+        SimulationItemInteractionResult result,
+        bool requiresInventoryRefresh)
+    {
+        if (!carryStateStore.TryGet(
+                session.CharacterId,
+                session.SimulationSessionId,
+                out var carryState))
+        {
+            return;
+        }
+
+        var transaction = result.Transaction;
+        var packetResult = new RealtimeItemOperationResult(
+            result.Intent.OperationId,
+            result.Intent.OperationKind,
+            result.Succeeded,
+            requiresInventoryRefresh,
+            result.Succeeded
+                ? null
+                : new RealtimeError(result.Error!.Code, result.Error.Message),
+            ToRealtimeCarryState(carryState!),
+            result.Succeeded
+                ? transaction!.ItemRevisions
+                    .Select(revision => new RealtimeItemRevision(
+                        revision.ItemInstanceId,
+                        revision.Revision))
+                    .ToArray()
+                : Array.Empty<RealtimeItemRevision>(),
+            result.Succeeded
+                ? transaction!.ContainerRevisions
+                    .Select(revision => new RealtimeContainerRevision(
+                        revision.ContainerId,
+                        revision.Revision))
+                    .ToArray()
+                : Array.Empty<RealtimeContainerRevision>(),
+            result.Succeeded
+                ? transaction!.RecoveryDeliveryIds.ToArray()
+                : Array.Empty<Guid>());
+        SendControl(peer, RealtimeProtocol.EncodeItemOperationResult(packetResult));
+    }
+
+    private void SendItemOperationRejection(
+        NetPeer peer,
+        ActiveSimulationSession session,
+        RealtimeItemOperationIntent intent,
+        string code,
+        string message)
+    {
+        SendItemOperationResult(
+            peer,
+            session,
+            SimulationItemInteractionResult.Rejected(intent, code, message),
+            requiresInventoryRefresh: false);
+    }
+
+    private void DisconnectForItemAuthorityFailure(
+        NetPeer peer,
+        PeerContext context,
+        ActiveSimulationSession session,
+        string code,
+        string message)
+    {
+        SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
+        sessionStore.Invalidate(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.SimulationSessionToken,
+            code,
+            message);
+        RemoveBoundEntity(context, session, code);
+        carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+        context.ItemOperationQueue.Clear();
+        context.Session = null;
+        RefreshPeerPopulationMetrics();
+        context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
     }
 
     private void ProcessSimulationTicks(
@@ -1320,6 +1621,8 @@ public sealed class RealtimeSimulationService(
         DateTime connectedAtUtc,
         UdpQuotaConfig quotaConfig)
     {
+        public const int MaximumQueuedItemOperations = 8;
+
         public int PeerId { get; } = peerId;
 
         public DateTime ConnectedAtUtc { get; } = connectedAtUtc;
@@ -1331,6 +1634,10 @@ public sealed class RealtimeSimulationService(
         public bool LeaveStarted { get; set; }
 
         public ActiveSimulationSession? Session { get; set; }
+
+        public Queue<RealtimeItemOperationIntent> ItemOperationQueue { get; } = new();
+
+        public bool ItemOperationInFlight { get; set; }
 
         public DateTime? DisconnectAfterUtc { get; set; }
     }
@@ -1349,5 +1656,11 @@ public sealed class RealtimeSimulationService(
         PeerContext PeerContext,
         ActiveSimulationSession Session,
         SimulationSessionReleaseResult Result)
+        : RealtimeOperationResult(PeerContext);
+
+    private sealed record ItemOperationCompleted(
+        PeerContext PeerContext,
+        ActiveSimulationSession Session,
+        SimulationItemInteractionResult Result)
         : RealtimeOperationResult(PeerContext);
 }

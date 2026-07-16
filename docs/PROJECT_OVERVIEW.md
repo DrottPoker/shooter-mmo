@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## What Shooter MMO Is
 
@@ -149,7 +149,7 @@ introduce isolated realms.
 
 ## Item Foundation Status And Next Step
 
-Phases 1 through 7 of the durable item and inventory plan are complete. The
+Phases 1 through 8 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -172,17 +172,17 @@ row as simulation admission and reject an active session with
 revision, weight, and base plus Bag capacity through admission and heartbeat to
 SimulationWorker. The shared GameSimulation rules now apply the exact sprint
 threshold and linear movement multiplier in both authoritative movement and
-Unity prediction. The next approved step is Phase 8's in-world mutation
-boundary.
+Unity prediction. Phase 8 adds bounded reliable item intents, authoritative
+worker service-point access, exact live-session and worker-runtime fencing, and
+committed carry propagation through the existing durable kernel. The next
+approved step is Phase 9's Unity inventory foundation.
 
 The remaining locked direction is slot-based rather than grid-based and includes:
 
-- Worker mutation surfaces built on the implemented internal
-  transaction kernel and PostgreSQL item-definition, instance, slot, operation,
-  audit, policy, and read-model foundation.
-- Player and gameplay access to permanent character inventory, per-character
-  bank, equipment, physical Bag items, per-character Secure Container contents,
-  and account-selected Secure Container tiers.
+- Player-facing access to permanent character inventory, per-character bank,
+  equipment, physical Bag items, per-character Secure Container contents, and
+  account-selected Secure Container tiers through the implemented authority
+  boundary.
 - Player-visible inventory collection state and item operations built on the
   implemented unitless integer carry weight, base character capacity `200`,
   140 percent hard cap, and shared authoritative encumbrance behavior.

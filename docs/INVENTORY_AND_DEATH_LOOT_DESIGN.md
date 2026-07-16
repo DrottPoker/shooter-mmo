@@ -1,11 +1,11 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
-Status: Locked design target; Phases 1 through 7 content, authoring, schema,
+Status: Locked design target; Phases 1 through 8 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
-encumbrance implemented; realtime item mutation and Unity inventory integration
+encumbrance plus realtime item mutation implemented; Unity inventory integration
 planned
 
 ## Purpose
@@ -653,7 +653,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 7 now implement the neutral catalog, structural
+claim. Phases 1 through 8 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -677,7 +677,16 @@ and Unity use the same GameSimulation encumbrance rules for sprint eligibility
 and movement speed, while AuthService remains the durable item and hard-cap
 authority.
 
-No SimulationWorker, vendor, gathering, insurance NPC, or quest gameplay path
-calls the kernel yet. Worker item mutation, Unity inventory state and UI,
-insurance pricing and death consumption, death partition, persistent corpse
-identity, and corpse looting remain later phases.
+Phase 8 adds the live SimulationWorker item-mutation path over the same durable
+kernel. A versioned reliable intent is bound to the exact account, character,
+simulation session, worker runtime, assignment, and Shard. The worker validates
+its authoritative position against configured service points, while AuthService
+revalidates the complete live authority inside the mutation transaction. Bank
+and Recovery Storage require their matching live access. Secure Container
+operations do not require city access. Only a committed result can advance the
+worker and Unity carry tuple.
+
+No vendor, gathering, insurance purchase, quest gameplay, or corpse interaction
+path calls the kernel yet. Unity inventory state and UI, insurance pricing and
+death consumption, death partition, persistent corpse identity, and corpse
+looting remain later phases.

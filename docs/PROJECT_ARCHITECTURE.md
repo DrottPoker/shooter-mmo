@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -152,7 +152,7 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
-Protocol version 7 includes:
+Protocol version 8 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
@@ -164,6 +164,8 @@ Protocol version 7 includes:
 - Movement, simulation revision, and collision revision metadata.
 - Admission-fenced carry state in join acceptance and reliable ordered updates
   for newer committed item-state revisions.
+- Bounded reliable ordered item-operation intents and committed or rejected
+  results with authoritative carry, item, container, and delivery revisions.
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
@@ -258,10 +260,10 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 7 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 8 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
-offline account APIs, carry-state delivery, and shared encumbrance implemented;
-realtime item mutation integration planned
+offline account APIs, carry-state delivery, shared encumbrance, and realtime item
+mutation implemented; Unity inventory integration planned
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -287,7 +289,7 @@ character to be offline. The transaction locks both the character and its item
 state before checking active simulation-session ownership. Simulation admission
 uses the same character row lock, so a mutation and session acquisition cannot
 both pass concurrently. In-world proximity and city-service validation remain
-part of the Phase 8 worker boundary.
+owned by the SimulationWorker live boundary.
 
 All durable commands enter `ItemTransactionService`. One command opens one
 connection and one `READ COMMITTED` transaction, claims the operation row, and
@@ -301,9 +303,10 @@ replayable result in the same transaction.
 The transaction context resolves current definitions and slot data from the
 mirrored catalog but delegates stack, equipment, Bag, Secure Container, policy
 capability, and integer-weight decisions to WorldData rules. The kernel does not
-depend on HTTP, Unity, or SimulationWorker runtime state. Account and system
-authorization contexts are explicit command inputs. Offline access is an actor
-requirement enforced while the durable character lock is held.
+depend on HTTP, Unity, or SimulationWorker runtime state. Account, system, and
+simulation-worker authorization contexts are explicit command inputs. Offline
+access and exact live-session access are actor requirements enforced while the
+durable character lock is held.
 
 `ItemPolicyService` applies protected-on-death and eligible one-death insurance
 records and removes active insurance through idempotent system transactions.
@@ -324,11 +327,19 @@ session heartbeat can advance that tuple only by its monotonic item-state
 revision. The worker applies it to movement through shared GameSimulation rules
 and sends committed revisions to Unity over the reliable control channel.
 
-SimulationWorker will also own live proximity, interaction, combat, and corpse
-presentation. While a character is active, the worker will request durable item
-mutations through an authenticated AuthService boundary fenced to the exact
-character, simulation session, worker, runtime, and Shard. SimulationWorker
-will not write inventory tables directly.
+SimulationWorker owns live item-service proximity from its authoritative player
+position. While a character is active, a bounded per-peer queue serializes
+reliable item intents before the worker requests durable mutation through the
+service-authenticated AuthService boundary. AuthService revalidates the exact
+account, character, simulation session and token, active account session,
+worker, runtime, Shard, and assignment inside the same transaction as the
+mutation. The worker applies carry state only from a committed result and never
+writes inventory tables or holds an item collection.
+
+Bank and Recovery Storage operations require a matching worker-validated service
+point. Secure Container operations require no city service. Insurance NPC access
+is represented at the live boundary, but insurance purchase behavior remains a
+later phase. Corpse proximity and interaction remain part of their later phases.
 
 Player corpses will use durable custody with an absolute expiry and can be
 restored by a replacement worker. Normal NPC corpses may remain worker-owned and
@@ -338,10 +349,10 @@ path. These choices do not introduce Zone or Layer ownership.
 Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel.
 Phase 6 adds policy-safe account reads and offline mutations on that kernel.
 Phase 7 adds session-bound carry state and shared SimulationWorker and Unity
-encumbrance. There is still no gameplay grant route, worker inventory state,
-service-authenticated worker item mutation route, or Unity inventory state. The
-Unity content tooling remains presentation and authoring support, not item
-authority.
+encumbrance. Phase 8 adds service-authenticated active-character item mutation
+without adding worker inventory state. There is still no gameplay grant route,
+Unity inventory state, item cache, or inventory UI. The Unity content tooling
+remains presentation and authoring support, not item authority.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
@@ -538,9 +549,9 @@ and disconnects the older peer generation.
 8. The local client acknowledges, rewinds, and replays prediction. Remote clients
    interpolate behind the latest server tick.
 
-### Planned In-World Item Mutation
+### Authoritative In-World Item Mutation
 
-Status: Planned and not implemented
+Status: Implemented transport and authority boundary
 
 1. Unity sends an item or corpse interaction intent to its assigned
    SimulationWorker.
@@ -551,7 +562,11 @@ Status: Planned and not implemented
 4. AuthService locks and validates durable PostgreSQL item state, commits the
    complete transaction, and returns new inventory and carry-state revisions.
 5. SimulationWorker updates authoritative encumbrance only from the committed
-   result and forwards the result to Unity.
+   result, sends a reliable carry update before it affects movement, and forwards
+   the result to Unity.
+6. Unity applies only a newer authoritative carry revision and emits the result
+   to a future inventory-state consumer. It does not cache or optimistically
+   mutate item collections in Phase 8.
 
 No database transaction remains open across a client network round trip.
 
