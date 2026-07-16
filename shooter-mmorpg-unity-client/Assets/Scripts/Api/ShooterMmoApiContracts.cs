@@ -110,4 +110,129 @@ namespace ShooterMmo.Api
         public string sessionExpiresAt;
         public bool isReconnect;
     }
+
+    [Serializable]
+    public sealed class CharacterInventorySnapshotResponse
+    {
+        public string characterId;
+        public string catalogRevision;
+        public long itemStateRevision;
+        public ItemContainerSnapshotResponse permanentInventory;
+        public EquipmentSlotSnapshotResponse[] equipment;
+        public EquippedBagSnapshotResponse equippedBag;
+        public ItemContainerSnapshotResponse bank;
+        public SecureContainerSnapshotResponse secureContainer;
+        public RecoveryStorageSnapshotResponse recoveryStorage;
+        public long carriedWeight;
+        public long carryCapacity;
+        public int loadRatioBasisPoints;
+        public bool sprintEligible;
+        public int movementMultiplierBasisPoints;
+    }
+
+    [Serializable]
+    public sealed class ItemContainerSnapshotResponse
+    {
+        public string containerId;
+        public string containerType;
+        public long revision;
+        public int slotCapacity;
+        public ItemSlotSnapshotResponse[] slots;
+    }
+
+    [Serializable]
+    public sealed class ItemSlotSnapshotResponse
+    {
+        public int slotIndex;
+        public string slotKind;
+        public string[] acceptedTags;
+        public ItemInstanceSnapshotResponse item;
+    }
+
+    [Serializable]
+    public sealed class EquipmentSlotSnapshotResponse
+    {
+        public string equipmentSlotId;
+        public int sortOrder;
+        public ItemInstanceSnapshotResponse item;
+    }
+
+    [Serializable]
+    public sealed class ItemInstanceSnapshotResponse
+    {
+        public string itemInstanceId;
+        public string definitionId;
+        public int quantity;
+        public long revision;
+        public ItemPolicySummaryResponse[] policies;
+    }
+
+    [Serializable]
+    public sealed class ItemPolicySummaryResponse
+    {
+        public string policyKind;
+        public string status;
+    }
+
+    [Serializable]
+    public sealed class EquippedBagSnapshotResponse
+    {
+        public ItemInstanceSnapshotResponse item;
+        public ItemContainerSnapshotResponse contents;
+    }
+
+    [Serializable]
+    public sealed class SecureContainerSnapshotResponse
+    {
+        public string tierId;
+        public long entitlementRevision;
+        public ItemContainerSnapshotResponse contents;
+    }
+
+    [Serializable]
+    public sealed class CharacterBankSnapshotResponse
+    {
+        public string characterId;
+        public string catalogRevision;
+        public long itemStateRevision;
+        public ItemContainerSnapshotResponse bank;
+    }
+
+    [Serializable]
+    public sealed class CharacterRecoverySnapshotResponse
+    {
+        public string characterId;
+        public string catalogRevision;
+        public long itemStateRevision;
+        public RecoveryStorageSnapshotResponse recoveryStorage;
+    }
+
+    [Serializable]
+    public sealed class RecoveryStorageSnapshotResponse
+    {
+        public string containerId;
+        public long revision;
+        public RecoveryDeliverySnapshotResponse[] deliveries;
+    }
+
+    [Serializable]
+    public sealed class RecoveryDeliverySnapshotResponse
+    {
+        public string deliveryId;
+        public long revision;
+        public string sourceKind;
+        public string createdAt;
+        public string availableAt;
+        public string expiresAt;
+        public string claimedAt;
+        public RecoveryDeliveryItemSnapshotResponse[] items;
+    }
+
+    [Serializable]
+    public sealed class RecoveryDeliveryItemSnapshotResponse
+    {
+        public int itemOrder;
+        public int containerSlotIndex;
+        public ItemInstanceSnapshotResponse item;
+    }
 }

@@ -64,6 +64,14 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Exact-session carry-state admission and heartbeat propagation, with base and
   Bag capacity, monotonic item-state revisions, authoritative sprint limits, and
   one shared encumbrance calculation for SimulationWorker and Unity prediction.
+- A persistent Unity inventory controller with one bundled gameplay and
+  presentation catalog cache, monotonic complete and focused snapshots,
+  operation-id journaling, authoritative post-operation refresh, reconnect
+  restoration, and stable update-required handling for catalog mismatch.
+- A temporary uGUI inventory panel on the permanent client foundation, with the
+  canonical three-area layout, complete Permanent inventory, equipment, equipped
+  Bag, Secure Container, Bank, and Recovery Storage views, and protocol-v8
+  controls for every currently exposed live item mutation.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
@@ -81,7 +89,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 8 of the slot-based item foundation are implemented. Shared
+Phases 1 through 9 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
 character item-state bootstrap now exist. AuthService exposes revision-cached
@@ -90,9 +98,11 @@ account-authenticated offline mutation routes. The same transaction kernel owns
 policy records, insurance removal, quest-grant cleanup, Secure Container tier
 changes, Recovery claims, idempotency, revisions, weight, and audit. Active
 characters now mutate through an exact-session, exact-worker SimulationWorker
-boundary with live service access and committed carry propagation. Player-facing
-Unity inventory state and UI remain a later phase. Carry state drives shared
-authoritative and predicted movement.
+boundary with live service access and committed carry propagation. Unity now
+loads and reconciles authoritative item snapshots through a persistent client
+controller and presents the first temporary but complete uGUI inventory loop.
+Carry state drives shared authoritative and predicted movement. Corpse custody,
+corpse interaction, and final UI art remain later phases.
 Combat, persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 

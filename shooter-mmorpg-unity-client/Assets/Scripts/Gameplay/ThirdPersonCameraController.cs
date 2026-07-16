@@ -38,6 +38,7 @@ namespace ShooterMmo.Gameplay
         private float currentDistance;
         private float currentFieldOfView;
         private bool debugCursorReleased;
+        private bool uiCursorReleased;
         private bool applicationHasFocus;
         private bool cameraPoseInitialized;
 
@@ -125,6 +126,15 @@ namespace ShooterMmo.Gameplay
             }
         }
 
+        public void SetUiCursorReleased(bool isReleased)
+        {
+            uiCursorReleased = isReleased;
+            if (target != null)
+            {
+                ApplyCursorMode();
+            }
+        }
+
         private void OnApplicationFocus(bool hasFocus)
         {
             applicationHasFocus = hasFocus;
@@ -136,7 +146,7 @@ namespace ShooterMmo.Gameplay
 
         private void ReadCameraInput()
         {
-            if (debugCursorReleased || playerInput == null)
+            if (debugCursorReleased || uiCursorReleased || playerInput == null)
             {
                 return;
             }
@@ -231,7 +241,9 @@ namespace ShooterMmo.Gameplay
 
         private void ApplyCursorMode()
         {
-            var shouldCapture = !debugCursorReleased && applicationHasFocus;
+            var shouldCapture = !debugCursorReleased
+                && !uiCursorReleased
+                && applicationHasFocus;
             SetPointerInputEnabled(shouldCapture);
 
             if (shouldCapture)

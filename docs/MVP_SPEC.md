@@ -435,10 +435,14 @@ Current implementation note:
 - Item-plan Phase 7 adds admission-fenced and heartbeat-refreshed carry state to
   SimulationWorker, protocol version `7`, and identical GameSimulation
   encumbrance behavior in authoritative movement and Unity prediction.
-- Gameplay-created item instances, worker mutation routes, in-world bank and
-  Secure Container service access, Unity inventory presentation, insurance NPC
-  pricing and death consumption, combat, mobs, death, corpses, and loot are not
-  implemented.
+- Item-plan Phase 8 adds protocol version `8`, exact-session worker mutation,
+  authoritative Bank and Recovery service access, world-available Secure
+  Container operations, and committed carry propagation.
+- Item-plan Phase 9 adds persistent Unity catalog and snapshot state, monotonic
+  revision and operation handling, authoritative refresh, reconnect restoration,
+  and the first temporary uGUI inventory loop.
+- Gameplay-created item grants, insurance NPC pricing and death consumption,
+  combat, mobs, death, corpses, and loot are not implemented.
 
 ## Persistence Principles
 
@@ -486,7 +490,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 8 complete
+Status: In progress, item-plan Phases 1 through 9 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -512,7 +516,9 @@ Status: In progress, item-plan Phases 1 through 8 complete
   authority, live bank and Recovery access, world-available Secure Container
   operations, idempotent reliable intents, and committed carry propagation are
   complete.
-- Initial Unity inventory state and presentation remain next.
+- Persistent Unity catalog and inventory state, complete and focused revision
+  coherence, operation journaling, authoritative refresh, reconnect restoration,
+  and the temporary three-area uGUI presentation are complete.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).

@@ -539,12 +539,135 @@ For a manual runtime smoke check:
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join WorldScene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
-   No inventory panel is expected because that is Phase 9.
+   This step verifies the Phase 8 boundary. The current Phase 9 build also has
+   the inventory panel documented below.
 6. Leave and reconnect. Confirm the same committed carry revision is restored.
 7. Exit Play Mode and stop both backend processes and Compose services.
 
 No Inspector, scene, prefab, package, input-action, or build-setting changes are
 required for Phase 8. No manual Unity Editor setup is required.
+
+## Phase 9 Unity Inventory Foundation Verification
+
+Run the dedicated fixture and client-foundation coverage against the isolated
+test database:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  (Get-Content .env | Where-Object {
+    $_ -like "SHOOTER_MMO_TEST_POSTGRES=*"
+  }).Split("=", 2)[1]
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~ItemReadModelIntegrationTests"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: every selected backend test passes, including one real
+PostgreSQL transaction-service fixture flow, readback, Recovery revision, and
+replay refusal. Both Unity suites pass. Phase 9 EditMode coverage verifies the
+presentation catalog cache, catalog mismatch, complete and focused snapshots,
+monotonic and divergent revisions, operation correlation, specialized targets,
+Secure Container eligibility, non-empty Bag rejection, split weight, and the
+140 percent hard cap. PlayMode verifies the persistent controller and runtime
+uGUI root.
+
+### Create The Manual Phase 9 Fixture
+
+The fixture is intentionally not an endpoint. It is a guarded one-shot process
+command that uses `ItemTransactionService`, accepts only Development, requires a
+loopback PostgreSQL host and non-production-like database name, and refuses any
+character that is active or already owns an item or Recovery delivery.
+
+1. Start normal local infrastructure and AuthService:
+
+   ```powershell
+   docker compose up -d --wait
+   dotnet run --project AuthService
+   ```
+
+2. Open LoginMenu in Unity, enter Play Mode, register a disposable local account,
+   and create a new character. Do not join a shard. Exit Play Mode and stop
+   AuthService.
+3. List local characters and copy the new character id:
+
+   ```powershell
+   docker compose exec postgres sh -lc `
+     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select id, name from characters where deleted_at is null order by created_at desc;"'
+   $characterId = [Guid]"paste-the-new-character-id"
+   ```
+
+4. Seed that character once:
+
+   ```powershell
+   dotnet run --project AuthService -- --seed-phase9-items $characterId
+   ```
+
+   Expected result: the process exits after logging 17 granted item instances,
+   one Recovery delivery, the committed item-state revision, and carry
+   `132/250`. Running the same command again must fail with the new-character
+   guard instead of duplicating items.
+5. Start AuthService and SimulationWorker in separate terminals, then enter Play
+   Mode, log into the fixture account, select its character and join the local
+   shard. The default spawn is inside the configured Bank and Recovery service
+   points.
+
+No Inspector, scene, prefab, package, input-action, or build-setting edit is
+required. The gameplay catalog reference, `I` binding, persistent controller,
+EventSystem, Canvas, and temporary uGUI hierarchy are already authored or
+created by the runtime foundation.
+
+### Manual Player Loop
+
+1. Press `I`. Equipment is on the left, the upper-right context offers Bank and
+   Recovery, and Permanent inventory, the equipped Field Pack, and Secure
+   Container remain visible in the lower-right. Press `Escape` and verify the
+   panel closes and shooter pointer capture returns.
+2. Select the rifle, vest, pickaxe, or ring in Permanent inventory, then choose a
+   compatible empty equipment slot. Select the equipped item and choose an empty
+   Permanent slot to unequip it. The UI waits for the committed refresh before
+   showing the new location.
+3. Move the empty Field Pack from Permanent inventory into one of the equipped
+   Bag's general slots and back. Open Bank and confirm the second empty Field
+   Pack is valid there. Select the equipped non-empty Field Pack and confirm
+   ordinary Permanent, Bag, and Bank destinations remain disabled.
+4. Move the field dressing, iron ore, and ammunition out of and back into the
+   medical, material, and ammunition specialized slots. Select the rifle and
+   confirm both a specialized slot and Secure Container target are disabled.
+5. In Bank, split one iron-ore stack into an empty Bank slot, then merge it back.
+   Confirm the source quantity and item identities change only after the server
+   result and refresh.
+6. In Recovery, claim the prepared delivery to Bank. The delivery disappears and
+   both original item instances appear in Bank only after the committed full
+   refresh.
+7. Starting from fixture weight `132 / 250`, move Bank iron ore quantity `20` to
+   Permanent inventory. Weight becomes `252 / 250`, sprint is blocked, and the
+   movement multiplier begins its linear decline. Move iron ore quantity `16`
+   to reach `348 / 250`, then the single field dressing to reach exactly
+   `350 / 250`, load `140%`, and movement `20%`.
+8. Attempt to move the single Bank ammunition item into carried storage. The
+   local target is disabled. Any equivalent authoritative request is rejected by
+   the server, and the committed weight remains exactly `350 / 250`.
+9. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
+   quantity, carry value, and revision is restored without loss or duplication.
+10. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
+    references remain stable. Automated EditMode coverage also asserts that both
+    catalog loads return the same presentation index and icon cache.
+
+The catalog-update path is covered by
+`MapperRejectsCatalogMismatchAndInvalidDeliveryRevision`: a mismatched server
+revision is refused and the controller presents `item_catalog_update_required`
+instead of rendering item slots.
+
+Corpse inspection and atomically swapping an equipped non-empty Bag with a
+corpse or character Bag require later authoritative identity, proximity,
+snapshot, and protocol contracts. Phase 9 reserves typed corpse and world-loot
+contexts and the stable upper-right adapter boundary, but does not fabricate
+those later systems. Their manual cases become runnable when the corresponding
+authoritative phase is implemented.
 
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:

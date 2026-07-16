@@ -153,6 +153,60 @@ namespace ShooterMmo.Api
                 onError);
         }
 
+        public IEnumerator GetCharacterInventory(
+            string authServiceBaseUrl,
+            string sessionToken,
+            string characterId,
+            Action<CharacterInventorySnapshotResponse> onSuccess,
+            Action<ShooterMmoApiError> onError)
+        {
+            return SendJson(
+                "GET",
+                CombineUrl(
+                    authServiceBaseUrl,
+                    "/api/characters/" + Uri.EscapeDataString(characterId) + "/item-state"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
+        public IEnumerator GetCharacterBank(
+            string authServiceBaseUrl,
+            string sessionToken,
+            string characterId,
+            Action<CharacterBankSnapshotResponse> onSuccess,
+            Action<ShooterMmoApiError> onError)
+        {
+            return SendJson(
+                "GET",
+                CombineUrl(
+                    authServiceBaseUrl,
+                    "/api/characters/" + Uri.EscapeDataString(characterId) + "/bank"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
+        public IEnumerator GetCharacterRecovery(
+            string authServiceBaseUrl,
+            string sessionToken,
+            string characterId,
+            Action<CharacterRecoverySnapshotResponse> onSuccess,
+            Action<ShooterMmoApiError> onError)
+        {
+            return SendJson(
+                "GET",
+                CombineUrl(
+                    authServiceBaseUrl,
+                    "/api/characters/" + Uri.EscapeDataString(characterId) + "/recovery"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
         private IEnumerator SendJson<T>(
             string method,
             string url,

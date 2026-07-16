@@ -16,3 +16,4 @@ MonoBehaviour:
   requestTimeoutSeconds: 10
   realtimeTimeoutSeconds: 10
   sessionValidationIntervalSeconds: 5
+  itemGameplayCatalog: {fileID: 4900000, guid: b9e39606ce95458cbda2929358919150, type: 3}

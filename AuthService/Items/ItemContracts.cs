@@ -73,6 +73,7 @@ public sealed record RecoveryStorageSnapshotResponse(
 
 public sealed record RecoveryDeliverySnapshotResponse(
     Guid DeliveryId,
+    long Revision,
     string SourceKind,
     DateTime CreatedAt,
     DateTime? AvailableAt,

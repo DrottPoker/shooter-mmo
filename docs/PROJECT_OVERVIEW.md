@@ -147,9 +147,9 @@ partitions and layers as controlled population copies inside a shard. That work
 will extend SimulationAssignment and placement. It must not redefine World or
 introduce isolated realms.
 
-## Item Foundation Status And Next Step
+## Item Foundation Status
 
-Phases 1 through 8 of the durable item and inventory plan are complete. The
+Phases 1 through 9 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -174,29 +174,22 @@ SimulationWorker. The shared GameSimulation rules now apply the exact sprint
 threshold and linear movement multiplier in both authoritative movement and
 Unity prediction. Phase 8 adds bounded reliable item intents, authoritative
 worker service-point access, exact live-session and worker-runtime fencing, and
-committed carry propagation through the existing durable kernel. The next
-approved step is Phase 9's Unity inventory foundation.
+committed carry propagation through the existing durable kernel. Phase 9 adds
+the persistent Unity catalog and inventory controller, monotonic complete and
+focused snapshots, operation journaling, authoritative refresh, reconnect
+restoration, and the temporary three-area uGUI inventory panel.
 
 The remaining locked direction is slot-based rather than grid-based and includes:
 
-- Player-facing access to permanent character inventory, per-character bank,
-  equipment, physical Bag items, per-character Secure Container contents, and
-  account-selected Secure Container tiers through the implemented authority
-  boundary.
-- Player-visible inventory collection state and item operations built on the
-  implemented unitless integer carry weight, base character capacity `200`,
-  140 percent hard cap, and shared authoritative encumbrance behavior.
-- A player inventory layout with equipment on the left, contextual containers
-  in the upper-right area, and character inventory in the lower-right area.
-- Unity presentation for claims from the implemented system-write-only Recovery
-  Storage and account claim API foundation.
+- Final inventory visual design, drag-and-drop interaction polish, accessibility,
+  and item policy detail presentation on the implemented client foundation.
 - Transactional death partition, durable five-minute player corpses, concurrent
   looting, one-death insurance, and configurable NPC corpse persistence.
 
 The persistent schema, character custody identities, authoritative reads,
-offline account mutations, policy services, and internal item mutations exist,
-but no gameplay system invokes item grants and no player-facing Unity inventory
-exists. See
+offline account mutations, policy services, internal item mutations, and
+player-facing Unity inventory foundation exist, but no gameplay system invokes
+item grants. See
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
@@ -206,8 +199,8 @@ exists. See
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Gameplay-created item instances, worker mutation routes, in-world bank service
-  validation, Unity inventory behavior, corpse identity, and loot transactions.
+- Gameplay-created item instances, corpse identity, death partition, and loot
+  transactions.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live

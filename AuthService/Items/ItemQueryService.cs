@@ -481,6 +481,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             """
             select
                 id as "DeliveryId",
+                revision as "Revision",
                 source_kind as "SourceKind",
                 created_at as "CreatedAt",
                 available_at as "AvailableAt",
@@ -545,6 +546,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             recoveryContainer.Revision,
             deliveries.Select(delivery => new RecoveryDeliverySnapshotResponse(
                 delivery.DeliveryId,
+                delivery.Revision,
                 delivery.SourceKind,
                 delivery.CreatedAt,
                 delivery.AvailableAt,
@@ -673,6 +675,8 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
     private sealed class RecoveryDeliveryRow
     {
         public Guid DeliveryId { get; set; }
+
+        public long Revision { get; set; }
 
         public string SourceKind { get; set; } = string.Empty;
 

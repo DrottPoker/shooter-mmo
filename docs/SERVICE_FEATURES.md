@@ -291,10 +291,10 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 8 of the approved item plan are implemented. Offline account
+Phases 1 through 9 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
-boundary are available. Unity inventory state and presentation remain later
-phases:
+boundary plus persistent Unity inventory state and temporary presentation are
+available:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -445,16 +445,34 @@ phases:
   results. A newer tuple is sent reliably before it affects movement. Conflicting
   same-revision data or stale live authority causes a targeted refresh response
   or safe disconnect.
-- Unity treats the result as transport and movement state only. It has no item
-  collection, mutation cache, or inventory UI in Phase 8.
+- Unity keeps one persistent definition-id catalog index, presentation and icon
+  cache, complete and focused snapshot state, monotonic observed revisions,
+  structured errors, and one operation journal. It correlates protocol-v8
+  results and refreshes authoritative HTTP state to the committed revision
+  without optimistically changing item custody or quantity.
+- The runtime uGUI panel is replaceable presentation over that state. It exposes
+  Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
+  Recovery Storage plus every current live mutation. Bank and Recovery reads are
+  globally inspectable by the owning account, while mutations retain worker
+  service-point validation.
+- Gameplay and presentation catalogs load once and must share a source revision.
+  Server snapshots must match the same bundled gameplay revision or the client
+  reports `item_catalog_update_required` and refuses stale item state.
+- `--seed-phase9-items <characterId>` is a process-local Development fixture
+  command, not an HTTP route. It calls only `ItemTransactionService`, requires a
+  new empty offline character, restricts PostgreSQL to loopback and a
+  non-production-like database name, and refuses replay after the first item or
+  Recovery delivery exists.
 
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
 AuthService exposes authenticated owned-character reads, offline account item
 write routes, and one service-authenticated active-session item route. It exposes
-no development grant route. SimulationWorker has no inventory database access
-and holds no item collection. Unity is not an item-rule authority.
+no development grant route. The one-shot Phase 9 fixture is a guarded local
+process command rather than a remotely callable service. SimulationWorker has no
+inventory database access and holds no item collection. Unity is not an item-rule
+authority.
 
 ## UDP Resilience And Quotas
 
@@ -608,12 +626,20 @@ the test connection variable at development or production data.
   identity mismatch, stale assignment, duplicate intent replay, account-versus-
   worker races, bank and Recovery access, Secure Container carry changes, and
   reconnect restoration.
+- Phase 9 backend tests cover fixture command validation, one real PostgreSQL
+  transaction-service fixture flow and readback, one-shot rejection, and the
+  Recovery delivery revision
+  exposed to Unity. Unity EditMode tests cover catalog cache reuse, revision
+  mismatch, snapshot validation and coherence, operation correlation,
+  specialized and Secure Container targets, non-empty Bag rules, split weight,
+  and the hard cap. PlayMode tests cover persistent controller and uGUI creation.
 
 ## Not Yet Implemented
 
-- Development or gameplay item grant routes.
-- Player-visible inventory collections, item-operation controls, equipment
-  screens, service views, catalog caching, or targeted refresh orchestration.
+- Development or gameplay item grant routes. The guarded local fixture command
+  is intentionally not a route.
+- Final inventory visual design, drag-and-drop polish, accessibility, and policy
+  detail presentation. The current uGUI is temporary presentation only.
 - Corpse operation intents, corpse proximity, corpse views, or loot mutation
   through SimulationWorker or Unity.
 - Insurance NPC pricing and purchase behavior, insurance consumption on death,

@@ -2,11 +2,11 @@
 
 Last updated: 2026-07-16
 
-Status: Locked design target; Phases 1 through 8 content, authoring, schema,
+Status: Locked design target; Phases 1 through 9 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
-encumbrance plus realtime item mutation implemented; Unity inventory integration
-planned
+encumbrance plus realtime item mutation and Unity inventory foundation
+implemented
 
 ## Purpose
 
@@ -425,6 +425,14 @@ The Phase 9 Unity inventory presentation uses a stable three-area layout:
 This is a presentation contract only. Server authority, revisions, slot rules,
 and transaction behavior do not depend on screen layout.
 
+The implemented Phase 9 client keeps this layout in replaceable uGUI while its
+catalog cache, immutable snapshots, revision coherence, operation journal,
+structured errors, and refresh orchestration live in a persistent controller.
+Bank and Recovery Storage may be inspected globally by the owning account, but
+their mutations still require SimulationWorker's live service validation.
+Corpse and world-loot context adapters are reserved without inventing custody or
+snapshot data before their authoritative phases.
+
 ## Item Policies
 
 Policies are server-owned item-instance state. Clients may request actions but
@@ -653,7 +661,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 8 now implement the neutral catalog, structural
+claim. Phases 1 through 9 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -686,7 +694,12 @@ and Recovery Storage require their matching live access. Secure Container
 operations do not require city access. Only a committed result can advance the
 worker and Unity carry tuple.
 
+Phase 9 adds a persistent Unity catalog, complete and focused snapshots,
+monotonic revision coherence, operation-id journaling, authoritative refresh,
+reconnect restoration, structured errors, and temporary uGUI presentation. The
+client uses local definition presentation and disables obvious invalid targets,
+but it neither owns custody nor applies optimistic item changes.
+
 No vendor, gathering, insurance purchase, quest gameplay, or corpse interaction
-path calls the kernel yet. Unity inventory state and UI, insurance pricing and
-death consumption, death partition, persistent corpse identity, and corpse
-looting remain later phases.
+path calls the kernel yet. Insurance pricing and death consumption, death
+partition, persistent corpse identity, and corpse looting remain later phases.

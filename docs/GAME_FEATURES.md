@@ -227,10 +227,40 @@ Storage require proximity to their configured worker service points. Secure
 Container access has no city requirement. Only committed AuthService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
-There is still no player-facing inventory UI. Unity exposes the typed networking
-boundary for future Phase 9 state and presentation, so normal players do not yet
-have controls that create these item intents. See the manual and automated checks
-in [Local Development](LOCAL_DEVELOPMENT.md).
+Unity now exposes the first player-facing inventory loop. Press `I` in
+WorldScene to open the temporary uGUI panel, then select an item and an enabled
+destination or action. Moves, equipment changes, split, merge, allowed destroy,
+and Recovery claims all use the existing authoritative SimulationWorker and
+AuthService path. The panel renders only refreshed committed snapshots and never
+pretends that a pending mutation has completed. See the manual and automated
+checks in [Local Development](LOCAL_DEVELOPMENT.md).
+
+## Player Inventory Foundation
+
+Status: Functional MVP foundation with temporary presentation
+
+The inventory panel keeps equipment on the left. Bank or Recovery Storage uses
+the upper-right context area, while Permanent inventory, equipped Bag contents,
+and Secure Container stay visible in the lower-right. Bank and Recovery may be
+inspected globally for the owning character. Mutations still require a joined
+simulation session, and the server validates live city-service access.
+
+The header shows authoritative weight, capacity, load percentage, movement
+multiplier, sprint eligibility, and item-state revision. General and specialized
+Bag slots are visibly distinct. Local definition lookups disable obvious invalid
+equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
+targets, but the server remains final authority.
+
+The client loads the gameplay and presentation catalogs once through its
+persistent bootstrap. Stable definition ids resolve fallback names,
+localization keys, optional icons, and optional prefab presentation keys
+locally. A source or server catalog revision mismatch reports that a client
+update is required and does not render stale item state.
+
+`I` opens or closes inventory and `Escape` closes it. Shooter pointer capture is
+released while the panel is open. The uGUI visuals are deliberately temporary,
+but catalog, snapshot, revision, operation-id, error, refresh, reconnect, and
+authority handling are permanent foundations.
 
 ## Planned Feature Categories
 
@@ -240,8 +270,8 @@ They remain in the MVP specification until working behavior is available:
 - Dynamic collision transform replication.
 - Terrain and cave collision beyond the current oriented-box format.
 - Shooter combat, weapons, damage, death, and respawning.
-- Player-facing slot inventory presentation, item controls, catalog caching,
-  contextual bank and Recovery views, item policy interaction, and loot.
+- Final inventory art, interaction polish, accessibility, item policy details,
+  and loot presentation.
 - Durable player corpses, configurable NPC corpses, concurrent looting, and
   one-death insurance.
 - Gathering, crafting, professions, and player economy.
@@ -254,7 +284,8 @@ They remain in the MVP specification until working behavior is available:
 The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
 PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
 Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
-Phase 7 shared live encumbrance, and Phase 8 active-character mutation now exist.
+Phase 7 shared live encumbrance, Phase 8 active-character mutation, and Phase 9
+Unity inventory foundation now exist.
 AuthService supports owned
 item-state, bank, Secure Container, and Recovery access plus offline relocation,
 split, merge, allowed destruction, Recovery claim, and tier-change operations.
@@ -262,12 +293,13 @@ Internal policy and quest services apply auditable lineage without adding a
 gameplay quest or insurance NPC operation. SimulationWorker now serializes
 reliable item intents, validates live service access, uses the exact-session
 service boundary, and advances encumbrance only from a committed result. These
-foundations still create no Unity player-visible inventory collection or controls.
+foundations now feed one persistent Unity view of the authoritative item
+collection and its temporary player controls.
 The planned item rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
-not yet connected to Unity inventory presentation.
+connected to the Phase 9 Unity inventory presentation.
 
-The planned inventory presentation keeps character equipment on the left. The
+The implemented inventory presentation keeps character equipment on the left. The
 right side is split with contextual containers such as bank, corpse, Recovery
 Storage, or world loot above the character inventory. Permanent inventory,
 equipped Bag contents, and Secure Container access remain in the lower-right
@@ -276,9 +308,10 @@ area while another container is open.
 Item icons and other visual metadata are client-owned presentation assets keyed
 by stable definition id. The bundled presentation catalog records the exact
 gameplay source revision and its own deterministic presentation revision. Unity
-validates and caches this catalog once per matching revision, then future
-inventory, bank, corpse, and Recovery Storage views can reuse local lookups for
-state received from the server.
+validates and caches this catalog once per matching revision, then inventory,
+Bank, and Recovery Storage views reuse local lookups for state received from the
+server. Corpse and world-loot contexts retain prepared adapter identities but
+wait for their later authoritative snapshots and operations.
 
 ## Feature Documentation Template
 

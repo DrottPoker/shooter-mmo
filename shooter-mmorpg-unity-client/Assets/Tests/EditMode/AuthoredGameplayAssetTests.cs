@@ -1,6 +1,7 @@
 using System.Linq;
 using NUnit.Framework;
 using ShooterMmo.Collision;
+using ShooterMmo.Config;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Gameplay;
 using UnityEditor;
@@ -32,6 +33,7 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(actions.FindAction("Look", false), Is.Not.Null);
             Assert.That(actions.FindAction("ToggleDebugCursor", false), Is.Not.Null);
             Assert.That(actions.FindAction("ToggleWorldDebug", false), Is.Not.Null);
+            Assert.That(actions.FindAction("ToggleInventory", false), Is.Not.Null);
             Assert.That(actions.FindAction("Orbit", false), Is.Null);
             Assert.That(actions.FindAction("Zoom", false), Is.Null);
 
@@ -48,6 +50,18 @@ namespace ShooterMmo.Tests.EditMode
                 Does.Contain("<Keyboard>/f1"));
             Assert.That(actions.FindAction("ToggleWorldDebug").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/f2"));
+            Assert.That(actions.FindAction("ToggleInventory").bindings.Select(binding => binding.path),
+                Does.Contain("<Keyboard>/i"));
+        }
+
+        [Test]
+        public void ClientConfigReferencesBundledGameplayCatalog()
+        {
+            var config = ShooterMmoClientConfig.Load();
+
+            Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
+            Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"catalogId\""));
+            Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"revision\""));
         }
 
         [Test]

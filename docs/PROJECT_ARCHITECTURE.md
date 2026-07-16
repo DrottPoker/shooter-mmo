@@ -227,6 +227,12 @@ revision records the exact source gameplay revision. The client validates and
 caches the bundled catalog once per matching revision, while server item state
 uses definition ids instead of transferring presentation assets.
 
+The persistent Unity bootstrap also owns one `InventoryClientController`. The
+controller keeps catalog indexes, complete and focused snapshots, observed
+revisions, operation ids, structured failures, and refresh orchestration outside
+scene panels. The replaceable uGUI panel reads that state and sends intents, but
+it never owns item custody or applies an optimistic mutation.
+
 ### Unity Client
 
 `shooter-mmorpg-unity-client` owns presentation, input, prediction,
@@ -260,10 +266,10 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 8 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 9 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
-mutation implemented; Unity inventory integration planned
+mutation plus Unity inventory integration implemented
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -350,9 +356,11 @@ Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel
 Phase 6 adds policy-safe account reads and offline mutations on that kernel.
 Phase 7 adds session-bound carry state and shared SimulationWorker and Unity
 encumbrance. Phase 8 adds service-authenticated active-character item mutation
-without adding worker inventory state. There is still no gameplay grant route,
-Unity inventory state, item cache, or inventory UI. The Unity content tooling
-remains presentation and authoring support, not item authority.
+without adding worker inventory state. Phase 9 adds the persistent Unity catalog,
+snapshot, revision, operation-journal, targeted-refresh, and temporary uGUI
+layers. Unity still has no item authority, SimulationWorker still holds no item
+collection, and there is no gameplay grant route. A guarded one-shot Development
+fixture command uses the existing durable kernel and is not a service endpoint.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
@@ -564,9 +572,10 @@ Status: Implemented transport and authority boundary
 5. SimulationWorker updates authoritative encumbrance only from the committed
    result, sends a reliable carry update before it affects movement, and forwards
    the result to Unity.
-6. Unity applies only a newer authoritative carry revision and emits the result
-   to a future inventory-state consumer. It does not cache or optimistically
-   mutate item collections in Phase 8.
+6. Unity applies only a newer authoritative carry revision, correlates the
+   operation id, and refreshes the authoritative Bank, Recovery, or complete
+   item snapshot until it reaches the committed revision. It never optimistically
+   mutates item custody or quantity.
 
 No database transaction remains open across a client network round trip.
 

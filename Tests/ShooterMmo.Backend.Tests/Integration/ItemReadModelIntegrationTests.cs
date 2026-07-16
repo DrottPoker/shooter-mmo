@@ -180,6 +180,7 @@ public sealed class ItemReadModelIntegrationTests
 
         var delivery = Assert.Single(snapshot.RecoveryStorage.Deliveries);
         Assert.Equal(recovery.DeliveryId, delivery.DeliveryId);
+        Assert.True(delivery.Revision >= 0);
         Assert.Equal("test_recovery", delivery.SourceKind);
         var deliveredItem = Assert.Single(delivery.Items);
         Assert.Equal(recovery.ItemInstanceId, deliveredItem.Item.ItemInstanceId);

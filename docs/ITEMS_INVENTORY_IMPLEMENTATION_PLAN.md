@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-16
 
-Status: Approved delivery baseline, Phases 1 through 8 completed, Phase 9 next
+Status: Approved delivery baseline, Phases 1 through 9 completed
 
 ## Purpose
 
@@ -982,9 +982,11 @@ Status: Completed 2026-07-16
 All active-character mutations have one live authority and one durable authority
 without direct worker database access.
 
-The Phase 8 exit gate is satisfied. Phase 9 remains not started.
+The Phase 8 exit gate is satisfied. Phase 9 is completed below.
 
 ## Phase 9: Unity Inventory Foundation
+
+Status: Completed 2026-07-16
 
 ### Work
 
@@ -1027,6 +1029,73 @@ The Phase 8 exit gate is satisfied. Phase 9 remains not started.
 Only the UI presentation may be temporary. Client state, networking,
 idempotency, revisions, and authority handling are long-term code.
 
+### Implemented Outcome
+
+- `ShooterMmoClientBootstrap` now owns one scene-independent
+  `InventoryClientController`. It loads the bundled gameplay catalog and the
+  existing presentation catalog into definition-id indexes once, preserves the
+  presentation icon cache across scene changes, and automatically restores a
+  full authoritative snapshot on initial join and reconnect.
+- The client has typed immutable models for complete and focused item snapshots,
+  item, container, equipment, Bag, Secure Container, Bank, Recovery delivery,
+  carry, revision, operation, context, and structured-error state. Focused Bank
+  and Recovery reads can advance observed revisions, but mutations remain
+  disabled until a coherent full snapshot reaches the newest known revision.
+- The gameplay and presentation source revisions are validated before item UI
+  becomes available. Every server item-state response must match the bundled
+  gameplay revision. A mismatch clears renderable item state and reports the
+  stable `item_catalog_update_required` error instead of using stale data.
+- Every UI mutation creates a new protocol-v8 operation id and sends a typed
+  intent through the joined `RealtimeSimulationClient`. One pending operation is
+  journaled at a time. The client never changes item custody or quantity
+  optimistically, ignores a duplicate completion for the last finalized
+  operation, and applies state only after an authoritative HTTP refresh reaches
+  the committed revision.
+- Stale or concurrency rejections refresh the smallest relevant Bank, Recovery,
+  or full slice first. A newer focused result forces a full coherence refresh
+  before another mutation. Disconnect during an operation marks the result
+  uncertain and reconnect replaces local state from authority without creating
+  or deleting a local item instance.
+- The temporary uGUI panel opens with `I`, closes with `I` or `Escape`, releases
+  shooter cursor capture, and uses the canonical three-area layout. Equipment is
+  on the left, the selected Bank or Recovery context remains in the upper-right,
+  and Permanent inventory, equipped Bag contents, and Secure Container remain
+  visible in the lower-right.
+- The panel supports authoritative move, equip, unequip, split, merge, destroy,
+  and complete Recovery claim intents. It displays weight, capacity, load,
+  movement multiplier, sprint eligibility, and item-state revision. A shared
+  target advisor disables obviously invalid equipment, specialized Bag, Secure
+  Container, non-empty Bag, stack, destruction, and 140 percent hard-cap targets
+  for usability while AuthService remains the final authority.
+- Bank and Recovery Storage inspection uses owning-account HTTP reads everywhere.
+  Any mutation still travels through the active SimulationWorker, which supplies
+  its authoritative service-point access to AuthService.
+- Recovery delivery snapshots now expose their existing durable revision to
+  Unity as an additive HTTP field. Realtime protocol version `8` and every
+  existing packet remain unchanged.
+- A one-shot `--seed-phase9-items <characterId>` Development command creates the
+  deterministic manual fixture through `ItemTransactionService`. It is limited
+  to a loopback PostgreSQL host, rejects production-like database names, requires
+  a new offline empty character, exposes no HTTP grant route, and refuses a
+  second run.
+- The fixture starts at weight `132 / 250` and includes equipment candidates,
+  one non-empty equipped Bag, empty Bags in Permanent inventory and Bank,
+  medical, material, and ammunition specialized-slot items, a protected Secure
+  Container item, merge and split stacks, exact 140 percent weight steps, and one
+  Recovery delivery.
+- `InventoryContextKind` reserves typed corpse and world-loot adapters, and the
+  UI keeps the upper-right layout boundary ready for them. Phase 9 does not fake
+  corpse snapshots, proximity, custody, or mutations. Atomic non-empty Bag swaps
+  stay on the existing durable command foundation until a later phase exposes
+  the required live source and destination contract.
+- Backend coverage now includes fixture argument guardrails, a real PostgreSQL
+  fixture transaction, readback, Recovery delivery revision, and one-shot
+  rejection. Unity EditMode coverage verifies catalog and icon cache reuse,
+  catalog mismatch, snapshot validation, monotonic and divergent revisions,
+  operation correlation, specialized slots, Secure Container eligibility,
+  non-empty Bag rules, split quantities, and the hard cap. PlayMode coverage
+  verifies the persistent controller and runtime uGUI lifecycle.
+
 ### Manual Test Gate
 
 - Move, split, merge, equip, unequip, and swap Bags.
@@ -1049,6 +1118,11 @@ idempotency, revisions, and authority handling are long-term code.
 
 The first player-facing inventory loop is usable through the real authoritative
 path.
+
+The Phase 9 exit gate is satisfied for every operation exposed by the Phase 8
+live authority. The corpse-view and atomic non-empty Bag-swap manual cases remain
+explicit prerequisite-gated rather than locally simulated. Their stable client
+context and state boundaries are prepared for the later authoritative phases.
 
 ## Phase 10: Death Partition And Durable Player Corpses
 

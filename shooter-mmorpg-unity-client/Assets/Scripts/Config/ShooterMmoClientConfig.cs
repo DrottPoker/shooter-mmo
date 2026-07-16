@@ -9,6 +9,7 @@ namespace ShooterMmo.Config
         [SerializeField] private int requestTimeoutSeconds = 10;
         [SerializeField] private int realtimeTimeoutSeconds = 10;
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
+        [SerializeField] private TextAsset itemGameplayCatalog;
 
         public string AuthServiceBaseUrl
         {
@@ -28,6 +29,11 @@ namespace ShooterMmo.Config
         public int SessionValidationIntervalSeconds
         {
             get { return Mathf.Clamp(sessionValidationIntervalSeconds, 2, 60); }
+        }
+
+        public TextAsset ItemGameplayCatalog
+        {
+            get { return itemGameplayCatalog; }
         }
 
         public static ShooterMmoClientConfig Load()

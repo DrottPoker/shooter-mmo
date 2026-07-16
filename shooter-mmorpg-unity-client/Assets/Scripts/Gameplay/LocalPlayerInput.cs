@@ -15,6 +15,7 @@ namespace ShooterMmo.Gameplay
         private const string LookActionName = "Look";
         private const string ToggleDebugCursorActionName = "ToggleDebugCursor";
         private const string ToggleWorldDebugActionName = "ToggleWorldDebug";
+        private const string ToggleInventoryActionName = "ToggleInventory";
 
         private PlayerInput playerInput;
         private InputAction moveAction;
@@ -24,6 +25,7 @@ namespace ShooterMmo.Gameplay
         private InputAction lookAction;
         private InputAction toggleDebugCursorAction;
         private InputAction toggleWorldDebugAction;
+        private InputAction toggleInventoryAction;
         private bool pointerInputEnabled = true;
 
         public bool IsConfigured { get; private set; }
@@ -68,6 +70,11 @@ namespace ShooterMmo.Gameplay
             get { return IsConfigured && toggleWorldDebugAction.WasPressedThisFrame(); }
         }
 
+        public bool ToggleInventoryPressedThisFrame
+        {
+            get { return IsConfigured && toggleInventoryAction.WasPressedThisFrame(); }
+        }
+
         private void Awake()
         {
             playerInput = GetComponent<PlayerInput>();
@@ -87,7 +94,7 @@ namespace ShooterMmo.Gameplay
 
             Debug.LogError(
                 "LocalPlayerInput requires a PlayerInput actions asset containing "
-                + "Move, Sprint, Jump, Aim, Look, ToggleDebugCursor, and ToggleWorldDebug actions.",
+                + "Move, Sprint, Jump, Aim, Look, ToggleDebugCursor, ToggleWorldDebug, and ToggleInventory actions.",
                 this);
         }
 
@@ -126,6 +133,7 @@ namespace ShooterMmo.Gameplay
             lookAction = playerInput.actions.FindAction(LookActionName, false);
             toggleDebugCursorAction = playerInput.actions.FindAction(ToggleDebugCursorActionName, false);
             toggleWorldDebugAction = playerInput.actions.FindAction(ToggleWorldDebugActionName, false);
+            toggleInventoryAction = playerInput.actions.FindAction(ToggleInventoryActionName, false);
 
             return moveAction != null
                 && sprintAction != null
@@ -133,7 +141,8 @@ namespace ShooterMmo.Gameplay
                 && aimAction != null
                 && lookAction != null
                 && toggleDebugCursorAction != null
-                && toggleWorldDebugAction != null;
+                && toggleWorldDebugAction != null
+                && toggleInventoryAction != null;
         }
     }
 }

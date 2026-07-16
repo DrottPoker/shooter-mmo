@@ -2,6 +2,7 @@ using System.Collections;
 using ShooterMmo.Api;
 using ShooterMmo.Config;
 using ShooterMmo.Diagnostics;
+using ShooterMmo.Items;
 using ShooterMmo.Networking;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -15,6 +16,8 @@ namespace ShooterMmo
         private Coroutine accountSessionMonitor;
 
         public static RealtimeSimulationClient SimulationClient { get; private set; }
+
+        public static InventoryClientController InventoryController { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -33,12 +36,21 @@ namespace ShooterMmo
 
         private void Awake()
         {
-            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+            var config = ShooterMmoClientConfig.Load();
+            apiClient = new ShooterMmoApiClient(config.RequestTimeoutSeconds);
             SimulationClient = GetComponent<RealtimeSimulationClient>();
             if (SimulationClient == null)
             {
                 SimulationClient = gameObject.AddComponent<RealtimeSimulationClient>();
             }
+
+            InventoryController = GetComponent<InventoryClientController>();
+            if (InventoryController == null)
+            {
+                InventoryController = gameObject.AddComponent<InventoryClientController>();
+            }
+
+            InventoryController.Initialize(apiClient, SimulationClient, config.ItemGameplayCatalog);
 
             SimulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
@@ -69,6 +81,7 @@ namespace ShooterMmo
             }
 
             SimulationClient = null;
+            InventoryController = null;
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -205,6 +218,7 @@ namespace ShooterMmo
                 AddControllerIfMissing<Gameplay.CrosshairController>();
                 AddControllerIfMissing<Ui.WorldScenePanel>();
                 AddControllerIfMissing<Ui.CrosshairPanel>();
+                AddControllerIfMissing<Ui.TemporaryInventoryPanel>();
             }
         }
 

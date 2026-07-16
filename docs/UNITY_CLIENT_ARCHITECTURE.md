@@ -31,6 +31,10 @@ ShooterMmoClientBootstrap
   +-- ShooterMmoClientSession
   +-- ShooterMmoApiClient
   +-- RealtimeSimulationClient
+  +-- InventoryClientController
+      +-- ClientItemCatalog
+      +-- InventoryClientState
+      +-- InventoryOperationJournal
   +-- ShooterMmoClientConfig
   +-- scene lifecycle recovery
 
@@ -38,6 +42,11 @@ Scene panel
   +-- ClientOperationState
   +-- API coroutine flow
   +-- ClientSessionRecovery
+
+TemporaryInventoryPanel
+  +-- replaceable runtime uGUI presentation
+  +-- persistent InventoryClientController state
+  +-- no item custody or optimistic mutation
 
 WorldSceneContext
   +-- scene-authored LocalPlayer prefab reference
@@ -71,9 +80,9 @@ Realtime movement
 ## Persistent Client Bootstrap
 
 `ShooterMmoClientBootstrap` creates the persistent runtime root and survives scene
-changes. It initializes configuration, owns one `RealtimeSimulationClient`, observes
-scene transitions, and performs fallback leave when an active WorldScene is left
-outside the normal panel flow.
+changes. It initializes configuration, owns one `RealtimeSimulationClient` and
+one `InventoryClientController`, observes scene transitions, and performs
+fallback leave when an active WorldScene is left outside the normal panel flow.
 
 The fallback release is bound to the exact simulation-session identity. Completion of
 an older request cannot clear a newer local reconnect state. If graceful leave
@@ -90,6 +99,8 @@ in `Assets/Scripts/Config`. It currently contains:
 - HTTP request timeout in seconds.
 - Realtime operation timeout in seconds.
 - Account-session validation interval in seconds.
+- A direct TextAsset reference to the gameplay runtime item catalog supplied by
+  the local WorldData package.
 
 SimulationWorker host, runtime, and UDP port come from AuthService's short-lived
 shard placement response. They are not part of the public shard list and are not
@@ -119,6 +130,8 @@ local session state before loading LoginMenu.
 - Configured request timeouts.
 - Validation of expected response payloads.
 - Structured mapping of HTTP, timeout, network, and invalid-response failures.
+- Owned-character complete item-state, focused Bank, and focused Recovery
+  Storage reads used by the persistent inventory controller.
 
 `ShooterMmoApiError` carries the failure kind, HTTP status, stable server code,
 message, and correlation id. Panels display a safe message rather than raw JSON.
@@ -349,9 +362,64 @@ eligibility for observation without becoming inventory state or authority.
 protocol intent while joined and sends it on the reliable ordered control path.
 Committed or rejected results are decoded only in the joined state. A committed
 newer carry revision advances `NetworkMovementSession` before
-`ItemOperationCompleted` is raised. This is a transport boundary only. Unity has
-no persistent item collection, operation journal, catalog cache, targeted state
-refresh controller, or inventory UI until Phase 9.
+`ItemOperationCompleted` is raised. The transport does not own item collections.
+The persistent `InventoryClientController` consumes the result, correlates its
+operation id and kind, and refreshes authoritative HTTP state before permitting
+another mutation. A duplicate completion for the last finalized operation is
+ignored safely.
+
+`ClientItemCatalog` compiles and revision-checks the bundled gameplay TextAsset,
+loads the presentation catalog once through its existing Resources cache, and
+indexes definitions and equipment slots by stable id. Gameplay and presentation
+source revisions must match before item UI can render. Every HTTP snapshot must
+also match the bundled gameplay revision. A mismatch clears renderable item
+state and produces `item_catalog_update_required` instead of accepting stale
+definitions. Icons, localization keys, fallback labels, and optional prefab
+presentation keys resolve locally. HTTP responses carry only stable definition
+ids and instance state.
+
+`InventoryClientState` owns immutable complete and focused snapshots plus the
+latest observed character, Bank, and Recovery revisions. A focused response may
+advance its slice, but any newer focused revision marks the complete snapshot
+incoherent and disables mutation until a full refresh reaches the newest known
+revision. Same-revision content disagreement is an error. Older responses are
+ignored. Initial join and reconnect trigger a complete refresh automatically.
+
+`InventoryOperationJournal` permits one pending mutation, retains its generated
+operation id and rejection refresh scope, and never changes custody locally.
+Successful results always cause a complete refresh to the committed revision.
+Stale and concurrency rejections first refresh their focused slice where safe,
+then restore complete coherence. A disconnect with a pending operation marks
+the local result uncertain, clears the journal, and relies on reconnect refresh
+to resolve the committed outcome.
+
+### Inventory UI
+
+`TemporaryInventoryPanel` is the only replaceable part of the Phase 9 inventory
+implementation. It creates runtime uGUI below a WorldScene controller and reads
+the persistent state without embedding API, protocol, revision, or item-rule
+ownership. `I` toggles the panel, `Escape` closes it, and the camera releases
+pointer capture while it is open.
+
+The stable layout has equipment on the left, a contextual container in the
+upper-right, and character storage in the lower-right. Permanent inventory,
+equipped Bag contents, and Secure Container remain visible while Bank or
+Recovery Storage is selected. Bank and Recovery may be inspected through global
+owning-account reads. Every mutation still travels through the joined
+SimulationWorker, so authoritative service-point validation remains effective.
+
+The panel supports move, equip, unequip, split, merge, allowed destruction, and
+complete Recovery claims. It displays authoritative weight, capacity, load,
+movement multiplier, sprint eligibility, and item-state revision. A UI-only
+target advisor reuses pure WorldData equipment, stack, Bag, Secure Container,
+slot-tag, weight, and hard-cap rules to disable obvious invalid targets. Server
+authority always revalidates any submitted action.
+
+Corpse and world-loot context kinds are reserved at the state boundary without
+inventing snapshots or operations. The upper-right layout can accept those
+adapters when later phases provide live identity, proximity, custody, and
+revision contracts. Non-empty Bag swaps likewise wait for their live protocol
+contract instead of being simulated in UI.
 
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
@@ -403,8 +471,10 @@ immediately. Missing unreliable snapshots never decide entity lifetime.
 
 `ThirdPersonCameraController` consumes look input continuously while the gameplay
 cursor is captured. F1 switches between captured shooter input and a released
-debug cursor. The component and Camera live on the LocalPlayerCamera child owned
-by the LocalPlayer prefab. Normal framing uses a 1.1 meter right-shoulder offset,
+debug cursor. The inventory panel independently releases capture while open and
+restores the applicable debug or gameplay cursor state when closed. The
+component and Camera live on the LocalPlayerCamera child owned by the LocalPlayer
+prefab. Normal framing uses a 1.1 meter right-shoulder offset,
 a 0.45 meter vertical offset, a 4.75 meter follow distance, and a 12 degree
 initial pitch. Aim changes the offsets to 1.3 and 0.35 meters, moves the camera
 to 4.25 meters, and reduces FOV from 60 to 45 degrees using a
@@ -440,10 +510,15 @@ WorldScene composition. They also execute the shared encumbrance reference
 points, sprint threshold, movement prediction, and monotonic carry-revision
 handling used by SimulationWorker. Phase 8 EditMode coverage also round-trips
 typed Secure Container intents and committed item results without adding client
-authority fields.
+authority fields. Phase 9 coverage loads the real bundled gameplay and
+presentation catalogs, verifies cache reuse and mismatch rejection, validates
+complete and focused snapshots, exercises stale and divergent revision handling,
+correlates operation ids, and checks specialized slots, Secure Container rules,
+non-empty Bags, split quantities, and the exact hard cap.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
-bootstrap, persistent realtime client, and runtime login panel.
+bootstrap, persistent realtime and inventory controllers, and runtime login
+panel. WorldScene coverage opens and closes the runtime uGUI inventory root.
 
 Manual flows and expected results are documented in
 [Local Development](LOCAL_DEVELOPMENT.md).
@@ -458,7 +533,8 @@ Manual flows and expected results are documented in
 - Keep authored collision in `WorldData`; never duplicate scene geometry as
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.
-- Keep persistent cross-scene state in the client session, not scene panels.
+- Keep persistent cross-scene session state in `ShooterMmoClientSession` and
+  item state in `InventoryClientController`, not scene panels.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
 - Route every WorldScene exit through exact-session UDP leave or disconnect

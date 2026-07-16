@@ -64,6 +64,7 @@ builder.Services.AddScoped<AccountItemMutationService>();
 builder.Services.AddScoped<SimulationItemMutationService>();
 builder.Services.AddScoped<ItemPolicyService>();
 builder.Services.AddScoped<QuestItemService>();
+builder.Services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ShardService>();
 builder.Services.AddScoped<SimulationSessionService>();
@@ -129,6 +130,30 @@ if (app.Configuration.GetValue("Database:RunMigrationsOnStartup", true))
     await initializer.InitializeAsync(CancellationToken.None);
     var topologySeeder = app.Services.GetRequiredService<SimulationTopologySeeder>();
     await topologySeeder.SeedAsync(CancellationToken.None);
+}
+
+if (PhaseNineDevelopmentFixtureCommand.TryParse(
+        args,
+        out var phaseNineCharacterId,
+        out var phaseNineFixtureError))
+{
+    if (!string.IsNullOrWhiteSpace(phaseNineFixtureError))
+    {
+        throw new InvalidOperationException(phaseNineFixtureError);
+    }
+
+    await using var scope = app.Services.CreateAsyncScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<PhaseNineDevelopmentFixtureSeeder>();
+    var result = await seeder.SeedAsync(phaseNineCharacterId, CancellationToken.None);
+    app.Logger.LogInformation(
+        "Seeded Phase 9 fixture for character {CharacterId} at revision {ItemStateRevision} with {GrantedItemCount} items, {RecoveryDeliveryCount} Recovery delivery, and carry {CarriedWeight}/{CarryCapacity}.",
+        result.CharacterId,
+        result.ItemStateRevision,
+        result.GrantedItemCount,
+        result.RecoveryDeliveryCount,
+        result.CarriedWeight,
+        result.CarryCapacity);
+    return;
 }
 
 app.MapGet("/", () => Results.Redirect("/health/ready"));

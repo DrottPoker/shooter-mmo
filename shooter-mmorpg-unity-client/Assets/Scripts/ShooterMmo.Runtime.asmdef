@@ -5,7 +5,10 @@
     "Unity.InputSystem",
     "LiteNetLib",
     "ShooterMmo.GameProtocol",
-    "ShooterMmo.GameSimulation"
+    "ShooterMmo.GameSimulation",
+    "ShooterMmo.WorldData",
+    "ShooterMmo.WorldData.Client",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
