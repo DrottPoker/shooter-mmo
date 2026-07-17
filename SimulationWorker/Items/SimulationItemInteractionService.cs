@@ -108,6 +108,7 @@ public sealed class SimulationItemInteractionService(
             RealtimeItemOperationKind.Unequip => "unequip",
             RealtimeItemOperationKind.SplitStack => "split_stack",
             RealtimeItemOperationKind.MergeStacks => "merge_stacks",
+            RealtimeItemOperationKind.SwapContainerItems => "swap_container_items",
             RealtimeItemOperationKind.Destroy => "destroy",
             RealtimeItemOperationKind.ClaimRecoveryDelivery => "claim_recovery_delivery",
             _ => throw new ArgumentOutOfRangeException(

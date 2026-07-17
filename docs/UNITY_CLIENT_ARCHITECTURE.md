@@ -405,8 +405,13 @@ to resolve the committed outcome.
 `TemporaryInventoryPanel` is the only replaceable part of the Phase 9 inventory
 implementation. It creates runtime uGUI below a WorldScene controller and reads
 the persistent state without embedding API, protocol, revision, or item-rule
-ownership. `I` toggles the panel, `Escape` closes it, and the camera releases
-pointer capture while it is open.
+ownership. `B` toggles character storage only, `C` toggles equipment plus
+character storage, and `I` toggles the complete Development view with contextual
+storage. Pressing a different inventory key switches modes, `Escape` closes the
+panel, and the camera releases pointer capture while it is open. Equipment,
+Context, and Character Inventory each own a separate panel root at fixed anchors.
+Mode changes affect root visibility only and never rewrite another module's
+layout.
 
 The stable layout has equipment on the left, a contextual container in the
 upper-right, and character storage in the lower-right. Permanent inventory,
@@ -417,9 +422,12 @@ SimulationWorker and is committed through AuthService authority.
 
 `InventoryDragCoordinator`, `InventoryDragSource`, typed
 `InventoryDragPayload`, and `InventoryDropTarget` form the reusable uGUI
-interaction layer. Relocation, equip, unequip, split, merge, and complete
-Recovery claims start only from a drop. Valid and invalid targets provide green
-or red feedback, then revalidate the current state before sending an operation.
+interaction layer. Relocation, equip, unequip, split, merge, atomic ordinary
+container-slot swap, and complete Recovery claims start only from a drop. A drop
+onto an occupied slot merges compatible stacks first and otherwise swaps only
+when both items pass the opposite slot rules. Valid and invalid targets provide
+green or red feedback, then revalidate the current state before sending an
+operation.
 Item clicks only select action controls for split or allowed destruction. A
 Recovery item represents its complete delivery during a drag because the durable
 claim remains atomic.
@@ -448,8 +456,12 @@ gameplay endpoint.
 
 The command boundary is available only in the Development environment against a
 loopback, non-production-like PostgreSQL database. Every target character must
-be offline. Individual grants can extend an existing character, while packages
-require an empty character so their exact test state is reproducible. Backend
+be offline. This guard is required because the Editor command mutates durable
+state directly and has no active SimulationWorker result path that can advance
+the joined session's carry tuple and item revision. Safe online grants require a
+future service-authenticated development intent routed through the owning
+SimulationWorker. Individual grants can extend an existing character, while
+packages require an empty character so their exact test state is reproducible. Backend
 validation remains authoritative for stack limits, destination eligibility,
 weight, the 140 percent hard cap, revisions, policies, and container slots. The
 response is machine-readable and refreshes the Editor view after a successful

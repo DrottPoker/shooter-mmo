@@ -826,7 +826,8 @@ internal sealed class ItemTransactionContext(
         bool bagHasContents,
         Guid? movingBagItemId,
         bool allowRecoveryStorage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? permittedOccupantItemInstanceId = null)
     {
         if (string.Equals(container.ContainerType, "recovery_storage", StringComparison.Ordinal))
         {
@@ -921,7 +922,8 @@ internal sealed class ItemTransactionContext(
                     "The requested destination slot is incompatible with the item.");
             }
 
-            if (requested.OccupantItemInstanceId is not null)
+            if (requested.OccupantItemInstanceId is not null
+                && requested.OccupantItemInstanceId != permittedOccupantItemInstanceId)
             {
                 Reject(
                     ItemTransactionErrorCodes.ItemSlotOccupied,
@@ -1356,8 +1358,7 @@ internal sealed class ItemTransactionContext(
             left join item_instances bound_bag
               on bound_bag.id = container.bound_bag_item_instance_id
             left join character_item_states state on state.character_id = @CharacterId
-            where item.equipped_character_id = @CharacterId
-               or item.container_id in (
+            where item.container_id in (
                     state.permanent_inventory_container_id,
                     state.secure_container_id)
                or (

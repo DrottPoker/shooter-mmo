@@ -69,9 +69,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   operation-id journaling, authoritative post-operation refresh, reconnect
   restoration, and stable update-required handling for catalog mismatch.
 - A temporary uGUI inventory panel on the permanent client foundation, with the
-  canonical three-area layout, complete Permanent inventory, equipment, equipped
-  Bag, Secure Container, Bank, and Recovery Storage views, and protocol-v8
-  controls for every currently exposed live item mutation.
+  canonical layout, `B` character-storage, `C` equipment plus character-storage,
+  and `I` complete Development views, plus protocol-v8 controls for every
+  currently exposed live item mutation, including atomic occupied-slot swaps.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory

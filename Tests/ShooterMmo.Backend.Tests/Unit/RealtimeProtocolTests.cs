@@ -144,6 +144,13 @@ public sealed class RealtimeProtocolTests
                 20,
                 targetItemId,
                 21),
+            RealtimeItemOperationIntent.CreateSwapContainerItems(
+                operationId,
+                10,
+                itemId,
+                20,
+                targetItemId,
+                21),
             RealtimeItemOperationIntent.CreateDestroy(
                 operationId,
                 10,
@@ -170,6 +177,9 @@ public sealed class RealtimeProtocolTests
             Assert.Equal(expected.OperationKind, actual.OperationKind);
             Assert.Equal(expected.ExpectedCharacterRevision, actual.ExpectedCharacterRevision);
             Assert.Equal(expected.ItemInstanceId, actual.ItemInstanceId);
+            Assert.Equal(expected.ExpectedItemRevision, actual.ExpectedItemRevision);
+            Assert.Equal(expected.TargetItemInstanceId, actual.TargetItemInstanceId);
+            Assert.Equal(expected.ExpectedTargetItemRevision, actual.ExpectedTargetItemRevision);
             Assert.Equal(expected.DestinationContainerId, actual.DestinationContainerId);
             Assert.Equal(expected.DestinationSlotIndex, actual.DestinationSlotIndex);
             Assert.Equal(expected.EquipmentSlotId, actual.EquipmentSlotId);

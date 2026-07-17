@@ -129,20 +129,6 @@ namespace ShooterMmo.Items
                 return false;
             }
 
-            var capacityBonus = definition.Bag == null
-                ? 0
-                : definition.Bag.CarryCapacityBonus;
-            if (source.IsExternal
-                && !FitsHardCap(
-                    state.FullSnapshot,
-                    definition,
-                    item.Quantity,
-                    capacityBonus))
-            {
-                reason = "Equipping the item would exceed the 140 percent carry cap.";
-                return false;
-            }
-
             return true;
         }
 
@@ -177,8 +163,13 @@ namespace ShooterMmo.Items
                 return false;
             }
 
-            if (state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
-                && definition.Bag != null)
+            if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
+            {
+                reason = "The item definition is unavailable.";
+                return false;
+            }
+
+            if (definition.Bag != null)
             {
                 var hasContents = IsEquippedBagWithContents(state, item.ItemInstanceId);
                 if (hasContents)
@@ -186,16 +177,97 @@ namespace ShooterMmo.Items
                     reason = "A non-empty equipped Bag cannot move to ordinary storage.";
                     return false;
                 }
+            }
 
-                if (!FitsAfterBagUnequip(
-                    state.FullSnapshot,
-                    definition,
-                    item.Quantity,
-                    destination.ContainerType))
+            if (!FitsAfterUnequip(
+                state.FullSnapshot,
+                definition,
+                item.Quantity,
+                destination.ContainerType))
+            {
+                reason = "Unequipping this item would exceed the 140 percent carry cap.";
+                return false;
+            }
+
+            return true;
+        }
+
+        public static bool CanSwap(
+            InventoryClientState state,
+            InventoryItem firstItem,
+            InventoryItemLocation firstLocation,
+            InventoryItem secondItem,
+            InventoryItemLocation secondLocation,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (state?.Catalog == null
+                || state.FullSnapshot == null
+                || firstItem == null
+                || secondItem == null
+                || firstLocation == null
+                || secondLocation == null
+                || firstItem.ItemInstanceId == secondItem.ItemInstanceId
+                || firstLocation.Kind != InventoryItemLocationKind.Container
+                || secondLocation.Kind != InventoryItemLocationKind.Container
+                || !TryResolveContainerSlot(
+                    state,
+                    firstLocation,
+                    out var firstContainer,
+                    out var firstSlot)
+                || !TryResolveContainerSlot(
+                    state,
+                    secondLocation,
+                    out var secondContainer,
+                    out var secondSlot))
+            {
+                reason = "Two current container items are required for a slot swap.";
+                return false;
+            }
+
+            if (!CanOccupySlot(
+                    state,
+                    firstItem,
+                    secondContainer,
+                    secondSlot,
+                    out reason)
+                || !CanOccupySlot(
+                    state,
+                    secondItem,
+                    firstContainer,
+                    firstSlot,
+                    out reason))
+            {
+                return false;
+            }
+
+            try
+            {
+                var finalWeight = state.FullSnapshot.CarriedWeight;
+                finalWeight = ApplyContainerWeightDelta(
+                    state,
+                    finalWeight,
+                    firstItem,
+                    firstContainer.ContainerType,
+                    secondContainer.ContainerType);
+                finalWeight = ApplyContainerWeightDelta(
+                    state,
+                    finalWeight,
+                    secondItem,
+                    secondContainer.ContainerType,
+                    firstContainer.ContainerType);
+                if (!EncumbranceRules.IsWithinHardCap(
+                    finalWeight,
+                    state.FullSnapshot.CarryCapacity))
                 {
-                    reason = "Unequipping this Bag would exceed the 140 percent carry cap.";
+                    reason = "The swap would exceed the 140 percent carry cap.";
                     return false;
                 }
+            }
+            catch (OverflowException)
+            {
+                reason = "The swap weight is invalid.";
+                return false;
             }
 
             return true;
@@ -426,18 +498,16 @@ namespace ShooterMmo.Items
         private static bool FitsHardCap(
             CharacterInventorySnapshot snapshot,
             ItemDefinition definition,
-            int quantity,
-            long capacityBonus = 0)
+            int quantity)
         {
             try
             {
                 var addedWeight = ItemWeightRules.CalculateStackWeight(
                     definition.UnitWeight,
                     quantity);
-                var finalCapacity = checked(snapshot.CarryCapacity + capacityBonus);
                 return EncumbranceRules.IsWithinHardCap(
                     checked(snapshot.CarriedWeight + addedWeight),
-                    finalCapacity);
+                    snapshot.CarryCapacity);
             }
             catch (OverflowException)
             {
@@ -445,7 +515,7 @@ namespace ShooterMmo.Items
             }
         }
 
-        private static bool FitsAfterBagUnequip(
+        private static bool FitsAfterUnequip(
             CharacterInventorySnapshot snapshot,
             ItemDefinition definition,
             int quantity,
@@ -453,13 +523,15 @@ namespace ShooterMmo.Items
         {
             try
             {
-                var finalCapacity = checked(
-                    snapshot.CarryCapacity - definition.Bag.CarryCapacityBonus);
+                var capacityBonus = definition.Bag == null
+                    ? 0
+                    : definition.Bag.CarryCapacityBonus;
+                var finalCapacity = checked(snapshot.CarryCapacity - capacityBonus);
                 var finalWeight = snapshot.CarriedWeight;
-                if (!IsCarriedContainer(destinationContainerType))
+                if (IsCarriedContainer(destinationContainerType))
                 {
                     finalWeight = checked(
-                        finalWeight - ItemWeightRules.CalculateStackWeight(
+                        finalWeight + ItemWeightRules.CalculateStackWeight(
                             definition.UnitWeight,
                             quantity));
                 }
@@ -472,6 +544,99 @@ namespace ShooterMmo.Items
             {
                 return false;
             }
+        }
+
+        private static bool CanOccupySlot(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryContainer destination,
+            InventorySlot destinationSlot,
+            out string reason)
+        {
+            if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
+            {
+                reason = "The item definition is unavailable.";
+                return false;
+            }
+
+            var slotDefinition = new BagSlotDefinition
+            {
+                Index = destinationSlot.SlotIndex,
+                Kind = destinationSlot.SlotKind,
+                AcceptedTags = destinationSlot.AcceptedTags.ToArray()
+            };
+            if (!ItemSlotRules.Accepts(definition, slotDefinition))
+            {
+                reason = "An item does not match the opposite slot's accepted tags.";
+                return false;
+            }
+
+            if (string.Equals(
+                    destination.ContainerType,
+                    "secure_container",
+                    StringComparison.Ordinal)
+                && !SecureContainerRules.IsEligible(definition))
+            {
+                reason = "An item is not eligible for the opposite Secure Container slot.";
+                return false;
+            }
+
+            if (definition.Bag != null
+                && !CanPlaceBag(state, item, destination, destinationSlot, out reason))
+            {
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
+        private static long ApplyContainerWeightDelta(
+            InventoryClientState state,
+            long currentWeight,
+            InventoryItem item,
+            string sourceContainerType,
+            string destinationContainerType)
+        {
+            var sourceCarried = IsCarriedContainer(sourceContainerType);
+            var destinationCarried = IsCarriedContainer(destinationContainerType);
+            if (sourceCarried == destinationCarried)
+            {
+                return currentWeight;
+            }
+
+            if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
+            {
+                throw new OverflowException("The item definition is unavailable.");
+            }
+
+            var weight = ItemWeightRules.CalculateStackWeight(
+                definition.UnitWeight,
+                item.Quantity);
+            return destinationCarried
+                ? checked(currentWeight + weight)
+                : checked(currentWeight - weight);
+        }
+
+        private static bool TryResolveContainerSlot(
+            InventoryClientState state,
+            InventoryItemLocation location,
+            out InventoryContainer container,
+            out InventorySlot slot)
+        {
+            container = null;
+            slot = null;
+            var containers = new[]
+            {
+                state.FullSnapshot.PermanentInventory,
+                state.FullSnapshot.EquippedBag?.Contents,
+                state.FullSnapshot.SecureContainer.Contents,
+                state.Bank
+            };
+            container = containers.FirstOrDefault(candidate =>
+                candidate != null && candidate.ContainerId == location.ContainerId);
+            return container != null
+                && container.TryGetSlot(location.SlotIndex, out slot);
         }
 
         private static bool IsCarriedContainer(string containerType)

@@ -205,8 +205,10 @@ Status: Implemented authority and transport foundation
 Every accepted world session receives the character's authoritative unitless
 carried weight, capacity, and item-state revision. Base capacity is `200`, and an
 equipped Bag can add its authored capacity bonus. Permanent inventory,
-equipment, Bag contents, carried empty Bags, and Secure Container contents
-contribute to weight. Bank, Recovery Storage, and corpse custody do not.
+Bag contents, carried empty Bags, and Secure Container contents contribute to
+weight. Items assigned to equipment slots, including the equipped Bag item
+itself, do not. The equipped Bag's capacity bonus still applies. Bank, Recovery
+Storage, and corpse custody do not contribute.
 
 Movement remains at full speed through 100 percent capacity. Sprint is allowed
 at exactly 100 percent and disabled above it. Above 100 percent, walk and sprint
@@ -222,7 +224,8 @@ revision, movement percentage, and sprint eligibility.
 
 Active characters now have one authoritative in-world mutation path for
 relocation, equip, unequip, stack split and merge, allowed destruction, Secure
-Container access, and complete Recovery Storage claims. Bank and Recovery
+Container access, ordinary occupied-slot swap, and complete Recovery Storage
+claims. Bank and Recovery
 Storage require proximity to their configured worker service points. Secure
 Container access has no city requirement. Only committed AuthService results can
 change the live carry tuple, and reconnect restores the same committed revision.
@@ -232,14 +235,16 @@ flows can be tested anywhere on the map. Production keeps the configured
 service-point requirement, and insurance access is never included in the
 Development override.
 
-Unity now exposes the first player-facing inventory loop. Press `I` in
-WorldScene to open the temporary uGUI panel, then drag items to valid container
-or equipment destinations. Click selection is retained only for split and
-allowed-destroy actions. Moves, equipment changes, split, merge, allowed destroy,
-and atomic Recovery claims all use the existing authoritative SimulationWorker
-and AuthService path. The panel renders only refreshed committed snapshots and
-never pretends that a pending mutation has completed. See the manual and
-automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
+Unity now exposes the first player-facing inventory loop. Press `B` in
+WorldScene for character storage only, `C` for equipment together with character
+storage, or `I` for the complete Development view including Bank and Recovery.
+Drag items to valid container or equipment destinations. Dropping onto an
+occupied compatible container slot merges compatible stacks and otherwise
+submits one atomic swap. Click selection is retained only for split and
+allowed-destroy actions. All mutations use the existing authoritative
+SimulationWorker and AuthService path. The panel renders only refreshed
+committed snapshots and never pretends that a pending mutation has completed.
+See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
 
 ## Player Inventory Foundation
 
@@ -265,8 +270,11 @@ localization keys, optional icons, and optional prefab presentation keys
 locally. A source or server catalog revision mismatch reports that a client
 update is required and does not render stale item state.
 
-`I` opens or closes inventory and `Escape` closes it. Shooter pointer capture is
-released while the panel is open. The uGUI visuals are deliberately temporary,
+`B` toggles character storage, `C` toggles equipment plus character storage, and
+`I` toggles the complete Development view. Pressing a different inventory key
+switches the open view, and `Escape` closes it. Shooter pointer capture is
+released while the panel is open. Each window is a separate fixed module root,
+so opening Equipment or Context never moves Character Inventory. The uGUI visuals are deliberately temporary,
 but catalog, snapshot, revision, operation-id, error, refresh, reconnect, and
 authority handling are permanent foundations.
 

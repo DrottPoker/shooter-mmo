@@ -467,7 +467,7 @@ namespace ShooterMmo.Tests.EditMode
                 Is.True,
                 equipBagReason);
 
-            var emptyBagState = CreateAdvisorState(285, 250, false);
+            var emptyBagState = CreateAdvisorState(275, 250, false);
             Assert.That(
                 InventoryTargetAdvisor.CanUnequip(
                     emptyBagState,
@@ -485,6 +485,100 @@ namespace ShooterMmo.Tests.EditMode
                     emptyBagState.FullSnapshot.PermanentInventory.Slots[0],
                     out _),
                 Is.False);
+
+            var equippedWeapon = CreateItem("weapon.training_rifle", 1);
+            var overloadedUnequipState = CreateAdvisorStateWithoutBag(270, 200);
+            Assert.That(
+                InventoryTargetAdvisor.CanUnequip(
+                    overloadedUnequipState,
+                    equippedWeapon,
+                    overloadedUnequipState.Bank,
+                    overloadedUnequipState.Bank.Slots[0],
+                    out var externalUnequipReason),
+                Is.True,
+                externalUnequipReason);
+            Assert.That(
+                InventoryTargetAdvisor.CanUnequip(
+                    overloadedUnequipState,
+                    equippedWeapon,
+                    overloadedUnequipState.FullSnapshot.PermanentInventory,
+                    overloadedUnequipState.FullSnapshot.PermanentInventory.Slots[0],
+                    out var carriedUnequipReason),
+                Is.False);
+            Assert.That(carriedUnequipReason, Does.Contain("140 percent"));
+
+            var bankLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                hardCapState.Bank.ContainerId,
+                "bank",
+                0,
+                string.Empty,
+                Guid.Empty);
+            var permanentLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                hardCapState.FullSnapshot.PermanentInventory.ContainerId,
+                "permanent_inventory",
+                0,
+                string.Empty,
+                Guid.Empty);
+            Assert.That(
+                InventoryTargetAdvisor.CanSwap(
+                    hardCapState,
+                    CreateItem("ammunition.training_556", 1),
+                    bankLocation,
+                    CreateItem("weapon.training_rifle", 1),
+                    permanentLocation,
+                    out var reducingSwapReason),
+                Is.True,
+                reducingSwapReason);
+
+            var swapHardCapState = CreateAdvisorState(338, 250);
+            Assert.That(
+                InventoryTargetAdvisor.CanSwap(
+                    swapHardCapState,
+                    CreateItem("weapon.training_rifle", 1),
+                    new InventoryItemLocation(
+                        InventoryItemLocationKind.Container,
+                        swapHardCapState.Bank.ContainerId,
+                        "bank",
+                        0,
+                        string.Empty,
+                        Guid.Empty),
+                    CreateItem("ammunition.training_556", 1),
+                    new InventoryItemLocation(
+                        InventoryItemLocationKind.Container,
+                        swapHardCapState.FullSnapshot.PermanentInventory.ContainerId,
+                        "permanent_inventory",
+                        0,
+                        string.Empty,
+                        Guid.Empty),
+                    out var swapHardCapReason),
+                Is.False);
+            Assert.That(swapHardCapReason, Does.Contain("140 percent"));
+
+            var medicalSlotLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                state.FullSnapshot.EquippedBag.Contents.ContainerId,
+                "bag_contents",
+                bagMedicalSlot.SlotIndex,
+                string.Empty,
+                Guid.Empty);
+            Assert.That(
+                InventoryTargetAdvisor.CanSwap(
+                    state,
+                    CreateItem("weapon.training_rifle", 1),
+                    new InventoryItemLocation(
+                        InventoryItemLocationKind.Container,
+                        state.FullSnapshot.PermanentInventory.ContainerId,
+                        "permanent_inventory",
+                        0,
+                        string.Empty,
+                        Guid.Empty),
+                    CreateItem("medical.field_dressing", 1),
+                    medicalSlotLocation,
+                    out var specializedSwapReason),
+                Is.False);
+            Assert.That(specializedSwapReason, Does.Contain("accepted tags"));
         }
 
         private bool TryMap(

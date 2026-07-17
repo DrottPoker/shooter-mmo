@@ -131,7 +131,7 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `7`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `8`,
   movement revision `movement-simulation-v3`, and identical authoritative and
   predicted encumbrance behavior.
 
@@ -161,7 +161,8 @@ catalog, one coherent owned-character snapshot, and focused bank and Recovery
 Storage views.
 
 AuthService now also has one internal transaction kernel for grants, relocation,
-equipment, stack changes, consumption, destruction, complete Bag swaps, Recovery
+equipment, stack changes, ordinary container-slot swaps, consumption,
+destruction, complete Bag swaps, Recovery
 deliveries and claims, and Secure Container tier changes. It commits item,
 container, character, carry, entitlement, idempotency, and audit state in one
 PostgreSQL transaction. Phase 6 adds policy application and removal, exact
@@ -178,6 +179,12 @@ committed carry propagation through the existing durable kernel. Phase 9 adds
 the persistent Unity catalog and inventory controller, monotonic complete and
 focused snapshots, operation journaling, authoritative refresh, reconnect
 restoration, and the temporary three-area uGUI inventory panel.
+
+Carried weight excludes every equipment-slot item, including the equipped Bag
+root. Permanent inventory, equipped Bag contents, carried empty Bags, and Secure
+Container contents still count, while the equipped Bag capacity bonus remains
+active. Startup bootstrap reconciles older denormalized carry rows and advances
+their item-state revision only when the stored tuple changes.
 
 The remaining locked direction is slot-based rather than grid-based and includes:
 

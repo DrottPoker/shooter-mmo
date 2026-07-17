@@ -25,7 +25,7 @@ public sealed class ItemConcurrencyIntegrationTests
             characterId);
         var afterBagEquip = await LoadStateAsync(context, characterId);
         Assert.True(afterBagEquip.Revision > initial.Revision);
-        Assert.Equal(10, afterBagEquip.CarriedWeight);
+        Assert.Equal(0, afterBagEquip.CarriedWeight);
         Assert.Equal(250, afterBagEquip.CarryCapacity);
 
         await GrantAsync(
@@ -130,7 +130,7 @@ public sealed class ItemConcurrencyIntegrationTests
             state.PermanentInventoryContainerId,
             2);
         var beforeCorpseTransfer = await LoadStateAsync(context, characterId);
-        Assert.Equal(101, beforeCorpseTransfer.CarriedWeight);
+        Assert.Equal(66, beforeCorpseTransfer.CarriedWeight);
 
         await using (var connection = await context.DataSource.OpenConnectionAsync())
         {
@@ -161,7 +161,7 @@ public sealed class ItemConcurrencyIntegrationTests
             2);
 
         var final = await LoadStateAsync(context, characterId);
-        Assert.Equal(72, final.CarriedWeight);
+        Assert.Equal(37, final.CarriedWeight);
         Assert.Equal(250, final.CarryCapacity);
     }
 
@@ -476,7 +476,7 @@ public sealed class ItemConcurrencyIntegrationTests
             CancellationToken.None);
         AssertSucceeded(nearCap);
         state = await LoadStateAsync(context, player.Character.Id);
-        Assert.Equal(346, state.CarriedWeight);
+        Assert.Equal(336, state.CarriedWeight);
         Assert.Equal(250, state.CarryCapacity);
 
         var aboveCap = await context.ItemTransactionService.ExecuteAsync(
@@ -486,7 +486,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "medical.field_dressing",
+                    "material.iron_ore",
                     3,
                     state.PermanentInventoryContainerId,
                     2)),
@@ -495,7 +495,7 @@ public sealed class ItemConcurrencyIntegrationTests
 
         var after = await LoadStateAsync(context, player.Character.Id);
         Assert.Equal(state.Revision, after.Revision);
-        Assert.Equal(346, after.CarriedWeight);
+        Assert.Equal(336, after.CarriedWeight);
         await using var connection = await context.DataSource.OpenConnectionAsync();
         Assert.Equal(
             0,
@@ -821,8 +821,8 @@ public sealed class ItemConcurrencyIntegrationTests
         Assert.Equal(player.Character.Id, secondBag.EquippedCharacterId);
         Assert.Equal(firstBagContainer.ContainerId, (await LoadItemAsync(context, firstChildId)).ContainerId);
         Assert.Equal(secondBagContainer.ContainerId, (await LoadItemAsync(context, secondChildId)).ContainerId);
-        Assert.Equal(22, firstState.CarriedWeight);
-        Assert.Equal(20, secondState.CarriedWeight);
+        Assert.Equal(12, firstState.CarriedWeight);
+        Assert.Equal(10, secondState.CarriedWeight);
 
         var currentFirstContainer = await LoadBagContainerAsync(context, secondBagId);
         var currentSecondContainer = await LoadBagContainerAsync(context, firstBagId);
@@ -888,9 +888,9 @@ public sealed class ItemConcurrencyIntegrationTests
 
         firstState = await LoadStateAsync(context, player.Character.Id);
         var secondState = await LoadStateAsync(context, secondCharacter.Id);
-        Assert.Equal(310, firstState.CarriedWeight);
+        Assert.Equal(300, firstState.CarriedWeight);
         Assert.Equal(250, firstState.CarryCapacity);
-        Assert.Equal(10, secondState.CarriedWeight);
+        Assert.Equal(0, secondState.CarriedWeight);
         Assert.Equal(200, secondState.CarryCapacity);
         var higherBag = await LoadItemAsync(context, higherBagId);
         var lowerBag = await LoadItemAsync(context, lowerBagId);

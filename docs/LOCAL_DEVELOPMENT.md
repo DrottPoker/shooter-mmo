@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Requirements
 
@@ -586,6 +586,13 @@ PostgreSQL host with a non-production-like database name, and refuses an active
 character. Individual grants are repeatable. Exact test packages require a
 character with no items or Recovery deliveries.
 
+The offline requirement protects live authority. The Editor command commits
+directly through AuthService and does not have a SimulationWorker result path to
+advance an already joined session's carry tuple and item-state revision. Simply
+removing the guard could leave the worker and Unity on stale live state. A safe
+online grant tool must be a separate service-authenticated development intent
+routed through the worker that currently owns the character.
+
 1. Build Release once, then start normal local infrastructure and AuthService:
 
    ```powershell
@@ -616,7 +623,7 @@ character with no items or Recovery deliveries.
    - Recovery Delivery Pack
 
    Expected result: an empty offline character receives the selected
-   deterministic state. The full Phase 9 pack reports weight `132 / 250`. The
+   deterministic state. The full Phase 9 pack reports weight `122 / 250`. The
    encumbrance packs report `200 / 200` and `280 / 200`. Package controls become
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
@@ -634,9 +641,9 @@ character with no items or Recovery deliveries.
    Restart SimulationWorker after changing the Development configuration.
 
 No Inspector, scene, prefab, package, input-action, or build-setting edit is
-required. The Editor window, gameplay catalog reference, `I` binding, persistent
-controller, EventSystem, Canvas, and temporary uGUI hierarchy are already
-authored or created by the maintained foundation.
+required. The Editor window, gameplay catalog reference, `B`, `C`, and `I`
+bindings, persistent controller, EventSystem, Canvas, and temporary uGUI
+hierarchy are already authored or created by the maintained foundation.
 
 The terminal interface remains available as a fallback or for automation. It
 uses the same guardrails and transaction service:
@@ -659,21 +666,27 @@ dotnet run --project AuthService -- --seed-phase9-items <characterId>
 ```
 
 Expected result: the process exits after logging 17 granted item instances, one
-Recovery delivery, the committed item-state revision, and carry `132/250`.
+Recovery delivery, the committed item-state revision, and carry `122/250`.
 Running it again fails with the empty-character guard instead of duplicating
 items.
 
 ### Manual Player Loop
 
-1. Press `I`. Equipment is on the left, the upper-right context offers Bank and
-   Recovery, and Permanent inventory, the equipped Field Pack, and Secure
-   Container remain visible in the lower-right. Press `Escape` and verify the
-   panel closes and shooter pointer capture returns.
+1. Press `B` and verify only Permanent inventory, the equipped Field Pack
+   contents, and Secure Container are shown. Press `C` and verify equipment plus
+   character storage are shown. Press `I` and verify the complete Development
+   view adds the upper-right Bank and Recovery context. Pressing the active key
+   closes that view, pressing another inventory key switches views, and
+   `Escape` closes any view and restores shooter pointer capture. Verify that
+   hidden modules leave no background or header behind and that Character
+   Inventory keeps the same position and size in all three views.
 2. Drag the rifle, vest, pickaxe, or ring from Permanent inventory onto a
    compatible empty equipment slot. Drag the equipped item onto an empty
    Permanent slot to unequip it. Valid targets highlight green, invalid targets
    highlight red, and the UI waits for the committed refresh before showing the
-   new location. Clicking a destination without dragging does not move an item.
+   new location. The header drops by the equipped item's own weight and restores
+   it when the item is unequipped into carried storage. Clicking a destination
+   without dragging does not move an item.
 3. Drag the empty Field Pack from Permanent inventory into one of the equipped
    Bag's general slots and back. Open Bank and drag the second empty Field Pack
    between Bank and Permanent inventory. Click the equipped non-empty Field Pack
@@ -686,14 +699,17 @@ items.
    `Split to Target`, then drag that selected stack onto an empty Bank slot. Drag
    the resulting stack onto its compatible peer to merge it back. Confirm source
    quantities and item identities change only after the server result and
-   refresh.
+   refresh. Drag two unlike items between compatible occupied ordinary slots and
+   confirm they exchange slots in one committed refresh. Repeat against an
+   incompatible specialized or Secure Container slot and confirm neither moves.
 6. In Recovery, drag either item in the prepared delivery onto a Permanent or
    Bank slot. The complete delivery disappears and both original item instances
    appear in the chosen container only after the committed full refresh.
-7. Starting from fixture weight `132 / 250`, move Bank iron ore quantity `20` to
-   Permanent inventory. Weight becomes `252 / 250`, sprint is blocked, and the
-   movement multiplier begins its linear decline. Move iron ore quantity `16`
-   to reach `348 / 250`, then the single field dressing to reach exactly
+7. Starting from fixture weight `122 / 250`, move Bank iron ore quantity `20` to
+   Permanent inventory. Weight becomes `242 / 250`. Move Bank iron ore quantity
+   `16` to reach `338 / 250`, where sprint is blocked and the movement multiplier
+   begins its linear decline. Move the single field dressing to reach
+   `340 / 250`, followed by the empty Bank Field Pack to reach exactly
    `350 / 250`, load `140%`, and movement `20%`.
 8. Attempt to move the single Bank ammunition item into carried storage. The
    local target is disabled. Any equivalent authoritative request is rejected by

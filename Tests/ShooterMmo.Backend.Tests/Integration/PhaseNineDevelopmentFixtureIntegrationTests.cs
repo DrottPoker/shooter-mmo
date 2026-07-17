@@ -22,7 +22,7 @@ public sealed class PhaseNineDevelopmentFixtureIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(player.Character.Id, result.CharacterId);
-        Assert.Equal(132, result.CarriedWeight);
+        Assert.Equal(122, result.CarriedWeight);
         Assert.Equal(250, result.CarryCapacity);
         Assert.Equal(17, result.GrantedItemCount);
         Assert.Equal(1, result.RecoveryDeliveryCount);
@@ -34,7 +34,7 @@ public sealed class PhaseNineDevelopmentFixtureIntegrationTests
         Assert.True(readResult.Succeeded, readResult.Error?.Message);
         var snapshot = readResult.Value!;
         Assert.Equal(result.ItemStateRevision, snapshot.ItemStateRevision);
-        Assert.Equal(5280, snapshot.LoadRatioBasisPoints);
+        Assert.Equal(4880, snapshot.LoadRatioBasisPoints);
         Assert.True(snapshot.SprintEligible);
         Assert.Equal(10_000, snapshot.MovementMultiplierBasisPoints);
 

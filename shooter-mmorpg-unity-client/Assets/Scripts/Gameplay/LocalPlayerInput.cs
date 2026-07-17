@@ -16,6 +16,8 @@ namespace ShooterMmo.Gameplay
         private const string ToggleDebugCursorActionName = "ToggleDebugCursor";
         private const string ToggleWorldDebugActionName = "ToggleWorldDebug";
         private const string ToggleInventoryActionName = "ToggleInventory";
+        private const string ToggleCharacterInventoryActionName = "ToggleCharacterInventory";
+        private const string ToggleEquipmentInventoryActionName = "ToggleEquipmentInventory";
 
         private PlayerInput playerInput;
         private InputAction moveAction;
@@ -26,6 +28,8 @@ namespace ShooterMmo.Gameplay
         private InputAction toggleDebugCursorAction;
         private InputAction toggleWorldDebugAction;
         private InputAction toggleInventoryAction;
+        private InputAction toggleCharacterInventoryAction;
+        private InputAction toggleEquipmentInventoryAction;
         private bool pointerInputEnabled = true;
 
         public bool IsConfigured { get; private set; }
@@ -75,6 +79,16 @@ namespace ShooterMmo.Gameplay
             get { return IsConfigured && toggleInventoryAction.WasPressedThisFrame(); }
         }
 
+        public bool ToggleCharacterInventoryPressedThisFrame
+        {
+            get { return IsConfigured && toggleCharacterInventoryAction.WasPressedThisFrame(); }
+        }
+
+        public bool ToggleEquipmentInventoryPressedThisFrame
+        {
+            get { return IsConfigured && toggleEquipmentInventoryAction.WasPressedThisFrame(); }
+        }
+
         private void Awake()
         {
             playerInput = GetComponent<PlayerInput>();
@@ -94,7 +108,8 @@ namespace ShooterMmo.Gameplay
 
             Debug.LogError(
                 "LocalPlayerInput requires a PlayerInput actions asset containing "
-                + "Move, Sprint, Jump, Aim, Look, ToggleDebugCursor, ToggleWorldDebug, and ToggleInventory actions.",
+                + "Move, Sprint, Jump, Aim, Look, ToggleDebugCursor, ToggleWorldDebug, "
+                + "ToggleInventory, ToggleCharacterInventory, and ToggleEquipmentInventory actions.",
                 this);
         }
 
@@ -134,6 +149,12 @@ namespace ShooterMmo.Gameplay
             toggleDebugCursorAction = playerInput.actions.FindAction(ToggleDebugCursorActionName, false);
             toggleWorldDebugAction = playerInput.actions.FindAction(ToggleWorldDebugActionName, false);
             toggleInventoryAction = playerInput.actions.FindAction(ToggleInventoryActionName, false);
+            toggleCharacterInventoryAction = playerInput.actions.FindAction(
+                ToggleCharacterInventoryActionName,
+                false);
+            toggleEquipmentInventoryAction = playerInput.actions.FindAction(
+                ToggleEquipmentInventoryActionName,
+                false);
 
             return moveAction != null
                 && sprintAction != null
@@ -142,7 +163,9 @@ namespace ShooterMmo.Gameplay
                 && lookAction != null
                 && toggleDebugCursorAction != null
                 && toggleWorldDebugAction != null
-                && toggleInventoryAction != null;
+                && toggleInventoryAction != null
+                && toggleCharacterInventoryAction != null
+                && toggleEquipmentInventoryAction != null;
         }
     }
 }

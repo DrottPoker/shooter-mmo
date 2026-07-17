@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using ShooterMmo.Gameplay;
 using ShooterMmo.Items;
@@ -57,9 +58,34 @@ namespace ShooterMmo.Tests.PlayMode
             inventoryPanel.SetOpen(true);
             yield return null;
             Assert.That(inventoryPanel.IsOpen, Is.True);
+            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.FullDevelopment));
+            Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.True);
+            Assert.That(inventoryPanel.IsContextModuleVisible, Is.True);
+            Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);
+            var characterPanel = inventoryPanel
+                .GetComponentsInChildren<RectTransform>(true)
+                .Single(rectTransform => rectTransform.name == "Character InventoryPanel");
+            var characterAnchorMin = characterPanel.anchorMin;
+            var characterAnchorMax = characterPanel.anchorMax;
             Assert.That(
                 inventoryPanel.GetComponentInChildren<Canvas>(true),
                 Is.Not.Null);
+            inventoryPanel.SetOpen(true, InventoryPanelMode.CharacterOnly);
+            yield return null;
+            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.CharacterOnly));
+            Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.False);
+            Assert.That(inventoryPanel.IsContextModuleVisible, Is.False);
+            Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);
+            Assert.That(characterPanel.anchorMin, Is.EqualTo(characterAnchorMin));
+            Assert.That(characterPanel.anchorMax, Is.EqualTo(characterAnchorMax));
+            inventoryPanel.SetOpen(true, InventoryPanelMode.CharacterAndEquipment);
+            yield return null;
+            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.CharacterAndEquipment));
+            Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.True);
+            Assert.That(inventoryPanel.IsContextModuleVisible, Is.False);
+            Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);
+            Assert.That(characterPanel.anchorMin, Is.EqualTo(characterAnchorMin));
+            Assert.That(characterPanel.anchorMax, Is.EqualTo(characterAnchorMax));
             inventoryPanel.SetOpen(false);
             Assert.That(inventoryPanel.IsOpen, Is.False);
         }

@@ -138,6 +138,14 @@ public sealed record MergeItemStacksCommand(
     Guid TargetItemInstanceId,
     long ExpectedTargetItemRevision);
 
+public sealed record SwapContainerItemsCommand(
+    Guid CharacterId,
+    long? ExpectedCharacterRevision,
+    Guid FirstItemInstanceId,
+    long ExpectedFirstItemRevision,
+    Guid SecondItemInstanceId,
+    long ExpectedSecondItemRevision);
+
 public sealed record ConsumeItemQuantityCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
@@ -244,6 +252,7 @@ public static class ItemOperationKinds
     public const string Unequip = "unequip";
     public const string SplitStack = "split_stack";
     public const string MergeStacks = "merge_stacks";
+    public const string SwapContainerItems = "swap_container_items";
     public const string ConsumeQuantity = "consume_quantity";
     public const string Destroy = "destroy";
     public const string SwapBagAggregates = "swap_bag_aggregates";

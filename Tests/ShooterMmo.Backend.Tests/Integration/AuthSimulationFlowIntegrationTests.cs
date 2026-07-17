@@ -183,7 +183,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             player.Registration.AccountId,
             player.Character.Id,
             CancellationToken.None)).Value!;
-        Assert.Equal(70, snapshot.CarriedWeight);
+        Assert.Equal(60, snapshot.CarriedWeight);
         Assert.Equal(250, snapshot.CarryCapacity);
 
         var join = await context.ShardService.CreateJoinTicketAsync(
@@ -213,7 +213,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(grantWhileActive.Succeeded, grantWhileActive.Error?.Message);
         var committedCarry = Assert.Single(grantWhileActive.CharacterRevisions);
         Assert.True(committedCarry.Revision > consumed.Value.ItemStateRevision);
-        Assert.Equal(71, committedCarry.CarriedWeight);
+        Assert.Equal(61, committedCarry.CarriedWeight);
         Assert.Equal(250, committedCarry.CarryCapacity);
 
         var heartbeat = await context.SimulationSessionService.HeartbeatAsync(

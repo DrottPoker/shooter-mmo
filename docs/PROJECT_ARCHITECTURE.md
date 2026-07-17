@@ -311,7 +311,11 @@ and policy or delivery rows in canonical sorted order. A savepoint lets a stable
 domain rejection persist its idempotent result while rolling back the complete
 candidate mutation. Successful commands recompute weight and equipped Bag
 capacity, advance revisions, append relational audit changes, and persist a
-replayable result in the same transaction.
+replayable result in the same transaction. Equipment-slot item roots contribute
+zero carried weight. The active equipped Bag's contents still count and its
+capacity bonus still applies. Startup bootstrap corrects older stored carry
+tuples and advances the character item-state revision only when reconciliation
+changes weight or capacity.
 
 The transaction context resolves current definitions and slot data from the
 mirrored catalog but delegates stack, equipment, Bag, Secure Container, policy
@@ -378,6 +382,12 @@ interaction layer, and temporary uGUI presentation. Unity still has no item
 authority, SimulationWorker still holds no item collection, and there is no
 gameplay grant route. A guarded one-shot Development fixture command uses the
 existing durable kernel and is not a service endpoint.
+
+Protocol version `8` retains its existing wire version and packet framing. The
+ordinary container-item swap is an additive operation kind that reuses the
+existing two-item id and revision intent shape. AuthService locks and validates
+both opposite slots, then exchanges both assignments in one transaction or
+changes neither.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the

@@ -44,7 +44,8 @@ namespace ShooterMmo.GameProtocol
         SplitStack = 4,
         MergeStacks = 5,
         Destroy = 6,
-        ClaimRecoveryDelivery = 7
+        ClaimRecoveryDelivery = 7,
+        SwapContainerItems = 8
     }
 
     public sealed class RealtimeJoinAccepted
@@ -401,6 +402,31 @@ namespace ShooterMmo.GameProtocol
                 expectedSourceItemRevision,
                 targetItemInstanceId,
                 expectedTargetItemRevision,
+                Guid.Empty,
+                -1,
+                0,
+                string.Empty,
+                Guid.Empty,
+                0,
+                Array.Empty<RealtimeItemRevisionExpectation>());
+        }
+
+        public static RealtimeItemOperationIntent CreateSwapContainerItems(
+            Guid operationId,
+            long expectedCharacterRevision,
+            Guid firstItemInstanceId,
+            long expectedFirstItemRevision,
+            Guid secondItemInstanceId,
+            long expectedSecondItemRevision)
+        {
+            return new RealtimeItemOperationIntent(
+                operationId,
+                RealtimeItemOperationKind.SwapContainerItems,
+                expectedCharacterRevision,
+                firstItemInstanceId,
+                expectedFirstItemRevision,
+                secondItemInstanceId,
+                expectedSecondItemRevision,
                 Guid.Empty,
                 -1,
                 0,
@@ -972,6 +998,7 @@ namespace ShooterMmo.GameProtocol
                         writer.Write(intent.DestinationSlotIndex);
                         break;
                     case RealtimeItemOperationKind.MergeStacks:
+                    case RealtimeItemOperationKind.SwapContainerItems:
                         WriteItemExpectation(
                             writer,
                             intent.ItemInstanceId,
@@ -1113,6 +1140,7 @@ namespace ShooterMmo.GameProtocol
                             destinationSlot);
                         break;
                     case RealtimeItemOperationKind.MergeStacks:
+                    case RealtimeItemOperationKind.SwapContainerItems:
                         if (!TryReadItemExpectation(
                                 reader,
                                 out itemId,
@@ -1127,13 +1155,21 @@ namespace ShooterMmo.GameProtocol
                             return false;
                         }
 
-                        decoded = RealtimeItemOperationIntent.CreateMergeStacks(
-                            operationId,
-                            expectedCharacterRevision,
-                            itemId,
-                            itemRevision,
-                            targetItemId,
-                            targetItemRevision);
+                        decoded = operationKind == RealtimeItemOperationKind.MergeStacks
+                            ? RealtimeItemOperationIntent.CreateMergeStacks(
+                                operationId,
+                                expectedCharacterRevision,
+                                itemId,
+                                itemRevision,
+                                targetItemId,
+                                targetItemRevision)
+                            : RealtimeItemOperationIntent.CreateSwapContainerItems(
+                                operationId,
+                                expectedCharacterRevision,
+                                itemId,
+                                itemRevision,
+                                targetItemId,
+                                targetItemRevision);
                         break;
                     case RealtimeItemOperationKind.Destroy:
                         if (!TryReadItemExpectation(
@@ -2406,6 +2442,7 @@ namespace ShooterMmo.GameProtocol
                         && intent.DestinationContainerId != Guid.Empty
                         && IsValidDestinationSlot(intent.DestinationSlotIndex);
                 case RealtimeItemOperationKind.MergeStacks:
+                case RealtimeItemOperationKind.SwapContainerItems:
                     return IsValidItemExpectation(
                             intent.ItemInstanceId,
                             intent.ExpectedItemRevision)

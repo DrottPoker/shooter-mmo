@@ -345,7 +345,6 @@ has weight `25`, and its Field Pack grants a `50` carry-capacity bonus.
 Carried weight includes:
 
 - Permanent character inventory.
-- Equipped weapons, armor, tools, rings, and Bag.
 - Equipped Bag contents.
 - Empty Bag items carried in another compatible slot.
 - Secure Container contents.
@@ -353,6 +352,9 @@ Carried weight includes:
 
 Carried weight excludes:
 
+- Every item assigned to an equipment slot, including the equipped Bag item
+  itself. An equipped Bag's contents still count and its authored capacity bonus
+  still applies.
 - Character bank.
 - Recovery Storage.
 - Corpse contents.
@@ -391,9 +393,9 @@ simulation applies it to normal base movement after action restrictions are
 resolved. Server authority decides whether sprint is allowed.
 
 Every operation computes the prospective numerator and denominator. Equipping a
-different Bag can change item weight, carried contents, and capacity in the same
-transaction. A structural content change that could create an over-cap state
-requires an explicit migration.
+different Bag removes the Bag root's own weight, activates its carried contents,
+and changes capacity in the same transaction. A structural content change that
+could create an over-cap state requires an explicit migration.
 
 ## Inventory UI Layout
 
@@ -438,6 +440,21 @@ major-city service points, and the Development option never includes insurance
 access or bypasses AuthService authority.
 Corpse and world-loot context adapters are reserved without inventing custody or
 snapshot data before their authoritative phases.
+
+The maintained temporary presentation has three explicit view modes. `B` opens
+only character storage, `C` opens equipment together with character storage, and
+`I` retains the complete Development view with equipment, contextual Bank or
+Recovery Storage, and character storage until those contextual services receive
+their permanent world interaction UI. Equipment, context, and character storage
+are separate module roots with fixed bounds. Hiding or showing one module never
+moves or resizes either of the others.
+
+Dropping an item onto an occupied container slot merges compatible stacks. When
+the items cannot merge, the server may atomically swap their complete slot
+assignments only if each item is valid in the other's container and slot type.
+Both item revisions, both containers, the character revision, live service
+access, policy, Bag, Secure Container, and hard-cap rules are validated in the
+same transaction. Non-empty Bag aggregates do not use this ordinary item swap.
 
 ## Item Policies
 

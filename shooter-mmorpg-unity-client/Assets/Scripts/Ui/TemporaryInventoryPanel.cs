@@ -12,6 +12,13 @@ using UnityEngine.UI;
 
 namespace ShooterMmo.Ui
 {
+    public enum InventoryPanelMode
+    {
+        FullDevelopment,
+        CharacterAndEquipment,
+        CharacterOnly
+    }
+
     [DisallowMultipleComponent]
     public sealed class TemporaryInventoryPanel : MonoBehaviour
     {
@@ -27,6 +34,9 @@ namespace ShooterMmo.Ui
         private ThirdPersonCameraController playerCamera;
         private GameObject canvasObject;
         private GameObject rootObject;
+        private RectTransform equipmentPanel;
+        private RectTransform contextPanel;
+        private RectTransform characterPanel;
         private RectTransform equipmentContent;
         private RectTransform contextContent;
         private RectTransform characterContent;
@@ -36,6 +46,7 @@ namespace ShooterMmo.Ui
         private Font font;
         private InventoryDragCoordinator dragCoordinator;
         private bool isOpen;
+        private InventoryPanelMode mode = InventoryPanelMode.FullDevelopment;
         private InventoryContextKind context = InventoryContextKind.None;
         private Guid selectedItemId;
         private bool splitMode;
@@ -46,6 +57,26 @@ namespace ShooterMmo.Ui
         public bool IsOpen
         {
             get { return isOpen; }
+        }
+
+        public InventoryPanelMode Mode
+        {
+            get { return mode; }
+        }
+
+        public bool IsEquipmentModuleVisible
+        {
+            get { return isOpen && equipmentPanel != null && equipmentPanel.gameObject.activeSelf; }
+        }
+
+        public bool IsContextModuleVisible
+        {
+            get { return isOpen && contextPanel != null && contextPanel.gameObject.activeSelf; }
+        }
+
+        public bool IsCharacterModuleVisible
+        {
+            get { return isOpen && characterPanel != null && characterPanel.gameObject.activeSelf; }
         }
 
         private void Start()
@@ -68,10 +99,20 @@ namespace ShooterMmo.Ui
                 FindPlayerPresentation();
             }
 
-            if (localPlayerInput != null
-                && localPlayerInput.ToggleInventoryPressedThisFrame)
+            if (localPlayerInput != null)
             {
-                SetOpen(!isOpen);
+                if (localPlayerInput.ToggleCharacterInventoryPressedThisFrame)
+                {
+                    ToggleMode(InventoryPanelMode.CharacterOnly);
+                }
+                else if (localPlayerInput.ToggleEquipmentInventoryPressedThisFrame)
+                {
+                    ToggleMode(InventoryPanelMode.CharacterAndEquipment);
+                }
+                else if (localPlayerInput.ToggleInventoryPressedThisFrame)
+                {
+                    ToggleMode(InventoryPanelMode.FullDevelopment);
+                }
             }
 
             if (isOpen
@@ -105,7 +146,18 @@ namespace ShooterMmo.Ui
 
         public void SetOpen(bool value)
         {
+            SetOpen(value, value ? InventoryPanelMode.FullDevelopment : mode);
+        }
+
+        public void SetOpen(bool value, InventoryPanelMode requestedMode)
+        {
             isOpen = value;
+            if (value)
+            {
+                mode = requestedMode;
+                ApplyModeVisibility();
+            }
+
             if (rootObject != null)
             {
                 rootObject.SetActive(value);
@@ -127,6 +179,19 @@ namespace ShooterMmo.Ui
                 dragCoordinator?.Cancel();
                 ClearSelection();
             }
+        }
+
+        private void ToggleMode(InventoryPanelMode requestedMode)
+        {
+            if (isOpen && mode == requestedMode)
+            {
+                SetOpen(false, requestedMode);
+                return;
+            }
+
+            dragCoordinator?.Cancel();
+            ClearSelection();
+            SetOpen(true, requestedMode);
         }
 
         private void FindPlayerPresentation()
@@ -178,19 +243,37 @@ namespace ShooterMmo.Ui
                 "Equipment",
                 new Vector2(0.02f, 0.06f),
                 new Vector2(0.31f, 0.95f),
+                out equipmentPanel,
                 out equipmentHeader);
             contextContent = CreateSection(
                 rootObject.transform,
                 "Context",
                 new Vector2(0.33f, 0.53f),
                 new Vector2(0.98f, 0.95f),
+                out contextPanel,
                 out contextHeader);
             characterContent = CreateSection(
                 rootObject.transform,
                 "Character Inventory",
                 new Vector2(0.33f, 0.06f),
                 new Vector2(0.98f, 0.51f),
+                out characterPanel,
                 out characterHeader);
+            ApplyModeVisibility();
+        }
+
+        private void ApplyModeVisibility()
+        {
+            if (equipmentPanel == null || contextPanel == null || characterPanel == null)
+            {
+                return;
+            }
+
+            equipmentPanel.gameObject.SetActive(
+                mode != InventoryPanelMode.CharacterOnly);
+            contextPanel.gameObject.SetActive(
+                mode == InventoryPanelMode.FullDevelopment);
+            characterPanel.gameObject.SetActive(true);
         }
 
         private void Rebuild()
@@ -229,8 +312,16 @@ namespace ShooterMmo.Ui
             contextHeader.text = ContextTitle(context);
             characterHeader.text = BuildCharacterHeader(state);
 
-            DrawEquipment(state);
-            DrawContext(state);
+            if (equipmentPanel.gameObject.activeSelf)
+            {
+                DrawEquipment(state);
+            }
+
+            if (contextPanel.gameObject.activeSelf)
+            {
+                DrawContext(state);
+            }
+
             DrawCharacterInventory(state);
         }
 
@@ -593,18 +684,30 @@ namespace ShooterMmo.Ui
                     return false;
                 }
 
-                return InventoryTargetAdvisor.CanMerge(
+                var targetLocation = new InventoryItemLocation(
+                    InventoryItemLocationKind.Container,
+                    container.ContainerId,
+                    container.ContainerType,
+                    slot.SlotIndex,
+                    string.Empty,
+                    Guid.Empty);
+                if (InventoryTargetAdvisor.CanMerge(
                     state,
                     item,
                     source,
                     slot.Item,
-                    new InventoryItemLocation(
-                        InventoryItemLocationKind.Container,
-                        container.ContainerId,
-                        container.ContainerType,
-                        slot.SlotIndex,
-                        string.Empty,
-                        Guid.Empty),
+                    targetLocation,
+                    out reason))
+                {
+                    return true;
+                }
+
+                return InventoryTargetAdvisor.CanSwap(
+                    state,
+                    item,
+                    source,
+                    slot.Item,
+                    targetLocation,
                     out reason);
             }
 
@@ -717,6 +820,28 @@ namespace ShooterMmo.Ui
             state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
             if (slot.Item != null)
             {
+                var targetLocation = new InventoryItemLocation(
+                    InventoryItemLocationKind.Container,
+                    container.ContainerId,
+                    container.ContainerType,
+                    slot.SlotIndex,
+                    string.Empty,
+                    Guid.Empty);
+                if (!InventoryTargetAdvisor.CanMerge(
+                    state,
+                    item,
+                    source,
+                    slot.Item,
+                    targetLocation,
+                    out _))
+                {
+                    Execute(
+                        controller.TrySwap(item, slot.Item, out var swapError),
+                        swapError,
+                        "Swap submitted.");
+                    return;
+                }
+
                 Execute(
                     controller.TryMerge(item, slot.Item, out var mergeError),
                     mergeError,
@@ -962,10 +1087,11 @@ namespace ShooterMmo.Ui
             string title,
             Vector2 anchorMin,
             Vector2 anchorMax,
+            out RectTransform panelRect,
             out Text header)
         {
             var panel = CreateUiObject(title + "Panel", parent);
-            var panelRect = panel.GetComponent<RectTransform>();
+            panelRect = panel.GetComponent<RectTransform>();
             Stretch(panelRect, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
             var background = panel.AddComponent<Image>();
             background.color = PanelColor;

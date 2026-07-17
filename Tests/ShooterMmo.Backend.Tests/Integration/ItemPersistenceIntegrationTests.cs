@@ -184,6 +184,66 @@ public sealed class ItemPersistenceIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task StartupBackfillReconcilesLegacyEquippedWeightOnce()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "legacy-equipped-weight@example.com",
+            "legacy_equipped_weight",
+            "Legacy Equipped Weight");
+        var snapshotResult = await context.ItemQueryService.GetCharacterInventoryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None);
+        Assert.True(snapshotResult.Succeeded, snapshotResult.Error?.Message);
+        var snapshot = snapshotResult.Value!;
+        var grant = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                new GrantItemCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    "weapon.training_rifle",
+                    1,
+                    snapshot.PermanentInventory.ContainerId,
+                    0)),
+            CancellationToken.None);
+        Assert.True(grant.Succeeded, grant.Error?.Message);
+        var rifle = Assert.Single(grant.ItemRevisions);
+        var equip = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<EquipItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                new EquipItemCommand(
+                    player.Character.Id,
+                    Assert.Single(grant.CharacterRevisions).Revision,
+                    rifle.ItemInstanceId,
+                    rifle.Revision,
+                    "primary_weapon")),
+            CancellationToken.None);
+        Assert.True(equip.Succeeded, equip.Error?.Message);
+        Assert.Equal(0, Assert.Single(equip.CharacterRevisions).CarriedWeight);
+
+        await context.ExecuteAsync(
+            $"""
+            update character_item_states
+            set carried_weight = 25
+            where character_id = '{player.Character.Id}';
+            """);
+        var stale = await LoadBootstrapSnapshotAsync(context, player.Character.Id);
+        Assert.Equal(25, stale.CarriedWeight);
+
+        await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
+        var reconciled = await LoadBootstrapSnapshotAsync(context, player.Character.Id);
+        Assert.Equal(0, reconciled.CarriedWeight);
+        Assert.Equal(stale.Revision + 1, reconciled.Revision);
+
+        await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
+        Assert.Equal(reconciled, await LoadBootstrapSnapshotAsync(context, player.Character.Id));
+    }
+
+    [PostgresIntegrationFact]
     public async Task CharacterCreationCommitsCharacterAndCompleteItemStateTogether()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

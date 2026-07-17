@@ -65,6 +65,10 @@ public sealed class SimulationItemMutationService(ItemTransactionService transac
                 actor,
                 request,
                 cancellationToken),
+            ItemOperationKinds.SwapContainerItems => ExecuteSwapAsync(
+                actor,
+                request,
+                cancellationToken),
             ItemOperationKinds.Destroy => ExecuteDestroyAsync(
                 actor,
                 request,
@@ -179,6 +183,30 @@ public sealed class SimulationItemMutationService(ItemTransactionService transac
                     request.OperationId,
                     actor,
                     new MergeItemStacksCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.TargetItemInstanceId.Value,
+                        request.ExpectedTargetItemRevision!.Value)),
+                cancellationToken)
+            : null;
+    }
+
+    private Task<ItemTransactionResult>? ExecuteSwapAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasItem(request)
+            && request.TargetItemInstanceId is not null
+            && request.TargetItemInstanceId != Guid.Empty
+            && request.ExpectedTargetItemRevision >= 0
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<SwapContainerItemsCommand>(
+                    request.OperationId,
+                    actor,
+                    new SwapContainerItemsCommand(
                         request.CharacterId,
                         request.ExpectedCharacterRevision,
                         request.ItemInstanceId!.Value,

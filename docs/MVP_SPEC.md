@@ -227,10 +227,11 @@ capacity bonus. A Bag instance owns its contents.
 
 ## Carry Weight And Encumbrance
 
-Carried weight includes permanent inventory, equipment, equipped Bag, Bag
-contents, carried empty Bags, Secure Container contents, and full stack
-quantities. Bank, Recovery Storage, corpse, and future non-carried economy
-custody do not count.
+Carried weight includes permanent inventory, equipped Bag contents, carried empty
+Bags, Secure Container contents, and full stack quantities. Items assigned to
+equipment slots, including the equipped Bag item itself, do not count. The
+equipped Bag's contents still count and its capacity bonus still applies. Bank,
+Recovery Storage, corpse, and future non-carried economy custody do not count.
 
 Weight is a unitless non-negative integer gameplay value. The baseline scale is
 ammunition `1`, pistol `10`, and base character carry capacity `200`. The
@@ -257,6 +258,16 @@ equipped Bag may add a capacity bonus.
   Recovery Storage, or a world loot container.
 - Character inventory remains visible while another container is open so item
   transfers have clear source and destination areas.
+- `B` opens character storage only. `C` opens equipment together with character
+  storage. During Development, `I` retains the complete equipment, contextual
+  storage, and character-storage view until Bank and Recovery receive permanent
+  world interaction UI.
+- Equipment, contextual storage, and character storage are separate fixed
+  modules. Toggling one module never repositions or resizes another module.
+- Dropping onto an occupied slot merges compatible stacks. Otherwise, compatible
+  ordinary container items swap slots atomically after both opposite slot
+  assignments and all authority rules pass. Non-empty Bag aggregates remain on
+  their dedicated atomic transfer path.
 
 This layout does not grant Unity authority over item or slot rules.
 

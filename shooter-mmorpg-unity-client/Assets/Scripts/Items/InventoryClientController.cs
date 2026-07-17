@@ -355,6 +355,46 @@ namespace ShooterMmo.Items
             return TrySubmit(intent, scope, out error);
         }
 
+        public bool TrySwap(
+            InventoryItem firstItem,
+            InventoryItem secondItem,
+            out string error)
+        {
+            if (!TryPrepareItemOperation(firstItem, out var firstLocation, out error)
+                || !State.TryFindItem(
+                    secondItem.ItemInstanceId,
+                    out var currentSecondItem,
+                    out var secondLocation)
+                || currentSecondItem.Revision != secondItem.Revision
+                || !InventoryTargetAdvisor.CanSwap(
+                    State,
+                    firstItem,
+                    firstLocation,
+                    currentSecondItem,
+                    secondLocation,
+                    out error))
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                {
+                    error = "The swap target is stale or unavailable.";
+                }
+
+                return false;
+            }
+
+            var intent = RealtimeItemOperationIntent.CreateSwapContainerItems(
+                Guid.NewGuid(),
+                State.KnownItemStateRevision,
+                firstItem.ItemInstanceId,
+                firstItem.Revision,
+                currentSecondItem.ItemInstanceId,
+                currentSecondItem.Revision);
+            var scope = firstLocation.IsExternal && secondLocation.IsExternal
+                ? InventoryRefreshScope.Bank
+                : InventoryRefreshScope.Full;
+            return TrySubmit(intent, scope, out error);
+        }
+
         public bool TryDestroy(InventoryItem item, out string error)
         {
             if (!TryPrepareItemOperation(item, out var source, out error)

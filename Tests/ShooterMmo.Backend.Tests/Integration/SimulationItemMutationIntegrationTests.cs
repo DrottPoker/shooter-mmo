@@ -450,6 +450,256 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Null(after.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item);
     }
 
+    [PostgresIntegrationFact]
+    public async Task EquippedItemWeightIsExcludedAndUnequipRestoresCarriedWeight()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "equipped-weight@example.com",
+            "equipped_weight_player",
+            "Equipped Weight Hero");
+        var snapshot = await GetSnapshotAsync(context, player);
+        var grant = await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "weapon.training_rifle",
+            1,
+            snapshot.PermanentInventory.ContainerId,
+            0);
+        var rifle = Assert.Single(grant.ItemRevisions);
+        snapshot = await GetSnapshotAsync(context, player);
+        Assert.Equal(25, snapshot.CarriedWeight);
+        var session = await JoinAsync(context, player);
+
+        var equip = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            new SimulationItemOperationRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                new SimulationItemAccessRequest(false, false, false),
+                ItemOperationKinds.Equip,
+                snapshot.ItemStateRevision,
+                rifle.ItemInstanceId,
+                rifle.Revision,
+                EquipmentSlotId: "primary_weapon"),
+            CancellationToken.None);
+
+        Assert.True(equip.Succeeded, equip.Error?.Message);
+        var equippedCarry = Assert.Single(equip.Value!.CharacterRevisions);
+        var equippedRifle = Assert.Single(equip.Value.ItemRevisions);
+        Assert.Equal(0, equippedCarry.CarriedWeight);
+        Assert.Equal(200, equippedCarry.CarryCapacity);
+
+        var unequip = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            new SimulationItemOperationRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                new SimulationItemAccessRequest(false, false, false),
+                ItemOperationKinds.Unequip,
+                equippedCarry.Revision,
+                equippedRifle.ItemInstanceId,
+                equippedRifle.Revision,
+                DestinationContainerId: snapshot.PermanentInventory.ContainerId,
+                DestinationSlotIndex: 1),
+            CancellationToken.None);
+
+        Assert.True(unequip.Succeeded, unequip.Error?.Message);
+        var unequippedCarry = Assert.Single(unequip.Value!.CharacterRevisions);
+        Assert.Equal(25, unequippedCarry.CarriedWeight);
+        Assert.Equal(200, unequippedCarry.CarryCapacity);
+        var restored = await GetSnapshotAsync(context, player);
+        Assert.Equal(25, restored.CarriedWeight);
+        Assert.Equal(
+            rifle.ItemInstanceId,
+            restored.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 1).Item!.ItemInstanceId);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task LiveContainerSwapIsAtomicWeightAwareAndRejectsIncompatibleOppositeSlot()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "container-swap@example.com",
+            "container_swap_player",
+            "Container Swap Hero");
+        var snapshot = await GetSnapshotAsync(context, player);
+        await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "material.iron_ore",
+            2,
+            snapshot.PermanentInventory.ContainerId,
+            0);
+        snapshot = await GetSnapshotAsync(context, player);
+        await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "weapon.training_rifle",
+            1,
+            snapshot.Bank.ContainerId,
+            0);
+        snapshot = await GetSnapshotAsync(context, player);
+        await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "medical.field_dressing",
+            1,
+            snapshot.SecureContainer.Contents.ContainerId,
+            0);
+        snapshot = await GetSnapshotAsync(context, player);
+        var bagGrant = await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "bag.field_pack",
+            1,
+            snapshot.PermanentInventory.ContainerId,
+            1);
+        var bag = Assert.Single(bagGrant.ItemRevisions);
+        snapshot = await GetSnapshotAsync(context, player);
+        var equipBag = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<EquipItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForOfflineAccount(player.Registration.AccountId),
+                new EquipItemCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    bag.ItemInstanceId,
+                    bag.Revision,
+                    "bag")),
+            CancellationToken.None);
+        Assert.True(equipBag.Succeeded, equipBag.Error?.Message);
+        snapshot = await GetSnapshotAsync(context, player);
+        await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "medical.field_dressing",
+            1,
+            snapshot.EquippedBag!.Contents.ContainerId,
+            4);
+        snapshot = await GetSnapshotAsync(context, player);
+        Assert.Equal(16, snapshot.CarriedWeight);
+        Assert.Equal(250, snapshot.CarryCapacity);
+        var ore = snapshot.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item!;
+        var rifle = snapshot.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!;
+        var session = await JoinAsync(context, player);
+
+        var swapped = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            new SimulationItemOperationRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                new SimulationItemAccessRequest(true, false, false),
+                ItemOperationKinds.SwapContainerItems,
+                snapshot.ItemStateRevision,
+                ore.ItemInstanceId,
+                ore.Revision,
+                TargetItemInstanceId: rifle.ItemInstanceId,
+                ExpectedTargetItemRevision: rifle.Revision),
+            CancellationToken.None);
+
+        Assert.True(swapped.Succeeded, swapped.Error?.Message);
+        Assert.Equal(ItemOperationKinds.SwapContainerItems, swapped.Value!.OperationKind);
+        Assert.Equal(29, Assert.Single(swapped.Value.CharacterRevisions).CarriedWeight);
+        Assert.Equal(2, swapped.Value.ItemRevisions.Count);
+
+        var afterSwap = await GetSnapshotAsync(context, player);
+        var permanentRifle = afterSwap.PermanentInventory.Slots
+            .Single(slot => slot.SlotIndex == 0).Item!;
+        var bankOre = afterSwap.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!;
+        var secureMedical = afterSwap.SecureContainer.Contents.Slots
+            .Single(slot => slot.SlotIndex == 0).Item!;
+        var bagMedical = afterSwap.EquippedBag!.Contents.Slots
+            .Single(slot => slot.SlotIndex == 4).Item!;
+        Assert.Equal(rifle.ItemInstanceId, permanentRifle.ItemInstanceId);
+        Assert.Equal(ore.ItemInstanceId, bankOre.ItemInstanceId);
+
+        var specializedRejected = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            new SimulationItemOperationRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                new SimulationItemAccessRequest(false, false, false),
+                ItemOperationKinds.SwapContainerItems,
+                afterSwap.ItemStateRevision,
+                permanentRifle.ItemInstanceId,
+                permanentRifle.Revision,
+                TargetItemInstanceId: bagMedical.ItemInstanceId,
+                ExpectedTargetItemRevision: bagMedical.Revision),
+            CancellationToken.None);
+
+        Assert.False(specializedRejected.Succeeded);
+        Assert.Equal(
+            ItemTransactionErrorCodes.ItemSlotIncompatible,
+            specializedRejected.Error!.Code);
+
+        var secureRejected = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            new SimulationItemOperationRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                new SimulationItemAccessRequest(false, false, false),
+                ItemOperationKinds.SwapContainerItems,
+                afterSwap.ItemStateRevision,
+                permanentRifle.ItemInstanceId,
+                permanentRifle.Revision,
+                TargetItemInstanceId: secureMedical.ItemInstanceId,
+                ExpectedTargetItemRevision: secureMedical.Revision),
+            CancellationToken.None);
+
+        Assert.False(secureRejected.Succeeded);
+        Assert.Equal(
+            ItemTransactionErrorCodes.SecureContainerItemForbidden,
+            secureRejected.Error!.Code);
+        var afterRejection = await GetSnapshotAsync(context, player);
+        Assert.Equal(afterSwap.ItemStateRevision, afterRejection.ItemStateRevision);
+        Assert.Equal(
+            permanentRifle.ItemInstanceId,
+            afterRejection.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
+        Assert.Equal(
+            bagMedical.ItemInstanceId,
+            afterRejection.EquippedBag!.Contents.Slots.Single(slot => slot.SlotIndex == 4).Item!.ItemInstanceId);
+        Assert.Equal(
+            secureMedical.ItemInstanceId,
+            afterRejection.SecureContainer.Contents.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
+    }
+
     private static async Task AssertRejectedAsync(
         PostgresIntegrationTestContext context,
         SimulationItemOperationRequest request,

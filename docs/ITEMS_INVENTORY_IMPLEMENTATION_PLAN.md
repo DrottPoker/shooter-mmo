@@ -858,10 +858,12 @@ Status: Completed 2026-07-15
 
 ### Tests
 
-- Character inventory, equipment, Bag contents, carried empty Bags, and Secure
-  Container all contribute exactly once.
+- Permanent inventory, equipped Bag contents, carried empty Bags, and Secure
+  Container all contribute exactly once. Equipment-slot item roots contribute
+  zero.
 - Bank, Recovery Storage, and corpse custody contribute zero.
-- Equipping a Bag changes both numerator and capacity atomically.
+- Equipping a Bag removes its root weight and changes capacity atomically while
+  its active contents continue to contribute.
 - Swapping to a lower-capacity Bag is rejected when the resulting load exceeds
   140 percent.
 - Sprint is enabled at exactly 100 percent and disabled above it.
@@ -1060,14 +1062,16 @@ idempotency, revisions, and authority handling are long-term code.
   before another mutation. Disconnect during an operation marks the result
   uncertain and reconnect replaces local state from authority without creating
   or deleting a local item instance.
-- The temporary uGUI panel opens with `I`, closes with `I` or `Escape`, releases
-  shooter cursor capture, and uses the canonical three-area layout. Equipment is
-  on the left, the selected Bank or Recovery context remains in the upper-right,
-  and Permanent inventory, equipped Bag contents, and Secure Container remain
-  visible in the lower-right.
+- The temporary uGUI panel uses three explicit views. `B` toggles character
+  storage only, `C` toggles equipment plus character storage, and `I` toggles the
+  complete Development view with Bank and Recovery context. `Escape` closes any
+  view, and shooter cursor capture is released while one is open. Equipment,
+  Context, and Character Inventory are independent fixed panel roots. View
+  changes toggle roots without moving or resizing another module.
 - A reusable typed uGUI drag coordinator, item source, and destination target now
-  drive relocation, equip, unequip, stack split and merge, and complete Recovery
-  claim intents. Valid targets highlight green, rejected targets highlight red,
+  drive relocation, equip, unequip, stack split and merge, atomic ordinary
+  occupied-slot swap, and complete Recovery claim intents. Valid targets
+  highlight green, rejected targets highlight red,
   and the target is revalidated on drop before an intent is sent. Item clicks
   only select the split and destruction action controls. Recovery items carry a
   delivery payload, so dropping any item from a delivery onto Permanent inventory
@@ -1085,9 +1089,11 @@ idempotency, revisions, and authority handling are long-term code.
   rejected outside the Development environment, never grants insurance access,
   and does not bypass the active session, worker, assignment, transaction, or
   capacity checks.
-- Recovery delivery snapshots now expose their existing durable revision to
-  Unity as an additive HTTP field. Realtime protocol version `8` and every
-  existing packet remain unchanged.
+- Recovery delivery snapshots expose their existing durable revision to Unity
+  as an additive HTTP field. Realtime protocol version `8` remains unchanged.
+  Ordinary swap is an additive operation kind that reuses the existing two-item
+  id and revision packet shape, leaving earlier operation values and framing
+  compatible.
 - `Shooter MMO > Tools > Inventory Item Grants` is the primary local item setup
   workflow. The Editor window lists initialized characters and canonical active
   item definitions, grants an individual stack to Permanent inventory, Bank, or
@@ -1097,11 +1103,15 @@ idempotency, revisions, and authority handling are long-term code.
 - The Editor window starts machine-readable Development commands in AuthService.
   Those commands use `ItemTransactionService`, require an offline character and
   loopback non-production-like PostgreSQL, and expose no gameplay HTTP route.
+  The offline guard prevents a direct Editor mutation from bypassing the active
+  SimulationWorker's carry and revision state. A future online grant must use a
+  service-authenticated route through the owning worker.
   Individual grants are repeatable. Packages require a character with no items
   or Recovery deliveries so their result stays deterministic. The original
   one-shot `--seed-phase9-items <characterId>` command remains compatible as a
   terminal fallback for the full Phase 9 fixture.
-- The fixture starts at weight `132 / 250` and includes equipment candidates,
+- The fixture starts at weight `122 / 250` because the equipped Bag root has
+  zero carried weight. It includes equipment candidates,
   one non-empty equipped Bag, empty Bags in Permanent inventory and Bank,
   medical, material, and ammunition specialized-slot items, a protected Secure
   Container item, merge and split stacks, exact 140 percent weight steps, and one
@@ -1119,14 +1129,17 @@ idempotency, revisions, and authority handling are long-term code.
   machine-readable development responses, catalog and icon cache reuse,
   catalog mismatch, snapshot validation, monotonic and divergent revisions,
   operation correlation, specialized slots, Secure Container eligibility,
-  non-empty Bag rules, split quantities, the hard cap, and typed drag acceptance
-  and rejection. PlayMode coverage verifies the persistent controller and runtime
-  uGUI lifecycle.
+  non-empty Bag rules, split quantities, occupied-slot swap compatibility,
+  equipped-weight exclusion, the hard cap, and typed drag acceptance and
+  rejection. PlayMode coverage verifies the persistent controller, all three
+  panel modes, and runtime uGUI lifecycle.
 
 ### Manual Test Gate
 
-- Drag items to move, split, merge, equip, and unequip them, and swap Bags when
-  the authoritative operation is available.
+- Use `B`, `C`, and `I` to verify the three maintained panel modes.
+- Drag items to move, split, merge, equip, unequip, and atomically swap compatible
+  occupied ordinary slots. Swap Bags when the authoritative operation is
+  available.
 - Put an empty Bag in permanent inventory, another Bag, and bank.
 - Verify a non-empty Bag is rejected from those locations.
 - Use medical, material, and ammunition specialized slots.

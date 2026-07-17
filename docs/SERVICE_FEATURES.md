@@ -365,9 +365,10 @@ available:
   multiplier are returned as deterministic basis points.
 - `ItemTransactionService` is the only durable item mutation kernel. Typed
   internal commands cover grant, relocation, equip, unequip, stack split and
-  merge, quantity consumption, allowed destruction, empty Bag storage, complete
-  Bag aggregate swap, Recovery delivery add and claim, Secure Container tier
-  change, policy application and removal, and quest-grant abandonment cleanup.
+  merge, atomic ordinary container-slot swap, quantity consumption, allowed
+  destruction, empty Bag storage, complete Bag aggregate swap, Recovery delivery
+  add and claim, Secure Container tier change, policy application and removal,
+  and quest-grant abandonment cleanup.
 - Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
   child. A protected or insured Bag or child rejects the complete swap without
   changing custody, quantity, or revisions.
@@ -383,7 +384,10 @@ available:
 - Successful commands recompute unitless carried weight and equipped Bag
   capacity from authoritative custody, enforce the exact 140 percent hard cap,
   advance touched character, container, Bag, and item revisions, and append
-  before and after audit rows.
+  before and after audit rows. Equipment-slot item roots have zero carried
+  weight. Equipped Bag contents still count and the equipped Bag bonus still
+  increases capacity. Startup reconciliation corrects older stored tuples only
+  when they differ.
 - Bag content containers are closed while an empty Bag is ordinary storage and
   active only while equipped. Bag and child commands share one aggregate-root
   lock, and aggregate swaps validate both Bag item and content-container
@@ -427,8 +431,10 @@ available:
 - Realtime protocol version `8` includes carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
-  split stack, merge stacks, allowed destruction, and complete Recovery Storage
-  claim. Corpse operations remain reserved for their later phase.
+  split stack, merge stacks, atomic ordinary container-slot swap, allowed
+  destruction, and complete Recovery Storage claim. The swap kind reuses the
+  existing two-item expectation packet shape, so the protocol version remains
+  `8`. Corpse operations remain reserved for their later phase.
 - SimulationWorker accepts item intents only from an exact joined player on
   channel 0, processes at most one per peer at a time, and bounds each pending
   queue to eight operations. Synthetic development bots cannot mutate durable
@@ -459,10 +465,12 @@ available:
 - The runtime uGUI panel is replaceable presentation over that state. It exposes
   Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
   Recovery Storage plus every current live mutation. Typed reusable drag sources
-  and targets submit relocation, equipment, split, merge, and atomic Recovery
-  claim operations only after drop validation. Item clicks select only the split
-  and allowed-destruction controls. Bank and Recovery reads are globally
-  inspectable by the owning account.
+  and targets submit relocation, equipment, split, merge, atomic ordinary swap,
+  and atomic Recovery claim operations only after drop validation. `B` shows
+  character storage, `C` shows equipment plus character storage, and `I` shows
+  the complete Development view with contextual Bank and Recovery. Item clicks
+  select only the split and allowed-destruction controls. Bank and Recovery
+  reads are globally inspectable by the owning account.
 - SimulationWorker normally derives Bank, Recovery Storage, and insurance access
   from authored service points at the authoritative player position. Its
   environment-specific Development configuration can explicitly grant global

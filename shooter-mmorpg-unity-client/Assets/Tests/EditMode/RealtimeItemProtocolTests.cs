@@ -62,5 +62,34 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(actual.CarryState.CarryCapacity, Is.EqualTo(200));
             Assert.That(actual.ContainerRevisions, Has.Length.EqualTo(1));
         }
+
+        [Test]
+        public void ContainerItemSwapIntentRoundTripsBothItemExpectations()
+        {
+            var operationId = Guid.NewGuid();
+            var firstItemId = Guid.NewGuid();
+            var secondItemId = Guid.NewGuid();
+            var expected = RealtimeItemOperationIntent.CreateSwapContainerItems(
+                operationId,
+                11,
+                firstItemId,
+                4,
+                secondItemId,
+                9);
+
+            var decoded = RealtimeProtocol.TryDecodeItemOperationIntent(
+                RealtimeProtocol.EncodeItemOperationIntent(expected),
+                out var actual,
+                out var error);
+
+            Assert.That(decoded, Is.True, error);
+            Assert.That(actual.OperationKind, Is.EqualTo(RealtimeItemOperationKind.SwapContainerItems));
+            Assert.That(actual.OperationId, Is.EqualTo(operationId));
+            Assert.That(actual.ExpectedCharacterRevision, Is.EqualTo(11));
+            Assert.That(actual.ItemInstanceId, Is.EqualTo(firstItemId));
+            Assert.That(actual.ExpectedItemRevision, Is.EqualTo(4));
+            Assert.That(actual.TargetItemInstanceId, Is.EqualTo(secondItemId));
+            Assert.That(actual.ExpectedTargetItemRevision, Is.EqualTo(9));
+        }
     }
 }

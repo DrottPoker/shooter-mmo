@@ -34,6 +34,8 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(actions.FindAction("ToggleDebugCursor", false), Is.Not.Null);
             Assert.That(actions.FindAction("ToggleWorldDebug", false), Is.Not.Null);
             Assert.That(actions.FindAction("ToggleInventory", false), Is.Not.Null);
+            Assert.That(actions.FindAction("ToggleCharacterInventory", false), Is.Not.Null);
+            Assert.That(actions.FindAction("ToggleEquipmentInventory", false), Is.Not.Null);
             Assert.That(actions.FindAction("Orbit", false), Is.Null);
             Assert.That(actions.FindAction("Zoom", false), Is.Null);
 
@@ -52,6 +54,10 @@ namespace ShooterMmo.Tests.EditMode
                 Does.Contain("<Keyboard>/f2"));
             Assert.That(actions.FindAction("ToggleInventory").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/i"));
+            Assert.That(actions.FindAction("ToggleCharacterInventory").bindings.Select(binding => binding.path),
+                Does.Contain("<Keyboard>/b"));
+            Assert.That(actions.FindAction("ToggleEquipmentInventory").bindings.Select(binding => binding.path),
+                Does.Contain("<Keyboard>/c"));
         }
 
         [Test]
