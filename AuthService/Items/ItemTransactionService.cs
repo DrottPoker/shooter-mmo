@@ -8,7 +8,7 @@ using ShooterMmo.WorldData.Items;
 
 namespace AuthService.Items;
 
-public sealed class ItemTransactionService(NpgsqlDataSource dataSource)
+public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
 {
     private const string MutationSavepoint = "item_mutation";
     private const string EmptyStackStateFingerprint = "item-stack-state-v1";

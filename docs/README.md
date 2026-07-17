@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -35,12 +35,14 @@ operations, and future design do not drift into duplicate descriptions.
 - [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   defines the dependency-ordered delivery phases, proposed persistence model,
   service boundaries, and verification gates for that design. Phases 1 through
-  9 are complete, including the item catalog, Unity authoring, PostgreSQL schema,
+  10 are complete, including the item catalog, Unity authoring, PostgreSQL schema,
   transactional catalog mirror, character item-state bootstrap, authoritative
   reads, the race-safe transaction kernel, policy and quest-grant lifecycle,
   offline-safe account APIs, exact-session carry-state delivery, and shared
   SimulationWorker and Unity encumbrance. The exact-session in-world mutation
-  boundary and persistent Unity inventory foundation are also complete.
+  boundary, persistent Unity inventory foundation, idempotent death partition,
+  durable player corpses, worker restart restoration, and audited expiry are also
+  complete.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and
   feature-specific design documents supersede conflicting details in that brief.

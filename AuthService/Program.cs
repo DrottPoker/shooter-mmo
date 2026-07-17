@@ -64,6 +64,7 @@ builder.Services.AddScoped<AccountItemMutationService>();
 builder.Services.AddScoped<SimulationItemMutationService>();
 builder.Services.AddScoped<ItemPolicyService>();
 builder.Services.AddScoped<QuestItemService>();
+builder.Services.AddScoped<CorpseService>();
 builder.Services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
 builder.Services.AddScoped<DevelopmentItemToolService>();
 builder.Services.AddScoped<SessionService>();
@@ -72,6 +73,7 @@ builder.Services.AddScoped<SimulationSessionService>();
 builder.Services.AddScoped<SimulationWorkerRegistryService>();
 builder.Services.AddScoped<DevelopmentSimulationBotPlacementService>();
 builder.Services.AddScoped<DevelopmentSimulationBotTicketService>();
+builder.Services.AddHostedService<CorpseExpiryHostedService>();
 builder.Services.AddApiProblemDetails();
 builder.Services
     .AddAuthentication()
@@ -218,6 +220,7 @@ app.MapAccountEndpoints();
 app.MapCharacterEndpoints();
 app.MapItemEndpoints();
 app.MapSimulationItemEndpoints();
+app.MapCorpseEndpoints();
 app.MapSimulationEndpoints();
 app.MapDevelopmentSimulationBotEndpoints(developmentSimulationBotOptions);
 

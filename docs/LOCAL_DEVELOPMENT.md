@@ -739,6 +739,41 @@ contexts and the stable upper-right adapter boundary, but does not fabricate
 those later systems. Their manual cases become runnable when the corresponding
 authoritative phase is implemented.
 
+## Phase 10 Death And Durable Corpse Verification
+
+Phase 10 has no fabricated combat or Unity death flow. Verify its complete
+durable boundary against the isolated PostgreSQL database:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  (Get-Content .env | Where-Object {
+    $_ -like "SHOOTER_MMO_TEST_POSTGRES=*"
+  }).Split("=", 2)[1]
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~DeathLootIntegrationTests|FullyQualifiedName~DurableCorpseStoreTests|FullyQualifiedName~AuthServiceClientTests"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+```
+
+Expected result: every selected test passes. The suite verifies the migration and
+exact five-minute database constraint, service authentication and live-session
+fencing, one death partition under replay, total item custody conservation,
+unchanged currency and Secure contents, protected and insurance precedence,
+insured equipment and Bag snapshots, child-before-Bag Recovery ordering,
+involuntary over-cap death after Bag capacity loss, weight-reducing remediation,
+rejection of further weight gain, cross-Shard worker restoration, empty-corpse
+lifetime, one audited destruction per remaining item, and a
+custody-versus-expiry race with one final outcome.
+
+No manual Unity Editor steps are required for Phase 10. Do not change a scene,
+prefab, Inspector property, input action, package, or build setting. The
+authoritative combat death producer and Phase 11 corpse inspection protocol do
+not exist yet, so there is intentionally no honest player-visible corpse test in
+this phase. When combat is implemented, it must call the prepared exact-session
+death boundary and feed the committed corpse response into active presentation.
+
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 

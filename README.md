@@ -61,6 +61,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   stable PostgreSQL lock order, optimistic revisions, atomic item and Bag
   commands, Recovery deliveries, Secure Container tier changes, carried-state
   recomputation, policy lifecycle, quest-grant cleanup, and relational audit.
+- A durable player-death boundary that partitions protected, effective insured,
+  and lootable custody once, persists three-section five-minute corpses and
+  presentation-only snapshots, restores unexpired corpses to the exact assigned
+  worker runtime, and audits idempotent expiry destruction.
 - Exact-session carry-state admission and heartbeat propagation, with base and
   Bag capacity, monotonic item-state revisions, authoritative sprint limits, and
   one shared encumbrance calculation for SimulationWorker and Unity prediction.
@@ -89,7 +93,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 9 of the slot-based item foundation are implemented. Shared
+Phases 1 through 10 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
 character item-state bootstrap now exist. AuthService exposes revision-cached
@@ -101,8 +105,10 @@ characters now mutate through an exact-session, exact-worker SimulationWorker
 boundary with live service access and committed carry propagation. Unity now
 loads and reconciles authoritative item snapshots through a persistent client
 controller and presents the first temporary but complete uGUI inventory loop.
-Carry state drives shared authoritative and predicted movement. Corpse custody,
-corpse interaction, and final UI art remain later phases.
+Carry state drives shared authoritative and predicted movement. AuthService now
+owns durable player-death partition, corpse custody, Recovery policy results,
+absolute expiry, and restart restoration. The combat death producer, live corpse
+presentation and interaction, and final UI art remain later phases.
 Combat, persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 
@@ -194,8 +200,8 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item persistence, policy-safe offline item APIs, internal item transactions, HTTP, and owned config |
-| `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, and owned config |
+| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
+| `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, durable corpse restoration state, and owned config |
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |

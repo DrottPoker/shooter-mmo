@@ -1,6 +1,6 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Purpose
 
@@ -243,6 +243,9 @@ equipped Bag may add a capacity bonus.
   load to 20 percent base speed at 140 percent load.
 - Exactly 140 percent is allowed.
 - No action may increase carried weight beyond 140 percent.
+- Authoritative death may involuntarily reduce capacity below retained Secure
+  Container weight. Death still commits, after which only non-worsening
+  remediation may proceed until the character returns within the hard cap.
 - Weight and capacity use unitless integers and exact integer comparisons.
 - Base capacity `200` reaches the 140 percent hard cap at weight `280`.
 - Structural content changes that could create an invalid over-cap state require
@@ -452,8 +455,13 @@ Current implementation note:
 - Item-plan Phase 9 adds persistent Unity catalog and snapshot state, monotonic
   revision and operation handling, authoritative refresh, reconnect restoration,
   and the first temporary uGUI inventory loop.
-- Gameplay-created item grants, insurance NPC pricing and death consumption,
-  combat, mobs, death, corpses, and loot are not implemented.
+- Item-plan Phase 10 adds idempotent player-death partition, Recovery delivery,
+  durable five-minute player corpse custody and snapshots, exact worker restart
+  restoration, and audited expiry cleanup.
+- Gameplay-created item grants, insurance NPC pricing, authoritative combat death
+  production, mobs, live corpse presentation, and corpse looting are not
+  implemented. Insurance consumption is implemented only inside the prepared
+  durable death transaction.
 
 ## Persistence Principles
 
@@ -501,7 +509,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 9 complete
+Status: In progress, item-plan Phases 1 through 10 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -530,6 +538,11 @@ Status: In progress, item-plan Phases 1 through 9 complete
 - Persistent Unity catalog and inventory state, complete and focused revision
   coherence, operation journaling, authoritative refresh, reconnect restoration,
   and the temporary three-area uGUI presentation are complete.
+- Idempotent player-death partition, protected and effective insured Recovery
+  delivery, durable three-section player corpses, presentation-only snapshots,
+  exact worker and Shard restart restoration, empty-corpse lifetime, and audited
+  absolute expiry are complete. Live activation waits for the authoritative
+  combat death producer.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
@@ -565,11 +578,18 @@ Status: Deferred until a larger authored map exists
 
 ### Phase 8: Death, Recovery, And Corpse Looting
 
-- Partition player items transactionally from an authoritative death event.
-- Apply protected-on-death and one-death insurance policies.
-- Create Recovery Storage deliveries.
-- Create durable five-minute player corpse custody and presentation snapshots.
-- Restore player corpses after SimulationWorker restart.
+Status: In progress, durable player-death and corpse foundation complete
+
+- Completed item subphase: partition player items transactionally from a unique
+  authoritative death event.
+- Completed item subphase: apply protected-on-death and one-death insurance
+  policies and create Recovery Storage deliveries.
+- Completed item subphase: create durable five-minute player corpse custody and
+  presentation snapshots.
+- Completed item subphase: restore player corpses after SimulationWorker restart
+  without resetting their database deadline.
+- Connect the prepared death boundary to the future authoritative combat event
+  producer and active corpse presentation.
 - Allow concurrent item and partial-stack looting.
 - Support atomic Bag swaps.
 - Add configurable live or durable NPC corpse behavior.

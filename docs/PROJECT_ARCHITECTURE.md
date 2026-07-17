@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Purpose
 
@@ -273,10 +273,11 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 9 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 10 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
-mutation plus Unity inventory integration implemented
+mutation plus Unity inventory integration, death partition, and durable player
+corpse custody implemented
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -367,10 +368,14 @@ exact live identity and commits the durable transaction. Production therefore
 retains authored service-point proximity without a separate code path or protocol
 contract.
 
-Player corpses will use durable custody with an absolute expiry and can be
-restored by a replacement worker. Normal NPC corpses may remain worker-owned and
-disappear on restart, while content-selected bosses may use the durable corpse
-path. These choices do not introduce Zone or Layer ownership.
+Player corpses use durable PostgreSQL custody with a database-timed absolute
+five-minute expiry. AuthService partitions one death event transactionally,
+persists the corpse transform and presentation metadata, and expires remaining
+loot through one durable cleanup operation. A replacement SimulationWorker
+restores only open, unexpired corpses for its exact runtime and Shard assignment.
+Normal NPC corpses may remain worker-owned and disappear on restart, while
+content-selected bosses may later reuse the durable path. These choices do not
+introduce Zone or Layer ownership.
 
 Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel.
 Phase 6 adds policy-safe account reads and offline mutations on that kernel.
@@ -382,6 +387,14 @@ interaction layer, and temporary uGUI presentation. Unity still has no item
 authority, SimulationWorker still holds no item collection, and there is no
 gameplay grant route. A guarded one-shot Development fixture command uses the
 existing durable kernel and is not a service endpoint.
+
+Phase 10 adds an exact-session player-death route, an internal system death
+adapter, durable corpse restoration for the assigned worker, and an idempotent
+AuthService expiry loop. SimulationWorker holds only the bounded runtime corpse
+identity and presentation state returned by AuthService, never PostgreSQL item
+rows or an alternate custody model. Combat death generation, Unity corpse
+presentation, proximity, inspection, looting, and corpse Bag swaps remain later
+boundaries.
 
 Protocol version `8` retains its existing wire version and packet framing. The
 ordinary container-item swap is an additive operation kind that reuses the
@@ -424,6 +437,10 @@ proposed schema and delivery order in
 | `recovery_deliveries`, `recovery_delivery_items` | Per-character system delivery queue and delivered item membership |
 | `item_operations` | Global idempotency id, canonical request hash, status, and replay result |
 | `item_operation_changes`, `item_destructions` | State-change and destruction audit foundation |
+| `corpses` | Durable source snapshot, Shard transform, presentation key, revision, absolute expiry, and close lifecycle |
+| `corpse_sections` | General inventory, equipment, and Bag-section bindings to real item containers |
+| `corpse_snapshots` | Non-interactive Secure tier, insured equipment, and protected or insured Bag presentation metadata |
+| `death_events` | Unique authoritative death event, original operation, canonical request hash, corpse, and immutable result correlation |
 
 Active account login sessions are unique by account. Active simulation sessions
 are unique by both character and account. This prevents one account token from
@@ -443,10 +460,10 @@ Container entitlement remains until the account is deleted. Item operations and
 change audit remain, while deleted actor and item references become null. This
 keeps deletion behavior explicit without retaining live custody rows.
 
-This table lists the implemented schema only. Corpse identity, corpse sections,
-death events, and snapshot tables remain planned for their later phase. The
-current container type contract can represent their future item custody without
-introducing Zone or Layer identity.
+Corpse snapshots do not contain an item-instance foreign key. Real loot exists
+only in section-container custody, while protected and insured real instances use
+Recovery Storage. Deleting the source character may clear its corpse reference
+without deleting the corpse name, transform, lifetime, sections, or audit.
 
 ## Runtime Identity And Assignment Safety
 
@@ -588,8 +605,7 @@ and disconnects the older peer generation.
 
 Status: Implemented transport and authority boundary
 
-1. Unity sends an item or corpse interaction intent to its assigned
-   SimulationWorker.
+1. Unity sends an item interaction intent to its assigned SimulationWorker.
 2. SimulationWorker validates the exact live session, proximity, interaction,
    and service-access rules.
 3. The worker calls AuthService over its service-authenticated channel with an
@@ -605,6 +621,40 @@ Status: Implemented transport and authority boundary
    mutates item custody or quantity.
 
 No database transaction remains open across a client network round trip.
+
+### Authoritative Player Death And Corpse Restoration
+
+Status: Durable Phase 10 boundary implemented, live combat producer pending
+
+1. The future authoritative combat system produces one unique death event only
+   after its owning SimulationWorker has resolved death. Until that producer
+   exists, the same boundary is exercised by system and PostgreSQL tests.
+2. SimulationWorker submits the exact account, character, simulation session,
+   token, worker id, runtime id, Shard, expected item-state revision, transform,
+   and generic corpse presentation key over its authenticated AuthService client.
+3. AuthService revalidates the complete live authority, claims both the item
+   operation and death-event identities, then locks the character, Bag
+   aggregates, containers, items, and policies in the durable transaction.
+4. Currency, bank, Recovery Storage, and Secure Container custody remain where
+   they were. Protected and effective insured items move to correlated Recovery
+   deliveries. Remaining permanent inventory, equipment, Bag roots, and Bag
+   children move to durable corpse sections. All affected revisions, carry state,
+   policy consumption, snapshots, and audit commit together.
+   If removing the equipped Bag bonus leaves retained Secure Container weight
+   above the hard cap, death still commits. The durable transaction kernel then
+   permits only non-worsening remediation until the state returns within the
+   cap.
+5. Each corpse stores database creation time plus the exact five-minute player
+   deadline. AuthService cleanup locks the corpse first, destroys each remaining
+   item once with audit, and closes even an already-empty corpse only at that
+   deadline.
+6. After worker registration, SimulationWorker requests one read-only snapshot
+   for its exact fresh runtime and active Shard assignment. It keeps the generic
+   presentation state against database time advanced by a monotonic local clock.
+
+The Phase 10 boundary adds no GameProtocol packet and no Unity corpse authority.
+Corpse open, proximity, item loot, partial-stack loot, active viewers, deltas,
+and Bag swaps belong to Phase 11.
 
 ## Configuration Ownership
 

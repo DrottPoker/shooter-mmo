@@ -33,6 +33,11 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         ItemTransactionService = new ItemTransactionService(dataSource);
         AccountItemMutationService = new AccountItemMutationService(ItemTransactionService);
         SimulationItemMutationService = new SimulationItemMutationService(ItemTransactionService);
+        CorpseService = new CorpseService(
+            dataSource,
+            ItemTransactionService,
+            authServiceConfig,
+            NullLogger<CorpseService>.Instance);
         ItemPolicyService = new ItemPolicyService(ItemTransactionService);
         QuestItemService = new QuestItemService(ItemTransactionService);
         DatabaseInitializer = new DatabaseInitializer(
@@ -56,6 +61,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             dataSource,
             authServiceConfig,
             NullLogger<SimulationTopologySeeder>.Instance);
+        AuthServiceConfig = authServiceConfig;
     }
 
     public NpgsqlDataSource DataSource { get; }
@@ -78,11 +84,15 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public SimulationItemMutationService SimulationItemMutationService { get; }
 
+    public CorpseService CorpseService { get; }
+
     public ItemPolicyService ItemPolicyService { get; }
 
     public QuestItemService QuestItemService { get; }
 
     public IConfiguration Configuration { get; }
+
+    public AuthServiceConfig AuthServiceConfig { get; }
 
     public SessionService SessionService { get; }
 

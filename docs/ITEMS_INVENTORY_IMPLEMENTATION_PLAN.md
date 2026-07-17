@@ -1,8 +1,8 @@
 # Items And Inventory Implementation Plan
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
-Status: Approved delivery baseline, Phases 1 through 9 completed
+Status: Approved delivery baseline, Phases 1 through 10 completed
 
 ## Purpose
 
@@ -1167,6 +1167,8 @@ context and state boundaries are prepared for the later authoritative phases.
 
 ## Phase 10: Death Partition And Durable Player Corpses
 
+Status: Completed 2026-07-17
+
 This phase depends on a server-authoritative death event producer. The durable
 service and integration tests may be built before combat, but live activation
 waits for authoritative death.
@@ -1193,6 +1195,10 @@ waits for authoritative death.
 - Every pre-death item appears in exactly one post-death custody or destruction
   record.
 - Secure Container contents remain in place and keep weight ownership.
+- Losing an equipped Bag capacity bonus cannot block death when retained Secure
+  Container weight creates an involuntary over-cap state. While that state
+  remains, remediation may not increase weight or worsen the load ratio, and a
+  further weight increase is rejected.
 - Protected items move to Recovery Storage without visible item snapshots.
 - Insured equipment moves to Recovery Storage, consumes policy, and creates a
   non-interactive corpse snapshot.
@@ -1203,9 +1209,60 @@ waits for authoritative death.
 - Empty player corpses persist until the same absolute expiry.
 - Loot and expiry races produce one final owner or destruction result.
 
+### Implemented Outcome
+
+- `ItemTransactionService` now processes one unique death event through the same
+  operation journal, exact live-session authority, stable aggregate locking,
+  carried-state recomputation, revision, and relational audit foundation as the
+  existing item commands.
+- One PostgreSQL transaction leaves currency, bank, Recovery Storage, and Secure
+  Container custody untouched, routes protected and effective insured items to
+  source-correlated Recovery deliveries, and moves remaining permanent,
+  equipment, Bag-root, and Bag-child custody into three durable corpse sections.
+- Death may remove an equipped Bag capacity bonus while retained Secure Container
+  contents keep their carried weight. That involuntary transition commits even
+  above 140 percent. The durable kernel then permits only non-worsening
+  remediation until the character is within the hard cap again, and continues
+  to reject every weight-increasing or ratio-worsening operation.
+- Insurance is consumed only for an otherwise lootable item. Protected priority
+  does not consume an additional active insurance policy. Every protected or
+  insured Bag root reaches Recovery empty after all children are independently
+  partitioned.
+- `corpses`, `corpse_sections`, `corpse_snapshots`, and `death_events` persist the
+  exact Shard, normalized transform, generic presentation key, revisions,
+  database creation time, five-minute absolute player expiry, and non-interactive
+  presentation metadata without real protected or Secure item ids.
+- SimulationWorker restores only open, unexpired corpses for its exact current
+  runtime and Shard assignment. Its local store advances from the returned
+  database time with a monotonic clock, so local wall-clock changes cannot extend
+  a restored representation.
+- AuthService cleanup uses each corpse's durable expiry operation id. It locks the
+  corpse before remaining loot, destroys each remaining instance once with a
+  destruction and operation audit row, closes the corpse, and retains empty
+  corpses until the same absolute expiry.
+- The combat death producer, Unity corpse presentation, corpse-open and loot
+  intents, proximity checks, viewer deltas, partial-stack loot, and Bag swap stay
+  prerequisite-gated to their later phases. No Phase 11 protocol operation was
+  added.
+
+### Manual Test Gate
+
+Run the dedicated backend gate from
+[Local Development](LOCAL_DEVELOPMENT.md#phase-10-death-and-durable-corpse-verification).
+Expected result: all Phase 10 unit and PostgreSQL tests pass, including
+idempotency, every final custody, policy precedence, Bag-child ordering,
+capacity-loss overflow remediation and rejection, restoration, empty-corpse
+lifetime, expiry audit, and the custody-versus-expiry race. No manual Unity
+Editor authoring or player death flow is required because the authoritative
+combat death producer does not exist yet.
+
 ### Exit Gate
 
 Player death cannot duplicate, lose, or expose protected durable items.
+
+The Phase 10 durable service and test exit gate is satisfied. Live gameplay
+activation remains explicitly gated on the server-authoritative combat death
+producer. Phase 11 work has not started.
 
 ## Phase 11: Concurrent Corpse Looting And Bag Swap
 

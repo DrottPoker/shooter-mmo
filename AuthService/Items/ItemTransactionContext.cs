@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +23,7 @@ internal sealed class ItemTransactionContext(
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
     private long? secureContainerEntitlementRevision;
+    private bool allowInvoluntaryHardCapOverflow;
 
     public NpgsqlConnection Connection { get; } = connection;
 
@@ -396,6 +398,56 @@ internal sealed class ItemTransactionContext(
         }
 
         return rows.ToDictionary(row => row.CharacterId);
+    }
+
+    public async Task<LockedCharacterState> LockCharacterStateForIdempotentEventAsync(
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        if (characterId == Guid.Empty)
+        {
+            Reject(ItemTransactionErrorCodes.ItemNotFound, "A character id is required.");
+        }
+
+        var row = await Connection.QuerySingleOrDefaultAsync<LockedCharacterState>(
+            new CommandDefinition(
+                """
+                select
+                    state.character_id as "CharacterId",
+                    character.account_id as "AccountId",
+                    state.revision as "Revision",
+                    state.carried_weight as "CarriedWeight",
+                    state.base_carry_capacity as "BaseCarryCapacity",
+                    state.carry_capacity as "CarryCapacity",
+                    state.permanent_inventory_container_id as "PermanentInventoryContainerId",
+                    state.bank_container_id as "BankContainerId",
+                    state.secure_container_id as "SecureContainerId",
+                    state.recovery_storage_container_id as "RecoveryStorageContainerId"
+                from character_item_states state
+                join characters character on character.id = state.character_id
+                where state.character_id = @CharacterId
+                  and character.deleted_at is null
+                for no key update of character
+                for update of state;
+                """,
+                new { CharacterId = characterId },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (row is null)
+        {
+            Reject(ItemTransactionErrorCodes.ItemNotFound, "The character item state was not found.");
+        }
+
+        EnsureAccountAuthority(row.AccountId);
+        if (Actor.Authority == ItemTransactionAuthority.SimulationWorker
+            && Actor.Simulation!.CharacterId != row.CharacterId)
+        {
+            Reject(
+                ItemTransactionErrorCodes.SimulationSessionInvalid,
+                "The item state does not belong to the active simulation character.");
+        }
+
+        return row;
     }
 
     public async Task LockMutationScopeAsync(
@@ -1137,6 +1189,20 @@ internal sealed class ItemTransactionContext(
         secureContainerEntitlementRevision = revision;
     }
 
+    public void AllowInvoluntaryDeathHardCapOverflow()
+    {
+        if (!string.Equals(
+                OperationKind,
+                ItemOperationKinds.ProcessPlayerDeath,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Only player death may permit involuntary carry overflow.");
+        }
+
+        allowInvoluntaryHardCapOverflow = true;
+    }
+
     public async Task<ItemTransactionResult> FinalizeSuccessAsync(
         CancellationToken cancellationToken)
     {
@@ -1181,7 +1247,22 @@ internal sealed class ItemTransactionContext(
         foreach (var characterId in touchedCharacterIds.Order())
         {
             var carry = await CalculateCarryStateAsync(characterId, cancellationToken);
-            if (!EncumbranceRules.IsWithinHardCap(carry.CarriedWeight, carry.CarryCapacity))
+            var previousCarry = await Connection.QuerySingleAsync<CharacterCarryResult>(
+                new CommandDefinition(
+                    """
+                    select
+                        revision as "Revision",
+                        carried_weight as "CarriedWeight",
+                        carry_capacity as "CarryCapacity"
+                    from character_item_states
+                    where character_id = @CharacterId;
+                    """,
+                    new { CharacterId = characterId },
+                    Transaction,
+                    cancellationToken: cancellationToken));
+            if (!EncumbranceRules.IsWithinHardCap(carry.CarriedWeight, carry.CarryCapacity)
+                && !allowInvoluntaryHardCapOverflow
+                && !IsNonWorseningExistingOverflow(previousCarry, carry))
             {
                 Reject(
                     ItemTransactionErrorCodes.CarryWeightLimitExceeded,
@@ -1275,6 +1356,18 @@ internal sealed class ItemTransactionContext(
             resultItems,
             recoveryDeliveryIds.Order().ToArray(),
             secureContainerEntitlementRevision);
+    }
+
+    private static bool IsNonWorseningExistingOverflow(
+        CharacterCarryResult previousCarry,
+        CalculatedCarryState nextCarry)
+    {
+        return !EncumbranceRules.IsWithinHardCap(
+                previousCarry.CarriedWeight,
+                previousCarry.CarryCapacity)
+            && nextCarry.CarriedWeight <= previousCarry.CarriedWeight
+            && ((BigInteger)nextCarry.CarriedWeight * previousCarry.CarryCapacity)
+                <= ((BigInteger)previousCarry.CarriedWeight * nextCarry.CarryCapacity);
     }
 
     [DoesNotReturn]

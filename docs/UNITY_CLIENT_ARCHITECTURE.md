@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Purpose
 
@@ -581,6 +581,11 @@ non-empty Bags, split quantities, and the exact hard cap.
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, persistent realtime and inventory controllers, and runtime login
 panel. WorldScene coverage opens and closes the runtime uGUI inventory root.
+
+Phase 10 changes only AuthService and SimulationWorker durable death state. It
+adds no GameProtocol packet, Unity state, scene object, input, or temporary
+corpse panel. The prepared corpse context adapter remains inactive until Phase 11
+defines authoritative inspection, proximity, refresh, and mutation contracts.
 
 Manual flows and expected results are documented in
 [Local Development](LOCAL_DEVELOPMENT.md).

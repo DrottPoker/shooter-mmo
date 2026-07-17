@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## What Shooter MMO Is
 
@@ -149,7 +149,7 @@ introduce isolated realms.
 
 ## Item Foundation Status
 
-Phases 1 through 9 of the durable item and inventory plan are complete. The
+Phases 1 through 10 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -180,6 +180,15 @@ the persistent Unity catalog and inventory controller, monotonic complete and
 focused snapshots, operation journaling, authoritative refresh, reconnect
 restoration, and the temporary three-area uGUI inventory panel.
 
+Phase 10 extends the same operation journal and item transaction kernel with a
+second unique death-event fence. One transaction preserves currency and Secure
+Container custody, sends protected and effective insured items to Recovery,
+partitions remaining permanent inventory, equipment, Bag roots, and Bag children
+into durable corpse sections, and creates presentation-only snapshots. Player
+corpses keep a database-timed five-minute deadline through worker restarts and
+remain until that deadline even when empty. Idempotent cleanup destroys and
+audits only the loot still in corpse custody.
+
 Carried weight excludes every equipment-slot item, including the equipped Bag
 root. Permanent inventory, equipped Bag contents, carried empty Bags, and Secure
 Container contents still count, while the equipped Bag capacity bonus remains
@@ -190,8 +199,9 @@ The remaining locked direction is slot-based rather than grid-based and includes
 
 - Final inventory visual design, drag-and-drop interaction polish, accessibility,
   and item policy detail presentation on the implemented client foundation.
-- Transactional death partition, durable five-minute player corpses, concurrent
-  looting, one-death insurance, and configurable NPC corpse persistence.
+- The authoritative combat death producer, live corpse presentation, concurrent
+  looting and Bag swaps, insurance NPC purchase behavior, and configurable NPC
+  corpse persistence.
 
 The persistent schema, character custody identities, authoritative reads,
 offline account mutations, policy services, internal item mutations, and
@@ -206,8 +216,9 @@ item grants. See
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Gameplay-created item instances, corpse identity, death partition, and loot
-  transactions.
+- Gameplay-created item instances, authoritative combat death production, live
+  corpse representation, and loot transactions. Durable player corpse identity
+  and death partition already exist behind the service boundary.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live

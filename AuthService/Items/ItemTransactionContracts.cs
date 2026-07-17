@@ -215,6 +215,22 @@ public sealed record AbandonQuestItemsCommand(
     long? ExpectedCharacterRevision,
     string QuestGrantId);
 
+public sealed record ProcessPlayerDeathCommand(
+    Guid DeathEventId,
+    Guid CharacterId,
+    long? ExpectedCharacterRevision,
+    string ShardId,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double RotationW,
+    string PresentationKey);
+
+public sealed record ExpireCorpseCommand(Guid CorpseId);
+
 public sealed record ItemTransactionResult(
     Guid OperationId,
     string OperationKind,
@@ -262,4 +278,6 @@ public static class ItemOperationKinds
     public const string ApplyItemPolicy = "apply_item_policy";
     public const string RemoveInsurancePolicy = "remove_insurance_policy";
     public const string AbandonQuestItems = "abandon_quest_items";
+    public const string ProcessPlayerDeath = "process_player_death";
+    public const string ExpireCorpse = "expire_corpse";
 }

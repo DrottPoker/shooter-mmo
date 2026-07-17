@@ -1,12 +1,12 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
-Status: Locked design target; Phases 1 through 9 content, authoring, schema,
+Status: Locked design target; Phases 1 through 10 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
 encumbrance plus realtime item mutation and Unity inventory foundation
-implemented
+plus death partition and durable player-corpse custody implemented
 
 ## Purpose
 
@@ -373,6 +373,10 @@ its carry-capacity bonus.
 - At 140 percent, movement uses 20 percent of base speed.
 - Exactly 140 percent is allowed.
 - No action may increase carried weight beyond 140 percent.
+- An involuntary capacity loss during death may leave retained Secure Container
+  weight above 140 percent. Death still commits. Until the character returns
+  within the hard cap, only operations that do not increase carried weight or
+  worsen the exact load ratio may commit.
 
 With base capacity `200`, normal capacity ends at carried weight `200` and the
 140 percent hard cap is carried weight `280`.
@@ -523,6 +527,14 @@ death event id. The transaction partitions every relevant item exactly once:
    durable corpse custody.
 6. Non-interactive snapshots are created where required.
 7. Character and corpse inventory revisions advance together.
+
+An equipped Bag capacity bonus is removed when the Bag leaves equipment. If
+retained Secure Container contents then place the character above 140 percent,
+the death transaction still commits because rejecting death would violate the
+authoritative event and custody partition. The item transaction kernel accepts
+only non-worsening remediation from that state and rejects any added weight or
+worse load ratio. Live combat activation must resolve the dead character's
+respawn and carry-state transition before returning it to movement simulation.
 
 The corpse exposes separate sections for:
 
@@ -684,7 +696,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 9 now implement the neutral catalog, structural
+claim. Phases 1 through 10 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -723,6 +735,14 @@ reconnect restoration, structured errors, and temporary uGUI presentation. The
 client uses local definition presentation and disables obvious invalid targets,
 but it neither owns custody nor applies optimistic item changes.
 
-No vendor, gathering, insurance purchase, quest gameplay, or corpse interaction
-path calls the kernel yet. Insurance pricing and death consumption, death
-partition, persistent corpse identity, and corpse looting remain later phases.
+Phase 10 adds service-authenticated and system death-event processing over the
+same durable kernel. PostgreSQL now owns five-minute player corpse identity,
+three real item-custody sections, non-interactive snapshots, Recovery delivery
+partitioning, and idempotent expiry destruction. SimulationWorker restores only
+unexpired rows for its exact runtime and Shard, using the database-time deadline
+and generic presentation key. Empty player corpses remain through that deadline.
+
+No vendor, gathering, insurance purchase, quest gameplay, combat death producer,
+or corpse interaction path calls the new player-death boundary yet. Unity corpse
+presentation, proximity, concurrent loot, partial stacks, viewer deltas, and Bag
+swap remain later phases. No Zone or Layer identity was introduced.

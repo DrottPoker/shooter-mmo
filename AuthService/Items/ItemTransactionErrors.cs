@@ -25,6 +25,10 @@ public static class ItemTransactionErrorCodes
     public const string BankAccessRequired = "bank_access_required";
     public const string RecoveryAccessRequired = "recovery_access_required";
     public const string RecoveryDeliveryNotFound = "recovery_delivery_not_found";
+    public const string DeathEventConflict = "death_event_conflict";
+    public const string CorpseNotFound = "corpse_not_found";
+    public const string CorpseNotExpired = "corpse_not_expired";
+    public const string CorpseStateChanged = "corpse_state_changed";
     public const string ItemQuantityChanged = "item_quantity_changed";
     public const string WrongSimulationWorker = "wrong_simulation_worker";
     public const string WorkerRuntimeChanged = "worker_runtime_changed";

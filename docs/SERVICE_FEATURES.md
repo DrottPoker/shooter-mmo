@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Purpose
 
@@ -59,6 +59,8 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation through the durable kernel |
+| `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
+| `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -291,10 +293,10 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 9 of the approved item plan are implemented. Offline account
+Phases 1 through 10 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
-available:
+available together with durable player-death partition and corpse restoration:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -336,6 +338,15 @@ available:
   container-or-equipment location union, character item state, item policies,
   recovery deliveries, idempotent operations, and relational audit foundations
   with explicit CHECK, foreign-key, unique, partial unique, and revision rules.
+- The player-corpse migration adds durable corpses, three section-container
+  bindings, presentation-only snapshots, and unique death events. Player expiry
+  is constrained to database creation time plus exactly five minutes. Corpse
+  transforms require a bounded position and normalized quaternion. Snapshot
+  rows contain no item-instance identity.
+- A companion Phase 10 migration removes the obsolete row-level 140 percent
+  check from `character_item_states`. The transaction kernel remains the only
+  hard-cap authority so an authoritative death can persist retained Secure
+  Container weight after its equipped Bag capacity bonus is removed.
 - Startup idempotently backfills every active character with base carry capacity
   `200`, 20 permanent inventory slots, 40 bank slots, the account-entitled
   Secure Container slots, and one unbounded Recovery Storage identity.
@@ -368,7 +379,7 @@ available:
   merge, atomic ordinary container-slot swap, quantity consumption, allowed
   destruction, empty Bag storage, complete Bag aggregate swap, Recovery delivery
   add and claim, Secure Container tier change, policy application and removal,
-  and quest-grant abandonment cleanup.
+  quest-grant abandonment cleanup, player-death partition, and corpse expiry.
 - Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
   child. A protected or insured Bag or child rejects the complete swap without
   changing custody, quantity, or revisions.
@@ -382,9 +393,12 @@ available:
   survive. Replaying the same operation id and canonical payload returns the
   stored result. A different payload returns `item_operation_conflict`.
 - Successful commands recompute unitless carried weight and equipped Bag
-  capacity from authoritative custody, enforce the exact 140 percent hard cap,
-  advance touched character, container, Bag, and item revisions, and append
-  before and after audit rows. Equipment-slot item roots have zero carried
+  capacity from authoritative custody, advance touched character, container,
+  Bag, and item revisions, and append before and after audit rows. Voluntary
+  mutations enforce the exact 140 percent hard cap. Authoritative death may
+  create an involuntary over-cap state when retained Secure Container weight
+  outlives a removed Bag bonus; remediation may neither increase weight nor
+  worsen the exact load ratio. Equipment-slot item roots have zero carried
   weight. Equipped Bag contents still count and the equipped Bag bonus still
   increases capacity. Startup reconciliation corrects older stored tuples only
   when they differ.
@@ -453,6 +467,36 @@ available:
 - Worker and account APIs cannot both own carried mutation authority. Offline
   account routes and live worker routes coordinate through the character lock,
   and operation ids remain globally idempotent through the existing kernel.
+- Death-event ids add a second idempotency fence above the operation journal. A
+  replay with the same authoritative character, Shard, transform, and
+  presentation data returns the original corpse, absolute expiry, Recovery
+  deliveries, and committed character revision without repartitioning. Reusing
+  the event id with different data returns `death_event_conflict`.
+- One death transaction leaves currency, bank, existing Recovery Storage, and
+  Secure Container contents unchanged. Protected items and otherwise-lootable
+  active insured items move to source-correlated Recovery deliveries. Insurance
+  is consumed only in the latter case, so protected priority preserves an active
+  insurance policy.
+- Remaining permanent inventory, equipment, Bag root, and Bag children move to
+  general, equipment, and Bag corpse sections. Protected or insured Bag roots
+  move after every child and therefore reach Recovery empty. Normal children use
+  the detached corpse Bag section, while protected and insured children receive
+  their own policy result.
+- Every corpse has a non-interactive Secure tier snapshot. Effective insured
+  equipment and protected or insured Bags add definition-level presentation
+  snapshots, but no protected item placeholder or real protected instance id is
+  exposed.
+- `CorpseExpiryHostedService` scans database-time deadlines in bounded batches.
+  Each corpse owns one durable expiry operation id. Cleanup locks the corpse,
+  records one `item_destructions` and item-operation audit entry per remaining
+  instance, deletes children before Bag roots, closes remaining section
+  containers, and marks the corpse expired. Empty player corpses are not closed
+  early.
+- After obtaining a current registration lease, SimulationWorker restores only
+  open, unexpired corpses for its exact runtime and Shard assignment. AuthService
+  returns database time with the snapshot. The worker advances that time with a
+  monotonic clock and retains the generic loot-crate presentation key without
+  owning or copying item custody.
 - SimulationWorker updates its carry-state store only from committed AuthService
   results. A newer tuple is sent reliably before it affects movement. Conflicting
   same-revision data or stale live authority causes a targeted refresh response
@@ -657,6 +701,14 @@ the test connection variable at development or production data.
   mismatch, snapshot validation and coherence, operation correlation,
   specialized and Secure Container targets, non-empty Bag rules, split weight,
   and the hard cap. PlayMode tests cover persistent controller and uGUI creation.
+- Phase 10 tests cover migration idempotency and constraints, exact live service
+  authentication, death-event replay, total item custody conservation, currency
+  and Secure retention, protected and insurance precedence, insured equipment
+  snapshots, Bag-root and child ordering, involuntary capacity-loss overflow and
+  hard-cap remediation, cross-Shard restart restoration, database-timed
+  empty-corpse lifetime, idempotent audited expiry, and a custody-versus-expiry
+  race. Worker unit tests cover death and restoration response validation plus
+  monotonic database-time expiry in the runtime store.
 
 ## Not Yet Implemented
 
@@ -666,9 +718,12 @@ the test connection variable at development or production data.
   detail presentation. The current uGUI is temporary presentation only.
 - Corpse operation intents, corpse proximity, corpse views, or loot mutation
   through SimulationWorker or Unity.
-- Insurance NPC pricing and purchase behavior, insurance consumption on death,
-  death partition, persistent player corpses, concurrent corpse looting, or
-  configurable NPC corpse persistence.
+- The authoritative combat death producer and active corpse representation.
+  The durable authenticated death boundary is ready but is not fabricated by the
+  current movement-only gameplay.
+- Insurance NPC pricing and purchase behavior, concurrent corpse looting, or
+  configurable NPC corpse persistence. Effective one-death insurance
+  consumption inside durable player death is implemented.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.

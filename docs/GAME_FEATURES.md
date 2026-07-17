@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Purpose
 
@@ -278,6 +278,35 @@ so opening Equipment or Context never moves Character Inventory. The uGUI visual
 but catalog, snapshot, revision, operation-id, error, refresh, reconnect, and
 authority handling are permanent foundations.
 
+## Durable Player Death Foundation
+
+Status: Backend foundation implemented, live combat activation pending
+
+An authoritative player death can now be committed as one idempotent durable
+transaction. Currency and Secure Container contents stay with the character.
+Protected items and otherwise-lootable insured items enter Recovery Storage,
+while the remaining permanent inventory, equipment, Bag, and independently
+evaluated Bag children enter a five-minute PostgreSQL corpse. Insurance is
+consumed only when it actually protects an item. A protected item does not reveal
+an item placeholder to a future looter.
+
+Death cannot be rejected because removing the equipped Bag bonus leaves retained
+Secure Container weight above 140 percent. This involuntary state is durable,
+but subsequent item operations may neither increase weight nor worsen the exact
+load ratio until the character is within the hard cap. Any further weight
+increase or ratio degradation is rejected.
+
+Player corpses retain their Shard, transform, source name, generic presentation
+key, three item sections, snapshots, revisions, database creation time, and one
+absolute five-minute deadline. They remain through the deadline even when empty.
+A restarted SimulationWorker restores only its own open and unexpired Shard
+corpses. Expiry destroys each remaining item once with durable audit.
+
+This is not yet a player-visible death or looting loop. The project still has no
+combat death producer, corpse entity replication, Unity corpse view, proximity
+validation, concurrent loot intent, partial-stack loot, or corpse Bag swap. No
+new Unity input or realtime packet was added in Phase 10.
+
 ## Planned Feature Categories
 
 These categories are defined by the project direction but are not implemented.
@@ -288,8 +317,8 @@ They remain in the MVP specification until working behavior is available:
 - Shooter combat, weapons, damage, death, and respawning.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
-- Durable player corpses, configurable NPC corpses, concurrent looting, and
-  one-death insurance.
+- Live player death production and corpse presentation, configurable NPC
+  corpses, concurrent looting, and insurance NPC purchase behavior.
 - Gathering, crafting, professions, and player economy.
 - NPCs, enemies, quests, events, and world activities.
 - Character progression and long-term persistence.
@@ -300,8 +329,9 @@ They remain in the MVP specification until working behavior is available:
 The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
 PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
 Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
-Phase 7 shared live encumbrance, Phase 8 active-character mutation, and Phase 9
-Unity inventory foundation now exist.
+Phase 7 shared live encumbrance, Phase 8 active-character mutation, Phase 9
+Unity inventory foundation, and Phase 10 durable player-death partition and
+corpse persistence now exist.
 AuthService supports owned
 item-state, bank, Secure Container, and Recovery access plus offline relocation,
 split, merge, allowed destruction, Recovery claim, and tier-change operations.
@@ -326,8 +356,10 @@ by stable definition id. The bundled presentation catalog records the exact
 gameplay source revision and its own deterministic presentation revision. Unity
 validates and caches this catalog once per matching revision, then inventory,
 Bank, and Recovery Storage views reuse local lookups for state received from the
-server. Corpse and world-loot contexts retain prepared adapter identities but
-wait for their later authoritative snapshots and operations.
+server. Corpse and world-loot contexts retain prepared adapter identities. Phase
+10 now owns durable corpse identity and section custody on the server, but Unity
+waits for the Phase 11 inspection and mutation contracts rather than inventing
+client snapshots or operations.
 
 ## Feature Documentation Template
 

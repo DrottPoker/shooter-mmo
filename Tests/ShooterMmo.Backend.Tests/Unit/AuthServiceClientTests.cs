@@ -161,6 +161,87 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
+    public async Task PlayerDeathSendsRuntimeBoundEventAndValidatesDurablePartition()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+        var deathEventId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var createdAt = DateTime.UtcNow;
+        var requestBody = new SimulationPlayerDeathRequest(
+            operationId,
+            deathEventId,
+            accountId,
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            12,
+            1d,
+            2d,
+            3d,
+            0d,
+            0d,
+            0d,
+            1d,
+            "corpse.generic_loot_crate");
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            operationId,
+            deathEventId,
+            corpse = new
+            {
+                corpseId = Guid.NewGuid(),
+                sourceCharacterId = characterId,
+                sourceDisplayName = "Fallen Hero",
+                shardId = "local-shard-1",
+                positionX = 1d,
+                positionY = 2d,
+                positionZ = 3d,
+                rotationX = 0d,
+                rotationY = 0d,
+                rotationZ = 0d,
+                rotationW = 1d,
+                presentationKey = "corpse.generic_loot_crate",
+                revision = 1,
+                createdAt,
+                expiresAt = createdAt.AddMinutes(5),
+                isEmpty = true,
+                sections = CreateCorpseSections()
+            },
+            characterRevision = new
+            {
+                characterId,
+                revision = 13,
+                carriedWeight = 0,
+                carryCapacity = 200
+            },
+            recoveryDeliveryIds = Array.Empty<Guid>()
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.ProcessPlayerDeathAsync(
+            simulationSessionId,
+            requestBody,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(deathEventId, result.Value!.DeathEventId);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(
+            $"/api/simulation-sessions/{simulationSessionId}/player-deaths",
+            request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal(deathEventId, body.RootElement.GetProperty("deathEventId").GetGuid());
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("workerRuntimeId").GetString());
+        Assert.Equal(
+            "simulation-session-token",
+            body.RootElement.GetProperty("sessionToken").GetString());
+    }
+
+    [Fact]
     public async Task SimulationWorkerHeartbeatSendsCompleteTopologyIdentity()
     {
         var requestBody = CreateHeartbeatRequest();
@@ -227,6 +308,99 @@ public sealed class AuthServiceClientTests
             request.Path);
         using var body = JsonDocument.Parse(request.Body);
         Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
+    }
+
+    [Fact]
+    public async Task DurableCorpseRestoreUsesExactRuntimeShardAndValidatesSnapshot()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var corpseId = Guid.NewGuid();
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            databaseTime,
+            corpses = new[]
+            {
+                new
+                {
+                    corpseId,
+                    sourceCharacterId = Guid.NewGuid(),
+                    sourceDisplayName = "Fallen Hero",
+                    shardId = "local-shard-1",
+                    positionX = 1d,
+                    positionY = 2d,
+                    positionZ = 3d,
+                    rotationX = 0d,
+                    rotationY = 0d,
+                    rotationZ = 0d,
+                    rotationW = 1d,
+                    presentationKey = "corpse.generic_loot_crate",
+                    revision = 1,
+                    createdAt = databaseTime.AddMinutes(-1),
+                    expiresAt = databaseTime.AddMinutes(4),
+                    isEmpty = true,
+                    sections = CreateCorpseSections()
+                }
+            }
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.RestoreDurableCorpsesAsync(
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(corpseId, Assert.Single(result.Value!.Corpses).CorpseId);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(
+            "/api/simulation-workers/local-simulation-worker-1/corpses",
+            request.Path);
+        Assert.Contains("workerRuntimeId=runtime-1", request.Query, StringComparison.Ordinal);
+        Assert.Contains("shardId=local-shard-1", request.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DurableCorpseRestoreRejectsExpiredOrCrossShardPayload()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            databaseTime,
+            corpses = new[]
+            {
+                new
+                {
+                    corpseId = Guid.NewGuid(),
+                    sourceCharacterId = Guid.NewGuid(),
+                    sourceDisplayName = "Fallen Hero",
+                    shardId = "another-shard",
+                    positionX = 0d,
+                    positionY = 0d,
+                    positionZ = 0d,
+                    rotationX = 0d,
+                    rotationY = 0d,
+                    rotationZ = 0d,
+                    rotationW = 1d,
+                    presentationKey = "corpse.generic_loot_crate",
+                    revision = 0,
+                    createdAt = databaseTime.AddMinutes(-5),
+                    expiresAt = databaseTime,
+                    isEmpty = true,
+                    sections = CreateCorpseSections()
+                }
+            }
+        }));
+
+        var result = await CreateClient(handler).RestoreDurableCorpsesAsync(
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(HttpStatusCode.BadGateway, (HttpStatusCode)result.StatusCode);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
     }
 
     [Fact]
@@ -349,6 +523,34 @@ public sealed class AuthServiceClientTests
             "collision-revision-1");
     }
 
+    private static object[] CreateCorpseSections()
+    {
+        return
+        [
+            new
+            {
+                sectionKind = "general_inventory",
+                containerId = Guid.NewGuid(),
+                containerRevision = 1,
+                itemCount = 0
+            },
+            new
+            {
+                sectionKind = "equipment",
+                containerId = Guid.NewGuid(),
+                containerRevision = 1,
+                itemCount = 0
+            },
+            new
+            {
+                sectionKind = "bag",
+                containerId = Guid.NewGuid(),
+                containerRevision = 1,
+                itemCount = 0
+            }
+        ];
+    }
+
     private static AuthServiceClient CreateClient(HttpMessageHandler handler)
     {
         return new AuthServiceClient(new HttpClient(handler)
@@ -378,10 +580,13 @@ public sealed class AuthServiceClientTests
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            Requests.Add(new RecordedRequest(request.RequestUri!.AbsolutePath, body));
+            Requests.Add(new RecordedRequest(
+                request.RequestUri!.AbsolutePath,
+                body,
+                request.RequestUri.Query));
             return responseFactory(request);
         }
     }
 
-    private sealed record RecordedRequest(string Path, string Body);
+    private sealed record RecordedRequest(string Path, string Body, string Query);
 }
