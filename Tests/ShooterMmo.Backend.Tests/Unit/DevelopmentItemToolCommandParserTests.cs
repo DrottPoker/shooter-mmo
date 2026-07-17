@@ -75,6 +75,34 @@ public sealed class DevelopmentItemToolCommandParserTests
         Assert.Empty(error);
     }
 
+    [Fact]
+    public void CorpseCommandParsesShardAndInvariantWorldPosition()
+    {
+        var characterId = Guid.NewGuid();
+
+        var activated = DevelopmentItemToolCommandParser.TryParse(
+            [
+                "--dev-items-corpse",
+                characterId.ToString(),
+                "local-city-1",
+                "1.5",
+                "0",
+                "-2.25"
+            ],
+            out var command,
+            out var error);
+
+        Assert.True(activated);
+        Assert.NotNull(command);
+        Assert.Equal(DevelopmentItemToolCommandKind.Corpse, command.Kind);
+        Assert.Equal(characterId, command.CharacterId);
+        Assert.Equal("local-city-1", command.ShardId);
+        Assert.Equal(1.5d, command.PositionX);
+        Assert.Equal(0d, command.PositionY);
+        Assert.Equal(-2.25d, command.PositionZ);
+        Assert.Empty(error);
+    }
+
     [Theory]
     [InlineData("missing", "1", "bank")]
     [InlineData("00000000-0000-0000-0000-000000000000", "1", "bank")]

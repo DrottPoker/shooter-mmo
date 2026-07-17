@@ -61,6 +61,8 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation through the durable kernel |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
+| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/open` | Worker service policy | Read one exact-session, unexpired, same-Shard corpse snapshot after worker proximity validation |
+| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit full or partial corpse loot and atomic Bag aggregate swaps through the durable kernel |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -293,10 +295,11 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 10 of the approved item plan are implemented. Offline account
+Phases 1 through 11 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
-available together with durable player-death partition and corpse restoration:
+available together with durable player-death partition, corpse restoration,
+concurrent inspection, and authoritative looting:
 
 - `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
@@ -323,9 +326,11 @@ available together with durable player-death partition and corpse restoration:
 - `Shooter MMO > Tools > Inventory Item Grants` lists initialized local
   characters and active definitions, grants individual stacks, and applies
   deterministic inventory, equipment, stack, encumbrance, Secure Container, and
-  Recovery packages. Its short-lived Development command is loopback-only,
-  requires offline targets, uses `ItemTransactionService`, and adds no gameplay
-  HTTP or realtime protocol surface.
+  Recovery packages. It can also seed an empty offline character and submit the
+  normal system-death adapter to create a durable five-minute corpse at a chosen
+  local Shard position. Its short-lived Development commands are loopback-only,
+  require offline targets, use authoritative transaction services, and add no
+  gameplay HTTP surface.
 - The client presentation catalog is bundled under Unity Resources. It maps
   stable definition ids to optional icons, localization keys, fallback text,
   and optional prefab presentation keys with its own deterministic revision
@@ -442,13 +447,15 @@ available together with durable player-death partition and corpse restoration:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `8` includes carry state on join, later committed
+- Realtime protocol version `9` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, and complete Recovery Storage claim. The swap kind reuses the
-  existing two-item expectation packet shape, so the protocol version remains
-  `8`. Corpse operations remain reserved for their later phase.
+  destruction, and complete Recovery Storage claim. Version `9` adds chunked
+  corpse presence and view state, open, close, refresh, full and partial loot,
+  atomic Bag aggregate swap, operation result, delta, and view-closure messages.
+  Packet builders measure encoded UTF-8 size and preserve the existing `1200`
+  byte limit.
 - SimulationWorker accepts item intents only from an exact joined player on
   channel 0, processes at most one per peer at a time, and bounds each pending
   queue to eight operations. Synthetic development bots cannot mutate durable
@@ -497,22 +504,43 @@ available together with durable player-death partition and corpse restoration:
   returns database time with the snapshot. The worker advances that time with a
   monotonic clock and retains the generic loot-crate presentation key without
   owning or copying item custody.
+- SimulationWorker exposes corpse presence only within configured interest
+  range. One player can inspect one corpse at a time, while any number of
+  players may inspect the same corpse. The worker revalidates its authoritative
+  three-dimensional position and cached absolute lifetime before every open,
+  refresh, or mutation. AuthService repeats exact-session, Shard, and lifetime
+  authority inside the transaction boundary.
+- Corpse reads use short read-only snapshots. Full and partial loot and atomic
+  Bag aggregate swaps reuse `ItemTransactionService` with targeted item,
+  container, and Bag-root revisions. Unrelated corpse changes may commit
+  concurrently, competing custody has one stable winner, and no PostgreSQL
+  transaction remains open across a client network wait.
+- The worker broadcasts each committed targeted delta or replacement to every
+  current viewer. Its runtime store accepts only monotonic corpse revisions.
+  Expiry, invalidation, and missing-corpse results close affected views with
+  stable codes, while stale item or quantity conflicts trigger refresh.
 - SimulationWorker updates its carry-state store only from committed AuthService
   results. A newer tuple is sent reliably before it affects movement. Conflicting
   same-revision data or stale live authority causes a targeted refresh response
   or safe disconnect.
 - Unity keeps one persistent definition-id catalog index, presentation and icon
   cache, complete and focused snapshot state, monotonic observed revisions,
-  structured errors, and one operation journal. It correlates protocol-v8
+  structured errors, and one operation journal. It correlates protocol-v9
   results and refreshes authoritative HTTP state to the committed revision
   without optimistically changing item custody or quantity.
+- Unity also owns immutable corpse presence and view state, complete chunk
+  assembly, monotonic delta application, one pending corpse operation, and
+  refresh-on-stale behavior. A replaceable generic corpse capsule presents the
+  server identity and transform. `E` opens the nearest eligible corpse, and the
+  same typed drag layer submits full or partial loot and compatible Bag swaps.
 - The runtime uGUI panel is replaceable presentation over that state. It exposes
   Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
   Recovery Storage plus every current live mutation. Typed reusable drag sources
   and targets submit relocation, equipment, split, merge, atomic ordinary swap,
   and atomic Recovery claim operations only after drop validation. `B` shows
   character storage, `C` shows equipment plus character storage, and `I` shows
-  the complete Development view with contextual Bank and Recovery. Item clicks
+  the complete Development view with contextual Bank, Recovery, and an active
+  corpse. Item clicks
   select only the split and allowed-destruction controls. Bank and Recovery
   reads are globally inspectable by the owning account.
 - SimulationWorker normally derives Bank, Recovery Storage, and insurance access
@@ -531,6 +559,11 @@ available together with durable player-death partition and corpse restoration:
   new empty offline character, restricts PostgreSQL to loopback and a
   non-production-like database name, and refuses replay after the first item or
   Recovery delivery exists.
+- `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` is the matching
+  process-local corpse fixture. It seeds an empty source through the Phase 9
+  package when necessary, then uses the normal durable death transaction. The
+  source must be offline and the resulting corpse keeps its database deadline
+  across worker restart.
 
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
@@ -709,6 +742,13 @@ the test connection variable at development or production data.
   empty-corpse lifetime, idempotent audited expiry, and a custody-versus-expiry
   race. Worker unit tests cover death and restoration response validation plus
   monotonic database-time expiry in the runtime store.
+- Phase 11 PostgreSQL races cover unrelated concurrent loot, same-item winners,
+  partial stack conservation, Bag-versus-child and Bag-versus-Bag locking, the
+  exact 140 percent hard cap, and equal competition by the dead character.
+  HTTP, worker, protocol, and Unity coverage verifies exact authority, no idle
+  transaction after mutation, viewer deltas, stable close errors, dynamic MTU
+  packing, monotonic corpse state, fixture creation, typed drag payloads, and
+  persistent presentation bootstrap.
 
 ## Not Yet Implemented
 
@@ -716,13 +756,11 @@ the test connection variable at development or production data.
   is intentionally not a route.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
   detail presentation. The current uGUI is temporary presentation only.
-- Corpse operation intents, corpse proximity, corpse views, or loot mutation
-  through SimulationWorker or Unity.
-- The authoritative combat death producer and active corpse representation.
-  The durable authenticated death boundary is ready but is not fabricated by the
-  current movement-only gameplay.
-- Insurance NPC pricing and purchase behavior, concurrent corpse looting, or
-  configurable NPC corpse persistence. Effective one-death insurance
+- The authoritative combat death producer and final corpse visuals. The durable
+  authenticated death boundary and generic active corpse representation are
+  ready, but combat is not fabricated by the current movement-only gameplay.
+- Insurance NPC pricing and purchase behavior or configurable NPC corpse
+  persistence. Effective one-death insurance
   consumption inside durable player death is implemented.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.

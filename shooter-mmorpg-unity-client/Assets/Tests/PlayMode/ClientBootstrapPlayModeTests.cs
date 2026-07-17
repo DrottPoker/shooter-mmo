@@ -29,7 +29,9 @@ namespace ShooterMmo.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<ShooterMmoClientBootstrap>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<RealtimeSimulationClient>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<InventoryClientController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<CorpseClientController>(), Is.Not.Null);
             Assert.That(ShooterMmoClientBootstrap.InventoryController.IsInitialized, Is.True);
+            Assert.That(ShooterMmoClientBootstrap.CorpseController, Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
         }
 
@@ -51,6 +53,7 @@ namespace ShooterMmo.Tests.PlayMode
             Assert.That(context, Is.Not.Null);
             Assert.That(context.enabled, Is.False);
             Assert.That(Object.FindAnyObjectByType<LocalPlayerController>(), Is.Null);
+            Assert.That(Object.FindAnyObjectByType<CorpsePresentationController>(), Is.Not.Null);
             var inventoryPanel = Object.FindAnyObjectByType<TemporaryInventoryPanel>();
             Assert.That(inventoryPanel, Is.Not.Null);
             Assert.That(inventoryPanel.IsOpen, Is.False);

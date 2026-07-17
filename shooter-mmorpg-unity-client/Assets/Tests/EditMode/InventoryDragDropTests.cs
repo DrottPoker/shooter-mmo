@@ -105,6 +105,22 @@ namespace ShooterMmo.Tests.EditMode
             }
         }
 
+        [Test]
+        public void CorpsePayloadKeepsCorpseAndItemAuthorityIdentity()
+        {
+            var corpseId = Guid.NewGuid();
+            var itemId = Guid.NewGuid();
+
+            var payload = InventoryDragPayload.ForCorpseItem(corpseId, itemId);
+
+            Assert.That(payload.Kind, Is.EqualTo(InventoryDragPayloadKind.CorpseItem));
+            Assert.That(payload.CorpseId, Is.EqualTo(corpseId));
+            Assert.That(payload.ItemInstanceId, Is.EqualTo(itemId));
+            Assert.That(payload.RecoveryDeliveryId, Is.EqualTo(Guid.Empty));
+            Assert.Throws<ArgumentException>(() =>
+                InventoryDragPayload.ForCorpseItem(Guid.Empty, itemId));
+        }
+
         private static DragFixture CreateFixture()
         {
             var eventSystemObject = new GameObject("EventSystem", typeof(EventSystem));

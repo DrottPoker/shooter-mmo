@@ -872,6 +872,121 @@ public sealed class DeathLootIntegrationTests
         Assert.Equal(partition.Corpse.CorpseId, Assert.Single(restore.Corpses).CorpseId);
     }
 
+    [PostgresIntegrationFact]
+    public async Task CorpseInteractionEndpointsEnforceAuthorityCommitAndCloseTransactions()
+    {
+        const string workerSecret = "phase-eleven-test-worker-secret-at-least-32-characters";
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "corpse-interaction-http@example.com",
+            "corpse_interaction_http",
+            "Corpse Interaction Hero");
+        var fixture = new DeathInventoryFixture(context, player);
+        var beforeDeath = await fixture.GetSnapshotAsync();
+        var itemId = await fixture.GrantAsync(
+            "medical.field_dressing",
+            1,
+            beforeDeath.PermanentInventory.ContainerId,
+            0);
+        var session = await JoinAsync(context, player);
+        var partition = await ProcessDeathAsync(context, player, Guid.NewGuid());
+        var afterDeath = await fixture.GetSnapshotAsync();
+        var openRequest = new SimulationCorpseOpenRequest(
+            session.AccountId,
+            session.CharacterId,
+            session.WorkerId,
+            session.WorkerRuntimeId,
+            session.ShardId,
+            session.SimulationSessionToken);
+        var openPath = $"/api/simulation-sessions/{session.SimulationSessionId}"
+            + $"/corpses/{partition.Corpse.CorpseId}/open";
+        await using var host = await CorpseApiTestHost.StartAsync(
+            context,
+            WorkerId,
+            workerSecret);
+        host.Client.DefaultRequestHeaders.Add(
+            AuthenticationConstants.SimulationWorkerIdHeader,
+            WorkerId);
+        host.Client.DefaultRequestHeaders.Add(
+            AuthenticationConstants.SimulationWorkerSecretHeader,
+            workerSecret);
+
+        using var wrongWorker = await host.Client.PostAsJsonAsync(
+            openPath,
+            openRequest with { WorkerId = "another-worker" });
+        Assert.Equal(HttpStatusCode.Forbidden, wrongWorker.StatusCode);
+        Assert.Equal(
+            ItemTransactionErrorCodes.WrongSimulationWorker,
+            await ReadProblemCodeAsync(wrongWorker));
+
+        using var wrongRuntime = await host.Client.PostAsJsonAsync(
+            openPath,
+            openRequest with { WorkerRuntimeId = "stale-runtime" });
+        Assert.Equal(HttpStatusCode.Conflict, wrongRuntime.StatusCode);
+        Assert.Equal(
+            ItemTransactionErrorCodes.WorkerRuntimeChanged,
+            await ReadProblemCodeAsync(wrongRuntime));
+
+        using var openedResponse = await host.Client.PostAsJsonAsync(openPath, openRequest);
+        Assert.Equal(HttpStatusCode.OK, openedResponse.StatusCode);
+        var opened = await openedResponse.Content.ReadFromJsonAsync<CorpseViewSnapshotResponse>();
+        Assert.NotNull(opened);
+        var corpseItem = Assert.Single(
+            opened.Sections.SelectMany(section => section.Slots),
+            slot => slot.Item?.ItemInstanceId == itemId).Item!;
+        var operationId = Guid.NewGuid();
+        var mutationRequest = new SimulationCorpseMutationRequest(
+            operationId,
+            session.AccountId,
+            session.CharacterId,
+            session.WorkerId,
+            session.WorkerRuntimeId,
+            session.ShardId,
+            session.SimulationSessionToken,
+            CorpseInteractionOperationKinds.LootItem,
+            opened.Revision,
+            corpseItem.ItemInstanceId,
+            corpseItem.Revision,
+            DestinationContainerId: afterDeath.PermanentInventory.ContainerId,
+            ExpectedDestinationContainerRevision: afterDeath.PermanentInventory.Revision,
+            DestinationSlotIndex: 0);
+        var mutationPath = $"/api/simulation-sessions/{session.SimulationSessionId}"
+            + $"/corpses/{partition.Corpse.CorpseId}/item-operations";
+
+        using var mutatedResponse = await host.Client.PostAsJsonAsync(
+            mutationPath,
+            mutationRequest);
+        Assert.Equal(HttpStatusCode.OK, mutatedResponse.StatusCode);
+        var mutated = await mutatedResponse.Content.ReadFromJsonAsync<CorpseMutationResponse>();
+        Assert.NotNull(mutated);
+        Assert.True(mutated.Transaction.Succeeded);
+        Assert.Equal(operationId, mutated.Transaction.OperationId);
+        Assert.NotNull(mutated.Corpse);
+        Assert.True(mutated.Corpse.Revision > opened.Revision);
+        Assert.DoesNotContain(
+            mutated.Corpse.Sections.SelectMany(section => section.Slots),
+            slot => slot.Item?.ItemInstanceId == itemId);
+
+        using var loserResponse = await host.Client.PostAsJsonAsync(
+            mutationPath,
+            mutationRequest with { OperationId = Guid.NewGuid() });
+        Assert.Equal(HttpStatusCode.Conflict, loserResponse.StatusCode);
+        Assert.Equal(
+            ItemTransactionErrorCodes.ItemAlreadyLooted,
+            await ReadProblemCodeAsync(loserResponse));
+
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        var idleTransactions = await connection.ExecuteScalarAsync<int>(
+            """
+            select count(*)
+            from pg_stat_activity
+            where datname = current_database()
+              and pid <> pg_backend_pid()
+              and state = 'idle in transaction';
+            """);
+        Assert.Equal(0, idleTransactions);
+    }
+
     private static async Task<PlayerDeathPartitionResponse> ProcessDeathAsync(
         PostgresIntegrationTestContext context,
         IntegrationPlayer player,

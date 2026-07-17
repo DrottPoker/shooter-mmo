@@ -102,18 +102,103 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
     {
         lock (sync)
         {
-            if (databaseTimeAtSnapshot == default)
-            {
-                return [];
-            }
-
-            var elapsed = timeProvider.GetElapsedTime(timestampAtSnapshot);
-            var estimatedDatabaseTime = databaseTimeAtSnapshot + elapsed;
+            var estimatedDatabaseTime = EstimateDatabaseTimeLocked();
             return corpses.Values
                 .Where(corpse => corpse.ExpiresAt > estimatedDatabaseTime)
                 .OrderBy(corpse => corpse.CreatedAt)
                 .ThenBy(corpse => corpse.CorpseId)
                 .ToArray();
         }
+    }
+
+    public bool TryGetActive(Guid corpseId, out DurableCorpseState? corpse)
+    {
+        lock (sync)
+        {
+            if (corpses.TryGetValue(corpseId, out var candidate)
+                && candidate.ExpiresAt > EstimateDatabaseTimeLocked())
+            {
+                corpse = candidate;
+                return true;
+            }
+
+            corpse = null;
+            return false;
+        }
+    }
+
+    public void ApplySnapshot(CorpseViewSnapshotResponse snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var state = new DurableCorpseState(
+            snapshot.CorpseId,
+            snapshot.SourceCharacterId,
+            snapshot.SourceDisplayName,
+            snapshot.ShardId,
+            snapshot.PositionX,
+            snapshot.PositionY,
+            snapshot.PositionZ,
+            0d,
+            0d,
+            0d,
+            1d,
+            snapshot.PresentationKey,
+            snapshot.Revision,
+            snapshot.CreatedAt,
+            snapshot.ExpiresAt,
+            snapshot.Sections.All(section => section.Slots.All(slot => slot.Item is null)),
+            snapshot.Sections
+                .Select(section => new CorpseSectionState(
+                    section.SectionKind,
+                    section.ContainerId,
+                    section.ContainerRevision,
+                    section.Slots.Count(slot => slot.Item is not null)))
+                .ToArray());
+        lock (sync)
+        {
+            if (corpses.TryGetValue(state.CorpseId, out var current)
+                && current.Revision > state.Revision)
+            {
+                return;
+            }
+
+            if (state.ExpiresAt <= EstimateDatabaseTimeLocked())
+            {
+                corpses = corpses
+                    .Where(pair => pair.Key != state.CorpseId)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value);
+                return;
+            }
+
+            var replacement = corpses.ToDictionary(pair => pair.Key, pair => pair.Value);
+            replacement[state.CorpseId] = state;
+            corpses = replacement;
+        }
+    }
+
+    public bool Remove(Guid corpseId)
+    {
+        lock (sync)
+        {
+            if (!corpses.ContainsKey(corpseId))
+            {
+                return false;
+            }
+
+            corpses = corpses
+                .Where(pair => pair.Key != corpseId)
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+            return true;
+        }
+    }
+
+    private DateTime EstimateDatabaseTimeLocked()
+    {
+        if (databaseTimeAtSnapshot == default)
+        {
+            return timeProvider.GetUtcNow().UtcDateTime;
+        }
+
+        return databaseTimeAtSnapshot + timeProvider.GetElapsedTime(timestampAtSnapshot);
     }
 }

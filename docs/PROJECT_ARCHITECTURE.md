@@ -152,7 +152,7 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
-Protocol version 8 includes:
+Protocol version 9 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
@@ -166,6 +166,8 @@ Protocol version 8 includes:
   for newer committed item-state revisions.
 - Bounded reliable ordered item-operation intents and committed or rejected
   results with authoritative carry, item, container, and delivery revisions.
+- Chunked corpse presence and view state plus reliable open, close, refresh,
+  full or partial loot, atomic Bag-swap, result, and view-closure messages.
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
@@ -273,11 +275,11 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 10 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 11 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
 mutation plus Unity inventory integration, death partition, and durable player
-corpse custody implemented
+corpse custody plus concurrent corpse interaction implemented
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -357,7 +359,15 @@ writes inventory tables or holds an item collection.
 Bank and Recovery Storage operations require a matching worker-validated service
 point. Secure Container operations require no city service. Insurance NPC access
 is represented at the live boundary, but insurance purchase behavior remains a
-later phase. Corpse proximity and interaction remain part of their later phases.
+later phase.
+
+SimulationWorker also owns live corpse discovery, proximity, and viewer state.
+The runtime store contains only AuthService-provided corpse identity, transform,
+presentation, section summaries, revision, and absolute expiry. A shared
+per-peer authority queue permits one in-flight item or corpse operation and one
+active corpse view per player while allowing many viewers on one corpse. Every
+open, refresh, or mutation rechecks three-dimensional proximity and the cached
+database-timed lifetime before crossing the service boundary.
 
 For local testing only, SimulationWorker loads an environment-specific
 Development option that can make Bank and Recovery access globally true. Startup
@@ -373,6 +383,13 @@ five-minute expiry. AuthService partitions one death event transactionally,
 persists the corpse transform and presentation metadata, and expires remaining
 loot through one durable cleanup operation. A replacement SimulationWorker
 restores only open, unexpired corpses for its exact runtime and Shard assignment.
+AuthService serves complete three-section view snapshots and commits corpse loot
+through the existing transaction kernel. Targeted item and container revisions
+let unrelated corpse operations commit even when the global corpse revision has
+advanced. The corpse row still serializes final custody, and Bag roots are locked
+before either aggregate's contents. After commit, the worker broadcasts a
+targeted delta or complete replacement to every viewer and never holds a
+database transaction while waiting for a client.
 Normal NPC corpses may remain worker-owned and disappear on restart, while
 content-selected bosses may later reuse the durable path. These choices do not
 introduce Zone or Layer ownership.
@@ -392,15 +409,16 @@ Phase 10 adds an exact-session player-death route, an internal system death
 adapter, durable corpse restoration for the assigned worker, and an idempotent
 AuthService expiry loop. SimulationWorker holds only the bounded runtime corpse
 identity and presentation state returned by AuthService, never PostgreSQL item
-rows or an alternate custody model. Combat death generation, Unity corpse
-presentation, proximity, inspection, looting, and corpse Bag swaps remain later
-boundaries.
+rows or an alternate custody model. Phase 11 adds exact-session corpse reads and
+mutations, shared viewers, proximity and lifetime enforcement, committed deltas,
+Unity presence and view state, temporary presentation, and atomic corpse Bag
+swaps. Combat death generation remains a later gameplay boundary.
 
-Protocol version `8` retains its existing wire version and packet framing. The
-ordinary container-item swap is an additive operation kind that reuses the
-existing two-item id and revision intent shape. AuthService locks and validates
-both opposite slots, then exchanges both assignments in one transaction or
-changes neither.
+Protocol version `9` retains the existing framing and adds corpse presence,
+interaction, result, chunked view-state, and view-closure message types. Corpse
+chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
+The Phase 8 ordinary container-item swap continues to reuse its existing
+two-item id and revision intent shape.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
@@ -622,9 +640,10 @@ Status: Implemented transport and authority boundary
 
 No database transaction remains open across a client network round trip.
 
-### Authoritative Player Death And Corpse Restoration
+### Authoritative Player Death, Restoration, And Loot
 
-Status: Durable Phase 10 boundary implemented, live combat producer pending
+Status: Durable Phase 10 and interactive Phase 11 boundaries implemented, live
+combat producer pending
 
 1. The future authoritative combat system produces one unique death event only
    after its owning SimulationWorker has resolved death. Until that producer
@@ -651,10 +670,24 @@ Status: Durable Phase 10 boundary implemented, live combat producer pending
 6. After worker registration, SimulationWorker requests one read-only snapshot
    for its exact fresh runtime and active Shard assignment. It keeps the generic
    presentation state against database time advanced by a monotonic local clock.
-
-The Phase 10 boundary adds no GameProtocol packet and no Unity corpse authority.
-Corpse open, proximity, item loot, partial-stack loot, active viewers, deltas,
-and Bag swaps belong to Phase 11.
+7. Protocol-v9 presence snapshots expose nearby runtime identity and
+   presentation only. A player may open one corpse within three metres. Multiple
+   players may inspect the same corpse, and the worker validates proximity and
+   cached lifetime before every refresh or mutation.
+8. AuthService opens a short read-only transaction for a complete three-section
+   snapshot. Loot and Bag swaps enter the normal item transaction kernel with
+   targeted item, destination, and Bag aggregate revisions. Full stacks move,
+   partial stacks split or merge, and occupied Bag roots exchange their complete
+   content aggregates atomically under the standard capacity and hard-cap rules.
+9. The mutation transaction closes before AuthService loads the committed view.
+   SimulationWorker applies the returned carry tuple, keeps the newest corpse
+   revision when HTTP completions arrive out of order, and reliably broadcasts
+   a targeted delta to every viewer. Unity refreshes stale bases and never
+   applies optimistic custody.
+10. Expiry, invalidation, and not-found results close every affected view with a
+    stable code. Runtime or session fencing failures disconnect the affected
+    peer. A worker restart restores the corpse at its persisted transform with
+    the unchanged deadline.
 
 ## Configuration Ownership
 

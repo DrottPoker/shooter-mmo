@@ -65,6 +65,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   and lootable custody once, persists three-section five-minute corpses and
   presentation-only snapshots, restores unexpired corpses to the exact assigned
   worker runtime, and audits idempotent expiry destruction.
+- Exact-session concurrent corpse inspection and mutation with proximity and
+  lifetime validation, targeted revisions, full and partial loot, atomic Bag
+  aggregate swaps, committed viewer deltas, and no database transaction held
+  across a client network wait.
 - Exact-session carry-state admission and heartbeat propagation, with base and
   Bag capacity, monotonic item-state revisions, authoritative sprint limits, and
   one shared encumbrance calculation for SimulationWorker and Unity prediction.
@@ -74,8 +78,12 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   restoration, and stable update-required handling for catalog mismatch.
 - A temporary uGUI inventory panel on the permanent client foundation, with the
   canonical layout, `B` character-storage, `C` equipment plus character-storage,
-  and `I` complete Development views, plus protocol-v8 controls for every
-  currently exposed live item mutation, including atomic occupied-slot swaps.
+  and `I` complete Development views, plus protocol-v9 controls for every
+  currently exposed live item and corpse mutation, including atomic occupied
+  slot and Bag aggregate swaps.
+- Persistent Unity corpse presence and view state with complete chunk assembly,
+  monotonic deltas, stable closure handling, a generic replaceable capsule,
+  `E` proximity interaction, and typed drag-and-drop looting.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
@@ -93,7 +101,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 10 of the slot-based item foundation are implemented. Shared
+Phases 1 through 11 of the slot-based item foundation are implemented. Shared
 content, pure rules, Unity authoring, deterministic baking, the transactional
 PostgreSQL catalog mirror, constrained custody schema, and complete empty
 character item-state bootstrap now exist. AuthService exposes revision-cached
@@ -107,8 +115,9 @@ loads and reconciles authoritative item snapshots through a persistent client
 controller and presents the first temporary but complete uGUI inventory loop.
 Carry state drives shared authoritative and predicted movement. AuthService now
 owns durable player-death partition, corpse custody, Recovery policy results,
-absolute expiry, and restart restoration. The combat death producer, live corpse
-presentation and interaction, and final UI art remain later phases.
+absolute expiry, and restart restoration. SimulationWorker and Unity now expose
+the concurrent interactive corpse loop over that durable authority. The combat
+death producer, final corpse art, and final UI art remain later phases.
 Combat, persistent NPCs, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 
@@ -201,7 +210,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | Path | Responsibility |
 | --- | --- |
 | `AuthService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
-| `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, durable corpse restoration state, and owned config |
+| `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |

@@ -19,6 +19,8 @@ namespace ShooterMmo
 
         public static InventoryClientController InventoryController { get; private set; }
 
+        public static CorpseClientController CorpseController { get; private set; }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
@@ -52,6 +54,14 @@ namespace ShooterMmo
 
             InventoryController.Initialize(apiClient, SimulationClient, config.ItemGameplayCatalog);
 
+            CorpseController = GetComponent<CorpseClientController>();
+            if (CorpseController == null)
+            {
+                CorpseController = gameObject.AddComponent<CorpseClientController>();
+            }
+
+            CorpseController.Initialize(SimulationClient, InventoryController);
+
             SimulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
         }
@@ -82,6 +92,7 @@ namespace ShooterMmo
 
             SimulationClient = null;
             InventoryController = null;
+            CorpseController = null;
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -219,6 +230,7 @@ namespace ShooterMmo
                 AddControllerIfMissing<Ui.WorldScenePanel>();
                 AddControllerIfMissing<Ui.CrosshairPanel>();
                 AddControllerIfMissing<Ui.TemporaryInventoryPanel>();
+                AddControllerIfMissing<Gameplay.CorpsePresentationController>();
             }
         }
 

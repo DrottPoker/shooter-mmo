@@ -8,7 +8,8 @@ namespace ShooterMmo.Ui
     public enum InventoryDragPayloadKind
     {
         Item = 1,
-        RecoveryDelivery = 2
+        RecoveryDelivery = 2,
+        CorpseItem = 3
     }
 
     public sealed class InventoryDragPayload
@@ -16,11 +17,13 @@ namespace ShooterMmo.Ui
         private InventoryDragPayload(
             InventoryDragPayloadKind kind,
             Guid itemInstanceId,
-            Guid recoveryDeliveryId)
+            Guid recoveryDeliveryId,
+            Guid corpseId)
         {
             Kind = kind;
             ItemInstanceId = itemInstanceId;
             RecoveryDeliveryId = recoveryDeliveryId;
+            CorpseId = corpseId;
         }
 
         public InventoryDragPayloadKind Kind { get; }
@@ -28,6 +31,8 @@ namespace ShooterMmo.Ui
         public Guid ItemInstanceId { get; }
 
         public Guid RecoveryDeliveryId { get; }
+
+        public Guid CorpseId { get; }
 
         public static InventoryDragPayload ForItem(Guid itemInstanceId)
         {
@@ -41,6 +46,7 @@ namespace ShooterMmo.Ui
             return new InventoryDragPayload(
                 InventoryDragPayloadKind.Item,
                 itemInstanceId,
+                Guid.Empty,
                 Guid.Empty);
         }
 
@@ -56,7 +62,25 @@ namespace ShooterMmo.Ui
             return new InventoryDragPayload(
                 InventoryDragPayloadKind.RecoveryDelivery,
                 Guid.Empty,
-                recoveryDeliveryId);
+                recoveryDeliveryId,
+                Guid.Empty);
+        }
+
+        public static InventoryDragPayload ForCorpseItem(
+            Guid corpseId,
+            Guid itemInstanceId)
+        {
+            if (corpseId == Guid.Empty || itemInstanceId == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "A corpse item drag payload requires corpse and item instance ids.");
+            }
+
+            return new InventoryDragPayload(
+                InventoryDragPayloadKind.CorpseItem,
+                itemInstanceId,
+                Guid.Empty,
+                corpseId);
         }
     }
 

@@ -2,11 +2,12 @@
 
 Last updated: 2026-07-17
 
-Status: Locked design target; Phases 1 through 10 content, authoring, schema,
+Status: Locked design target; Phases 1 through 11 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
-encumbrance plus realtime item mutation and Unity inventory foundation
-plus death partition and durable player-corpse custody implemented
+encumbrance, realtime item mutation, Unity inventory foundation, death
+partition, durable player-corpse custody, and concurrent corpse looting
+implemented
 
 ## Purpose
 
@@ -696,7 +697,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 10 now implement the neutral catalog, structural
+claim. Phases 1 through 11 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -742,7 +743,15 @@ partitioning, and idempotent expiry destruction. SimulationWorker restores only
 unexpired rows for its exact runtime and Shard, using the database-time deadline
 and generic presentation key. Empty player corpses remain through that deadline.
 
-No vendor, gathering, insurance purchase, quest gameplay, combat death producer,
-or corpse interaction path calls the new player-death boundary yet. Unity corpse
-presentation, proximity, concurrent loot, partial stacks, viewer deltas, and Bag
-swap remain later phases. No Zone or Layer identity was introduced.
+Phase 11 adds exact-session corpse reads and mutations over that durable custody.
+SimulationWorker owns bounded presentation, one active view per player,
+three-dimensional proximity and lifetime validation, and viewer fanout. Full and
+partial loot and atomic Bag aggregate swaps reuse the AuthService transaction
+kernel with targeted revisions and stable lock ordering. Unity assembles
+protocol-v9 presence, complete snapshots, and committed deltas without applying
+optimistic custody. The generic capsule and uGUI are replaceable presentation.
+
+No vendor, gathering, insurance purchase, quest gameplay, or combat death
+producer calls the player-death boundary yet. Final corpse art, configurable NPC
+corpse persistence, and insurance NPC behavior remain later phases. No Zone or
+Layer identity was introduced.

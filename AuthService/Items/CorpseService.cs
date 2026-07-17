@@ -7,12 +7,18 @@ using Npgsql;
 
 namespace AuthService.Items;
 
-public sealed class CorpseService(
+public sealed partial class CorpseService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     AuthServiceConfig authServiceConfig,
     ILogger<CorpseService> logger)
 {
+    private NpgsqlDataSource DataSource => dataSource;
+
+    private ItemTransactionService TransactionService => transactionService;
+
+    private AuthServiceConfig ServiceConfig => authServiceConfig;
+
     public async Task<ServiceResult<PlayerDeathPartitionResponse>> ProcessSimulationDeathAsync(
         string authenticatedWorkerId,
         Guid simulationSessionId,
@@ -526,6 +532,11 @@ public sealed class CorpseService(
             ItemTransactionErrorCodes.DeathEventConflict or
             ItemTransactionErrorCodes.CorpseNotExpired or
             ItemTransactionErrorCodes.CorpseStateChanged or
+            ItemTransactionErrorCodes.CorpseExpired or
+            ItemTransactionErrorCodes.CorpseInvalidated or
+            ItemTransactionErrorCodes.ItemAlreadyLooted or
+            ItemTransactionErrorCodes.ItemQuantityChanged or
+            ItemTransactionErrorCodes.BagStateChanged or
             ItemTransactionErrorCodes.WorkerRuntimeChanged =>
                 ServiceResult<T>.Conflict(error.Code, error.Message),
             _ => ServiceResult<T>.UnprocessableEntity(error.Code, error.Message)

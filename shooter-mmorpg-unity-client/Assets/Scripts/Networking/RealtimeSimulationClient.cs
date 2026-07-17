@@ -47,6 +47,14 @@ namespace ShooterMmo.Networking
 
         public event Action<RealtimeItemOperationResult> ItemOperationCompleted;
 
+        public event Action<RealtimeCorpsePresenceSnapshotChunk> CorpsePresenceChunkReceived;
+
+        public event Action<RealtimeCorpseInteractionResult> CorpseInteractionCompleted;
+
+        public event Action<RealtimeCorpseViewStateChunk> CorpseViewStateChunkReceived;
+
+        public event Action<RealtimeCorpseViewClosed> CorpseViewClosed;
+
         public event Action<RealtimeEntitySpawn> EntitySpawned;
 
         public event Action<RealtimeEntityDespawn> EntityDespawned;
@@ -444,6 +452,35 @@ namespace ShooterMmo.Networking
             }
         }
 
+        public bool TrySendCorpseInteraction(RealtimeCorpseInteractionIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeCorpseInteractionIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "Corpse interaction could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public void Abort()
         {
             State = RealtimeConnectionState.Disconnected;
@@ -576,6 +613,18 @@ namespace ShooterMmo.Networking
                         break;
                     case RealtimeMessageType.ItemOperationResult:
                         HandleItemOperationResult(packet);
+                        break;
+                    case RealtimeMessageType.CorpsePresenceSnapshotChunk:
+                        HandleCorpsePresenceChunk(packet);
+                        break;
+                    case RealtimeMessageType.CorpseInteractionResult:
+                        HandleCorpseInteractionResult(packet);
+                        break;
+                    case RealtimeMessageType.CorpseViewStateChunk:
+                        HandleCorpseViewStateChunk(packet);
+                        break;
+                    case RealtimeMessageType.CorpseViewClosed:
+                        HandleCorpseViewClosed(packet);
                         break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
@@ -795,6 +844,103 @@ namespace ShooterMmo.Networking
             }
 
             ItemOperationCompleted?.Invoke(result);
+        }
+
+        private void HandleCorpsePresenceChunk(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_corpse_presence",
+                    "Corpse presence arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCorpsePresenceSnapshotChunk(
+                    packet,
+                    out var chunk,
+                    out var error))
+            {
+                FailProtocol("invalid_corpse_presence", error);
+                return;
+            }
+
+            CorpsePresenceChunkReceived?.Invoke(chunk);
+        }
+
+        private void HandleCorpseInteractionResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_corpse_operation_result",
+                    "A corpse operation result arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCorpseInteractionResult(
+                    packet,
+                    out var result,
+                    out var error)
+                || !MovementSession.TryApplyCarryState(
+                    result.CarryState,
+                    out var carryChanged,
+                    out error))
+            {
+                FailProtocol("invalid_corpse_operation_result", error);
+                return;
+            }
+
+            if (carryChanged)
+            {
+                CarryStateChanged?.Invoke(MovementSession.CarryState);
+            }
+
+            CorpseInteractionCompleted?.Invoke(result);
+        }
+
+        private void HandleCorpseViewStateChunk(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_corpse_view_state",
+                    "Corpse view state arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCorpseViewStateChunk(
+                    packet,
+                    out var chunk,
+                    out var error))
+            {
+                FailProtocol("invalid_corpse_view_state", error);
+                return;
+            }
+
+            CorpseViewStateChunkReceived?.Invoke(chunk);
+        }
+
+        private void HandleCorpseViewClosed(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_corpse_view_closed",
+                    "Corpse view closure arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCorpseViewClosed(
+                    packet,
+                    out var closed,
+                    out var error))
+            {
+                FailProtocol("invalid_corpse_view_closed", error);
+                return;
+            }
+
+            CorpseViewClosed?.Invoke(closed);
         }
 
         private void HandleEntitySpawn(byte[] packet)

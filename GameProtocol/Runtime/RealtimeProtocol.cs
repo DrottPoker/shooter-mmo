@@ -19,7 +19,12 @@ namespace ShooterMmo.GameProtocol
         EntityDespawn = 11,
         CarryStateChanged = 12,
         ItemOperationIntent = 13,
-        ItemOperationResult = 14
+        ItemOperationResult = 14,
+        CorpsePresenceSnapshotChunk = 15,
+        CorpseInteractionIntent = 16,
+        CorpseInteractionResult = 17,
+        CorpseViewStateChunk = 18,
+        CorpseViewClosed = 19
     }
 
     [Flags]
@@ -761,7 +766,7 @@ namespace ShooterMmo.GameProtocol
         public string Message { get; }
     }
 
-    public static class RealtimeProtocol
+    public static partial class RealtimeProtocol
     {
         private const uint Magic = 0x4F4D4D53;
         private const int MaximumJoinTicketLength = 1024;
@@ -783,7 +788,7 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 8;
+        public const ushort Version = 9;
         public const string ConnectionKey = "ShooterMmo.Realtime.v8";
         public const int MaximumPacketSize = 1200;
 

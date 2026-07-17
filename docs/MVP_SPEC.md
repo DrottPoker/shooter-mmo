@@ -458,10 +458,14 @@ Current implementation note:
 - Item-plan Phase 10 adds idempotent player-death partition, Recovery delivery,
   durable five-minute player corpse custody and snapshots, exact worker restart
   restoration, and audited expiry cleanup.
-- Gameplay-created item grants, insurance NPC pricing, authoritative combat death
-  production, mobs, live corpse presentation, and corpse looting are not
-  implemented. Insurance consumption is implemented only inside the prepared
-  durable death transaction.
+- Item-plan Phase 11 adds protocol-v9 corpse presence and interaction, exact
+  proximity and lifetime validation, concurrent full and partial loot, atomic
+  Bag aggregate swaps, committed viewer deltas, immutable Unity state, and a
+  generic replaceable corpse presentation.
+- Gameplay-created item grants, insurance NPC pricing, authoritative combat
+  death production, mobs, final corpse art, and configurable NPC corpse
+  persistence are not implemented. Insurance consumption is implemented only
+  inside the durable death transaction.
 
 ## Persistence Principles
 
@@ -509,7 +513,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 10 complete
+Status: In progress, item-plan Phases 1 through 11 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -541,8 +545,11 @@ Status: In progress, item-plan Phases 1 through 10 complete
 - Idempotent player-death partition, protected and effective insured Recovery
   delivery, durable three-section player corpses, presentation-only snapshots,
   exact worker and Shard restart restoration, empty-corpse lifetime, and audited
-  absolute expiry are complete. Live activation waits for the authoritative
-  combat death producer.
+  absolute expiry are complete.
+- Exact-session corpse reads and mutations, concurrent viewers, proximity and
+  lifetime validation, full and partial loot, atomic Bag swaps, committed
+  deltas, generic Unity presentation, and the reusable typed drag path are
+  complete. Live death activation waits for the authoritative combat producer.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
@@ -578,7 +585,7 @@ Status: Deferred until a larger authored map exists
 
 ### Phase 8: Death, Recovery, And Corpse Looting
 
-Status: In progress, durable player-death and corpse foundation complete
+Status: In progress, durable and interactive player-corpse foundation complete
 
 - Completed item subphase: partition player items transactionally from a unique
   authoritative death event.
@@ -588,10 +595,12 @@ Status: In progress, durable player-death and corpse foundation complete
   presentation snapshots.
 - Completed item subphase: restore player corpses after SimulationWorker restart
   without resetting their database deadline.
+- Completed item subphase: present nearby durable corpses, enforce proximity and
+  lifetime, and support concurrent full and partial item looting.
+- Completed item subphase: support atomic Bag aggregate swaps and committed
+  deltas to all current viewers.
 - Connect the prepared death boundary to the future authoritative combat event
-  producer and active corpse presentation.
-- Allow concurrent item and partial-stack looting.
-- Support atomic Bag swaps.
+  producer and replace the generic corpse presentation with final content.
 - Add configurable live or durable NPC corpse behavior.
 - Add insurance NPC lifecycle.
 

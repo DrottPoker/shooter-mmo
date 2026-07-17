@@ -19,9 +19,15 @@ public sealed record ItemServicePointConfig(
     float Z,
     float Radius);
 
-public sealed record ItemInteractionConfig(IReadOnlyList<ItemServicePointConfig> ServicePoints)
+public sealed record ItemInteractionConfig(
+    IReadOnlyList<ItemServicePointConfig> ServicePoints,
+    float CorpseInteractionRadius,
+    float CorpseDiscoveryRadius)
 {
-    public static ItemInteractionConfig Empty { get; } = new(Array.Empty<ItemServicePointConfig>());
+    public static ItemInteractionConfig Empty { get; } = new(
+        Array.Empty<ItemServicePointConfig>(),
+        3f,
+        32f);
 
     internal static ItemInteractionConfig FromConfiguration(
         IConfigurationSection section,
@@ -79,7 +85,31 @@ public sealed record ItemInteractionConfig(IReadOnlyList<ItemServicePointConfig>
             }
         }
 
-        return new ItemInteractionConfig(points);
+        var corpseInteractionRadius = ParseFinite(
+            section["CorpseInteractionRadius"] ?? "3",
+            $"{section.Path}:CorpseInteractionRadius",
+            errors);
+        var corpseDiscoveryRadius = ParseFinite(
+            section["CorpseDiscoveryRadius"] ?? "32",
+            $"{section.Path}:CorpseDiscoveryRadius",
+            errors);
+        if (corpseInteractionRadius <= 0f || corpseInteractionRadius > 20f)
+        {
+            errors.Add(
+                $"{section.Path}:CorpseInteractionRadius must be greater than 0 and at most 20.");
+        }
+
+        if (corpseDiscoveryRadius < corpseInteractionRadius
+            || corpseDiscoveryRadius > 1_000f)
+        {
+            errors.Add(
+                $"{section.Path}:CorpseDiscoveryRadius must be at least the interaction radius and at most 1000.");
+        }
+
+        return new ItemInteractionConfig(
+            points,
+            corpseInteractionRadius,
+            corpseDiscoveryRadius);
     }
 
     private static float ParseFinite(

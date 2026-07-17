@@ -30,6 +30,7 @@ namespace ShooterMmo.Ui
         private static readonly Color ErrorColor = new Color(1f, 0.45f, 0.35f, 1f);
 
         private InventoryClientController controller;
+        private CorpseClientController corpseController;
         private LocalPlayerInput localPlayerInput;
         private ThirdPersonCameraController playerCamera;
         private GameObject canvasObject;
@@ -52,6 +53,8 @@ namespace ShooterMmo.Ui
         private bool splitMode;
         private bool destroyConfirmation;
         private string splitQuantityText = "1";
+        private string corpseQuantityText = "1";
+        private bool corpsePartialLoot;
         private string localStatus = "Drag an item onto a highlighted destination.";
 
         public bool IsOpen
@@ -85,6 +88,12 @@ namespace ShooterMmo.Ui
             if (controller != null)
             {
                 controller.State.Changed += Rebuild;
+            }
+
+            corpseController = ShooterMmoClientBootstrap.CorpseController;
+            if (corpseController != null)
+            {
+                corpseController.State.Changed += OnCorpseStateChanged;
             }
 
             FindPlayerPresentation();
@@ -138,6 +147,11 @@ namespace ShooterMmo.Ui
                 controller.State.Changed -= Rebuild;
             }
 
+            if (corpseController != null)
+            {
+                corpseController.State.Changed -= OnCorpseStateChanged;
+            }
+
             if (playerCamera != null)
             {
                 playerCamera.SetUiCursorReleased(false);
@@ -176,6 +190,12 @@ namespace ShooterMmo.Ui
             }
             else
             {
+                if (corpseController?.State.ActiveView != null
+                    && corpseController.State.PendingOperationId == Guid.Empty)
+                {
+                    corpseController.TryClose(out _);
+                }
+
                 dragCoordinator?.Cancel();
                 ClearSelection();
             }
@@ -192,6 +212,21 @@ namespace ShooterMmo.Ui
             dragCoordinator?.Cancel();
             ClearSelection();
             SetOpen(true, requestedMode);
+        }
+
+        private void OnCorpseStateChanged()
+        {
+            if (corpseController?.State.ActiveView != null)
+            {
+                context = InventoryContextKind.Corpse;
+                if (!isOpen)
+                {
+                    SetOpen(true, InventoryPanelMode.FullDevelopment);
+                    return;
+                }
+            }
+
+            Rebuild();
         }
 
         private void FindPlayerPresentation()
@@ -343,7 +378,7 @@ namespace ShooterMmo.Ui
             CreateActionBar(equipmentContent, state);
             CreateMessage(
                 equipmentContent,
-                "Atomic non-empty Bag swaps are prepared at the state boundary and activate with corpse custody in a later phase.",
+                "Non-empty Bag swaps are atomic. Drag a corpse Bag onto the occupied Bag equipment slot.",
                 new Color(0.65f, 0.72f, 0.8f, 1f));
         }
 
@@ -357,7 +392,12 @@ namespace ShooterMmo.Ui
                 "Recovery",
                 () => SetContext(InventoryContextKind.RecoveryStorage),
                 true);
-            CreateButton(tabs, "Refresh", () => controller.RefreshContext(context), true);
+            CreateButton(
+                tabs,
+                "Corpse",
+                () => SetContext(InventoryContextKind.Corpse),
+                true);
+            CreateButton(tabs, "Refresh", RefreshCurrentContext, true);
 
             if (context == InventoryContextKind.None)
             {
@@ -367,8 +407,14 @@ namespace ShooterMmo.Ui
                     Color.white);
                 CreateMessage(
                     contextContent,
-                    "Corpse and world-loot adapters are reserved in InventoryContextKind and activate only when their later authoritative snapshots exist.",
+                    "Nearby corpse custody is discovered through SimulationWorker. Press E beside a corpse or open the Corpse tab.",
                     new Color(0.65f, 0.72f, 0.8f, 1f));
+                return;
+            }
+
+            if (context == InventoryContextKind.Corpse)
+            {
+                DrawCorpse(contextContent, state);
                 return;
             }
 
@@ -379,7 +425,10 @@ namespace ShooterMmo.Ui
                 return;
             }
 
-            DrawRecovery(contextContent, state);
+            if (context == InventoryContextKind.RecoveryStorage)
+            {
+                DrawRecovery(contextContent, state);
+            }
         }
 
         private void DrawCharacterInventory(InventoryClientState state)
@@ -566,6 +615,149 @@ namespace ShooterMmo.Ui
             }
         }
 
+        private void DrawCorpse(Transform parent, InventoryClientState inventoryState)
+        {
+            corpseController = corpseController ?? ShooterMmoClientBootstrap.CorpseController;
+            if (corpseController == null)
+            {
+                CreateMessage(parent, "Corpse interaction state is unavailable.", ErrorColor);
+                return;
+            }
+
+            var corpseState = corpseController.State;
+            if (corpseState.Error != null)
+            {
+                CreateMessage(parent, corpseState.Error.ToDisplayMessage(), ErrorColor);
+            }
+
+            if (corpseState.ActiveView == null)
+            {
+                CreateMessage(
+                    parent,
+                    "Move within 3 metres and press E, or open a nearby corpse below.",
+                    Color.white);
+                if (corpseState.NearbyCorpses.Count == 0)
+                {
+                    CreateMessage(parent, "No durable corpses are nearby.", Color.white);
+                    return;
+                }
+
+                foreach (var corpse in corpseState.NearbyCorpses)
+                {
+                    var row = CreateHorizontalRow(parent, 38f);
+                    var label = (string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
+                            ? "Corpse"
+                            : corpse.SourceDisplayName)
+                        + (corpse.IsEmpty ? " (empty)" : string.Empty);
+                    CreateButton(
+                        row,
+                        "Open " + label,
+                        () => ExecuteCorpseOpen(corpse.CorpseId),
+                        corpseState.PendingOperationId == Guid.Empty);
+                }
+
+                return;
+            }
+
+            var view = corpseState.ActiveView;
+            CreateMessage(
+                parent,
+                view.SourceDisplayName + "  |  Revision " + view.Revision
+                    + "  |  Expires "
+                    + DateTimeOffset.FromUnixTimeMilliseconds(
+                        view.ExpiresAtUnixMilliseconds).ToLocalTime().ToString("HH:mm:ss"),
+                Color.white);
+            var actions = CreateHorizontalRow(parent, 38f);
+            CreateButton(
+                actions,
+                "Close",
+                () => ExecuteCorpseClose(),
+                corpseState.PendingOperationId == Guid.Empty);
+            CreateButton(
+                actions,
+                "Refresh",
+                () => ExecuteCorpseRefresh(),
+                corpseState.PendingOperationId == Guid.Empty);
+            CreateButton(
+                actions,
+                corpsePartialLoot ? "Full Stack" : "Partial Stack",
+                () =>
+                {
+                    corpsePartialLoot = !corpsePartialLoot;
+                    Rebuild();
+                },
+                corpseState.PendingOperationId == Guid.Empty);
+            var quantityInput = CreateInputField(actions, corpseQuantityText);
+            quantityInput.onValueChanged.AddListener(value => corpseQuantityText = value);
+            if (corpseState.Status == CorpseClientStatus.Busy)
+            {
+                CreateMessage(parent, "Waiting for authoritative corpse state.", SelectedColor);
+            }
+
+            foreach (var section in view.Sections)
+            {
+                CreateSubheader(
+                    parent,
+                    CorpseSectionTitle(section.SectionKind)
+                        + "  revision " + section.ContainerRevision);
+                var grid = CreateGrid(parent, 4, 150f, 72f);
+                foreach (var slot in section.Slots)
+                {
+                    DrawCorpseSlot(grid, inventoryState, view, section, slot);
+                }
+            }
+
+            CreateMessage(
+                parent,
+                "Drag corpse items into a compatible carried slot. Drag the corpse Bag onto the occupied Bag equipment slot for an atomic aggregate swap.",
+                new Color(0.65f, 0.82f, 0.9f, 1f));
+        }
+
+        private void DrawCorpseSlot(
+            Transform parent,
+            InventoryClientState inventoryState,
+            CorpseLootView view,
+            CorpseLootSection section,
+            CorpseLootSlot slot)
+        {
+            var item = slot.Item;
+            var inventoryItem = item?.ToInventoryItem();
+            var label = "Slot " + (slot.SlotIndex + 1) + " [" + slot.SlotKind + "]";
+            if (item != null)
+            {
+                label += "\n" + inventoryState.Catalog.GetDisplayName(item.DefinitionId)
+                    + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty);
+            }
+
+            var payload = item == null
+                ? null
+                : InventoryDragPayload.ForCorpseItem(view.CorpseId, item.ItemInstanceId);
+            CreateSlotButton(
+                parent,
+                label,
+                inventoryItem,
+                false,
+                !string.Equals(slot.SlotKind, "general", StringComparison.Ordinal),
+                item != null,
+                null,
+                payload,
+                corpseController.State.CanMutate,
+                RejectCorpseDestination,
+                null,
+                RejectDrop);
+        }
+
+        private static string CorpseSectionTitle(string sectionKind)
+        {
+            return sectionKind switch
+            {
+                "equipment" => "Corpse Equipment",
+                "general_inventory" => "Corpse Inventory",
+                "bag" => "Corpse Bag Contents",
+                _ => "Corpse " + sectionKind
+            };
+        }
+
         private void CreateActionBar(Transform parent, InventoryClientState state)
         {
             CreateSubheader(parent, "Selected Item Actions");
@@ -643,6 +835,16 @@ namespace ShooterMmo.Ui
             {
                 reason = "Inventory mutation is unavailable while state is loading or busy.";
                 return false;
+            }
+
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                return CanDropCorpseItemOnContainer(
+                    state,
+                    container,
+                    slot,
+                    payload,
+                    out reason);
             }
 
             if (payload.Kind == InventoryDragPayloadKind.RecoveryDelivery)
@@ -749,6 +951,102 @@ namespace ShooterMmo.Ui
                 out reason);
         }
 
+        private bool CanDropCorpseItemOnContainer(
+            InventoryClientState state,
+            InventoryContainer container,
+            InventorySlot slot,
+            InventoryDragPayload payload,
+            out string reason)
+        {
+            reason = string.Empty;
+            var view = corpseController?.State.ActiveView;
+            if (view == null
+                || !corpseController.State.CanMutate
+                || view.CorpseId != payload.CorpseId
+                || !view.TryFindItem(
+                    payload.ItemInstanceId,
+                    out var corpseItem,
+                    out var sourceSection,
+                    out var sourceSlot))
+            {
+                reason = "The corpse item is no longer available for mutation.";
+                return false;
+            }
+
+            if (!IsCarriedLootDestination(state, container))
+            {
+                reason = "Corpse loot can enter only Permanent Inventory, the equipped Bag, or the Secure Container.";
+                return false;
+            }
+
+            if (corpseItem.HasBagContents)
+            {
+                reason = "A corpse Bag aggregate must be dropped onto the occupied Bag equipment slot.";
+                return false;
+            }
+
+            var quantity = corpseItem.Quantity;
+            if (corpsePartialLoot
+                && (!int.TryParse(corpseQuantityText, out quantity)
+                    || quantity <= 0
+                    || quantity >= corpseItem.Quantity))
+            {
+                reason = "Partial loot quantity must be greater than zero and smaller than the corpse stack.";
+                return false;
+            }
+
+            var item = new InventoryItem(
+                corpseItem.ItemInstanceId,
+                corpseItem.DefinitionId,
+                quantity,
+                corpseItem.Revision,
+                Array.Empty<InventoryPolicy>());
+            var source = new InventoryItemLocation(
+                InventoryItemLocationKind.Corpse,
+                sourceSection.ContainerId,
+                "corpse_" + sourceSection.SectionKind,
+                sourceSlot.SlotIndex,
+                string.Empty,
+                Guid.Empty);
+            if (slot.Item == null)
+            {
+                return InventoryTargetAdvisor.CanPlaceInContainer(
+                    state,
+                    item,
+                    source,
+                    container,
+                    slot,
+                    quantity,
+                    out reason);
+            }
+
+            var target = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                container.ContainerId,
+                container.ContainerType,
+                slot.SlotIndex,
+                string.Empty,
+                Guid.Empty);
+            return InventoryTargetAdvisor.CanMerge(
+                state,
+                item,
+                source,
+                slot.Item,
+                target,
+                out reason);
+        }
+
+        private static bool IsCarriedLootDestination(
+            InventoryClientState state,
+            InventoryContainer container)
+        {
+            var snapshot = state.FullSnapshot;
+            return snapshot != null
+                && (snapshot.PermanentInventory.ContainerId == container.ContainerId
+                    || snapshot.SecureContainer.Contents.ContainerId == container.ContainerId
+                    || snapshot.EquippedBag?.Contents.ContainerId == container.ContainerId);
+        }
+
         private bool CanDropOnEquipment(
             InventoryClientState state,
             InventoryEquipmentSlot equipmentSlot,
@@ -760,6 +1058,40 @@ namespace ShooterMmo.Ui
             {
                 reason = "Inventory mutation is unavailable while state is loading or busy.";
                 return false;
+            }
+
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                var view = corpseController?.State.ActiveView;
+                if (view == null
+                    || !corpseController.State.CanMutate
+                    || view.CorpseId != payload.CorpseId
+                    || !view.TryFindItem(
+                        payload.ItemInstanceId,
+                        out var corpseBag,
+                        out var sourceSection,
+                        out _))
+                {
+                    reason = "The corpse Bag is no longer available.";
+                    return false;
+                }
+
+                if (!string.Equals(equipmentSlot.SlotId, "bag", StringComparison.Ordinal)
+                    || equipmentSlot.Item == null
+                    || state.FullSnapshot?.EquippedBag == null
+                    || equipmentSlot.Item.ItemInstanceId
+                        != state.FullSnapshot.EquippedBag.Item.ItemInstanceId
+                    || !corpseBag.HasBagContents
+                    || !string.Equals(
+                        sourceSection.SectionKind,
+                        "equipment",
+                        StringComparison.Ordinal))
+                {
+                    reason = "Atomic corpse Bag swap requires both occupied Bag equipment aggregates.";
+                    return false;
+                }
+
+                return true;
             }
 
             if (payload.Kind != InventoryDragPayloadKind.Item
@@ -806,6 +1138,12 @@ namespace ShooterMmo.Ui
             if (!CanDropOnContainer(state, container, slot, payload, out var validationError))
             {
                 RejectDrop(validationError);
+                return;
+            }
+
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                SubmitCorpseLoot(container, slot, payload);
                 return;
             }
 
@@ -895,6 +1233,21 @@ namespace ShooterMmo.Ui
                 return;
             }
 
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                var view = corpseController.State.ActiveView;
+                view.TryFindItem(
+                    payload.ItemInstanceId,
+                    out var corpseBag,
+                    out _,
+                    out _);
+                ExecuteCorpse(
+                    corpseController.TrySwapBag(corpseBag, out var corpseError),
+                    corpseError,
+                    "Atomic Bag swap submitted.");
+                return;
+            }
+
             state.TryFindItem(payload.ItemInstanceId, out var item, out _);
             Execute(
                 controller.TryEquip(item, equipmentSlot.SlotId, out var error),
@@ -948,6 +1301,14 @@ namespace ShooterMmo.Ui
             return false;
         }
 
+        private static bool RejectCorpseDestination(
+            InventoryDragPayload payload,
+            out string reason)
+        {
+            reason = "Corpse custody is loot-only. Drag corpse items into carried inventory slots.";
+            return false;
+        }
+
         private void RejectDrop(string reason)
         {
             localStatus = string.IsNullOrWhiteSpace(reason)
@@ -962,6 +1323,42 @@ namespace ShooterMmo.Ui
                 controller.TryClaimRecovery(delivery, destinationContainerId, out var error),
                 error,
                 "Recovery claim submitted.");
+        }
+
+        private void SubmitCorpseLoot(
+            InventoryContainer destination,
+            InventorySlot destinationSlot,
+            InventoryDragPayload payload)
+        {
+            var view = corpseController?.State.ActiveView;
+            if (view == null
+                || !view.TryFindItem(
+                    payload.ItemInstanceId,
+                    out var corpseItem,
+                    out _,
+                    out _))
+            {
+                RejectDrop("The corpse item is no longer available.");
+                return;
+            }
+
+            var quantity = corpseItem.Quantity;
+            if (corpsePartialLoot)
+            {
+                int.TryParse(corpseQuantityText, out quantity);
+            }
+
+            ExecuteCorpse(
+                corpseController.TryLoot(
+                    corpseItem,
+                    destination,
+                    destinationSlot,
+                    quantity,
+                    out var error),
+                error,
+                quantity < corpseItem.Quantity
+                    ? "Partial corpse loot submitted."
+                    : "Corpse loot submitted.");
         }
 
         private void DestroySelected(InventoryItem item)
@@ -991,6 +1388,12 @@ namespace ShooterMmo.Ui
             Rebuild();
         }
 
+        private void ExecuteCorpse(bool sent, string error, string success)
+        {
+            localStatus = sent ? success : error;
+            Rebuild();
+        }
+
         private void SelectItem(InventoryItem item)
         {
             selectedItemId = item.ItemInstanceId;
@@ -1013,8 +1416,66 @@ namespace ShooterMmo.Ui
         {
             context = next;
             ClearSelection();
-            controller.RefreshContext(next);
+            if (next is InventoryContextKind.Bank or InventoryContextKind.RecoveryStorage)
+            {
+                controller.RefreshContext(next);
+            }
+
             Rebuild();
+        }
+
+        private void RefreshCurrentContext()
+        {
+            if (context == InventoryContextKind.Corpse)
+            {
+                if (corpseController?.State.ActiveView != null)
+                {
+                    ExecuteCorpseRefresh();
+                }
+
+                return;
+            }
+
+            controller.RefreshContext(context);
+        }
+
+        private void ExecuteCorpseOpen(Guid corpseId)
+        {
+            var error = "Corpse interaction state is unavailable.";
+            if (corpseController == null
+                || !corpseController.TryOpen(corpseId, out error))
+            {
+                RejectDrop(error);
+                return;
+            }
+
+            localStatus = "Corpse open submitted.";
+        }
+
+        private void ExecuteCorpseClose()
+        {
+            var error = "Corpse interaction state is unavailable.";
+            if (corpseController == null
+                || !corpseController.TryClose(out error))
+            {
+                RejectDrop(error);
+                return;
+            }
+
+            localStatus = "Corpse close submitted.";
+        }
+
+        private void ExecuteCorpseRefresh()
+        {
+            var error = "Corpse interaction state is unavailable.";
+            if (corpseController == null
+                || !corpseController.TryRefresh(out error))
+            {
+                RejectDrop(error);
+                return;
+            }
+
+            localStatus = "Corpse refresh submitted.";
         }
 
         private void DrawStatus(Transform parent, InventoryClientState state)
@@ -1053,7 +1514,7 @@ namespace ShooterMmo.Ui
             {
                 InventoryContextKind.Bank => "Context: Character Bank",
                 InventoryContextKind.RecoveryStorage => "Context: Recovery Storage",
-                InventoryContextKind.CorpsePrepared => "Context: Corpse (Prepared)",
+                InventoryContextKind.Corpse => "Context: Corpse",
                 InventoryContextKind.WorldLootPrepared => "Context: World Loot (Prepared)",
                 _ => "Context Container"
             };

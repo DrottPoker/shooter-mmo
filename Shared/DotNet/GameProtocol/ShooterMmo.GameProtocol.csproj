@@ -10,6 +10,8 @@
   <ItemGroup>
     <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeProtocol.cs"
              Link="Runtime\RealtimeProtocol.cs" />
+    <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeCorpseProtocol.cs"
+             Link="Runtime\RealtimeCorpseProtocol.cs" />
   </ItemGroup>
 
 </Project>

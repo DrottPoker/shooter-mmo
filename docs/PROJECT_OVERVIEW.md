@@ -131,7 +131,7 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `8`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `9`,
   movement revision `movement-simulation-v3`, and identical authoritative and
   predicted encumbrance behavior.
 
@@ -149,7 +149,7 @@ introduce isolated realms.
 
 ## Item Foundation Status
 
-Phases 1 through 10 of the durable item and inventory plan are complete. The
+Phases 1 through 11 of the durable item and inventory plan are complete. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -189,6 +189,14 @@ corpses keep a database-timed five-minute deadline through worker restarts and
 remain until that deadline even when empty. Idempotent cleanup destroys and
 audits only the loot still in corpse custody.
 
+Phase 11 adds exact-session corpse open and mutation routes, targeted revision
+checks, concurrent viewers, proximity and lifetime validation, full and partial
+loot, and atomic Bag aggregate swaps. SimulationWorker keeps bounded runtime
+presentation and viewer state, broadcasts committed deltas, and never holds
+item collections or a database transaction. Protocol version `9` and the
+persistent Unity corpse controller assemble authoritative state for a temporary
+generic capsule and uGUI drag loop without optimistic custody.
+
 Carried weight excludes every equipment-slot item, including the equipped Bag
 root. Permanent inventory, equipped Bag contents, carried empty Bags, and Secure
 Container contents still count, while the equipped Bag capacity bonus remains
@@ -199,9 +207,9 @@ The remaining locked direction is slot-based rather than grid-based and includes
 
 - Final inventory visual design, drag-and-drop interaction polish, accessibility,
   and item policy detail presentation on the implemented client foundation.
-- The authoritative combat death producer, live corpse presentation, concurrent
-  looting and Bag swaps, insurance NPC purchase behavior, and configurable NPC
-  corpse persistence.
+- The authoritative combat death producer, final corpse art and interaction
+  polish, insurance NPC purchase behavior, and configurable NPC corpse
+  persistence.
 
 The persistent schema, character custody identities, authoritative reads,
 offline account mutations, policy services, internal item mutations, and
@@ -216,9 +224,10 @@ item grants. See
 - Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Gameplay-created item instances, authoritative combat death production, live
-  corpse representation, and loot transactions. Durable player corpse identity
-  and death partition already exist behind the service boundary.
+- Gameplay-created item instances, authoritative combat death production, and
+  final corpse presentation. Durable player corpse identity, generic active
+  representation, and loot transactions already exist behind the service
+  boundary.
 - Crafting, gathering, professions, and the broader economy.
 - Persistent NPCs, quests, guilds, social systems, and world events.
 - Production orchestration, metric export, dashboards, alerts, and live

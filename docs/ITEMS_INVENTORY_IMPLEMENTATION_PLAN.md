@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-17
 
-Status: Approved delivery baseline, Phases 1 through 10 completed
+Status: Approved delivery baseline, Phases 1 through 11 completed
 
 ## Purpose
 
@@ -1051,7 +1051,7 @@ idempotency, revisions, and authority handling are long-term code.
   mapper normalizes Unity `JsonUtility` all-default placeholders only in optional
   empty item and equipped-Bag fields, while required or partially malformed item
   payloads remain rejected.
-- Every UI mutation creates a new protocol-v8 operation id and sends a typed
+- Every UI mutation creates a new versioned realtime operation id and sends a typed
   intent through the joined `RealtimeSimulationClient`. One pending operation is
   journaled at a time. The client never changes item custody or quantity
   optimistically, ignores a duplicate completion for the last finalized
@@ -1260,11 +1260,14 @@ combat death producer does not exist yet.
 
 Player death cannot duplicate, lose, or expose protected durable items.
 
-The Phase 10 durable service and test exit gate is satisfied. Live gameplay
-activation remains explicitly gated on the server-authoritative combat death
-producer. Phase 11 work has not started.
+The Phase 10 durable service and test exit gate is satisfied. Live combat death
+production remains explicitly gated on the future server-authoritative combat
+producer. Phase 11 now consumes the durable corpse boundary without fabricating
+that combat producer.
 
 ## Phase 11: Concurrent Corpse Looting And Bag Swap
+
+Status: Implemented on 2026-07-17
 
 ### Work
 
@@ -1304,6 +1307,64 @@ producer. Phase 11 work has not started.
 ### Exit Gate
 
 Concurrent corpse interaction is deterministic, refreshable, and dupe safe.
+
+### Implementation Record
+
+- GameProtocol version `9` adds reliable corpse presence, open, close, refresh,
+  full-item loot, partial-stack loot, atomic Bag-swap, operation-result,
+  chunked view-state, and stable view-closure messages. Chunk builders measure
+  encoded UTF-8 size and keep every packet within the `1200` byte transport
+  limit.
+- AuthService exposes exact-session corpse open and item-operation routes.
+  Read-only snapshots use short `REPEATABLE READ` transactions. Mutations reuse
+  `ItemTransactionService`, lock the character and corpse before canonical Bag
+  roots, containers, children, and policies, validate the absolute lifetime,
+  and commit targeted item or container expectations without rejecting an
+  unrelated corpse change solely because the corpse revision advanced.
+- Full item moves, partial stack splits or merges, and Bag aggregate swaps
+  preserve policy, slot, carried-weight, capacity, and 140 percent hard-cap
+  rules. The dead character uses the same transaction path as every other
+  looter. A committed response is loaded only after the mutation transaction
+  closes, so no database transaction spans a client wait.
+- SimulationWorker keeps only bounded runtime corpse presentation and view
+  state. One per-peer authority queue serializes item and corpse operations,
+  one peer can view only one corpse, any number of peers can view one corpse,
+  and the worker rechecks three-dimensional proximity plus cached absolute
+  lifetime before every open, refresh, or mutation. AuthService repeats the
+  lifetime and exact-session checks at commit authority.
+- Committed snapshots update the runtime store and produce targeted deltas for
+  every current viewer. Out-of-order HTTP completions cannot regress a newer
+  cached corpse revision. Expired, invalidated, or missing corpses close all
+  viewers with stable codes, while stale item or quantity conflicts request an
+  authoritative refresh.
+- Unity owns an immutable presence and corpse-view state adapter, chunk
+  assembly, monotonic snapshot and delta application, operation correlation,
+  and refresh-on-stale behavior. It never changes corpse or character custody
+  optimistically. A replaceable capsule presentation exposes nearby corpses,
+  `E` opens the closest corpse within three metres, and the temporary uGUI uses
+  the permanent typed drag-and-drop foundation for full or partial loot and
+  occupied Bag-slot aggregate swaps.
+- `Shooter MMO > Tools > Inventory Item Grants` can create a durable corpse for
+  an offline local character at a selected Shard position. Empty characters are
+  first seeded through the Phase 9 fixture, then the normal system-death adapter
+  creates the corpse. Restarting SimulationWorker restores it with its original
+  database deadline.
+- Automated coverage includes same-item and partial-stack races, unrelated
+  concurrent commits, Bag versus child and Bag versus Bag races, hard-cap
+  rejection, equal rules for the dead player, exact HTTP authority, closed
+  transaction checks, viewer and delta state, stale refresh state, stable close
+  errors, protocol MTU behavior, the Development corpse fixture, Unity chunk
+  assembly, drag payloads, and bootstrap presentation.
+- Final verification passed locked dependency restore, dependency policy,
+  formatter verification, deterministic item-catalog and collision verification,
+  and the complete Release build with zero warnings and zero errors.
+- The complete backend suite passed `325/325`. Unity `6000.5.2f1` passed
+  `78/78` EditMode tests and `2/2` PlayMode tests.
+
+The Phase 11 implementation, automated test, documentation, and deterministic
+exit gates are satisfied. The documented two-client flow remains the required
+manual player-facing acceptance check. Phase 12 has not started and no insurance
+NPC or quest lifecycle behavior is introduced here.
 
 ## Phase 12: Insurance And Quest Lifecycle Integration
 
@@ -1438,7 +1499,10 @@ recovery_access_required
 recovery_delivery_not_found
 corpse_not_found
 corpse_expired
+corpse_invalidated
 corpse_out_of_range
+corpse_view_not_open
+corpse_interaction_active
 item_already_looted
 item_quantity_changed
 wrong_simulation_worker

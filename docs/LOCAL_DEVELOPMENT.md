@@ -474,7 +474,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `8` and simulation revision
+   startup reports realtime protocol version `9` and simulation revision
    `movement-simulation-v3`.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -533,7 +533,7 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `8` and loads the configured local bank,
+   reports realtime protocol version `9` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
@@ -628,7 +628,17 @@ routed through the worker that currently owns the character.
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
    rejected by AuthService without a partial item transaction.
-6. Start SimulationWorker with its Development launch profile, enter Play Mode,
+6. To create a durable corpse, keep a source character offline and use the
+   `Create Phase 11 Corpse` section. Leave Shard Id as `local-shard-1`, enter a
+   nearby safe World position such as `(0, 0, -1)`, and click
+   `Create Durable Corpse`. An empty source is seeded automatically with the
+   Phase 9 package. A non-empty source uses its current item state. A source with
+   only pending Recovery deliveries cannot be auto-seeded.
+
+   Expected result: the status reports the corpse id, exact Shard, absolute
+   five-minute expiry, and committed item-state revision. Restart
+   SimulationWorker after creation so its fresh runtime restores the corpse.
+7. Start SimulationWorker with its Development launch profile, enter Play Mode,
    log into the target account, select its character, and join the local shard:
 
    ```powershell
@@ -643,7 +653,8 @@ routed through the worker that currently owns the character.
 No Inspector, scene, prefab, package, input-action, or build-setting edit is
 required. The Editor window, gameplay catalog reference, `B`, `C`, and `I`
 bindings, persistent controller, EventSystem, Canvas, and temporary uGUI
-hierarchy are already authored or created by the maintained foundation.
+   hierarchy, corpse controller, and generic presentation are already authored
+   or created by the maintained foundation.
 
 The terminal interface remains available as a fallback or for automation. It
 uses the same guardrails and transaction service:
@@ -657,6 +668,9 @@ dotnet run --project AuthService --configuration Release --no-build -- `
 
 dotnet run --project AuthService --configuration Release --no-build -- `
   --dev-items-package <characterId> phase9_full
+
+dotnet run --project AuthService --configuration Release --no-build -- `
+  --dev-items-corpse <characterId> local-shard-1 0 0 -1
 ```
 
 The original full-fixture command remains compatible:
@@ -732,12 +746,9 @@ The catalog-update path is covered by
 revision is refused and the controller presents `item_catalog_update_required`
 instead of rendering item slots.
 
-Corpse inspection and atomically swapping an equipped non-empty Bag with a
-corpse or character Bag require later authoritative identity, proximity,
-snapshot, and protocol contracts. Phase 9 reserves typed corpse and world-loot
-contexts and the stable upper-right adapter boundary, but does not fabricate
-those later systems. Their manual cases become runnable when the corresponding
-authoritative phase is implemented.
+World-loot keeps its reserved context identity. Corpse inspection, concurrent
+loot, partial stacks, and atomic equipped-Bag swaps are implemented by Phase 11
+and use the separate verification flow below.
 
 ## Phase 10 Death And Durable Corpse Verification
 
@@ -768,11 +779,83 @@ lifetime, one audited destruction per remaining item, and a
 custody-versus-expiry race with one final outcome.
 
 No manual Unity Editor steps are required for Phase 10. Do not change a scene,
-prefab, Inspector property, input action, package, or build setting. The
-authoritative combat death producer and Phase 11 corpse inspection protocol do
-not exist yet, so there is intentionally no honest player-visible corpse test in
-this phase. When combat is implemented, it must call the prepared exact-session
-death boundary and feed the committed corpse response into active presentation.
+prefab, Inspector property, input action, package, or build setting. Phase 11
+uses the prepared exact-session death boundary for its Development corpse
+fixture without fabricating the future combat producer.
+
+## Phase 11 Concurrent Corpse Loot Verification
+
+Run the complete Phase 11 backend coverage against the isolated PostgreSQL
+database, then run both Unity suites:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$env:SHOOTER_MMO_TEST_POSTGRES = `
+  (Get-Content .env | Where-Object {
+    $_ -like "SHOOTER_MMO_TEST_POSTGRES=*"
+  }).Split("=", 2)[1]
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~CorpseLootConcurrencyIntegrationTests|FullyQualifiedName~CorpseInteractionEndpointsEnforceAuthorityCommitAndCloseTransactions|FullyQualifiedName~CorpseFixtureSeedsEmptyCharacterAndUsesDurableDeathPipeline|FullyQualifiedName~RealtimeCorpseProtocolTests|FullyQualifiedName~CorpseRealtimeStateTests|FullyQualifiedName~SimulationCorpseInteractionServiceTests"
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+docker compose -f docker-compose.test.yml down
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: every selected backend test and both Unity suites pass. The
+coverage proves unrelated concurrent commits, one winner for the same item,
+partial-stack conservation, Bag-versus-child and Bag-versus-Bag aggregate
+safety, 140 percent rejection, equal rules for the dead player, exact runtime
+authority, closed PostgreSQL transactions, bounded UTF-8 packets, viewer
+deltas, stable closure codes, monotonic client state, and the durable Editor
+fixture path.
+
+### Manual Two-Client Corpse Loop
+
+No scene, prefab, Inspector, input-action, package, or build-setting edit is
+required. One Development player build is required so two clients can be active
+at the same time:
+
+1. In Unity, open `File > Build Profiles`, select Windows, enable
+   `Development Build`, and build the existing scene list. Do not add or reorder
+   scenes. Expected result: the standalone player reaches LoginMenu.
+2. Start PostgreSQL, Redis, and AuthService. Using the Editor client, create
+   three disposable accounts with one character each: one offline corpse source
+   and two looters. Apply `Phase 9 Full Test Pack` to both looters while they are
+   offline so each has an occupied equipped Bag.
+3. In `Shooter MMO > Tools > Inventory Item Grants`, select the offline source.
+   Under `Create Phase 11 Corpse`, keep Shard Id `local-shard-1`, use World
+   Position `(0, 0, -1)`, and click `Create Durable Corpse`. Expected result:
+   the tool reports a corpse id and an expiry five minutes in the future.
+4. Start or restart SimulationWorker after the fixture commits. Run the built
+   player and enter Play Mode in the Editor. Log the two looters into their
+   separate accounts and join `local-shard-1`. Both spawn beside the generic
+   corpse capsule.
+5. Press `E` in both clients. Expected result: each opens the same complete
+   three-section corpse view. The character inventory module stays fixed while
+   the Corpse context module opens.
+6. Drag two different corpse items into valid empty carried slots at nearly the
+   same time. Expected result: both commits appear in both views with no lost or
+   duplicated item. Then drag the same remaining item simultaneously. Exactly
+   one client commits, and the loser receives a stable error followed by current
+   authoritative state.
+7. For a stack, click `Partial Stack`, enter a quantity, and drag it to a valid
+   destination from one client while the other client loots from the same stack.
+   Expected result: committed quantities never become negative and their total
+   is conserved.
+8. In one client, drag a corpse Bag child. At the same time in the other client,
+   drag the corpse Bag root onto the occupied player Bag equipment slot.
+   Expected result: only a compatible complete outcome commits. Neither Bag
+   aggregate is split, and both clients converge after the broadcast delta or
+   refresh.
+9. Create a fresh fixture and restart SimulationWorker before its five-minute
+   deadline. Rejoin the Shard. Expected result: the corpse returns at
+   `(0, 0, -1)` with the original absolute expiry. It disappears and closes any
+   open view at expiry rather than receiving a new five-minute lifetime.
+
+The future combat system is not required for this test. The fixture enters the
+same durable death, restore, interaction, transaction, and expiry boundaries
+that combat must call later.
 
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
@@ -924,7 +1007,7 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 8, simulation revision, collision
+`27015`, runtime id, realtime protocol version 9, simulation revision, collision
 revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
 interval logs a worker status line with connected real players, synthetic bots,

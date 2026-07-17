@@ -152,6 +152,50 @@ public sealed class DevelopmentItemToolIntegrationTests
         }
     }
 
+    [PostgresIntegrationFact]
+    public async Task CorpseFixtureSeedsEmptyCharacterAndUsesDurableDeathPipeline()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "corpse-fixture@example.com",
+            "corpse_fixture_player",
+            "Corpse Fixture Hero");
+        var service = CreateService(context);
+
+        var response = await service.ExecuteAsync(
+            new DevelopmentItemToolCommand(
+                DevelopmentItemToolCommandKind.Corpse,
+                player.Character.Id,
+                string.Empty,
+                0,
+                DevelopmentItemDestination.PermanentInventory,
+                string.Empty,
+                "local-shard-1",
+                12.5d,
+                3d,
+                -8.25d),
+            CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Contains("Restart SimulationWorker", response.Message, StringComparison.Ordinal);
+        var restored = await context.CorpseService.ListForWorkerAsync(
+            "local-simulation-worker-1",
+            "integration-worker-runtime",
+            "local-shard-1",
+            CancellationToken.None);
+        Assert.True(restored.Succeeded, restored.Error?.Message);
+        var corpse = Assert.Single(restored.Value!.Corpses);
+        Assert.Equal(player.Character.Id, corpse.SourceCharacterId);
+        Assert.Equal(12.5d, corpse.PositionX);
+        Assert.Equal(3d, corpse.PositionY);
+        Assert.Equal(-8.25d, corpse.PositionZ);
+        Assert.Equal(TimeSpan.FromMinutes(5), corpse.ExpiresAt - corpse.CreatedAt);
+        Assert.False(corpse.IsEmpty);
+        Assert.Equal(
+            new[] { "bag", "equipment", "general_inventory" },
+            corpse.Sections.Select(section => section.SectionKind).Order().ToArray());
+    }
+
     private static DevelopmentItemToolService CreateService(
         PostgresIntegrationTestContext context)
     {
@@ -165,6 +209,7 @@ public sealed class DevelopmentItemToolIntegrationTests
             context.DataSource,
             context.ItemTransactionService,
             phaseNineSeeder,
+            context.CorpseService,
             environment);
     }
 

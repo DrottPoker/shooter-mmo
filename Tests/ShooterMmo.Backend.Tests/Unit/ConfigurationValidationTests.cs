@@ -99,6 +99,8 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(TimeSpan.FromMilliseconds(500), config.MovementInputSilenceTimeout);
         Assert.Equal(0.35f, config.MovementSimulation.CharacterCollision.Radius);
         Assert.Equal(3, config.ItemInteraction.ServicePoints.Count);
+        Assert.Equal(3f, config.ItemInteraction.CorpseInteractionRadius);
+        Assert.Equal(32f, config.ItemInteraction.CorpseDiscoveryRadius);
 
         var access = new ItemInteractionAccessService(config);
         Assert.True(access.Evaluate(0f, 0f, -1f).Bank);
@@ -171,6 +173,8 @@ public sealed class ConfigurationValidationTests
         settings["SimulationWorker:ItemInteraction:ServicePoints:1:Id"] =
             "local_city_bank";
         settings["SimulationWorker:ItemInteraction:ServicePoints:2:Kind"] = "corpse";
+        settings["SimulationWorker:ItemInteraction:CorpseInteractionRadius"] = "21";
+        settings["SimulationWorker:ItemInteraction:CorpseDiscoveryRadius"] = "2";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
@@ -179,6 +183,8 @@ public sealed class ConfigurationValidationTests
         Assert.Contains("Radius must be greater than 0 and at most 100", exception.Message);
         Assert.Contains("Id must be unique", exception.Message);
         Assert.Contains("Kind must be bank, recovery_storage, or insurance_npc", exception.Message);
+        Assert.Contains("CorpseInteractionRadius must be greater than 0 and at most 20", exception.Message);
+        Assert.Contains("CorpseDiscoveryRadius must be at least the interaction radius", exception.Message);
     }
 
     private static Dictionary<string, string?> AuthSettings(bool includeSecrets)

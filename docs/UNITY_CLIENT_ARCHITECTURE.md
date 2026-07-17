@@ -188,7 +188,7 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 8 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 9 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
@@ -438,11 +438,39 @@ WorldData equipment, stack, Bag, Secure Container, slot-tag, weight, and hard-ca
 rules to disable obvious invalid targets. Server authority always revalidates any
 submitted action, and the client never applies an optimistic custody change.
 
-Corpse and world-loot context kinds are reserved at the state boundary without
-inventing snapshots or operations. The upper-right layout can accept those
-adapters when later phases provide live identity, proximity, custody, and
-revision contracts. Non-empty Bag swaps likewise wait for their live protocol
-contract instead of being simulated in UI.
+World-loot retains a reserved context identity without inventing snapshots or
+operations. Corpse context is active through the Phase 11 state described below.
+
+### Corpse Client State And Presentation
+
+`CorpseClientController` is a persistent bootstrap-owned adapter over
+`RealtimeSimulationClient`. It owns immutable nearby-presence and active-view
+state, assembles complete multi-packet snapshots, applies only monotonic
+targeted deltas, correlates one pending corpse operation, and requests a refresh
+when a stale base or concurrency result requires it. It never writes inventory
+or corpse custody locally. A disconnect clears uncertain transient state, and a
+new joined session rebuilds presence and views from server authority.
+
+Protocol version `9` carries chunked presence, open, close, refresh, full-item
+loot, partial-stack loot, atomic Bag swap, operation-result, targeted view-state,
+and view-closure messages on the reliable ordered path. Complete snapshots must
+contain exactly the canonical general inventory, equipment, and Bag sections.
+Chunk metadata, container revisions, slot capacities, ids, and item revisions
+must remain coherent before state becomes visible.
+
+`CorpsePresentationController` creates one replaceable generic capsule for every
+nearby presence entry and updates it from server position and presentation key.
+It uses a shared renderer property block and never creates per-frame materials.
+Pressing `E` opens the nearest corpse within the configured three-metre range.
+No authored scene or prefab object is required for the temporary presentation.
+
+The Context module switches to Corpse when an open snapshot arrives. It renders
+all three sections and reuses `InventoryDragPayload` for corpse sources. Dropping
+a full or selected partial stack into Permanent inventory, the equipped Bag, or
+Secure Container submits a typed corpse intent. Dropping a corpse Bag onto the
+occupied player Bag slot submits one atomic aggregate swap. Green and red target
+feedback remains advisory, while AuthService owns all final slot, policy,
+revision, weight, capacity, and hard-cap validation.
 
 ### Development Item Tools
 
@@ -461,12 +489,19 @@ state directly and has no active SimulationWorker result path that can advance
 the joined session's carry tuple and item revision. Safe online grants require a
 future service-authenticated development intent routed through the owning
 SimulationWorker. Individual grants can extend an existing character, while
-packages require an empty character so their exact test state is reproducible. Backend
-validation remains authoritative for stack limits, destination eligibility,
+packages require an empty character so their exact test state is reproducible.
+Backend validation remains authoritative for stack limits, destination eligibility,
 weight, the 140 percent hard cap, revisions, policies, and container slots. The
 response is machine-readable and refreshes the Editor view after a successful
-mutation. This tooling does not change HTTP DTOs, realtime packets, or protocol
-versions.
+mutation.
+
+The same window can create a durable corpse for an offline source character at
+a selected Shard position. An empty source is first populated by the standard
+Phase 9 package, then the normal system-death adapter performs the Phase 10
+partition. The Editor does not manufacture corpse rows, custody, revisions, or
+snapshots. SimulationWorker restores the committed corpse through its normal
+runtime registration path. These Development commands add no remotely callable
+gameplay route.
 
 SimulationWorker separately loads
 `Config/appsettings.Development.json`. Its explicit
@@ -576,16 +611,15 @@ authority fields. Phase 9 coverage loads the real bundled gameplay and
 presentation catalogs, verifies cache reuse and mismatch rejection, validates
 complete and focused snapshots, exercises stale and divergent revision handling,
 correlates operation ids, and checks specialized slots, Secure Container rules,
-non-empty Bags, split quantities, and the exact hard cap.
+non-empty Bags, split quantities, and the exact hard cap. Phase 11 coverage
+verifies presence assembly, duplicate and stale chunks, complete canonical
+three-section views, targeted delta consistency, monotonic revisions, every
+typed corpse intent, and corpse drag payload identity.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
-bootstrap, persistent realtime and inventory controllers, and runtime login
-panel. WorldScene coverage opens and closes the runtime uGUI inventory root.
-
-Phase 10 changes only AuthService and SimulationWorker durable death state. It
-adds no GameProtocol packet, Unity state, scene object, input, or temporary
-corpse panel. The prepared corpse context adapter remains inactive until Phase 11
-defines authoritative inspection, proximity, refresh, and mutation contracts.
+bootstrap, realtime, inventory, and corpse controllers, and runtime login panel.
+WorldScene coverage opens and closes the runtime uGUI inventory root and finds
+the runtime corpse presentation controller.
 
 Manual flows and expected results are documented in
 [Local Development](LOCAL_DEVELOPMENT.md).
@@ -601,7 +635,7 @@ Manual flows and expected results are documented in
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.
 - Keep persistent cross-scene session state in `ShooterMmoClientSession` and
-  item state in `InventoryClientController`, not scene panels.
+  item and corpse state in their bootstrap-owned controllers, not scene panels.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
 - Route every WorldScene exit through exact-session UDP leave or disconnect

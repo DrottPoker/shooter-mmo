@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -38,6 +39,8 @@ namespace ShooterMmo.Editor
         private string statusMessage = "Refresh to load local development data.";
         private MessageType statusType = MessageType.Info;
         private bool initialRefreshScheduled;
+        private string corpseShardId = "local-shard-1";
+        private Vector3 corpsePosition = new Vector3(0f, 0f, -1f);
 
         [MenuItem(MenuPath)]
         public static void Open()
@@ -78,7 +81,7 @@ namespace ShooterMmo.Editor
             EditorGUILayout.HelpBox(
                 "This Development-only tool sends grants through AuthService and "
                     + "ItemTransactionService. It never writes directly to PostgreSQL. "
-                    + "The selected character must be offline.",
+                    + "Item grants and corpse fixture sources must be offline.",
                 MessageType.Info);
 
             if (response == null || response.data == null)
@@ -93,6 +96,8 @@ namespace ShooterMmo.Editor
             DrawCustomGrant();
             EditorGUILayout.Space(8f);
             DrawPackageGrant();
+            EditorGUILayout.Space(8f);
+            DrawCorpseFixture();
             EditorGUILayout.Space(8f);
             EditorGUILayout.HelpBox(statusMessage, statusType);
             EditorGUILayout.EndScrollView();
@@ -263,6 +268,83 @@ namespace ShooterMmo.Editor
 
             EditorGUI.EndDisabledGroup();
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawCorpseFixture()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            GUILayout.Label("Create Phase 11 Corpse", EditorStyles.boldLabel);
+            var character = SelectedCharacter();
+            if (character == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "An initialized source character is required.",
+                    MessageType.Warning);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            corpseShardId = EditorGUILayout.TextField("Shard Id", corpseShardId).Trim();
+            corpsePosition = EditorGUILayout.Vector3Field("World Position", corpsePosition);
+            EditorGUILayout.HelpBox(
+                "The command uses the selected offline character as the death source. "
+                    + "If it has no items or Recovery deliveries, the Phase 9 test pack is seeded first. "
+                    + "Restart SimulationWorker after creation so it restores the durable corpse.",
+                MessageType.Info);
+            var emptyWithRecovery = character.itemCount == 0
+                && character.recoveryDeliveryCount != 0;
+            if (emptyWithRecovery)
+            {
+                EditorGUILayout.HelpBox(
+                    "This empty character has pending Recovery deliveries. Claim or clear them before auto-seeding the corpse fixture.",
+                    MessageType.Warning);
+            }
+
+            var canCreate = activeProcess == null
+                && !character.isOnline
+                && !emptyWithRecovery
+                && IsIdentifier(corpseShardId)
+                && IsFinite(corpsePosition);
+            EditorGUI.BeginDisabledGroup(!canCreate);
+            if (GUILayout.Button("Create Durable Corpse", GUILayout.Height(30f)))
+            {
+                StartCommand(
+                    "Creating a durable corpse for " + character.characterName,
+                    "--dev-items-corpse",
+                    character.characterId,
+                    corpseShardId,
+                    corpsePosition.x.ToString("R", CultureInfo.InvariantCulture),
+                    corpsePosition.y.ToString("R", CultureInfo.InvariantCulture),
+                    corpsePosition.z.ToString("R", CultureInfo.InvariantCulture));
+            }
+
+            EditorGUI.EndDisabledGroup();
+            EditorGUILayout.EndVertical();
+        }
+
+        private static bool IsIdentifier(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value)
+                && value.Length <= 128
+                && value.All(character =>
+                    (character >= 'a' && character <= 'z')
+                    || (character >= 'A' && character <= 'Z')
+                    || (character >= '0' && character <= '9')
+                    || character == '-'
+                    || character == '_');
+        }
+
+        private static bool IsFinite(Vector3 value)
+        {
+            return !float.IsNaN(value.x)
+                && !float.IsInfinity(value.x)
+                && !float.IsNaN(value.y)
+                && !float.IsInfinity(value.y)
+                && !float.IsNaN(value.z)
+                && !float.IsInfinity(value.z)
+                && Mathf.Abs(value.x) <= 1_000_000f
+                && Mathf.Abs(value.y) <= 1_000_000f
+                && Mathf.Abs(value.z) <= 1_000_000f;
         }
 
         private void RunInitialRefresh()

@@ -7,6 +7,7 @@ using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Config;
+using SimulationWorker.Corpses;
 using SimulationWorker.Entities;
 using SimulationWorker.Items;
 using SimulationWorker.Registry;
@@ -22,6 +23,9 @@ public sealed class RealtimeSimulationService(
     ActiveSimulationSessionStore sessionStore,
     CarryStateStore carryStateStore,
     SimulationItemInteractionService itemInteractionService,
+    SimulationCorpseInteractionService corpseInteractionService,
+    DurableCorpseStore corpseStore,
+    CorpseViewerRegistry corpseViewers,
     SimulationEntityRegistry entityRegistry,
     ConnectionEntityBindingRegistry connectionBindings,
     RealtimeTransportReadiness transportReadiness,
@@ -44,6 +48,7 @@ public sealed class RealtimeSimulationService(
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
+    private readonly Dictionary<Guid, CorpseViewSnapshotResponse> corpseSnapshots = [];
     private readonly TokenBucket aggregateSnapshotBytes = new(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
         config.UdpQuotas.AggregateSnapshotByteBurst);
@@ -56,6 +61,7 @@ public sealed class RealtimeSimulationService(
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
+    private uint corpsePresenceSequence;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -146,6 +152,8 @@ public sealed class RealtimeSimulationService(
             connectionBindings.Clear();
             entityRegistry.Clear();
             carryStateStore.Clear();
+            corpseViewers.Clear();
+            corpseSnapshots.Clear();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
             networkMetrics.SetPeerPopulation(0, 0, 0);
@@ -382,7 +390,8 @@ public sealed class RealtimeSimulationService(
                 return;
             }
 
-            if (context.ItemOperationQueue.Count >= PeerContext.MaximumQueuedItemOperations)
+            if (context.AuthorityOperationQueue.Count
+                >= PeerContext.MaximumQueuedAuthorityOperations)
             {
                 SendItemOperationRejection(
                     peer,
@@ -393,8 +402,74 @@ public sealed class RealtimeSimulationService(
                 return;
             }
 
-            context.ItemOperationQueue.Enqueue(intent);
-            StartNextItemOperation(context);
+            context.AuthorityOperationQueue.Enqueue(new QueuedItemOperation(intent));
+            StartNextAuthorityOperation(context);
+            return;
+        }
+
+        if (messageType == RealtimeMessageType.CorpseInteractionIntent)
+        {
+            if (channel != RealtimeProtocol.ControlChannel
+                || deliveryMethod != DeliveryMethod.ReliableOrdered)
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "invalid_corpse_operation_delivery",
+                    "Corpse interaction intents require the reliable ordered control channel.");
+                return;
+            }
+
+            if (!TryGetBoundPlayer(context, out var playerEntity))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "corpse_interaction_unavailable",
+                    "Corpse interaction is not active for this peer.");
+                return;
+            }
+
+            if (!carryStateStore.TryGet(
+                    playerEntity.Session.CharacterId,
+                    playerEntity.Session.SimulationSessionId,
+                    out _))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "carry_state_missing",
+                    "Authoritative carry state is unavailable for corpse interaction.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCorpseInteractionIntent(
+                    packet,
+                    out var intent,
+                    out var corpseError))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "invalid_corpse_operation",
+                    corpseError);
+                return;
+            }
+
+            if (context.AuthorityOperationQueue.Count
+                >= PeerContext.MaximumQueuedAuthorityOperations)
+            {
+                SendCorpseOperationRejection(
+                    peer,
+                    playerEntity.Session,
+                    intent,
+                    "item_operation_queue_full",
+                    "Too many item or corpse operations are waiting for authority.");
+                return;
+            }
+
+            context.AuthorityOperationQueue.Enqueue(new QueuedCorpseOperation(intent));
+            StartNextAuthorityOperation(context);
             return;
         }
 
@@ -514,6 +589,57 @@ public sealed class RealtimeSimulationService(
         }
     }
 
+    private async Task CompleteCorpseOperationAsync(
+        PeerContext context,
+        ActiveSimulationSession session,
+        RealtimeCorpseInteractionIntent intent,
+        bool removeOpenReservationOnFailure)
+    {
+        try
+        {
+            var result = intent.OperationKind switch
+            {
+                RealtimeCorpseInteractionKind.Open
+                    or RealtimeCorpseInteractionKind.Refresh =>
+                    await corpseInteractionService.OpenAsync(
+                        session,
+                        intent,
+                        CancellationToken.None),
+                RealtimeCorpseInteractionKind.LootItem
+                    or RealtimeCorpseInteractionKind.LootPartialStack
+                    or RealtimeCorpseInteractionKind.SwapBag =>
+                    await corpseInteractionService.MutateAsync(
+                        session,
+                        intent,
+                        CancellationToken.None),
+                _ => throw new InvalidOperationException(
+                    "The queued corpse operation is not supported by AuthService.")
+            };
+            completedOperations.Enqueue(new CorpseOperationCompleted(
+                context,
+                session,
+                result,
+                removeOpenReservationOnFailure));
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "[SIMULATION] Unhandled error while interacting with corpse {CorpseId} for simulation session {SimulationSessionId}.",
+                intent.CorpseId,
+                session.SimulationSessionId);
+            completedOperations.Enqueue(new CorpseOperationCompleted(
+                context,
+                session,
+                SimulationCorpseInteractionResult.Rejected(
+                    intent,
+                    "corpse_operation_failed",
+                    "SimulationWorker could not complete the corpse operation.",
+                    requiresCorpseRefresh: true),
+                removeOpenReservationOnFailure));
+        }
+    }
+
     private async Task ReleaseDisconnectedSessionAsync(ActiveSimulationSession session)
     {
         try
@@ -567,6 +693,9 @@ public sealed class RealtimeSimulationService(
                     break;
                 case ItemOperationCompleted itemCompleted:
                     ProcessItemOperationCompleted(itemCompleted);
+                    break;
+                case CorpseOperationCompleted corpseCompleted:
+                    ProcessCorpseOperationCompleted(corpseCompleted);
                     break;
             }
 
@@ -784,7 +913,7 @@ public sealed class RealtimeSimulationService(
 
     private void ProcessItemOperationCompleted(ItemOperationCompleted completed)
     {
-        completed.Context.ItemOperationInFlight = false;
+        completed.Context.AuthorityOperationInFlight = false;
         if (!TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
@@ -871,29 +1000,467 @@ public sealed class RealtimeSimulationService(
             completed.Session,
             completed.Result,
             requiresRefresh);
-        StartNextItemOperation(completed.Context);
+        StartNextAuthorityOperation(completed.Context);
     }
 
-    private void StartNextItemOperation(PeerContext context)
+    private void StartNextAuthorityOperation(PeerContext context)
     {
-        if (context.ItemOperationInFlight
-            || context.ItemOperationQueue.Count == 0
+        if (context.AuthorityOperationInFlight
+            || context.AuthorityOperationQueue.Count == 0
             || context.Session is null
             || !TryGetBoundPlayer(context, out var entity))
         {
             return;
         }
 
-        var intent = context.ItemOperationQueue.Dequeue();
+        var operation = context.AuthorityOperationQueue.Dequeue();
         var state = entity.Movement.State;
-        context.ItemOperationInFlight = true;
-        TrackOperation(CompleteItemOperationAsync(
+        context.AuthorityOperationInFlight = true;
+        switch (operation)
+        {
+            case QueuedItemOperation itemOperation:
+                TrackOperation(CompleteItemOperationAsync(
+                    context,
+                    context.Session,
+                    itemOperation.Intent,
+                    state.PositionX,
+                    state.PositionY,
+                    state.PositionZ));
+                break;
+            case QueuedCorpseOperation corpseOperation:
+                StartCorpseOperation(
+                    context,
+                    context.Session,
+                    corpseOperation.Intent,
+                    state.PositionX,
+                    state.PositionY,
+                    state.PositionZ);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    "The queued authority operation type is not supported.");
+        }
+    }
+
+    private void StartCorpseOperation(
+        PeerContext context,
+        ActiveSimulationSession session,
+        RealtimeCorpseInteractionIntent intent,
+        float positionX,
+        float positionY,
+        float positionZ)
+    {
+        if (intent.OperationKind == RealtimeCorpseInteractionKind.Close)
+        {
+            completedOperations.Enqueue(new CorpseOperationCompleted(
+                context,
+                session,
+                SimulationCorpseInteractionResult.Closed(intent),
+                false));
+            return;
+        }
+
+        if (!corpseStore.TryGetActive(intent.CorpseId, out var corpse))
+        {
+            completedOperations.Enqueue(new CorpseOperationCompleted(
+                context,
+                session,
+                SimulationCorpseInteractionResult.Rejected(
+                    intent,
+                    "corpse_not_found",
+                    "The corpse is no longer active on this Shard.",
+                    shouldCloseView: true),
+                false));
+            return;
+        }
+
+        if (!IsWithinCorpseInteractionRange(
+                corpse!,
+                positionX,
+                positionY,
+                positionZ))
+        {
+            completedOperations.Enqueue(new CorpseOperationCompleted(
+                context,
+                session,
+                SimulationCorpseInteractionResult.Rejected(
+                    intent,
+                    "corpse_out_of_range",
+                    "Move closer to the corpse before interacting with it."),
+                false));
+            return;
+        }
+
+        if (intent.OperationKind == RealtimeCorpseInteractionKind.Open)
+        {
+            var alreadyViewing = corpseViewers.IsViewing(
+                context.PeerId,
+                intent.CorpseId);
+            if (!corpseViewers.TryOpen(
+                    context.PeerId,
+                    intent.CorpseId,
+                    out var code,
+                    out var message))
+            {
+                completedOperations.Enqueue(new CorpseOperationCompleted(
+                    context,
+                    session,
+                    SimulationCorpseInteractionResult.Rejected(intent, code, message),
+                    false));
+                return;
+            }
+
+            TrackOperation(CompleteCorpseOperationAsync(
+                context,
+                session,
+                intent,
+                removeOpenReservationOnFailure: !alreadyViewing));
+            return;
+        }
+
+        if (!corpseViewers.IsViewing(context.PeerId, intent.CorpseId))
+        {
+            completedOperations.Enqueue(new CorpseOperationCompleted(
+                context,
+                session,
+                SimulationCorpseInteractionResult.Rejected(
+                    intent,
+                    "corpse_view_not_open",
+                    "Open the corpse before refreshing or looting it."),
+                false));
+            return;
+        }
+
+        TrackOperation(CompleteCorpseOperationAsync(
             context,
-            context.Session,
+            session,
             intent,
-            state.PositionX,
-            state.PositionY,
-            state.PositionZ));
+            removeOpenReservationOnFailure: false));
+    }
+
+    private void ProcessCorpseOperationCompleted(CorpseOperationCompleted completed)
+    {
+        completed.Context.AuthorityOperationInFlight = false;
+        if (!TryGetCurrentPeer(completed.Context, out var peer)
+            || completed.Context.Session is null
+            || completed.Context.Session.SimulationSessionId
+                != completed.Session.SimulationSessionId
+            || !string.Equals(
+                completed.Context.Session.SimulationSessionToken,
+                completed.Session.SimulationSessionToken,
+                StringComparison.Ordinal))
+        {
+            if (completed.RemoveOpenReservationOnFailure)
+            {
+                corpseViewers.RemovePeer(completed.Context.PeerId);
+            }
+
+            return;
+        }
+
+        if (!carryStateStore.TryGet(
+                completed.Session.CharacterId,
+                completed.Session.SimulationSessionId,
+                out _))
+        {
+            DisconnectForItemAuthorityFailure(
+                peer,
+                completed.Context,
+                completed.Session,
+                "carry_state_missing",
+                "Authoritative carry state disappeared during the corpse operation.");
+            return;
+        }
+
+        if (completed.Result.ShouldDisconnect)
+        {
+            SendCorpseOperationResult(peer, completed.Session, completed.Result);
+            DisconnectForItemAuthorityFailure(
+                peer,
+                completed.Context,
+                completed.Session,
+                completed.Result.Error!.Code,
+                completed.Result.Error.Message);
+            return;
+        }
+
+        if (!completed.Result.Succeeded)
+        {
+            if (completed.RemoveOpenReservationOnFailure)
+            {
+                corpseViewers.RemovePeer(completed.Context.PeerId);
+            }
+
+            SendCorpseOperationResult(peer, completed.Session, completed.Result);
+            if (completed.Result.ShouldCloseView)
+            {
+                if (ShouldCloseCorpseForAll(completed.Result.Error!.Code))
+                {
+                    CloseCorpseForAll(
+                        completed.Result.Intent.CorpseId,
+                        completed.Result.Error.Code,
+                        completed.Result.Error.Message,
+                        removeFromStore: true);
+                }
+                else
+                {
+                    CloseCorpseForPeer(
+                        completed.Context,
+                        peer,
+                        completed.Result.Intent.CorpseId,
+                        completed.Result.Error.Code,
+                        completed.Result.Error.Message);
+                }
+            }
+
+            StartNextAuthorityOperation(completed.Context);
+            return;
+        }
+
+        if (completed.Result.Intent.OperationKind
+            == RealtimeCorpseInteractionKind.Close)
+        {
+            corpseViewers.Close(
+                completed.Context.PeerId,
+                completed.Result.Intent.CorpseId);
+            SendCorpseOperationResult(peer, completed.Session, completed.Result);
+            SendControl(
+                peer,
+                RealtimeProtocol.EncodeCorpseViewClosed(new RealtimeCorpseViewClosed(
+                    completed.Result.Intent.CorpseId,
+                    "corpse_view_closed",
+                    "The corpse view was closed.")));
+            StartNextAuthorityOperation(completed.Context);
+            return;
+        }
+
+        if (completed.Result.Mutation is not null
+            && !TryApplyCorpseCarryState(
+                peer,
+                completed.Context,
+                completed.Session,
+                completed.Result.Mutation.Transaction))
+        {
+            return;
+        }
+
+        SendCorpseOperationResult(peer, completed.Session, completed.Result);
+        var snapshot = completed.Result.Snapshot;
+        if (snapshot is null)
+        {
+            CloseCorpseForAll(
+                completed.Result.Intent.CorpseId,
+                "corpse_invalidated",
+                "The corpse is no longer available.",
+                removeFromStore: true);
+            StartNextAuthorityOperation(completed.Context);
+            return;
+        }
+
+        if (corpseSnapshots.TryGetValue(snapshot.CorpseId, out var newerSnapshot)
+            && newerSnapshot.Revision > snapshot.Revision)
+        {
+            snapshot = newerSnapshot;
+        }
+
+        corpseStore.ApplySnapshot(snapshot);
+        IReadOnlyList<RealtimeCorpseViewStateChunk> chunks;
+        if (completed.Result.Mutation is not null
+            && corpseSnapshots.TryGetValue(snapshot.CorpseId, out var previousSnapshot))
+        {
+            chunks = CorpseRealtimePacketBuilder.BuildDelta(previousSnapshot, snapshot);
+        }
+        else
+        {
+            chunks = CorpseRealtimePacketBuilder.BuildSnapshot(snapshot);
+        }
+
+        corpseSnapshots[snapshot.CorpseId] = snapshot;
+        BroadcastCorpseState(snapshot.CorpseId, chunks);
+        StartNextAuthorityOperation(completed.Context);
+    }
+
+    private bool TryApplyCorpseCarryState(
+        NetPeer peer,
+        PeerContext context,
+        ActiveSimulationSession session,
+        SimulationItemTransactionResponse transaction)
+    {
+        if (transaction.CharacterRevisions.Count != 1)
+        {
+            DisconnectForItemAuthorityFailure(
+                peer,
+                context,
+                session,
+                "item_state_diverged",
+                "The corpse transaction returned an invalid character revision set.");
+            return false;
+        }
+
+        var characterRevision = transaction.CharacterRevisions[0];
+        var committedCarry = new PlayerCarryState(
+            characterRevision.Revision,
+            characterRevision.CarriedWeight,
+            characterRevision.CarryCapacity);
+        var carryResult = carryStateStore.ApplyCommitted(
+            session.CharacterId,
+            session.SimulationSessionId,
+            committedCarry,
+            out var currentCarry);
+        if (carryResult is CarryStateApplyResult.Conflict
+            or CarryStateApplyResult.SessionMismatch)
+        {
+            DisconnectForItemAuthorityFailure(
+                peer,
+                context,
+                session,
+                "item_state_diverged",
+                "Committed corpse loot and carry revisions diverged from the active simulation state.");
+            return false;
+        }
+
+        sessionStore.RefreshCarryState(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.SimulationSessionToken,
+            currentCarry);
+        if (entityRegistry.TryGetPlayerByCharacterId(
+                session.CharacterId,
+                out var entity))
+        {
+            ApplyLatestCarryState(entity!);
+        }
+
+        return true;
+    }
+
+    private void SendCorpseOperationResult(
+        NetPeer peer,
+        ActiveSimulationSession session,
+        SimulationCorpseInteractionResult result)
+    {
+        if (!carryStateStore.TryGet(
+                session.CharacterId,
+                session.SimulationSessionId,
+                out var carryState))
+        {
+            return;
+        }
+
+        SendControl(
+            peer,
+            RealtimeProtocol.EncodeCorpseInteractionResult(
+                new RealtimeCorpseInteractionResult(
+                    result.Intent.OperationId,
+                    result.Intent.OperationKind,
+                    result.Intent.CorpseId,
+                    result.Succeeded,
+                    result.RequiresCorpseRefresh,
+                    result.RequiresInventoryRefresh,
+                    result.Succeeded
+                        ? null!
+                        : new RealtimeError(
+                            result.Error!.Code,
+                            result.Error.Message),
+                    ToRealtimeCarryState(carryState!))));
+    }
+
+    private void SendCorpseOperationRejection(
+        NetPeer peer,
+        ActiveSimulationSession session,
+        RealtimeCorpseInteractionIntent intent,
+        string code,
+        string message)
+    {
+        SendCorpseOperationResult(
+            peer,
+            session,
+            SimulationCorpseInteractionResult.Rejected(intent, code, message));
+    }
+
+    private void BroadcastCorpseState(
+        Guid corpseId,
+        IReadOnlyList<RealtimeCorpseViewStateChunk> chunks)
+    {
+        foreach (var viewerPeerId in corpseViewers.GetViewers(corpseId))
+        {
+            if (!peers.TryGetValue(viewerPeerId, out var context)
+                || context.Session is null
+                || !TryGetCurrentPeer(context, out var peer))
+            {
+                continue;
+            }
+
+            foreach (var chunk in chunks)
+            {
+                SendControl(peer, RealtimeProtocol.EncodeCorpseViewStateChunk(chunk));
+            }
+        }
+    }
+
+    private void CloseCorpseForPeer(
+        PeerContext context,
+        NetPeer peer,
+        Guid corpseId,
+        string code,
+        string message)
+    {
+        if (!corpseViewers.Close(context.PeerId, corpseId))
+        {
+            return;
+        }
+
+        SendControl(
+            peer,
+            RealtimeProtocol.EncodeCorpseViewClosed(
+                new RealtimeCorpseViewClosed(corpseId, code, message)));
+    }
+
+    private void CloseCorpseForAll(
+        Guid corpseId,
+        string code,
+        string message,
+        bool removeFromStore)
+    {
+        foreach (var viewerPeerId in corpseViewers.CloseCorpse(corpseId))
+        {
+            if (peers.TryGetValue(viewerPeerId, out var context)
+                && context.Session is not null
+                && TryGetCurrentPeer(context, out var peer))
+            {
+                SendControl(
+                    peer,
+                    RealtimeProtocol.EncodeCorpseViewClosed(
+                        new RealtimeCorpseViewClosed(corpseId, code, message)));
+            }
+        }
+
+        corpseSnapshots.Remove(corpseId);
+        if (removeFromStore)
+        {
+            corpseStore.Remove(corpseId);
+        }
+    }
+
+    private static bool ShouldCloseCorpseForAll(string code)
+    {
+        return code is "corpse_expired"
+            or "corpse_invalidated"
+            or "corpse_not_found";
+    }
+
+    private bool IsWithinCorpseInteractionRange(
+        DurableCorpseState corpse,
+        float playerX,
+        float playerY,
+        float playerZ)
+    {
+        var deltaX = corpse.PositionX - playerX;
+        var deltaY = corpse.PositionY - playerY;
+        var deltaZ = corpse.PositionZ - playerZ;
+        var radius = config.ItemInteraction.CorpseInteractionRadius;
+        return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)
+            <= radius * radius;
     }
 
     private void SendItemOperationResult(
@@ -970,7 +1537,8 @@ public sealed class RealtimeSimulationService(
             message);
         RemoveBoundEntity(context, session, code);
         carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
-        context.ItemOperationQueue.Clear();
+        context.AuthorityOperationQueue.Clear();
+        corpseViewers.RemovePeer(context.PeerId);
         context.Session = null;
         RefreshPeerPopulationMetrics();
         context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
@@ -1012,6 +1580,14 @@ public sealed class RealtimeSimulationService(
             if (serverTick % snapshotIntervalTicks == 0)
             {
                 BroadcastSimulationSnapshots();
+            }
+
+            var corpsePresenceIntervalTicks = Math.Max(
+                1,
+                config.MovementSimulation.TickRateHz / 2);
+            if (serverTick % corpsePresenceIntervalTicks == 0)
+            {
+                BroadcastCorpsePresence();
             }
 
             performanceMetrics.RecordSimulationTick(
@@ -1222,6 +1798,91 @@ public sealed class RealtimeSimulationService(
                 ToRealtimeCarryState(entity.Movement.CarryState)));
     }
 
+    private void BroadcastCorpsePresence()
+    {
+        var activeCorpses = corpseStore.ListActive();
+        var activeCorpseIds = activeCorpses
+            .Select(corpse => corpse.CorpseId)
+            .ToHashSet();
+        foreach (var viewedCorpseId in corpseSnapshots.Keys.ToArray())
+        {
+            if (!activeCorpseIds.Contains(viewedCorpseId))
+            {
+                CloseCorpseForAll(
+                    viewedCorpseId,
+                    "corpse_expired",
+                    "The corpse expired and is no longer available.",
+                    removeFromStore: true);
+            }
+        }
+
+        unchecked
+        {
+            corpsePresenceSequence++;
+        }
+
+        foreach (var context in peers.Values)
+        {
+            if (context.Session is null
+                || !TryGetBoundPlayer(context, out var entity)
+                || !TryGetCurrentPeer(context, out var peer))
+            {
+                continue;
+            }
+
+            var state = entity.Movement.State;
+            var nearbyCorpses = activeCorpses
+                .Where(corpse => IsWithinCorpseDiscoveryRange(
+                    corpse,
+                    state.PositionX,
+                    state.PositionY,
+                    state.PositionZ))
+                .OrderBy(corpse => corpse.CorpseId)
+                .ToArray();
+            var signature = CreateCorpsePresenceSignature(nearbyCorpses);
+            if (string.Equals(
+                    context.CorpsePresenceSignature,
+                    signature,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            context.CorpsePresenceSignature = signature;
+            foreach (var chunk in CorpseRealtimePacketBuilder.BuildPresence(
+                         corpsePresenceSequence,
+                         nearbyCorpses))
+            {
+                SendControl(
+                    peer,
+                    RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(chunk));
+            }
+        }
+    }
+
+    private bool IsWithinCorpseDiscoveryRange(
+        DurableCorpseState corpse,
+        float playerX,
+        float playerY,
+        float playerZ)
+    {
+        var deltaX = corpse.PositionX - playerX;
+        var deltaY = corpse.PositionY - playerY;
+        var deltaZ = corpse.PositionZ - playerZ;
+        var radius = config.ItemInteraction.CorpseDiscoveryRadius;
+        return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)
+            <= radius * radius;
+    }
+
+    private static string CreateCorpsePresenceSignature(
+        IReadOnlyList<DurableCorpseState> corpses)
+    {
+        return string.Join(
+            '|',
+            corpses.Select(corpse =>
+                $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}"));
+    }
+
     private void DisconnectReplacedConnection(int? replacedConnectionId)
     {
         if (replacedConnectionId is null
@@ -1238,6 +1899,8 @@ public sealed class RealtimeSimulationService(
                     "session_reconnected",
                     "This character connected from another client."));
             previousContext.Session = null;
+            previousContext.AuthorityOperationQueue.Clear();
+            corpseViewers.RemovePeer(previousContext.PeerId);
             RefreshPeerPopulationMetrics();
             previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
@@ -1431,6 +2094,8 @@ public sealed class RealtimeSimulationService(
         ActiveSimulationSession session,
         string reason)
     {
+        corpseViewers.RemovePeer(context.PeerId);
+        context.AuthorityOperationQueue.Clear();
         if (!connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
             || !entityRegistry.RemovePlayer(
                 entityId,
@@ -1621,7 +2286,7 @@ public sealed class RealtimeSimulationService(
         DateTime connectedAtUtc,
         UdpQuotaConfig quotaConfig)
     {
-        public const int MaximumQueuedItemOperations = 8;
+        public const int MaximumQueuedAuthorityOperations = 8;
 
         public int PeerId { get; } = peerId;
 
@@ -1635,9 +2300,11 @@ public sealed class RealtimeSimulationService(
 
         public ActiveSimulationSession? Session { get; set; }
 
-        public Queue<RealtimeItemOperationIntent> ItemOperationQueue { get; } = new();
+        public Queue<QueuedAuthorityOperation> AuthorityOperationQueue { get; } = new();
 
-        public bool ItemOperationInFlight { get; set; }
+        public bool AuthorityOperationInFlight { get; set; }
+
+        public string? CorpsePresenceSignature { get; set; }
 
         public DateTime? DisconnectAfterUtc { get; set; }
     }
@@ -1663,4 +2330,19 @@ public sealed class RealtimeSimulationService(
         ActiveSimulationSession Session,
         SimulationItemInteractionResult Result)
         : RealtimeOperationResult(PeerContext);
+
+    private sealed record CorpseOperationCompleted(
+        PeerContext PeerContext,
+        ActiveSimulationSession Session,
+        SimulationCorpseInteractionResult Result,
+        bool RemoveOpenReservationOnFailure)
+        : RealtimeOperationResult(PeerContext);
+
+    private abstract record QueuedAuthorityOperation;
+
+    private sealed record QueuedItemOperation(RealtimeItemOperationIntent Intent)
+        : QueuedAuthorityOperation;
+
+    private sealed record QueuedCorpseOperation(RealtimeCorpseInteractionIntent Intent)
+        : QueuedAuthorityOperation;
 }

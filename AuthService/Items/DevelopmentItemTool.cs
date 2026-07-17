@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Dapper;
 using Npgsql;
@@ -8,7 +9,8 @@ public enum DevelopmentItemToolCommandKind
 {
     List = 1,
     Grant = 2,
-    Package = 3
+    Package = 3,
+    Corpse = 4
 }
 
 public enum DevelopmentItemDestination
@@ -24,19 +26,25 @@ public sealed record DevelopmentItemToolCommand(
     string DefinitionId,
     int Quantity,
     DevelopmentItemDestination Destination,
-    string PackageId);
+    string PackageId,
+    string ShardId = "",
+    double PositionX = 0d,
+    double PositionY = 0d,
+    double PositionZ = 0d);
 
 public static class DevelopmentItemToolCommandParser
 {
     public const string ListArgument = "--dev-items-list";
     public const string GrantArgument = "--dev-items-grant";
     public const string PackageArgument = "--dev-items-package";
+    public const string CorpseArgument = "--dev-items-corpse";
 
     private static readonly string[] CommandArguments =
     [
         ListArgument,
         GrantArgument,
-        PackageArgument
+        PackageArgument,
+        CorpseArgument
     ];
 
     public static bool TryParse(
@@ -86,7 +94,45 @@ public static class DevelopmentItemToolCommandParser
             return TryParseGrant(arguments, selected.index, out command, out error);
         }
 
+        if (string.Equals(selected.argument, CorpseArgument, StringComparison.Ordinal))
+        {
+            return TryParseCorpse(arguments, selected.index, out command, out error);
+        }
+
         return TryParsePackage(arguments, selected.index, out command, out error);
+    }
+
+    private static bool TryParseCorpse(
+        IReadOnlyList<string> arguments,
+        int commandIndex,
+        out DevelopmentItemToolCommand? command,
+        out string error)
+    {
+        command = null;
+        error = string.Empty;
+        if (commandIndex + 5 >= arguments.Count
+            || !TryParseCharacterId(arguments[commandIndex + 1], out var characterId)
+            || !IsIdentifier(arguments[commandIndex + 2])
+            || !TryParseFinite(arguments[commandIndex + 3], out var positionX)
+            || !TryParseFinite(arguments[commandIndex + 4], out var positionY)
+            || !TryParseFinite(arguments[commandIndex + 5], out var positionZ))
+        {
+            error = $"{CorpseArgument} requires <characterGuid> <shardId> <x> <y> <z>.";
+            return true;
+        }
+
+        command = new DevelopmentItemToolCommand(
+            DevelopmentItemToolCommandKind.Corpse,
+            characterId,
+            string.Empty,
+            0,
+            DevelopmentItemDestination.PermanentInventory,
+            string.Empty,
+            arguments[commandIndex + 2].Trim(),
+            positionX,
+            positionY,
+            positionZ);
+        return true;
     }
 
     private static bool TryParseGrant(
@@ -163,6 +209,25 @@ public static class DevelopmentItemToolCommandParser
         };
         return destination != default;
     }
+
+    private static bool TryParseFinite(string value, out double parsed)
+    {
+        return double.TryParse(
+                value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out parsed)
+            && double.IsFinite(parsed)
+            && parsed is >= -1_000_000d and <= 1_000_000d;
+    }
+
+    private static bool IsIdentifier(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Length <= 128
+            && value.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+    }
 }
 
 public sealed record DevelopmentItemToolResponse(
@@ -217,6 +282,7 @@ public sealed class DevelopmentItemToolService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     PhaseNineDevelopmentFixtureSeeder phaseNineFixtureSeeder,
+    CorpseService corpseService,
     IHostEnvironment environment)
 {
     private const string PhaseNinePackageId = "phase9_full";
@@ -319,8 +385,59 @@ public sealed class DevelopmentItemToolService(
             DevelopmentItemToolCommandKind.Package => await ApplyPackageAsync(
                 command,
                 cancellationToken),
+            DevelopmentItemToolCommandKind.Corpse => await CreateCorpseAsync(
+                command,
+                cancellationToken),
             _ => throw new InvalidOperationException("Unsupported development item tool command.")
         };
+    }
+
+    private async Task<DevelopmentItemToolResponse> CreateCorpseAsync(
+        DevelopmentItemToolCommand command,
+        CancellationToken cancellationToken)
+    {
+        var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
+        EnsureOffline(target);
+        if (target.ItemCount == 0)
+        {
+            if (target.RecoveryDeliveryCount != 0)
+            {
+                throw new InvalidOperationException(
+                    "An empty corpse fixture character cannot have pending Recovery deliveries.");
+            }
+
+            await phaseNineFixtureSeeder.SeedAsync(target.CharacterId, cancellationToken);
+            target = await LoadTargetAsync(command.CharacterId, cancellationToken);
+        }
+
+        var result = await corpseService.ProcessSystemDeathAsync(
+            Guid.NewGuid(),
+            new ProcessPlayerDeathCommand(
+                Guid.NewGuid(),
+                target.CharacterId,
+                target.ItemStateRevision,
+                command.ShardId,
+                command.PositionX,
+                command.PositionY,
+                command.PositionZ,
+                0d,
+                0d,
+                0d,
+                1d,
+                ItemTransactionService.DefaultPlayerCorpsePresentationKey),
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Could not create the corpse fixture: {result.Error?.Code}: {result.Error?.Message}");
+        }
+
+        return new DevelopmentItemToolResponse(
+            true,
+            $"Created corpse {result.Value!.Corpse.CorpseId} for {target.CharacterName} "
+                + $"on {command.ShardId} at ({command.PositionX}, {command.PositionY}, {command.PositionZ}). "
+                + "Restart SimulationWorker so it restores the durable corpse.",
+            await LoadDataAsync(cancellationToken));
     }
 
     private async Task<DevelopmentItemToolResponse> GrantAsync(
@@ -525,6 +642,7 @@ public sealed class DevelopmentItemToolService(
                 state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                 state.bank_container_id as "BankContainerId",
                 state.secure_container_id as "SecureContainerId",
+                state.revision as "ItemStateRevision",
                 exists (
                     select 1
                     from character_simulation_sessions session
@@ -718,6 +836,8 @@ public sealed class DevelopmentItemToolService(
         public int ItemCount { get; set; }
 
         public int RecoveryDeliveryCount { get; set; }
+
+        public long ItemStateRevision { get; set; }
     }
 
     private sealed class StackLimitRow

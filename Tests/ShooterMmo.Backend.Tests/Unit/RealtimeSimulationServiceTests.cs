@@ -7,6 +7,7 @@ using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
 using SimulationWorker.Config;
+using SimulationWorker.Corpses;
 using SimulationWorker.Entities;
 using SimulationWorker.Items;
 using SimulationWorker.Realtime;
@@ -89,6 +90,9 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationItemInteractionService(
                 authClient,
                 new ItemInteractionAccessService(config)),
+            new SimulationCorpseInteractionService(authClient),
+            new DurableCorpseStore(TimeProvider.System),
+            new CorpseViewerRegistry(),
             new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),
@@ -245,6 +249,9 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationItemInteractionService(
                 authClient,
                 new ItemInteractionAccessService(config)),
+            new SimulationCorpseInteractionService(authClient),
+            new DurableCorpseStore(TimeProvider.System),
+            new CorpseViewerRegistry(),
             new SimulationEntityRegistry(),
             new ConnectionEntityBindingRegistry(),
             new RealtimeTransportReadiness(),

@@ -231,6 +231,41 @@ public sealed record ProcessPlayerDeathCommand(
 
 public sealed record ExpireCorpseCommand(Guid CorpseId);
 
+public sealed record LootCorpseItemCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
+public sealed record LootCorpsePartialStackCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
+public sealed record SwapCorpseBagCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid CorpseBagItemInstanceId,
+    long ExpectedCorpseBagRevision,
+    Guid CorpseBagContentsContainerId,
+    long ExpectedCorpseBagContentsRevision,
+    Guid PlayerBagItemInstanceId,
+    long ExpectedPlayerBagRevision,
+    Guid PlayerBagContentsContainerId,
+    long ExpectedPlayerBagContentsRevision);
+
 public sealed record ItemTransactionResult(
     Guid OperationId,
     string OperationKind,
@@ -280,4 +315,7 @@ public static class ItemOperationKinds
     public const string AbandonQuestItems = "abandon_quest_items";
     public const string ProcessPlayerDeath = "process_player_death";
     public const string ExpireCorpse = "expire_corpse";
+    public const string LootCorpseItem = "loot_corpse_item";
+    public const string LootCorpsePartialStack = "loot_corpse_partial_stack";
+    public const string SwapCorpseBag = "swap_corpse_bag";
 }

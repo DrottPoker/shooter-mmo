@@ -106,6 +106,32 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
+    public Task<AuthServiceResult<CorpseViewSnapshotResponse>> OpenCorpseAsync(
+        Guid simulationSessionId,
+        Guid corpseId,
+        SimulationCorpseOpenRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationCorpseOpenRequest, CorpseViewSnapshotResponse>(
+            $"/api/simulation-sessions/{simulationSessionId}/corpses/{corpseId}/open",
+            request,
+            response => IsValidCorpseView(response, corpseId, request.ShardId),
+            cancellationToken);
+    }
+
+    public Task<AuthServiceResult<CorpseMutationResponse>> MutateCorpseAsync(
+        Guid simulationSessionId,
+        Guid corpseId,
+        SimulationCorpseMutationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationCorpseMutationRequest, CorpseMutationResponse>(
+            $"/api/simulation-sessions/{simulationSessionId}/corpses/{corpseId}/item-operations",
+            request,
+            response => IsValidCorpseMutation(response, request, corpseId),
+            cancellationToken);
+    }
+
     public Task<AuthServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeJoinTicketAsync(
         string ticket,
         string workerId,
@@ -397,6 +423,128 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && response.ItemRevisions.All(
                 revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
             && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty);
+    }
+
+    private static bool IsValidCorpseMutation(
+        CorpseMutationResponse response,
+        SimulationCorpseMutationRequest request,
+        Guid corpseId)
+    {
+        if (response.Transaction is null
+            || response.Transaction.OperationId != request.OperationId
+            || !response.Transaction.Succeeded
+            || response.Transaction.Error is not null
+            || response.Transaction.CharacterRevisions is null
+            || response.Transaction.CharacterRevisions.Count != 1
+            || response.Transaction.CharacterRevisions[0].CharacterId != request.CharacterId
+            || response.Transaction.ContainerRevisions is null
+            || response.Transaction.ContainerRevisions.Count > 8
+            || response.Transaction.ItemRevisions is null
+            || response.Transaction.ItemRevisions.Count > 32
+            || response.Transaction.RecoveryDeliveryIds is null
+            || response.Transaction.RecoveryDeliveryIds.Count != 0
+            || response.Transaction.SecureContainerEntitlementRevision is not null)
+        {
+            return false;
+        }
+
+        var expectedOperationKind = request.OperationKind switch
+        {
+            "loot_item" => "loot_corpse_item",
+            "loot_partial_stack" => "loot_corpse_partial_stack",
+            "swap_bag" => "swap_corpse_bag",
+            _ => string.Empty
+        };
+        var character = response.Transaction.CharacterRevisions[0];
+        return string.Equals(
+                response.Transaction.OperationKind,
+                expectedOperationKind,
+                StringComparison.Ordinal)
+            && IsValidCarryState(
+                character.Revision,
+                character.CarriedWeight,
+                character.CarryCapacity)
+            && response.Transaction.ContainerRevisions.All(
+                revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
+            && response.Transaction.ItemRevisions.All(
+                revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
+            && (response.Corpse is null
+                || IsValidCorpseView(response.Corpse, corpseId, request.ShardId));
+    }
+
+    private static bool IsValidCorpseView(
+        CorpseViewSnapshotResponse response,
+        Guid expectedCorpseId,
+        string expectedShardId)
+    {
+        if (response is null
+            || response.CorpseId != expectedCorpseId
+            || response.SourceCharacterId == Guid.Empty
+            || string.IsNullOrWhiteSpace(response.SourceDisplayName)
+            || !string.Equals(response.ShardId, expectedShardId, StringComparison.Ordinal)
+            || !IsFinitePosition(response.PositionX)
+            || !IsFinitePosition(response.PositionY)
+            || !IsFinitePosition(response.PositionZ)
+            || string.IsNullOrWhiteSpace(response.PresentationKey)
+            || response.Revision < 0
+            || response.CreatedAt == default
+            || response.ExpiresAt <= response.CreatedAt
+            || response.Sections is null
+            || response.Sections.Count != 3
+            || response.PresentationSnapshots is null)
+        {
+            return false;
+        }
+
+        var sectionKinds = new HashSet<string>(StringComparer.Ordinal);
+        var itemIds = new HashSet<Guid>();
+        foreach (var section in response.Sections)
+        {
+            if (!sectionKinds.Add(section.SectionKind)
+                || section.SectionKind is not ("general_inventory" or "equipment" or "bag")
+                || section.ContainerId == Guid.Empty
+                || string.IsNullOrWhiteSpace(section.ContainerType)
+                || section.ContainerRevision < 0
+                || section.SlotCapacity <= 0
+                || section.SlotCapacity > 512
+                || section.Slots is null
+                || section.Slots.Count != section.SlotCapacity)
+            {
+                return false;
+            }
+
+            var slotIndexes = new HashSet<int>();
+            foreach (var slot in section.Slots)
+            {
+                if (!slotIndexes.Add(slot.SlotIndex)
+                    || slot.SlotIndex < 0
+                    || slot.SlotIndex >= section.SlotCapacity
+                    || string.IsNullOrWhiteSpace(slot.SlotKind)
+                    || slot.AcceptedTags is null)
+                {
+                    return false;
+                }
+
+                if (slot.Item is null)
+                {
+                    continue;
+                }
+
+                if (!itemIds.Add(slot.Item.ItemInstanceId)
+                    || slot.Item.ItemInstanceId == Guid.Empty
+                    || string.IsNullOrWhiteSpace(slot.Item.DefinitionId)
+                    || slot.Item.Quantity <= 0
+                    || slot.Item.Revision < 0
+                    || (slot.Item.BagContentsContainerId is null)
+                        != (slot.Item.BagContentsRevision is null)
+                    || slot.Item.BagContentsRevision < 0)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return sectionKinds.Count == 3;
     }
 
     private static bool IsValidCorpseRestore(

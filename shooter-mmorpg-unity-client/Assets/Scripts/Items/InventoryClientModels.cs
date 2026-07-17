@@ -29,7 +29,7 @@ namespace ShooterMmo.Items
         None,
         Bank,
         RecoveryStorage,
-        CorpsePrepared,
+        Corpse,
         WorldLootPrepared
     }
 
@@ -37,7 +37,8 @@ namespace ShooterMmo.Items
     {
         Container,
         Equipment,
-        RecoveryStorage
+        RecoveryStorage,
+        Corpse
     }
 
     public sealed class InventoryClientError
@@ -509,7 +510,8 @@ namespace ShooterMmo.Items
             get
             {
                 return string.Equals(ContainerType, "bank", StringComparison.Ordinal)
-                    || Kind == InventoryItemLocationKind.RecoveryStorage;
+                    || Kind == InventoryItemLocationKind.RecoveryStorage
+                    || Kind == InventoryItemLocationKind.Corpse;
             }
         }
     }

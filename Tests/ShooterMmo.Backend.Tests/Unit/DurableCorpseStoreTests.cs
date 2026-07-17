@@ -63,6 +63,54 @@ public sealed class DurableCorpseStoreTests
             "local-shard-1"));
     }
 
+    [Fact]
+    public void ApplySnapshotDoesNotRegressAnExistingCorpseRevision()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var corpseId = Guid.NewGuid();
+        var containerId = Guid.NewGuid();
+        var store = new DurableCorpseStore(TimeProvider.System);
+        store.Replace(
+            new CorpseRestoreResponse(
+                databaseTime,
+                [CreateCorpse(
+                    corpseId,
+                    databaseTime.AddMinutes(-1),
+                    databaseTime.AddMinutes(4),
+                    isEmpty: false) with
+                {
+                    Revision = 5,
+                    Sections =
+                    [
+                        new CorpseSectionResponse(
+                            "general_inventory",
+                            containerId,
+                            5,
+                            1),
+                        new CorpseSectionResponse(
+                            "equipment",
+                            Guid.NewGuid(),
+                            5,
+                            0),
+                        new CorpseSectionResponse("bag", Guid.NewGuid(), 5, 0)
+                    ]
+                }]),
+            "local-shard-1");
+
+        store.ApplySnapshot(CreateSnapshot(
+            corpseId,
+            containerId,
+            revision: 4,
+            databaseTime.AddMinutes(-1),
+            databaseTime.AddMinutes(4)));
+
+        var active = Assert.Single(store.ListActive());
+        Assert.Equal(5, active.Revision);
+        Assert.Equal(5, Assert.Single(
+            active.Sections,
+            section => section.SectionKind == "general_inventory").ContainerRevision);
+    }
+
     private static DurableCorpseResponse CreateCorpse(
         Guid corpseId,
         DateTime createdAt,
@@ -96,6 +144,51 @@ public sealed class DurableCorpseStoreTests
                 new CorpseSectionResponse("equipment", Guid.NewGuid(), 1, 0),
                 new CorpseSectionResponse("bag", Guid.NewGuid(), 1, 0)
             ]);
+    }
+
+    private static CorpseViewSnapshotResponse CreateSnapshot(
+        Guid corpseId,
+        Guid generalContainerId,
+        long revision,
+        DateTime createdAt,
+        DateTime expiresAt)
+    {
+        return new CorpseViewSnapshotResponse(
+            corpseId,
+            Guid.NewGuid(),
+            "Fallen Hero",
+            "local-shard-1",
+            1d,
+            2d,
+            3d,
+            "corpse.generic_loot_crate",
+            revision,
+            createdAt,
+            expiresAt,
+            [
+                new CorpseViewSectionResponse(
+                    "general_inventory",
+                    generalContainerId,
+                    "corpse_general_inventory",
+                    revision,
+                    1,
+                    [new CorpseViewSlotResponse(0, "general", [], null)]),
+                new CorpseViewSectionResponse(
+                    "equipment",
+                    Guid.NewGuid(),
+                    "corpse_equipment",
+                    revision,
+                    1,
+                    [new CorpseViewSlotResponse(0, "general", [], null)]),
+                new CorpseViewSectionResponse(
+                    "bag",
+                    Guid.NewGuid(),
+                    "corpse_bag",
+                    revision,
+                    1,
+                    [new CorpseViewSlotResponse(0, "general", [], null)])
+            ],
+            []);
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider

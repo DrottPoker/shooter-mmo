@@ -404,6 +404,196 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
+    public async Task CorpseOpenSendsExactSessionAuthorityAndValidatesFullView()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var corpseId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var requestBody = new SimulationCorpseOpenRequest(
+            accountId,
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token");
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(
+            CreateCorpseViewPayload(corpseId, characterId, "local-shard-1", 7)));
+
+        var result = await CreateClient(handler).OpenCorpseAsync(
+            simulationSessionId,
+            corpseId,
+            requestBody,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(7, result.Value!.Revision);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(
+            $"/api/simulation-sessions/{simulationSessionId}/corpses/{corpseId}/open",
+            request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal(accountId, body.RootElement.GetProperty("accountId").GetGuid());
+        Assert.Equal(characterId, body.RootElement.GetProperty("characterId").GetGuid());
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("workerRuntimeId").GetString());
+        Assert.Equal(
+            "simulation-session-token",
+            body.RootElement.GetProperty("sessionToken").GetString());
+    }
+
+    [Fact]
+    public async Task CorpseMutationValidatesCommittedCarryAndAuthoritativeSnapshot()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var corpseId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var destinationContainerId = Guid.NewGuid();
+        var requestBody = new SimulationCorpseMutationRequest(
+            operationId,
+            accountId,
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            "loot_item",
+            7,
+            itemId,
+            2,
+            DestinationContainerId: destinationContainerId,
+            ExpectedDestinationContainerRevision: 3,
+            DestinationSlotIndex: 1);
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            transaction = new
+            {
+                operationId,
+                operationKind = "loot_corpse_item",
+                succeeded = true,
+                error = (object?)null,
+                characterRevisions = new[]
+                {
+                    new
+                    {
+                        characterId,
+                        revision = 13,
+                        carriedWeight = 30,
+                        carryCapacity = 200
+                    }
+                },
+                containerRevisions = new[]
+                {
+                    new { containerId = destinationContainerId, revision = 4 }
+                },
+                itemRevisions = new[] { new { itemInstanceId = itemId, revision = 3 } },
+                recoveryDeliveryIds = Array.Empty<Guid>(),
+                secureContainerEntitlementRevision = (long?)null
+            },
+            corpse = CreateCorpseViewPayload(
+                corpseId,
+                characterId,
+                "local-shard-1",
+                8)
+        }));
+
+        var result = await CreateClient(handler).MutateCorpseAsync(
+            simulationSessionId,
+            corpseId,
+            requestBody,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(13, result.Value!.Transaction.CharacterRevisions[0].Revision);
+        Assert.Equal(8, result.Value.Corpse!.Revision);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(
+            $"/api/simulation-sessions/{simulationSessionId}/corpses/{corpseId}/item-operations",
+            request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("loot_item", body.RootElement.GetProperty("operationKind").GetString());
+        Assert.Equal(7, body.RootElement.GetProperty("expectedCorpseRevision").GetInt64());
+    }
+
+    [Fact]
+    public async Task CorpseClientRejectsCrossShardViewAndOverHardCapMutation()
+    {
+        var corpseId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var openRequest = new SimulationCorpseOpenRequest(
+            Guid.NewGuid(),
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "token");
+        var crossShardHandler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(
+            CreateCorpseViewPayload(corpseId, characterId, "another-shard", 1)));
+
+        var open = await CreateClient(crossShardHandler).OpenCorpseAsync(
+            Guid.NewGuid(),
+            corpseId,
+            openRequest,
+            CancellationToken.None);
+
+        Assert.False(open.Succeeded);
+        Assert.Equal("invalid_auth_response", open.Error!.Code);
+
+        var operationId = Guid.NewGuid();
+        var mutationRequest = new SimulationCorpseMutationRequest(
+            operationId,
+            openRequest.AccountId,
+            characterId,
+            openRequest.WorkerId,
+            openRequest.WorkerRuntimeId,
+            openRequest.ShardId,
+            openRequest.SessionToken,
+            "loot_item",
+            1,
+            Guid.NewGuid(),
+            1,
+            DestinationContainerId: Guid.NewGuid(),
+            ExpectedDestinationContainerRevision: 1,
+            DestinationSlotIndex: 0);
+        var hardCapHandler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            transaction = new
+            {
+                operationId,
+                operationKind = "loot_corpse_item",
+                succeeded = true,
+                error = (object?)null,
+                characterRevisions = new[]
+                {
+                    new
+                    {
+                        characterId,
+                        revision = 2,
+                        carriedWeight = 281,
+                        carryCapacity = 200
+                    }
+                },
+                containerRevisions = Array.Empty<object>(),
+                itemRevisions = Array.Empty<object>(),
+                recoveryDeliveryIds = Array.Empty<Guid>(),
+                secureContainerEntitlementRevision = (long?)null
+            },
+            corpse = CreateCorpseViewPayload(corpseId, characterId, "local-shard-1", 2)
+        }));
+
+        var mutation = await CreateClient(hardCapHandler).MutateCorpseAsync(
+            Guid.NewGuid(),
+            corpseId,
+            mutationRequest,
+            CancellationToken.None);
+
+        Assert.False(mutation.Succeeded);
+        Assert.Equal("invalid_auth_response", mutation.Error!.Code);
+    }
+
+    [Fact]
     public async Task NetworkFailureReturnsServiceUnavailable()
     {
         var handler = new RecordingHttpMessageHandler(
@@ -549,6 +739,58 @@ public sealed class AuthServiceClientTests
                 itemCount = 0
             }
         ];
+    }
+
+    private static object CreateCorpseViewPayload(
+        Guid corpseId,
+        Guid sourceCharacterId,
+        string shardId,
+        long revision)
+    {
+        var createdAt = DateTime.UtcNow.AddMinutes(-1);
+        return new
+        {
+            corpseId,
+            sourceCharacterId,
+            sourceDisplayName = "Fallen Hero",
+            shardId,
+            positionX = 1d,
+            positionY = 2d,
+            positionZ = 3d,
+            presentationKey = "corpse.generic_loot_crate",
+            revision,
+            createdAt,
+            expiresAt = createdAt.AddMinutes(5),
+            sections = new object[]
+            {
+                CreateCorpseViewSection("general_inventory", "corpse_general_inventory"),
+                CreateCorpseViewSection("equipment", "corpse_equipment"),
+                CreateCorpseViewSection("bag", "corpse_bag_contents")
+            },
+            presentationSnapshots = Array.Empty<object>()
+        };
+    }
+
+    private static object CreateCorpseViewSection(string sectionKind, string containerType)
+    {
+        return new
+        {
+            sectionKind,
+            containerId = Guid.NewGuid(),
+            containerType,
+            containerRevision = 1,
+            slotCapacity = 1,
+            slots = new[]
+            {
+                new
+                {
+                    slotIndex = 0,
+                    slotKind = "general",
+                    acceptedTags = Array.Empty<string>(),
+                    item = (object?)null
+                }
+            }
+        };
     }
 
     private static AuthServiceClient CreateClient(HttpMessageHandler handler)

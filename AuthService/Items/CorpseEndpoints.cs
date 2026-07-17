@@ -54,6 +54,48 @@ public static class CorpseEndpoints
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
+        app.MapPost(
+            "/api/simulation-sessions/{simulationSessionId:guid}/corpses/{corpseId:guid}/open",
+            async (
+                Guid simulationSessionId,
+                Guid corpseId,
+                SimulationCorpseOpenRequest request,
+                ClaimsPrincipal principal,
+                CorpseService corpseService,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await corpseService.OpenForSimulationAsync(
+                    principal.GetSimulationWorkerId(),
+                    simulationSessionId,
+                    corpseId,
+                    request,
+                    cancellationToken);
+                return result.ToHttpResult();
+            })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
+        app.MapPost(
+            "/api/simulation-sessions/{simulationSessionId:guid}/corpses/{corpseId:guid}/item-operations",
+            async (
+                Guid simulationSessionId,
+                Guid corpseId,
+                SimulationCorpseMutationRequest request,
+                ClaimsPrincipal principal,
+                CorpseService corpseService,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await corpseService.MutateForSimulationAsync(
+                    principal.GetSimulationWorkerId(),
+                    simulationSessionId,
+                    corpseId,
+                    request,
+                    cancellationToken);
+                return result.ToHttpResult();
+            })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
         return app;
     }
 }

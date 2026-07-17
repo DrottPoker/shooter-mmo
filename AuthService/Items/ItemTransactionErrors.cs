@@ -29,6 +29,9 @@ public static class ItemTransactionErrorCodes
     public const string CorpseNotFound = "corpse_not_found";
     public const string CorpseNotExpired = "corpse_not_expired";
     public const string CorpseStateChanged = "corpse_state_changed";
+    public const string CorpseExpired = "corpse_expired";
+    public const string CorpseInvalidated = "corpse_invalidated";
+    public const string ItemAlreadyLooted = "item_already_looted";
     public const string ItemQuantityChanged = "item_quantity_changed";
     public const string WrongSimulationWorker = "wrong_simulation_worker";
     public const string WorkerRuntimeChanged = "worker_runtime_changed";

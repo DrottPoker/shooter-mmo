@@ -191,6 +191,88 @@ public sealed record CorpseSectionResponse(
     long ContainerRevision,
     int ItemCount);
 
+public sealed record SimulationCorpseOpenRequest(
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken);
+
+public sealed record SimulationCorpseMutationRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    string OperationKind,
+    long ExpectedCorpseRevision,
+    Guid? ItemInstanceId = null,
+    long? ExpectedItemRevision = null,
+    int? Quantity = null,
+    Guid? DestinationContainerId = null,
+    long? ExpectedDestinationContainerRevision = null,
+    int? DestinationSlotIndex = null,
+    Guid? TargetItemInstanceId = null,
+    long? ExpectedTargetItemRevision = null,
+    Guid? CorpseBagContentsContainerId = null,
+    long? ExpectedCorpseBagContentsRevision = null,
+    Guid? PlayerBagItemInstanceId = null,
+    long? ExpectedPlayerBagRevision = null,
+    Guid? PlayerBagContentsContainerId = null,
+    long? ExpectedPlayerBagContentsRevision = null);
+
+public sealed record CorpseMutationResponse(
+    SimulationItemTransactionResponse Transaction,
+    CorpseViewSnapshotResponse? Corpse);
+
+public sealed record CorpseViewSnapshotResponse(
+    Guid CorpseId,
+    Guid? SourceCharacterId,
+    string SourceDisplayName,
+    string ShardId,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    string PresentationKey,
+    long Revision,
+    DateTime CreatedAt,
+    DateTime ExpiresAt,
+    IReadOnlyList<CorpseViewSectionResponse> Sections,
+    IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots);
+
+public sealed record CorpseViewSectionResponse(
+    string SectionKind,
+    Guid ContainerId,
+    string ContainerType,
+    long ContainerRevision,
+    int SlotCapacity,
+    IReadOnlyList<CorpseViewSlotResponse> Slots);
+
+public sealed record CorpseViewSlotResponse(
+    int SlotIndex,
+    string SlotKind,
+    IReadOnlyList<string> AcceptedTags,
+    CorpseViewItemResponse? Item);
+
+public sealed record CorpseViewItemResponse(
+    Guid ItemInstanceId,
+    string DefinitionId,
+    int Quantity,
+    long Revision,
+    Guid? BagContentsContainerId,
+    long? BagContentsRevision);
+
+public sealed record CorpsePresentationSnapshotResponse(
+    string SnapshotKind,
+    int SortOrder,
+    string? DefinitionId,
+    string? EquipmentSlotId,
+    string? PolicyKind,
+    string PresentationPayload);
+
 public sealed record AuthServiceProblemDetails(string? Code, string? Detail, string? Message);
 
 public sealed record AuthServiceResult<T>(T? Value, SimulationWorkerErrorResponse? Error, int StatusCode)

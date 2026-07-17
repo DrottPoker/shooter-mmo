@@ -274,13 +274,24 @@ update is required and does not render stale item state.
 `I` toggles the complete Development view. Pressing a different inventory key
 switches the open view, and `Escape` closes it. Shooter pointer capture is
 released while the panel is open. Each window is a separate fixed module root,
-so opening Equipment or Context never moves Character Inventory. The uGUI visuals are deliberately temporary,
-but catalog, snapshot, revision, operation-id, error, refresh, reconnect, and
-authority handling are permanent foundations.
+so opening Equipment or Context never moves Character Inventory. The uGUI
+visuals are deliberately temporary, but catalog, snapshot, revision,
+operation-id, error, refresh, reconnect, and authority handling are permanent
+foundations.
+
+Nearby durable corpses use a generic replaceable capsule presentation. Press
+`E` within three metres to open the nearest corpse, or use the Corpse tab in the
+complete Development view. The contextual module shows general inventory,
+equipment, and Bag contents only after a complete authoritative snapshot has
+arrived. Drag full items into Permanent inventory, the equipped Bag, or Secure
+Container. Enable the partial-stack control before dragging to request a
+specific quantity. Dropping a corpse Bag onto the occupied player Bag slot
+submits one atomic aggregate swap when both complete Bags satisfy the rules.
+The panel never moves either side optimistically.
 
 ## Durable Player Death Foundation
 
-Status: Backend foundation implemented, live combat activation pending
+Status: Durable and interactive foundation implemented, live combat activation pending
 
 An authoritative player death can now be committed as one idempotent durable
 transaction. Currency and Secure Container contents stay with the character.
@@ -302,10 +313,19 @@ absolute five-minute deadline. They remain through the deadline even when empty.
 A restarted SimulationWorker restores only its own open and unexpired Shard
 corpses. Expiry destroys each remaining item once with durable audit.
 
-This is not yet a player-visible death or looting loop. The project still has no
-combat death producer, corpse entity replication, Unity corpse view, proximity
-validation, concurrent loot intent, partial-stack loot, or corpse Bag swap. No
-new Unity input or realtime packet was added in Phase 10.
+The interactive corpse loop is available for existing durable corpses.
+SimulationWorker restores their presentation, advertises nearby corpses,
+enforces three-dimensional proximity and lifetime, and permits multiple players
+to inspect the same corpse. Full and partial item loot and compatible Bag swaps
+commit through AuthService. Every viewer receives committed state, while a stale
+or losing request gets a stable refreshable result. The dead character competes
+under the same rules as every other player.
+
+The project still has no combat death producer. Development testing creates a
+real durable corpse from an offline source character through `Shooter MMO >
+Tools > Inventory Item Grants`. The generic capsule and current uGUI are
+temporary visuals over permanent protocol, state, authority, transaction, and
+revision foundations.
 
 ## Planned Feature Categories
 
@@ -317,8 +337,8 @@ They remain in the MVP specification until working behavior is available:
 - Shooter combat, weapons, damage, death, and respawning.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
-- Live player death production and corpse presentation, configurable NPC
-  corpses, concurrent looting, and insurance NPC purchase behavior.
+- Live combat death production, final corpse art and loot presentation,
+  configurable NPC corpses, and insurance NPC purchase behavior.
 - Gathering, crafting, professions, and player economy.
 - NPCs, enemies, quests, events, and world activities.
 - Character progression and long-term persistence.
@@ -330,8 +350,8 @@ The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
 PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
 Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
 Phase 7 shared live encumbrance, Phase 8 active-character mutation, Phase 9
-Unity inventory foundation, and Phase 10 durable player-death partition and
-corpse persistence now exist.
+Unity inventory foundation, Phase 10 durable player-death partition and corpse
+persistence, and Phase 11 concurrent corpse interaction now exist.
 AuthService supports owned
 item-state, bank, Secure Container, and Recovery access plus offline relocation,
 split, merge, allowed destruction, Recovery claim, and tier-change operations.
@@ -356,10 +376,9 @@ by stable definition id. The bundled presentation catalog records the exact
 gameplay source revision and its own deterministic presentation revision. Unity
 validates and caches this catalog once per matching revision, then inventory,
 Bank, and Recovery Storage views reuse local lookups for state received from the
-server. Corpse and world-loot contexts retain prepared adapter identities. Phase
-10 now owns durable corpse identity and section custody on the server, but Unity
-waits for the Phase 11 inspection and mutation contracts rather than inventing
-client snapshots or operations.
+server. The corpse context consumes protocol-v9 presence, complete snapshots,
+targeted deltas, operation results, and stable closure messages. World-loot
+keeps only its prepared adapter identity until a later authoritative phase.
 
 ## Feature Documentation Template
 
