@@ -1065,15 +1065,26 @@ idempotency, revisions, and authority handling are long-term code.
   on the left, the selected Bank or Recovery context remains in the upper-right,
   and Permanent inventory, equipped Bag contents, and Secure Container remain
   visible in the lower-right.
-- The panel supports authoritative move, equip, unequip, split, merge, destroy,
-  and complete Recovery claim intents. It displays weight, capacity, load,
-  movement multiplier, sprint eligibility, and item-state revision. A shared
-  target advisor disables obviously invalid equipment, specialized Bag, Secure
-  Container, non-empty Bag, stack, destruction, and 140 percent hard-cap targets
-  for usability while AuthService remains the final authority.
+- A reusable typed uGUI drag coordinator, item source, and destination target now
+  drive relocation, equip, unequip, stack split and merge, and complete Recovery
+  claim intents. Valid targets highlight green, rejected targets highlight red,
+  and the target is revalidated on drop before an intent is sent. Item clicks
+  only select the split and destruction action controls. Recovery items carry a
+  delivery payload, so dropping any item from a delivery onto Permanent inventory
+  or Bank still claims the complete delivery atomically.
+- The panel displays weight, capacity, load, movement multiplier, sprint
+  eligibility, and item-state revision. A shared target advisor disables
+  obviously invalid equipment, specialized Bag, Secure Container, non-empty Bag,
+  stack, destruction, and 140 percent hard-cap targets for usability while
+  AuthService remains the final authority.
 - Bank and Recovery Storage inspection uses owning-account HTTP reads everywhere.
   Any mutation still travels through the active SimulationWorker, which supplies
-  its authoritative service-point access to AuthService.
+  its authoritative service-point access to AuthService. Local Development loads
+  `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess=true`, which grants
+  Bank and Recovery access from any authoritative player position. The option is
+  rejected outside the Development environment, never grants insurance access,
+  and does not bypass the active session, worker, assignment, transaction, or
+  capacity checks.
 - Recovery delivery snapshots now expose their existing durable revision to
   Unity as an additive HTTP field. Realtime protocol version `8` and every
   existing packet remain unchanged.
@@ -1108,12 +1119,14 @@ idempotency, revisions, and authority handling are long-term code.
   machine-readable development responses, catalog and icon cache reuse,
   catalog mismatch, snapshot validation, monotonic and divergent revisions,
   operation correlation, specialized slots, Secure Container eligibility,
-  non-empty Bag rules, split quantities, and the hard cap. PlayMode coverage
-  verifies the persistent controller and runtime uGUI lifecycle.
+  non-empty Bag rules, split quantities, the hard cap, and typed drag acceptance
+  and rejection. PlayMode coverage verifies the persistent controller and runtime
+  uGUI lifecycle.
 
 ### Manual Test Gate
 
-- Move, split, merge, equip, unequip, and swap Bags.
+- Drag items to move, split, merge, equip, and unequip them, and swap Bags when
+  the authoritative operation is available.
 - Put an empty Bag in permanent inventory, another Bag, and bank.
 - Verify a non-empty Bag is rejected from those locations.
 - Use medical, material, and ammunition specialized slots.

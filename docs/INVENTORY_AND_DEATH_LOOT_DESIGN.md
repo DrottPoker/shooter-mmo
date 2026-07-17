@@ -428,8 +428,14 @@ and transaction behavior do not depend on screen layout.
 The implemented Phase 9 client keeps this layout in replaceable uGUI while its
 catalog cache, immutable snapshots, revision coherence, operation journal,
 structured errors, and refresh orchestration live in a persistent controller.
-Bank and Recovery Storage may be inspected globally by the owning account, but
-their mutations still require SimulationWorker's live service validation.
+Item transfers use typed reusable drag sources and targets. Item clicks select
+only split and destruction actions, and dropping any Recovery item withdraws its
+complete delivery atomically. Bank and Recovery Storage may be inspected globally
+by the owning account, but their mutations still require SimulationWorker's live
+access evaluation. Local Development can explicitly evaluate Bank and Recovery
+as globally accessible for testing. Production continues to evaluate authored
+major-city service points, and the Development option never includes insurance
+access or bypasses AuthService authority.
 Corpse and world-loot context adapters are reserved without inventing custody or
 snapshot data before their authoritative phases.
 

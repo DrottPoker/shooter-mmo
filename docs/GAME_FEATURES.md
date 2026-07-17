@@ -227,13 +227,19 @@ Storage require proximity to their configured worker service points. Secure
 Container access has no city requirement. Only committed AuthService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
+Local Development explicitly enables global Bank and Recovery access so item
+flows can be tested anywhere on the map. Production keeps the configured
+service-point requirement, and insurance access is never included in the
+Development override.
+
 Unity now exposes the first player-facing inventory loop. Press `I` in
-WorldScene to open the temporary uGUI panel, then select an item and an enabled
-destination or action. Moves, equipment changes, split, merge, allowed destroy,
-and Recovery claims all use the existing authoritative SimulationWorker and
-AuthService path. The panel renders only refreshed committed snapshots and never
-pretends that a pending mutation has completed. See the manual and automated
-checks in [Local Development](LOCAL_DEVELOPMENT.md).
+WorldScene to open the temporary uGUI panel, then drag items to valid container
+or equipment destinations. Click selection is retained only for split and
+allowed-destroy actions. Moves, equipment changes, split, merge, allowed destroy,
+and atomic Recovery claims all use the existing authoritative SimulationWorker
+and AuthService path. The panel renders only refreshed committed snapshots and
+never pretends that a pending mutation has completed. See the manual and
+automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
 
 ## Player Inventory Foundation
 
@@ -243,7 +249,9 @@ The inventory panel keeps equipment on the left. Bank or Recovery Storage uses
 the upper-right context area, while Permanent inventory, equipped Bag contents,
 and Secure Container stay visible in the lower-right. Bank and Recovery may be
 inspected globally for the owning character. Mutations still require a joined
-simulation session, and the server validates live city-service access.
+simulation session. Production validates live city-service access, while the
+explicit Development configuration permits Bank and Recovery mutations from any
+authoritative player position.
 
 The header shows authoritative weight, capacity, load percentage, movement
 multiplier, sprint eligibility, and item-state revision. General and specialized

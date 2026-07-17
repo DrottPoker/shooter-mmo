@@ -354,6 +354,15 @@ point. Secure Container operations require no city service. Insurance NPC access
 is represented at the live boundary, but insurance purchase behavior remains a
 later phase. Corpse proximity and interaction remain part of their later phases.
 
+For local testing only, SimulationWorker loads an environment-specific
+Development option that can make Bank and Recovery access globally true. Startup
+rejects that option in every other environment. The override does not include
+insurance and does not move authority into Unity or SimulationWorker: the worker
+still supplies its evaluated access state, and AuthService still validates the
+exact live identity and commits the durable transaction. Production therefore
+retains authored service-point proximity without a separate code path or protocol
+contract.
+
 Player corpses will use durable custody with an absolute expiry and can be
 restored by a replacement worker. Normal NPC corpses may remain worker-owned and
 disappear on restart, while content-selected bosses may use the durable corpse
@@ -364,10 +373,11 @@ Phase 6 adds policy-safe account reads and offline mutations on that kernel.
 Phase 7 adds session-bound carry state and shared SimulationWorker and Unity
 encumbrance. Phase 8 adds service-authenticated active-character item mutation
 without adding worker inventory state. Phase 9 adds the persistent Unity catalog,
-snapshot, revision, operation-journal, targeted-refresh, and temporary uGUI
-layers. Unity still has no item authority, SimulationWorker still holds no item
-collection, and there is no gameplay grant route. A guarded one-shot Development
-fixture command uses the existing durable kernel and is not a service endpoint.
+snapshot, revision, operation-journal, targeted-refresh, reusable drag-and-drop
+interaction layer, and temporary uGUI presentation. Unity still has no item
+authority, SimulationWorker still holds no item collection, and there is no
+gameplay grant route. A guarded one-shot Development fixture command uses the
+existing durable kernel and is not a service endpoint.
 
 The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the

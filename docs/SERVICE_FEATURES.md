@@ -458,9 +458,19 @@ available:
   without optimistically changing item custody or quantity.
 - The runtime uGUI panel is replaceable presentation over that state. It exposes
   Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
-  Recovery Storage plus every current live mutation. Bank and Recovery reads are
-  globally inspectable by the owning account, while mutations retain worker
-  service-point validation.
+  Recovery Storage plus every current live mutation. Typed reusable drag sources
+  and targets submit relocation, equipment, split, merge, and atomic Recovery
+  claim operations only after drop validation. Item clicks select only the split
+  and allowed-destruction controls. Bank and Recovery reads are globally
+  inspectable by the owning account.
+- SimulationWorker normally derives Bank, Recovery Storage, and insurance access
+  from authored service points at the authoritative player position. Its
+  environment-specific Development configuration can explicitly grant global
+  Bank and Recovery access for local item testing. Enabling that option outside
+  Development is rejected at startup, and insurance access remains proximity
+  based. Every mutation still requires the joined worker path and AuthService's
+  exact session, runtime, assignment, transaction, item-rule, and capacity
+  validation.
 - Gameplay and presentation catalogs load once and must share a source revision.
   Server snapshots must match the same bundled gameplay revision or the client
   reports `item_catalog_update_required` and refuses stale item state.

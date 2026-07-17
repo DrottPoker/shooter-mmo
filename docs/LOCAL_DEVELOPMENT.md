@@ -574,8 +574,8 @@ verifies the shared Editor menu root and machine-readable tool response, the
 presentation catalog cache, catalog mismatch, complete and focused snapshots,
 monotonic and divergent revisions, operation correlation, specialized targets,
 Secure Container eligibility, non-empty Bag rejection, split weight, and the
-140 percent hard cap. PlayMode verifies the persistent controller and runtime
-uGUI root.
+140 percent hard cap, plus typed valid and invalid drag-and-drop behavior.
+PlayMode verifies the persistent controller and runtime uGUI root.
 
 ### Give A Character Development Items
 
@@ -621,9 +621,17 @@ character with no items or Recovery deliveries.
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
    rejected by AuthService without a partial item transaction.
-6. Start SimulationWorker, enter Play Mode, log into the target account, select
-   its character, and join the local shard. The default spawn is inside the
-   configured Bank and Recovery service points.
+6. Start SimulationWorker with its Development launch profile, enter Play Mode,
+   log into the target account, select its character, and join the local shard:
+
+   ```powershell
+   dotnet run --project SimulationWorker
+   ```
+
+   Expected result: startup logs
+   `Development global Bank and Recovery Storage access is enabled`. Bank and
+   Recovery mutations are then available at every authoritative player position.
+   Restart SimulationWorker after changing the Development configuration.
 
 No Inspector, scene, prefab, package, input-action, or build-setting edit is
 required. The Editor window, gameplay catalog reference, `I` binding, persistent
@@ -661,23 +669,27 @@ items.
    Recovery, and Permanent inventory, the equipped Field Pack, and Secure
    Container remain visible in the lower-right. Press `Escape` and verify the
    panel closes and shooter pointer capture returns.
-2. Select the rifle, vest, pickaxe, or ring in Permanent inventory, then choose a
-   compatible empty equipment slot. Select the equipped item and choose an empty
-   Permanent slot to unequip it. The UI waits for the committed refresh before
-   showing the new location.
-3. Move the empty Field Pack from Permanent inventory into one of the equipped
-   Bag's general slots and back. Open Bank and confirm the second empty Field
-   Pack is valid there. Select the equipped non-empty Field Pack and confirm
-   ordinary Permanent, Bag, and Bank destinations remain disabled.
-4. Move the field dressing, iron ore, and ammunition out of and back into the
-   medical, material, and ammunition specialized slots. Select the rifle and
-   confirm both a specialized slot and Secure Container target are disabled.
-5. In Bank, split one iron-ore stack into an empty Bank slot, then merge it back.
-   Confirm the source quantity and item identities change only after the server
-   result and refresh.
-6. In Recovery, claim the prepared delivery to Bank. The delivery disappears and
-   both original item instances appear in Bank only after the committed full
+2. Drag the rifle, vest, pickaxe, or ring from Permanent inventory onto a
+   compatible empty equipment slot. Drag the equipped item onto an empty
+   Permanent slot to unequip it. Valid targets highlight green, invalid targets
+   highlight red, and the UI waits for the committed refresh before showing the
+   new location. Clicking a destination without dragging does not move an item.
+3. Drag the empty Field Pack from Permanent inventory into one of the equipped
+   Bag's general slots and back. Open Bank and drag the second empty Field Pack
+   between Bank and Permanent inventory. Click the equipped non-empty Field Pack
+   only to inspect its actions, then drag it and confirm ordinary Permanent, Bag,
+   and Bank destinations reject it.
+4. Drag the field dressing, iron ore, and ammunition out of and back into the
+   medical, material, and ammunition specialized slots. Drag the rifle across a
+   specialized slot and Secure Container target and confirm both reject it.
+5. In Bank, click an iron-ore stack, enter the split quantity, enable
+   `Split to Target`, then drag that selected stack onto an empty Bank slot. Drag
+   the resulting stack onto its compatible peer to merge it back. Confirm source
+   quantities and item identities change only after the server result and
    refresh.
+6. In Recovery, drag either item in the prepared delivery onto a Permanent or
+   Bank slot. The complete delivery disappears and both original item instances
+   appear in the chosen container only after the committed full refresh.
 7. Starting from fixture weight `132 / 250`, move Bank iron ore quantity `20` to
    Permanent inventory. Weight becomes `252 / 250`, sprint is blocked, and the
    movement multiplier begins its linear decline. Move iron ore quantity `16`
@@ -691,6 +703,13 @@ items.
 10. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
     references remain stable. Automated EditMode coverage also asserts that both
     catalog loads return the same presentation index and icon cache.
+
+The checked-in `SimulationWorker/Config/appsettings.Development.json` sets
+`DevelopmentItemInteractions:GlobalBankAndRecoveryAccess=true`. This is a local
+testing capability, not an AuthService or protocol bypass. If the same setting is
+enabled outside the Development environment, SimulationWorker refuses startup.
+Production continues to require authored Bank and Recovery service-point
+proximity, and insurance access always remains proximity based.
 
 The catalog-update path is covered by
 `MapperRejectsCatalogMismatchAndInvalidDeliveryRevision`: a mismatched server

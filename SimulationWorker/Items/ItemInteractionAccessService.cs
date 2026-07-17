@@ -2,12 +2,29 @@ using SimulationWorker.Config;
 
 namespace SimulationWorker.Items;
 
-public sealed class ItemInteractionAccessService(SimulationWorkerConfig config)
+public sealed class ItemInteractionAccessService
 {
+    private readonly SimulationWorkerConfig config;
+    private readonly DevelopmentItemInteractionOptions developmentOptions;
+
+    public ItemInteractionAccessService(SimulationWorkerConfig config)
+        : this(config, DevelopmentItemInteractionOptions.Disabled)
+    {
+    }
+
+    public ItemInteractionAccessService(
+        SimulationWorkerConfig config,
+        DevelopmentItemInteractionOptions developmentOptions)
+    {
+        this.config = config ?? throw new ArgumentNullException(nameof(config));
+        this.developmentOptions = developmentOptions
+            ?? throw new ArgumentNullException(nameof(developmentOptions));
+    }
+
     public ItemInteractionAccess Evaluate(float positionX, float positionY, float positionZ)
     {
-        var bank = false;
-        var recoveryStorage = false;
+        var bank = developmentOptions.GlobalBankAndRecoveryAccess;
+        var recoveryStorage = developmentOptions.GlobalBankAndRecoveryAccess;
         var insuranceNpc = false;
         foreach (var point in config.ItemInteraction.ServicePoints)
         {

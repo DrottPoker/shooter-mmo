@@ -20,6 +20,9 @@
     <None Update="Config\appsettings.json"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Config\appsettings.Development.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\WorldData\Runtime\Resources\ShooterMmo\WorldCollision\**\*" Link="CollisionData\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

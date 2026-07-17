@@ -108,6 +108,40 @@ public sealed class ConfigurationValidationTests
     }
 
     [Fact]
+    public void DevelopmentGlobalItemAccessIsExplicitAndEnvironmentGuarded()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DevelopmentItemInteractions:GlobalBankAndRecoveryAccess"] = "true"
+            })
+            .Build();
+
+        var productionError = Assert.Throws<InvalidOperationException>(() =>
+            DevelopmentItemInteractionOptions.FromConfiguration(
+                configuration,
+                isDevelopment: false));
+        Assert.Contains("can only be true in the Development environment", productionError.Message);
+
+        var options = DevelopmentItemInteractionOptions.FromConfiguration(
+            configuration,
+            isDevelopment: true);
+        Assert.True(options.GlobalBankAndRecoveryAccess);
+
+        var workerConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(WorkerSettings())
+            .Build();
+        var config = SimulationWorkerConfig.FromConfiguration(workerConfiguration);
+        var access = new ItemInteractionAccessService(config, options).Evaluate(
+            500f,
+            500f,
+            500f);
+        Assert.True(access.Bank);
+        Assert.True(access.RecoveryStorage);
+        Assert.False(access.InsuranceNpc);
+    }
+
+    [Fact]
     public void SimulationWorkerRejectsUnsafeResilienceLimits()
     {
         var settings = WorkerSettings();

@@ -34,13 +34,14 @@ namespace ShooterMmo.Ui
         private Text contextHeader;
         private Text characterHeader;
         private Font font;
+        private InventoryDragCoordinator dragCoordinator;
         private bool isOpen;
         private InventoryContextKind context = InventoryContextKind.None;
         private Guid selectedItemId;
         private bool splitMode;
         private bool destroyConfirmation;
         private string splitQuantityText = "1";
-        private string localStatus = "Select an item, then choose an authoritative target.";
+        private string localStatus = "Drag an item onto a highlighted destination.";
 
         public bool IsOpen
         {
@@ -123,6 +124,7 @@ namespace ShooterMmo.Ui
             }
             else
             {
+                dragCoordinator?.Cancel();
                 ClearSelection();
             }
         }
@@ -160,6 +162,10 @@ namespace ShooterMmo.Ui
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 0.5f;
+            dragCoordinator = canvasObject.AddComponent<InventoryDragCoordinator>();
+            dragCoordinator.Configure(
+                canvasObject.GetComponent<RectTransform>(),
+                font);
 
             rootObject = CreateUiObject("InventoryRoot", canvasObject.transform);
             var rootRect = rootObject.GetComponent<RectTransform>();
@@ -212,6 +218,7 @@ namespace ShooterMmo.Ui
             }
 
             var state = controller.State;
+            dragCoordinator?.Cancel();
             if (selectedItemId != Guid.Empty
                 && !state.TryFindItem(selectedItemId, out _, out _))
             {
@@ -265,7 +272,7 @@ namespace ShooterMmo.Ui
             {
                 CreateMessage(
                     contextContent,
-                    "Open Bank or Recovery Storage. Reads are account-owned; mutations remain validated by the active SimulationWorker service point.",
+                    "Open Bank or Recovery Storage. Reads are account-owned; mutations use the active SimulationWorker access policy.",
                     Color.white);
                 CreateMessage(
                     contextContent,
@@ -362,23 +369,23 @@ namespace ShooterMmo.Ui
                     + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty);
             }
 
-            var interactable = CanUseContainerSlot(
-                state,
-                container,
-                slot,
-                out var blockedReason);
-            var button = CreateSlotButton(
+            var payload = item == null
+                ? null
+                : InventoryDragPayload.ForItem(item.ItemInstanceId);
+            CreateSlotButton(
                 parent,
                 label,
                 item,
                 item != null && item.ItemInstanceId == selectedItemId,
                 !string.Equals(slot.SlotKind, "general", StringComparison.Ordinal),
-                interactable,
-                () => OnContainerSlotClicked(container, slot));
-            if (!interactable && !string.IsNullOrWhiteSpace(blockedReason))
-            {
-                button.GetComponentInChildren<Text>().text += "\nBlocked";
-            }
+                item != null,
+                () => OnContainerSlotClicked(slot),
+                payload,
+                state.CanMutate,
+                (InventoryDragPayload candidate, out string reason) =>
+                    CanDropOnContainer(state, container, slot, candidate, out reason),
+                candidate => OnContainerDrop(container, slot, candidate),
+                RejectDrop);
         }
 
         private void DrawEquipmentSlot(
@@ -398,7 +405,9 @@ namespace ShooterMmo.Ui
                     equipmentSlot.Item.DefinitionId);
             }
 
-            var interactable = CanUseEquipmentSlot(state, equipmentSlot, out _);
+            var payload = equipmentSlot.Item == null
+                ? null
+                : InventoryDragPayload.ForItem(equipmentSlot.Item.ItemInstanceId);
             CreateSlotButton(
                 parent,
                 label,
@@ -406,8 +415,14 @@ namespace ShooterMmo.Ui
                 equipmentSlot.Item != null
                     && equipmentSlot.Item.ItemInstanceId == selectedItemId,
                 false,
-                interactable,
-                () => OnEquipmentSlotClicked(equipmentSlot));
+                equipmentSlot.Item != null,
+                () => OnEquipmentSlotClicked(equipmentSlot),
+                payload,
+                state.CanMutate,
+                (InventoryDragPayload candidate, out string reason) =>
+                    CanDropOnEquipment(state, equipmentSlot, candidate, out reason),
+                candidate => OnEquipmentDrop(equipmentSlot, candidate),
+                RejectDrop);
         }
 
         private void DrawRecovery(Transform parent, InventoryClientState state)
@@ -434,6 +449,8 @@ namespace ShooterMmo.Ui
                 foreach (var deliveryItem in delivery.Items)
                 {
                     var item = deliveryItem.Item;
+                    var payload = InventoryDragPayload.ForRecoveryDelivery(
+                        delivery.DeliveryId);
                     CreateSlotButton(
                         grid,
                         state.Catalog.GetDisplayName(item.DefinitionId)
@@ -441,37 +458,20 @@ namespace ShooterMmo.Ui
                         item,
                         false,
                         false,
-                        false,
-                        null);
+                        true,
+                        null,
+                        payload,
+                        state.CanMutate,
+                        RejectRecoveryDestination,
+                        null,
+                        RejectDrop);
                 }
 
-                var actions = CreateHorizontalRow(parent, 38f);
-                var canClaim = state.CanMutate && delivery.Items.Count > 0;
-                var canClaimPermanent = canClaim
-                    && InventoryTargetAdvisor.CanClaimRecovery(
-                        state,
-                        delivery,
-                        state.FullSnapshot.PermanentInventory,
-                        out _);
-                CreateButton(
-                    actions,
-                    "Claim to Permanent",
-                    () => ClaimRecovery(
-                        delivery,
-                        state.FullSnapshot.PermanentInventory.ContainerId),
-                    canClaimPermanent);
-                var canClaimBank = canClaim
-                    && state.Bank != null
-                    && InventoryTargetAdvisor.CanClaimRecovery(
-                        state,
-                        delivery,
-                        state.Bank,
-                        out _);
-                CreateButton(
-                    actions,
-                    "Claim to Bank",
-                    () => ClaimRecovery(delivery, state.Bank.ContainerId),
-                    canClaimBank);
+                CreateMessage(
+                    parent,
+                    "Drag any item in this delivery to Permanent Inventory or Bank. "
+                        + "The complete Recovery delivery is claimed atomically.",
+                    new Color(0.65f, 0.82f, 0.9f, 1f));
             }
         }
 
@@ -482,6 +482,10 @@ namespace ShooterMmo.Ui
                 || !state.TryFindItem(selectedItemId, out var item, out var location))
             {
                 CreateMessage(parent, "No item selected.", Color.white);
+                CreateMessage(
+                    parent,
+                    localStatus,
+                    new Color(0.8f, 0.85f, 0.92f, 1f));
                 return;
             }
 
@@ -503,7 +507,7 @@ namespace ShooterMmo.Ui
                     splitMode = !splitMode;
                     destroyConfirmation = false;
                     localStatus = splitMode
-                        ? "Choose an empty compatible slot for the split stack."
+                        ? "Drag the selected stack onto an empty compatible slot."
                         : "Split cancelled.";
                     Rebuild();
                 },
@@ -536,38 +540,62 @@ namespace ShooterMmo.Ui
             CreateMessage(parent, localStatus, new Color(0.8f, 0.85f, 0.92f, 1f));
         }
 
-        private bool CanUseContainerSlot(
+        private bool CanDropOnContainer(
             InventoryClientState state,
             InventoryContainer container,
             InventorySlot slot,
+            InventoryDragPayload payload,
             out string reason)
         {
             reason = string.Empty;
             if (!state.CanMutate)
             {
-                return slot.Item != null && selectedItemId == Guid.Empty;
-            }
-
-            if (selectedItemId == Guid.Empty)
-            {
-                return slot.Item != null;
-            }
-
-            if (!state.TryFindItem(selectedItemId, out var selected, out var source))
-            {
+                reason = "Inventory mutation is unavailable while state is loading or busy.";
                 return false;
             }
 
-            if (slot.Item != null)
+            if (payload.Kind == InventoryDragPayloadKind.RecoveryDelivery)
             {
-                if (slot.Item.ItemInstanceId == selectedItemId)
+                var delivery = state.RecoveryStorage?.Deliveries.FirstOrDefault(candidate =>
+                    candidate.DeliveryId == payload.RecoveryDeliveryId);
+                if (delivery == null)
                 {
-                    return true;
+                    reason = "The Recovery delivery is no longer available.";
+                    return false;
                 }
 
-                return !splitMode && InventoryTargetAdvisor.CanMerge(
+                return InventoryTargetAdvisor.CanClaimRecovery(
                     state,
-                    selected,
+                    delivery,
+                    container,
+                    out reason);
+            }
+
+            if (payload.Kind != InventoryDragPayloadKind.Item
+                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
+            {
+                reason = "The dragged item is no longer available.";
+                return false;
+            }
+
+            var splitDrag = IsSplitDrag(payload);
+            if (slot.Item != null)
+            {
+                if (slot.Item.ItemInstanceId == item.ItemInstanceId)
+                {
+                    reason = "The item is already in this slot.";
+                    return false;
+                }
+
+                if (splitDrag)
+                {
+                    reason = "Split stacks must be dropped into an empty slot.";
+                    return false;
+                }
+
+                return InventoryTargetAdvisor.CanMerge(
+                    state,
+                    item,
                     source,
                     slot.Item,
                     new InventoryItemLocation(
@@ -580,37 +608,37 @@ namespace ShooterMmo.Ui
                     out reason);
             }
 
-            if (splitMode
-                && (!int.TryParse(splitQuantityText, out var quantity)
-                    || !InventoryTargetAdvisor.CanSplit(
-                        state.Catalog,
-                        selected,
-                        quantity,
-                        out reason)))
-            {
-                return false;
-            }
-
             if (source.Kind == InventoryItemLocationKind.Equipment)
             {
+                if (splitDrag)
+                {
+                    reason = "Equipped items cannot be split.";
+                    return false;
+                }
+
                 return InventoryTargetAdvisor.CanUnequip(
                     state,
-                    selected,
+                    item,
                     container,
                     slot,
                     out reason);
             }
 
-            var movedQuantity = selected.Quantity;
-            if (splitMode && !int.TryParse(splitQuantityText, out movedQuantity))
+            var movedQuantity = item.Quantity;
+            if (splitDrag
+                && (!int.TryParse(splitQuantityText, out movedQuantity)
+                    || !InventoryTargetAdvisor.CanSplit(
+                        state.Catalog,
+                        item,
+                        movedQuantity,
+                        out reason)))
             {
-                reason = "The split quantity is invalid.";
                 return false;
             }
 
             return InventoryTargetAdvisor.CanPlaceInContainer(
                 state,
-                selected,
+                item,
                 source,
                 container,
                 slot,
@@ -618,78 +646,91 @@ namespace ShooterMmo.Ui
                 out reason);
         }
 
-        private bool CanUseEquipmentSlot(
+        private bool CanDropOnEquipment(
             InventoryClientState state,
             InventoryEquipmentSlot equipmentSlot,
+            InventoryDragPayload payload,
             out string reason)
         {
             reason = string.Empty;
-            if (selectedItemId == Guid.Empty)
+            if (!state.CanMutate)
             {
-                return equipmentSlot.Item != null;
+                reason = "Inventory mutation is unavailable while state is loading or busy.";
+                return false;
+            }
+
+            if (payload.Kind != InventoryDragPayloadKind.Item
+                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
+            {
+                reason = "Only a current inventory item can be equipped.";
+                return false;
+            }
+
+            if (IsSplitDrag(payload))
+            {
+                reason = "A split stack cannot be equipped.";
+                return false;
             }
 
             if (equipmentSlot.Item != null)
             {
-                return equipmentSlot.Item.ItemInstanceId == selectedItemId;
+                reason = equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId
+                    ? "The item is already equipped in this slot."
+                    : "The equipment slot is occupied.";
+                return false;
             }
 
-            return state.CanMutate
-                && !splitMode
-                && state.TryFindItem(selectedItemId, out var item, out var source)
-                && source.Kind != InventoryItemLocationKind.Equipment
-                && InventoryTargetAdvisor.CanEquip(
-                    state,
-                    item,
-                    source,
-                    equipmentSlot,
-                    out reason);
+            if (source.Kind == InventoryItemLocationKind.Equipment)
+            {
+                reason = "Move the equipped item to an inventory slot before changing equipment slots.";
+                return false;
+            }
+
+            return InventoryTargetAdvisor.CanEquip(
+                state,
+                item,
+                source,
+                equipmentSlot,
+                out reason);
         }
 
-        private void OnContainerSlotClicked(
+        private void OnContainerDrop(
             InventoryContainer container,
-            InventorySlot slot)
+            InventorySlot slot,
+            InventoryDragPayload payload)
         {
             var state = controller.State;
-            if (selectedItemId == Guid.Empty)
+            if (!CanDropOnContainer(state, container, slot, payload, out var validationError))
             {
-                if (slot.Item != null)
-                {
-                    SelectItem(slot.Item);
-                }
-
+                RejectDrop(validationError);
                 return;
             }
 
-            if (!state.TryFindItem(selectedItemId, out var selected, out var source))
+            if (payload.Kind == InventoryDragPayloadKind.RecoveryDelivery)
             {
-                ClearSelection();
-                Rebuild();
+                var delivery = state.RecoveryStorage.Deliveries.First(candidate =>
+                    candidate.DeliveryId == payload.RecoveryDeliveryId);
+                ClaimRecovery(delivery, container.ContainerId);
                 return;
             }
 
+            state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
             if (slot.Item != null)
             {
-                if (slot.Item.ItemInstanceId == selectedItemId)
-                {
-                    ClearSelection();
-                    Rebuild();
-                    return;
-                }
-
                 Execute(
-                    controller.TryMerge(selected, slot.Item, out var error),
-                    error,
+                    controller.TryMerge(item, slot.Item, out var mergeError),
+                    mergeError,
                     "Merge submitted.");
                 return;
             }
 
             bool sent;
             string operationError;
-            if (splitMode && int.TryParse(splitQuantityText, out var quantity))
+            if (IsSplitDrag(payload))
             {
+                int.TryParse(splitQuantityText, out var quantity);
                 sent = controller.TrySplit(
-                    selected,
+                    item,
                     quantity,
                     container.ContainerId,
                     slot.SlotIndex,
@@ -698,7 +739,7 @@ namespace ShooterMmo.Ui
             else if (source.Kind == InventoryItemLocationKind.Equipment)
             {
                 sent = controller.TryUnequip(
-                    selected,
+                    item,
                     container.ContainerId,
                     slot.SlotIndex,
                     out operationError);
@@ -706,46 +747,88 @@ namespace ShooterMmo.Ui
             else
             {
                 sent = controller.TryRelocate(
-                    selected,
+                    item,
                     container.ContainerId,
                     slot.SlotIndex,
                     out operationError);
             }
 
-            Execute(sent, operationError, splitMode ? "Split submitted." : "Move submitted.");
+            Execute(
+                sent,
+                operationError,
+                IsSplitDrag(payload) ? "Split submitted." : "Move submitted.");
+        }
+
+        private void OnEquipmentDrop(
+            InventoryEquipmentSlot equipmentSlot,
+            InventoryDragPayload payload)
+        {
+            var state = controller.State;
+            if (!CanDropOnEquipment(state, equipmentSlot, payload, out var validationError))
+            {
+                RejectDrop(validationError);
+                return;
+            }
+
+            state.TryFindItem(payload.ItemInstanceId, out var item, out _);
+            Execute(
+                controller.TryEquip(item, equipmentSlot.SlotId, out var error),
+                error,
+                "Equip submitted.");
+        }
+
+        private void OnContainerSlotClicked(InventorySlot slot)
+        {
+            ToggleActionSelection(slot.Item);
         }
 
         private void OnEquipmentSlotClicked(InventoryEquipmentSlot equipmentSlot)
         {
-            var state = controller.State;
-            if (selectedItemId == Guid.Empty)
-            {
-                if (equipmentSlot.Item != null)
-                {
-                    SelectItem(equipmentSlot.Item);
-                }
+            ToggleActionSelection(equipmentSlot.Item);
+        }
 
-                return;
-            }
-
-            if (equipmentSlot.Item != null)
+        private void ToggleActionSelection(InventoryItem item)
+        {
+            if (item == null)
             {
-                ClearSelection();
+                localStatus = "Drag an item onto this slot to move it.";
                 Rebuild();
                 return;
             }
 
-            if (!state.TryFindItem(selectedItemId, out var selected, out _))
+            if (selectedItemId == item.ItemInstanceId)
             {
                 ClearSelection();
+                localStatus = "Selection cleared. Drag an item to move it.";
                 Rebuild();
                 return;
             }
 
-            Execute(
-                controller.TryEquip(selected, equipmentSlot.SlotId, out var error),
-                error,
-                "Equip submitted.");
+            SelectItem(item);
+        }
+
+        private bool IsSplitDrag(InventoryDragPayload payload)
+        {
+            return splitMode
+                && payload.Kind == InventoryDragPayloadKind.Item
+                && payload.ItemInstanceId == selectedItemId;
+        }
+
+        private static bool RejectRecoveryDestination(
+            InventoryDragPayload payload,
+            out string reason)
+        {
+            reason = "Recovery Storage accepts system deliveries only. "
+                + "Drag a Recovery delivery to Permanent Inventory or Bank to claim it.";
+            return false;
+        }
+
+        private void RejectDrop(string reason)
+        {
+            localStatus = string.IsNullOrWhiteSpace(reason)
+                ? "This inventory destination is not valid."
+                : reason;
+            Rebuild();
         }
 
         private void ClaimRecovery(RecoveryDelivery delivery, Guid destinationContainerId)
@@ -789,7 +872,7 @@ namespace ShooterMmo.Ui
             splitMode = false;
             destroyConfirmation = false;
             splitQuantityText = "1";
-            localStatus = "Choose an enabled destination or item action.";
+            localStatus = "Drag this item to move it, or use the selected-item actions.";
             Rebuild();
         }
 
@@ -979,24 +1062,32 @@ namespace ShooterMmo.Ui
             bool selected,
             bool specialized,
             bool interactable,
-            Action onClick)
+            Action onClick,
+            InventoryDragPayload dragPayload = null,
+            bool canDrag = false,
+            InventoryDropValidator dropValidator = null,
+            Action<InventoryDragPayload> onDrop = null,
+            Action<string> onRejected = null)
         {
             var buttonObject = CreateUiObject("Slot", parent);
             var image = buttonObject.AddComponent<Image>();
-            image.color = selected
+            var baseColor = selected
                 ? SelectedColor
                 : specialized ? SpecializedSlotColor : SlotColor;
+            image.color = baseColor;
             var button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
+            button.transition = Selectable.Transition.None;
             button.interactable = interactable;
             if (onClick != null)
             {
                 button.onClick.AddListener(() => onClick());
             }
 
+            Sprite icon = null;
             if (item != null && controller?.State.Catalog != null)
             {
-                var icon = controller.State.Catalog.LoadIcon(item.DefinitionId);
+                icon = controller.State.Catalog.LoadIcon(item.DefinitionId);
                 if (icon != null)
                 {
                     var iconObject = CreateUiObject("Icon", buttonObject.transform);
@@ -1019,6 +1110,29 @@ namespace ShooterMmo.Ui
             var text = textObject.AddComponent<Text>();
             ConfigureText(text, label, 12, TextAnchor.MiddleCenter, FontStyle.Normal);
             text.raycastTarget = false;
+            if (dragPayload != null)
+            {
+                var source = buttonObject.AddComponent<InventoryDragSource>();
+                source.Configure(
+                    dragCoordinator,
+                    dragPayload,
+                    label,
+                    icon,
+                    canDrag);
+            }
+
+            if (dropValidator != null)
+            {
+                var target = buttonObject.AddComponent<InventoryDropTarget>();
+                target.Configure(
+                    dragCoordinator,
+                    image,
+                    baseColor,
+                    dropValidator,
+                    onDrop,
+                    onRejected);
+            }
+
             return buttonObject;
         }
 

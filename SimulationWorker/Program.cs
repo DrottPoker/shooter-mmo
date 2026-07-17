@@ -23,6 +23,12 @@ builder.Configuration.AddJsonFile(
     Path.Combine("Config", "appsettings.json"),
     optional: false,
     reloadOnChange: true);
+builder.Configuration.AddJsonFile(
+    Path.Combine(
+        "Config",
+        $"appsettings.{builder.Environment.EnvironmentName}.json"),
+    optional: true,
+    reloadOnChange: true);
 builder.Configuration.AddOptionalDotEnvFile(Directory.GetCurrentDirectory());
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
@@ -31,6 +37,10 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = SimulationWorkerConfig.FromConfiguration(builder.Configuration);
+var developmentItemInteractionOptions =
+    DevelopmentItemInteractionOptions.FromConfiguration(
+        builder.Configuration,
+        builder.Environment.IsDevelopment());
 var collisionStreamingStore = WorldCollisionLoader.LoadStreaming(config);
 collisionStreamingStore.Refresh([
     new SimulationVector3(
@@ -50,6 +60,7 @@ var collisionWorld = new CompositeCollisionWorld(
     dynamicCollisionWorld);
 
 builder.Services.AddSingleton(config);
+builder.Services.AddSingleton(developmentItemInteractionOptions);
 builder.Services.AddSingleton(collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);
 builder.Services.AddSingleton(dynamicCollisionWorld);
@@ -101,6 +112,13 @@ if (args.Contains("--health-check-only", StringComparer.OrdinalIgnoreCase))
 }
 
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SimulationWorker");
+if (developmentItemInteractionOptions.GlobalBankAndRecoveryAccess)
+{
+    logger.LogWarning(
+        "Development global Bank and Recovery Storage access is enabled. "
+        + "Production service-point authority remains unchanged.");
+}
+
 logger.LogInformation(
     "Starting simulation worker {WorkerId} for fleet {FleetId}, node {NodeId}, shard {ShardId}, and world {WorldId} on UDP port {UdpPort}. Advertising {AdvertisedHost}:{AdvertisedUdpPort} with runtime {RuntimeId}, simulation revision {SimulationRevision}, collision revision {CollisionRevision}, and {LoadedCollisionChunks} of {AvailableCollisionChunks} collision chunks initially loaded.",
     config.SimulationWorkerId,

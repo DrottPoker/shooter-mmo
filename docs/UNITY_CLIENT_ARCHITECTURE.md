@@ -413,14 +413,22 @@ upper-right, and character storage in the lower-right. Permanent inventory,
 equipped Bag contents, and Secure Container remain visible while Bank or
 Recovery Storage is selected. Bank and Recovery may be inspected through global
 owning-account reads. Every mutation still travels through the joined
-SimulationWorker, so authoritative service-point validation remains effective.
+SimulationWorker and is committed through AuthService authority.
 
-The panel supports move, equip, unequip, split, merge, allowed destruction, and
-complete Recovery claims. It displays authoritative weight, capacity, load,
-movement multiplier, sprint eligibility, and item-state revision. A UI-only
-target advisor reuses pure WorldData equipment, stack, Bag, Secure Container,
-slot-tag, weight, and hard-cap rules to disable obvious invalid targets. Server
-authority always revalidates any submitted action.
+`InventoryDragCoordinator`, `InventoryDragSource`, typed
+`InventoryDragPayload`, and `InventoryDropTarget` form the reusable uGUI
+interaction layer. Relocation, equip, unequip, split, merge, and complete
+Recovery claims start only from a drop. Valid and invalid targets provide green
+or red feedback, then revalidate the current state before sending an operation.
+Item clicks only select action controls for split or allowed destruction. A
+Recovery item represents its complete delivery during a drag because the durable
+claim remains atomic.
+
+The panel displays authoritative weight, capacity, load, movement multiplier,
+sprint eligibility, and item-state revision. A UI-only target advisor reuses pure
+WorldData equipment, stack, Bag, Secure Container, slot-tag, weight, and hard-cap
+rules to disable obvious invalid targets. Server authority always revalidates any
+submitted action, and the client never applies an optimistic custody change.
 
 Corpse and world-loot context kinds are reserved at the state boundary without
 inventing snapshots or operations. The upper-right layout can accept those
@@ -447,6 +455,16 @@ weight, the 140 percent hard cap, revisions, policies, and container slots. The
 response is machine-readable and refreshes the Editor view after a successful
 mutation. This tooling does not change HTTP DTOs, realtime packets, or protocol
 versions.
+
+SimulationWorker separately loads
+`Config/appsettings.Development.json`. Its explicit
+`DevelopmentItemInteractions:GlobalBankAndRecoveryAccess` option lets a joined
+local Development character use Bank and Recovery Storage from any authoritative
+world position. The option is rejected if enabled outside the Development
+environment. It does not grant insurance access or weaken session, worker,
+runtime, Shard, assignment, AuthService transaction, item-rule, or hard-cap
+authority. Production continues to derive Bank and Recovery access from authored
+service points.
 
 All Unity Editor commands owned by the project use the shared
 `Shooter MMO > Tools` root. The item catalog authoring window is at
