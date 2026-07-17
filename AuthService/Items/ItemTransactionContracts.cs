@@ -254,6 +254,29 @@ public sealed record LootCorpsePartialStackCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
+public sealed record DepositCorpseItemCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
+public sealed record DepositCorpsePartialStackCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
 public sealed record SwapCorpseBagCommand(
     Guid CharacterId,
     Guid CorpseId,
@@ -317,5 +340,7 @@ public static class ItemOperationKinds
     public const string ExpireCorpse = "expire_corpse";
     public const string LootCorpseItem = "loot_corpse_item";
     public const string LootCorpsePartialStack = "loot_corpse_partial_stack";
+    public const string DepositCorpseItem = "deposit_corpse_item";
+    public const string DepositCorpsePartialStack = "deposit_corpse_partial_stack";
     public const string SwapCorpseBag = "swap_corpse_bag";
 }

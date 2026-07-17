@@ -379,7 +379,13 @@ Player death is an idempotent transaction:
 - The corpse has separate general inventory, equipment, and Bag sections.
 - Multiple players, including the dead player, may loot the corpse concurrently.
 - One player may have only one active loot interaction at a time.
-- Partial-stack looting is supported.
+- Corpse sections are bidirectional containers for carried inventory items.
+- Full-item and partial-stack transfers are supported in both directions.
+- Compatible stacks with remaining capacity merge, while complete items that
+  cannot merge atomically swap only when both original slots accept the
+  opposite item.
+- Bank, Recovery Storage, and ordinary equipped items cannot be deposited into a
+  corpse.
 - Bag swaps are atomic and lock both Bag aggregates.
 
 Player corpse custody persists in PostgreSQL for an absolute five-minute lifetime
@@ -458,10 +464,11 @@ Current implementation note:
 - Item-plan Phase 10 adds idempotent player-death partition, Recovery delivery,
   durable five-minute player corpse custody and snapshots, exact worker restart
   restoration, and audited expiry cleanup.
-- Item-plan Phase 11 adds protocol-v9 corpse presence and interaction, exact
-  proximity and lifetime validation, concurrent full and partial loot, atomic
-  Bag aggregate swaps, committed viewer deltas, immutable Unity state, and a
-  generic replaceable corpse presentation.
+- Item-plan Phase 11 adds protocol-v10 corpse presence and bidirectional
+  interaction, exact proximity and lifetime validation, concurrent full and
+  partial transfers, ordinary occupied-slot swaps, atomic Bag aggregate swaps,
+  committed viewer deltas, immutable Unity state, and a generic replaceable
+  corpse presentation.
 - Gameplay-created item grants, insurance NPC pricing, authoritative combat
   death production, mobs, final corpse art, and configurable NPC corpse
   persistence are not implemented. Insurance consumption is implemented only
@@ -547,7 +554,8 @@ Status: In progress, item-plan Phases 1 through 11 complete
   exact worker and Shard restart restoration, empty-corpse lifetime, and audited
   absolute expiry are complete.
 - Exact-session corpse reads and mutations, concurrent viewers, proximity and
-  lifetime validation, full and partial loot, atomic Bag swaps, committed
+  lifetime validation, bidirectional full and partial transfers, ordinary slot
+  swaps, atomic Bag swaps, committed
   deltas, generic Unity presentation, and the reusable typed drag path are
   complete. Live death activation waits for the authoritative combat producer.
 

@@ -1265,13 +1265,14 @@ production remains explicitly gated on the future server-authoritative combat
 producer. Phase 11 now consumes the durable corpse boundary without fabricating
 that combat producer.
 
-## Phase 11: Concurrent Corpse Looting And Bag Swap
+## Phase 11: Concurrent Corpse Container Transfers And Bag Swap
 
 Status: Implemented on 2026-07-17
 
 ### Work
 
-- Add corpse-open, close, item-loot, partial-stack-loot, and Bag-swap intents.
+- Add corpse-open, close, item-loot, partial-stack-loot, item-deposit,
+  partial-stack-deposit, and Bag-swap intents.
 - Enforce one active loot interaction per player in SimulationWorker.
 - Allow multiple players to view and mutate the same corpse.
 - Validate proximity and corpse lifetime on every mutation.
@@ -1280,6 +1281,11 @@ Status: Implemented on 2026-07-17
 - Lock Bag aggregates before child items.
 - Broadcast committed corpse deltas to every current viewer.
 - Close views with stable errors after expiry or invalidation.
+- Treat corpse sections as bidirectional containers for carried inventory.
+- Merge compatible stacks with remaining capacity and atomically swap complete
+  items that cannot merge when both original slots accept the opposite item.
+- Refresh character inventory to at least the committed item-state revision
+  after every successful corpse mutation.
 
 ### Race Tests
 
@@ -1290,6 +1296,12 @@ Status: Implemented on 2026-07-17
 - Two Bag swaps cannot split either aggregate.
 - A looter at 140 percent cannot claim more carried weight.
 - The dead player competes under the same rules as another player.
+- A player can deposit into an empty corpse slot and merge a partial stack.
+- Complete items that cannot merge swap atomically in either drag direction.
+- Protected, insured, Bank, Recovery Storage, and ordinary equipped sources are
+  rejected without changing custody.
+- A committed corpse result refreshes a previously coherent character snapshot
+  when its item-state revision advanced.
 - Viewers receive committed deltas and stale clients can refresh.
 - No database transaction remains open while waiting for a client response.
 
@@ -1301,17 +1313,24 @@ Status: Implemented on 2026-07-17
 - Request the same item simultaneously and observe one stable loser response.
 - Start a child-item loot and a Bag swap together and verify the aggregate stays
   complete.
+- Drag a carried item into an empty corpse slot and verify both views refresh.
+- Drag complete items that cannot merge onto each other in both directions and
+  verify their slots swap atomically.
+- Split a compatible stack into the corpse and verify total quantity is
+  conserved.
 - Restart SimulationWorker before five minutes and verify the corpse returns at
   the recorded location with the original expiry.
 
 ### Exit Gate
 
-Concurrent corpse interaction is deterministic, refreshable, and dupe safe.
+Bidirectional concurrent corpse interaction is deterministic, refreshable, and
+dupe safe.
 
 ### Implementation Record
 
-- GameProtocol version `9` adds reliable corpse presence, open, close, refresh,
-  full-item loot, partial-stack loot, atomic Bag-swap, operation-result,
+- GameProtocol version `10` adds reliable corpse presence, accepted slot tags,
+  open, close, refresh, full-item and partial-stack loot or deposit, atomic
+  ordinary slot and Bag-swap, operation-result,
   chunked view-state, and stable view-closure messages. Chunk builders measure
   encoded UTF-8 size and keep every packet within the `1200` byte transport
   limit.
@@ -1321,11 +1340,14 @@ Concurrent corpse interaction is deterministic, refreshable, and dupe safe.
   roots, containers, children, and policies, validate the absolute lifetime,
   and commit targeted item or container expectations without rejecting an
   unrelated corpse change solely because the corpse revision advanced.
-- Full item moves, partial stack splits or merges, and Bag aggregate swaps
-  preserve policy, slot, carried-weight, capacity, and 140 percent hard-cap
-  rules. The dead character uses the same transaction path as every other
-  looter. A committed response is loaded only after the mutation transaction
-  closes, so no database transaction spans a client wait.
+- Full item moves, partial stack splits or merges, ordinary occupied-slot swaps,
+  and Bag aggregate swaps preserve policy, slot, carried-weight, capacity, and
+  140 percent hard-cap rules in either direction. Only Permanent Inventory,
+  equipped Bag contents, and Secure Container may deposit into a corpse.
+  Protected and insured custody cannot be deposited. The dead character uses
+  the same transaction path as every other looter. A committed response is
+  loaded only after the mutation transaction closes, so no database transaction
+  spans a client wait.
 - SimulationWorker keeps only bounded runtime corpse presentation and view
   state. One per-peer authority queue serializes item and corpse operations,
   one peer can view only one corpse, any number of peers can view one corpse,
@@ -1342,24 +1364,30 @@ Concurrent corpse interaction is deterministic, refreshable, and dupe safe.
   and refresh-on-stale behavior. It never changes corpse or character custody
   optimistically. A replaceable capsule presentation exposes nearby corpses,
   `E` opens the closest corpse within three metres, and the temporary uGUI uses
-  the permanent typed drag-and-drop foundation for full or partial loot and
-  occupied Bag-slot aggregate swaps.
+  the permanent typed drag-and-drop foundation for bidirectional full or partial
+  transfers, compatible merges, ordinary occupied-slot swaps, and occupied
+  Bag-slot aggregate swaps. Successful results force a full character refresh
+  to at least the committed item-state revision instead of accepting a coherent
+  but older snapshot.
 - `Shooter MMO > Tools > Inventory Item Grants` can create a durable corpse for
   an offline local character at a selected Shard position. Empty characters are
   first seeded through the Phase 9 fixture, then the normal system-death adapter
   creates the corpse. Restarting SimulationWorker restores it with its original
   database deadline.
 - Automated coverage includes same-item and partial-stack races, unrelated
-  concurrent commits, Bag versus child and Bag versus Bag races, hard-cap
-  rejection, equal rules for the dead player, exact HTTP authority, closed
-  transaction checks, viewer and delta state, stale refresh state, stable close
-  errors, protocol MTU behavior, the Development corpse fixture, Unity chunk
-  assembly, drag payloads, and bootstrap presentation.
+  concurrent commits, empty deposits, partial deposit merges, ordinary swaps in
+  both directions, protected-item rejection, hard-cap swap rollback,
+  deposit-versus-loot races, Bag versus child and Bag versus Bag races, equal
+  rules for the dead player, exact HTTP authority, closed transaction checks,
+  worker validation of committed deposit responses, viewer and delta state,
+  committed-revision refresh state, stable close errors, protocol MTU behavior
+  and slot tags, the Development corpse fixture, Unity chunk assembly, drag
+  payloads, and bootstrap presentation.
 - Final verification passed locked dependency restore, dependency policy,
   formatter verification, deterministic item-catalog and collision verification,
   and the complete Release build with zero warnings and zero errors.
-- The complete backend suite passed `325/325`. Unity `6000.5.2f1` passed
-  `78/78` EditMode tests and `2/2` PlayMode tests.
+- The complete backend suite passed `331/331`. Unity `6000.5.2f1` passed
+  `79/79` EditMode tests and `2/2` PlayMode tests.
 
 The Phase 11 implementation, automated test, documentation, and deterministic
 exit gates are satisfied. The documented two-client flow remains the required

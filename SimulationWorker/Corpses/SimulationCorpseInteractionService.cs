@@ -72,6 +72,8 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
         {
             RealtimeCorpseInteractionKind.LootItem => "loot_item",
             RealtimeCorpseInteractionKind.LootPartialStack => "loot_partial_stack",
+            RealtimeCorpseInteractionKind.DepositItem => "deposit_item",
+            RealtimeCorpseInteractionKind.DepositPartialStack => "deposit_partial_stack",
             RealtimeCorpseInteractionKind.SwapBag => "swap_bag",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(intent),

@@ -126,15 +126,27 @@ namespace ShooterMmo.Items
     public sealed class CorpseLootSlot
     {
         public CorpseLootSlot(int slotIndex, string slotKind, CorpseLootItem item)
+            : this(slotIndex, slotKind, Array.Empty<string>(), item)
+        {
+        }
+
+        public CorpseLootSlot(
+            int slotIndex,
+            string slotKind,
+            string[] acceptedTags,
+            CorpseLootItem item)
         {
             SlotIndex = slotIndex;
             SlotKind = slotKind ?? string.Empty;
+            AcceptedTags = acceptedTags ?? Array.Empty<string>();
             Item = item;
         }
 
         public int SlotIndex { get; }
 
         public string SlotKind { get; }
+
+        public IReadOnlyList<string> AcceptedTags { get; }
 
         public CorpseLootItem Item { get; }
     }
@@ -678,6 +690,7 @@ namespace ShooterMmo.Items
             return new CorpseLootSlot(
                 source.SlotIndex,
                 source.SlotKind,
+                source.AcceptedTags,
                 source.Item == null ? null : new CorpseLootItem(source.Item));
         }
 

@@ -237,6 +237,90 @@ namespace ShooterMmo.Items
                 out error);
         }
 
+        public bool TryDeposit(
+            InventoryItem item,
+            CorpseLootSection destination,
+            CorpseLootSlot destinationSlot,
+            int quantity,
+            out string error)
+        {
+            error = string.Empty;
+            if (!CanBegin(out error)
+                || State.ActiveView == null
+                || item == null
+                || destination == null
+                || destinationSlot == null
+                || inventoryController?.State == null)
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                {
+                    error = "Current inventory, corpse, and destination state are required.";
+                }
+
+                return false;
+            }
+
+            if (!inventoryController.State.TryFindItem(
+                    item.ItemInstanceId,
+                    out var currentItem,
+                    out var sourceLocation)
+                || sourceLocation.Kind != InventoryItemLocationKind.Container
+                || !IsCarriedContainerType(sourceLocation.ContainerType))
+            {
+                error = "Only items in carried inventory, Bag, or Secure Container slots can enter a corpse.";
+                return false;
+            }
+
+            if (!State.ActiveView.TryGetSection(destination.SectionKind, out var currentSection)
+                || currentSection.ContainerId != destination.ContainerId
+                || !currentSection.TryGetSlot(destinationSlot.SlotIndex, out var currentSlot))
+            {
+                error = "The corpse destination is no longer available.";
+                return false;
+            }
+
+            if (currentSlot.Item != null && currentSlot.Item.HasBagContents)
+            {
+                error = "A corpse Bag must be exchanged through the atomic Bag aggregate swap.";
+                return false;
+            }
+
+            if (quantity <= 0 || quantity > currentItem.Quantity)
+            {
+                error = "Deposit quantity must be within the current stack quantity.";
+                return false;
+            }
+
+            var operationId = Guid.NewGuid();
+            var targetId = currentSlot.Item?.ItemInstanceId ?? Guid.Empty;
+            var targetRevision = currentSlot.Item?.Revision ?? 0;
+            var intent = quantity < currentItem.Quantity
+                ? RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
+                    operationId,
+                    State.ActiveView.CorpseId,
+                    State.ActiveView.Revision,
+                    currentItem.ItemInstanceId,
+                    currentItem.Revision,
+                    quantity,
+                    currentSection.ContainerId,
+                    currentSection.ContainerRevision,
+                    currentSlot.SlotIndex,
+                    targetId,
+                    targetRevision)
+                : RealtimeCorpseInteractionIntent.CreateDepositItem(
+                    operationId,
+                    State.ActiveView.CorpseId,
+                    State.ActiveView.Revision,
+                    currentItem.ItemInstanceId,
+                    currentItem.Revision,
+                    currentSection.ContainerId,
+                    currentSection.ContainerRevision,
+                    currentSlot.SlotIndex,
+                    targetId,
+                    targetRevision);
+            return Send(intent, "The corpse-deposit request could not be sent.", out error);
+        }
+
         private bool Send(
             RealtimeCorpseInteractionIntent intent,
             string errorMessage,
@@ -318,7 +402,7 @@ namespace ShooterMmo.Items
 
             if (result.RequiresInventoryRefresh)
             {
-                inventoryController?.EnsureFullState();
+                inventoryController?.EnsureFullState(result.CarryState.ItemStateRevision);
             }
 
             if (!result.Succeeded)
@@ -350,6 +434,13 @@ namespace ShooterMmo.Items
                 refreshAfterPending = false;
                 TryRefresh(out _);
             }
+        }
+
+        private static bool IsCarriedContainerType(string containerType)
+        {
+            return string.Equals(containerType, "permanent_inventory", StringComparison.Ordinal)
+                || string.Equals(containerType, "bag_contents", StringComparison.Ordinal)
+                || string.Equals(containerType, "secure_container", StringComparison.Ordinal);
         }
 
         private void OnViewClosed(RealtimeCorpseViewClosed closed)

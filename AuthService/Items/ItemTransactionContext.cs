@@ -701,6 +701,22 @@ internal sealed class ItemTransactionContext(
         Guid characterId,
         CancellationToken cancellationToken)
     {
+        var container = await LoadContainerAsync(containerId, cancellationToken);
+
+        if (container.OwningCharacterId != characterId)
+        {
+            Reject(ItemTransactionErrorCodes.ItemNotOwned, "The character does not own the item container.");
+        }
+
+        EnsureLiveContainerAccess(container.ContainerType);
+
+        return container;
+    }
+
+    public async Task<LockedContainer> LoadContainerAsync(
+        Guid containerId,
+        CancellationToken cancellationToken)
+    {
         var container = await Connection.QuerySingleOrDefaultAsync<LockedContainer>(
             new CommandDefinition(
                 """
@@ -728,13 +744,6 @@ internal sealed class ItemTransactionContext(
         {
             Reject(ItemTransactionErrorCodes.ItemNotFound, "The item container was not found.");
         }
-
-        if (container.OwningCharacterId != characterId)
-        {
-            Reject(ItemTransactionErrorCodes.ItemNotOwned, "The character does not own the item container.");
-        }
-
-        EnsureLiveContainerAccess(container.ContainerType);
 
         return container;
     }
@@ -1510,6 +1519,13 @@ internal sealed class ItemTransactionContext(
         if (string.Equals(containerType, "recovery_storage", StringComparison.Ordinal))
         {
             return BagDestinationKind.RecoveryStorageSlot;
+        }
+
+        if (string.Equals(containerType, "corpse_inventory", StringComparison.Ordinal)
+            || string.Equals(containerType, "corpse_equipment", StringComparison.Ordinal)
+            || string.Equals(containerType, "corpse_bag_contents", StringComparison.Ordinal))
+        {
+            return BagDestinationKind.CorpseStorageSlot;
         }
 
         return BagDestinationKind.SecureContainerSlot;

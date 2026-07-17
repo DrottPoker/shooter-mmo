@@ -30,6 +30,30 @@ public sealed partial class ItemTransactionService
     }
 
     public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<DepositCorpseItemCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteInternalAsync(
+            request,
+            ItemOperationKinds.DepositCorpseItem,
+            request.Command.CharacterId,
+            ExecuteDepositCorpseItemAsync,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<DepositCorpsePartialStackCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteInternalAsync(
+            request,
+            ItemOperationKinds.DepositCorpsePartialStack,
+            request.Command.CharacterId,
+            ExecuteDepositCorpsePartialStackAsync,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<SwapCorpseBagCommand> request,
         CancellationToken cancellationToken)
     {
@@ -48,7 +72,7 @@ public sealed partial class ItemTransactionService
     {
         return ExecuteLootCorpseStackAsync(
             context,
-            new CorpseLootStackCommand(
+            new CorpseItemTransferCommand(
                 command.CharacterId,
                 command.CorpseId,
                 command.ItemInstanceId,
@@ -69,7 +93,49 @@ public sealed partial class ItemTransactionService
     {
         return ExecuteLootCorpseStackAsync(
             context,
-            new CorpseLootStackCommand(
+            new CorpseItemTransferCommand(
+                command.CharacterId,
+                command.CorpseId,
+                command.ItemInstanceId,
+                command.ExpectedItemRevision,
+                command.Quantity,
+                command.DestinationContainerId,
+                command.ExpectedDestinationContainerRevision,
+                command.DestinationSlotIndex,
+                command.TargetItemInstanceId,
+                command.ExpectedTargetItemRevision),
+            cancellationToken);
+    }
+
+    private static Task ExecuteDepositCorpseItemAsync(
+        ItemTransactionContext context,
+        DepositCorpseItemCommand command,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteDepositCorpseStackAsync(
+            context,
+            new CorpseItemTransferCommand(
+                command.CharacterId,
+                command.CorpseId,
+                command.ItemInstanceId,
+                command.ExpectedItemRevision,
+                null,
+                command.DestinationContainerId,
+                command.ExpectedDestinationContainerRevision,
+                command.DestinationSlotIndex,
+                command.TargetItemInstanceId,
+                command.ExpectedTargetItemRevision),
+            cancellationToken);
+    }
+
+    private static Task ExecuteDepositCorpsePartialStackAsync(
+        ItemTransactionContext context,
+        DepositCorpsePartialStackCommand command,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteDepositCorpseStackAsync(
+            context,
+            new CorpseItemTransferCommand(
                 command.CharacterId,
                 command.CorpseId,
                 command.ItemInstanceId,
@@ -85,10 +151,10 @@ public sealed partial class ItemTransactionService
 
     private static async Task ExecuteLootCorpseStackAsync(
         ItemTransactionContext context,
-        CorpseLootStackCommand command,
+        CorpseItemTransferCommand command,
         CancellationToken cancellationToken)
     {
-        ValidateCorpseLootStackCommand(command);
+        ValidateCorpseItemTransferCommand(command);
         await context.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
@@ -108,6 +174,7 @@ public sealed partial class ItemTransactionService
         var source = await context.LoadItemAsync(command.ItemInstanceId, cancellationToken);
         if (source is null
             || source.ContainerId is null
+            || source.ContainerSlotIndex is null
             || !await IsCorpseSectionContainerAsync(
                 context,
                 command.CorpseId,
@@ -176,6 +243,7 @@ public sealed partial class ItemTransactionService
 
         LockedItem? target = null;
         IReadOnlyList<LockedItemPolicy>? targetPolicies = null;
+        var swapItems = false;
         if (command.TargetItemInstanceId is not null)
         {
             target = await context.LoadOwnedItemAsync(
@@ -203,7 +271,7 @@ public sealed partial class ItemTransactionService
             targetPolicies = await context.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
-            EnsureCorpseStackMergeAllowed(
+            var stackDisposition = GetCorpseStackDisposition(
                 source,
                 sourcePolicies,
                 sourceCapabilities,
@@ -211,6 +279,43 @@ public sealed partial class ItemTransactionService
                 targetPolicies,
                 definition,
                 movedQuantity);
+            if (stackDisposition != CorpseStackDisposition.Merge)
+            {
+                if (isPartial)
+                {
+                    RejectCorpseStackMerge(stackDisposition);
+                }
+
+                var targetDefinition = await context.LoadDefinitionAsync(
+                    target.DefinitionId,
+                    cancellationToken);
+                var targetCapabilities = ItemPolicyRules.Evaluate(
+                    targetDefinition.RuntimeDefinition,
+                    ToPolicyStates(targetPolicies));
+                if (!targetCapabilities.CanChangeOwningCharacter)
+                {
+                    ItemTransactionContext.Reject(
+                        ItemTransactionErrorCodes.ItemPolicyRestricted,
+                        "An active item policy prevents the carried target from entering corpse custody.");
+                }
+
+                var sourceContainer = await context.LoadContainerAsync(
+                    source.ContainerId.Value,
+                    cancellationToken);
+                var targetBagHasContents = await context.BagHasContentsAsync(
+                    target,
+                    cancellationToken);
+                await context.SelectDestinationSlotAsync(
+                    sourceContainer,
+                    targetDefinition,
+                    source.ContainerSlotIndex,
+                    targetBagHasContents,
+                    target.IsBag ? target.ItemInstanceId : null,
+                    false,
+                    cancellationToken,
+                    source.ItemInstanceId);
+                swapItems = true;
+            }
         }
         else
         {
@@ -224,7 +329,17 @@ public sealed partial class ItemTransactionService
                 cancellationToken);
         }
 
-        if (target is not null)
+        if (target is not null && swapItems)
+        {
+            await SwapCorpseContainerItemsAsync(
+                context,
+                source,
+                target,
+                "corpse_item_swapped_to_character",
+                "character_item_swapped_to_corpse",
+                cancellationToken);
+        }
+        else if (target is not null)
         {
             await MergeCorpseQuantityAsync(
                 context,
@@ -257,6 +372,251 @@ public sealed partial class ItemTransactionService
 
         await AdvanceCorpseRevisionAsync(context, corpse, cancellationToken);
         context.TouchContainer(source.ContainerId);
+        context.TouchContainer(destination.ContainerId);
+        context.TouchCharacter(command.CharacterId);
+    }
+
+    private static async Task ExecuteDepositCorpseStackAsync(
+        ItemTransactionContext context,
+        CorpseItemTransferCommand command,
+        CancellationToken cancellationToken)
+    {
+        ValidateCorpseItemTransferCommand(command);
+        await context.LockCharacterStateForIdempotentEventAsync(
+            command.CharacterId,
+            cancellationToken);
+        var corpse = await LockOpenCorpseAsync(context, command.CorpseId, cancellationToken);
+
+        var itemIds = command.TargetItemInstanceId is null
+            ? new[] { command.ItemInstanceId }
+            : new[] { command.ItemInstanceId, command.TargetItemInstanceId.Value };
+        await context.LockMutationScopeAsync(
+            itemIds,
+            [command.DestinationContainerId],
+            cancellationToken);
+
+        var source = await context.LoadOwnedItemAsync(
+            command.ItemInstanceId,
+            command.CharacterId,
+            command.ExpectedItemRevision,
+            cancellationToken);
+        if (source.ContainerId is null || source.ContainerSlotIndex is null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemSlotIncompatible,
+                "Only items in carried container slots can enter corpse custody.");
+        }
+
+        var sourceContainer = await context.LoadOwnedContainerAsync(
+            source.ContainerId.Value,
+            command.CharacterId,
+            cancellationToken);
+        EnsureCarriedCorpseTransferSource(sourceContainer);
+
+        var definition = await context.LoadDefinitionAsync(
+            source.DefinitionId,
+            cancellationToken);
+        var sourcePolicies = await context.LoadPoliciesAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var sourceCapabilities = ItemPolicyRules.Evaluate(
+            definition.RuntimeDefinition,
+            ToPolicyStates(sourcePolicies));
+        if (!sourceCapabilities.CanChangeOwningCharacter)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "An active item policy prevents this carried item from entering corpse custody.");
+        }
+
+        var sourceBagHasContents = await context.BagHasContentsAsync(source, cancellationToken);
+        if (source.IsBag && sourceBagHasContents)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.BagNotEmpty,
+                "A non-empty Bag moves into corpse custody only through an atomic Bag aggregate swap.");
+        }
+
+        var isPartial = command.Quantity is not null;
+        var movedQuantity = isPartial ? command.Quantity!.Value : source.Quantity;
+        if (isPartial
+            && (movedQuantity <= 0
+                || movedQuantity >= source.Quantity
+                || definition.RuntimeDefinition.MaximumStackSize <= 1
+                || !sourceCapabilities.CanStack))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemQuantityChanged,
+                "The requested partial-stack quantity is no longer valid.");
+        }
+
+        var destination = await context.LoadContainerAsync(
+            command.DestinationContainerId,
+            cancellationToken);
+        if (!await IsCorpseSectionContainerAsync(
+                context,
+                command.CorpseId,
+                destination.ContainerId,
+                cancellationToken))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemSlotIncompatible,
+                "The requested destination is not part of this corpse.");
+        }
+
+        if (destination.Revision != command.ExpectedDestinationContainerRevision)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStateConflict,
+                "The corpse destination changed before the operation committed.");
+        }
+
+        LockedItem? target = null;
+        IReadOnlyList<LockedItemPolicy>? targetPolicies = null;
+        var swapItems = false;
+        if (command.TargetItemInstanceId is not null)
+        {
+            target = await context.LoadItemAsync(
+                command.TargetItemInstanceId.Value,
+                cancellationToken);
+            if (target is null
+                || target.Revision != command.ExpectedTargetItemRevision
+                || target.ContainerId != destination.ContainerId
+                || target.ContainerSlotIndex != command.DestinationSlotIndex
+                || !await IsCorpseSectionContainerAsync(
+                    context,
+                    command.CorpseId,
+                    target.ContainerId.Value,
+                    cancellationToken))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.ItemStateConflict,
+                    "The corpse target moved before the deposit committed.");
+            }
+
+            if (target.IsBag)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.BagStateChanged,
+                    "Corpse Bags move only through an atomic Bag aggregate swap.");
+            }
+
+            await context.SelectDestinationSlotAsync(
+                destination,
+                definition,
+                command.DestinationSlotIndex,
+                sourceBagHasContents,
+                source.IsBag ? source.ItemInstanceId : null,
+                false,
+                cancellationToken,
+                target.ItemInstanceId);
+            targetPolicies = await context.LoadPoliciesAsync(
+                target.ItemInstanceId,
+                cancellationToken);
+            var stackDisposition = GetCorpseStackDisposition(
+                source,
+                sourcePolicies,
+                sourceCapabilities,
+                target,
+                targetPolicies,
+                definition,
+                movedQuantity);
+            if (stackDisposition != CorpseStackDisposition.Merge)
+            {
+                if (isPartial)
+                {
+                    RejectCorpseStackMerge(stackDisposition);
+                }
+
+                var targetDefinition = await context.LoadDefinitionAsync(
+                    target.DefinitionId,
+                    cancellationToken);
+                var targetCapabilities = ItemPolicyRules.Evaluate(
+                    targetDefinition.RuntimeDefinition,
+                    ToPolicyStates(targetPolicies));
+                if (!targetCapabilities.CanChangeOwningCharacter)
+                {
+                    ItemTransactionContext.Reject(
+                        ItemTransactionErrorCodes.ItemPolicyRestricted,
+                        "An active item policy prevents the corpse target from changing ownership.");
+                }
+
+                await context.SelectDestinationSlotAsync(
+                    sourceContainer,
+                    targetDefinition,
+                    source.ContainerSlotIndex,
+                    false,
+                    null,
+                    false,
+                    cancellationToken,
+                    source.ItemInstanceId);
+                swapItems = true;
+            }
+        }
+        else
+        {
+            await context.SelectDestinationSlotAsync(
+                destination,
+                definition,
+                command.DestinationSlotIndex,
+                sourceBagHasContents,
+                source.IsBag ? source.ItemInstanceId : null,
+                false,
+                cancellationToken);
+        }
+
+        if (target is not null && swapItems)
+        {
+            await SwapCorpseContainerItemsAsync(
+                context,
+                source,
+                target,
+                "character_item_swapped_to_corpse",
+                "corpse_item_swapped_to_character",
+                cancellationToken);
+        }
+        else if (target is not null)
+        {
+            await MergeCorpseQuantityAsync(
+                context,
+                source,
+                target,
+                movedQuantity,
+                isPartial,
+                "corpse_stack_deposit_source",
+                "corpse_stack_deposit_merged",
+                cancellationToken);
+        }
+        else if (isPartial)
+        {
+            await SplitCorpseQuantityAsync(
+                context,
+                source,
+                sourcePolicies,
+                movedQuantity,
+                destination,
+                command.DestinationSlotIndex,
+                "corpse_stack_deposit_source",
+                "corpse_stack_deposit_created",
+                cancellationToken);
+        }
+        else
+        {
+            await MoveCorpseItemAsync(
+                context,
+                source,
+                destination,
+                command.DestinationSlotIndex,
+                "corpse_item_deposited",
+                cancellationToken);
+        }
+
+        await AdvanceCorpseRevisionAsync(
+            context,
+            corpse,
+            "corpse_deposit_revision_advanced",
+            cancellationToken);
+        context.TouchContainer(sourceContainer.ContainerId);
         context.TouchContainer(destination.ContainerId);
         context.TouchCharacter(command.CharacterId);
     }
@@ -407,6 +767,23 @@ public sealed partial class ItemTransactionService
         int destinationSlotIndex,
         CancellationToken cancellationToken)
     {
+        await MoveCorpseItemAsync(
+            context,
+            source,
+            destination,
+            destinationSlotIndex,
+            "corpse_item_looted",
+            cancellationToken);
+    }
+
+    private static async Task MoveCorpseItemAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        LockedContainer destination,
+        int destinationSlotIndex,
+        string auditKind,
+        CancellationToken cancellationToken)
+    {
         var before = await context.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
@@ -433,7 +810,7 @@ public sealed partial class ItemTransactionService
             source.ItemInstanceId,
             cancellationToken);
         context.AddItemAudit(
-            "corpse_item_looted",
+            auditKind,
             source.ItemInstanceId,
             before,
             after);
@@ -447,6 +824,29 @@ public sealed partial class ItemTransactionService
         int quantity,
         LockedContainer destination,
         int destinationSlotIndex,
+        CancellationToken cancellationToken)
+    {
+        await SplitCorpseQuantityAsync(
+            context,
+            source,
+            policies,
+            quantity,
+            destination,
+            destinationSlotIndex,
+            "corpse_stack_loot_source",
+            "corpse_stack_loot_created",
+            cancellationToken);
+    }
+
+    private static async Task SplitCorpseQuantityAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        IReadOnlyList<LockedItemPolicy> policies,
+        int quantity,
+        LockedContainer destination,
+        int destinationSlotIndex,
+        string sourceAuditKind,
+        string createdAuditKind,
         CancellationToken cancellationToken)
     {
         var sourceBefore = await context.CaptureItemStateJsonAsync(
@@ -525,12 +925,12 @@ public sealed partial class ItemTransactionService
             createdItemId,
             cancellationToken);
         context.AddItemAudit(
-            "corpse_stack_loot_source",
+            sourceAuditKind,
             source.ItemInstanceId,
             sourceBefore,
             sourceAfter);
         context.AddItemAudit(
-            "corpse_stack_loot_created",
+            createdAuditKind,
             createdItemId,
             null,
             createdAfter);
@@ -544,6 +944,27 @@ public sealed partial class ItemTransactionService
         LockedItem target,
         int quantity,
         bool isPartial,
+        CancellationToken cancellationToken)
+    {
+        await MergeCorpseQuantityAsync(
+            context,
+            source,
+            target,
+            quantity,
+            isPartial,
+            "corpse_stack_loot_source",
+            "corpse_stack_loot_merged",
+            cancellationToken);
+    }
+
+    private static async Task MergeCorpseQuantityAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        LockedItem target,
+        int quantity,
+        bool isPartial,
+        string sourceAuditKind,
+        string targetAuditKind,
         CancellationToken cancellationToken)
     {
         var sourceBefore = await context.CaptureItemStateJsonAsync(
@@ -607,12 +1028,12 @@ public sealed partial class ItemTransactionService
             target.ItemInstanceId,
             cancellationToken);
         context.AddItemAudit(
-            isPartial ? "corpse_stack_loot_source" : "corpse_stack_loot_source_removed",
+            isPartial ? sourceAuditKind : sourceAuditKind + "_removed",
             source.ItemInstanceId,
             sourceBefore,
             sourceAfter);
         context.AddItemAudit(
-            "corpse_stack_loot_merged",
+            targetAuditKind,
             target.ItemInstanceId,
             targetBefore,
             targetAfter);
@@ -624,7 +1045,7 @@ public sealed partial class ItemTransactionService
         context.IncludeResultItem(target.ItemInstanceId);
     }
 
-    private static void EnsureCorpseStackMergeAllowed(
+    private static CorpseStackDisposition GetCorpseStackDisposition(
         LockedItem source,
         IReadOnlyList<LockedItemPolicy> sourcePolicies,
         ItemPolicyCapabilities sourceCapabilities,
@@ -654,19 +1075,27 @@ public sealed partial class ItemTransactionService
                     ItemPolicyRules.ActiveStatus,
                     StringComparison.Ordinal))),
             EmptyStackStateFingerprint);
-        if (!sourceCapabilities.CanStack
-            || !targetCapabilities.CanStack
-            || !ItemStackRules.CanMerge(definition.RuntimeDefinition, sourceState, targetState))
+        if (sourceCapabilities.CanStack
+            && targetCapabilities.CanStack
+            && ItemStackRules.CanMerge(definition.RuntimeDefinition, sourceState, targetState))
         {
-            var compatible = ItemStackRules.AreCompatible(sourceState, targetState);
-            ItemTransactionContext.Reject(
-                compatible
-                    ? ItemTransactionErrorCodes.ItemStackLimitExceeded
-                    : ItemTransactionErrorCodes.ItemStackIncompatible,
-                compatible
-                    ? "The looted quantity would exceed the target stack limit."
-                    : "The corpse item and target stack have incompatible state.");
+            return CorpseStackDisposition.Merge;
         }
+
+        return ItemStackRules.AreCompatible(sourceState, targetState)
+            ? CorpseStackDisposition.LimitExceeded
+            : CorpseStackDisposition.Incompatible;
+    }
+
+    private static void RejectCorpseStackMerge(CorpseStackDisposition disposition)
+    {
+        ItemTransactionContext.Reject(
+            disposition == CorpseStackDisposition.LimitExceeded
+                ? ItemTransactionErrorCodes.ItemStackLimitExceeded
+                : ItemTransactionErrorCodes.ItemStackIncompatible,
+            disposition == CorpseStackDisposition.LimitExceeded
+                ? "The transferred quantity would exceed the target stack limit."
+                : "The transferred item and target stack have incompatible state.");
     }
 
     private static void EnsureCarriedLootDestination(LockedContainer destination)
@@ -688,6 +1117,92 @@ public sealed partial class ItemTransactionService
                 ItemTransactionErrorCodes.ItemSlotIncompatible,
                 "Corpse loot must enter carried character storage.");
         }
+    }
+
+    private static void EnsureCarriedCorpseTransferSource(LockedContainer source)
+    {
+        if (!string.Equals(source.ContainerType, "permanent_inventory", StringComparison.Ordinal)
+            && !string.Equals(source.ContainerType, "secure_container", StringComparison.Ordinal)
+            && !string.Equals(source.ContainerType, "bag_contents", StringComparison.Ordinal))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemSlotIncompatible,
+                "Only carried character storage can deposit items into a corpse.");
+        }
+    }
+
+    private static async Task SwapCorpseContainerItemsAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        LockedItem target,
+        string sourceAuditKind,
+        string targetAuditKind,
+        CancellationToken cancellationToken)
+    {
+        if (source.ContainerId is null
+            || source.ContainerSlotIndex is null
+            || target.ContainerId is null
+            || target.ContainerSlotIndex is null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStateConflict,
+                "Both swapped items must remain in their expected container slots.");
+        }
+
+        var sourceBefore = await context.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var targetBefore = await context.CaptureItemStateJsonAsync(
+            target.ItemInstanceId,
+            cancellationToken);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            set constraints ux_item_instances_container_slot deferred;
+
+            update item_instances
+            set container_id = case id
+                    when @SourceItemInstanceId then @TargetContainerId
+                    when @TargetItemInstanceId then @SourceContainerId
+                end,
+                container_slot_index = case id
+                    when @SourceItemInstanceId then @TargetSlotIndex
+                    when @TargetItemInstanceId then @SourceSlotIndex
+                end,
+                equipped_character_id = null,
+                equipment_slot_id = null,
+                revision = revision + 1,
+                updated_at = now()
+            where id in (@SourceItemInstanceId, @TargetItemInstanceId);
+            """,
+            new
+            {
+                SourceItemInstanceId = source.ItemInstanceId,
+                TargetItemInstanceId = target.ItemInstanceId,
+                SourceContainerId = source.ContainerId.Value,
+                SourceSlotIndex = source.ContainerSlotIndex.Value,
+                TargetContainerId = target.ContainerId.Value,
+                TargetSlotIndex = target.ContainerSlotIndex.Value
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        var sourceAfter = await context.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var targetAfter = await context.CaptureItemStateJsonAsync(
+            target.ItemInstanceId,
+            cancellationToken);
+        context.AddItemAudit(
+            sourceAuditKind,
+            source.ItemInstanceId,
+            sourceBefore,
+            sourceAfter);
+        context.AddItemAudit(
+            targetAuditKind,
+            target.ItemInstanceId,
+            targetBefore,
+            targetAfter);
+        context.IncludeResultItem(source.ItemInstanceId);
+        context.IncludeResultItem(target.ItemInstanceId);
     }
 
     private static async Task<LockedCorpseRow> LockOpenCorpseAsync(
@@ -807,6 +1322,19 @@ public sealed partial class ItemTransactionService
         LockedCorpseRow corpse,
         CancellationToken cancellationToken)
     {
+        await AdvanceCorpseRevisionAsync(
+            context,
+            corpse,
+            "corpse_loot_revision_advanced",
+            cancellationToken);
+    }
+
+    private static async Task AdvanceCorpseRevisionAsync(
+        ItemTransactionContext context,
+        LockedCorpseRow corpse,
+        string auditKind,
+        CancellationToken cancellationToken)
+    {
         var nextRevision = await context.Connection.QuerySingleAsync<long>(
             new CommandDefinition(
                 """
@@ -824,12 +1352,12 @@ public sealed partial class ItemTransactionService
                 context.Transaction,
                 cancellationToken: cancellationToken));
         context.AddMetadataAudit(
-            "corpse_loot_revision_advanced",
+            auditKind,
             new { corpse.CorpseId, corpse.Revision },
             new { corpse.CorpseId, Revision = nextRevision });
     }
 
-    private static void ValidateCorpseLootStackCommand(CorpseLootStackCommand command)
+    private static void ValidateCorpseItemTransferCommand(CorpseItemTransferCommand command)
     {
         var hasTarget = command.TargetItemInstanceId is not null;
         if (command.CharacterId == Guid.Empty
@@ -841,6 +1369,7 @@ public sealed partial class ItemTransactionService
             || command.DestinationSlotIndex < 0
             || hasTarget != (command.ExpectedTargetItemRevision is not null)
             || command.TargetItemInstanceId == Guid.Empty
+            || command.TargetItemInstanceId == command.ItemInstanceId
             || command.ExpectedTargetItemRevision < 0)
         {
             ItemTransactionContext.Reject(
@@ -870,7 +1399,7 @@ public sealed partial class ItemTransactionService
         }
     }
 
-    private sealed record CorpseLootStackCommand(
+    private sealed record CorpseItemTransferCommand(
         Guid CharacterId,
         Guid CorpseId,
         Guid ItemInstanceId,
@@ -881,6 +1410,13 @@ public sealed partial class ItemTransactionService
         int DestinationSlotIndex,
         Guid? TargetItemInstanceId,
         long? ExpectedTargetItemRevision);
+
+    private enum CorpseStackDisposition
+    {
+        Merge,
+        LimitExceeded,
+        Incompatible
+    }
 
     private sealed class LockedCorpseRow
     {

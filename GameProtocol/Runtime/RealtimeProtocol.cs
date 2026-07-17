@@ -788,7 +788,7 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 9;
+        public const ushort Version = 10;
         public const string ConnectionKey = "ShooterMmo.Realtime.v8";
         public const int MaximumPacketSize = 1200;
 

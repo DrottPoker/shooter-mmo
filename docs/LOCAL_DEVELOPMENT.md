@@ -474,7 +474,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `9` and simulation revision
+   startup reports realtime protocol version `10` and simulation revision
    `movement-simulation-v3`.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -533,7 +533,7 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `9` and loads the configured local bank,
+   reports realtime protocol version `10` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
@@ -783,7 +783,7 @@ prefab, Inspector property, input action, package, or build setting. Phase 11
 uses the prepared exact-session death boundary for its Development corpse
 fixture without fabricating the future combat producer.
 
-## Phase 11 Concurrent Corpse Loot Verification
+## Phase 11 Concurrent Corpse Container Verification
 
 Run the complete Phase 11 backend coverage against the isolated PostgreSQL
 database, then run both Unity suites:
@@ -804,11 +804,12 @@ powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 
 Expected result: every selected backend test and both Unity suites pass. The
 coverage proves unrelated concurrent commits, one winner for the same item,
-partial-stack conservation, Bag-versus-child and Bag-versus-Bag aggregate
-safety, 140 percent rejection, equal rules for the dead player, exact runtime
-authority, closed PostgreSQL transactions, bounded UTF-8 packets, viewer
-deltas, stable closure codes, monotonic client state, and the durable Editor
-fixture path.
+partial-stack conservation in both directions, ordinary slot swaps, deposit
+policy rejection, deposit-versus-loot race safety, Bag-versus-child and
+Bag-versus-Bag aggregate safety, 140 percent rejection, equal rules for the dead
+player, exact runtime authority, closed PostgreSQL transactions, bounded UTF-8
+packets, viewer deltas, committed-revision inventory refresh, stable closure
+codes, monotonic client state, and the durable Editor fixture path.
 
 ### Manual Two-Client Corpse Loop
 
@@ -843,12 +844,17 @@ at the same time:
    destination from one client while the other client loots from the same stack.
    Expected result: committed quantities never become negative and their total
    is conserved.
-8. In one client, drag a corpse Bag child. At the same time in the other client,
+8. Drag a carried item into an empty corpse slot. Then drag two complete items
+   that cannot merge onto each other in both directions. Expected result: the
+   deposit appears for both viewers, each valid occupied drop swaps atomically,
+   and Character Inventory refreshes without closing the corpse. Repeat with a
+   partial compatible stack deposit and verify total quantity is conserved.
+9. In one client, drag a corpse Bag child. At the same time in the other client,
    drag the corpse Bag root onto the occupied player Bag equipment slot.
    Expected result: only a compatible complete outcome commits. Neither Bag
    aggregate is split, and both clients converge after the broadcast delta or
    refresh.
-9. Create a fresh fixture and restart SimulationWorker before its five-minute
+10. Create a fresh fixture and restart SimulationWorker before its five-minute
    deadline. Rejoin the Shard. Expected result: the corpse returns at
    `(0, 0, -1)` with the original absolute expiry. It disappears and closes any
    open view at expiry rather than receiving a new five-minute lifetime.
@@ -1007,7 +1013,7 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 9, simulation revision, collision
+`27015`, runtime id, realtime protocol version 10, simulation revision, collision
 revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
 interval logs a worker status line with connected real players, synthetic bots,

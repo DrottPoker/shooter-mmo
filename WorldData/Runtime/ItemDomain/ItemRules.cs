@@ -297,7 +297,8 @@ namespace ShooterMmo.WorldData.Items
         RecoveryStorageSlot = 5,
         SecureContainerSlot = 6,
         CharacterBagEquipmentSlot = 7,
-        CorpseBagEquipmentSlot = 8
+        CorpseBagEquipmentSlot = 8,
+        CorpseStorageSlot = 9
     }
 
     public static class BagLocationRules
@@ -322,6 +323,7 @@ namespace ShooterMmo.WorldData.Items
                 || destination == BagDestinationKind.BagGeneralSlot
                 || destination == BagDestinationKind.BankGeneralSlot
                 || destination == BagDestinationKind.RecoveryStorageSlot
+                || destination == BagDestinationKind.CorpseStorageSlot
                 || destination == BagDestinationKind.CharacterBagEquipmentSlot
                 || destination == BagDestinationKind.CorpseBagEquipmentSlot;
         }

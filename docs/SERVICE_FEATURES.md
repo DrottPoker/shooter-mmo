@@ -62,7 +62,7 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
 | `POST /api/simulation-sessions/{id}/corpses/{corpseId}/open` | Worker service policy | Read one exact-session, unexpired, same-Shard corpse snapshot after worker proximity validation |
-| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit full or partial corpse loot and atomic Bag aggregate swaps through the durable kernel |
+| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit bidirectional full or partial corpse transfers and atomic ordinary or Bag aggregate swaps through the durable kernel |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -447,13 +447,14 @@ concurrent inspection, and authoritative looting:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `9` retains carry state on join, later committed
+- Realtime protocol version `10` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, and complete Recovery Storage claim. Version `9` adds chunked
-  corpse presence and view state, open, close, refresh, full and partial loot,
-  atomic Bag aggregate swap, operation result, delta, and view-closure messages.
+  destruction, and complete Recovery Storage claim. Version `10` carries
+  chunked corpse presence and view state, accepted destination slot tags, open,
+  close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag
+  aggregate swaps, operation result, delta, and view-closure messages.
   Packet builders measure encoded UTF-8 size and preserve the existing `1200`
   byte limit.
 - SimulationWorker accepts item intents only from an exact joined player on
@@ -510,9 +511,10 @@ concurrent inspection, and authoritative looting:
   three-dimensional position and cached absolute lifetime before every open,
   refresh, or mutation. AuthService repeats exact-session, Shard, and lifetime
   authority inside the transaction boundary.
-- Corpse reads use short read-only snapshots. Full and partial loot and atomic
-  Bag aggregate swaps reuse `ItemTransactionService` with targeted item,
-  container, and Bag-root revisions. Unrelated corpse changes may commit
+- Corpse reads use short read-only snapshots. Full and partial transfers,
+  ordinary occupied-slot swaps, and atomic Bag aggregate swaps reuse
+  `ItemTransactionService` with targeted item, container, and Bag-root
+  revisions. Unrelated corpse changes may commit
   concurrently, competing custody has one stable winner, and no PostgreSQL
   transaction remains open across a client network wait.
 - The worker broadcasts each committed targeted delta or replacement to every
@@ -525,14 +527,15 @@ concurrent inspection, and authoritative looting:
   or safe disconnect.
 - Unity keeps one persistent definition-id catalog index, presentation and icon
   cache, complete and focused snapshot state, monotonic observed revisions,
-  structured errors, and one operation journal. It correlates protocol-v9
-  results and refreshes authoritative HTTP state to the committed revision
+  structured errors, and one operation journal. It correlates protocol-v10
+  results and refreshes authoritative HTTP state to at least the committed revision
   without optimistically changing item custody or quantity.
 - Unity also owns immutable corpse presence and view state, complete chunk
   assembly, monotonic delta application, one pending corpse operation, and
   refresh-on-stale behavior. A replaceable generic corpse capsule presents the
   server identity and transform. `E` opens the nearest eligible corpse, and the
-  same typed drag layer submits full or partial loot and compatible Bag swaps.
+  same typed drag layer submits bidirectional full or partial transfers,
+  compatible stack merges, ordinary occupied-slot swaps, and Bag swaps.
 - The runtime uGUI panel is replaceable presentation over that state. It exposes
   Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
   Recovery Storage plus every current live mutation. Typed reusable drag sources

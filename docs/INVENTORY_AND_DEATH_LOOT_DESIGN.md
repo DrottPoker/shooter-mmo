@@ -39,7 +39,7 @@ gates are defined in
 | Bag | A physical item that can be equipped in the character's Bag equipment slot and can provide item slots and carry-capacity bonuses |
 | Secure Container | Permanent per-character protected storage whose tier and slot capacity are selected by an account-level entitlement |
 | Recovery Storage | A per-character, system-write-only delivery queue accessible from every major city |
-| Corpse | A lootable live representation backed by durable custody for players and selected persistent NPCs |
+| Corpse | A bidirectional loot container backed by durable custody for players and selected persistent NPCs |
 | Snapshot | Non-interactive corpse presentation metadata that never grants ownership or references a lootable item instance |
 
 `Bag` is the canonical equipment and item term. A Bag may be presented as a
@@ -443,8 +443,10 @@ access evaluation. Local Development can explicitly evaluate Bank and Recovery
 as globally accessible for testing. Production continues to evaluate authored
 major-city service points, and the Development option never includes insurance
 access or bypasses AuthService authority.
-Corpse and world-loot context adapters are reserved without inventing custody or
-snapshot data before their authoritative phases.
+The corpse context adapter exposes durable corpse custody as a bidirectional
+container without changing custody optimistically. Carried items may be
+deposited into corpse slots, and corpse items may be looted into carried slots.
+Bank and Recovery Storage never participate in a corpse transfer.
 
 The maintained temporary presentation has three explicit view modes. `B` opens
 only character storage, `C` opens equipment together with character storage, and
@@ -589,25 +591,41 @@ use durable corpse custody and restart restoration. Persistent NPC corpse
 behavior reuses the player-corpse transaction and expiry foundation without
 changing the topology model.
 
-## Corpse Looting And Bag Swaps
+## Corpse Container Transfers And Bag Swaps
 
 Inspecting a corpse is read-only and does not acquire a long-lived database lock.
 Each mutation is a short transaction.
 
-### Item Or Partial-Stack Loot
+### Item And Partial-Stack Transfers
 
-1. Unity sends a loot intent to the assigned SimulationWorker.
+1. Unity sends a loot or deposit intent to the assigned SimulationWorker.
 2. SimulationWorker validates connection, active session, corpse identity,
    proximity, and the one-active-interaction rule.
 3. The worker calls AuthService with an idempotent operation id and expected item
    state.
-4. AuthService locks the corpse and target item, then rereads authoritative
-   state.
-5. The transaction validates destination slots, stack compatibility, policy,
+4. AuthService locks the character, corpse, source item, optional occupied
+   target, and both containers, then rereads authoritative state.
+5. The transaction validates both slot directions, stack compatibility, policy,
    prospective weight, and the 140 percent cap.
-6. The item or requested quantity moves atomically.
+6. The item or requested quantity moves atomically. Compatible stacks with
+   remaining capacity merge. Dropping a complete item that cannot merge onto an
+   occupied slot swaps both item assignments only when each item is valid in
+   the other's original slot.
 7. A concurrent loser receives a stable stale, unavailable, or quantity-changed
    result and refreshes its view.
+
+Only carried container custody participates in deposits: permanent inventory,
+equipped Bag contents, and Secure Container. Ordinary equipped items must first
+move into carried storage. Bank and Recovery Storage are excluded so a corpse
+interaction cannot bypass their separate service authority. Protected or
+insured items that cannot change owning character are rejected before they can
+enter public corpse custody.
+
+Partial transfers require an empty destination or a compatible stack with
+remaining capacity. An incompatible occupied destination can only use a complete
+item swap. The server recomputes authoritative carried weight and capacity for
+both loot and swap outcomes. A weight-increasing result above 140 percent is
+rejected, while a deposit that reduces carried weight remains allowed.
 
 Database locks are never held while waiting for a client network round trip.
 
@@ -668,11 +686,11 @@ The implementation must enforce all of the following:
 7. An ordinary slot may contain a Bag only when its child container is empty.
 8. Secure Container and specialized Bag eligibility is server validated.
 9. Carried weight never exceeds 140 percent after a weight-increasing action.
-10. Death partition, loot, Bag swap, policy consumption, and recovery delivery
+10. Death partition, corpse transfer, Bag swap, policy consumption, and recovery delivery
     either commit completely or leave all prior state unchanged.
 11. Operation ids are idempotent and cannot be reused with a different payload.
 12. Character, Bag, corpse, container, and item locks use one stable ordering.
-13. Corpse expiry and loot cannot both claim or destroy the same quantity.
+13. Corpse expiry and a container transfer cannot both claim or destroy the same quantity.
 14. Account-tier reduction cannot lose Secure Container contents.
 15. Redis state can never override committed PostgreSQL custody.
 
@@ -743,13 +761,15 @@ partitioning, and idempotent expiry destruction. SimulationWorker restores only
 unexpired rows for its exact runtime and Shard, using the database-time deadline
 and generic presentation key. Empty player corpses remain through that deadline.
 
-Phase 11 adds exact-session corpse reads and mutations over that durable custody.
+Phase 11 adds exact-session corpse reads and bidirectional container mutations
+over that durable custody.
 SimulationWorker owns bounded presentation, one active view per player,
 three-dimensional proximity and lifetime validation, and viewer fanout. Full and
-partial loot and atomic Bag aggregate swaps reuse the AuthService transaction
-kernel with targeted revisions and stable lock ordering. Unity assembles
-protocol-v9 presence, complete snapshots, and committed deltas without applying
-optimistic custody. The generic capsule and uGUI are replaceable presentation.
+partial transfers, ordinary occupied-slot swaps, and atomic Bag aggregate swaps
+reuse the AuthService transaction kernel with targeted revisions and stable lock
+ordering. Unity assembles protocol-v10 presence, complete snapshots, slot tags,
+and committed deltas without applying optimistic custody. The generic capsule
+and uGUI are replaceable presentation.
 
 No vendor, gathering, insurance purchase, quest gameplay, or combat death
 producer calls the player-death boundary yet. Final corpse art, configurable NPC

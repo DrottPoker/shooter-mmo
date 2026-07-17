@@ -607,6 +607,8 @@ public sealed class RealtimeSimulationService(
                         CancellationToken.None),
                 RealtimeCorpseInteractionKind.LootItem
                     or RealtimeCorpseInteractionKind.LootPartialStack
+                    or RealtimeCorpseInteractionKind.DepositItem
+                    or RealtimeCorpseInteractionKind.DepositPartialStack
                     or RealtimeCorpseInteractionKind.SwapBag =>
                     await corpseInteractionService.MutateAsync(
                         session,
@@ -1315,7 +1317,7 @@ public sealed class RealtimeSimulationService(
                 context,
                 session,
                 "item_state_diverged",
-                "Committed corpse loot and carry revisions diverged from the active simulation state.");
+                "Committed corpse transfer and carry revisions diverged from the active simulation state.");
             return false;
         }
 

@@ -975,6 +975,43 @@ public sealed class DeathLootIntegrationTests
             ItemTransactionErrorCodes.ItemAlreadyLooted,
             await ReadProblemCodeAsync(loserResponse));
 
+        var afterLoot = await fixture.GetSnapshotAsync();
+        var carriedSlot = Assert.Single(
+            afterLoot.PermanentInventory.Slots,
+            slot => slot.Item?.ItemInstanceId == itemId);
+        var corpseInventory = Assert.Single(
+            mutated.Corpse.Sections,
+            section => string.Equals(
+                section.SectionKind,
+                "general_inventory",
+                StringComparison.Ordinal));
+        var depositOperationId = Guid.NewGuid();
+        var depositRequest = mutationRequest with
+        {
+            OperationId = depositOperationId,
+            OperationKind = CorpseInteractionOperationKinds.DepositItem,
+            ExpectedCorpseRevision = mutated.Corpse.Revision,
+            ExpectedItemRevision = carriedSlot.Item!.Revision,
+            DestinationContainerId = corpseInventory.ContainerId,
+            ExpectedDestinationContainerRevision = corpseInventory.ContainerRevision,
+            DestinationSlotIndex = 0
+        };
+        using var depositedResponse = await host.Client.PostAsJsonAsync(
+            mutationPath,
+            depositRequest);
+        Assert.Equal(HttpStatusCode.OK, depositedResponse.StatusCode);
+        var deposited = await depositedResponse.Content.ReadFromJsonAsync<CorpseMutationResponse>();
+        Assert.NotNull(deposited);
+        Assert.True(deposited.Transaction.Succeeded);
+        Assert.Equal(depositOperationId, deposited.Transaction.OperationId);
+        Assert.Contains(
+            deposited.Corpse!.Sections.SelectMany(section => section.Slots),
+            slot => slot.Item?.ItemInstanceId == itemId);
+        var afterDeposit = await fixture.GetSnapshotAsync();
+        Assert.DoesNotContain(
+            afterDeposit.PermanentInventory.Slots,
+            slot => slot.Item?.ItemInstanceId == itemId);
+
         await using var connection = await context.DataSource.OpenConnectionAsync();
         var idleTransactions = await connection.ExecuteScalarAsync<int>(
             """

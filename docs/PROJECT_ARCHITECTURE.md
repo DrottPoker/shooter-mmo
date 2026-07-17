@@ -152,7 +152,7 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
-Protocol version 9 includes:
+Protocol version 10 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
@@ -166,8 +166,9 @@ Protocol version 9 includes:
   for newer committed item-state revisions.
 - Bounded reliable ordered item-operation intents and committed or rejected
   results with authoritative carry, item, container, and delivery revisions.
-- Chunked corpse presence and view state plus reliable open, close, refresh,
-  full or partial loot, atomic Bag-swap, result, and view-closure messages.
+- Chunked corpse presence and view state with destination slot tags, plus
+  reliable open, close, refresh, full or partial bidirectional transfer, atomic
+  ordinary slot and Bag-swap, result, and view-closure messages.
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
@@ -411,10 +412,11 @@ AuthService expiry loop. SimulationWorker holds only the bounded runtime corpse
 identity and presentation state returned by AuthService, never PostgreSQL item
 rows or an alternate custody model. Phase 11 adds exact-session corpse reads and
 mutations, shared viewers, proximity and lifetime enforcement, committed deltas,
-Unity presence and view state, temporary presentation, and atomic corpse Bag
-swaps. Combat death generation remains a later gameplay boundary.
+Unity presence and view state, temporary presentation, bidirectional item
+transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
+death generation remains a later gameplay boundary.
 
-Protocol version `9` retains the existing framing and adds corpse presence,
+Protocol version `10` retains the existing framing and adds corpse presence,
 interaction, result, chunked view-state, and view-closure message types. Corpse
 chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
 The Phase 8 ordinary container-item swap continues to reuse its existing

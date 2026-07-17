@@ -709,7 +709,7 @@ namespace ShooterMmo.Ui
 
             CreateMessage(
                 parent,
-                "Drag corpse items into a compatible carried slot. Drag the corpse Bag onto the occupied Bag equipment slot for an atomic aggregate swap.",
+                "Drag items between corpse and carried slots. Compatible stacks with space merge, complete items that cannot merge swap, and occupied Bag equipment uses an atomic aggregate swap.",
                 new Color(0.65f, 0.82f, 0.9f, 1f));
         }
 
@@ -742,8 +742,15 @@ namespace ShooterMmo.Ui
                 null,
                 payload,
                 corpseController.State.CanMutate,
-                RejectCorpseDestination,
-                null,
+                (InventoryDragPayload candidate, out string reason) =>
+                    CanDropOnCorpse(
+                        inventoryState,
+                        view,
+                        section,
+                        slot,
+                        candidate,
+                        out reason),
+                candidate => OnCorpseDrop(view, section, slot, candidate),
                 RejectDrop);
         }
 
@@ -1027,12 +1034,137 @@ namespace ShooterMmo.Ui
                 slot.SlotIndex,
                 string.Empty,
                 Guid.Empty);
-            return InventoryTargetAdvisor.CanMerge(
+            if (InventoryTargetAdvisor.CanMerge(
                 state,
                 item,
                 source,
                 slot.Item,
                 target,
+                out reason))
+            {
+                return true;
+            }
+
+            if (corpsePartialLoot)
+            {
+                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
+                return false;
+            }
+
+            return InventoryTargetAdvisor.CanSwapWithExternalContainer(
+                state,
+                slot.Item,
+                target,
+                item,
+                ToInventoryContainer(sourceSection),
+                ToInventorySlot(sourceSlot),
+                out reason);
+        }
+
+        private bool CanDropOnCorpse(
+            InventoryClientState state,
+            CorpseLootView view,
+            CorpseLootSection section,
+            CorpseLootSlot slot,
+            InventoryDragPayload payload,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (!state.CanMutate
+                || corpseController?.State.ActiveView == null
+                || !corpseController.State.CanMutate
+                || corpseController.State.ActiveView.CorpseId != view.CorpseId)
+            {
+                reason = "Inventory or corpse mutation is unavailable while state is loading or busy.";
+                return false;
+            }
+
+            if (payload.Kind != InventoryDragPayloadKind.Item
+                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
+            {
+                reason = "Only a current carried inventory item can enter corpse custody.";
+                return false;
+            }
+
+            if (source.Kind == InventoryItemLocationKind.Equipment)
+            {
+                if (IsReverseCorpseBagSwap(state, item, source, section, slot))
+                {
+                    return true;
+                }
+
+                reason = "Move ordinary equipped items into carried storage before depositing them.";
+                return false;
+            }
+
+            if (source.Kind != InventoryItemLocationKind.Container
+                || !IsCarriedContainerType(source.ContainerType))
+            {
+                reason = "Bank and Recovery Storage items cannot enter a corpse.";
+                return false;
+            }
+
+            if (slot.Item != null && slot.Item.HasBagContents)
+            {
+                reason = "An occupied corpse Bag aggregate must use the Bag equipment swap.";
+                return false;
+            }
+
+            var quantity = item.Quantity;
+            if (corpsePartialLoot
+                && (!int.TryParse(corpseQuantityText, out quantity)
+                    || quantity <= 0
+                    || quantity >= item.Quantity))
+            {
+                reason = "Partial deposit quantity must be greater than zero and smaller than the carried stack.";
+                return false;
+            }
+
+            var corpseContainer = ToInventoryContainer(section);
+            var corpseSlot = ToInventorySlot(slot);
+            if (slot.Item == null)
+            {
+                return InventoryTargetAdvisor.CanPlaceInContainer(
+                    state,
+                    item,
+                    source,
+                    corpseContainer,
+                    corpseSlot,
+                    quantity,
+                    out reason);
+            }
+
+            var movedItem = quantity == item.Quantity
+                ? item
+                : new InventoryItem(
+                    item.ItemInstanceId,
+                    item.DefinitionId,
+                    quantity,
+                    item.Revision,
+                    item.Policies.ToArray());
+            var corpseItem = slot.Item.ToInventoryItem();
+            if (InventoryTargetAdvisor.CanMerge(
+                    state.Catalog,
+                    movedItem,
+                    corpseItem,
+                    out reason))
+            {
+                return true;
+            }
+
+            if (quantity != item.Quantity)
+            {
+                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
+                return false;
+            }
+
+            return InventoryTargetAdvisor.CanSwapWithExternalContainer(
+                state,
+                item,
+                source,
+                corpseItem,
+                corpseContainer,
+                corpseSlot,
                 out reason);
         }
 
@@ -1301,14 +1433,6 @@ namespace ShooterMmo.Ui
             return false;
         }
 
-        private static bool RejectCorpseDestination(
-            InventoryDragPayload payload,
-            out string reason)
-        {
-            reason = "Corpse custody is loot-only. Drag corpse items into carried inventory slots.";
-            return false;
-        }
-
         private void RejectDrop(string reason)
         {
             localStatus = string.IsNullOrWhiteSpace(reason)
@@ -1359,6 +1483,108 @@ namespace ShooterMmo.Ui
                 quantity < corpseItem.Quantity
                     ? "Partial corpse loot submitted."
                     : "Corpse loot submitted.");
+        }
+
+        private void OnCorpseDrop(
+            CorpseLootView view,
+            CorpseLootSection section,
+            CorpseLootSlot slot,
+            InventoryDragPayload payload)
+        {
+            var state = controller.State;
+            if (!CanDropOnCorpse(
+                    state,
+                    view,
+                    section,
+                    slot,
+                    payload,
+                    out var validationError))
+            {
+                RejectDrop(validationError);
+                return;
+            }
+
+            state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
+            if (IsReverseCorpseBagSwap(state, item, source, section, slot))
+            {
+                ExecuteCorpse(
+                    corpseController.TrySwapBag(slot.Item, out var bagError),
+                    bagError,
+                    "Atomic Bag swap submitted.");
+                return;
+            }
+
+            var quantity = item.Quantity;
+            if (corpsePartialLoot)
+            {
+                int.TryParse(corpseQuantityText, out quantity);
+            }
+
+            ExecuteCorpse(
+                corpseController.TryDeposit(
+                    item,
+                    section,
+                    slot,
+                    quantity,
+                    out var error),
+                error,
+                quantity < item.Quantity
+                    ? "Partial corpse deposit submitted."
+                    : "Corpse deposit submitted.");
+        }
+
+        private static bool IsReverseCorpseBagSwap(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryItemLocation source,
+            CorpseLootSection section,
+            CorpseLootSlot slot)
+        {
+            return item != null
+                && source != null
+                && source.Kind == InventoryItemLocationKind.Equipment
+                && string.Equals(source.EquipmentSlotId, "bag", StringComparison.Ordinal)
+                && state.FullSnapshot?.EquippedBag?.Item.ItemInstanceId == item.ItemInstanceId
+                && string.Equals(section.SectionKind, "equipment", StringComparison.Ordinal)
+                && slot.Item != null
+                && slot.Item.HasBagContents;
+        }
+
+        private static InventoryContainer ToInventoryContainer(CorpseLootSection section)
+        {
+            return new InventoryContainer(
+                section.ContainerId,
+                CorpseContainerType(section.SectionKind),
+                section.ContainerRevision,
+                section.SlotCapacity,
+                section.Slots.Select(ToInventorySlot).ToArray());
+        }
+
+        private static InventorySlot ToInventorySlot(CorpseLootSlot slot)
+        {
+            return new InventorySlot(
+                slot.SlotIndex,
+                slot.SlotKind,
+                slot.AcceptedTags.ToArray(),
+                slot.Item?.ToInventoryItem());
+        }
+
+        private static string CorpseContainerType(string sectionKind)
+        {
+            return sectionKind switch
+            {
+                "general_inventory" => "corpse_inventory",
+                "equipment" => "corpse_equipment",
+                "bag" => "corpse_bag_contents",
+                _ => "corpse_inventory"
+            };
+        }
+
+        private static bool IsCarriedContainerType(string containerType)
+        {
+            return string.Equals(containerType, "permanent_inventory", StringComparison.Ordinal)
+                || string.Equals(containerType, "bag_contents", StringComparison.Ordinal)
+                || string.Equals(containerType, "secure_container", StringComparison.Ordinal);
         }
 
         private void DestroySelected(InventoryItem item)

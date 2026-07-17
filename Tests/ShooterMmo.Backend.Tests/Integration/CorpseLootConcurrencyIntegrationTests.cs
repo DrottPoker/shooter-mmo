@@ -413,6 +413,293 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.Equal(death.Corpse.CorpseId, await FindCorpseForItemAsync(context, weighted));
     }
 
+    [PostgresIntegrationFact]
+    public async Task CorpseContainerSupportsDepositMergeAndAtomicSwapInBothDirections()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "transfer-source@example.com",
+            "transfer_source",
+            "Transfer Source");
+        var player = await context.RegisterPlayerAsync(
+            "transfer-player@example.com",
+            "transfer_player",
+            "Transfer Player");
+        var sourceInventory = (await GetSnapshotAsync(context, source)).PermanentInventory;
+        var corpseTool = await GrantAsync(
+            context,
+            source,
+            "tool.starter_pickaxe",
+            1,
+            sourceInventory.ContainerId,
+            0);
+        var corpseOre = await GrantAsync(
+            context,
+            source,
+            "material.iron_ore",
+            5,
+            sourceInventory.ContainerId,
+            2);
+        var death = await CreateCorpseAsync(context, source);
+        var corpseInventoryId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "general_inventory");
+
+        var playerInventory = (await GetSnapshotAsync(context, player)).PermanentInventory;
+        var playerRing = await GrantAsync(
+            context,
+            player,
+            "ring.starter_band",
+            1,
+            playerInventory.ContainerId,
+            0);
+        var playerMedical = await GrantAsync(
+            context,
+            player,
+            "medical.field_dressing",
+            1,
+            playerInventory.ContainerId,
+            1);
+        var playerOre = await GrantAsync(
+            context,
+            player,
+            "material.iron_ore",
+            4,
+            playerInventory.ContainerId,
+            2);
+        var emptySlotDeposit = await GrantAsync(
+            context,
+            player,
+            "armor.starter_vest",
+            1,
+            playerInventory.ContainerId,
+            3);
+
+        var lootSwap = await LootWithTargetAsync(
+            context,
+            player.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, corpseTool),
+            playerInventory.ContainerId,
+            0,
+            await LoadItemAsync(context, playerRing));
+        Assert.True(lootSwap.Succeeded, lootSwap.Error?.Message);
+        await AssertLocationAsync(context, corpseTool, playerInventory.ContainerId, 0);
+        await AssertLocationAsync(context, playerRing, corpseInventoryId, 0);
+
+        var depositSwap = await DepositWithTargetAsync(
+            context,
+            player.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, playerMedical),
+            corpseInventoryId,
+            0,
+            await LoadItemAsync(context, playerRing));
+        Assert.True(depositSwap.Succeeded, depositSwap.Error?.Message);
+        await AssertLocationAsync(context, playerMedical, corpseInventoryId, 0);
+        await AssertLocationAsync(context, playerRing, playerInventory.ContainerId, 1);
+
+        var partialDeposit = await DepositPartialWithTargetAsync(
+            context,
+            player.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, playerOre),
+            2,
+            corpseInventoryId,
+            2,
+            await LoadItemAsync(context, corpseOre));
+        Assert.True(partialDeposit.Succeeded, partialDeposit.Error?.Message);
+        Assert.Equal(2, (await LoadItemAsync(context, playerOre)).Quantity);
+        Assert.Equal(7, (await LoadItemAsync(context, corpseOre)).Quantity);
+
+        var deposit = await DepositAsync(
+            context,
+            player.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, emptySlotDeposit),
+            corpseInventoryId,
+            3);
+        Assert.True(deposit.Succeeded, deposit.Error?.Message);
+        await AssertLocationAsync(context, emptySlotDeposit, corpseInventoryId, 3);
+
+        var lootBack = await LootAsync(
+            context,
+            player.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, emptySlotDeposit),
+            playerInventory.ContainerId,
+            3);
+        Assert.True(lootBack.Succeeded, lootBack.Error?.Message);
+        await AssertLocationAsync(context, emptySlotDeposit, playerInventory.ContainerId, 3);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task CorpseDepositEnforcesPolicyAndSwapHardCapWithoutPartialMutation()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "deposit-guard-source@example.com",
+            "deposit_guard_source",
+            "Deposit Guard Source");
+        var protectedPlayer = await context.RegisterPlayerAsync(
+            "deposit-protected@example.com",
+            "deposit_protected",
+            "Deposit Protected");
+        var cappedPlayer = await context.RegisterPlayerAsync(
+            "deposit-capped@example.com",
+            "deposit_capped",
+            "Deposit Capped");
+        var sourceInventory = (await GetSnapshotAsync(context, source)).PermanentInventory;
+        var corpseTool = await GrantAsync(
+            context,
+            source,
+            "tool.starter_pickaxe",
+            1,
+            sourceInventory.ContainerId,
+            0);
+        var death = await CreateCorpseAsync(context, source);
+        var corpseInventoryId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "general_inventory");
+
+        var protectedInventory = (await GetSnapshotAsync(context, protectedPlayer)).PermanentInventory;
+        var protectedItem = await GrantAsync(
+            context,
+            protectedPlayer,
+            "ring.starter_band",
+            1,
+            protectedInventory.ContainerId,
+            1);
+        var protectedSnapshot = await GetSnapshotAsync(context, protectedPlayer);
+        var policyResult = await context.ItemPolicyService.ApplyProtectedOnDeathAsync(
+            Guid.NewGuid(),
+            protectedPlayer.Character.Id,
+            protectedSnapshot.ItemStateRevision,
+            protectedItem,
+            (await LoadItemAsync(context, protectedItem)).Revision,
+            ItemPolicySourceKinds.CatalogDefault,
+            "corpse-deposit-policy-test",
+            CancellationToken.None);
+        Assert.True(policyResult.Succeeded, policyResult.Error?.Message);
+
+        var policyRejected = await DepositAsync(
+            context,
+            protectedPlayer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, protectedItem),
+            corpseInventoryId,
+            1);
+        Assert.False(policyRejected.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemPolicyRestricted, policyRejected.Error!.Code);
+        await AssertLocationAsync(context, protectedItem, protectedInventory.ContainerId, 1);
+
+        var cappedInventory = (await GetSnapshotAsync(context, cappedPlayer)).PermanentInventory;
+        await GrantAsync(
+            context,
+            cappedPlayer,
+            "material.iron_ore",
+            46,
+            cappedInventory.ContainerId,
+            0);
+        var cappedTarget = await GrantAsync(
+            context,
+            cappedPlayer,
+            "medical.field_dressing",
+            2,
+            cappedInventory.ContainerId,
+            1);
+        var cappedSnapshot = await GetSnapshotAsync(context, cappedPlayer);
+        Assert.Equal(280, cappedSnapshot.CarriedWeight);
+        Assert.Equal(200, cappedSnapshot.CarryCapacity);
+
+        var capRejected = await LootWithTargetAsync(
+            context,
+            cappedPlayer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, corpseTool),
+            cappedInventory.ContainerId,
+            1,
+            await LoadItemAsync(context, cappedTarget));
+        Assert.False(capRejected.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.CarryWeightLimitExceeded, capRejected.Error!.Code);
+        await AssertLocationAsync(context, corpseTool, corpseInventoryId, 0);
+        await AssertLocationAsync(context, cappedTarget, cappedInventory.ContainerId, 1);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task DepositRacingLootCommitsOneDupeSafeContainerOutcome()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "deposit-race-source@example.com",
+            "deposit_race_source",
+            "Deposit Race Source");
+        var depositor = await context.RegisterPlayerAsync(
+            "deposit-race-depositor@example.com",
+            "deposit_race_depositor",
+            "Deposit Race Depositor");
+        var looter = await context.RegisterPlayerAsync(
+            "deposit-race-looter@example.com",
+            "deposit_race_looter",
+            "Deposit Race Looter");
+        var sourceInventory = (await GetSnapshotAsync(context, source)).PermanentInventory;
+        var corpseItem = await GrantAsync(
+            context,
+            source,
+            "tool.starter_pickaxe",
+            1,
+            sourceInventory.ContainerId,
+            0);
+        var death = await CreateCorpseAsync(context, source);
+        var corpseInventoryId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "general_inventory");
+        var depositorInventory = (await GetSnapshotAsync(context, depositor)).PermanentInventory;
+        var depositedItem = await GrantAsync(
+            context,
+            depositor,
+            "ring.starter_band",
+            1,
+            depositorInventory.ContainerId,
+            0);
+        var looterInventory = (await GetSnapshotAsync(context, looter)).PermanentInventory;
+        var expectedCorpseItem = await LoadItemAsync(context, corpseItem);
+
+        var race = await Task.WhenAll(
+            DepositWithTargetAsync(
+                context,
+                depositor.Character.Id,
+                death.Corpse.CorpseId,
+                await LoadItemAsync(context, depositedItem),
+                corpseInventoryId,
+                0,
+                expectedCorpseItem),
+            LootAsync(
+                context,
+                looter.Character.Id,
+                death.Corpse.CorpseId,
+                expectedCorpseItem,
+                looterInventory.ContainerId,
+                0));
+
+        Assert.Single(race, result => result.Succeeded);
+        Assert.Single(race, result => !result.Succeeded);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        Assert.Equal(
+            2,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from item_instances where id = any(@ItemIds);",
+                new { ItemIds = new[] { corpseItem, depositedItem } }));
+        Assert.Equal(
+            2,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(distinct container_id::text || ':' || container_slot_index::text) from item_instances where id = any(@ItemIds);",
+                new { ItemIds = new[] { corpseItem, depositedItem } }));
+    }
+
     private static async Task<ItemTransactionResult> LootAsync(
         PostgresIntegrationTestContext context,
         Guid characterId,
@@ -479,6 +766,104 @@ public sealed class CorpseLootConcurrencyIntegrationTests
                     destinationSlotIndex,
                     null,
                     null)),
+            CancellationToken.None);
+    }
+
+    private static async Task<ItemTransactionResult> LootWithTargetAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        Guid destinationContainerId,
+        int destinationSlotIndex,
+        ItemRow target)
+    {
+        return await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<LootCorpseItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new LootCorpseItemCommand(
+                    characterId,
+                    corpseId,
+                    item.ItemInstanceId,
+                    item.Revision,
+                    destinationContainerId,
+                    await LoadContainerRevisionAsync(context, destinationContainerId),
+                    destinationSlotIndex,
+                    target.ItemInstanceId,
+                    target.Revision)),
+            CancellationToken.None);
+    }
+
+    private static async Task<ItemTransactionResult> DepositAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        Guid destinationContainerId,
+        int destinationSlotIndex)
+    {
+        return await DepositWithTargetAsync(
+            context,
+            characterId,
+            corpseId,
+            item,
+            destinationContainerId,
+            destinationSlotIndex,
+            null);
+    }
+
+    private static async Task<ItemTransactionResult> DepositWithTargetAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        Guid destinationContainerId,
+        int destinationSlotIndex,
+        ItemRow? target)
+    {
+        return await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<DepositCorpseItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new DepositCorpseItemCommand(
+                    characterId,
+                    corpseId,
+                    item.ItemInstanceId,
+                    item.Revision,
+                    destinationContainerId,
+                    await LoadContainerRevisionAsync(context, destinationContainerId),
+                    destinationSlotIndex,
+                    target?.ItemInstanceId,
+                    target?.Revision)),
+            CancellationToken.None);
+    }
+
+    private static async Task<ItemTransactionResult> DepositPartialWithTargetAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        int quantity,
+        Guid destinationContainerId,
+        int destinationSlotIndex,
+        ItemRow target)
+    {
+        return await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<DepositCorpsePartialStackCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new DepositCorpsePartialStackCommand(
+                    characterId,
+                    corpseId,
+                    item.ItemInstanceId,
+                    item.Revision,
+                    quantity,
+                    destinationContainerId,
+                    await LoadContainerRevisionAsync(context, destinationContainerId),
+                    destinationSlotIndex,
+                    target.ItemInstanceId,
+                    target.Revision)),
             CancellationToken.None);
     }
 
@@ -608,6 +993,8 @@ public sealed class CorpseLootConcurrencyIntegrationTests
                 item.id as "ItemInstanceId",
                 item.revision as "Revision",
                 item.quantity as "Quantity",
+                item.container_id as "ContainerId",
+                item.container_slot_index as "ContainerSlotIndex",
                 bag_contents.id as "BagContentsContainerId",
                 bag_contents.revision as "BagContentsRevision"
             from item_instances item
@@ -627,6 +1014,28 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         return await connection.ExecuteScalarAsync<long>(
             "select revision from item_containers where id = @ContainerId;",
             new { ContainerId = containerId });
+    }
+
+    private static async Task<Guid> LoadCorpseSectionContainerAsync(
+        PostgresIntegrationTestContext context,
+        Guid corpseId,
+        string sectionKind)
+    {
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        return await connection.ExecuteScalarAsync<Guid>(
+            "select container_id from corpse_sections where corpse_id = @CorpseId and section_kind = @SectionKind;",
+            new { CorpseId = corpseId, SectionKind = sectionKind });
+    }
+
+    private static async Task AssertLocationAsync(
+        PostgresIntegrationTestContext context,
+        Guid itemId,
+        Guid containerId,
+        int slotIndex)
+    {
+        var item = await LoadItemAsync(context, itemId);
+        Assert.Equal(containerId, item.ContainerId);
+        Assert.Equal(slotIndex, item.ContainerSlotIndex);
     }
 
     private static async Task AssertDefinitionQuantityAsync(
@@ -676,6 +1085,10 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         public long Revision { get; set; }
 
         public int Quantity { get; set; }
+
+        public Guid? ContainerId { get; set; }
+
+        public int? ContainerSlotIndex { get; set; }
 
         public Guid? BagContentsContainerId { get; set; }
 

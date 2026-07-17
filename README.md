@@ -66,9 +66,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   presentation-only snapshots, restores unexpired corpses to the exact assigned
   worker runtime, and audits idempotent expiry destruction.
 - Exact-session concurrent corpse inspection and mutation with proximity and
-  lifetime validation, targeted revisions, full and partial loot, atomic Bag
-  aggregate swaps, committed viewer deltas, and no database transaction held
-  across a client network wait.
+  lifetime validation, targeted revisions, bidirectional full and partial item
+  transfers, compatible stack merges, atomic ordinary slot and Bag aggregate
+  swaps, committed viewer deltas, and no database transaction held across a
+  client network wait.
 - Exact-session carry-state admission and heartbeat propagation, with base and
   Bag capacity, monotonic item-state revisions, authoritative sprint limits, and
   one shared encumbrance calculation for SimulationWorker and Unity prediction.
@@ -78,12 +79,12 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   restoration, and stable update-required handling for catalog mismatch.
 - A temporary uGUI inventory panel on the permanent client foundation, with the
   canonical layout, `B` character-storage, `C` equipment plus character-storage,
-  and `I` complete Development views, plus protocol-v9 controls for every
+  and `I` complete Development views, plus protocol-v10 controls for every
   currently exposed live item and corpse mutation, including atomic occupied
   slot and Bag aggregate swaps.
 - Persistent Unity corpse presence and view state with complete chunk assembly,
   monotonic deltas, stable closure handling, a generic replaceable capsule,
-  `E` proximity interaction, and typed drag-and-drop looting.
+  `E` proximity interaction, and typed bidirectional drag-and-drop transfers.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory

@@ -452,6 +452,8 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         {
             "loot_item" => "loot_corpse_item",
             "loot_partial_stack" => "loot_corpse_partial_stack",
+            "deposit_item" => "deposit_corpse_item",
+            "deposit_partial_stack" => "deposit_corpse_partial_stack",
             "swap_bag" => "swap_corpse_bag",
             _ => string.Empty
         };

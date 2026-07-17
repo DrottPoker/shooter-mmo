@@ -188,7 +188,7 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 9 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 10 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
@@ -451,12 +451,15 @@ when a stale base or concurrency result requires it. It never writes inventory
 or corpse custody locally. A disconnect clears uncertain transient state, and a
 new joined session rebuilds presence and views from server authority.
 
-Protocol version `9` carries chunked presence, open, close, refresh, full-item
-loot, partial-stack loot, atomic Bag swap, operation-result, targeted view-state,
-and view-closure messages on the reliable ordered path. Complete snapshots must
-contain exactly the canonical general inventory, equipment, and Bag sections.
-Chunk metadata, container revisions, slot capacities, ids, and item revisions
-must remain coherent before state becomes visible.
+Protocol version `10` carries chunked presence, destination slot tags, open,
+close, refresh, full-item and partial-stack loot or deposit, ordinary slot swap,
+atomic Bag swap, operation-result, targeted view-state, and view-closure
+messages on the reliable ordered path. Complete snapshots must contain exactly
+the canonical general inventory, equipment, and Bag sections. Chunk metadata,
+container revisions, slot capacities, ids, tags, and item revisions must remain
+coherent before state becomes visible. A committed corpse result forces the
+inventory controller to refresh until it reaches the returned item-state
+revision, even when the previous full snapshot was internally coherent.
 
 `CorpsePresentationController` creates one replaceable generic capsule for every
 nearby presence entry and updates it from server position and presentation key.
@@ -611,7 +614,8 @@ authority fields. Phase 9 coverage loads the real bundled gameplay and
 presentation catalogs, verifies cache reuse and mismatch rejection, validates
 complete and focused snapshots, exercises stale and divergent revision handling,
 correlates operation ids, and checks specialized slots, Secure Container rules,
-non-empty Bags, split quantities, and the exact hard cap. Phase 11 coverage
+non-empty Bags, split quantities, the exact hard cap, external corpse swaps, and
+committed-revision refresh eligibility. Phase 11 coverage
 verifies presence assembly, duplicate and stale chunks, complete canonical
 three-section views, targeted delta consistency, monotonic revisions, every
 typed corpse intent, and corpse drag payload identity.

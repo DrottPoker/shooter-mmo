@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
 using SimulationWorker.Auth;
@@ -91,6 +92,46 @@ public sealed class SimulationCorpseInteractionServiceTests
         Assert.Equal(0, handler.RequestCount);
     }
 
+    [Fact]
+    public async Task DepositIntentMapsEveryTransferExpectationToDurableAuthority()
+    {
+        var handler = new CapturingProblemHandler();
+        var service = CreateService(handler);
+        var itemId = Guid.NewGuid();
+        var destinationId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        var intent = RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            12,
+            itemId,
+            7,
+            3,
+            destinationId,
+            8,
+            4,
+            targetId,
+            6);
+
+        await service.MutateAsync(CreateSession(), intent, CancellationToken.None);
+
+        Assert.NotNull(handler.Body);
+        Assert.Equal("deposit_partial_stack", handler.Body.Value.GetProperty("operationKind").GetString());
+        Assert.Equal(intent.ExpectedCorpseRevision, handler.Body.Value.GetProperty("expectedCorpseRevision").GetInt64());
+        Assert.Equal(itemId, handler.Body.Value.GetProperty("itemInstanceId").GetGuid());
+        Assert.Equal(intent.ExpectedItemRevision, handler.Body.Value.GetProperty("expectedItemRevision").GetInt64());
+        Assert.Equal(3, handler.Body.Value.GetProperty("quantity").GetInt32());
+        Assert.Equal(destinationId, handler.Body.Value.GetProperty("destinationContainerId").GetGuid());
+        Assert.Equal(
+            intent.ExpectedDestinationContainerRevision,
+            handler.Body.Value.GetProperty("expectedDestinationContainerRevision").GetInt64());
+        Assert.Equal(intent.DestinationSlotIndex, handler.Body.Value.GetProperty("destinationSlotIndex").GetInt32());
+        Assert.Equal(targetId, handler.Body.Value.GetProperty("targetItemInstanceId").GetGuid());
+        Assert.Equal(
+            intent.ExpectedTargetItemRevision,
+            handler.Body.Value.GetProperty("expectedTargetItemRevision").GetInt64());
+    }
+
     private static SimulationCorpseInteractionService CreateService(HttpMessageHandler handler)
     {
         return new SimulationCorpseInteractionService(new AuthServiceClient(new HttpClient(handler)
@@ -145,6 +186,28 @@ public sealed class SimulationCorpseInteractionServiceTests
         {
             RequestCount++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        }
+    }
+
+    private sealed class CapturingProblemHandler : HttpMessageHandler
+    {
+        public JsonElement? Body { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Body = await request.Content!.ReadFromJsonAsync<JsonElement>(
+                cancellationToken: cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = JsonContent.Create(new
+                {
+                    status = 409,
+                    code = "item_state_conflict",
+                    detail = "Captured request."
+                })
+            };
         }
     }
 }

@@ -36,6 +36,29 @@ public sealed class RealtimeCorpseProtocolTests
                 3,
                 Guid.Empty,
                 0),
+            RealtimeCorpseInteractionIntent.CreateDepositItem(
+                Guid.NewGuid(),
+                corpseId,
+                10,
+                Guid.NewGuid(),
+                6,
+                Guid.NewGuid(),
+                7,
+                3,
+                Guid.NewGuid(),
+                8),
+            RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
+                Guid.NewGuid(),
+                corpseId,
+                10,
+                Guid.NewGuid(),
+                6,
+                2,
+                Guid.NewGuid(),
+                7,
+                3,
+                Guid.Empty,
+                0),
             RealtimeCorpseInteractionIntent.CreateSwapBag(
                 Guid.NewGuid(),
                 corpseId,
@@ -172,7 +195,7 @@ public sealed class RealtimeCorpseProtocolTests
             2,
             0,
             [
-                new RealtimeCorpseSlot(0, "general", null!),
+                new RealtimeCorpseSlot(0, "general", ["medical"], null!),
                 new RealtimeCorpseSlot(
                     1,
                     "general",
@@ -196,6 +219,7 @@ public sealed class RealtimeCorpseProtocolTests
         Assert.Equal(expected.UpdateId, actual.UpdateId);
         Assert.Equal(expected.BaseRevision, actual.BaseRevision);
         Assert.Null(actual.Slots[0].Item);
+        Assert.Equal(["medical"], actual.Slots[0].AcceptedTags);
         Assert.Equal("material.iron_ore", actual.Slots[1].Item.DefinitionId);
     }
 

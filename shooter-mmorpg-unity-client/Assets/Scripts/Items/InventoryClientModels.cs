@@ -583,6 +583,13 @@ namespace ShooterMmo.Items
             }
         }
 
+        public bool HasCoherentFullSnapshotAtLeast(long minimumRevision)
+        {
+            return minimumRevision >= 0
+                && HasCoherentFullSnapshot
+                && CharacterObservedRevision >= minimumRevision;
+        }
+
         public bool CanMutate
         {
             get

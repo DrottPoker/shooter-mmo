@@ -273,6 +273,81 @@ namespace ShooterMmo.Items
             return true;
         }
 
+        public static bool CanSwapWithExternalContainer(
+            InventoryClientState state,
+            InventoryItem carriedItem,
+            InventoryItemLocation carriedLocation,
+            InventoryItem externalItem,
+            InventoryContainer externalContainer,
+            InventorySlot externalSlot,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (state?.Catalog == null
+                || state.FullSnapshot == null
+                || carriedItem == null
+                || carriedLocation == null
+                || externalItem == null
+                || externalContainer == null
+                || externalSlot == null
+                || carriedLocation.Kind != InventoryItemLocationKind.Container
+                || !TryResolveContainerSlot(
+                    state,
+                    carriedLocation,
+                    out var carriedContainer,
+                    out var carriedSlot))
+            {
+                reason = "A current carried item and external container item are required for a swap.";
+                return false;
+            }
+
+            if (!CanOccupySlot(
+                    state,
+                    carriedItem,
+                    externalContainer,
+                    externalSlot,
+                    out reason)
+                || !CanOccupySlot(
+                    state,
+                    externalItem,
+                    carriedContainer,
+                    carriedSlot,
+                    out reason))
+            {
+                return false;
+            }
+
+            try
+            {
+                var finalWeight = ApplyContainerWeightDelta(
+                    state,
+                    state.FullSnapshot.CarriedWeight,
+                    carriedItem,
+                    carriedContainer.ContainerType,
+                    externalContainer.ContainerType);
+                finalWeight = ApplyContainerWeightDelta(
+                    state,
+                    finalWeight,
+                    externalItem,
+                    externalContainer.ContainerType,
+                    carriedContainer.ContainerType);
+                if (!EncumbranceRules.IsWithinHardCap(
+                    finalWeight,
+                    state.FullSnapshot.CarryCapacity))
+                {
+                    reason = "The swap would exceed the 140 percent carry cap.";
+                    return false;
+                }
+            }
+            catch (OverflowException)
+            {
+                reason = "The swap weight is invalid.";
+                return false;
+            }
+
+            return true;
+        }
+
         public static bool CanMerge(
             ClientItemCatalog catalog,
             InventoryItem source,
@@ -481,6 +556,13 @@ namespace ShooterMmo.Items
             if (string.Equals(destination.ContainerType, "recovery_storage", StringComparison.Ordinal))
             {
                 return BagDestinationKind.RecoveryStorageSlot;
+            }
+
+            if (string.Equals(destination.ContainerType, "corpse_inventory", StringComparison.Ordinal)
+                || string.Equals(destination.ContainerType, "corpse_equipment", StringComparison.Ordinal)
+                || string.Equals(destination.ContainerType, "corpse_bag_contents", StringComparison.Ordinal))
+            {
+                return BagDestinationKind.CorpseStorageSlot;
             }
 
             return BagDestinationKind.SecureContainerSlot;

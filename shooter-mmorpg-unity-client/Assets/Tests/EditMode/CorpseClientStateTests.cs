@@ -207,6 +207,12 @@ namespace ShooterMmo.Tests.EditMode
                 RealtimeCorpseInteractionIntent.CreateLootPartialStack(
                     Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, 3, Guid.NewGuid(), 3, 1,
                     Guid.Empty, 0),
+                RealtimeCorpseInteractionIntent.CreateDepositItem(
+                    Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, Guid.NewGuid(), 3, 1,
+                    Guid.Empty, 0),
+                RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
+                    Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, 3, Guid.NewGuid(), 3, 1,
+                    Guid.Empty, 0),
                 RealtimeCorpseInteractionIntent.CreateSwapBag(
                     Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, Guid.NewGuid(), 3,
                     Guid.NewGuid(), 4, Guid.NewGuid(), 5)

@@ -197,6 +197,11 @@ namespace ShooterMmo.Items
 
         public void EnsureFullState()
         {
+            EnsureFullState(State.KnownItemStateRevision);
+        }
+
+        public void EnsureFullState(long minimumRevision)
+        {
             if (!TryGetSelectedCharacterId(out _))
             {
                 State.SetError(
@@ -208,13 +213,16 @@ namespace ShooterMmo.Items
             }
 
             if (State.Catalog == null
-                || (State.HasCoherentFullSnapshot
-                    && State.Status == InventoryClientStatus.Ready))
+                || (State.Status == InventoryClientStatus.Ready
+                    && State.HasCoherentFullSnapshotAtLeast(minimumRevision)))
             {
                 return;
             }
 
-            BeginRefresh(InventoryRefreshScope.Full, false, State.KnownItemStateRevision);
+            BeginRefresh(
+                InventoryRefreshScope.Full,
+                false,
+                Math.Max(State.KnownItemStateRevision, minimumRevision));
         }
 
         public void RefreshContext(InventoryContextKind context)

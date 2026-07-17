@@ -260,6 +260,20 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void CoherentSnapshotMustReachCommittedCorpseRevisionBeforeRefreshCanStop()
+        {
+            var characterId = Guid.NewGuid();
+            var state = new InventoryClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(characterId);
+            Assert.That(TryMap(CreateFullResponse(characterId, 5), out var snapshot), Is.True);
+            Assert.That(state.ApplyFull(snapshot), Is.EqualTo(InventorySnapshotApplyResult.Applied));
+
+            Assert.That(state.HasCoherentFullSnapshotAtLeast(5), Is.True);
+            Assert.That(state.HasCoherentFullSnapshotAtLeast(6), Is.False);
+        }
+
+        [Test]
         public void OperationJournalAllowsOneCorrelatableOperationAtATime()
         {
             var operationId = Guid.NewGuid();
@@ -579,6 +593,44 @@ namespace ShooterMmo.Tests.EditMode
                     out var specializedSwapReason),
                 Is.False);
             Assert.That(specializedSwapReason, Does.Contain("accepted tags"));
+
+            var corpseContainer = new InventoryContainer(
+                Guid.NewGuid(),
+                "corpse_inventory",
+                2,
+                20,
+                new[]
+                {
+                    new InventorySlot(0, "general", Array.Empty<string>(), null)
+                });
+            Assert.That(
+                InventoryTargetAdvisor.CanSwapWithExternalContainer(
+                    swapHardCapState,
+                    CreateItem("ammunition.training_556", 1),
+                    new InventoryItemLocation(
+                        InventoryItemLocationKind.Container,
+                        swapHardCapState.FullSnapshot.PermanentInventory.ContainerId,
+                        "permanent_inventory",
+                        0,
+                        string.Empty,
+                        Guid.Empty),
+                    CreateItem("weapon.training_rifle", 1),
+                    corpseContainer,
+                    corpseContainer.Slots[0],
+                    out var externalSwapCapReason),
+                Is.False);
+            Assert.That(externalSwapCapReason, Does.Contain("140 percent"));
+            Assert.That(
+                InventoryTargetAdvisor.CanSwapWithExternalContainer(
+                    hardCapState,
+                    CreateItem("weapon.training_rifle", 1),
+                    permanentLocation,
+                    CreateItem("ammunition.training_556", 1),
+                    corpseContainer,
+                    corpseContainer.Slots[0],
+                    out var externalReducingReason),
+                Is.True,
+                externalReducingReason);
         }
 
         private bool TryMap(

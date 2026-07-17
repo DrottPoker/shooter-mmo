@@ -149,5 +149,7 @@ public static class CorpseInteractionOperationKinds
 {
     public const string LootItem = "loot_item";
     public const string LootPartialStack = "loot_partial_stack";
+    public const string DepositItem = "deposit_item";
+    public const string DepositPartialStack = "deposit_partial_stack";
     public const string SwapBag = "swap_bag";
 }

@@ -153,7 +153,7 @@ public sealed partial class CorpseService
                 operationKind,
                 CorpseInteractionOperationKinds.LootItem,
                 StringComparison.Ordinal)
-            && HasLootShape(request, requiresPartialQuantity: false))
+            && HasItemTransferShape(request, requiresPartialQuantity: false))
         {
             return TransactionService.ExecuteAsync(
                 new ItemTransactionRequest<LootCorpseItemCommand>(
@@ -178,13 +178,64 @@ public sealed partial class CorpseService
                 operationKind,
                 CorpseInteractionOperationKinds.LootPartialStack,
                 StringComparison.Ordinal)
-            && HasLootShape(request, requiresPartialQuantity: true))
+            && HasItemTransferShape(request, requiresPartialQuantity: true))
         {
             return TransactionService.ExecuteAsync(
                 new ItemTransactionRequest<LootCorpsePartialStackCommand>(
                     request.OperationId,
                     actor,
                     new LootCorpsePartialStackCommand(
+                        request.CharacterId,
+                        corpseId,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.Quantity!.Value,
+                        request.DestinationContainerId!.Value,
+                        request.ExpectedDestinationContainerRevision!.Value,
+                        request.DestinationSlotIndex!.Value,
+                        NormalizeGuid(request.TargetItemInstanceId),
+                        NormalizeRevision(
+                            request.TargetItemInstanceId,
+                            request.ExpectedTargetItemRevision))),
+                cancellationToken);
+        }
+
+        if (string.Equals(
+                operationKind,
+                CorpseInteractionOperationKinds.DepositItem,
+                StringComparison.Ordinal)
+            && HasItemTransferShape(request, requiresPartialQuantity: false))
+        {
+            return TransactionService.ExecuteAsync(
+                new ItemTransactionRequest<DepositCorpseItemCommand>(
+                    request.OperationId,
+                    actor,
+                    new DepositCorpseItemCommand(
+                        request.CharacterId,
+                        corpseId,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.DestinationContainerId!.Value,
+                        request.ExpectedDestinationContainerRevision!.Value,
+                        request.DestinationSlotIndex!.Value,
+                        NormalizeGuid(request.TargetItemInstanceId),
+                        NormalizeRevision(
+                            request.TargetItemInstanceId,
+                            request.ExpectedTargetItemRevision))),
+                cancellationToken);
+        }
+
+        if (string.Equals(
+                operationKind,
+                CorpseInteractionOperationKinds.DepositPartialStack,
+                StringComparison.Ordinal)
+            && HasItemTransferShape(request, requiresPartialQuantity: true))
+        {
+            return TransactionService.ExecuteAsync(
+                new ItemTransactionRequest<DepositCorpsePartialStackCommand>(
+                    request.OperationId,
+                    actor,
+                    new DepositCorpsePartialStackCommand(
                         request.CharacterId,
                         corpseId,
                         request.ItemInstanceId!.Value,
@@ -568,7 +619,7 @@ public sealed partial class CorpseService
                 : null;
     }
 
-    private static bool HasLootShape(
+    private static bool HasItemTransferShape(
         SimulationCorpseMutationRequest request,
         bool requiresPartialQuantity)
     {
