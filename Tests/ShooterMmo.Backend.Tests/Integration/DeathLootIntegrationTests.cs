@@ -931,6 +931,18 @@ public sealed class DeathLootIntegrationTests
         Assert.Equal(HttpStatusCode.OK, openedResponse.StatusCode);
         var opened = await openedResponse.Content.ReadFromJsonAsync<CorpseViewSnapshotResponse>();
         Assert.NotNull(opened);
+        var corpseEquipment = Assert.Single(
+            opened.Sections,
+            section => string.Equals(
+                section.SectionKind,
+                "equipment",
+                StringComparison.Ordinal));
+        Assert.All(
+            corpseEquipment.Slots,
+            slot => Assert.False(string.IsNullOrWhiteSpace(slot.EquipmentSlotId)));
+        Assert.Equal(
+            corpseEquipment.Slots.Count,
+            corpseEquipment.Slots.Select(slot => slot.EquipmentSlotId).Distinct().Count());
         var corpseItem = Assert.Single(
             opened.Sections.SelectMany(section => section.Slots),
             slot => slot.Item?.ItemInstanceId == itemId).Item!;
@@ -1007,6 +1019,41 @@ public sealed class DeathLootIntegrationTests
         Assert.Contains(
             deposited.Corpse!.Sections.SelectMany(section => section.Slots),
             slot => slot.Item?.ItemInstanceId == itemId);
+        var depositedInventory = Assert.Single(
+            deposited.Corpse.Sections,
+            section => string.Equals(
+                section.SectionKind,
+                "general_inventory",
+                StringComparison.Ordinal));
+        var depositedItem = Assert.Single(
+            depositedInventory.Slots,
+            slot => slot.Item?.ItemInstanceId == itemId).Item!;
+        var moveOperationId = Guid.NewGuid();
+        var moveRequest = depositRequest with
+        {
+            OperationId = moveOperationId,
+            OperationKind = CorpseInteractionOperationKinds.MoveItem,
+            ExpectedCorpseRevision = deposited.Corpse.Revision,
+            ExpectedItemRevision = depositedItem.Revision,
+            DestinationContainerId = depositedInventory.ContainerId,
+            ExpectedDestinationContainerRevision = depositedInventory.ContainerRevision,
+            DestinationSlotIndex = 1
+        };
+        using var movedResponse = await host.Client.PostAsJsonAsync(
+            mutationPath,
+            moveRequest);
+        Assert.Equal(HttpStatusCode.OK, movedResponse.StatusCode);
+        var moved = await movedResponse.Content.ReadFromJsonAsync<CorpseMutationResponse>();
+        Assert.NotNull(moved);
+        Assert.True(moved.Transaction.Succeeded);
+        Assert.Equal(moveOperationId, moved.Transaction.OperationId);
+        Assert.Empty(moved.Transaction.CharacterRevisions);
+        Assert.Equal(
+            itemId,
+            Assert.Single(
+                moved.Corpse!.Sections.SelectMany(section => section.Slots),
+                slot => slot.SlotIndex == 1 && slot.Item?.ItemInstanceId == itemId)
+                .Item!.ItemInstanceId);
         var afterDeposit = await fixture.GetSnapshotAsync();
         Assert.DoesNotContain(
             afterDeposit.PermanentInventory.Slots,

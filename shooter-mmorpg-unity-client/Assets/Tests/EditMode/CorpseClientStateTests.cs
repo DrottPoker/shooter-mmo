@@ -66,6 +66,10 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(state.ApplyViewChunk(snapshot[2]), Is.EqualTo(CorpseStateApplyResult.Applied));
             Assert.That(state.ActiveView.Revision, Is.EqualTo(5));
             Assert.That(FindItem(state, itemId).Quantity, Is.EqualTo(5));
+            Assert.That(
+                state.ActiveView.Sections.Single(section => section.SectionKind == "equipment")
+                    .Slots.Single().EquipmentSlotId,
+                Is.EqualTo("head"));
 
             var delta = CreateChunk(
                 Guid.NewGuid(),
@@ -185,7 +189,15 @@ namespace ShooterMmo.Tests.EditMode
                 1,
                 true,
                 1,
-                new[] { new RealtimeCorpseSlot(0, "general", null) });
+                new[]
+                {
+                    new RealtimeCorpseSlot(
+                        0,
+                        "general",
+                        Array.Empty<string>(),
+                        "head",
+                        null)
+                });
 
             Assert.That(state.ApplyViewChunk(first), Is.EqualTo(CorpseStateApplyResult.Waiting));
             Assert.That(state.ApplyViewChunk(second), Is.EqualTo(CorpseStateApplyResult.Invalid));
@@ -213,6 +225,12 @@ namespace ShooterMmo.Tests.EditMode
                 RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
                     Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, 3, Guid.NewGuid(), 3, 1,
                     Guid.Empty, 0),
+                RealtimeCorpseInteractionIntent.CreateMoveItem(
+                    Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, Guid.NewGuid(), 3, 1,
+                    Guid.Empty, 0),
+                RealtimeCorpseInteractionIntent.CreateMovePartialStack(
+                    Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, 3, Guid.NewGuid(), 3, 1,
+                    Guid.Empty, 0),
                 RealtimeCorpseInteractionIntent.CreateSwapBag(
                     Guid.NewGuid(), corpseId, 4, Guid.NewGuid(), 2, Guid.NewGuid(), 3,
                     Guid.NewGuid(), 4, Guid.NewGuid(), 5)
@@ -231,6 +249,76 @@ namespace ShooterMmo.Tests.EditMode
                 Assert.That(actual.OperationKind, Is.EqualTo(expected.OperationKind));
                 Assert.That(actual.CorpseId, Is.EqualTo(corpseId));
             }
+        }
+
+        [Test]
+        public void CorpseViewDistinguishesEmptyAndNonEmptyBagAggregates()
+        {
+            var bagContentsContainerId = Guid.NewGuid();
+            var bag = new CorpseLootItem(new RealtimeCorpseItem(
+                Guid.NewGuid(),
+                "bag.field_pack",
+                1,
+                2,
+                bagContentsContainerId,
+                3));
+            var equipment = new CorpseLootSection(
+                "equipment",
+                Guid.NewGuid(),
+                1,
+                1,
+                new[]
+                {
+                    new CorpseLootSlot(
+                        0,
+                        "general",
+                        Array.Empty<string>(),
+                        "bag",
+                        bag)
+                });
+            var emptyBagSection = new CorpseLootSection(
+                "bag",
+                bagContentsContainerId,
+                3,
+                1,
+                new[] { new CorpseLootSlot(0, "general", null) });
+            var emptyView = new CorpseLootView(
+                Guid.NewGuid(),
+                1,
+                ExpiresAtUnixMilliseconds,
+                "Fallen Hero",
+                "corpse.generic_loot_crate",
+                new[] { equipment, emptyBagSection });
+
+            Assert.That(emptyView.BagHasContents(bag), Is.False);
+
+            var occupiedBagSection = new CorpseLootSection(
+                "bag",
+                bagContentsContainerId,
+                4,
+                1,
+                new[]
+                {
+                    new CorpseLootSlot(
+                        0,
+                        "general",
+                        new CorpseLootItem(new RealtimeCorpseItem(
+                            Guid.NewGuid(),
+                            "material.iron_ore",
+                            1,
+                            1,
+                            Guid.Empty,
+                            0)))
+                });
+            var occupiedView = new CorpseLootView(
+                Guid.NewGuid(),
+                2,
+                ExpiresAtUnixMilliseconds,
+                "Fallen Hero",
+                "corpse.generic_loot_crate",
+                new[] { equipment, occupiedBagSection });
+
+            Assert.That(occupiedView.BagHasContents(bag), Is.True);
         }
 
         private static RealtimeCorpsePresence CreatePresence(Guid corpseId, string name)
@@ -289,7 +377,15 @@ namespace ShooterMmo.Tests.EditMode
                     1,
                     true,
                     1,
-                    new[] { new RealtimeCorpseSlot(0, "general", null) }),
+                    new[]
+                    {
+                        new RealtimeCorpseSlot(
+                            0,
+                            "general",
+                            Array.Empty<string>(),
+                            "head",
+                            null)
+                    }),
                 CreateChunk(
                     updateId,
                     RealtimeCorpseViewUpdateKind.Snapshot,

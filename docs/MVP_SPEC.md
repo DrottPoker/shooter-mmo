@@ -384,6 +384,10 @@ Player death is an idempotent transaction:
 - Compatible stacks with remaining capacity merge, while complete items that
   cannot merge atomically swap only when both original slots accept the
   opposite item.
+- Items may move, split, merge, and swap between corpse slots and sections
+  without changing character custody or carry state.
+- Corpse equipment slots expose canonical equipment-slot ids and accept only
+  compatible item definitions.
 - Bank, Recovery Storage, and ordinary equipped items cannot be deposited into a
   corpse.
 - Bag swaps are atomic and lock both Bag aggregates.
@@ -464,11 +468,11 @@ Current implementation note:
 - Item-plan Phase 10 adds idempotent player-death partition, Recovery delivery,
   durable five-minute player corpse custody and snapshots, exact worker restart
   restoration, and audited expiry cleanup.
-- Item-plan Phase 11 adds protocol-v10 corpse presence and bidirectional
+- Item-plan Phase 11 adds protocol-v11 corpse presence and bidirectional
   interaction, exact proximity and lifetime validation, concurrent full and
-  partial transfers, ordinary occupied-slot swaps, atomic Bag aggregate swaps,
-  committed viewer deltas, immutable Unity state, and a generic replaceable
-  corpse presentation.
+  partial transfers, internal corpse rearrangement, typed equipment slots,
+  ordinary occupied-slot swaps, atomic Bag aggregate swaps, committed viewer
+  deltas, immutable Unity state, and a generic replaceable corpse presentation.
 - Gameplay-created item grants, insurance NPC pricing, authoritative combat
   death production, mobs, final corpse art, and configurable NPC corpse
   persistence are not implemented. Insurance consumption is implemented only

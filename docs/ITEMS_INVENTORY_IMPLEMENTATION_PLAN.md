@@ -1284,8 +1284,12 @@ Status: Implemented on 2026-07-17
 - Treat corpse sections as bidirectional containers for carried inventory.
 - Merge compatible stacks with remaining capacity and atomically swap complete
   items that cannot merge when both original slots accept the opposite item.
+- Move, split, merge, and swap items between corpse slots and sections without
+  changing character custody or carry state.
+- Preserve canonical equipment-slot ids on corpse equipment slots and validate
+  every internal or external destination against the item definition.
 - Refresh character inventory to at least the committed item-state revision
-  after every successful corpse mutation.
+  after every successful custody-changing corpse mutation.
 
 ### Race Tests
 
@@ -1302,6 +1306,10 @@ Status: Implemented on 2026-07-17
   rejected without changing custody.
 - A committed corpse result refreshes a previously coherent character snapshot
   when its item-state revision advanced.
+- Internal corpse moves advance only corpse, container, and item revisions and
+  never force a character inventory refresh.
+- Corpse equipment labels and server validation use canonical equipment-slot
+  ids instead of generic slot numbers.
 - Viewers receive committed deltas and stale clients can refresh.
 - No database transaction remains open while waiting for a client response.
 
@@ -1318,6 +1326,8 @@ Status: Implemented on 2026-07-17
   verify their slots swap atomically.
 - Split a compatible stack into the corpse and verify total quantity is
   conserved.
+- Rearrange items between empty and occupied corpse slots, including typed
+  equipment slots, and verify every viewer receives the committed result.
 - Restart SimulationWorker before five minutes and verify the corpse returns at
   the recorded location with the original expiry.
 
@@ -1386,8 +1396,8 @@ dupe safe.
 - Final verification passed locked dependency restore, dependency policy,
   formatter verification, deterministic item-catalog and collision verification,
   and the complete Release build with zero warnings and zero errors.
-- The complete backend suite passed `331/331`. Unity `6000.5.2f1` passed
-  `79/79` EditMode tests and `2/2` PlayMode tests.
+- The complete backend suite passed `335/335`. Unity `6000.5.2f1` passed
+  `80/80` EditMode tests and `2/2` PlayMode tests.
 
 The Phase 11 implementation, automated test, documentation, and deterministic
 exit gates are satisfied. The documented two-client flow remains the required

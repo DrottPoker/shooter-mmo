@@ -808,8 +808,10 @@ partial-stack conservation in both directions, ordinary slot swaps, deposit
 policy rejection, deposit-versus-loot race safety, Bag-versus-child and
 Bag-versus-Bag aggregate safety, 140 percent rejection, equal rules for the dead
 player, exact runtime authority, closed PostgreSQL transactions, bounded UTF-8
-packets, viewer deltas, committed-revision inventory refresh, stable closure
-codes, monotonic client state, and the durable Editor fixture path.
+packets, corpse-internal move, split, merge, and swap, canonical corpse equipment
+slot identity and compatibility, viewer deltas, committed-revision inventory
+refresh, stable closure codes, monotonic client state, and the durable Editor
+fixture path.
 
 ### Manual Two-Client Corpse Loop
 
@@ -849,12 +851,20 @@ at the same time:
    deposit appears for both viewers, each valid occupied drop swaps atomically,
    and Character Inventory refreshes without closing the corpse. Repeat with a
    partial compatible stack deposit and verify total quantity is conserved.
-9. In one client, drag a corpse Bag child. At the same time in the other client,
+9. Drag a corpse item to another empty corpse slot, split one corpse stack into
+   another corpse slot, merge compatible corpse stacks, and drop two complete
+   non-mergeable corpse items onto each other. Expected result: every operation
+   commits as corpse-only movement, both clients receive the result, and the
+   character weight and item-state revision do not change. Verify that each
+   Corpse Equipment button shows a type such as `Head [head]` or
+   `Body Armour [body_armor]`. A compatible item is accepted and an incompatible
+   item is rejected without moving either item.
+10. In one client, drag a corpse Bag child. At the same time in the other client,
    drag the corpse Bag root onto the occupied player Bag equipment slot.
    Expected result: only a compatible complete outcome commits. Neither Bag
    aggregate is split, and both clients converge after the broadcast delta or
    refresh.
-10. Create a fresh fixture and restart SimulationWorker before its five-minute
+11. Create a fresh fixture and restart SimulationWorker before its five-minute
    deadline. Rejoin the Shard. Expected result: the corpse returns at
    `(0, 0, -1)` with the original absolute expiry. It disappears and closes any
    open view at expiry rather than receiving a new five-minute lifetime.
@@ -1013,7 +1023,7 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 10, simulation revision, collision
+`27015`, runtime id, realtime protocol version 11, simulation revision, collision
 revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
 interval logs a worker status line with connected real players, synthetic bots,

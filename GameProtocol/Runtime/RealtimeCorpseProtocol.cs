@@ -14,7 +14,9 @@ namespace ShooterMmo.GameProtocol
         LootPartialStack = 5,
         SwapBag = 6,
         DepositItem = 7,
-        DepositPartialStack = 8
+        DepositPartialStack = 8,
+        MoveItem = 9,
+        MovePartialStack = 10
     }
 
     public enum RealtimeCorpseViewUpdateKind : byte
@@ -304,6 +306,61 @@ namespace ShooterMmo.GameProtocol
                 expectedTargetItemRevision);
         }
 
+        public static RealtimeCorpseInteractionIntent CreateMoveItem(
+            Guid operationId,
+            Guid corpseId,
+            long expectedCorpseRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            long expectedDestinationContainerRevision,
+            int destinationSlotIndex,
+            Guid targetItemInstanceId,
+            long expectedTargetItemRevision)
+        {
+            return CreateItemTransfer(
+                operationId,
+                RealtimeCorpseInteractionKind.MoveItem,
+                corpseId,
+                expectedCorpseRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                0,
+                destinationContainerId,
+                expectedDestinationContainerRevision,
+                destinationSlotIndex,
+                targetItemInstanceId,
+                expectedTargetItemRevision);
+        }
+
+        public static RealtimeCorpseInteractionIntent CreateMovePartialStack(
+            Guid operationId,
+            Guid corpseId,
+            long expectedCorpseRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            int quantity,
+            Guid destinationContainerId,
+            long expectedDestinationContainerRevision,
+            int destinationSlotIndex,
+            Guid targetItemInstanceId,
+            long expectedTargetItemRevision)
+        {
+            return CreateItemTransfer(
+                operationId,
+                RealtimeCorpseInteractionKind.MovePartialStack,
+                corpseId,
+                expectedCorpseRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                quantity,
+                destinationContainerId,
+                expectedDestinationContainerRevision,
+                destinationSlotIndex,
+                targetItemInstanceId,
+                expectedTargetItemRevision);
+        }
+
         public static RealtimeCorpseInteractionIntent CreateSwapBag(
             Guid operationId,
             Guid corpseId,
@@ -474,7 +531,7 @@ namespace ShooterMmo.GameProtocol
     public sealed class RealtimeCorpseSlot
     {
         public RealtimeCorpseSlot(int slotIndex, string slotKind, RealtimeCorpseItem item)
-            : this(slotIndex, slotKind, Array.Empty<string>(), item)
+            : this(slotIndex, slotKind, Array.Empty<string>(), string.Empty, item)
         {
         }
 
@@ -483,10 +540,21 @@ namespace ShooterMmo.GameProtocol
             string slotKind,
             string[] acceptedTags,
             RealtimeCorpseItem item)
+            : this(slotIndex, slotKind, acceptedTags, string.Empty, item)
+        {
+        }
+
+        public RealtimeCorpseSlot(
+            int slotIndex,
+            string slotKind,
+            string[] acceptedTags,
+            string equipmentSlotId,
+            RealtimeCorpseItem item)
         {
             SlotIndex = slotIndex;
             SlotKind = slotKind;
             AcceptedTags = acceptedTags ?? Array.Empty<string>();
+            EquipmentSlotId = equipmentSlotId ?? string.Empty;
             Item = item;
         }
 
@@ -495,6 +563,8 @@ namespace ShooterMmo.GameProtocol
         public string SlotKind { get; }
 
         public string[] AcceptedTags { get; }
+
+        public string EquipmentSlotId { get; }
 
         public RealtimeCorpseItem Item { get; }
     }
@@ -601,6 +671,7 @@ namespace ShooterMmo.GameProtocol
         private const int MaximumCorpseSlotKindLength = 32;
         private const int MaximumCorpseSlotTagLength = 64;
         private const int MaximumCorpseSlotTags = 16;
+        private const int MaximumCorpseEquipmentSlotIdLength = 64;
         private const int MaximumCorpseDefinitionIdLength = 128;
 
         public static byte[] EncodeCorpsePresenceSnapshotChunk(
@@ -746,6 +817,8 @@ namespace ShooterMmo.GameProtocol
                     case RealtimeCorpseInteractionKind.LootPartialStack:
                     case RealtimeCorpseInteractionKind.DepositItem:
                     case RealtimeCorpseInteractionKind.DepositPartialStack:
+                    case RealtimeCorpseInteractionKind.MoveItem:
+                    case RealtimeCorpseInteractionKind.MovePartialStack:
                         WriteItemExpectation(
                             writer,
                             intent.ItemInstanceId,
@@ -839,6 +912,8 @@ namespace ShooterMmo.GameProtocol
                     case RealtimeCorpseInteractionKind.LootPartialStack:
                     case RealtimeCorpseInteractionKind.DepositItem:
                     case RealtimeCorpseInteractionKind.DepositPartialStack:
+                    case RealtimeCorpseInteractionKind.MoveItem:
+                    case RealtimeCorpseInteractionKind.MovePartialStack:
                         if (!TryReadItemExpectation(
                                 reader,
                                 out var itemId,
@@ -907,7 +982,32 @@ namespace ShooterMmo.GameProtocol
                                 destinationSlot,
                                 targetId,
                                 targetRevision),
-                            _ => RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
+                            RealtimeCorpseInteractionKind.DepositPartialStack =>
+                                RealtimeCorpseInteractionIntent.CreateDepositPartialStack(
+                                operationId,
+                                corpseId,
+                                corpseRevision,
+                                itemId,
+                                itemRevision,
+                                quantity,
+                                destinationId,
+                                destinationRevision,
+                                destinationSlot,
+                                targetId,
+                                targetRevision),
+                            RealtimeCorpseInteractionKind.MoveItem =>
+                                RealtimeCorpseInteractionIntent.CreateMoveItem(
+                                operationId,
+                                corpseId,
+                                corpseRevision,
+                                itemId,
+                                itemRevision,
+                                destinationId,
+                                destinationRevision,
+                                destinationSlot,
+                                targetId,
+                                targetRevision),
+                            _ => RealtimeCorpseInteractionIntent.CreateMovePartialStack(
                                 operationId,
                                 corpseId,
                                 corpseRevision,
@@ -1145,6 +1245,17 @@ namespace ShooterMmo.GameProtocol
                             MaximumCorpseSlotTagLength,
                             nameof(slot.AcceptedTags));
                     }
+                    var hasEquipmentSlotId = !string.IsNullOrWhiteSpace(
+                        slot.EquipmentSlotId);
+                    writer.Write(hasEquipmentSlotId);
+                    if (hasEquipmentSlotId)
+                    {
+                        WriteString(
+                            writer,
+                            slot.EquipmentSlotId,
+                            MaximumCorpseEquipmentSlotIdLength,
+                            nameof(slot.EquipmentSlotId));
+                    }
                     writer.Write(slot.Item != null);
                     if (slot.Item != null)
                     {
@@ -1247,6 +1358,22 @@ namespace ShooterMmo.GameProtocol
                         }
                     }
 
+                    if (!TryReadBoolean(reader, out var hasEquipmentSlotId, out error))
+                    {
+                        return false;
+                    }
+
+                    var equipmentSlotId = string.Empty;
+                    if (hasEquipmentSlotId
+                        && !TryReadString(
+                            reader,
+                            MaximumCorpseEquipmentSlotIdLength,
+                            out equipmentSlotId,
+                            out error))
+                    {
+                        return false;
+                    }
+
                     if (!TryReadBoolean(reader, out var hasItem, out error))
                     {
                         return false;
@@ -1282,6 +1409,7 @@ namespace ShooterMmo.GameProtocol
                         slotIndex,
                         slotKind,
                         acceptedTags,
+                        equipmentSlotId,
                         item);
                 }
 
@@ -1444,7 +1572,9 @@ namespace ShooterMmo.GameProtocol
             if (intent.OperationKind == RealtimeCorpseInteractionKind.LootItem
                 || intent.OperationKind == RealtimeCorpseInteractionKind.LootPartialStack
                 || intent.OperationKind == RealtimeCorpseInteractionKind.DepositItem
-                || intent.OperationKind == RealtimeCorpseInteractionKind.DepositPartialStack)
+                || intent.OperationKind == RealtimeCorpseInteractionKind.DepositPartialStack
+                || intent.OperationKind == RealtimeCorpseInteractionKind.MoveItem
+                || intent.OperationKind == RealtimeCorpseInteractionKind.MovePartialStack)
             {
                 var validTarget = intent.TargetItemInstanceId == Guid.Empty
                     ? intent.ExpectedTargetItemRevision == 0
@@ -1457,6 +1587,7 @@ namespace ShooterMmo.GameProtocol
                     && validTarget
                     && (intent.OperationKind == RealtimeCorpseInteractionKind.LootItem
                         || intent.OperationKind == RealtimeCorpseInteractionKind.DepositItem
+                        || intent.OperationKind == RealtimeCorpseInteractionKind.MoveItem
                         ? intent.Quantity == 0
                         : intent.Quantity > 0);
             }
@@ -1553,6 +1684,9 @@ namespace ShooterMmo.GameProtocol
                         || tag.Length > MaximumCorpseSlotTagLength)
                     || slot.AcceptedTags.Distinct(StringComparer.Ordinal).Count()
                         != slot.AcceptedTags.Length
+                    || (chunk.SectionKind == "equipment")
+                        != !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                    || slot.EquipmentSlotId.Length > MaximumCorpseEquipmentSlotIdLength
                     || !IsValidCorpseItem(slot.Item))
                 {
                     return false;

@@ -917,9 +917,13 @@ internal sealed class ItemTransactionContext(
             select
                 slot.slot_index as "SlotIndex",
                 slot.slot_kind as "SlotKind",
+                equipment_slot.id as "EquipmentSlotId",
                 tag.tag_id as "TagId",
                 occupant.id as "OccupantItemInstanceId"
             from item_container_slots slot
+            left join equipment_slots equipment_slot
+              on @ContainerType = 'corpse_equipment'
+             and equipment_slot.sort_order = slot.slot_index
             left join item_container_slot_tags tag
               on tag.container_id = slot.container_id
              and tag.slot_index = slot.slot_index
@@ -929,7 +933,7 @@ internal sealed class ItemTransactionContext(
             where slot.container_id = @ContainerId
             order by slot.slot_index, tag.tag_id;
             """,
-            new { container.ContainerId },
+            new { container.ContainerId, container.ContainerType },
             Transaction,
             cancellationToken: cancellationToken))).ToArray();
 
@@ -938,18 +942,32 @@ internal sealed class ItemTransactionContext(
             {
                 row.SlotIndex,
                 row.SlotKind,
+                row.EquipmentSlotId,
                 row.OccupantItemInstanceId
             })
             .Select(group => new DestinationSlot(
                 group.Key.SlotIndex,
                 group.Key.SlotKind,
                 group.Where(row => row.TagId is not null).Select(row => row.TagId!).ToArray(),
+                group.Key.EquipmentSlotId,
                 group.Key.OccupantItemInstanceId))
             .OrderBy(slot => slot.SlotIndex)
             .ToArray();
 
         bool IsCompatible(DestinationSlot slot)
         {
+            if (string.Equals(
+                    container.ContainerType,
+                    "corpse_equipment",
+                    StringComparison.Ordinal)
+                && (string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                    || !ItemEquipmentRules.IsCompatible(
+                        definition.RuntimeDefinition,
+                        slot.EquipmentSlotId)))
+            {
+                return false;
+            }
+
             if (definition.IsBag)
             {
                 var destinationKind = ResolveBagDestinationKind(container.ContainerType, slot.SlotKind);
@@ -1595,6 +1613,8 @@ internal sealed class ItemTransactionContext(
 
         public string SlotKind { get; set; } = string.Empty;
 
+        public string? EquipmentSlotId { get; set; }
+
         public string? TagId { get; set; }
 
         public Guid? OccupantItemInstanceId { get; set; }
@@ -1604,6 +1624,7 @@ internal sealed class ItemTransactionContext(
         int SlotIndex,
         string SlotKind,
         string[] AcceptedTags,
+        string? EquipmentSlotId,
         Guid? OccupantItemInstanceId);
 
     private sealed class EquipmentDestinationRow

@@ -598,7 +598,8 @@ Each mutation is a short transaction.
 
 ### Item And Partial-Stack Transfers
 
-1. Unity sends a loot or deposit intent to the assigned SimulationWorker.
+1. Unity sends a loot, deposit, or internal corpse-move intent to the assigned
+   SimulationWorker.
 2. SimulationWorker validates connection, active session, corpse identity,
    proximity, and the one-active-interaction rule.
 3. The worker calls AuthService with an idempotent operation id and expected item
@@ -626,6 +627,23 @@ remaining capacity. An incompatible occupied destination can only use a complete
 item swap. The server recomputes authoritative carried weight and capacity for
 both loot and swap outcomes. A weight-increasing result above 140 percent is
 rejected, while a deposit that reduces carried weight remains allowed.
+
+Corpse sections are not read-only category displays. They are slots in the same
+authoritative corpse custody boundary. An item already in corpse custody may move
+to an empty corpse slot, split or merge a stack, or swap with an occupied corpse
+slot. The move may cross the general, equipment, and equipped-Bag-content
+sections when both slots accept the final items. Because custody and carried
+state do not change, an internal corpse move advances corpse, container, and item
+revisions without advancing the interacting character's item-state revision or
+forcing a character inventory refresh.
+
+Every corpse equipment slot retains its canonical equipment-slot id. The server
+validates item-definition compatibility against that id, and Unity presents the
+catalog display name and id instead of a generic slot number. Death presentation
+snapshots remain immutable historical metadata and do not change when live corpse
+items are rearranged. A non-empty Bag remains an aggregate root and cannot use an
+ordinary internal move; the existing atomic Bag aggregate operation remains its
+only move boundary.
 
 Database locks are never held while waiting for a client network round trip.
 
@@ -690,9 +708,12 @@ The implementation must enforce all of the following:
     either commit completely or leave all prior state unchanged.
 11. Operation ids are idempotent and cannot be reused with a different payload.
 12. Character, Bag, corpse, container, and item locks use one stable ordering.
-13. Corpse expiry and a container transfer cannot both claim or destroy the same quantity.
-14. Account-tier reduction cannot lose Secure Container contents.
-15. Redis state can never override committed PostgreSQL custody.
+13. Corpse expiry and a container transfer cannot both claim or destroy the same
+    quantity.
+14. Internal corpse moves preserve custody, carry state, immutable death
+    presentation snapshots, and typed corpse equipment-slot compatibility.
+15. Account-tier reduction cannot lose Secure Container contents.
+16. Redis state can never override committed PostgreSQL custody.
 
 ## Deferred Balance And Content Values
 
@@ -765,9 +786,10 @@ Phase 11 adds exact-session corpse reads and bidirectional container mutations
 over that durable custody.
 SimulationWorker owns bounded presentation, one active view per player,
 three-dimensional proximity and lifetime validation, and viewer fanout. Full and
-partial transfers, ordinary occupied-slot swaps, and atomic Bag aggregate swaps
+partial transfers, internal corpse rearrangement, ordinary occupied-slot swaps,
+and atomic Bag aggregate swaps
 reuse the AuthService transaction kernel with targeted revisions and stable lock
-ordering. Unity assembles protocol-v10 presence, complete snapshots, slot tags,
+ordering. Unity assembles protocol-v11 presence, complete snapshots, slot tags,
 and committed deltas without applying optimistic custody. The generic capsule
 and uGUI are replaceable presentation.
 

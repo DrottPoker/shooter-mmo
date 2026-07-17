@@ -192,12 +192,17 @@ audits only the loot still in corpse custody.
 Phase 11 adds exact-session corpse open and mutation routes, targeted revision
 checks, concurrent viewers, proximity and lifetime validation, bidirectional
 full and partial transfers, ordinary occupied-slot swaps, and atomic Bag
-aggregate swaps. SimulationWorker keeps bounded runtime presentation and viewer
-state, broadcasts committed deltas, and never holds item collections or a
-database transaction. Protocol version `10` includes corpse destination slot
-tags and deposit intents. The persistent Unity corpse controller assembles
-authoritative state for a temporary generic capsule and uGUI drag loop without
-optimistic custody, then refreshes inventory to at least the committed revision.
+aggregate swaps. The same authority supports move, split, merge, and swap
+between corpse slots and sections. Corpse equipment slots preserve their
+canonical equipment-slot identity and reject incompatible definitions.
+SimulationWorker keeps bounded runtime presentation and viewer state,
+broadcasts committed deltas, and never holds item collections or a database
+transaction. Protocol version `11` includes corpse destination slot tags,
+equipment-slot ids, deposit intents, and corpse-internal move intents. The
+persistent Unity corpse controller assembles authoritative state for a temporary
+generic capsule and uGUI drag loop without optimistic custody. It refreshes
+character inventory only after custody-changing commits, while pure corpse
+rearrangement advances corpse state alone.
 
 Carried weight excludes every equipment-slot item, including the equipped Bag
 root. Permanent inventory, equipped Bag contents, carried empty Bags, and Secure

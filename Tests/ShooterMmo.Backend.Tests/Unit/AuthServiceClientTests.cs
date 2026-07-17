@@ -590,6 +590,71 @@ public sealed class AuthServiceClientTests
         Assert.Equal(8, result.Value.Corpse!.Revision);
     }
 
+    [Theory]
+    [InlineData("move_item", "move_corpse_item")]
+    [InlineData("move_partial_stack", "move_corpse_partial_stack")]
+    public async Task CorpseInternalMoveAcceptsAuthorityResponseWithoutCharacterRevision(
+        string requestOperationKind,
+        string transactionOperationKind)
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var corpseId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var destinationContainerId = Guid.NewGuid();
+        var requestBody = new SimulationCorpseMutationRequest(
+            operationId,
+            Guid.NewGuid(),
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            requestOperationKind,
+            7,
+            itemId,
+            2,
+            Quantity: requestOperationKind == "move_partial_stack" ? 1 : null,
+            DestinationContainerId: destinationContainerId,
+            ExpectedDestinationContainerRevision: 3,
+            DestinationSlotIndex: 1);
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            transaction = new
+            {
+                operationId,
+                operationKind = transactionOperationKind,
+                succeeded = true,
+                error = (object?)null,
+                characterRevisions = Array.Empty<object>(),
+                containerRevisions = new[]
+                {
+                    new { containerId = destinationContainerId, revision = 4 }
+                },
+                itemRevisions = new[] { new { itemInstanceId = itemId, revision = 3 } },
+                recoveryDeliveryIds = Array.Empty<Guid>(),
+                secureContainerEntitlementRevision = (long?)null
+            },
+            corpse = CreateCorpseViewPayload(
+                corpseId,
+                characterId,
+                "local-shard-1",
+                8)
+        }));
+
+        var result = await CreateClient(handler).MutateCorpseAsync(
+            simulationSessionId,
+            corpseId,
+            requestBody,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(transactionOperationKind, result.Value!.Transaction.OperationKind);
+        Assert.Empty(result.Value.Transaction.CharacterRevisions);
+        Assert.Equal(8, result.Value.Corpse!.Revision);
+    }
+
     [Fact]
     public async Task CorpseClientRejectsCrossShardViewAndOverHardCapMutation()
     {
@@ -860,6 +925,12 @@ public sealed class AuthServiceClientTests
                     slotIndex = 0,
                     slotKind = "general",
                     acceptedTags = Array.Empty<string>(),
+                    equipmentSlotId = string.Equals(
+                        sectionKind,
+                        "equipment",
+                        StringComparison.Ordinal)
+                        ? "head"
+                        : string.Empty,
                     item = (object?)null
                 }
             }

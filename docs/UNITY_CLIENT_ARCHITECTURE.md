@@ -188,7 +188,7 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 10 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 11 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
@@ -451,15 +451,18 @@ when a stale base or concurrency result requires it. It never writes inventory
 or corpse custody locally. A disconnect clears uncertain transient state, and a
 new joined session rebuilds presence and views from server authority.
 
-Protocol version `10` carries chunked presence, destination slot tags, open,
-close, refresh, full-item and partial-stack loot or deposit, ordinary slot swap,
-atomic Bag swap, operation-result, targeted view-state, and view-closure
-messages on the reliable ordered path. Complete snapshots must contain exactly
-the canonical general inventory, equipment, and Bag sections. Chunk metadata,
-container revisions, slot capacities, ids, tags, and item revisions must remain
-coherent before state becomes visible. A committed corpse result forces the
-inventory controller to refresh until it reaches the returned item-state
-revision, even when the previous full snapshot was internally coherent.
+Protocol version `11` carries chunked presence, destination slot tags,
+canonical corpse equipment-slot ids, open, close, refresh, full-item and
+partial-stack loot or deposit, corpse-internal move, ordinary slot swap, atomic
+Bag swap, operation-result, targeted view-state, and view-closure messages on
+the reliable ordered path. Complete snapshots must contain exactly the canonical
+general inventory, equipment, and Bag sections. Chunk metadata, container
+revisions, slot capacities, ids, tags, equipment-slot identities, and item
+revisions must remain coherent before state becomes visible. A committed
+custody-changing result forces the inventory controller to refresh until it
+reaches the returned item-state revision, even when the previous full snapshot
+was internally coherent. Pure corpse rearrangement does not request a character
+refresh because its response contains no character revision or carry change.
 
 `CorpsePresentationController` creates one replaceable generic capsule for every
 nearby presence entry and updates it from server position and presentation key.
@@ -470,10 +473,14 @@ No authored scene or prefab object is required for the temporary presentation.
 The Context module switches to Corpse when an open snapshot arrives. It renders
 all three sections and reuses `InventoryDragPayload` for corpse sources. Dropping
 a full or selected partial stack into Permanent inventory, the equipped Bag, or
-Secure Container submits a typed corpse intent. Dropping a corpse Bag onto the
-occupied player Bag slot submits one atomic aggregate swap. Green and red target
-feedback remains advisory, while AuthService owns all final slot, policy,
-revision, weight, capacity, and hard-cap validation.
+Secure Container submits a typed corpse intent. Dropping a corpse item onto
+another corpse slot submits an authoritative internal move, split, merge, or
+complete swap. Equipment destinations show the catalog display name and stable
+equipment-slot id, and local feedback rejects obvious type mismatches. Dropping
+a corpse Bag onto the occupied player Bag slot submits one atomic aggregate
+swap. Green and red target feedback remains advisory, while AuthService owns all
+final slot, equipment, policy, revision, weight, capacity, and hard-cap
+validation.
 
 ### Development Item Tools
 

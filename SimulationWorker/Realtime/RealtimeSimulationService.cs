@@ -609,6 +609,8 @@ public sealed class RealtimeSimulationService(
                     or RealtimeCorpseInteractionKind.LootPartialStack
                     or RealtimeCorpseInteractionKind.DepositItem
                     or RealtimeCorpseInteractionKind.DepositPartialStack
+                    or RealtimeCorpseInteractionKind.MoveItem
+                    or RealtimeCorpseInteractionKind.MovePartialStack
                     or RealtimeCorpseInteractionKind.SwapBag =>
                     await corpseInteractionService.MutateAsync(
                         session,
@@ -1237,6 +1239,7 @@ public sealed class RealtimeSimulationService(
         }
 
         if (completed.Result.Mutation is not null
+            && completed.Result.RequiresInventoryRefresh
             && !TryApplyCorpseCarryState(
                 peer,
                 completed.Context,

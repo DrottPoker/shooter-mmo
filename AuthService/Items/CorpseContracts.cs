@@ -127,7 +127,8 @@ public sealed record CorpseViewSlotResponse(
     int SlotIndex,
     string SlotKind,
     IReadOnlyList<string> AcceptedTags,
-    CorpseViewItemResponse? Item);
+    CorpseViewItemResponse? Item,
+    string EquipmentSlotId = "");
 
 public sealed record CorpseViewItemResponse(
     Guid ItemInstanceId,
@@ -151,5 +152,7 @@ public static class CorpseInteractionOperationKinds
     public const string LootPartialStack = "loot_partial_stack";
     public const string DepositItem = "deposit_item";
     public const string DepositPartialStack = "deposit_partial_stack";
+    public const string MoveItem = "move_item";
+    public const string MovePartialStack = "move_partial_stack";
     public const string SwapBag = "swap_bag";
 }

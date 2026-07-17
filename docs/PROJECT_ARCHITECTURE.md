@@ -152,7 +152,7 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
-Protocol version 10 includes:
+Protocol version 11 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
@@ -166,9 +166,10 @@ Protocol version 10 includes:
   for newer committed item-state revisions.
 - Bounded reliable ordered item-operation intents and committed or rejected
   results with authoritative carry, item, container, and delivery revisions.
-- Chunked corpse presence and view state with destination slot tags, plus
-  reliable open, close, refresh, full or partial bidirectional transfer, atomic
-  ordinary slot and Bag-swap, result, and view-closure messages.
+- Chunked corpse presence and view state with destination slot tags and
+  canonical equipment-slot ids, plus reliable open, close, refresh, full or
+  partial bidirectional transfer, corpse-internal move, atomic ordinary slot
+  and Bag-swap, result, and view-closure messages.
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
@@ -672,20 +673,25 @@ combat producer pending
 6. After worker registration, SimulationWorker requests one read-only snapshot
    for its exact fresh runtime and active Shard assignment. It keeps the generic
    presentation state against database time advanced by a monotonic local clock.
-7. Protocol-v9 presence snapshots expose nearby runtime identity and
+7. Protocol-v11 presence snapshots expose nearby runtime identity and
    presentation only. A player may open one corpse within three metres. Multiple
    players may inspect the same corpse, and the worker validates proximity and
    cached lifetime before every refresh or mutation.
 8. AuthService opens a short read-only transaction for a complete three-section
-   snapshot. Loot and Bag swaps enter the normal item transaction kernel with
-   targeted item, destination, and Bag aggregate revisions. Full stacks move,
-   partial stacks split or merge, and occupied Bag roots exchange their complete
-   content aggregates atomically under the standard capacity and hard-cap rules.
+   snapshot. Loot, deposit, corpse-internal movement, and Bag swaps enter the
+   normal item transaction kernel with targeted item, destination, and Bag
+   aggregate revisions. Full stacks move, partial stacks split or merge,
+   complete incompatible items swap only between mutually compatible slots,
+   and occupied Bag roots exchange their complete content aggregates atomically
+   under the standard capacity and hard-cap rules. Corpse equipment slots carry
+   their canonical equipment-slot id and reject incompatible definitions.
 9. The mutation transaction closes before AuthService loads the committed view.
-   SimulationWorker applies the returned carry tuple, keeps the newest corpse
-   revision when HTTP completions arrive out of order, and reliably broadcasts
-   a targeted delta to every viewer. Unity refreshes stale bases and never
-   applies optimistic custody.
+   SimulationWorker applies returned carry only for custody-changing transfers,
+   keeps the newest corpse revision when HTTP completions arrive out of order,
+   and reliably broadcasts a targeted delta to every viewer. Pure corpse
+   rearrangement advances corpse, container, and item revisions without
+   changing character carry or item-state revision. Unity refreshes stale bases
+   and never applies optimistic custody.
 10. Expiry, invalidation, and not-found results close every affected view with a
     stable code. Runtime or session fencing failures disconnect the affected
     peer. A worker restart restores the corpse at its persisted transform with

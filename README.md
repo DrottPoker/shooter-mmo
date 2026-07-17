@@ -79,9 +79,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   restoration, and stable update-required handling for catalog mismatch.
 - A temporary uGUI inventory panel on the permanent client foundation, with the
   canonical layout, `B` character-storage, `C` equipment plus character-storage,
-  and `I` complete Development views, plus protocol-v10 controls for every
+  and `I` complete Development views, plus protocol-v11 controls for every
   currently exposed live item and corpse mutation, including atomic occupied
-  slot and Bag aggregate swaps.
+  slot and Bag aggregate swaps, corpse-internal rearrangement, and typed corpse
+  equipment destinations.
 - Persistent Unity corpse presence and view state with complete chunk assembly,
   monotonic deltas, stable closure handling, a generic replaceable capsule,
   `E` proximity interaction, and typed bidirectional drag-and-drop transfers.

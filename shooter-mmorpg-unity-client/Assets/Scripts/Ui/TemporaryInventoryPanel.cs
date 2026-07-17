@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ShooterMmo.Gameplay;
 using ShooterMmo.Items;
+using ShooterMmo.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -709,7 +710,7 @@ namespace ShooterMmo.Ui
 
             CreateMessage(
                 parent,
-                "Drag items between corpse and carried slots. Compatible stacks with space merge, complete items that cannot merge swap, and occupied Bag equipment uses an atomic aggregate swap.",
+                "Drag items between corpse slots or between corpse and carried storage. Typed equipment slots enforce their shown type, compatible stacks merge, complete items that cannot merge swap, and occupied Bag equipment uses an atomic aggregate swap.",
                 new Color(0.65f, 0.82f, 0.9f, 1f));
         }
 
@@ -722,7 +723,7 @@ namespace ShooterMmo.Ui
         {
             var item = slot.Item;
             var inventoryItem = item?.ToInventoryItem();
-            var label = "Slot " + (slot.SlotIndex + 1) + " [" + slot.SlotKind + "]";
+            var label = CorpseSlotLabel(inventoryState.Catalog, slot);
             if (item != null)
             {
                 label += "\n" + inventoryState.Catalog.GetDisplayName(item.DefinitionId)
@@ -737,7 +738,8 @@ namespace ShooterMmo.Ui
                 label,
                 inventoryItem,
                 false,
-                !string.Equals(slot.SlotKind, "general", StringComparison.Ordinal),
+                !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                    || !string.Equals(slot.SlotKind, "general", StringComparison.Ordinal),
                 item != null,
                 null,
                 payload,
@@ -763,6 +765,23 @@ namespace ShooterMmo.Ui
                 "bag" => "Corpse Bag Contents",
                 _ => "Corpse " + sectionKind
             };
+        }
+
+        private static string CorpseSlotLabel(
+            ClientItemCatalog catalog,
+            CorpseLootSlot slot)
+        {
+            if (!string.IsNullOrWhiteSpace(slot.EquipmentSlotId))
+            {
+                var displayName = catalog.TryGetEquipmentSlot(
+                    slot.EquipmentSlotId,
+                    out var equipmentSlot)
+                    ? equipmentSlot.DisplayName
+                    : slot.EquipmentSlotId;
+                return "Equipment: " + displayName + " [" + slot.EquipmentSlotId + "]";
+            }
+
+            return "Slot " + (slot.SlotIndex + 1) + " [" + slot.SlotKind + "]";
         }
 
         private void CreateActionBar(Transform parent, InventoryClientState state)
@@ -1051,6 +1070,15 @@ namespace ShooterMmo.Ui
                 return false;
             }
 
+            if (!CanOccupyCorpseEquipmentSlot(
+                    state.Catalog,
+                    slot.Item,
+                    sourceSlot,
+                    out reason))
+            {
+                return false;
+            }
+
             return InventoryTargetAdvisor.CanSwapWithExternalContainer(
                 state,
                 slot.Item,
@@ -1077,6 +1105,17 @@ namespace ShooterMmo.Ui
             {
                 reason = "Inventory or corpse mutation is unavailable while state is loading or busy.";
                 return false;
+            }
+
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                return CanMoveCorpseItemWithinCorpse(
+                    state,
+                    view,
+                    section,
+                    slot,
+                    payload,
+                    out reason);
             }
 
             if (payload.Kind != InventoryDragPayloadKind.Item
@@ -1117,6 +1156,15 @@ namespace ShooterMmo.Ui
                     || quantity >= item.Quantity))
             {
                 reason = "Partial deposit quantity must be greater than zero and smaller than the carried stack.";
+                return false;
+            }
+
+            if (!CanOccupyCorpseEquipmentSlot(
+                    state.Catalog,
+                    item,
+                    slot,
+                    out reason))
+            {
                 return false;
             }
 
@@ -1166,6 +1214,165 @@ namespace ShooterMmo.Ui
                 corpseContainer,
                 corpseSlot,
                 out reason);
+        }
+
+        private bool CanMoveCorpseItemWithinCorpse(
+            InventoryClientState state,
+            CorpseLootView view,
+            CorpseLootSection destinationSection,
+            CorpseLootSlot destinationSlot,
+            InventoryDragPayload payload,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (payload.CorpseId != view.CorpseId
+                || !view.TryFindItem(
+                    payload.ItemInstanceId,
+                    out var sourceItem,
+                    out var sourceSection,
+                    out var sourceSlot))
+            {
+                reason = "The corpse source item is no longer available.";
+                return false;
+            }
+
+            if (sourceSection.ContainerId == destinationSection.ContainerId
+                && sourceSlot.SlotIndex == destinationSlot.SlotIndex)
+            {
+                reason = "The corpse item is already in that slot.";
+                return false;
+            }
+
+            if (view.BagHasContents(sourceItem)
+                || view.BagHasContents(destinationSlot.Item))
+            {
+                reason = "A non-empty corpse Bag cannot use an ordinary internal slot move.";
+                return false;
+            }
+
+            var quantity = sourceItem.Quantity;
+            if (corpsePartialLoot
+                && (!int.TryParse(corpseQuantityText, out quantity)
+                    || quantity <= 0
+                    || quantity >= sourceItem.Quantity))
+            {
+                reason = "Partial move quantity must be greater than zero and smaller than the corpse stack.";
+                return false;
+            }
+
+            var sourceInventoryItem = sourceItem.ToInventoryItem();
+            var movedItem = quantity == sourceItem.Quantity
+                ? sourceInventoryItem
+                : new InventoryItem(
+                    sourceInventoryItem.ItemInstanceId,
+                    sourceInventoryItem.DefinitionId,
+                    quantity,
+                    sourceInventoryItem.Revision,
+                    sourceInventoryItem.Policies.ToArray());
+            if (!CanOccupyCorpseEquipmentSlot(
+                    state.Catalog,
+                    movedItem,
+                    destinationSlot,
+                    out reason))
+            {
+                return false;
+            }
+
+            var destinationContainer = ToInventoryContainer(destinationSection);
+            var sourceLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Corpse,
+                sourceSection.ContainerId,
+                CorpseContainerType(sourceSection.SectionKind),
+                sourceSlot.SlotIndex,
+                string.Empty,
+                Guid.Empty);
+            if (destinationSlot.Item == null)
+            {
+                return InventoryTargetAdvisor.CanPlaceInContainer(
+                    state,
+                    movedItem,
+                    sourceLocation,
+                    destinationContainer,
+                    ToInventorySlot(destinationSlot),
+                    quantity,
+                    out reason);
+            }
+
+            var targetItem = destinationSlot.Item.ToInventoryItem();
+            if (InventoryTargetAdvisor.CanMerge(
+                    state.Catalog,
+                    movedItem,
+                    targetItem,
+                    out reason))
+            {
+                return true;
+            }
+
+            if (quantity != sourceItem.Quantity)
+            {
+                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
+                return false;
+            }
+
+            if (!CanOccupyCorpseEquipmentSlot(
+                    state.Catalog,
+                    targetItem,
+                    sourceSlot,
+                    out reason))
+            {
+                return false;
+            }
+
+            var emptyDestinationSlot = ToEmptyInventorySlot(destinationSlot);
+            if (!InventoryTargetAdvisor.CanPlaceInContainer(
+                    state,
+                    sourceInventoryItem,
+                    sourceLocation,
+                    destinationContainer,
+                    emptyDestinationSlot,
+                    out reason))
+            {
+                return false;
+            }
+
+            var targetLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Corpse,
+                destinationSection.ContainerId,
+                CorpseContainerType(destinationSection.SectionKind),
+                destinationSlot.SlotIndex,
+                string.Empty,
+                Guid.Empty);
+            return InventoryTargetAdvisor.CanPlaceInContainer(
+                state,
+                targetItem,
+                targetLocation,
+                ToInventoryContainer(sourceSection),
+                ToEmptyInventorySlot(sourceSlot),
+                out reason);
+        }
+
+        private static bool CanOccupyCorpseEquipmentSlot(
+            ClientItemCatalog catalog,
+            InventoryItem item,
+            CorpseLootSlot slot,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (string.IsNullOrWhiteSpace(slot.EquipmentSlotId))
+            {
+                return true;
+            }
+
+            if (!catalog.TryGetEquipmentSlot(slot.EquipmentSlotId, out _)
+                || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                || !ItemEquipmentRules.IsCompatible(definition, slot.EquipmentSlotId))
+            {
+                reason = "The item is not compatible with corpse equipment slot '"
+                    + slot.EquipmentSlotId + "'.";
+                return false;
+            }
+
+            return true;
         }
 
         private static bool IsCarriedLootDestination(
@@ -1504,6 +1711,33 @@ namespace ShooterMmo.Ui
                 return;
             }
 
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                view.TryFindItem(
+                    payload.ItemInstanceId,
+                    out var corpseItem,
+                    out _,
+                    out _);
+                var corpseQuantity = corpseItem.Quantity;
+                if (corpsePartialLoot)
+                {
+                    int.TryParse(corpseQuantityText, out corpseQuantity);
+                }
+
+                ExecuteCorpse(
+                    corpseController.TryMoveWithinCorpse(
+                        corpseItem,
+                        section,
+                        slot,
+                        corpseQuantity,
+                        out var moveError),
+                    moveError,
+                    corpseQuantity < corpseItem.Quantity
+                        ? "Partial corpse rearrangement submitted."
+                        : "Corpse rearrangement submitted.");
+                return;
+            }
+
             state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
             if (IsReverseCorpseBagSwap(state, item, source, section, slot))
             {
@@ -1567,6 +1801,15 @@ namespace ShooterMmo.Ui
                 slot.SlotKind,
                 slot.AcceptedTags.ToArray(),
                 slot.Item?.ToInventoryItem());
+        }
+
+        private static InventorySlot ToEmptyInventorySlot(CorpseLootSlot slot)
+        {
+            return new InventorySlot(
+                slot.SlotIndex,
+                slot.SlotKind,
+                slot.AcceptedTags.ToArray(),
+                null);
         }
 
         private static string CorpseContainerType(string sectionKind)

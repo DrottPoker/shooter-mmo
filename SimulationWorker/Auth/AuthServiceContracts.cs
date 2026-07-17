@@ -255,7 +255,8 @@ public sealed record CorpseViewSlotResponse(
     int SlotIndex,
     string SlotKind,
     IReadOnlyList<string> AcceptedTags,
-    CorpseViewItemResponse? Item);
+    CorpseViewItemResponse? Item,
+    string EquipmentSlotId = "");
 
 public sealed record CorpseViewItemResponse(
     Guid ItemInstanceId,

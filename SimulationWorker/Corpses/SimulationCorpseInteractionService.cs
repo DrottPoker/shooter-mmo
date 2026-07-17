@@ -74,6 +74,8 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
             RealtimeCorpseInteractionKind.LootPartialStack => "loot_partial_stack",
             RealtimeCorpseInteractionKind.DepositItem => "deposit_item",
             RealtimeCorpseInteractionKind.DepositPartialStack => "deposit_partial_stack",
+            RealtimeCorpseInteractionKind.MoveItem => "move_item",
+            RealtimeCorpseInteractionKind.MovePartialStack => "move_partial_stack",
             RealtimeCorpseInteractionKind.SwapBag => "swap_bag",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(intent),
@@ -134,7 +136,7 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
             error.Code,
             error.Message,
             RequiresCorpseRefresh(error.Code),
-            RequiresInventoryRefresh(error.Code),
+            RequiresInventoryRefresh(intent.OperationKind, error.Code),
             ShouldCloseView(error.Code),
             ShouldDisconnect(error.Code));
     }
@@ -148,12 +150,21 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
             or "item_slot_occupied";
     }
 
-    private static bool RequiresInventoryRefresh(string code)
+    private static bool RequiresInventoryRefresh(
+        RealtimeCorpseInteractionKind operationKind,
+        string code)
     {
-        return RequiresCorpseRefresh(code)
+        return !IsInternalMove(operationKind)
+            && (RequiresCorpseRefresh(code)
             || code is "carry_weight_limit_exceeded"
                 or "item_stack_limit_exceeded"
-                or "item_stack_incompatible";
+                or "item_stack_incompatible");
+    }
+
+    private static bool IsInternalMove(RealtimeCorpseInteractionKind operationKind)
+    {
+        return operationKind is RealtimeCorpseInteractionKind.MoveItem
+            or RealtimeCorpseInteractionKind.MovePartialStack;
     }
 
     private static bool ShouldCloseView(string code)
@@ -207,13 +218,16 @@ public sealed record SimulationCorpseInteractionResult(
         RealtimeCorpseInteractionIntent intent,
         CorpseMutationResponse mutation)
     {
+        var requiresInventoryRefresh = intent.OperationKind
+            is not (RealtimeCorpseInteractionKind.MoveItem
+                or RealtimeCorpseInteractionKind.MovePartialStack);
         return new SimulationCorpseInteractionResult(
             intent,
             mutation.Corpse,
             mutation,
             null,
             false,
-            true,
+            requiresInventoryRefresh,
             mutation.Corpse is null,
             false);
     }

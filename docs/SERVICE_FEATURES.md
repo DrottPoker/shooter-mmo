@@ -512,11 +512,14 @@ concurrent inspection, and authoritative looting:
   refresh, or mutation. AuthService repeats exact-session, Shard, and lifetime
   authority inside the transaction boundary.
 - Corpse reads use short read-only snapshots. Full and partial transfers,
-  ordinary occupied-slot swaps, and atomic Bag aggregate swaps reuse
-  `ItemTransactionService` with targeted item, container, and Bag-root
-  revisions. Unrelated corpse changes may commit
-  concurrently, competing custody has one stable winner, and no PostgreSQL
-  transaction remains open across a client network wait.
+  internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
+  swaps reuse `ItemTransactionService` with targeted item, container, and
+  Bag-root revisions. Internal moves can split, merge, or swap across the three
+  corpse sections without advancing character item-state or carry. Corpse
+  equipment destinations carry canonical equipment-slot ids and validate
+  definition compatibility. Unrelated corpse changes may commit concurrently,
+  competing custody has one stable winner, and no PostgreSQL transaction remains
+  open across a client network wait.
 - The worker broadcasts each committed targeted delta or replacement to every
   current viewer. Its runtime store accepts only monotonic corpse revisions.
   Expiry, invalidation, and missing-corpse results close affected views with
@@ -527,7 +530,7 @@ concurrent inspection, and authoritative looting:
   or safe disconnect.
 - Unity keeps one persistent definition-id catalog index, presentation and icon
   cache, complete and focused snapshot state, monotonic observed revisions,
-  structured errors, and one operation journal. It correlates protocol-v10
+  structured errors, and one operation journal. It correlates protocol-v11
   results and refreshes authoritative HTTP state to at least the committed revision
   without optimistically changing item custody or quantity.
 - Unity also owns immutable corpse presence and view state, complete chunk
@@ -535,7 +538,9 @@ concurrent inspection, and authoritative looting:
   refresh-on-stale behavior. A replaceable generic corpse capsule presents the
   server identity and transform. `E` opens the nearest eligible corpse, and the
   same typed drag layer submits bidirectional full or partial transfers,
-  compatible stack merges, ordinary occupied-slot swaps, and Bag swaps.
+  corpse-internal moves, compatible stack merges, ordinary occupied-slot swaps,
+  and Bag swaps. Corpse equipment buttons display the canonical slot label and
+  id instead of an untyped number.
 - The runtime uGUI panel is replaceable presentation over that state. It exposes
   Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
   Recovery Storage plus every current live mutation. Typed reusable drag sources

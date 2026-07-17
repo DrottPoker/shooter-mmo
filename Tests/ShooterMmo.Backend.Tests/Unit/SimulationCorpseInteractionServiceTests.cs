@@ -132,6 +132,46 @@ public sealed class SimulationCorpseInteractionServiceTests
             handler.Body.Value.GetProperty("expectedTargetItemRevision").GetInt64());
     }
 
+    [Fact]
+    public async Task InternalMoveIntentMapsEveryTransferExpectationToDurableAuthority()
+    {
+        var handler = new CapturingProblemHandler();
+        var service = CreateService(handler);
+        var itemId = Guid.NewGuid();
+        var destinationId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        var intent = RealtimeCorpseInteractionIntent.CreateMovePartialStack(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            14,
+            itemId,
+            9,
+            2,
+            destinationId,
+            11,
+            5,
+            targetId,
+            8);
+
+        var result = await service.MutateAsync(
+            CreateSession(),
+            intent,
+            CancellationToken.None);
+
+        Assert.NotNull(handler.Body);
+        Assert.Equal(
+            "move_partial_stack",
+            handler.Body.Value.GetProperty("operationKind").GetString());
+        Assert.Equal(itemId, handler.Body.Value.GetProperty("itemInstanceId").GetGuid());
+        Assert.Equal(2, handler.Body.Value.GetProperty("quantity").GetInt32());
+        Assert.Equal(
+            destinationId,
+            handler.Body.Value.GetProperty("destinationContainerId").GetGuid());
+        Assert.Equal(5, handler.Body.Value.GetProperty("destinationSlotIndex").GetInt32());
+        Assert.Equal(targetId, handler.Body.Value.GetProperty("targetItemInstanceId").GetGuid());
+        Assert.False(result.RequiresInventoryRefresh);
+    }
+
     private static SimulationCorpseInteractionService CreateService(HttpMessageHandler handler)
     {
         return new SimulationCorpseInteractionService(new AuthServiceClient(new HttpClient(handler)

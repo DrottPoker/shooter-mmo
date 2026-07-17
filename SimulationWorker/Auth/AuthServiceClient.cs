@@ -9,6 +9,7 @@ namespace SimulationWorker.Auth;
 public sealed class AuthServiceClient(HttpClient httpClient)
 {
     private const int MaximumRestoredCorpses = 4_096;
+    private const int MaximumCorpseEquipmentSlotIdLength = 64;
 
     public async Task<DependencyHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
@@ -430,13 +431,16 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         SimulationCorpseMutationRequest request,
         Guid corpseId)
     {
+        var isInternalMove = request.OperationKind is "move_item" or "move_partial_stack";
+        var expectedCharacterRevisionCount = isInternalMove ? 0 : 1;
         if (response.Transaction is null
             || response.Transaction.OperationId != request.OperationId
             || !response.Transaction.Succeeded
             || response.Transaction.Error is not null
             || response.Transaction.CharacterRevisions is null
-            || response.Transaction.CharacterRevisions.Count != 1
-            || response.Transaction.CharacterRevisions[0].CharacterId != request.CharacterId
+            || response.Transaction.CharacterRevisions.Count != expectedCharacterRevisionCount
+            || (!isInternalMove
+                && response.Transaction.CharacterRevisions[0].CharacterId != request.CharacterId)
             || response.Transaction.ContainerRevisions is null
             || response.Transaction.ContainerRevisions.Count > 8
             || response.Transaction.ItemRevisions is null
@@ -454,18 +458,20 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             "loot_partial_stack" => "loot_corpse_partial_stack",
             "deposit_item" => "deposit_corpse_item",
             "deposit_partial_stack" => "deposit_corpse_partial_stack",
+            "move_item" => "move_corpse_item",
+            "move_partial_stack" => "move_corpse_partial_stack",
             "swap_bag" => "swap_corpse_bag",
             _ => string.Empty
         };
-        var character = response.Transaction.CharacterRevisions[0];
         return string.Equals(
                 response.Transaction.OperationKind,
                 expectedOperationKind,
                 StringComparison.Ordinal)
-            && IsValidCarryState(
-                character.Revision,
-                character.CarriedWeight,
-                character.CarryCapacity)
+            && (isInternalMove
+                || IsValidCarryState(
+                    response.Transaction.CharacterRevisions[0].Revision,
+                    response.Transaction.CharacterRevisions[0].CarriedWeight,
+                    response.Transaction.CharacterRevisions[0].CarryCapacity))
             && response.Transaction.ContainerRevisions.All(
                 revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
             && response.Transaction.ItemRevisions.All(
@@ -516,13 +522,19 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             }
 
             var slotIndexes = new HashSet<int>();
+            var equipmentSlotIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var slot in section.Slots)
             {
+                var isEquipmentSlot = section.SectionKind == "equipment";
                 if (!slotIndexes.Add(slot.SlotIndex)
                     || slot.SlotIndex < 0
                     || slot.SlotIndex >= section.SlotCapacity
                     || string.IsNullOrWhiteSpace(slot.SlotKind)
-                    || slot.AcceptedTags is null)
+                    || slot.AcceptedTags is null
+                    || isEquipmentSlot != !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                    || (slot.EquipmentSlotId?.Length ?? 0)
+                        > MaximumCorpseEquipmentSlotIdLength
+                    || (isEquipmentSlot && !equipmentSlotIds.Add(slot.EquipmentSlotId!)))
                 {
                     return false;
                 }

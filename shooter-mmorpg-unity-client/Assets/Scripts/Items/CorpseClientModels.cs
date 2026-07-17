@@ -126,7 +126,7 @@ namespace ShooterMmo.Items
     public sealed class CorpseLootSlot
     {
         public CorpseLootSlot(int slotIndex, string slotKind, CorpseLootItem item)
-            : this(slotIndex, slotKind, Array.Empty<string>(), item)
+            : this(slotIndex, slotKind, Array.Empty<string>(), string.Empty, item)
         {
         }
 
@@ -135,10 +135,21 @@ namespace ShooterMmo.Items
             string slotKind,
             string[] acceptedTags,
             CorpseLootItem item)
+            : this(slotIndex, slotKind, acceptedTags, string.Empty, item)
+        {
+        }
+
+        public CorpseLootSlot(
+            int slotIndex,
+            string slotKind,
+            string[] acceptedTags,
+            string equipmentSlotId,
+            CorpseLootItem item)
         {
             SlotIndex = slotIndex;
             SlotKind = slotKind ?? string.Empty;
             AcceptedTags = acceptedTags ?? Array.Empty<string>();
+            EquipmentSlotId = equipmentSlotId ?? string.Empty;
             Item = item;
         }
 
@@ -147,6 +158,8 @@ namespace ShooterMmo.Items
         public string SlotKind { get; }
 
         public IReadOnlyList<string> AcceptedTags { get; }
+
+        public string EquipmentSlotId { get; }
 
         public CorpseLootItem Item { get; }
     }
@@ -256,6 +269,18 @@ namespace ShooterMmo.Items
             section = null;
             slot = null;
             return false;
+        }
+
+        public bool BagHasContents(CorpseLootItem bag)
+        {
+            if (bag == null || bag.BagContentsContainerId == Guid.Empty)
+            {
+                return false;
+            }
+
+            return Sections.Any(section =>
+                section.ContainerId == bag.BagContentsContainerId
+                && section.Slots.Any(slot => slot.Item != null));
         }
 
         private static int SectionOrder(string sectionKind)
@@ -691,6 +716,7 @@ namespace ShooterMmo.Items
                 source.SlotIndex,
                 source.SlotKind,
                 source.AcceptedTags,
+                source.EquipmentSlotId,
                 source.Item == null ? null : new CorpseLootItem(source.Item));
         }
 

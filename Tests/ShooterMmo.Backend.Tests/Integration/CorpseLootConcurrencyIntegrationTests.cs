@@ -535,6 +535,139 @@ public sealed class CorpseLootConcurrencyIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CorpseContainerSupportsInternalRearrangementAndTypedEquipmentSlots()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "internal-move-source@example.com",
+            "internal_move_source",
+            "Internal Move Source");
+        var viewer = await context.RegisterPlayerAsync(
+            "internal-move-viewer@example.com",
+            "internal_move_viewer",
+            "Internal Move Viewer");
+        var sourceInventory = (await GetSnapshotAsync(context, source)).PermanentInventory;
+        var ring = await GrantAsync(
+            context,
+            source,
+            "ring.starter_band",
+            1,
+            sourceInventory.ContainerId,
+            0);
+        var vest = await GrantAsync(
+            context,
+            source,
+            "armor.starter_vest",
+            1,
+            sourceInventory.ContainerId,
+            1);
+        var ore = await GrantAsync(
+            context,
+            source,
+            "material.iron_ore",
+            6,
+            sourceInventory.ContainerId,
+            2);
+        var death = await CreateCorpseAsync(context, source);
+        var corpseInventoryId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "general_inventory");
+        var corpseEquipmentId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "equipment");
+        var viewerRevision = (await GetSnapshotAsync(context, viewer)).ItemStateRevision;
+
+        var moved = await MoveWithinCorpseAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, ring),
+            corpseInventoryId,
+            5);
+        Assert.True(moved.Succeeded, moved.Error?.Message);
+        Assert.Empty(moved.CharacterRevisions);
+        await AssertLocationAsync(context, ring, corpseInventoryId, 5);
+
+        var split = await MovePartialWithinCorpseAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, ore),
+            2,
+            corpseInventoryId,
+            6);
+        Assert.True(split.Succeeded, split.Error?.Message);
+        Assert.Empty(split.CharacterRevisions);
+        var splitItemId = Assert.Single(
+            split.ItemRevisions,
+            revision => revision.ItemInstanceId != ore).ItemInstanceId;
+        Assert.Equal(4, (await LoadItemAsync(context, ore)).Quantity);
+        Assert.Equal(2, (await LoadItemAsync(context, splitItemId)).Quantity);
+
+        var merged = await MoveWithinCorpseWithTargetAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, splitItemId),
+            corpseInventoryId,
+            2,
+            await LoadItemAsync(context, ore));
+        Assert.True(merged.Succeeded, merged.Error?.Message);
+        Assert.Empty(merged.CharacterRevisions);
+        Assert.Equal(6, (await LoadItemAsync(context, ore)).Quantity);
+
+        var swapped = await MoveWithinCorpseWithTargetAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, ring),
+            corpseInventoryId,
+            1,
+            await LoadItemAsync(context, vest));
+        Assert.True(swapped.Succeeded, swapped.Error?.Message);
+        Assert.Empty(swapped.CharacterRevisions);
+        await AssertLocationAsync(context, ring, corpseInventoryId, 1);
+        await AssertLocationAsync(context, vest, corpseInventoryId, 5);
+
+        var ringSlotIndex = await LoadEquipmentSlotIndexAsync(context, "ring_1");
+        var ringEquipped = await MoveWithinCorpseAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, ring),
+            corpseEquipmentId,
+            ringSlotIndex);
+        Assert.True(ringEquipped.Succeeded, ringEquipped.Error?.Message);
+        await AssertLocationAsync(context, ring, corpseEquipmentId, ringSlotIndex);
+
+        var headSlotIndex = await LoadEquipmentSlotIndexAsync(context, "head");
+        var incompatible = await MoveWithinCorpseAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, vest),
+            corpseEquipmentId,
+            headSlotIndex);
+        Assert.False(incompatible.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemSlotIncompatible, incompatible.Error!.Code);
+        await AssertLocationAsync(context, vest, corpseInventoryId, 5);
+
+        var bodySlotIndex = await LoadEquipmentSlotIndexAsync(context, "body_armor");
+        var vestEquipped = await MoveWithinCorpseAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, vest),
+            corpseEquipmentId,
+            bodySlotIndex);
+        Assert.True(vestEquipped.Succeeded, vestEquipped.Error?.Message);
+        await AssertLocationAsync(context, vest, corpseEquipmentId, bodySlotIndex);
+        Assert.Equal(viewerRevision, (await GetSnapshotAsync(context, viewer)).ItemStateRevision);
+    }
+
+    [PostgresIntegrationFact]
     public async Task CorpseDepositEnforcesPolicyAndSwapHardCapWithoutPartialMutation()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -867,6 +1000,77 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             CancellationToken.None);
     }
 
+    private static async Task<ItemTransactionResult> MoveWithinCorpseAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        Guid destinationContainerId,
+        int destinationSlotIndex)
+    {
+        return await MoveWithinCorpseWithTargetAsync(
+            context,
+            characterId,
+            corpseId,
+            item,
+            destinationContainerId,
+            destinationSlotIndex,
+            null);
+    }
+
+    private static async Task<ItemTransactionResult> MoveWithinCorpseWithTargetAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        Guid destinationContainerId,
+        int destinationSlotIndex,
+        ItemRow? target)
+    {
+        return await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<MoveCorpseItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new MoveCorpseItemCommand(
+                    characterId,
+                    corpseId,
+                    item.ItemInstanceId,
+                    item.Revision,
+                    destinationContainerId,
+                    await LoadContainerRevisionAsync(context, destinationContainerId),
+                    destinationSlotIndex,
+                    target?.ItemInstanceId,
+                    target?.Revision)),
+            CancellationToken.None);
+    }
+
+    private static async Task<ItemTransactionResult> MovePartialWithinCorpseAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        Guid corpseId,
+        ItemRow item,
+        int quantity,
+        Guid destinationContainerId,
+        int destinationSlotIndex)
+    {
+        return await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<MoveCorpsePartialStackCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new MoveCorpsePartialStackCommand(
+                    characterId,
+                    corpseId,
+                    item.ItemInstanceId,
+                    item.Revision,
+                    quantity,
+                    destinationContainerId,
+                    await LoadContainerRevisionAsync(context, destinationContainerId),
+                    destinationSlotIndex,
+                    null,
+                    null)),
+            CancellationToken.None);
+    }
+
     private static async Task<ItemTransactionResult> SwapBagAsync(
         PostgresIntegrationTestContext context,
         Guid characterId,
@@ -1025,6 +1229,16 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         return await connection.ExecuteScalarAsync<Guid>(
             "select container_id from corpse_sections where corpse_id = @CorpseId and section_kind = @SectionKind;",
             new { CorpseId = corpseId, SectionKind = sectionKind });
+    }
+
+    private static async Task<int> LoadEquipmentSlotIndexAsync(
+        PostgresIntegrationTestContext context,
+        string equipmentSlotId)
+    {
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        return await connection.ExecuteScalarAsync<int>(
+            "select sort_order from equipment_slots where id = @EquipmentSlotId;",
+            new { EquipmentSlotId = equipmentSlotId });
     }
 
     private static async Task AssertLocationAsync(

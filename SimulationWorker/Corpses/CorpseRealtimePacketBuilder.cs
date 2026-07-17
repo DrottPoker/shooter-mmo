@@ -296,6 +296,7 @@ public static class CorpseRealtimePacketBuilder
             slot.SlotIndex,
             slot.SlotKind,
             slot.AcceptedTags.ToArray(),
+            slot.EquipmentSlotId,
             slot.Item is null
                 ? null!
                 : new RealtimeCorpseItem(
@@ -313,7 +314,11 @@ public static class CorpseRealtimePacketBuilder
     {
         if (first.SlotIndex != second.SlotIndex
             || !string.Equals(first.SlotKind, second.SlotKind, StringComparison.Ordinal)
-            || !first.AcceptedTags.SequenceEqual(second.AcceptedTags, StringComparer.Ordinal))
+            || !first.AcceptedTags.SequenceEqual(second.AcceptedTags, StringComparer.Ordinal)
+            || !string.Equals(
+                first.EquipmentSlotId,
+                second.EquipmentSlotId,
+                StringComparison.Ordinal))
         {
             return false;
         }

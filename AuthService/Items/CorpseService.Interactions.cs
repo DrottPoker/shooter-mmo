@@ -253,6 +253,57 @@ public sealed partial class CorpseService
 
         if (string.Equals(
                 operationKind,
+                CorpseInteractionOperationKinds.MoveItem,
+                StringComparison.Ordinal)
+            && HasItemTransferShape(request, requiresPartialQuantity: false))
+        {
+            return TransactionService.ExecuteAsync(
+                new ItemTransactionRequest<MoveCorpseItemCommand>(
+                    request.OperationId,
+                    actor,
+                    new MoveCorpseItemCommand(
+                        request.CharacterId,
+                        corpseId,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.DestinationContainerId!.Value,
+                        request.ExpectedDestinationContainerRevision!.Value,
+                        request.DestinationSlotIndex!.Value,
+                        NormalizeGuid(request.TargetItemInstanceId),
+                        NormalizeRevision(
+                            request.TargetItemInstanceId,
+                            request.ExpectedTargetItemRevision))),
+                cancellationToken);
+        }
+
+        if (string.Equals(
+                operationKind,
+                CorpseInteractionOperationKinds.MovePartialStack,
+                StringComparison.Ordinal)
+            && HasItemTransferShape(request, requiresPartialQuantity: true))
+        {
+            return TransactionService.ExecuteAsync(
+                new ItemTransactionRequest<MoveCorpsePartialStackCommand>(
+                    request.OperationId,
+                    actor,
+                    new MoveCorpsePartialStackCommand(
+                        request.CharacterId,
+                        corpseId,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.Quantity!.Value,
+                        request.DestinationContainerId!.Value,
+                        request.ExpectedDestinationContainerRevision!.Value,
+                        request.DestinationSlotIndex!.Value,
+                        NormalizeGuid(request.TargetItemInstanceId),
+                        NormalizeRevision(
+                            request.TargetItemInstanceId,
+                            request.ExpectedTargetItemRevision))),
+                cancellationToken);
+        }
+
+        if (string.Equals(
+                operationKind,
                 CorpseInteractionOperationKinds.SwapBag,
                 StringComparison.Ordinal)
             && HasBagSwapShape(request))
@@ -468,6 +519,7 @@ public sealed partial class CorpseService
                 container.slot_capacity as "SlotCapacity",
                 slot.slot_index as "SlotIndex",
                 slot.slot_kind as "SlotKind",
+                coalesce(equipment_slot.id, '') as "EquipmentSlotId",
                 tag.tag_id as "AcceptedTag",
                 item.id as "ItemInstanceId",
                 item.definition_id as "DefinitionId",
@@ -478,6 +530,9 @@ public sealed partial class CorpseService
             from corpse_sections section
             join item_containers container on container.id = section.container_id
             join item_container_slots slot on slot.container_id = container.id
+            left join equipment_slots equipment_slot
+              on section.section_kind = 'equipment'
+             and equipment_slot.sort_order = slot.slot_index
             left join item_container_slot_tags tag
               on tag.container_id = slot.container_id
              and tag.slot_index = slot.slot_index
@@ -519,6 +574,7 @@ public sealed partial class CorpseService
                 {
                     row.SlotIndex,
                     row.SlotKind,
+                    row.EquipmentSlotId,
                     row.ItemInstanceId,
                     row.DefinitionId,
                     row.Quantity,
@@ -540,9 +596,10 @@ public sealed partial class CorpseService
                                 slot.Key.ItemInstanceId.Value,
                                 slot.Key.DefinitionId!,
                                 slot.Key.Quantity!.Value,
-                                slot.Key.ItemRevision!.Value,
-                                slot.Key.BagContentsContainerId,
-                                slot.Key.BagContentsRevision)))
+                                 slot.Key.ItemRevision!.Value,
+                                 slot.Key.BagContentsContainerId,
+                                 slot.Key.BagContentsRevision),
+                        slot.Key.EquipmentSlotId))
                     .OrderBy(slot => slot.SlotIndex)
                     .ToArray()))
             .ToArray();
@@ -785,6 +842,8 @@ public sealed partial class CorpseService
         public int SlotIndex { get; set; }
 
         public string SlotKind { get; set; } = string.Empty;
+
+        public string EquipmentSlotId { get; set; } = string.Empty;
 
         public string? AcceptedTag { get; set; }
 

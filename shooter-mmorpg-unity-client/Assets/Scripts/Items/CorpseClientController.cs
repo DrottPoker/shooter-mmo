@@ -321,6 +321,93 @@ namespace ShooterMmo.Items
             return Send(intent, "The corpse-deposit request could not be sent.", out error);
         }
 
+        public bool TryMoveWithinCorpse(
+            CorpseLootItem item,
+            CorpseLootSection destination,
+            CorpseLootSlot destinationSlot,
+            int quantity,
+            out string error)
+        {
+            error = string.Empty;
+            if (!CanBegin(out error)
+                || State.ActiveView == null
+                || item == null
+                || destination == null
+                || destinationSlot == null)
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                {
+                    error = "Current corpse source and destination state are required.";
+                }
+
+                return false;
+            }
+
+            if (!State.ActiveView.TryFindItem(
+                    item.ItemInstanceId,
+                    out var currentItem,
+                    out var sourceSection,
+                    out var sourceSlot)
+                || !State.ActiveView.TryGetSection(
+                    destination.SectionKind,
+                    out var currentSection)
+                || currentSection.ContainerId != destination.ContainerId
+                || !currentSection.TryGetSlot(destinationSlot.SlotIndex, out var currentSlot))
+            {
+                error = "The corpse source or destination is no longer available.";
+                return false;
+            }
+
+            if (sourceSection.ContainerId == currentSection.ContainerId
+                && sourceSlot.SlotIndex == currentSlot.SlotIndex)
+            {
+                error = "The corpse item is already in that slot.";
+                return false;
+            }
+
+            if (State.ActiveView.BagHasContents(currentItem)
+                || State.ActiveView.BagHasContents(currentSlot.Item))
+            {
+                error = "A non-empty corpse Bag cannot use an ordinary internal slot move.";
+                return false;
+            }
+
+            if (quantity <= 0 || quantity > currentItem.Quantity)
+            {
+                error = "Move quantity must be within the current corpse stack quantity.";
+                return false;
+            }
+
+            var operationId = Guid.NewGuid();
+            var targetId = currentSlot.Item?.ItemInstanceId ?? Guid.Empty;
+            var targetRevision = currentSlot.Item?.Revision ?? 0;
+            var intent = quantity < currentItem.Quantity
+                ? RealtimeCorpseInteractionIntent.CreateMovePartialStack(
+                    operationId,
+                    State.ActiveView.CorpseId,
+                    State.ActiveView.Revision,
+                    currentItem.ItemInstanceId,
+                    currentItem.Revision,
+                    quantity,
+                    currentSection.ContainerId,
+                    currentSection.ContainerRevision,
+                    currentSlot.SlotIndex,
+                    targetId,
+                    targetRevision)
+                : RealtimeCorpseInteractionIntent.CreateMoveItem(
+                    operationId,
+                    State.ActiveView.CorpseId,
+                    State.ActiveView.Revision,
+                    currentItem.ItemInstanceId,
+                    currentItem.Revision,
+                    currentSection.ContainerId,
+                    currentSection.ContainerRevision,
+                    currentSlot.SlotIndex,
+                    targetId,
+                    targetRevision);
+            return Send(intent, "The internal corpse-move request could not be sent.", out error);
+        }
+
         private bool Send(
             RealtimeCorpseInteractionIntent intent,
             string errorMessage,

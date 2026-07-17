@@ -59,6 +59,29 @@ public sealed class RealtimeCorpseProtocolTests
                 3,
                 Guid.Empty,
                 0),
+            RealtimeCorpseInteractionIntent.CreateMoveItem(
+                Guid.NewGuid(),
+                corpseId,
+                11,
+                Guid.NewGuid(),
+                7,
+                Guid.NewGuid(),
+                9,
+                4,
+                Guid.NewGuid(),
+                3),
+            RealtimeCorpseInteractionIntent.CreateMovePartialStack(
+                Guid.NewGuid(),
+                corpseId,
+                12,
+                Guid.NewGuid(),
+                8,
+                2,
+                Guid.NewGuid(),
+                10,
+                5,
+                Guid.Empty,
+                0),
             RealtimeCorpseInteractionIntent.CreateSwapBag(
                 Guid.NewGuid(),
                 corpseId,
@@ -188,17 +211,24 @@ public sealed class RealtimeCorpseProtocolTests
             "player_corpse",
             0,
             1,
-            "general_inventory",
+            "equipment",
             Guid.NewGuid(),
             7,
             false,
             2,
             0,
             [
-                new RealtimeCorpseSlot(0, "general", ["medical"], null!),
+                new RealtimeCorpseSlot(
+                    0,
+                    "general",
+                    ["medical"],
+                    "head",
+                    null!),
                 new RealtimeCorpseSlot(
                     1,
                     "general",
+                    Array.Empty<string>(),
+                    "body_armor",
                     new RealtimeCorpseItem(
                         Guid.NewGuid(),
                         "material.iron_ore",
@@ -220,6 +250,8 @@ public sealed class RealtimeCorpseProtocolTests
         Assert.Equal(expected.BaseRevision, actual.BaseRevision);
         Assert.Null(actual.Slots[0].Item);
         Assert.Equal(["medical"], actual.Slots[0].AcceptedTags);
+        Assert.Equal("head", actual.Slots[0].EquipmentSlotId);
+        Assert.Equal("body_armor", actual.Slots[1].EquipmentSlotId);
         Assert.Equal("material.iron_ore", actual.Slots[1].Item.DefinitionId);
     }
 

@@ -286,14 +286,17 @@ equipment, and Bag contents only after a complete authoritative snapshot has
 arrived. Drag full items into Permanent inventory, the equipped Bag, or Secure
 Container, or drag carried items back into compatible corpse slots. Enable the
 partial-stack control before dragging to request a specific quantity in either
-direction. Compatible stacks with remaining capacity merge. Dropping a complete
-item that cannot merge onto an occupied slot swaps the two items only when both
-original slots accept the opposite item and the result stays within the hard
-cap. Dropping either equipped
+direction. Items can also be dragged between empty or occupied slots in any
+corpse section. Compatible stacks with remaining capacity merge. Dropping a
+complete item that cannot merge onto an occupied slot swaps the two items only
+when both original slots accept the opposite item and the result stays within
+the hard cap. Every corpse equipment slot displays its equipment type and
+canonical id, and accepts only a compatible definition. Dropping either equipped
 Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
 complete Bags satisfy the rules. Bank, Recovery Storage, and ordinary equipped
 items cannot enter corpse custody. The panel never moves either side
-optimistically and refreshes character inventory to the committed revision.
+optimistically. Custody-changing transfers refresh character inventory to the
+committed revision, while pure corpse rearrangement updates only corpse state.
 
 ## Durable Player Death Foundation
 
@@ -322,11 +325,12 @@ corpses. Expiry destroys each remaining item once with durable audit.
 The interactive corpse loop is available for existing durable corpses.
 SimulationWorker restores their presentation, advertises nearby corpses,
 enforces three-dimensional proximity and lifetime, and permits multiple players
-to inspect the same corpse. Full and partial item transfers, compatible stack
-merges, ordinary occupied-slot swaps, and Bag aggregate swaps commit through
-AuthService. Every viewer receives committed state, while a stale or losing
-request gets a stable refreshable result. The dead character competes under the
-same rules as every other player.
+to inspect the same corpse. Full and partial item transfers, corpse-internal
+moves, compatible stack merges, ordinary occupied-slot swaps, typed corpse
+equipment destinations, and Bag aggregate swaps commit through AuthService.
+Every viewer receives committed state, while a stale or losing request gets a
+stable refreshable result. The dead character competes under the same rules as
+every other player.
 
 The project still has no combat death producer. Development testing creates a
 real durable corpse from an offline source character through `Shooter MMO >
@@ -383,7 +387,7 @@ by stable definition id. The bundled presentation catalog records the exact
 gameplay source revision and its own deterministic presentation revision. Unity
 validates and caches this catalog once per matching revision, then inventory,
 Bank, and Recovery Storage views reuse local lookups for state received from the
-server. The corpse context consumes protocol-v10 presence, complete snapshots,
+server. The corpse context consumes protocol-v11 presence, complete snapshots,
 targeted deltas, operation results, and stable closure messages. World-loot
 keeps only its prepared adapter identity until a later authoritative phase.
 
