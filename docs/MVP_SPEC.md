@@ -61,6 +61,10 @@ The MVP should avoid becoming a large feature collection before this loop works.
   process, region, or player-selectable runtime.
 - A `Shard` is a player-selectable copy of the shared World simulation and may
   have its own rule set.
+- A Shard references exactly one World at a time, but the binding is not
+  permanent. Operators may change it between worker process generations after
+  the Shard is fully offline and all World-local runtime and durable corpse
+  state is drained. A running Shard never hot-swaps its World.
 - A `Fleet` groups regional or operational compute. A `Node` is one machine or
   container host inside a Fleet.
 - A `SimulationWorker` is one headless authoritative process. Its active
@@ -515,6 +519,10 @@ Current implementation note:
 - Item-plan Phase 14 adds content-controlled live or durable Mob corpse custody,
   deterministic retry-safe live loot grants, and selected boss restoration over
   the shared durable corpse and expiry path.
+- Item-plan Phase 15 adds bounded transaction and payload work,
+  low-cardinality operational measurements, correlated lifecycle logs, audited
+  retention cleanup, concurrent item and actor load scenarios, and a rerun
+  Release movement and network baseline.
 - Gameplay combat death production, Mob loot-table generation, full Mob AI,
   final corpse art, and final inventory UI remain unimplemented.
 
@@ -564,7 +572,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 14 complete
+Status: In progress, item-plan Phases 1 through 15 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -614,11 +622,18 @@ Status: In progress, item-plan Phases 1 through 14 complete
   lifetimes, deterministic loot grant ids, restart semantics, and shared durable
   expiry are complete. Combat still does not produce the death event or resolve
   a loot table.
+- Item transaction and lock timeouts, command and HTTP payload limits,
+  correlated operation logs, low-cardinality item, corpse, actor, and interaction
+  metrics, audited Recovery expiry, retained closed-corpse and permitted
+  operation cleanup, and focused load scenarios are complete. A `100` bot
+  Release hotspot baseline passes through the real join, movement, presentation,
+  snapshot, and graceful-leave protocol.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The next item-plan subphase is Phase 15 operations, performance, and recovery
-hardening. It remains outside the current implementation.
+All item-plan subphases through the Phase 15 release-hardening exit gate are
+complete. Later gameplay phases must build on these custody and operational
+boundaries.
 
 ### Phase 5: Vendor And Gathering
 

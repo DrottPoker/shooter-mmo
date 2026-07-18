@@ -1,6 +1,6 @@
 # Simulation Stress Testing
 
-Last updated: 2026-07-14
+Last updated: 2026-07-18
 
 ## Purpose
 
@@ -38,12 +38,16 @@ SimulationWorker:
 - Worker heartbeat and graceful offline registration.
 - Exact-runtime one-time ticket consumption.
 - Simulation-session heartbeat and release.
+- Empty durable-corpse restoration for the isolated worker lifecycle.
 
 Each bot receives a unique in-memory account id, character id, and display name
 such as `Stress Bot 1`. Tickets are random, hash-indexed, short lived, one use,
 and bound to the exact worker runtime and shard. Session tokens remain in memory
 and are validated for every heartbeat and release. Nothing survives the tool
 process.
+
+Synthetic join and heartbeat responses include valid item revision, carried
+weight, and carry capacity so the worker exercises the current session contract.
 
 Each bot owns an independent UDP client and endpoint. The clients run in
 LiteNetLib manual mode and are polled by the coordinator loop, avoiding one or
@@ -107,7 +111,8 @@ Expected result:
   so admission bursts are not mislabeled as steady-state simulation load.
 - Worker logs show characters named `Stress Bot 1` through `Stress Bot 100`.
 - Joined bots send movement input at the worker-provided simulation rate.
-- Bots receive reliable entity lifecycle packets and unreliable snapshots.
+- Bots validate reliable player and world-actor lifecycle, corpse-presence, and
+  carry-state packets plus unreliable snapshots.
 - The generator reports join state, failures, snapshot counts, estimated
   sequence gaps, and input acknowledgement p95 every ten seconds.
 - After the steady interval, every joined bot requests a graceful leave.
@@ -122,6 +127,9 @@ overrides before returning to ordinary local development:
 Remove-Item Env:AUTH_SERVICE_BASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_SERVICE_SECRET -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_MAX_CONNECTIONS -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_WORKER_ADVERTISED_UDP_PORT -ErrorAction SilentlyContinue
 Remove-Item Env:SimulationWorker__NetworkMetricsLogSeconds -ErrorAction SilentlyContinue
 ```
 
@@ -167,8 +175,9 @@ The JSON report contains:
 - Reliable spawn and despawn packet counts.
 - Stress authority ticket and session counters.
 - SimulationWorker single-core-equivalent CPU, whole-machine CPU, working set,
-  private memory, and thread count when exactly one native `SimulationWorker`
-  process can be discovered. Working-set and private-memory summaries include
+  private memory, and thread count when a native `SimulationWorker` process
+  matches the registered runtime start time. Unrelated local worker processes
+  are ignored. Working-set and private-memory summaries include
   initial, average, maximum, final, and steady-state boundary values captured
   before graceful leave cleanup begins.
 - Stress-generator CPU, working set, private memory, and thread count so a local

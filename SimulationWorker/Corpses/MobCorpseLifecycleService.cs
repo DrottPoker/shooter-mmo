@@ -87,7 +87,7 @@ public sealed class MobCorpseLifecycleService(
                 WorldActorCorpsePersistenceModeIds.Live,
                 StringComparison.Ordinal))
         {
-            var createdAt = liveCorpseStore.TryGetActive(corpseId, out var existing)
+            var createdAt = liveCorpseStore.TryGetForReplay(corpseId, out var existing)
                 ? existing!.CreatedAt
                 : timeProvider.GetUtcNow().UtcDateTime;
             var liveCorpse = liveCorpseStore.CreateOrGet(new LiveMobCorpseState(

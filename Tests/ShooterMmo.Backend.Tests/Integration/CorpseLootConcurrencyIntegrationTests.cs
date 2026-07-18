@@ -330,6 +330,145 @@ public sealed class CorpseLootConcurrencyIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task ConcurrentCorpseLootHotspotCommitsEveryDistinctItemOnce()
+    {
+        const int looterCount = 8;
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "phase15-corpse-source@example.com",
+            "phase15_corpse_source",
+            "Phase 15 Corpse Source");
+        var sourceSnapshot = await GetSnapshotAsync(context, source);
+        var itemIds = new List<Guid>(looterCount);
+        for (var index = 0; index < looterCount; index++)
+        {
+            itemIds.Add(await GrantAsync(
+                context,
+                source,
+                "material.iron_ore",
+                1,
+                sourceSnapshot.PermanentInventory.ContainerId,
+                index));
+        }
+
+        var death = await CreateCorpseAsync(context, source);
+        var corpseItems = new List<ItemRow>(looterCount);
+        foreach (var itemId in itemIds)
+        {
+            corpseItems.Add(await LoadItemAsync(context, itemId));
+        }
+
+        var looters = new List<IntegrationPlayer>(looterCount);
+        var destinations = new List<Guid>(looterCount);
+        for (var index = 0; index < looterCount; index++)
+        {
+            var looter = await context.RegisterPlayerAsync(
+                $"phase15-looter-{index}@example.com",
+                $"phase15_looter_{index}",
+                $"Phase 15 Looter {index}");
+            looters.Add(looter);
+            destinations.Add((await GetSnapshotAsync(context, looter))
+                .PermanentInventory.ContainerId);
+        }
+
+        var results = await Task.WhenAll(Enumerable.Range(0, looterCount).Select(index =>
+            LootAsync(
+                context,
+                looters[index].Character.Id,
+                death.Corpse.CorpseId,
+                corpseItems[index],
+                destinations[index],
+                0)));
+
+        Assert.All(results, result => Assert.True(result.Succeeded, result.Error?.Message));
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        Assert.Equal(
+            looterCount,
+            await connection.ExecuteScalarAsync<int>(
+                """
+                select count(*)
+                from item_instances
+                where id = any(@ItemIds)
+                  and container_id = any(@DestinationIds);
+                """,
+                new
+                {
+                    ItemIds = itemIds.ToArray(),
+                    DestinationIds = destinations.ToArray()
+                }));
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                """
+                select count(*)
+                from item_instances item
+                join corpse_sections section on section.container_id = item.container_id
+                where section.corpse_id = @CorpseId;
+                """,
+                new { CorpseId = death.Corpse.CorpseId }));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task RepeatedCorpseBagSwapLoadPreservesBothAggregates()
+    {
+        const int swapCount = 40;
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "phase15-bag-source@example.com",
+            "phase15_bag_source",
+            "Phase 15 Bag Source");
+        var looter = await context.RegisterPlayerAsync(
+            "phase15-bag-looter@example.com",
+            "phase15_bag_looter",
+            "Phase 15 Bag Looter");
+        var originalCorpseBagId = await EquipNewBagAsync(context, source);
+        var sourceSnapshot = await GetSnapshotAsync(context, source);
+        var childId = await GrantAsync(
+            context,
+            source,
+            "material.iron_ore",
+            3,
+            sourceSnapshot.EquippedBag!.Contents.ContainerId,
+            0);
+        var death = await CreateCorpseAsync(context, source);
+        var originalPlayerBagId = await EquipNewBagAsync(context, looter);
+        var currentCorpseBagId = originalCorpseBagId;
+        var currentPlayerBagId = originalPlayerBagId;
+
+        for (var index = 0; index < swapCount; index++)
+        {
+            var result = await SwapBagAsync(
+                context,
+                looter.Character.Id,
+                death.Corpse.CorpseId,
+                await LoadItemAsync(context, currentCorpseBagId),
+                await LoadItemAsync(context, currentPlayerBagId));
+            Assert.True(result.Succeeded, result.Error?.Message);
+            (currentCorpseBagId, currentPlayerBagId) =
+                (currentPlayerBagId, currentCorpseBagId);
+        }
+
+        Assert.Equal(originalCorpseBagId, currentCorpseBagId);
+        Assert.Equal(originalPlayerBagId, currentPlayerBagId);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        Assert.Equal(
+            2,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from item_instances where id = any(@BagIds);",
+                new { BagIds = new[] { originalCorpseBagId, originalPlayerBagId } }));
+        Assert.Equal(
+            originalCorpseBagId,
+            await connection.ExecuteScalarAsync<Guid>(
+                """
+                select container.bound_bag_item_instance_id
+                from item_instances item
+                join item_containers container on container.id = item.container_id
+                where item.id = @ChildId;
+                """,
+                new { ChildId = childId }));
+    }
+
+    [PostgresIntegrationFact]
     public async Task HardCapRejectsMoreWeightAndDeadCharacterCompetesNormally()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

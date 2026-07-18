@@ -54,6 +54,28 @@ public sealed class LiveMobCorpseStoreTests
             slot => slot.Item is not null).SlotIndex);
     }
 
+    [Fact]
+    public void CompletedLiveCorpseReplayCannotRestoreClaimedLoot()
+    {
+        var createdAt = DateTime.UtcNow;
+        var store = new LiveMobCorpseStore(TimeProvider.System);
+        var corpse = CreateCorpse(createdAt, 120d);
+        store.CreateOrGet(corpse);
+        var loot = Assert.Single(corpse.Loot);
+
+        Assert.Null(store.CompleteClaim(corpse.CorpseId, loot.LootEntryId, loot.GrantId));
+        var replay = store.CreateOrGet(corpse);
+
+        Assert.True(replay.IsEmpty);
+        Assert.False(store.TryGetActive(corpse.CorpseId, out _));
+        Assert.True(store.TryGetForReplay(corpse.CorpseId, out var replayTombstone));
+        Assert.True(replayTombstone!.IsEmpty);
+        Assert.Empty(store.ListActive());
+        Assert.Null(store.CreateSnapshot(corpse.CorpseId));
+        Assert.False(store.Remove(corpse.CorpseId));
+        Assert.Empty(store.ListActive());
+    }
+
     private static LiveMobCorpseState CreateCorpse(DateTime createdAt, double lifetimeSeconds)
     {
         return new LiveMobCorpseState(

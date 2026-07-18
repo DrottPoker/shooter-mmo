@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -242,10 +243,14 @@ public sealed class AuthServiceClient(HttpClient httpClient)
     {
         try
         {
-            using var response = await httpClient.PostAsJsonAsync(
-                path,
-                requestBody,
-                cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = JsonContent.Create(requestBody)
+            };
+            request.Headers.TryAddWithoutValidation(
+                "X-Correlation-ID",
+                CreateCorrelationId());
+            using var response = await httpClient.SendAsync(request, cancellationToken);
 
             if (response.IsSuccessStatusCode)
             {
@@ -312,7 +317,11 @@ public sealed class AuthServiceClient(HttpClient httpClient)
     {
         try
         {
-            using var response = await httpClient.GetAsync(path, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.TryAddWithoutValidation(
+                "X-Correlation-ID",
+                CreateCorrelationId());
+            using var response = await httpClient.SendAsync(request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var responseBody = await ReadJsonAsync<TResponse>(response, cancellationToken);
@@ -369,6 +378,11 @@ public sealed class AuthServiceClient(HttpClient httpClient)
         {
             return InvalidResponse<TResponse>();
         }
+    }
+
+    private static string CreateCorrelationId()
+    {
+        return Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N");
     }
 
     private static async Task<T?> ReadJsonAsync<T>(

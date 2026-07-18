@@ -133,7 +133,7 @@ public sealed partial class CorpseService(
             return MapTransactionResult<PersistentMobCorpseResponse>(result, null);
         }
 
-        var corpse = await LoadOpenCorpseAsync(request.CorpseId, cancellationToken);
+        var corpse = await LoadCorpseByIdAsync(request.CorpseId, cancellationToken);
         if (corpse is null)
         {
             throw new InvalidOperationException(
@@ -535,7 +535,7 @@ public sealed partial class CorpseService(
             .ToArray();
     }
 
-    private async Task<DurableCorpseResponse?> LoadOpenCorpseAsync(
+    private async Task<DurableCorpseResponse?> LoadCorpseByIdAsync(
         Guid corpseId,
         CancellationToken cancellationToken)
     {
@@ -569,9 +569,7 @@ public sealed partial class CorpseService(
                         corpse.created_at as "CreatedAt",
                         corpse.expires_at as "ExpiresAt"
                     from corpses corpse
-                    where corpse.id = @CorpseId
-                      and corpse.closed_at is null
-                      and corpse.expires_at > now();
+                    where corpse.id = @CorpseId;
                     """,
                     new { CorpseId = corpseId },
                     transaction,
@@ -704,6 +702,7 @@ public sealed partial class CorpseService(
                 ServiceResult<T>.NotFound(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemStateConflict or
             ItemTransactionErrorCodes.ItemOperationConflict or
+            ItemTransactionErrorCodes.ItemTransactionTimeout or
             ItemTransactionErrorCodes.DeathEventConflict or
             ItemTransactionErrorCodes.CorpseNotExpired or
             ItemTransactionErrorCodes.CorpseStateChanged or

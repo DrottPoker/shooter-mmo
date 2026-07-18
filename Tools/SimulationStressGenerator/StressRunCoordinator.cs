@@ -22,7 +22,7 @@ public sealed class StressRunCoordinator(
         Console.WriteLine(
             $"Registered worker runtime {worker.RuntimeId} for shard {worker.ShardId} with capacity {worker.MaxConnections}.");
         await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
-        using var processSampler = WorkerProcessSampler.TryAttach();
+        using var processSampler = WorkerProcessSampler.TryAttach(worker.StartedAt);
         using var generatorProcessSampler = WorkerProcessSampler.AttachCurrent();
         processSampler?.Sample();
         generatorProcessSampler.Sample();

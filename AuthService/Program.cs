@@ -40,6 +40,11 @@ var developmentSimulationBotOptions = DevelopmentSimulationBotOptions.FromConfig
     builder.Environment.IsDevelopment());
 var npcItemLifecycleOptions = NpcItemLifecycleOptions.FromConfiguration(
     builder.Configuration);
+var itemOperationsOptions = ItemOperationsOptions.FromConfiguration(builder.Configuration);
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = itemOperationsOptions.MaximumHttpRequestBodyBytes;
+});
 
 builder.Services.AddSingleton(_ =>
 {
@@ -49,7 +54,10 @@ builder.Services.AddSingleton(_ =>
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(developmentSimulationBotOptions);
 builder.Services.AddSingleton(npcItemLifecycleOptions);
+builder.Services.AddSingleton(itemOperationsOptions);
+builder.Services.AddSingleton<ItemOperationsMetrics>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(ItemCatalogSource.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton<DevelopmentSimulationBotAuthority>();
 builder.Services.AddSingleton<ItemCatalogSeeder>();
@@ -68,6 +76,7 @@ builder.Services.AddScoped<SimulationItemMutationService>();
 builder.Services.AddScoped<ItemPolicyService>();
 builder.Services.AddScoped<QuestItemService>();
 builder.Services.AddScoped<CorpseService>();
+builder.Services.AddScoped<ItemOperationsMaintenanceService>();
 builder.Services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
 builder.Services.AddScoped<DevelopmentItemToolService>();
 builder.Services.AddScoped<SessionService>();
@@ -77,6 +86,8 @@ builder.Services.AddScoped<SimulationWorkerRegistryService>();
 builder.Services.AddScoped<DevelopmentSimulationBotPlacementService>();
 builder.Services.AddScoped<DevelopmentSimulationBotTicketService>();
 builder.Services.AddHostedService<CorpseExpiryHostedService>();
+builder.Services.AddHostedService<ItemOperationsMetricsReporterService>();
+builder.Services.AddHostedService<ItemOperationsMaintenanceHostedService>();
 builder.Services.AddApiProblemDetails();
 builder.Services
     .AddAuthentication()

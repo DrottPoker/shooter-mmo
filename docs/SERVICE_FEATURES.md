@@ -122,6 +122,15 @@ migrations, `SimulationTopologySeeder` idempotently upserts configured records.
 It does not manufacture online workers. A seeded shard remains offline until a
 valid heartbeat and active assignment exist.
 
+An existing shard may be rebound to another configured World on AuthService
+startup. Reconciliation locks the shard row and refuses the change while any
+active assignment, pending unexpired join ticket, active unexpired simulation
+session, or open durable corpse still references the shard. The worker must be
+stopped cleanly and World-local state must be drained before retrying. The next
+worker runtime must report the rebound World identity, so stale content cannot
+silently simulate the shard. A migration placeholder assignment with no worker
+runtime is not simulation authority and therefore does not block a rebind.
+
 ## Worker Registration And Assignment
 
 Each SimulationWorker has:
@@ -342,7 +351,7 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 14 of the approved item plan are implemented. Offline account
+Phases 1 through 15 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
@@ -671,6 +680,21 @@ interaction count, accepted and rejected interaction totals, and interaction
 latency. It does not label actor, spawn, player, character, session, or entity
 identities.
 
+The meter `ShooterMmo.AuthService.Items` exposes low-cardinality transaction
+latency and outcome, lock wait, conflict, stale revision, timeout, death
+partition, policy action, cleanup, corpse count, and Recovery backlog
+measurements. The meter `ShooterMmo.SimulationWorker.Corpses` separates active
+live and durable counts by the fixed `persistence` dimension. Neither meter uses
+item, account, character, operation, corpse, session, actor, or runtime ids as
+labels.
+
+SimulationWorker supplies a bounded `X-Correlation-ID` on AuthService requests.
+Item transaction logs include correlation and operation ids, classify expected
+contention below warning, promote significant lifecycle commits, and exclude
+credentials, tokens, and command bodies. Periodic AuthService summaries report
+cumulative transaction, contention, lifecycle, corpse, Recovery, and cleanup
+counts.
+
 Periodic structured logs expose the same totals. A worker status line also
 reports real players, synthetic bots, unauthenticated peers, process CPU
 normalized to total logical-core capacity, single-core-equivalent CPU, working
@@ -733,6 +757,12 @@ service's `Config` folder. The ignored root `.env` contains local credentials
 and overrides. Environment variables and command-line options have higher
 precedence.
 
+`Items:Operations` bounds item statement and lock timeouts, canonical command
+and HTTP request sizes, metrics and maintenance intervals, cleanup batch size,
+and audit plus closed-corpse retention. Lock timeout cannot exceed transaction
+timeout, and closed-corpse retention cannot be shorter than operation audit
+retention. Invalid values stop AuthService at startup.
+
 ## Persistence And Migrations
 
 Migrations run under a PostgreSQL advisory transaction lock. Each migration id
@@ -743,6 +773,14 @@ Previously shipped migration ids and their source-schema references retain their
 historical names because changing an applied migration would break upgrade
 compatibility. The resulting current schema uses only the canonical topology
 names listed above.
+
+Phase 15 adds partial indexes for completed operation retention, closed-corpse
+retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
+uses deterministic system-authority operations to destroy expired Recovery
+items with durable audit, removes empty closed corpses only after retention, and
+deletes old operation rows only when no destruction or death record references
+them. Every database unit uses statement and lock limits plus `skip locked`
+batch selection where concurrent maintenance is permitted.
 
 Integration tests reset only a database whose name contains `test`. Never point
 the test connection variable at development or production data.
@@ -828,6 +866,11 @@ the test connection variable at development or production data.
   persistent player item, durable boss restoration with unchanged custody and
   deadline, shared expiry, realtime presence integration, and Unity Actor Studio
   round trips.
+- Phase 15 coverage verifies bounded configuration, identity-free metric
+  dimensions, pre-database payload rejection, stable lock timeout mapping,
+  audited Recovery expiry and retention, `4,000` centrally scheduled actors,
+  `128` concurrent NPC leases, eight simultaneous corpse claims, forty repeated
+  Bag swaps, and a clean `100` bot Release network baseline.
 
 ## Not Yet Implemented
 

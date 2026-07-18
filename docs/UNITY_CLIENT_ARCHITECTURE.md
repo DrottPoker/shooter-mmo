@@ -242,10 +242,20 @@ changelog review.
 The build flow is:
 
 ```text
-LoginMenu -> CharacterSelect -> WorldScene
-     ^              ^               |
-     +--------------+---------------+
+LoginMenu -> CharacterSelect -> WorldSceneCatalog[accepted WorldId]
+     ^              ^                         |
+     +--------------+-------------------------+
 ```
+
+`Assets/Resources/Worlds/world-scene-catalog.json` is the client-owned mapping
+from authoritative `WorldId` to an authored Unity scene name. AuthService and
+SimulationWorker never send a scene path. CharacterSelect resolves the selected
+shard's World before requesting a join ticket and rejects an unknown mapping or
+a scene missing from the build. It resolves the authoritative placement World
+again before opening UDP, so a shard list cached across an offline rebind cannot
+load the previous scene. The checked-in catalog currently maps only
+`local-world-1` to `WorldScene`; the next development map can add a second entry
+without changing the join protocol.
 
 ### LoginMenu
 
@@ -304,11 +314,12 @@ AuthService to revoke the active account session, then clears local state.
 ## Local Player Lifecycle
 
 `WorldSceneContext` is a scene composition root. It validates serialized scene
-and prefab references, then creates one LocalPlayer prefab instance only when
-WorldScene opens with an accepted realtime join and movement session. It connects
+and prefab references plus the active session's exact World-to-scene mapping,
+then creates one LocalPlayer prefab instance only when a catalog World scene
+opens with an accepted realtime join and movement session. It connects
 that runtime player to server-authoritative movement, consumes the cached
 reliable entity baseline, routes entity snapshots, and connects the player-owned
-camera to input and CameraTarget. Opening WorldScene without an active joined
+camera to input and CameraTarget. Opening a World scene without an active joined
 session creates no local player. The context never selects a global camera and
 never generates a player asset, map object, material, light, or collider.
 Runtime instances of the explicitly authored RemotePlayer prefab are created
@@ -644,6 +655,11 @@ and durable player or boss corpses. The same client view, crosshair target,
 operation journal, canonical three-section snapshot, committed delta, inventory
 refresh, and reconnect cleanup paths remain authoritative.
 
+Phase 15 is server and tooling hardening. It does not add Unity state, a new
+packet, scene object, prefab, inspector reference, or presentation flow. The
+licensed EditMode and PlayMode suites remain the regression gate for the
+persistent inventory, corpse, actor, interaction, and bootstrap ownership above.
+
 The `E` input action requests interaction with the current crosshair target or
 closes the current NPC or corpse interaction.
 Client selection checks a direct centre ray first and then a `0.15` metre
@@ -730,6 +746,9 @@ Phase 14 EditMode coverage verifies the normal and boss corpse settings through
 the neutral Actor Studio round trip. Existing corpse protocol and client tests
 continue to cover the shared Mob presentation path, so no scene or prefab
 fixture is added.
+
+Phase 15 adds no Unity test fixture because it has no Unity-facing behavior. All
+EditMode and PlayMode tests still run as the release-hardening regression gate.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and

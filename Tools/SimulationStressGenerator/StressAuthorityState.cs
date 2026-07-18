@@ -6,6 +6,7 @@ namespace ShooterMmo.Tools.SimulationStressGenerator;
 
 public sealed class StressAuthorityState
 {
+    private const long SyntheticCarryCapacity = 200;
     private static readonly TimeSpan WorkerLeaseDuration = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TicketLifetime = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SessionLeaseDuration = TimeSpan.FromSeconds(60);
@@ -241,6 +242,9 @@ public sealed class StressAuthorityState
                     sessionId,
                     sessionToken,
                     expiresAt,
+                    0,
+                    0,
+                    SyntheticCarryCapacity,
                     false)
                 {
                     IsSyntheticBot = true
@@ -394,6 +398,9 @@ public sealed class StressAuthorityState
             session.WorkerId,
             session.WorkerRuntimeId,
             released ? DateTime.UtcNow : session.ExpiresAt,
+            0,
+            0,
+            SyntheticCarryCapacity,
             released);
     }
 

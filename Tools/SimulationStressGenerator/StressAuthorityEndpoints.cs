@@ -41,6 +41,21 @@ public static class StressAuthorityEndpoints
                 return ToResult(state.MarkWorkerOffline(workerId, request));
             });
 
+        endpoints.MapGet(
+            "/api/simulation-workers/{workerId}/corpses",
+            static (
+                HttpContext context,
+                StressAuthorityState state) =>
+            {
+                if (!IsAuthorized(context, state))
+                {
+                    return Unauthorized();
+                }
+
+                return Results.Json(
+                    new StressCorpseRestoreResponse(DateTime.UtcNow, []));
+            });
+
         endpoints.MapPost(
             "/api/simulation-join-tickets/consume",
             static (

@@ -19,6 +19,8 @@ Global Services -> Fleet -> Node -> SimulationWorker -> SimulationAssignment -> 
 - A SimulationWorker is one headless authoritative process.
 - A Shard is a player-selectable copy of the shared game simulation.
 - World means shared map and content data, not a server process.
+- A Shard may be rebound to another World between worker runtimes only after it
+  is fully offline and its World-local state is drained.
 - There are no realms.
 - Zones and layers are future scaling units and are not implemented yet.
 
@@ -29,6 +31,8 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - ASP.NET Core AuthService with PostgreSQL authority.
 - Headless .NET SimulationWorker with LiteNetLib UDP.
 - Explicit World, Fleet, Node, Shard, Worker, runtime, and assignment records.
+- Guarded offline Shard-to-World rebinding plus World-keyed worker content and
+  Unity scene selection.
 - Capacity-aware shard discovery and exact-runtime placement.
 - Worker heartbeat leases, graceful offline handling, stale-owner failover, and
   split-brain process shutdown.
@@ -103,11 +107,15 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   server process information to game clients.
 - Worker-side operational status logs and metrics that distinguish real players
   from synthetic bots and report CPU, memory, traffic, drops, and tick timing.
-- Unity 6 login, character selection, shard selection, and WorldScene flow.
+- Bounded item-operation timeouts and payloads, low-cardinality item and corpse
+  metrics, correlated lifecycle logs, and audited Recovery, corpse, and permitted
+  operation-retention cleanup.
+- Unity 6 login, character selection, shard selection, and WorldId-driven scene
+  flow through a validated client catalog.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 14 of the slot-based item and world-actor foundation are
+Phases 1 through 15 of the slot-based item and world-actor foundation are
 implemented. Shared content, pure rules, Unity authoring, deterministic baking,
 the transactional PostgreSQL catalog mirror, constrained custody schema, and
 complete empty character item-state bootstrap now exist. AuthService exposes
@@ -127,12 +135,13 @@ death producer, final corpse art, and final UI art remain later phases. The
 scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
 deterministic WorldData, protocol version `13`, bounded worker state, existing
 spatial interest, server-authoritative interaction sessions, shared corpse
-  targeting, typed insurance and quest item-lifecycle handlers, and permanent
-  Unity state below a temporary uGUI panel. Normal live Mob corpses and selected
-  durable boss corpse custody reuse that client and service foundation. Combat,
-  damage, death-event production, loot-table generation,
-durable unique actors, zones, layers, complex terrain meshes, and production
-orchestration remain deferred.
+targeting, typed insurance and quest item-lifecycle handlers, and permanent
+Unity state below a temporary uGUI panel. Normal live Mob corpses and selected
+durable boss corpse custody reuse that client and service foundation. Operations
+now have bounded database and payload work, retention cleanup, low-cardinality
+metrics, load scenarios, and a rerun Release movement baseline. Combat, damage,
+death-event production, loot-table generation, durable unique actors, zones,
+layers, complex terrain meshes, and production orchestration remain deferred.
 
 ## Requirements
 

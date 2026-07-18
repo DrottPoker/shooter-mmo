@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-18
 
-Status: Approved delivery baseline, Phases 1 through 14 implemented
+Status: Approved delivery baseline, Phases 1 through 15 implemented
 
 ## Purpose
 
@@ -1918,12 +1918,12 @@ generation, and respawn remain outside this phase.
 ### Exit Gate
 
 Mob corpse persistence is content-controlled and normal Mob volume does not
-force every corpse into PostgreSQL. Phase 15 operations and performance work
-remains unimplemented.
+force every corpse into PostgreSQL. Phase 14 stops before operational
+hardening, which is delivered separately in Phase 15 below.
 
 ## Phase 15: Performance, Operations, And Release Hardening
 
-Status: Planned, not implemented
+Status: Completed 2026-07-18
 
 ### Work
 
@@ -1945,6 +1945,81 @@ Status: Planned, not implemented
   corpse interaction are active.
 - Update all feature, architecture, setup, and manual-test documentation as each
   phase becomes implemented.
+
+### Tests
+
+- Metrics expose only bounded operation, outcome, state, action, scope, target,
+  and persistence dimensions. Identity values are never metric labels.
+- Transaction and lock timeouts return a stable conflict without committing a
+  partial mutation, and an oversized canonical command is rejected before a
+  database connection is opened.
+- Expired Recovery delivery cleanup destroys every owned item inside the same
+  audited transaction, and retained empty corpse and permitted operation rows
+  are removed only after their configured deadlines.
+- A runtime population test schedules `2,000` event-driven NPCs plus `2,000`
+  active or dormant Mobs without one independent loop per actor.
+- A hotspot test opens `128` concurrent NPC interactions through independent
+  player leases.
+- Isolated PostgreSQL load tests commit eight concurrent distinct corpse claims
+  exactly once and perform forty repeated corpse Bag swaps without changing
+  aggregate custody.
+- The external Release stress flow admits, moves, snapshots, and gracefully
+  releases `100` headless clients through the real LiteNetLib protocol.
+
+### Implementation Record
+
+- AuthService publishes the `ShooterMmo.AuthService.Items` meter with bounded
+  transaction latency, lock wait, transaction outcome, conflict, stale
+  revision, timeout, death partition, policy action, cleanup, corpse count, and
+  Recovery backlog instruments. SimulationWorker publishes live and durable
+  corpse counts through `ShooterMmo.SimulationWorker.Corpses`. The existing
+  `ShooterMmo.SimulationWorker.WorldActors` meter supplies NPC, Mob,
+  event-driven, dormant, active, and world-interaction measurements.
+- Metric dimensions use fixed enumerations. Item, character, account,
+  operation, corpse, session, worker runtime, and other identity values are not
+  labels.
+- SimulationWorker adds a bounded `X-Correlation-ID` to every AuthService GET
+  and POST request. Item transaction logs include that correlation id and the
+  operation id, classify expected contention at debug level, record significant
+  lifecycle commits at information level, and omit session tokens, service
+  credentials, and request bodies.
+- `Items:Operations` owns fail-fast bounds for a `10` second PostgreSQL statement
+  timeout, `2` second lock timeout, `64` KiB canonical command limit, `256` KiB
+  HTTP body limit, `30` second metric refresh, `60` second maintenance cadence,
+  `64` row cleanup batches, and `30` day audit and closed-corpse retention.
+  PostgreSQL timeout and lock cancellation map to
+  `item_transaction_timeout`, while an oversized command maps to
+  `item_command_payload_too_large` before database access.
+- The maintenance service derives deterministic Recovery expiry operation ids,
+  acquires normal system-authority item locks, destroys expired items with the
+  durable reason `recovery_expired`, writes item and metadata audit, and deletes
+  the delivery in one transaction. Concurrent or replayed work cannot duplicate
+  destruction.
+- Closed corpses are retained until policy permits deletion and are removed only
+  when every section is empty. Their death event, corpse sections, snapshots,
+  and closed containers follow database custody. Old operation rows are deleted
+  in bounded `skip locked` batches only when they are not referenced by durable
+  destruction or death records. Retention and Recovery expiry queries have
+  partial PostgreSQL indexes.
+- The load suite now covers `4,000` scheduled actors, `128` NPC hotspot leases,
+  eight simultaneous corpse claims, and forty repeated corpse Bag swaps. These
+  scenarios exercise the existing actor scheduler, interaction lease,
+  transaction lock, revision, aggregate, and custody boundaries instead of
+  introducing benchmark-only service paths.
+- The stress authority was brought forward to the Phase 15 session carry-state
+  and corpse-restoration contracts. The headless client now validates normal
+  corpse-presence and world-actor presentation packets, and process sampling
+  selects the native worker nearest the registered runtime start rather than an
+  unrelated local worker.
+- The Phase 15 review fixed three Phase 14 lifecycle defects. An empty live Mob
+  corpse remains as a hidden in-memory replay tombstone until its original
+  expiry, durable Mob create replay can return the original closed or expired
+  corpse, and an item-operation replay conflict requests a corpse refresh.
+  These changes close retry-based loot restoration and stale-view paths without
+  persisting ordinary live Mob contents.
+- The GameProtocol version remains `13`. Phase 15 adds no Unity scene, prefab,
+  inspector, or gameplay state and does not change actor, capability,
+  interaction, inventory, corpse, or authority ownership.
 
 ### Verification Gate
 
@@ -1968,7 +2043,73 @@ Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
 ```
 
 Run Unity EditMode and PlayMode tests through the documented licensed workflow
-after Unity-facing phases.
+after Unity-facing phases:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Run the focused operational and load scenarios:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --no-build `
+  --filter "FullyQualifiedName~ItemOperationsHardeningTests|FullyQualifiedName~WorldActorRuntimeTests"
+
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --no-build `
+  --filter "FullyQualifiedName~ItemOperationsHardeningIntegrationTests|FullyQualifiedName~CorpseLootConcurrencyIntegrationTests"
+```
+
+Run the `100` bot Release baseline through
+`docs/SIMULATION_STRESS_TESTING.md`. Expected result: all bots join, receive
+snapshots and input acknowledgements, then leave cleanly with no estimated
+snapshot gaps, catch-up-budget warning, or process-memory growth trend.
+
+Verified 2026-07-18: the focused operational and load suites passed. The
+isolated `100` bot Release baseline passed with `100/100` joins, `100/100`
+graceful leaves, zero bot failures, `240867` snapshots, zero estimated gaps,
+`125.9` ms input-acknowledgement p95, `19.1%` average single-core-equivalent
+worker CPU, `89.6` MiB maximum worker working set, and a negative steady-state
+working-set trend. The worker log contained no catch-up-budget, exception, or
+error entry. Locked restore, dependency policy, formatter verification, all
+three content verifiers, and the warning-free Release build passed. The complete
+isolated PostgreSQL run passed `407/407` backend tests with no skips. Licensed
+Unity `6000.5.2f1` passed `94/94` EditMode and `2/2` PlayMode tests.
+
+### Manual Test Gate
+
+1. Review `Items:Operations` in `AuthService/Config/appsettings.json`. Expected
+   result: statement, lock, payload, interval, batch, and retention settings
+   match the bounded defaults documented above. Set the lock timeout above the
+   transaction timeout in a temporary local override and start AuthService.
+   Expected result: startup fails with an explicit validation message. Remove
+   the override before continuing.
+2. Start the isolated PostgreSQL database and run the focused hardening tests
+   from the verification gate. Expected result: the blocked character lock
+   returns `item_transaction_timeout`; the Recovery item is destroyed once with
+   reason `recovery_expired`; the delivery, eligible closed corpse, empty corpse
+   containers, and permitted old operation row are removed; durable destruction
+   evidence remains.
+3. Run the two focused load filters. Expected result: the `4,000` actor
+   population, `128` independent NPC interaction leases, eight concurrent corpse
+   claims, and forty Bag swaps all pass without duplicate custody, lost quantity,
+   or an actor-owned background loop.
+4. Run the documented `100` bot stress flow in Release. Expected result: the
+   generator reports `100/100` joined, `100` completed, and `0` failed; worker
+   process metrics refer to the registered Release runtime; input acknowledgement
+   has samples; and the worker log has no movement catch-up-budget warning.
+5. Observe AuthService and SimulationWorker operational logs during the tests.
+   Expected result: item summaries expose counts only, significant item events
+   contain a bounded correlation id plus operation id, world-actor status
+   distinguishes NPC, Mob, dormant, and active populations, and no credential or
+   session token is printed.
+
+No manual Unity Editor steps are required. Phase 15 changes server operations,
+test tooling, and documentation only. Run the licensed EditMode and PlayMode
+suites as regression coverage and expect both suites to pass unchanged.
 
 ### Exit Gate
 
@@ -2010,6 +2151,9 @@ corpse_view_not_open
 corpse_interaction_active
 item_already_looted
 item_quantity_changed
+item_transaction_timeout
+item_command_payload_too_large
+recovery_delivery_not_expired
 world_actor_not_found
 world_actor_unavailable
 world_interaction_invalid

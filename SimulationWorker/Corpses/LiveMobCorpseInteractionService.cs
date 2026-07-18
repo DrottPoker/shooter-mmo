@@ -153,6 +153,7 @@ public sealed class LiveMobCorpseInteractionService(
         SimulationWorkerErrorResponse error)
     {
         var requiresRefresh = error.Code is "item_state_conflict"
+            or "item_operation_conflict"
             or "item_slot_occupied"
             or "item_stack_limit_exceeded";
         return SimulationCorpseInteractionResult.Rejected(

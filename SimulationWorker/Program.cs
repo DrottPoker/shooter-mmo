@@ -75,6 +75,7 @@ builder.Services.AddSingleton<ActiveSimulationSessionStore>();
 builder.Services.AddSingleton<CarryStateStore>();
 builder.Services.AddSingleton<DurableCorpseStore>();
 builder.Services.AddSingleton<LiveMobCorpseStore>();
+builder.Services.AddSingleton<CorpseRuntimeMetrics>();
 builder.Services.AddSingleton<CorpseViewerRegistry>();
 builder.Services.AddSingleton<ItemInteractionAccessService>();
 builder.Services.AddSingleton<SimulationItemInteractionService>();

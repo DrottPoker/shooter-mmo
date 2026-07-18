@@ -245,6 +245,18 @@ public sealed class SimulationBotClient : IDisposable
                 case RealtimeMessageType.CarryStateChanged:
                     HandleCarryStateChanged(packet, channel, deliveryMethod);
                     break;
+                case RealtimeMessageType.CorpsePresenceSnapshotChunk:
+                    HandleCorpsePresence(packet, channel, deliveryMethod);
+                    break;
+                case RealtimeMessageType.WorldActorSpawn:
+                    HandleWorldActorSpawn(packet, channel, deliveryMethod);
+                    break;
+                case RealtimeMessageType.WorldActorState:
+                    HandleWorldActorState(packet, channel, deliveryMethod);
+                    break;
+                case RealtimeMessageType.WorldActorDespawn:
+                    HandleWorldActorDespawn(packet, channel, deliveryMethod);
+                    break;
                 case RealtimeMessageType.SimulationSnapshot:
                     HandleSnapshot(packet, channel, deliveryMethod);
                     break;
@@ -335,6 +347,100 @@ public sealed class SimulationBotClient : IDisposable
         {
             Fail("invalid_carry_state", error);
         }
+    }
+
+    private void HandleCorpsePresence(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail(
+                "invalid_corpse_presence",
+                "Corpse presence delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeCorpsePresenceSnapshotChunk(
+                packet,
+                out _,
+                out var error))
+        {
+            Fail("invalid_corpse_presence", error);
+        }
+    }
+
+    private void HandleWorldActorSpawn(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail(
+                "invalid_world_actor_spawn",
+                "World actor spawn delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeWorldActorSpawn(packet, out _, out var error))
+        {
+            Fail("invalid_world_actor_spawn", error);
+            return;
+        }
+
+        spawnPackets++;
+    }
+
+    private void HandleWorldActorState(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail(
+                "invalid_world_actor_state",
+                "World actor state delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeWorldActorState(packet, out _, out var error))
+        {
+            Fail("invalid_world_actor_state", error);
+        }
+    }
+
+    private void HandleWorldActorDespawn(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail(
+                "invalid_world_actor_despawn",
+                "World actor despawn delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeWorldActorDespawn(packet, out _, out var error))
+        {
+            Fail("invalid_world_actor_despawn", error);
+            return;
+        }
+
+        despawnPackets++;
+    }
+
+    private bool IsValidJoinedControlDelivery(
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        return State == SimulationBotClientState.Joined
+            && channel == RealtimeProtocol.ControlChannel
+            && deliveryMethod == DeliveryMethod.ReliableOrdered;
     }
 
     private void HandleServerDisconnect(byte[] packet)

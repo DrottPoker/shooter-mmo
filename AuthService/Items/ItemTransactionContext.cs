@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -14,7 +15,8 @@ internal sealed class ItemTransactionContext(
     NpgsqlTransaction transaction,
     Guid operationId,
     string operationKind,
-    ItemTransactionActor actor)
+    ItemTransactionActor actor,
+    ItemOperationsMetrics? operationsMetrics = null)
 {
     private static readonly JsonSerializerOptions AuditJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HashSet<Guid> touchedCharacterIds = [];
@@ -313,30 +315,41 @@ internal sealed class ItemTransactionContext(
                 "A character id is required.");
         }
 
-        var rows = (await Connection.QueryAsync<LockedCharacterState>(new CommandDefinition(
-            """
-            select
-                state.character_id as "CharacterId",
-                character.account_id as "AccountId",
-                state.revision as "Revision",
-                state.carried_weight as "CarriedWeight",
-                state.base_carry_capacity as "BaseCarryCapacity",
-                state.carry_capacity as "CarryCapacity",
-                state.permanent_inventory_container_id as "PermanentInventoryContainerId",
-                state.bank_container_id as "BankContainerId",
-                state.secure_container_id as "SecureContainerId",
-                state.recovery_storage_container_id as "RecoveryStorageContainerId"
-            from character_item_states state
-            join characters character on character.id = state.character_id
-            where state.character_id = any(@CharacterIds)
-              and character.deleted_at is null
-            order by state.character_id
-            for no key update of character
-            for update of state;
-            """,
-            new { CharacterIds = requested.Select(request => request.CharacterId).ToArray() },
-            Transaction,
-            cancellationToken: cancellationToken))).ToArray();
+        var lockStarted = Stopwatch.GetTimestamp();
+        LockedCharacterState[] rows;
+        try
+        {
+            rows = (await Connection.QueryAsync<LockedCharacterState>(new CommandDefinition(
+                """
+                select
+                    state.character_id as "CharacterId",
+                    character.account_id as "AccountId",
+                    state.revision as "Revision",
+                    state.carried_weight as "CarriedWeight",
+                    state.base_carry_capacity as "BaseCarryCapacity",
+                    state.carry_capacity as "CarryCapacity",
+                    state.permanent_inventory_container_id as "PermanentInventoryContainerId",
+                    state.bank_container_id as "BankContainerId",
+                    state.secure_container_id as "SecureContainerId",
+                    state.recovery_storage_container_id as "RecoveryStorageContainerId"
+                from character_item_states state
+                join characters character on character.id = state.character_id
+                where state.character_id = any(@CharacterIds)
+                  and character.deleted_at is null
+                order by state.character_id
+                for no key update of character
+                for update of state;
+                """,
+                new { CharacterIds = requested.Select(request => request.CharacterId).ToArray() },
+                Transaction,
+                cancellationToken: cancellationToken))).ToArray();
+        }
+        finally
+        {
+            operationsMetrics?.RecordLockWait(
+                "character_state",
+                Stopwatch.GetElapsedTime(lockStarted));
+        }
 
         if (rows.Length != requested.Length)
         {
@@ -409,8 +422,12 @@ internal sealed class ItemTransactionContext(
             Reject(ItemTransactionErrorCodes.ItemNotFound, "A character id is required.");
         }
 
-        var row = await Connection.QuerySingleOrDefaultAsync<LockedCharacterState>(
-            new CommandDefinition(
+        var lockStarted = Stopwatch.GetTimestamp();
+        LockedCharacterState? row;
+        try
+        {
+            row = await Connection.QuerySingleOrDefaultAsync<LockedCharacterState>(
+                new CommandDefinition(
                 """
                 select
                     state.character_id as "CharacterId",
@@ -432,7 +449,14 @@ internal sealed class ItemTransactionContext(
                 """,
                 new { CharacterId = characterId },
                 Transaction,
-                cancellationToken: cancellationToken));
+                    cancellationToken: cancellationToken));
+        }
+        finally
+        {
+            operationsMetrics?.RecordLockWait(
+                "character_event",
+                Stopwatch.GetElapsedTime(lockStarted));
+        }
         if (row is null)
         {
             Reject(ItemTransactionErrorCodes.ItemNotFound, "The character item state was not found.");
@@ -451,6 +475,24 @@ internal sealed class ItemTransactionContext(
     }
 
     public async Task LockMutationScopeAsync(
+        IEnumerable<Guid> itemIds,
+        IEnumerable<Guid> containerIds,
+        CancellationToken cancellationToken)
+    {
+        var lockStarted = Stopwatch.GetTimestamp();
+        try
+        {
+            await LockMutationScopeCoreAsync(itemIds, containerIds, cancellationToken);
+        }
+        finally
+        {
+            operationsMetrics?.RecordLockWait(
+                "mutation_scope",
+                Stopwatch.GetElapsedTime(lockStarted));
+        }
+    }
+
+    private async Task LockMutationScopeCoreAsync(
         IEnumerable<Guid> itemIds,
         IEnumerable<Guid> containerIds,
         CancellationToken cancellationToken)

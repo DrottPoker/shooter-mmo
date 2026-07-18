@@ -553,6 +553,91 @@ public sealed class WorldActorRuntimeTests
     }
 
     [Fact]
+    public void LargeEventDrivenPopulationAndMobTransitionsStayCentrallyScheduled()
+    {
+        const int population = 4_000;
+        var runtime = WorldActorTestData.Compile();
+        runtime.SpawnInstances = Enumerable.Range(0, population)
+            .Select(index => new WorldActorSpawnInstanceDefinition
+            {
+                Id = $"phase15.load.{index:D5}",
+                SpawnDefinitionId = "phase15.load",
+                ActorId = index % 2 == 0 ? "npc.city_services" : "mob.feral_wolf",
+                X = (index % 20) * 0.25f,
+                Y = 0f,
+                Z = ((index / 20) % 20) * 0.25f,
+                YawDegrees = 0f,
+                PatrolPathId = string.Empty,
+                StructuralFingerprint = $"phase15-{index:D5}"
+            })
+            .ToArray();
+        var registry = new SimulationEntityRegistry();
+        var actorStore = new WorldActorStore(runtime, registry);
+        var actors = actorStore.ActivateAssignment(
+            "local-world-1",
+            "local-shard-1",
+            "test-runtime");
+        var scheduler = new WorldActorActivityScheduler(actorStore);
+        var player = RegisterPlayer(registry, CreateSession(), 0f, -1f);
+
+        var activated = scheduler.Evaluate([player], 60, 30);
+        var returnedDormant = scheduler.Evaluate([], 66, 30);
+
+        Assert.Equal(population, actors.Count);
+        Assert.Equal(population / 2, activated.Count);
+        Assert.Equal(population / 2, returnedDormant.Count);
+        Assert.All(
+            actors.Where(actor => actor.Definition.Kind == WorldActorKindIds.Npc),
+            actor => Assert.Equal(WorldActorActivityTierIds.EventDriven, actor.ActivityTier));
+        Assert.All(
+            actors.Where(actor => actor.Definition.Kind == WorldActorKindIds.Mob),
+            actor => Assert.Equal(WorldActorActivityTierIds.Dormant, actor.ActivityTier));
+    }
+
+    [Fact]
+    public async Task ConcurrentNpcInteractionHotspotKeepsIndependentPlayerLeases()
+    {
+        const int playerCount = 128;
+        using var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
+        var requests = new List<(int PeerId, PlayerSimulationEntity Player,
+            RealtimeWorldInteractionIntent Intent)>(playerCount);
+        for (var index = 0; index < playerCount; index++)
+        {
+            var session = index == 0 ? harness.Session : CreateSession();
+            if (index > 0)
+            {
+                Assert.Equal(
+                    ActiveSimulationSessionRegistration.Joined,
+                    harness.SessionStore.Register(session));
+            }
+
+            requests.Add((
+                index + 1,
+                CreatePlayer(session, 0f, -1f),
+                RealtimeWorldInteractionIntent.CreateOpen(
+                    Guid.NewGuid(),
+                    session.SimulationSessionId,
+                    RealtimeWorldInteractionTargetKind.WorldActor,
+                    harness.Actor.NetworkEntityId,
+                    harness.Actor.RuntimeActorId,
+                    harness.Actor.InteractionRevision)));
+        }
+
+        var results = await Task.WhenAll(requests.Select(request =>
+            harness.Authority.ProcessAsync(
+                request.PeerId,
+                request.Player,
+                request.Intent,
+                CancellationToken.None)));
+
+        Assert.All(results, result => Assert.NotNull(result.Opened));
+        Assert.Equal(playerCount, harness.Leases.ListWorldActorLeases().Count);
+        var metrics = harness.Metrics.Capture();
+        Assert.Equal(playerCount, metrics.AcceptedInteractions);
+        Assert.Equal(playerCount, metrics.ActiveInteractions);
+    }
+
+    [Fact]
     public void WorldInteractionIntentBurstIsBoundedWithStableRejectionCode()
     {
         var limiter = new WorldInteractionIntentLimiter();

@@ -376,7 +376,9 @@ server result and never fabricate success. Vendor transactions, quest
 progression, crafting, combat AI, damage, death-event production, and Mob
 loot-table generation remain unimplemented. Phase 14 provides the downstream
 live or durable Mob corpse lifecycle once an authoritative producer supplies a
-death event and resolved loot seeds.
+death event and resolved loot seeds. Phase 15 changes no player-facing rule. It
+hardens the same flows with bounded work, retention cleanup, operational
+measurements, concurrency scenarios, and a real `100` bot movement baseline.
 
 ## Planned Feature Categories
 
@@ -404,7 +406,9 @@ Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
 Phase 7 shared live encumbrance, Phase 8 active-character mutation, Phase 9
 Unity inventory foundation, Phase 10 durable player-death partition and corpse
 persistence, Phase 11 concurrent corpse interaction, and Phase 12 world actors
-and authoritative interaction now exist.
+and authoritative interaction now exist. Phase 13 insurance and quest item
+lifecycle, Phase 14 Mob corpse variants, and Phase 15 operational hardening are
+also complete.
 AuthService supports owned
 item-state, bank, Secure Container, and Recovery access plus offline relocation,
 split, merge, allowed destruction, Recovery claim, and tier-change operations.

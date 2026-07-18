@@ -17,7 +17,8 @@ The current playable flow is intentionally small:
 3. The client lists logical shards and selects one.
 4. AuthService places the character on the healthy SimulationWorker assigned to
    that shard and returns a short-lived ticket plus its UDP endpoint.
-5. Unity connects through LiteNetLib, presents the ticket, and enters WorldScene.
+5. Unity resolves the accepted World through its scene catalog, connects through
+   LiteNetLib, presents the ticket, and enters that authored World scene.
 6. Unity predicts local movement while SimulationWorker remains authoritative.
 7. Leaving the shard releases the exact simulation session before returning to
    character selection.
@@ -43,6 +44,11 @@ The runtime topology uses these terms:
 | SimulationAssignment | The authoritative mapping between a worker and a shard |
 | Shard | A player-selectable copy of the shared world simulation |
 | World | Shared content and data consumed by one or more shards |
+
+A shard references one World at a time, but that binding may be changed between
+worker process generations. AuthService accepts the change only while the shard
+is offline and has no pending join, active simulation session, or open durable
+corpse state. Runtime World changes are not supported.
 
 Zones and layers are reserved for future spatial partitioning and population
 scaling. They are not implemented and are not faked in the current runtime.
@@ -84,6 +90,8 @@ The repository currently supports:
 - Character creation and listing.
 - Explicit World, Fleet, Node, Shard, SimulationWorker, and
   SimulationAssignment records.
+- Transactionally guarded offline Shard-to-World rebinding with worker-runtime
+  fencing and World-keyed collision, actor, and Unity scene selection.
 - Seeded shards that remain offline until a valid worker heartbeat exists.
 - Worker runtime generations, exact-runtime service authentication, heartbeat
   leases, graceful offline registration, and stale-worker failover.
@@ -180,9 +188,11 @@ WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors
 - One player may hold one active interaction, including a corpse view, while
   many players may interact with the same target.
 - Unity prefabs remain presentation-only. Visual authoring exports canonical
-   actor and spawn content back to WorldData. Phase 14 adds content-owned Mob
-   corpse lifetime and live or durable persistence over the existing corpse
-   client path.
+  actor and spawn content back to WorldData. Phase 14 adds content-owned Mob
+  corpse lifetime and live or durable persistence over the existing corpse
+  client path. Phase 15 load coverage exercises the central actor scheduler,
+  dormant and active transitions, and independent interaction leases without
+  changing these ownership rules.
 
 The permanent Editor workflows live at
 `Shooter MMO > Tools > Content > Actor Studio` and
@@ -193,7 +203,7 @@ production. See
 
 ## Item Foundation Status
 
-Phases 1 through 14 of the durable item and inventory plan are implemented. The
+Phases 1 through 15 of the durable item and inventory plan are implemented. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL

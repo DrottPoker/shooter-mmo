@@ -3,7 +3,9 @@ using System.Linq;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.Networking;
+using ShooterMmo.Worlds;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace ShooterMmo.Gameplay
 {
@@ -30,6 +32,35 @@ namespace ShooterMmo.Gameplay
 
             if (ShooterMmoClientSession.ActiveSimulationSession == null)
             {
+                enabled = false;
+                return;
+            }
+
+            if (!WorldSceneCatalog.TryResolveScene(
+                    ShooterMmoClientSession.ActiveSimulationSession.worldId,
+                    out var expectedSceneName,
+                    out var sceneError))
+            {
+                Debug.LogError(
+                    "WorldSceneContext cannot activate because the joined world cannot be resolved. "
+                    + sceneError,
+                    this);
+                enabled = false;
+                return;
+            }
+
+            var activeSceneName = SceneManager.GetActiveScene().name;
+            if (!string.Equals(
+                    activeSceneName,
+                    expectedSceneName,
+                    System.StringComparison.Ordinal))
+            {
+                Debug.LogError(
+                    "WorldSceneContext cannot activate because scene '" + activeSceneName
+                    + "' does not match joined world '"
+                    + ShooterMmoClientSession.ActiveSimulationSession.worldId
+                    + "', which requires scene '" + expectedSceneName + "'.",
+                    this);
                 enabled = false;
                 return;
             }

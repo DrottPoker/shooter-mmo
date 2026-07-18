@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using ShooterMmo.WorldData.Actors;
 using SimulationWorker.Auth;
 
@@ -35,6 +38,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
 {
     private readonly object sync = new();
     private readonly Dictionary<Guid, LiveMobCorpseState> corpses = [];
+    private readonly Dictionary<Guid, string> creationFingerprints = [];
 
     public LiveMobCorpseState CreateOrGet(LiveMobCorpseState corpse)
     {
@@ -42,9 +46,11 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         lock (sync)
         {
             PurgeExpiredLocked();
+            var fingerprint = CreateFingerprint(corpse);
             if (corpses.TryGetValue(corpse.CorpseId, out var existing))
             {
-                if (!Matches(existing, corpse))
+                if (!creationFingerprints.TryGetValue(corpse.CorpseId, out var existingFingerprint)
+                    || !string.Equals(existingFingerprint, fingerprint, StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
                         "The live Mob corpse id was reused with different authoritative data.");
@@ -54,6 +60,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             }
 
             corpses.Add(corpse.CorpseId, corpse);
+            creationFingerprints.Add(corpse.CorpseId, fingerprint);
             return corpse;
         }
     }
@@ -64,6 +71,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         {
             PurgeExpiredLocked();
             return corpses.Values
+                .Where(corpse => !corpse.IsEmpty)
                 .OrderBy(corpse => corpse.CreatedAt)
                 .ThenBy(corpse => corpse.CorpseId)
                 .ToArray();
@@ -71,6 +79,21 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
     }
 
     public bool TryGetActive(Guid corpseId, out LiveMobCorpseState? corpse)
+    {
+        lock (sync)
+        {
+            PurgeExpiredLocked();
+            if (corpses.TryGetValue(corpseId, out corpse) && !corpse.IsEmpty)
+            {
+                return true;
+            }
+
+            corpse = null;
+            return false;
+        }
+    }
+
+    public bool TryGetForReplay(Guid corpseId, out LiveMobCorpseState? corpse)
     {
         lock (sync)
         {
@@ -133,7 +156,11 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
                 .ToArray();
             if (remaining.Length == 0)
             {
-                corpses.Remove(corpseId);
+                corpses[corpseId] = corpse with
+                {
+                    Revision = checked(corpse.Revision + 1),
+                    Loot = []
+                };
                 return null;
             }
 
@@ -153,6 +180,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         {
             PurgeExpiredLocked();
             return corpses.TryGetValue(corpseId, out var corpse)
+                && !corpse.IsEmpty
                 ? ToSnapshot(corpse)
                 : null;
         }
@@ -162,6 +190,12 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
     {
         lock (sync)
         {
+            if (corpses.TryGetValue(corpseId, out var corpse) && corpse.IsEmpty)
+            {
+                return false;
+            }
+
+            creationFingerprints.Remove(corpseId);
             return corpses.Remove(corpseId);
         }
     }
@@ -236,6 +270,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
                      .ToArray())
         {
             corpses.Remove(corpseId);
+            creationFingerprints.Remove(corpseId);
         }
     }
 
@@ -275,35 +310,35 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         }
     }
 
-    private static bool Matches(
-        LiveMobCorpseState first,
-        LiveMobCorpseState second)
+    private static string CreateFingerprint(LiveMobCorpseState corpse)
     {
-        return first == second
-            || first.CorpseId == second.CorpseId
-                && first.SourceActorRuntimeId == second.SourceActorRuntimeId
-                && string.Equals(
-                    first.SourceActorDefinitionId,
-                    second.SourceActorDefinitionId,
-                    StringComparison.Ordinal)
-                && string.Equals(
-                    first.SourceDisplayName,
-                    second.SourceDisplayName,
-                    StringComparison.Ordinal)
-                && first.CreatedAt == second.CreatedAt
-                && first.ExpiresAt == second.ExpiresAt
-                && string.Equals(first.ShardId, second.ShardId, StringComparison.Ordinal)
-                && first.PositionX == second.PositionX
-                && first.PositionY == second.PositionY
-                && first.PositionZ == second.PositionZ
-                && string.Equals(
-                    first.PresentationKey,
-                    second.PresentationKey,
-                    StringComparison.Ordinal)
-                && first.GeneralContainerId == second.GeneralContainerId
-                && first.EquipmentContainerId == second.EquipmentContainerId
-                && first.BagContainerId == second.BagContainerId
-                && first.Revision == second.Revision
-                && first.Loot.SequenceEqual(second.Loot);
+        var components = new List<string>(15 + (corpse.Loot.Count * 5))
+        {
+            corpse.CorpseId.ToString("N"),
+            corpse.SourceActorRuntimeId.ToString("N"),
+            corpse.SourceActorDefinitionId,
+            corpse.SourceDisplayName,
+            corpse.ShardId,
+            corpse.PositionX.ToString("R", CultureInfo.InvariantCulture),
+            corpse.PositionY.ToString("R", CultureInfo.InvariantCulture),
+            corpse.PositionZ.ToString("R", CultureInfo.InvariantCulture),
+            corpse.PresentationKey,
+            corpse.GeneralContainerId.ToString("N"),
+            corpse.EquipmentContainerId.ToString("N"),
+            corpse.BagContainerId.ToString("N"),
+            corpse.CreatedAt.Ticks.ToString(CultureInfo.InvariantCulture),
+            corpse.ExpiresAt.Ticks.ToString(CultureInfo.InvariantCulture)
+        };
+        foreach (var loot in corpse.Loot.OrderBy(entry => entry.SlotIndex))
+        {
+            components.Add(loot.LootEntryId.ToString("N"));
+            components.Add(loot.GrantId.ToString("N"));
+            components.Add(loot.DefinitionId);
+            components.Add(loot.Quantity.ToString(CultureInfo.InvariantCulture));
+            components.Add(loot.SlotIndex.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return Convert.ToHexStringLower(
+            SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', components))));
     }
 }

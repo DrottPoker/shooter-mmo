@@ -5,6 +5,7 @@ using ShooterMmo.Diagnostics;
 using ShooterMmo.Items;
 using ShooterMmo.Networking;
 using ShooterMmo.WorldActors;
+using ShooterMmo.Worlds;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -123,8 +124,8 @@ namespace ShooterMmo
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (previousSceneName == ShooterMmoSceneNames.WorldScene
-                && scene.name != ShooterMmoSceneNames.WorldScene
+            if (WorldSceneCatalog.IsWorldScene(previousSceneName)
+                && !WorldSceneCatalog.IsWorldScene(scene.name)
                 && ShooterMmoClientSession.ActiveSimulationSession != null)
             {
                 StartCoroutine(ReleaseAbandonedSimulationSessionRoutine());
@@ -191,11 +192,11 @@ namespace ShooterMmo
 
             ClientLog.Warning(
                 ClientLogCategory.Client,
-                "The active simulation connection closed. Clearing local shard state and leaving WorldScene: "
+                "The active simulation connection closed. Clearing local shard state and leaving the world scene: "
                 + error.ToDisplayMessage());
             ShooterMmoClientSession.ActiveSimulationSession = null;
 
-            if (SceneManager.GetActiveScene().name == ShooterMmoSceneNames.WorldScene)
+            if (WorldSceneCatalog.IsWorldScene(SceneManager.GetActiveScene().name))
             {
                 SceneManager.LoadScene(ShooterMmoClientSession.IsAuthenticated
                     ? ShooterMmoSceneNames.CharacterSelect
@@ -250,7 +251,7 @@ namespace ShooterMmo
                 return;
             }
 
-            if (sceneName == ShooterMmoSceneNames.WorldScene)
+            if (WorldSceneCatalog.IsWorldScene(sceneName))
             {
                 AddControllerIfMissing<Gameplay.CrosshairController>();
                 AddControllerIfMissing<Ui.WorldScenePanel>();

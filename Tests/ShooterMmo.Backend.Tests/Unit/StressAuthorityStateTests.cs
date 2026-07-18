@@ -26,6 +26,9 @@ public sealed class StressAuthorityStateTests
             options.ShardId));
         Assert.True(consumed.Succeeded);
         Assert.True(consumed.Value!.IsSyntheticBot);
+        Assert.Equal(0, consumed.Value.ItemStateRevision);
+        Assert.Equal(0, consumed.Value.CarriedWeight);
+        Assert.Equal(200, consumed.Value.CarryCapacity);
 
         var consumedAgain = state.ConsumeTicket(new StressConsumeTicketRequest(
             issued.Ticket,
@@ -62,6 +65,9 @@ public sealed class StressAuthorityStateTests
                 session.SimulationSessionToken));
         Assert.True(heartbeat.Succeeded);
         Assert.False(heartbeat.Value!.Released);
+        Assert.Equal(0, heartbeat.Value.ItemStateRevision);
+        Assert.Equal(0, heartbeat.Value.CarriedWeight);
+        Assert.Equal(200, heartbeat.Value.CarryCapacity);
 
         var release = state.ReleaseSession(
             session.SimulationSessionId,

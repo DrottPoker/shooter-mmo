@@ -2,6 +2,7 @@ using System.Collections;
 using ShooterMmo.Api;
 using ShooterMmo.Diagnostics;
 using ShooterMmo.Networking;
+using ShooterMmo.Worlds;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -286,6 +287,24 @@ namespace ShooterMmo.Ui
         {
             var character = characters[selectedCharacterIndex];
             var shard = shards[selectedShardIndex];
+            if (!WorldSceneCatalog.TryResolveScene(
+                    shard.worldId,
+                    out var worldSceneName,
+                    out var worldSceneError))
+            {
+                status = "Cannot join " + shard.displayName + ": " + worldSceneError;
+                ClientLog.Error(ClientLogCategory.Client, status);
+                yield break;
+            }
+
+            if (!Application.CanStreamedLevelBeLoaded(worldSceneName))
+            {
+                status = "Cannot join " + shard.displayName + ": scene '" + worldSceneName
+                    + "' is not included in the client build.";
+                ClientLog.Error(ClientLogCategory.Client, status);
+                yield break;
+            }
+
             ShooterMmoClientSession.SelectedCharacter = character;
             ShooterMmoClientSession.SelectedShard = shard;
             ClientLog.Info(
@@ -307,6 +326,34 @@ namespace ShooterMmo.Ui
             {
                 yield break;
             }
+
+            if (joinTicket == null || joinTicket.shard == null)
+            {
+                status = "Cannot join " + shard.displayName
+                    + ": AuthService returned incomplete placement data.";
+                ClientLog.Error(ClientLogCategory.Client, status);
+                yield break;
+            }
+
+            if (!WorldSceneCatalog.TryResolveScene(
+                    joinTicket.shard.worldId,
+                    out worldSceneName,
+                    out worldSceneError))
+            {
+                status = "Cannot join " + shard.displayName + ": " + worldSceneError;
+                ClientLog.Error(ClientLogCategory.Client, status);
+                yield break;
+            }
+
+            if (!Application.CanStreamedLevelBeLoaded(worldSceneName))
+            {
+                status = "Cannot join " + shard.displayName + ": scene '" + worldSceneName
+                    + "' is not included in the client build.";
+                ClientLog.Error(ClientLogCategory.Client, status);
+                yield break;
+            }
+
+            ShooterMmoClientSession.SelectedShard = joinTicket.shard;
 
             ClientLog.Info(
                 ClientLogCategory.Auth,
@@ -340,7 +387,7 @@ namespace ShooterMmo.Ui
 
             ShooterMmoClientSession.ActiveSimulationSession = activeSession;
             status = "Joined shard " + activeSession.shardId + " as " + activeSession.characterName + ".";
-            SceneManager.LoadScene(ShooterMmoSceneNames.WorldScene);
+            SceneManager.LoadScene(worldSceneName);
         }
 
         private void BeginOperation(ClientOperation operation, IEnumerator routine)

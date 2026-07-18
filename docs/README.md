@@ -39,7 +39,7 @@ operations, and future design do not drift into duplicate descriptions.
 - [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   defines the dependency-ordered delivery phases, proposed persistence model,
   service boundaries, and verification gates for that design. Phases 1 through
-  14 are implemented, including the item catalog, Unity authoring, PostgreSQL
+  15 are implemented, including the item catalog, Unity authoring, PostgreSQL
   schema,
   transactional catalog mirror, character item-state bootstrap, authoritative
   reads, the race-safe transaction kernel, policy and quest-grant lifecycle,
@@ -53,7 +53,8 @@ operations, and future design do not drift into duplicate descriptions.
   protocol version `13` and insurance plus quest item-lifecycle handlers on that
   interaction. Phase 14 adds content-controlled live or durable Mob corpse
   variants, retry-safe loot claims, and selected boss restart restoration.
-  Former Phases 12 through 14 are now Phases 13 through 15.
+  Phase 15 adds bounded operations, low-cardinality metrics, retention cleanup,
+  concurrent load scenarios, and the rerun movement and network baseline.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and
   feature-specific design documents supersede conflicting details in that brief.

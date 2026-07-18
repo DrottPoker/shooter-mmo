@@ -200,6 +200,17 @@ public sealed class MobCorpseLifecycleIntegrationTests
             1,
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_destructions where reason = 'corpse_expired';"));
+        var replayAfterExpiry = await context.CorpseService.CreatePersistentMobCorpseAsync(
+            WorkerId,
+            request,
+            CancellationToken.None);
+        Assert.True(replayAfterExpiry.Succeeded, replayAfterExpiry.Error?.Message);
+        Assert.Equal(first.Value.Corpse.CorpseId, replayAfterExpiry.Value!.Corpse.CorpseId);
+        Assert.Equal(
+            await connection.ExecuteScalarAsync<DateTime>(
+                "select expires_at from corpses where id = @CorpseId;",
+                new { CorpseId = corpseId }),
+            replayAfterExpiry.Value.Corpse.ExpiresAt);
     }
 
     private static async Task<ConsumedSimulationJoinTicketResponse> JoinAsync(

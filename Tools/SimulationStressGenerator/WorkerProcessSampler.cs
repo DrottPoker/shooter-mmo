@@ -52,12 +52,21 @@ public sealed class WorkerProcessSampler : IDisposable
         return new WorkerProcessSampler(Process.GetCurrentProcess());
     }
 
-    public static WorkerProcessSampler? TryAttach()
+    public static WorkerProcessSampler? TryAttach(DateTime workerStartedAt)
     {
         var candidates = Process.GetProcessesByName("SimulationWorker")
             .Where(process => !process.HasExited)
             .ToArray();
-        if (candidates.Length != 1)
+        var selected = candidates
+            .Select(process => new
+            {
+                Process = process,
+                StartDistance = GetStartDistance(process, workerStartedAt)
+            })
+            .Where(candidate => candidate.StartDistance <= TimeSpan.FromMinutes(2))
+            .OrderBy(candidate => candidate.StartDistance)
+            .FirstOrDefault();
+        if (selected is null)
         {
             foreach (var candidate in candidates)
             {
@@ -67,12 +76,29 @@ public sealed class WorkerProcessSampler : IDisposable
             Console.WriteLine(
                 candidates.Length == 0
                     ? "SimulationWorker process metrics are unavailable because no native SimulationWorker process was found."
-                    : "SimulationWorker process metrics are unavailable because more than one native SimulationWorker process is running.");
+                    : "SimulationWorker process metrics are unavailable because no native process matched the registered runtime start time.");
             return null;
         }
 
-        Console.WriteLine($"Monitoring SimulationWorker process {candidates[0].Id}.");
-        return new WorkerProcessSampler(candidates[0]);
+        foreach (var candidate in candidates.Where(candidate => candidate.Id != selected.Process.Id))
+        {
+            candidate.Dispose();
+        }
+
+        Console.WriteLine($"Monitoring SimulationWorker process {selected.Process.Id}.");
+        return new WorkerProcessSampler(selected.Process);
+    }
+
+    private static TimeSpan GetStartDistance(Process process, DateTime workerStartedAt)
+    {
+        try
+        {
+            return (process.StartTime.ToUniversalTime() - workerStartedAt).Duration();
+        }
+        catch (InvalidOperationException)
+        {
+            return TimeSpan.MaxValue;
+        }
     }
 
     public void Sample()

@@ -1,18 +1,28 @@
 using System.Data;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Dapper;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using ShooterMmo.WorldData.Items;
 
 namespace AuthService.Items;
 
-public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
+public sealed partial class ItemTransactionService(
+    NpgsqlDataSource dataSource,
+    ItemOperationsMetrics? operationsMetrics = null,
+    ItemOperationsOptions? itemOperationsOptions = null,
+    ILogger<ItemTransactionService>? logger = null,
+    IHttpContextAccessor? httpContextAccessor = null)
 {
     private const string MutationSavepoint = "item_mutation";
     private const string EmptyStackStateFingerprint = "item-stack-state-v1";
     private static readonly JsonSerializerOptions OperationJsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly ItemOperationsOptions effectiveOperationsOptions =
+        itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults();
 
     public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<GrantItemCommand> request,
@@ -2678,6 +2688,83 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
         where TCommand : notnull
     {
         ArgumentNullException.ThrowIfNull(request);
+        var started = Stopwatch.GetTimestamp();
+        var correlationId = ResolveCorrelationId(request.OperationId);
+        try
+        {
+            var result = await ExecuteCoreAsync(
+                request,
+                operationKind,
+                actorCharacterId,
+                handler,
+                cancellationToken);
+            var duration = Stopwatch.GetElapsedTime(started);
+            operationsMetrics?.RecordTransaction(operationKind, result, duration);
+            if (logger is not null)
+            {
+                if (!result.Succeeded && IsExpectedContention(result.Error?.Code))
+                {
+                    logger.LogDebug(
+                        "Item transaction {OperationKind} {OperationId} was rejected with {ErrorCode} after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
+                        operationKind,
+                        request.OperationId,
+                        result.Error?.Code ?? "item_transaction_rejected",
+                        duration.TotalMilliseconds,
+                        correlationId);
+                }
+                else if (!result.Succeeded)
+                {
+                    logger.LogWarning(
+                        "Item transaction {OperationKind} {OperationId} was rejected with {ErrorCode} after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
+                        operationKind,
+                        request.OperationId,
+                        result.Error?.Code ?? "item_transaction_rejected",
+                        duration.TotalMilliseconds,
+                        correlationId);
+                }
+                else if (IsOperationallySignificant(operationKind))
+                {
+                    logger.LogInformation(
+                        "Item transaction {OperationKind} {OperationId} committed after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
+                        operationKind,
+                        request.OperationId,
+                        duration.TotalMilliseconds,
+                        correlationId);
+                }
+                else
+                {
+                    logger.LogDebug(
+                        "Item transaction {OperationKind} {OperationId} committed after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
+                        operationKind,
+                        request.OperationId,
+                        duration.TotalMilliseconds,
+                        correlationId);
+                }
+            }
+
+            return result;
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(
+                exception,
+                "Item transaction {OperationKind} {OperationId} failed unexpectedly for correlation {CorrelationId}.",
+                operationKind,
+                request.OperationId,
+                correlationId);
+            throw;
+        }
+    }
+
+    private async Task<ItemTransactionResult> ExecuteCoreAsync<TCommand>(
+        ItemTransactionRequest<TCommand> request,
+        string operationKind,
+        Guid? actorCharacterId,
+        Func<ItemTransactionContext, TCommand, CancellationToken, Task> handler,
+        CancellationToken cancellationToken)
+        where TCommand : notnull
+    {
+        ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Actor);
         ArgumentNullException.ThrowIfNull(request.Command);
         if (request.OperationId == Guid.Empty)
@@ -2692,6 +2779,15 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
             OperationJsonOptions);
         var requestHash = Convert.ToHexStringLower(
             SHA256.HashData(Encoding.UTF8.GetBytes(requestPayload)));
+        if (Encoding.UTF8.GetByteCount(requestPayload)
+            > effectiveOperationsOptions.MaximumCommandPayloadBytes)
+        {
+            return CreateRejectedResult(
+                request.OperationId,
+                operationKind,
+                ItemTransactionErrorCodes.ItemCommandPayloadTooLarge,
+                "The item operation command payload exceeds the configured size limit.");
+        }
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(
@@ -2700,12 +2796,26 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
 
         try
         {
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                select
+                    set_config('statement_timeout', @StatementTimeout, true),
+                    set_config('lock_timeout', @LockTimeout, true);
+                """,
+                new
+                {
+                    StatementTimeout = $"{effectiveOperationsOptions.TransactionTimeout.TotalMilliseconds:0}ms",
+                    LockTimeout = $"{effectiveOperationsOptions.LockTimeout.TotalMilliseconds:0}ms"
+                },
+                transaction,
+                cancellationToken: cancellationToken));
             var context = new ItemTransactionContext(
                 connection,
                 transaction,
                 request.OperationId,
                 operationKind,
-                request.Actor);
+                request.Actor,
+                operationsMetrics);
             try
             {
                 context.EnsureActorIsValid();
@@ -2723,16 +2833,27 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
                     exception.Message);
             }
 
-            var replay = await ClaimOperationAsync(
-                connection,
-                transaction,
-                request.OperationId,
-                request.Actor,
-                actorCharacterId,
-                operationKind,
-                requestHash,
-                requestPayload,
-                cancellationToken);
+            var claimStarted = Stopwatch.GetTimestamp();
+            ItemTransactionResult? replay;
+            try
+            {
+                replay = await ClaimOperationAsync(
+                    connection,
+                    transaction,
+                    request.OperationId,
+                    request.Actor,
+                    actorCharacterId,
+                    operationKind,
+                    requestHash,
+                    requestPayload,
+                    cancellationToken);
+            }
+            finally
+            {
+                operationsMetrics?.RecordLockWait(
+                    "operation_claim",
+                    Stopwatch.GetElapsedTime(claimStarted));
+            }
             if (replay is not null)
             {
                 await transaction.CommitAsync(cancellationToken);
@@ -2785,6 +2906,21 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
                     mapped.Message,
                     cancellationToken);
             }
+        }
+        catch (PostgresException exception)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            var mapped = MapPostgresError(exception);
+            if (mapped is null)
+            {
+                throw;
+            }
+
+            return CreateRejectedResult(
+                request.OperationId,
+                operationKind,
+                mapped.Code,
+                mapped.Message);
         }
         catch
         {
@@ -2964,6 +3100,13 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
 
     private static ItemTransactionError? MapPostgresError(PostgresException exception)
     {
+        if (exception.SqlState is "57014" or "55P03")
+        {
+            return new ItemTransactionError(
+                ItemTransactionErrorCodes.ItemTransactionTimeout,
+                "The item transaction exceeded its configured database time limit.");
+        }
+
         return exception.ConstraintName switch
         {
             "ux_item_instances_container_slot" => new ItemTransactionError(
@@ -2980,6 +3123,43 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
                 "The requested item quantity is no longer valid."),
             _ => null
         };
+    }
+
+    private static bool IsOperationallySignificant(string operationKind)
+    {
+        return operationKind is ItemOperationKinds.ProcessPlayerDeath
+            or ItemOperationKinds.CreatePersistentMobCorpse
+            or ItemOperationKinds.ExpireCorpse
+            or ItemOperationKinds.ApplyItemPolicy
+            or ItemOperationKinds.RemoveInsurancePolicy
+            or ItemOperationKinds.AbandonQuestItems;
+    }
+
+    private string ResolveCorrelationId(Guid operationId)
+    {
+        var header = httpContextAccessor?.HttpContext?
+            .Request.Headers["X-Correlation-ID"]
+            .FirstOrDefault();
+        if (Guid.TryParseExact(header, "N", out var correlationId))
+        {
+            return correlationId.ToString("N");
+        }
+
+        return Activity.Current?.TraceId.ToString()
+            ?? httpContextAccessor?.HttpContext?.TraceIdentifier
+            ?? operationId.ToString("N");
+    }
+
+    private static bool IsExpectedContention(string? errorCode)
+    {
+        return errorCode is ItemTransactionErrorCodes.ItemStateConflict
+            or ItemTransactionErrorCodes.ItemOperationConflict
+            or ItemTransactionErrorCodes.ItemSlotOccupied
+            or ItemTransactionErrorCodes.EquipmentSlotOccupied
+            or ItemTransactionErrorCodes.ItemQuantityChanged
+            or ItemTransactionErrorCodes.BagStateChanged
+            or ItemTransactionErrorCodes.CorpseStateChanged
+            or ItemTransactionErrorCodes.ItemAlreadyLooted;
     }
 
     private static object CanonicalizeCommand<TCommand>(TCommand command)

@@ -59,9 +59,20 @@ Shard: local-shard-1
   Fleet: local-fleet
 ```
 
-A shard belongs to one fleet and references one World definition. A node also
-belongs to one fleet. AuthService permits an assignment only when the worker's
-node and target shard belong to the same fleet.
+A shard belongs to one fleet and references exactly one World definition at a
+time. The binding is operational configuration, not permanent character or
+shard ownership. It may change during AuthService topology reconciliation only
+while the shard has no active assignment, pending unexpired join ticket, active
+unexpired simulation session, or open durable corpse. The seeder locks the shard
+row while checking these blockers and changing `world_id`, which serializes the
+change against worker registration. A legacy assignment placeholder that has
+never owned a worker runtime does not block the change. A running shard cannot
+hot-swap Worlds.
+
+A node also belongs to one fleet. AuthService permits an assignment only when
+the worker's node and target shard belong to the same fleet. After a successful
+offline World rebind, the replacement worker must start with the same `WorldId`
+and matching World content.
 
 The current safe scale unit is one active SimulationWorker per shard and one
 active shard per SimulationWorker. PostgreSQL partial unique indexes enforce
@@ -289,12 +300,13 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 14 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 15 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
 mutation plus Unity inventory integration, death partition, durable player
 corpse custody, concurrent corpse interaction, NPC insurance and quest item
-lifecycle, and live or durable Mob corpse variants implemented
+  lifecycle, live or durable Mob corpse variants, and operational hardening
+  implemented
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -537,6 +549,16 @@ view, range, lease, mutation, carry-state, and closure foundation. Vendor
 transactions, quest progression, complete Mob AI, combat, damage, death-event
 production, and loot-table generation remain later phases.
 
+Phase 15 hardens this existing authority graph rather than adding a new service
+or mutation path. AuthService bounds HTTP bodies, canonical commands,
+PostgreSQL statements, and lock waits. It publishes identity-free item and corpse
+measurements, carries a bounded correlation id across worker HTTP calls, and
+runs system-authority maintenance for audited Recovery expiry plus policy-bound
+retention. Closed corpses are removed only after their deadline and only when
+their sections are empty. Durable destruction and death references prevent
+operation evidence from being removed. SimulationWorker retains ownership of
+live corpses and central actor scheduling.
+
 ## Durable Data Model
 
 | Table | Responsibility |
@@ -655,12 +677,17 @@ revision, and collision revision.
 1. AuthService validates `Simulation:Topology` at startup.
 2. Database migrations create or upgrade the durable topology schema.
 3. The seeder idempotently ensures configured Worlds, Fleets, Nodes, and Shards.
-4. Seeded shards remain offline because topology alone does not create a healthy
+4. If an existing shard changes `WorldId`, the seeder locks it and rejects the
+   change until its assignment, join tickets, simulation sessions, and durable
+   corpses are drained.
+5. Seeded shards remain offline because topology alone does not create a healthy
    worker assignment.
 
 ### Worker Registration
 
-1. SimulationWorker validates config and loads collision near the spawn point.
+1. SimulationWorker validates config, loads
+   `CollisionData/<WorldId>/manifest.json`, and derives its default actor data
+   path as `ActorData/<WorldId>.world-actors.json`.
 2. It binds UDP and reports transport readiness.
 3. It sends worker, runtime, topology, endpoint, capacity, protocol, simulation,
    and collision metadata to AuthService.

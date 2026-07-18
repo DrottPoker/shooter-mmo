@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "entries": [
+    {
+      "worldId": "local-world-1",
+      "sceneName": "WorldScene"
+    }
+  ]
+}

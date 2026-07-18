@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace ShooterMmo.Backend.Tests.Integration;
 
@@ -35,6 +36,7 @@ internal sealed class SimulationItemApiTestHost : IAsyncDisposable
             EnvironmentName = Environments.Development
         });
         builder.Configuration.AddConfiguration(context.Configuration);
+        builder.Logging.ClearProviders();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             [$"ServiceAuthentication:SimulationWorkers:{workerId}"] = workerSecret

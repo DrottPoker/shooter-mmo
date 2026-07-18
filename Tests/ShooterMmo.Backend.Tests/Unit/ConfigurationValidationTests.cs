@@ -112,6 +112,9 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("local-node-1", config.NodeId);
         Assert.Equal("local-shard-1", config.ShardId);
         Assert.Equal("local-world-1", config.WorldId);
+        Assert.Equal(
+            Path.Combine("ActorData", "local-world-1.world-actors.json"),
+            config.ActorDataPath);
         Assert.Equal("127.0.0.1", config.AdvertisedHost);
         Assert.Equal(27015, config.AdvertisedUdpPort);
         Assert.Equal(100, config.MaxConnections);
@@ -134,6 +137,22 @@ public sealed class ConfigurationValidationTests
         Assert.True(access.Evaluate(0f, 0f, -1f).RecoveryStorage);
         Assert.False(access.Evaluate(0f, 0f, -1f).InsuranceNpc);
         Assert.False(access.Evaluate(4f, 0f, -1f).Bank);
+    }
+
+    [Fact]
+    public void SimulationWorkerDerivesActorDataPathFromWorldIdentity()
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:WorldId"] = "development-world-1";
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+
+        var config = SimulationWorkerConfig.FromConfiguration(configuration);
+
+        Assert.Equal(
+            Path.Combine("ActorData", "development-world-1.world-actors.json"),
+            config.ActorDataPath);
     }
 
     [Fact]

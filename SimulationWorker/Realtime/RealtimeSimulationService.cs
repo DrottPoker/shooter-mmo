@@ -45,7 +45,8 @@ public sealed class RealtimeSimulationService(
     WorldActorMetrics? providedWorldActorMetrics = null,
     SimulationWorkerIdentity? workerIdentity = null,
     LiveMobCorpseStore? providedLiveMobCorpseStore = null,
-    LiveMobCorpseInteractionService? providedLiveMobCorpseInteractionService = null)
+    LiveMobCorpseInteractionService? providedLiveMobCorpseInteractionService = null,
+    CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
     : BackgroundService
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
@@ -79,6 +80,7 @@ public sealed class RealtimeSimulationService(
     private readonly LiveMobCorpseStore? liveMobCorpseStore = providedLiveMobCorpseStore;
     private readonly LiveMobCorpseInteractionService? liveMobCorpseInteractionService =
         providedLiveMobCorpseInteractionService;
+    private readonly CorpseRuntimeMetrics? corpseRuntimeMetrics = providedCorpseRuntimeMetrics;
     private readonly WorldActorMetrics? worldActorMetrics = providedWorldActorMetrics;
     private NetManager? server;
     private uint serverTick;
@@ -2175,10 +2177,13 @@ public sealed class RealtimeSimulationService(
 
     private void BroadcastCorpsePresence()
     {
-        var activeCorpses = corpseStore.ListActive()
+        var durableCorpses = corpseStore.ListActive();
+        var liveCorpses = liveMobCorpseStore?.ListActive()
+            ?? Array.Empty<LiveMobCorpseState>();
+        corpseRuntimeMetrics?.Observe(durableCorpses.Count, liveCorpses.Count);
+        var activeCorpses = durableCorpses
             .Cast<ICorpseRuntimePresence>()
-            .Concat(liveMobCorpseStore?.ListActive()
-                ?? Array.Empty<LiveMobCorpseState>())
+            .Concat(liveCorpses)
             .OrderBy(corpse => corpse.CreatedAt)
             .ThenBy(corpse => corpse.CorpseId)
             .ToArray();

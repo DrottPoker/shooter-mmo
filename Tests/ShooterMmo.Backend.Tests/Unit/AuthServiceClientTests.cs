@@ -46,6 +46,7 @@ public sealed class AuthServiceClientTests
             body.RootElement.GetProperty("workerId").GetString());
         Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
         Assert.Equal("local-shard-1", body.RootElement.GetProperty("shardId").GetString());
+        Assert.Matches("^[0-9a-f]{32}$", request.CorrelationId);
     }
 
     [Fact]
@@ -969,10 +970,17 @@ public sealed class AuthServiceClientTests
             Requests.Add(new RecordedRequest(
                 request.RequestUri!.AbsolutePath,
                 body,
-                request.RequestUri.Query));
+                request.RequestUri.Query,
+                request.Headers.TryGetValues("X-Correlation-ID", out var correlationValues)
+                    ? correlationValues.Single()
+                    : string.Empty));
             return responseFactory(request);
         }
     }
 
-    private sealed record RecordedRequest(string Path, string Body, string Query);
+    private sealed record RecordedRequest(
+        string Path,
+        string Body,
+        string Query,
+        string CorrelationId);
 }

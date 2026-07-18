@@ -2,13 +2,14 @@
 
 Last updated: 2026-07-18
 
-Status: Locked design target; Phases 1 through 14 content, authoring, schema,
+Status: Locked design target; Phases 1 through 15 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
 encumbrance, realtime item mutation, Unity inventory foundation, death
 partition, durable player-corpse custody, concurrent corpse looting, shared
 world actors, authoritative interaction, insurance NPC lifecycle, quest item
-grant lifecycle, and content-controlled Mob corpse variants implemented
+  grant lifecycle, content-controlled Mob corpse variants, and operational
+  hardening implemented
 
 ## Purpose
 
@@ -755,7 +756,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 14 now implement the neutral catalog, structural
+claim. Phases 1 through 15 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -822,6 +823,15 @@ Phase 14 adds content-controlled live or durable Mob corpse variants. Normal
 Mob contents are worker memory and disappear on restart. Deterministic grant
 ids make a committed player claim retry-safe. Selected bosses reuse durable
 corpse custody and expiry without creating a second corpse architecture.
+
+Phase 15 bounds the existing transaction kernel with statement, lock, canonical
+command, and HTTP body limits. Identity-free metrics cover transaction latency,
+lock waits, conflicts, stale revisions, death partition, policy actions, corpse
+counts, Recovery backlog, and cleanup. System-authority maintenance expires
+Recovery deliveries transactionally, retains durable destruction evidence,
+removes only empty closed corpses after policy, and deletes only unreferenced old
+operation rows. Load tests preserve custody across concurrent claims and repeated
+Bag swaps. No new item owner, location, or authority is introduced.
 
 No vendor, gathering, quest progression, combat death producer, damage system,
 or Mob loot-table producer calls these boundaries yet. Final corpse art remains

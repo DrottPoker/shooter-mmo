@@ -264,6 +264,8 @@ public sealed record GrantMobLootCommand(
 
 public sealed record ExpireCorpseCommand(Guid CorpseId);
 
+public sealed record ExpireRecoveryDeliveryCommand(Guid RecoveryDeliveryId);
+
 public sealed record LootCorpseItemCommand(
     Guid CharacterId,
     Guid CorpseId,
@@ -396,6 +398,7 @@ public static class ItemOperationKinds
     public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
     public const string GrantMobLoot = "grant_mob_loot";
     public const string ExpireCorpse = "expire_corpse";
+    public const string ExpireRecoveryDelivery = "expire_recovery_delivery";
     public const string LootCorpseItem = "loot_corpse_item";
     public const string LootCorpsePartialStack = "loot_corpse_partial_stack";
     public const string DepositCorpseItem = "deposit_corpse_item";

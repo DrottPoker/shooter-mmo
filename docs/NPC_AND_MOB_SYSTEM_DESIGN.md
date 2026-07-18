@@ -63,6 +63,14 @@ claims from duplication, while durable bosses reuse player corpse restoration
 and expiry. Damage, death detection, loot-table generation, respawn, and complete
 Mob AI remain unavailable.
 
+Phase 15 validates this foundation at operational scale without changing its
+ownership. Automated load coverage schedules `2,000` event-driven NPCs and
+`2,000` centrally scheduled active or dormant Mobs, then opens `128` concurrent
+NPC interactions through independent player leases. The existing
+`ShooterMmo.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
+event-driven, dormant, active, and interaction measurements. No actor receives
+an independent background task or durable row.
+
 ## Canonical Terminology
 
 | Term | Meaning |
@@ -609,6 +617,8 @@ Phase 12 requires automated coverage for:
   corpse transaction rewrite.
 - Dormant and active Mob scheduling seams without per-actor tasks.
 - No normal NPC or Mob instance persistence row requirement.
+- A `4,000` actor mixed-tier load and a `128` player NPC interaction hotspot
+  without per-actor loops, shared-player lease leakage, or identity metric labels.
 
 Implementation must also pass locked dependency restore, dependency policy,
 formatter verification, the existing item-catalog and collision verification,

@@ -26,13 +26,14 @@ SimulationWorker share `SIMULATION_WORKER_ID` and
 and parent directories for `.env`. Process environment variables and
 command-line values take precedence.
 
-SimulationWorker reads `SimulationWorker:ActorDataPath`. The checked-in default
-is `ActorData/local-world-1.world-actors.json`, copied from deterministic
-WorldData runtime content into build and publish output. Startup validates the
-World id, complete revision, structural fingerprints, references, ordering,
-collection bounds, and actor and spawn semantics before UDP admission begins.
-Use `SimulationWorker__ActorDataPath` only when a deployment intentionally
-places the same compiled manifest elsewhere.
+SimulationWorker derives its default actor path as
+`ActorData/<WorldId>.world-actors.json`. The checked-in `local-world-1` content
+is copied from deterministic WorldData runtime content into build and publish
+output. Startup validates the World id, complete revision, structural
+fingerprints, references, ordering, collection bounds, and actor and spawn
+semantics before UDP admission begins. Use
+`SimulationWorker__ActorDataPath` only when a deployment intentionally places
+the matching compiled manifest elsewhere.
 
 AuthService reads `Items:CatalogPath` from its configuration. The checked-in
 default points to `WorldData/Items/core.item-catalog.json`, which the AuthService
@@ -1113,6 +1114,74 @@ Mob fixture in this phase. `MobCorpseLifecycleService` consumes an authoritative
 death event and already resolved loot seeds, but combat, damage, death detection,
 loot-table generation, and respawn remain future producers.
 
+## Phase 15 Performance And Operations Hardening
+
+Phase 15 keeps the existing item, corpse, actor, capability, interaction, and
+authority graph. Checked-in AuthService defaults live under `Items:Operations`:
+
+- `TransactionTimeoutMilliseconds`: `10000`.
+- `LockTimeoutMilliseconds`: `2000`.
+- `MaximumCommandPayloadBytes`: `65536`.
+- `MaximumHttpRequestBodyBytes`: `262144`.
+- `MetricsIntervalSeconds`: `30`.
+- `MaintenanceIntervalSeconds`: `60`.
+- `CleanupBatchSize`: `64`.
+- `AuditRetentionDays`: `30`.
+- `ClosedCorpseRetentionDays`: `30`.
+
+Configuration fails at startup when a value is outside its bound, lock timeout
+exceeds transaction timeout, or closed-corpse retention is shorter than audit
+retention. Use standard ASP.NET Core configuration paths such as
+`Items__Operations__LockTimeoutMilliseconds` for a temporary local override.
+
+With the isolated PostgreSQL variable configured in the next section, run the
+operational tests:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --no-build `
+  --filter "FullyQualifiedName~ItemOperationsHardeningTests|FullyQualifiedName~ItemOperationsHardeningIntegrationTests"
+```
+
+Expected result: all focused tests pass. A blocked character mutation returns
+`item_transaction_timeout`; an oversized canonical command returns
+`item_command_payload_too_large` before database access; expired Recovery items
+are destroyed exactly once with `recovery_expired`; and policy-eligible empty
+closed corpses plus unreferenced old operation rows are removed without deleting
+durable destruction evidence.
+
+Run the actor and transaction hotspot scenarios:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --no-build `
+  --filter "FullyQualifiedName~WorldActorRuntimeTests|FullyQualifiedName~CorpseLootConcurrencyIntegrationTests"
+```
+
+Expected result: `2,000` event-driven NPCs and `2,000` centrally scheduled Mobs
+transition without actor-owned loops, `128` players hold independent NPC leases,
+eight concurrent corpse claims commit once each, and forty repeated Bag swaps
+preserve every aggregate and child custody relation.
+
+Run the `100` bot Release hotspot workflow in
+[Simulation Stress Testing](SIMULATION_STRESS_TESTING.md). Expected result:
+`100/100` bots join and leave cleanly, movement inputs receive acknowledgement,
+snapshot gaps remain zero under the accepted baseline, process measurements
+refer to the registered worker runtime, and the worker log contains no movement
+catch-up-budget warning.
+
+During local service operation, AuthService logs a periodic item summary with
+transaction, contention, lifecycle, corpse, Recovery, and cleanup counts.
+Significant item transactions carry a bounded correlation id and operation id.
+SimulationWorker status distinguishes actor tiers and live versus durable corpse
+counts. Credentials, session tokens, and command bodies must not appear.
+
+No manual Unity Editor scene, prefab, inspector, package, input, or build-setting
+steps are required for Phase 15. Run `Tools/Run-UnityTests.ps1` as regression
+coverage and expect all EditMode and PlayMode tests to pass unchanged.
+
 ## Isolated PostgreSQL Integration Tests
 
 The integration test resets the target database's `public` schema. Always use the
@@ -1651,11 +1720,64 @@ Rebuild every standalone client after a protocol or simulation revision change.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
 directories and must never be committed.
 
+### Rebind An Offline Shard To Another World
+
+Shard-to-World binding is intentionally changeable between worker process
+generations. It is not a runtime map switch. Prepare all target World content
+before changing a shard:
+
+- Add the target World under `Simulation:Topology:Worlds` in
+  `AuthService/Config/appsettings.json`.
+- Provide `SimulationWorker/CollisionData/<WorldId>/manifest.json` and its
+  checksummed chunks.
+- Provide `SimulationWorker/ActorData/<WorldId>.world-actors.json` when the
+  World uses actor content. `ActorDataPath` defaults to this World-keyed path.
+- Review worker movement bounds, spawn position, and item service points because
+  those coordinates must match the target World.
+- Add the authored Unity scene to the client build and map its `WorldId` in
+  `Assets/Resources/Worlds/world-scene-catalog.json`.
+
+Perform the rebind in this order:
+
+1. Stop the shard's SimulationWorker cleanly with `Ctrl+C` and wait for its
+   graceful offline registration to complete.
+2. Confirm players have left and allow all open durable corpses for that shard
+   to expire or close through their normal lifecycle. Do not rewrite World-local
+   coordinates in PostgreSQL by hand.
+3. Change that shard's `WorldId` under `Simulation:Topology:Shards` in
+   `AuthService/Config/appsettings.json`.
+4. Set the same `SimulationWorker:WorldId` in
+   `SimulationWorker/Config/appsettings.json` and verify its World-specific
+   content and coordinate settings.
+5. Start or restart AuthService while the worker remains stopped. Startup
+   topology reconciliation locks the shard and applies the new World binding.
+6. If startup reports `ShardWorldRebindBlockedException`, leave the replacement
+   worker stopped. The error lists active assignments, pending join tickets,
+   active simulation sessions, and open corpses. Drain the reported state and
+   retry AuthService startup.
+7. Start SimulationWorker only after AuthService accepts the rebind. Its first
+   heartbeat must return the same World identity.
+8. Join through CharacterSelect. Unity resolves the accepted `WorldId` through
+   its client catalog before it requests a ticket, revalidates the exact World
+   returned by placement, and loads the mapped scene only after the realtime
+   join succeeds.
+
+Expected result: no player can enter during the rebind, stale worker content
+cannot claim the shard, and the next worker runtime plus Unity client use the
+same World identity. The repository currently contains only the existing
+`local-world-1` mapping. Do not perform a real rebind until the next development
+World and all of its content have been added.
+
+No manual Unity Editor action is required for this architecture-only step. The
+current catalog already maps `local-world-1` to the existing `WorldScene`, which
+is already part of the build. The next development-map step will require exact
+scene authoring and Build Settings actions.
+
 Scene flow:
 
 - `LoginMenu`
 - `CharacterSelect`
-- `WorldScene`
+- the scene mapped from the selected shard's `WorldId`, currently `WorldScene`
 
 Expected result in `LoginMenu`:
 

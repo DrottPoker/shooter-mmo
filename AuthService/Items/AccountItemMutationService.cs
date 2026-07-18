@@ -208,6 +208,7 @@ public sealed class AccountItemMutationService(ItemTransactionService transactio
                 ServiceResult<ItemTransactionResult>.NotFound(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemStateConflict or
             ItemTransactionErrorCodes.ItemOperationConflict or
+            ItemTransactionErrorCodes.ItemTransactionTimeout or
             ItemTransactionErrorCodes.ItemSlotOccupied or
             ItemTransactionErrorCodes.EquipmentSlotOccupied or
             ItemTransactionErrorCodes.ItemQuantityChanged or

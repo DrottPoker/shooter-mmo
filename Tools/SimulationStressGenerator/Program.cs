@@ -94,6 +94,9 @@ public static class Program
         Console.WriteLine($"$env:AUTH_SERVICE_BASE_URL='{options.AuthorityUrl}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_SERVICE_SECRET='{options.WorkerSecret}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_MAX_CONNECTIONS='{Math.Max(100, options.BotCount)}'");
+        Console.WriteLine($"$env:SIMULATION_WORKER_UDP_PORT='{options.WorkerUdpPort}'");
+        Console.WriteLine($"$env:SIMULATION_WORKER_ADVERTISED_HOST='{options.WorkerHost}'");
+        Console.WriteLine($"$env:SIMULATION_WORKER_ADVERTISED_UDP_PORT='{options.WorkerUdpPort}'");
         Console.WriteLine("dotnet run --project SimulationWorker --configuration Release");
         Console.WriteLine(
             "The secret is ephemeral for this stress run and is not written to the JSON report.");

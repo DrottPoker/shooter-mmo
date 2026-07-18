@@ -7,6 +7,8 @@ public static class ItemTransactionErrorCodes
     public const string ItemNotOwned = "item_not_owned";
     public const string ItemStateConflict = "item_state_conflict";
     public const string ItemOperationConflict = "item_operation_conflict";
+    public const string ItemTransactionTimeout = "item_transaction_timeout";
+    public const string ItemCommandPayloadTooLarge = "item_command_payload_too_large";
     public const string OfflineAccessRequired = "item_offline_access_required";
     public const string ItemSlotOccupied = "item_slot_occupied";
     public const string ItemSlotIncompatible = "item_slot_incompatible";
@@ -26,6 +28,7 @@ public static class ItemTransactionErrorCodes
     public const string BankAccessRequired = "bank_access_required";
     public const string RecoveryAccessRequired = "recovery_access_required";
     public const string RecoveryDeliveryNotFound = "recovery_delivery_not_found";
+    public const string RecoveryDeliveryNotExpired = "recovery_delivery_not_expired";
     public const string DeathEventConflict = "death_event_conflict";
     public const string MobCorpseInvalid = "mob_corpse_invalid";
     public const string MobLootGrantInvalid = "mob_loot_grant_invalid";
