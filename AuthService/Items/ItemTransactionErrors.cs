@@ -27,6 +27,8 @@ public static class ItemTransactionErrorCodes
     public const string RecoveryAccessRequired = "recovery_access_required";
     public const string RecoveryDeliveryNotFound = "recovery_delivery_not_found";
     public const string DeathEventConflict = "death_event_conflict";
+    public const string MobCorpseInvalid = "mob_corpse_invalid";
+    public const string MobLootGrantInvalid = "mob_loot_grant_invalid";
     public const string CorpseNotFound = "corpse_not_found";
     public const string CorpseNotExpired = "corpse_not_expired";
     public const string CorpseStateChanged = "corpse_state_changed";

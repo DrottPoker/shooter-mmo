@@ -231,6 +231,37 @@ public sealed record ProcessPlayerDeathCommand(
     double RotationW,
     string PresentationKey);
 
+public sealed record CreatePersistentMobCorpseCommand(
+    Guid CorpseId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SourceActorDefinitionId,
+    string SourceDisplayName,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double RotationW,
+    string PresentationKey,
+    double LifetimeSeconds,
+    int WorkerHeartbeatTimeoutSeconds,
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+
+public sealed record GrantMobLootCommand(
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    Guid GrantId,
+    Guid SourceCorpseId,
+    string SourceActorDefinitionId,
+    string DefinitionId,
+    int Quantity,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex);
+
 public sealed record ExpireCorpseCommand(Guid CorpseId);
 
 public sealed record LootCorpseItemCommand(
@@ -362,6 +393,8 @@ public static class ItemOperationKinds
     public const string RemoveInsurancePolicy = "remove_insurance_policy";
     public const string AbandonQuestItems = "abandon_quest_items";
     public const string ProcessPlayerDeath = "process_player_death";
+    public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
+    public const string GrantMobLoot = "grant_mob_loot";
     public const string ExpireCorpse = "expire_corpse";
     public const string LootCorpseItem = "loot_corpse_item";
     public const string LootCorpsePartialStack = "loot_corpse_partial_stack";

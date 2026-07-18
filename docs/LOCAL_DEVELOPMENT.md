@@ -1056,6 +1056,63 @@ fixture to verify first-death consumption and replay idempotency.
 No manual Unity Editor setup is required for Phase 13. Editor actions are needed
 only for the optional offline item grant used by this manual workflow.
 
+## Phase 14 Mob Corpse Variants
+
+Phase 14 reuses the existing corpse presence, view, drag, inventory refresh, and
+generic loot-crate presentation. It adds no scene object, prefab, inspector
+reference, or protocol version. Mob definitions own the persistence choice and
+lifetime:
+
+- `mob.feral_wolf`: `live`, `120` seconds.
+- `mob.feral_alpha`: `durable`, `600` seconds.
+
+Verify the content manually:
+
+1. Open `Shooter MMO > Tools > Content > Actor Studio`.
+2. Select `mob.feral_wolf`. Confirm `Corpse Persistence` is `live` and
+   `Corpse Lifetime Seconds` is `120`.
+3. Select `mob.feral_alpha`. Confirm persistence is `durable` and lifetime is
+   `600`.
+4. Select `npc.city_guard` or `npc.city_services`. Confirm NPC content does not
+   carry Mob corpse settings.
+5. Select `Validate`, `Compile`, and `Verify`.
+
+Expected result: every action succeeds, there are four actor definitions and
+five runtime instances, and the checked-in actor runtime revision is
+`953cda2ccf495a62dddf20a38218ae66422c9627c0b6c4270d71ba44eec681e5`.
+
+Run the worker-memory lifecycle workflow:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --no-build `
+  --filter "FullyQualifiedName~LiveMobCorpseStoreTests|FullyQualifiedName~MobCorpseLifecycleServiceTests"
+```
+
+Expected result: all focused tests pass. A normal wolf corpse uses the authored
+120-second lifetime, disappears from a new worker store without database
+cleanup, expires from the original store, and replays the same deterministic
+grant id.
+
+With the isolated PostgreSQL test variable configured in the next section, run:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --no-build `
+  --filter "FullyQualifiedName~MobCorpseLifecycleIntegrationTests"
+```
+
+Expected result: both integration tests pass. Retrying one live Mob loot grant
+creates one persistent player item. A durable alpha corpse restores into a new
+worker store with the same database deadline, three-section custody, and loot.
+
+No manual Unity gameplay setup is required. There is intentionally no killable
+Mob fixture in this phase. `MobCorpseLifecycleService` consumes an authoritative
+death event and already resolved loot seeds, but combat, damage, death detection,
+loot-table generation, and respawn remain future producers.
+
 ## Isolated PostgreSQL Integration Tests
 
 The integration test resets the target database's `public` schema. Always use the

@@ -14,7 +14,7 @@ public sealed class WorldActorCompilerTests
         Assert.Equal("core", runtime.CatalogId);
         Assert.Equal("local-world-1", runtime.WorldId);
         Assert.Equal(64, runtime.Revision.Length);
-        Assert.Equal(3, runtime.Actors.Length);
+        Assert.Equal(4, runtime.Actors.Length);
         Assert.Equal(5, runtime.SpawnInstances.Length);
         Assert.Equal(
             WorldActorJson.SerializeRuntime(runtime),
@@ -80,6 +80,41 @@ public sealed class WorldActorCompilerTests
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.QuestOffer);
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Crafting);
         Assert.All(runtime.Actors, value => Assert.IsType<WorldActorDefinition>(value));
+    }
+
+    [Fact]
+    public void MobCorpseLifetimeAndPersistenceAreContentControlledPerDefinition()
+    {
+        var runtime = WorldActorTestData.Compile();
+        var normalMob = runtime.Actors.Single(value => value.Id == "mob.feral_wolf");
+        var bossMob = runtime.Actors.Single(value => value.Id == "mob.feral_alpha");
+
+        Assert.Equal(WorldActorCorpsePersistenceModeIds.Live, normalMob.CorpsePersistenceMode);
+        Assert.Equal(120f, normalMob.CorpseLifetimeSeconds);
+        Assert.Equal(WorldActorCorpsePersistenceModeIds.Durable, bossMob.CorpsePersistenceMode);
+        Assert.Equal(600f, bossMob.CorpseLifetimeSeconds);
+    }
+
+    [Fact]
+    public void InvalidMobCorpseSettingsAndNpcCorpseSettingsFailValidation()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var mob = actors.Actors.Single(value => value.Id == "mob.feral_wolf");
+        var npc = actors.Actors.Single(value => value.Id == "npc.city_guard");
+        mob.CorpsePersistenceMode = "unsupported";
+        mob.CorpseLifetimeSeconds = 0f;
+        npc.CorpsePersistenceMode = WorldActorCorpsePersistenceModeIds.Live;
+        npc.CorpseLifetimeSeconds = 120f;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains("corpsePersistenceMode", StringComparison.Ordinal));
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains("corpseLifetimeSeconds", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -64,6 +64,13 @@ namespace ShooterMmo.WorldData.Actors
                 WorldActorDamagePolicyIds.Damageable
             };
 
+        private static readonly HashSet<string> SupportedCorpsePersistenceModes =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                WorldActorCorpsePersistenceModeIds.Live,
+                WorldActorCorpsePersistenceModeIds.Durable
+            };
+
         private static readonly HashSet<string> SupportedCapabilityKinds =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -478,11 +485,36 @@ namespace ShooterMmo.WorldData.Actors
                         respawnProfileIds,
                         path + ".respawnProfileId",
                         errors);
+                    ValidateSupported(
+                        actor.CorpsePersistenceMode,
+                        SupportedCorpsePersistenceModes,
+                        path + ".corpsePersistenceMode",
+                        errors);
+                    if (!IsFinite(actor.CorpseLifetimeSeconds)
+                        || actor.CorpseLifetimeSeconds
+                            < WorldActorCorpseRules.MinimumLifetimeSeconds
+                        || actor.CorpseLifetimeSeconds
+                            > WorldActorCorpseRules.MaximumLifetimeSeconds)
+                    {
+                        errors.Add(path + ".corpseLifetimeSeconds must be between "
+                            + WorldActorCorpseRules.MinimumLifetimeSeconds
+                            + " and "
+                            + WorldActorCorpseRules.MaximumLifetimeSeconds
+                            + ".");
+                    }
                 }
                 else
                 {
                     ValidateOptionalEmpty(actor.ActivityProfileId, path + ".activityProfileId", errors);
                     ValidateOptionalEmpty(actor.RespawnProfileId, path + ".respawnProfileId", errors);
+                    ValidateOptionalEmpty(
+                        actor.CorpsePersistenceMode,
+                        path + ".corpsePersistenceMode",
+                        errors);
+                    if (actor.CorpseLifetimeSeconds != 0f)
+                    {
+                        errors.Add(path + ".corpseLifetimeSeconds must be zero for an NPC.");
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(actor.Id)
@@ -927,7 +959,9 @@ namespace ShooterMmo.WorldData.Actors
                 InteractionBounds = bounds,
                 Capabilities = capabilities,
                 ActivityProfileId = value.ActivityProfileId ?? string.Empty,
-                RespawnProfileId = value.RespawnProfileId ?? string.Empty
+                RespawnProfileId = value.RespawnProfileId ?? string.Empty,
+                CorpsePersistenceMode = value.CorpsePersistenceMode ?? string.Empty,
+                CorpseLifetimeSeconds = value.CorpseLifetimeSeconds
             };
             compiled.StructuralFingerprint = Fingerprint(
                 compiled.Id,
@@ -946,6 +980,8 @@ namespace ShooterMmo.WorldData.Actors
                 Float(bounds.SizeZ),
                 compiled.ActivityProfileId,
                 compiled.RespawnProfileId,
+                compiled.CorpsePersistenceMode,
+                Float(compiled.CorpseLifetimeSeconds),
                 string.Join(",", capabilities.Select(capability => capability.StructuralFingerprint)));
             return compiled;
         }

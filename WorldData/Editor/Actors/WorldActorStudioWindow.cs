@@ -220,6 +220,8 @@ namespace ShooterMmo.WorldData.Editor.Actors
                 EditorGUILayout.LabelField("Damage policy", "Invulnerable (required for NPCs)");
                 actor.activityProfileId = string.Empty;
                 actor.respawnProfileId = string.Empty;
+                actor.corpsePersistenceMode = string.Empty;
+                actor.corpseLifetimeSeconds = 0f;
             }
             else
             {
@@ -239,6 +241,20 @@ namespace ShooterMmo.WorldData.Editor.Actors
                     "Respawn profile",
                     actor.respawnProfileId,
                     workspace.Catalog.respawnProfiles?.Select(value => value.id).ToArray());
+                actor.corpsePersistenceMode = PopupValue(
+                    "Corpse persistence",
+                    actor.corpsePersistenceMode,
+                    new[]
+                    {
+                        WorldActorCorpsePersistenceModeIds.Live,
+                        WorldActorCorpsePersistenceModeIds.Durable
+                    });
+                actor.corpseLifetimeSeconds = EditorGUILayout.FloatField(
+                    "Corpse lifetime seconds",
+                    actor.corpseLifetimeSeconds);
+                EditorGUILayout.HelpBox(
+                    "Live corpses remain worker-owned and may disappear on restart. Durable corpses use PostgreSQL custody and restart restoration.",
+                    MessageType.None);
             }
 
             DrawBounds(actor);
@@ -584,7 +600,13 @@ namespace ShooterMmo.WorldData.Editor.Actors
                     : workspace.Catalog.activityProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 respawnProfileId = npc
                     ? string.Empty
-                    : workspace.Catalog.respawnProfiles?.FirstOrDefault()?.id ?? string.Empty
+                    : workspace.Catalog.respawnProfiles?.FirstOrDefault()?.id ?? string.Empty,
+                corpsePersistenceMode = npc
+                    ? string.Empty
+                    : WorldActorCorpsePersistenceModeIds.Live,
+                corpseLifetimeSeconds = npc
+                    ? 0f
+                    : WorldActorCorpseRules.DefaultLiveLifetimeSeconds
             };
             ArrayUtility.Add(ref actors, actor);
             workspace.Catalog.actors = actors;

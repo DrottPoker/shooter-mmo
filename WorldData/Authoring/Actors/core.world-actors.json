@@ -15,6 +15,11 @@
   ],
   "presentationArchetypes": [
     {
+      "id": "mob.feral_alpha",
+      "displayName": "Feral Alpha",
+      "actorKind": "mob"
+    },
+    {
       "id": "mob.feral_wolf",
       "displayName": "Feral Wolf",
       "actorKind": "mob"
@@ -69,7 +74,36 @@
       },
       "capabilities": [],
       "activityProfileId": "mob.standard",
-      "respawnProfileId": "mob.normal"
+      "respawnProfileId": "mob.normal",
+      "corpsePersistenceMode": "live",
+      "corpseLifetimeSeconds": 120.0
+    },
+    {
+      "id": "mob.feral_alpha",
+      "displayName": "Feral Alpha",
+      "kind": "mob",
+      "factionId": "wild",
+      "disposition": "hostile",
+      "presentationArchetypeId": "mob.feral_alpha",
+      "damagePolicy": "damageable",
+      "tags": [
+        "boss",
+        "creature",
+        "wild"
+      ],
+      "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.8,
+        "centerZ": 0.0,
+        "sizeX": 1.6,
+        "sizeY": 1.6,
+        "sizeZ": 2.2
+      },
+      "capabilities": [],
+      "activityProfileId": "mob.standard",
+      "respawnProfileId": "mob.normal",
+      "corpsePersistenceMode": "durable",
+      "corpseLifetimeSeconds": 600.0
     },
     {
       "id": "npc.city_guard",
@@ -104,7 +138,9 @@
         }
       ],
       "activityProfileId": "",
-      "respawnProfileId": ""
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0.0
     },
     {
       "id": "npc.city_services",
@@ -169,7 +205,9 @@
         }
       ],
       "activityProfileId": "",
-      "respawnProfileId": ""
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0.0
     }
   ]
 }

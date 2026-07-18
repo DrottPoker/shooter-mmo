@@ -180,7 +180,9 @@ WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors
 - One player may hold one active interaction, including a corpse view, while
   many players may interact with the same target.
 - Unity prefabs remain presentation-only. Visual authoring exports canonical
-  actor and spawn content back to WorldData.
+   actor and spawn content back to WorldData. Phase 14 adds content-owned Mob
+   corpse lifetime and live or durable persistence over the existing corpse
+   client path.
 
 The permanent Editor workflows live at
 `Shooter MMO > Tools > Content > Actor Studio` and
@@ -191,7 +193,7 @@ production. See
 
 ## Item Foundation Status
 
-Phases 1 through 13 of the durable item and inventory plan are implemented. The
+Phases 1 through 14 of the durable item and inventory plan are implemented. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -257,7 +259,8 @@ The remaining locked direction is slot-based rather than grid-based and includes
 - Final inventory visual design, drag-and-drop interaction polish, accessibility,
   and item policy detail presentation on the implemented client foundation.
 - The authoritative combat death producer, final corpse art and interaction
-  polish, and configurable Mob corpse persistence.
+  polish, Mob loot-table generation, and respawn behavior. Content-controlled
+  Mob corpse persistence is implemented.
 - Quest progression, completion rewards, and final insurance or quest UI polish
   above the implemented Phase 13 lifecycle handlers.
 

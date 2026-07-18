@@ -2,13 +2,13 @@
 
 Last updated: 2026-07-18
 
-Status: Locked design target; Phases 1 through 13 content, authoring, schema,
+Status: Locked design target; Phases 1 through 14 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
 encumbrance, realtime item mutation, Unity inventory foundation, death
 partition, durable player-corpse custody, concurrent corpse looting, shared
-world actors, authoritative interaction, insurance NPC lifecycle, and quest
-item grant lifecycle implemented
+world actors, authoritative interaction, insurance NPC lifecycle, quest item
+grant lifecycle, and content-controlled Mob corpse variants implemented
 
 ## Purpose
 
@@ -594,6 +594,14 @@ use durable corpse custody and restart restoration. Persistent Mob corpse
 behavior reuses the player-corpse transaction and expiry foundation without
 changing the topology model.
 
+Phase 14 implements this boundary. Live Mob contents never enter PostgreSQL.
+The worker derives each loot entry and grant id from one authoritative death
+event and materializes a claimed whole item through the exact-session item
+transaction boundary. Selected durable Mobs use the same durable corpse record,
+three-section custody, restoration, interaction, and expiry paths as players.
+The lifecycle input contains already resolved loot seeds. Combat, damage, death
+detection, loot-table generation, and respawn remain separate producers.
+
 ## Corpse Container Transfers And Bag Swaps
 
 Inspecting a corpse is read-only and does not acquire a long-lived database lock.
@@ -747,7 +755,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 13 now implement the neutral catalog, structural
+claim. Phases 1 through 14 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -810,9 +818,14 @@ the policy. Explicit removal preserves item identity. Quest accept, abandon,
 and reaccept use one exact protected grant lineage. Safe item and Recovery
 source labels expose lifecycle meaning without exposing raw lineage ids.
 
-No vendor, gathering, quest progression, or combat death producer calls the
-player-death boundary yet. Final corpse art and configurable Mob corpse
-persistence remain later phases. Phase 13 routes insurance and quest item
+Phase 14 adds content-controlled live or durable Mob corpse variants. Normal
+Mob contents are worker memory and disappear on restart. Deterministic grant
+ids make a committed player claim retry-safe. Selected bosses reuse durable
+corpse custody and expiry without creating a second corpse architecture.
+
+No vendor, gathering, quest progression, combat death producer, damage system,
+or Mob loot-table producer calls these boundaries yet. Final corpse art remains
+a later phase. Phase 13 routes insurance and quest item
 lifecycle actions through the Phase 12 world actor, shared crosshair targeting,
 one-active-interaction lease, and authoritative capability dispatch. AuthService
 owns the atomic insurance charge, policy mutation, exact quest grant lineage,

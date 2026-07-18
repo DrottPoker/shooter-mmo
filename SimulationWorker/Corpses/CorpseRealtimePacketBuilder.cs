@@ -11,7 +11,7 @@ public static class CorpseRealtimePacketBuilder
 
     public static IReadOnlyList<RealtimeCorpsePresenceSnapshotChunk> BuildPresence(
         uint sequence,
-        IReadOnlyList<DurableCorpseState> corpses)
+        IReadOnlyList<ICorpseRuntimePresence> corpses)
     {
         ArgumentNullException.ThrowIfNull(corpses);
         var entries = corpses

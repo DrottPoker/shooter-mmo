@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-18
 
-Status: Approved delivery baseline, Phases 1 through 13 implemented
+Status: Approved delivery baseline, Phases 1 through 14 implemented
 
 ## Purpose
 
@@ -1784,7 +1784,7 @@ combat, loot, and corpse behavior remains unimplemented.
 
 ## Phase 14: Mob Corpse Variants
 
-Status: Planned, not implemented
+Status: Completed 2026-07-18
 
 ### Work
 
@@ -1807,10 +1807,119 @@ Status: Planned, not implemented
 - Per-definition lifetime overrides apply without operational configuration
   branching.
 
+### Implementation Record
+
+- World actor content now owns `corpsePersistenceMode` and
+  `corpseLifetimeSeconds` for every Mob definition. `mob.feral_wolf` uses live
+  worker custody for `120` seconds, while the selected boss definition
+  `mob.feral_alpha` uses durable custody for `600` seconds. NPC definitions must
+  keep both fields empty or zero.
+- `MobCorpseLifecycleService` is the authoritative boundary for a future death
+  producer. It accepts already resolved loot seeds, derives the corpse, loot
+  entry, grant, and durable-create ids from the authoritative death event, and
+  selects live or durable custody from the Mob definition. It does not implement
+  combat, damage, death detection, loot-table evaluation, or respawn behavior.
+- Normal Mob corpse contents stay in `LiveMobCorpseStore` and are combined with
+  durable corpse presence through the existing realtime corpse protocol,
+  interaction range, one-active-view lease, snapshot, delta, carry-state, and
+  close paths. A new worker store starts empty and no PostgreSQL cleanup is
+  needed for lost live contents.
+- A whole-item live claim crosses the exact-session AuthService boundary with
+  the deterministic grant id as the item operation id. AuthService locks the
+  character and destination, validates the expected character and container
+  revisions, and creates one deterministic item instance. Replaying the same
+  grant returns the committed operation instead of creating another item.
+- Selected durable Mob corpses use service-authenticated worker, runtime,
+  assignment, and Shard authority. They share the player durable-corpse record
+  helper, three-section custody model, restoration query, interaction
+  transactions, database-timed absolute deadline, and audited expiry command.
+  Only initial Mob loot materialization is Mob-specific.
+- GameProtocol remains at version `13`. Its existing nullable source-character,
+  generic corpse presence, canonical three-section view, and committed mutation
+  messages already represent live and persistent Mob corpses without a parallel
+  client protocol.
+
+### Verification Gate
+
+Run the repository verification sequence from the repository root:
+
+```powershell
+dotnet restore ShooterMmo.slnx --locked-mode
+dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
+powershell -ExecutionPolicy Bypass -File Tools/Verify-DependencyPolicy.ps1
+dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet run --project Tools/ItemCatalogCompiler --configuration Release --no-build -- `
+  WorldData/Authoring/Items/core.item-catalog.json `
+  WorldData/Runtime/Items/core.item-catalog.json `
+  --verify
+dotnet run --project Tools/WorldCollisionCompiler --configuration Release --no-build -- `
+  WorldData/Authoring/local-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  --verify
+dotnet run --project Tools/WorldActorCompiler --configuration Release --no-build -- --verify
+```
+
+Start the isolated PostgreSQL test database and run every backend test:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$testConnectionLine = Get-Content .env |
+  Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" } |
+  Select-Object -First 1
+$env:SHOOTER_MMO_TEST_POSTGRES = $testConnectionLine.Split("=", 2)[1]
+dotnet test ShooterMmo.slnx --configuration Release --no-build
+docker compose -f docker-compose.test.yml down
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+```
+
+Run all licensed Unity suites:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: all commands exit successfully, no integration test is
+skipped, and both Unity EditMode and PlayMode suites pass.
+
+Verified 2026-07-18: locked restore, formatter verification, dependency policy,
+all three content verifiers, and the warning-free Release build passed. The
+isolated PostgreSQL run passed `392/392` backend tests with no skips. Licensed
+Unity `6000.5.2f1` passed `94/94` EditMode and `2/2` PlayMode tests.
+
+### Manual Test Gate
+
+1. Open `Shooter MMO > Tools > Content > Actor Studio`. Select
+   `mob.feral_wolf`. Expected result: corpse persistence is `live` and lifetime
+   is `120` seconds. Select `mob.feral_alpha`. Expected result: persistence is
+   `durable` and lifetime is `600` seconds. Select either NPC. Expected result:
+   no Mob corpse settings are authored for it.
+2. Select `Validate`, then `Compile`, then `Verify`. Expected result: every
+   action succeeds and the runtime revision remains
+   `953cda2ccf495a62dddf20a38218ae66422c9627c0b6c4270d71ba44eec681e5`.
+3. Run the focused worker-memory test:
+   `dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj
+   --configuration Release --no-build --filter
+   "FullyQualifiedName~LiveMobCorpseStoreTests|FullyQualifiedName~MobCorpseLifecycleServiceTests"`.
+   Expected result: a live wolf corpse uses its `120` second content lifetime,
+   a restarted store contains no corpse, expiry removes it without a database
+   action, and replay derives the same grant id.
+4. With the isolated PostgreSQL variable configured as above, run
+   `dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj
+   --configuration Release --no-build --filter
+   "FullyQualifiedName~MobCorpseLifecycleIntegrationTests"`. Expected result:
+   both tests pass. The live grant retry leaves one player item, and the durable
+   alpha corpse restores with the same expiry, sections, and item custody.
+
+No Unity scene, prefab, inspector, or gameplay setup is required. Phase 14
+reuses the existing corpse client foundation. There is intentionally no manual
+combat kill flow because Mob combat, damage, death detection, loot-table
+generation, and respawn remain outside this phase.
+
 ### Exit Gate
 
 Mob corpse persistence is content-controlled and normal Mob volume does not
-force every corpse into PostgreSQL.
+force every corpse into PostgreSQL. Phase 15 operations and performance work
+remains unimplemented.
 
 ## Phase 15: Performance, Operations, And Release Hardening
 

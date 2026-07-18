@@ -130,65 +130,26 @@ public sealed partial class ItemTransactionService
 
         var corpseId = Guid.NewGuid();
         var expiryOperationId = Guid.NewGuid();
-        var corpseTimes = await context.Connection.QuerySingleAsync<CreatedCorpseTimes>(
-            new CommandDefinition(
-                """
-                insert into corpses (
-                    id,
-                    source_type,
-                    source_character_id,
-                    source_display_name,
-                    shard_id,
-                    position_x,
-                    position_y,
-                    position_z,
-                    rotation_x,
-                    rotation_y,
-                    rotation_z,
-                    rotation_w,
-                    persistence_mode,
-                    presentation_key,
-                    expires_at,
-                    expiry_operation_id)
-                values (
-                    @CorpseId,
-                    'player',
-                    @CharacterId,
-                    @SourceDisplayName,
-                    @ShardId,
-                    @PositionX,
-                    @PositionY,
-                    @PositionZ,
-                    @RotationX,
-                    @RotationY,
-                    @RotationZ,
-                    @RotationW,
-                    'durable',
-                    @PresentationKey,
-                    now() + interval '5 minutes',
-                    @ExpiryOperationId)
-                returning
-                    created_at as "CreatedAt",
-                    expires_at as "ExpiresAt";
-                """,
-                new
-                {
-                    CorpseId = corpseId,
-                    command.CharacterId,
-                    SourceDisplayName = character.DisplayName,
-                    command.ShardId,
-                    command.PositionX,
-                    command.PositionY,
-                    command.PositionZ,
-                    command.RotationX,
-                    command.RotationY,
-                    command.RotationZ,
-                    command.RotationW,
-                    command.PresentationKey,
-                    ExpiryOperationId = expiryOperationId
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+        var corpseTimes = await CreateDurableCorpseRecordAsync(
+            context,
+            corpseId,
+            "player",
+            command.CharacterId,
+            null,
+            character.DisplayName,
+            command.ShardId,
+            command.PositionX,
+            command.PositionY,
+            command.PositionZ,
+            command.RotationX,
+            command.RotationY,
+            command.RotationZ,
+            command.RotationW,
+            command.PresentationKey,
+            0,
+            TimeSpan.FromMinutes(5).TotalSeconds,
+            expiryOperationId,
+            cancellationToken);
 
         var sourceRows = (await context.Connection.QueryAsync<DeathItemSourceRow>(
             new CommandDefinition(
@@ -1421,13 +1382,6 @@ public sealed partial class ItemTransactionService
         public string DisplayName { get; set; } = string.Empty;
 
         public bool ShardExists { get; set; }
-    }
-
-    private sealed class CreatedCorpseTimes
-    {
-        public DateTime CreatedAt { get; set; }
-
-        public DateTime ExpiresAt { get; set; }
     }
 
     private sealed class DeathEventRow

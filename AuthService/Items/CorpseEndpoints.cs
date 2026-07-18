@@ -54,6 +54,50 @@ public static class CorpseEndpoints
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
+        app.MapPost("/api/simulation-workers/{workerId}/mob-corpses/durable", async (
+            string workerId,
+            CreatePersistentMobCorpseRequest request,
+            ClaimsPrincipal principal,
+            CorpseService corpseService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.Equals(
+                    workerId,
+                    principal.GetSimulationWorkerId(),
+                    StringComparison.Ordinal))
+            {
+                return ServiceResult<PersistentMobCorpseResponse>.Forbidden(
+                    ItemTransactionErrorCodes.WrongSimulationWorker,
+                    "The authenticated simulation worker cannot create another worker's Mob corpse.")
+                    .ToHttpResult();
+            }
+
+            var result = await corpseService.CreatePersistentMobCorpseAsync(
+                workerId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
+        app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/mob-loot-grants", async (
+            Guid simulationSessionId,
+            SimulationMobLootGrantRequest request,
+            ClaimsPrincipal principal,
+            CorpseService corpseService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await corpseService.GrantLiveMobLootAsync(
+                principal.GetSimulationWorkerId(),
+                simulationSessionId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
         app.MapPost(
             "/api/simulation-sessions/{simulationSessionId:guid}/corpses/{corpseId:guid}/open",
             async (

@@ -23,7 +23,7 @@ namespace ShooterMmo.Tests.EditMode
                 spawns.ToDomain());
 
             Assert.That(compiled.Revision, Is.EqualTo(workspace.CurrentRuntime.revision));
-            Assert.That(compiled.Actors, Has.Length.EqualTo(3));
+            Assert.That(compiled.Actors, Has.Length.EqualTo(4));
             Assert.That(compiled.SpawnInstances, Has.Length.EqualTo(5));
             Assert.That(
                 Array.Find(compiled.Actors, actor => actor.Id == "npc.city_services")
@@ -73,6 +73,31 @@ namespace ShooterMmo.Tests.EditMode
                 Array.Find(catalog.respawnProfiles, profile => profile.id == "mob.normal")
                     .populationLimit,
                 Is.EqualTo(32));
+        }
+
+        [Test]
+        public void MobCorpseSettingsSurviveEditorRoundTripPerDefinition()
+        {
+            var service = new WorldActorEditorService(
+                WorldActorEditorPaths.CreateDefault());
+            var workspace = service.Load();
+            var catalog = WorldActorEditorJson.DeserializeCatalog(
+                WorldActorEditorJson.SerializeCatalog(workspace.Catalog));
+            var normalMob = Array.Find(
+                catalog.actors,
+                actor => actor.id == "mob.feral_wolf");
+            var bossMob = Array.Find(
+                catalog.actors,
+                actor => actor.id == "mob.feral_alpha");
+
+            Assert.That(
+                normalMob.corpsePersistenceMode,
+                Is.EqualTo(WorldActorCorpsePersistenceModeIds.Live));
+            Assert.That(normalMob.corpseLifetimeSeconds, Is.EqualTo(120f));
+            Assert.That(
+                bossMob.corpsePersistenceMode,
+                Is.EqualTo(WorldActorCorpsePersistenceModeIds.Durable));
+            Assert.That(bossMob.corpseLifetimeSeconds, Is.EqualTo(600f));
         }
     }
 }

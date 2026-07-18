@@ -53,8 +53,15 @@ Phase 13 replaces the insurance, quest-offer, and quest-turn-in deferred slots
 with explicit handlers. Insurance and quest item lifecycle actions reuse the
 same validated interaction session and dispatch contract before crossing the
 service-authenticated AuthService boundary. Quest progression and completion
-remain unavailable. No Phase 14 Mob combat, loot, or corpse behavior is part of
-this implementation.
+remain unavailable.
+
+Phase 14 adds the Mob corpse lifecycle boundary without adding combat. Mob
+content selects live or durable corpse custody and an exact lifetime. The normal
+wolf uses `live` and `120` seconds. The selected alpha boss uses `durable` and
+`600` seconds. Deterministic death-event grant ids protect successful live loot
+claims from duplication, while durable bosses reuse player corpse restoration
+and expiry. Damage, death detection, loot-table generation, respawn, and complete
+Mob AI remain unavailable.
 
 ## Canonical Terminology
 
@@ -518,19 +525,20 @@ combat phase.
 
 ## Mob Loot And Corpse Boundary
 
-Mobs produce Mob corpses, not NPC corpses. Normal Mob corpses are planned as
-live SimulationWorker containers with an approximately two-minute default
-lifetime and no restart guarantee. Selected bosses may later opt into the
-durable corpse path.
+Mobs produce Mob corpses, not NPC corpses. Normal Mob corpses are live
+SimulationWorker containers with an approximately two-minute default lifetime
+and no restart guarantee. Selected bosses may opt into the durable corpse path.
 
 Phase 12 establishes actor, spawn, runtime identity, and future Mob lifecycle
-references. It does not generate loot, create Mob corpses, or call the durable
-item transaction kernel. Those behaviors belong to the later Mob corpse phase
-and must reuse the canonical corpse-container rules.
+references. Phase 14 adds `MobCorpseLifecycleService` over those identities. Its
+input is an authoritative death event plus already resolved loot seeds. It
+derives stable corpse, entry, grant, and create ids, then selects the live store
+or the shared durable item transaction kernel from content.
 
-Successful future loot materialization into player custody requires an
-idempotent grant id. Normal actor scalability must not be traded for durable
-per-instance custody before death or loot exists.
+Successful live loot materialization into player custody uses the deterministic
+grant id as the item operation identity. Normal actor scalability is preserved:
+there is still no durable per-instance Mob custody before death, and ordinary
+unclaimed corpses never require PostgreSQL cleanup.
 
 ## Stable Error Contract
 
@@ -642,7 +650,7 @@ Phase 12 explicitly stops before:
 - Crafting recipes or production.
 - Trainer or profession progression.
 - Combat, health, damage, aggro behavior, or full Mob AI.
-- Mob loot generation or Mob corpse creation.
+- Combat-driven death events, Mob loot-table generation, or respawn execution.
 - Durable unique boss state.
 - Final NPC, Mob, prompt, dialogue, or interaction-panel art.
 - Zone, Layer, multi-worker Shard, or world-event orchestration.

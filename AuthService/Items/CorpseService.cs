@@ -82,6 +82,119 @@ public sealed partial class CorpseService(
             cancellationToken);
     }
 
+    public async Task<ServiceResult<PersistentMobCorpseResponse>>
+        CreatePersistentMobCorpseAsync(
+            string authenticatedWorkerId,
+            CreatePersistentMobCorpseRequest request,
+            CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                authenticatedWorkerId,
+                request.WorkerId,
+                StringComparison.Ordinal))
+        {
+            return ServiceResult<PersistentMobCorpseResponse>.Forbidden(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The authenticated simulation worker cannot create another worker's Mob corpse.");
+        }
+
+        if (!IsValidPersistentMobCorpseRequest(request))
+        {
+            return ServiceResult<PersistentMobCorpseResponse>.BadRequest(
+                ItemApiErrorCodes.SimulationOperationInvalid,
+                "The persistent Mob corpse request is incomplete or invalid.");
+        }
+
+        var result = await transactionService.ExecuteAsync(
+            new ItemTransactionRequest<CreatePersistentMobCorpseCommand>(
+                request.OperationId,
+                ItemTransactionActor.ForSystem(),
+                new CreatePersistentMobCorpseCommand(
+                    request.CorpseId,
+                    request.WorkerId.Trim(),
+                    request.WorkerRuntimeId.Trim(),
+                    request.ShardId.Trim(),
+                    request.SourceActorDefinitionId.Trim(),
+                    request.SourceDisplayName.Trim(),
+                    request.PositionX,
+                    request.PositionY,
+                    request.PositionZ,
+                    request.RotationX,
+                    request.RotationY,
+                    request.RotationZ,
+                    request.RotationW,
+                    request.PresentationKey.Trim(),
+                    request.LifetimeSeconds,
+                    checked((int)authServiceConfig.SimulationWorkerHeartbeatTimeout.TotalSeconds),
+                    request.Loot)),
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            return MapTransactionResult<PersistentMobCorpseResponse>(result, null);
+        }
+
+        var corpse = await LoadOpenCorpseAsync(request.CorpseId, cancellationToken);
+        if (corpse is null)
+        {
+            throw new InvalidOperationException(
+                "A committed persistent Mob corpse has no durable corpse row.");
+        }
+
+        return ServiceResult<PersistentMobCorpseResponse>.Ok(
+            new PersistentMobCorpseResponse(request.OperationId, corpse));
+    }
+
+    public async Task<ServiceResult<ItemTransactionResult>> GrantLiveMobLootAsync(
+        string authenticatedWorkerId,
+        Guid simulationSessionId,
+        SimulationMobLootGrantRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                authenticatedWorkerId,
+                request.WorkerId,
+                StringComparison.Ordinal))
+        {
+            return ServiceResult<ItemTransactionResult>.Forbidden(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The authenticated simulation worker cannot submit another worker's Mob loot grant.");
+        }
+
+        if (!IsValidSimulationMobLootGrantRequest(simulationSessionId, request))
+        {
+            return ServiceResult<ItemTransactionResult>.BadRequest(
+                ItemApiErrorCodes.SimulationOperationInvalid,
+                "The live Mob loot grant request is incomplete or invalid.");
+        }
+
+        var actor = ItemTransactionActor.ForSimulationWorker(
+            request.AccountId,
+            request.CharacterId,
+            simulationSessionId,
+            request.WorkerId.Trim(),
+            request.WorkerRuntimeId.Trim(),
+            request.ShardId.Trim(),
+            TokenGenerator.HashToken(request.SessionToken.Trim()),
+            ItemTransactionLiveAccess.None);
+        var result = await transactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantMobLootCommand>(
+                request.GrantId,
+                actor,
+                new GrantMobLootCommand(
+                    request.CharacterId,
+                    request.ExpectedCharacterRevision,
+                    request.GrantId,
+                    request.SourceCorpseId,
+                    request.SourceActorDefinitionId.Trim(),
+                    request.DefinitionId.Trim(),
+                    request.Quantity,
+                    request.DestinationContainerId,
+                    request.ExpectedDestinationContainerRevision,
+                    request.DestinationSlotIndex)),
+            cancellationToken);
+        return MapTransactionResult<ItemTransactionResult>(result, result);
+    }
+
     public async Task<ServiceResult<CorpseRestoreResponse>> ListForWorkerAsync(
         string workerId,
         string workerRuntimeId,
@@ -422,6 +535,68 @@ public sealed partial class CorpseService(
             .ToArray();
     }
 
+    private async Task<DurableCorpseResponse?> LoadOpenCorpseAsync(
+        Guid corpseId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            IsolationLevel.RepeatableRead,
+            cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "set transaction read only;",
+            transaction: transaction,
+            cancellationToken: cancellationToken));
+        try
+        {
+            var row = await connection.QuerySingleOrDefaultAsync<OpenCorpseRow>(
+                new CommandDefinition(
+                    """
+                    select
+                        corpse.id as "CorpseId",
+                        corpse.source_character_id as "SourceCharacterId",
+                        corpse.source_display_name as "SourceDisplayName",
+                        corpse.shard_id as "ShardId",
+                        corpse.position_x as "PositionX",
+                        corpse.position_y as "PositionY",
+                        corpse.position_z as "PositionZ",
+                        corpse.rotation_x as "RotationX",
+                        corpse.rotation_y as "RotationY",
+                        corpse.rotation_z as "RotationZ",
+                        corpse.rotation_w as "RotationW",
+                        corpse.presentation_key as "PresentationKey",
+                        corpse.revision as "CorpseRevision",
+                        corpse.created_at as "CreatedAt",
+                        corpse.expires_at as "ExpiresAt"
+                    from corpses corpse
+                    where corpse.id = @CorpseId
+                      and corpse.closed_at is null
+                      and corpse.expires_at > now();
+                    """,
+                    new { CorpseId = corpseId },
+                    transaction,
+                    cancellationToken: cancellationToken));
+            if (row is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+            }
+
+            var sections = await LoadCorpseSectionsAsync(
+                connection,
+                transaction,
+                [corpseId],
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return CreateCorpseResponse(row, sections[corpseId]);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     private static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CorpseSectionResponse>>>
         LoadCorpseSectionsAsync(
             NpgsqlConnection connection,
@@ -562,6 +737,68 @@ public sealed partial class CorpseService(
                 request.PresentationKey,
                 ItemTransactionService.DefaultPlayerCorpsePresentationKey,
                 StringComparison.Ordinal);
+    }
+
+    private static bool IsValidPersistentMobCorpseRequest(
+        CreatePersistentMobCorpseRequest request)
+    {
+        return request.OperationId != Guid.Empty
+            && request.CorpseId != Guid.Empty
+            && IsValidIdentifier(request.WorkerId)
+            && IsValidIdentifier(request.WorkerRuntimeId)
+            && IsValidIdentifier(request.ShardId)
+            && IsValidContentIdentifier(request.SourceActorDefinitionId)
+            && !string.IsNullOrWhiteSpace(request.SourceDisplayName)
+            && request.SourceDisplayName.Length <= 128
+            && string.Equals(
+                request.PresentationKey,
+                ItemTransactionService.DefaultPlayerCorpsePresentationKey,
+                StringComparison.Ordinal)
+            && request.LifetimeSeconds
+                is >= ShooterMmo.WorldData.Actors.WorldActorCorpseRules.MinimumLifetimeSeconds
+                and <= ShooterMmo.WorldData.Actors.WorldActorCorpseRules.MaximumLifetimeSeconds
+            && request.Loot is not null
+            && request.Loot.Count
+                is >= 1
+                and <= ShooterMmo.WorldData.Actors.WorldActorCorpseRules.MaximumLootEntries
+            && request.Loot.All(loot =>
+                loot.GrantId != Guid.Empty
+                && IsValidContentIdentifier(loot.DefinitionId)
+                && loot.Quantity > 0)
+            && request.Loot.Select(loot => loot.GrantId).Distinct().Count()
+                == request.Loot.Count;
+    }
+
+    private static bool IsValidSimulationMobLootGrantRequest(
+        Guid simulationSessionId,
+        SimulationMobLootGrantRequest request)
+    {
+        return simulationSessionId != Guid.Empty
+            && request.GrantId != Guid.Empty
+            && request.AccountId != Guid.Empty
+            && request.CharacterId != Guid.Empty
+            && request.ExpectedCharacterRevision >= 0
+            && IsValidIdentifier(request.WorkerId)
+            && IsValidIdentifier(request.WorkerRuntimeId)
+            && IsValidIdentifier(request.ShardId)
+            && !string.IsNullOrWhiteSpace(request.SessionToken)
+            && request.SessionToken.Length <= 1024
+            && request.SourceCorpseId != Guid.Empty
+            && IsValidContentIdentifier(request.SourceActorDefinitionId)
+            && IsValidContentIdentifier(request.DefinitionId)
+            && request.Quantity > 0
+            && request.DestinationContainerId != Guid.Empty
+            && request.ExpectedDestinationContainerRevision >= 0
+            && request.DestinationSlotIndex >= 0;
+    }
+
+    private static bool IsValidContentIdentifier(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Length <= 128
+            && value.All(character =>
+                char.IsAsciiLetterOrDigit(character)
+                || character is '-' or '_' or '.');
     }
 
     private static bool IsValidIdentifier(string? value)

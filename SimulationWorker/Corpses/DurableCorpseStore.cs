@@ -2,6 +2,20 @@ using SimulationWorker.Auth;
 
 namespace SimulationWorker.Corpses;
 
+public interface ICorpseRuntimePresence
+{
+    Guid CorpseId { get; }
+    string SourceDisplayName { get; }
+    double PositionX { get; }
+    double PositionY { get; }
+    double PositionZ { get; }
+    string PresentationKey { get; }
+    long Revision { get; }
+    DateTime CreatedAt { get; }
+    DateTime ExpiresAt { get; }
+    bool IsEmpty { get; }
+}
+
 public sealed record DurableCorpseState(
     Guid CorpseId,
     Guid? SourceCharacterId,
@@ -19,7 +33,7 @@ public sealed record DurableCorpseState(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     bool IsEmpty,
-    IReadOnlyList<CorpseSectionState> Sections);
+    IReadOnlyList<CorpseSectionState> Sections) : ICorpseRuntimePresence;
 
 public sealed record CorpseSectionState(
     string SectionKind,
@@ -154,6 +168,40 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.ContainerRevision,
                     section.Slots.Count(slot => slot.Item is not null)))
                 .ToArray());
+        ApplyState(state);
+    }
+
+    public void Apply(DurableCorpseResponse corpse)
+    {
+        ArgumentNullException.ThrowIfNull(corpse);
+        ApplyState(new DurableCorpseState(
+            corpse.CorpseId,
+            corpse.SourceCharacterId,
+            corpse.SourceDisplayName,
+            corpse.ShardId,
+            corpse.PositionX,
+            corpse.PositionY,
+            corpse.PositionZ,
+            corpse.RotationX,
+            corpse.RotationY,
+            corpse.RotationZ,
+            corpse.RotationW,
+            corpse.PresentationKey,
+            corpse.Revision,
+            corpse.CreatedAt,
+            corpse.ExpiresAt,
+            corpse.IsEmpty,
+            corpse.Sections
+                .Select(section => new CorpseSectionState(
+                    section.SectionKind,
+                    section.ContainerId,
+                    section.ContainerRevision,
+                    section.ItemCount))
+                .ToArray()));
+    }
+
+    private void ApplyState(DurableCorpseState state)
+    {
         lock (sync)
         {
             if (corpses.TryGetValue(state.CorpseId, out var current)

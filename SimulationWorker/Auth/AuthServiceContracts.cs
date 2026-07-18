@@ -104,6 +104,51 @@ public sealed record PlayerDeathPartitionResponse(
     SimulationItemCharacterRevision CharacterRevision,
     IReadOnlyList<Guid> RecoveryDeliveryIds);
 
+public sealed record MobCorpseLootEntryRequest(
+    Guid GrantId,
+    string DefinitionId,
+    int Quantity);
+
+public sealed record CreatePersistentMobCorpseRequest(
+    Guid OperationId,
+    Guid CorpseId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SourceActorDefinitionId,
+    string SourceDisplayName,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double RotationW,
+    string PresentationKey,
+    double LifetimeSeconds,
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+
+public sealed record PersistentMobCorpseResponse(
+    Guid OperationId,
+    DurableCorpseResponse Corpse);
+
+public sealed record SimulationMobLootGrantRequest(
+    Guid GrantId,
+    Guid AccountId,
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    Guid SourceCorpseId,
+    string SourceActorDefinitionId,
+    string DefinitionId,
+    int Quantity,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex);
+
 public sealed record SimulationItemTransactionResponse(
     Guid OperationId,
     string OperationKind,

@@ -43,7 +43,10 @@ public sealed class RealtimeSimulationService(
     WorldInteractionLeaseRegistry? providedWorldInteractionLeases = null,
     WorldInteractionAuthorityService? providedWorldInteractionAuthority = null,
     WorldActorMetrics? providedWorldActorMetrics = null,
-    SimulationWorkerIdentity? workerIdentity = null) : BackgroundService
+    SimulationWorkerIdentity? workerIdentity = null,
+    LiveMobCorpseStore? providedLiveMobCorpseStore = null,
+    LiveMobCorpseInteractionService? providedLiveMobCorpseInteractionService = null)
+    : BackgroundService
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
     private readonly Dictionary<int, PeerContext> peers = [];
@@ -73,6 +76,9 @@ public sealed class RealtimeSimulationService(
         providedWorldInteractionLeases;
     private readonly WorldInteractionAuthorityService? worldInteractionAuthority =
         providedWorldInteractionAuthority;
+    private readonly LiveMobCorpseStore? liveMobCorpseStore = providedLiveMobCorpseStore;
+    private readonly LiveMobCorpseInteractionService? liveMobCorpseInteractionService =
+        providedLiveMobCorpseInteractionService;
     private readonly WorldActorMetrics? worldActorMetrics = providedWorldActorMetrics;
     private NetManager? server;
     private uint serverTick;
@@ -716,18 +722,29 @@ public sealed class RealtimeSimulationService(
         PeerContext context,
         ActiveSimulationSession session,
         RealtimeCorpseInteractionIntent intent,
-        bool removeOpenReservationOnFailure)
+        bool removeOpenReservationOnFailure,
+        bool isLiveMobCorpse)
     {
         try
         {
+            var interactionService = isLiveMobCorpse
+                ? liveMobCorpseInteractionService
+                    ?? throw new InvalidOperationException(
+                        "Live Mob corpse interaction is not configured.")
+                : null;
             var result = intent.OperationKind switch
             {
                 RealtimeCorpseInteractionKind.Open
                     or RealtimeCorpseInteractionKind.Refresh =>
-                    await corpseInteractionService.OpenAsync(
-                        session,
-                        intent,
-                        CancellationToken.None),
+                    isLiveMobCorpse
+                        ? await interactionService!.OpenAsync(
+                            session,
+                            intent,
+                            CancellationToken.None)
+                        : await corpseInteractionService.OpenAsync(
+                            session,
+                            intent,
+                            CancellationToken.None),
                 RealtimeCorpseInteractionKind.LootItem
                     or RealtimeCorpseInteractionKind.LootPartialStack
                     or RealtimeCorpseInteractionKind.DepositItem
@@ -735,10 +752,15 @@ public sealed class RealtimeSimulationService(
                     or RealtimeCorpseInteractionKind.MoveItem
                     or RealtimeCorpseInteractionKind.MovePartialStack
                     or RealtimeCorpseInteractionKind.SwapBag =>
-                    await corpseInteractionService.MutateAsync(
-                        session,
-                        intent,
-                        CancellationToken.None),
+                    isLiveMobCorpse
+                        ? await interactionService!.MutateAsync(
+                            session,
+                            intent,
+                            CancellationToken.None)
+                        : await corpseInteractionService.MutateAsync(
+                            session,
+                            intent,
+                            CancellationToken.None),
                 _ => throw new InvalidOperationException(
                     "The queued corpse operation is not supported by AuthService.")
             };
@@ -1320,7 +1342,15 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        if (!corpseStore.TryGetActive(intent.CorpseId, out var corpse))
+        LiveMobCorpseState? liveCorpse = null;
+        var isLiveMobCorpse = liveMobCorpseStore is not null
+            && liveMobCorpseStore.TryGetActive(intent.CorpseId, out liveCorpse);
+        ICorpseRuntimePresence? corpse = isLiveMobCorpse
+            ? liveCorpse
+            : corpseStore.TryGetActive(intent.CorpseId, out var durableCorpse)
+                ? durableCorpse
+                : null;
+        if (corpse is null)
         {
             completedOperations.Enqueue(new CorpseOperationCompleted(
                 context,
@@ -1401,7 +1431,8 @@ public sealed class RealtimeSimulationService(
                 context,
                 session,
                 intent,
-                removeOpenReservationOnFailure: !alreadyViewing));
+                removeOpenReservationOnFailure: !alreadyViewing,
+                isLiveMobCorpse));
             return;
         }
 
@@ -1422,7 +1453,8 @@ public sealed class RealtimeSimulationService(
             context,
             session,
             intent,
-            removeOpenReservationOnFailure: false));
+            removeOpenReservationOnFailure: false,
+            isLiveMobCorpse));
     }
 
     private void ProcessCorpseOperationCompleted(CorpseOperationCompleted completed)
@@ -1560,7 +1592,11 @@ public sealed class RealtimeSimulationService(
             snapshot = newerSnapshot;
         }
 
-        corpseStore.ApplySnapshot(snapshot);
+        if (liveMobCorpseStore is null
+            || !liveMobCorpseStore.TryGetActive(snapshot.CorpseId, out _))
+        {
+            corpseStore.ApplySnapshot(snapshot);
+        }
         IReadOnlyList<RealtimeCorpseViewStateChunk> chunks;
         if (completed.Result.Mutation is not null
             && corpseSnapshots.TryGetValue(snapshot.CorpseId, out var previousSnapshot))
@@ -1739,6 +1775,7 @@ public sealed class RealtimeSimulationService(
         if (removeFromStore)
         {
             corpseStore.Remove(corpseId);
+            liveMobCorpseStore?.Remove(corpseId);
         }
     }
 
@@ -1750,7 +1787,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private bool IsWithinCorpseInteractionRange(
-        DurableCorpseState corpse,
+        ICorpseRuntimePresence corpse,
         float playerX,
         float playerY,
         float playerZ)
@@ -2138,7 +2175,13 @@ public sealed class RealtimeSimulationService(
 
     private void BroadcastCorpsePresence()
     {
-        var activeCorpses = corpseStore.ListActive();
+        var activeCorpses = corpseStore.ListActive()
+            .Cast<ICorpseRuntimePresence>()
+            .Concat(liveMobCorpseStore?.ListActive()
+                ?? Array.Empty<LiveMobCorpseState>())
+            .OrderBy(corpse => corpse.CreatedAt)
+            .ThenBy(corpse => corpse.CorpseId)
+            .ToArray();
         var activeCorpseIds = activeCorpses
             .Select(corpse => corpse.CorpseId)
             .ToHashSet();
@@ -2199,7 +2242,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private bool IsWithinCorpseDiscoveryRange(
-        DurableCorpseState corpse,
+        ICorpseRuntimePresence corpse,
         float playerX,
         float playerY,
         float playerZ)
@@ -2213,7 +2256,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private static string CreateCorpsePresenceSignature(
-        IReadOnlyList<DurableCorpseState> corpses)
+        IReadOnlyList<ICorpseRuntimePresence> corpses)
     {
         return string.Join(
             '|',

@@ -770,6 +770,78 @@ internal sealed class ItemTransactionContext(
         }
     }
 
+    public async Task ValidateSimulationWorkerServiceAuthorityAsync(
+        string workerId,
+        string workerRuntimeId,
+        string shardId,
+        int heartbeatTimeoutSeconds,
+        CancellationToken cancellationToken)
+    {
+        if (Actor.Authority != ItemTransactionAuthority.System
+            || !IsValidIdentifier(workerId)
+            || !IsValidIdentifier(workerRuntimeId)
+            || !IsValidIdentifier(shardId)
+            || heartbeatTimeoutSeconds <= 0)
+        {
+            Reject(
+                ItemTransactionErrorCodes.AuthorityRequired,
+                "Mob corpse creation requires complete simulation worker service authority.");
+        }
+
+        var authority = await Connection.QuerySingleOrDefaultAsync<WorkerServiceAuthorityRow>(
+            new CommandDefinition(
+                """
+                select
+                    worker.runtime_id as "RuntimeId",
+                    worker.is_online
+                        and worker.last_heartbeat_at is not null
+                        and worker.last_heartbeat_at > now()
+                            - make_interval(secs => @HeartbeatTimeoutSeconds)
+                        as "HasFreshLease"
+                from simulation_workers worker
+                where worker.id = @WorkerId
+                for no key update of worker;
+                """,
+                new
+                {
+                    WorkerId = workerId,
+                    HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds
+                },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (authority is null
+            || !authority.HasFreshLease
+            || !string.Equals(
+                authority.RuntimeId,
+                workerRuntimeId,
+                StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WorkerRuntimeChanged,
+                "The simulation worker runtime no longer owns a fresh registry lease.");
+        }
+
+        var assignmentOwner = await Connection.QuerySingleOrDefaultAsync<string>(
+            new CommandDefinition(
+                """
+                select assignment.worker_id
+                from simulation_assignments assignment
+                where assignment.worker_id = @WorkerId
+                  and assignment.shard_id = @ShardId
+                  and assignment.released_at is null
+                for no key update of assignment;
+                """,
+                new { WorkerId = workerId, ShardId = shardId },
+                Transaction,
+                cancellationToken: cancellationToken));
+        if (!string.Equals(assignmentOwner, workerId, StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The simulation worker does not own the requested Shard assignment.");
+        }
+    }
+
     private void EnsureLiveContainerAccess(string? containerType)
     {
         if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
@@ -1687,6 +1759,13 @@ internal sealed class ItemTransactionContext(
         public string? RuntimeId { get; set; }
 
         public bool IsOnline { get; set; }
+    }
+
+    private sealed class WorkerServiceAuthorityRow
+    {
+        public string? RuntimeId { get; set; }
+
+        public bool HasFreshLease { get; set; }
     }
 }
 

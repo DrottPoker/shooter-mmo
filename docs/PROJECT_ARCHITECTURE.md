@@ -289,12 +289,12 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 13 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 14 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
 mutation plus Unity inventory integration, death partition, durable player
-corpse custody, concurrent corpse interaction, and NPC insurance and quest item
-lifecycle implemented
+corpse custody, concurrent corpse interaction, NPC insurance and quest item
+lifecycle, and live or durable Mob corpse variants implemented
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -409,9 +409,11 @@ advanced. The corpse row still serializes final custody, and Bag roots are locke
 before either aggregate's contents. After commit, the worker broadcasts a
 targeted delta or complete replacement to every viewer and never holds a
 database transaction while waiting for a client.
-Normal Mob corpses may remain worker-owned and disappear on restart, while
-content-selected bosses may later reuse the durable path. These choices do not
-introduce Zone or Layer ownership.
+Normal Mob corpses are worker-owned and disappear on restart. Content-selected
+bosses reuse the durable path. Live claims use a deterministic grant id through
+the exact-session item transaction boundary, while durable Mob corpses share the
+player corpse record, restoration, interaction, and expiry code. These choices
+do not introduce Zone or Layer ownership.
 
 Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel.
 Phase 6 adds policy-safe account reads and offline mutations on that kernel.
@@ -447,7 +449,7 @@ proposed schema and delivery order in
 
 ### World Actor And Interaction Boundary
 
-Status: Phase 12 foundation and Phase 13 item lifecycle integration implemented
+Status: Phase 12 foundation plus Phase 13 and 14 lifecycle integration implemented
 
 Phase 12 extends the repository boundaries without creating a new service or
 topology layer:
@@ -529,9 +531,11 @@ that export canonical neutral WorldData.
 The existing corpse view and transaction protocols remain authoritative. Phase
 12 registers corpse presentation in the shared client target-selection
 foundation and makes its view consume the shared interaction lease. Phase 13
-adds policy and quest item lifecycle only. Vendor transactions, quest
-progression, complete Mob AI, combat, loot generation, and Mob corpse creation
-remain later phases.
+adds policy and quest item lifecycle. Phase 14 combines live worker-owned Mob
+corpses and durable player or selected boss corpses through that same presence,
+view, range, lease, mutation, carry-state, and closure foundation. Vendor
+transactions, quest progression, complete Mob AI, combat, damage, death-event
+production, and loot-table generation remain later phases.
 
 ## Durable Data Model
 

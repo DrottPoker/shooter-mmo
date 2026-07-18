@@ -370,11 +370,13 @@ interactables is implemented:
 All city NPCs, including guards, are invulnerable in the first version. Faction
 and disposition own friendly or hostile behavior independently from NPC or Mob
 kind. The checked-in World contains one composable service NPC, one guard NPC,
-one Mob definition, and five deterministic actor instances. Capability buttons
+two Mob definitions, and five deterministic actor instances. Capability buttons
 whose business systems belong to later phases return an explicit deferred
 server result and never fabricate success. Vendor transactions, quest
-progression, crafting, combat AI, Mob loot, and Mob corpse creation remain
-unimplemented.
+progression, crafting, combat AI, damage, death-event production, and Mob
+loot-table generation remain unimplemented. Phase 14 provides the downstream
+live or durable Mob corpse lifecycle once an authoritative producer supplies a
+death event and resolved loot seeds.
 
 ## Planned Feature Categories
 
@@ -387,7 +389,7 @@ They remain in the MVP specification until working behavior is available:
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
 - Live combat death production, final corpse art and loot presentation,
-  configurable Mob corpses, and insurance NPC purchase behavior.
+  Mob loot-table generation, and insurance or quest UI polish.
 - Gathering, crafting, professions, and player economy.
 - Complete NPC capability behavior, Mob AI, quests, events, and world
   activities.

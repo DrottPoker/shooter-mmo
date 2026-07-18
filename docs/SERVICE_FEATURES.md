@@ -342,7 +342,7 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 13 of the approved item plan are implemented. Offline account
+Phases 1 through 14 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
@@ -820,6 +820,14 @@ the test connection variable at development or production data.
   exclusion with corpses, closure causes, protocol round trips and bounds, Unity
   monotonic state and targeting, and Editor import, export, preview, compile,
   and verify through the shared compiler.
+- Phase 13 coverage verifies exact-session insurance and quest lifecycle
+  dispatch, atomic pricing, policy removal, protected grant lineage,
+  abandonment, reacceptance, and safe source labels.
+- Phase 14 coverage verifies content-controlled normal and boss corpse settings,
+  worker-memory restart loss and expiry, deterministic grant replay with one
+  persistent player item, durable boss restoration with unchanged custody and
+  deadline, shared expiry, realtime presence integration, and Unity Actor Studio
+  round trips.
 
 ## Not Yet Implemented
 
@@ -830,9 +838,9 @@ the test connection variable at development or production data.
 - The authoritative combat death producer and final corpse visuals. The durable
   authenticated death boundary and generic active corpse representation are
   ready, but combat is not fabricated by the current movement-only gameplay.
-- Insurance NPC pricing and purchase behavior or configurable Mob corpse
-  persistence. Effective one-death insurance
-  consumption inside durable player death is implemented.
+- Mob combat, damage, death-event production, loot-table generation, and
+  respawn. The downstream content-controlled corpse and idempotent claim paths
+  are implemented.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.

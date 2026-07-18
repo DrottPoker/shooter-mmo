@@ -26,6 +26,20 @@ namespace ShooterMmo.WorldData.Actors
         public const string Damageable = "damageable";
     }
 
+    public static class WorldActorCorpsePersistenceModeIds
+    {
+        public const string Live = "live";
+        public const string Durable = "durable";
+    }
+
+    public static class WorldActorCorpseRules
+    {
+        public const float DefaultLiveLifetimeSeconds = 120f;
+        public const float MinimumLifetimeSeconds = 1f;
+        public const float MaximumLifetimeSeconds = 86400f;
+        public const int MaximumLootEntries = 24;
+    }
+
     public static class WorldActorCapabilityKindIds
     {
         public const string Dialogue = "dialogue";
@@ -169,6 +183,8 @@ namespace ShooterMmo.WorldData.Actors
         public WorldActorCapabilityAuthoringEntry[] Capabilities;
         public string ActivityProfileId;
         public string RespawnProfileId;
+        public string CorpsePersistenceMode;
+        public float CorpseLifetimeSeconds;
     }
 
     [Serializable]
@@ -319,6 +335,8 @@ namespace ShooterMmo.WorldData.Actors
         public WorldActorCapabilityDefinition[] Capabilities;
         public string ActivityProfileId;
         public string RespawnProfileId;
+        public string CorpsePersistenceMode;
+        public float CorpseLifetimeSeconds;
         public string StructuralFingerprint;
     }
 

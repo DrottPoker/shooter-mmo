@@ -638,6 +638,12 @@ Phase 13 adds typed insurance apply or remove and quest accept or abandon
 payloads to the existing capability action instead of adding a second NPC or
 item interaction transport.
 
+Phase 14 requires no protocol bump or parallel Mob-loot controller. The existing
+corpse presence and nullable source-character contracts represent both live Mob
+and durable player or boss corpses. The same client view, crosshair target,
+operation journal, canonical three-section snapshot, committed delta, inventory
+refresh, and reconnect cleanup paths remain authoritative.
+
 The `E` input action requests interaction with the current crosshair target or
 closes the current NPC or corpse interaction.
 Client selection checks a direct centre ray first and then a `0.15` metre
@@ -719,6 +725,11 @@ deterministic Actor Studio and Spawn Authoring compiler integration.
 Phase 13 coverage round-trips typed lifecycle payloads and committed
 item-revision messages, verifies safe policy-source mapping, and keeps the
 temporary panel below the persistent inventory and interaction controllers.
+
+Phase 14 EditMode coverage verifies the normal and boss corpse settings through
+the neutral Actor Studio round trip. Existing corpse protocol and client tests
+continue to cover the shared Mob presentation path, so no scene or prefab
+fixture is added.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and

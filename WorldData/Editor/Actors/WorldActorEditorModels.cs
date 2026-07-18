@@ -131,6 +131,8 @@ namespace ShooterMmo.WorldData.Editor.Actors
         public WorldActorEditorCapability[] capabilities;
         public string activityProfileId;
         public string respawnProfileId;
+        public string corpsePersistenceMode;
+        public float corpseLifetimeSeconds;
 
         public WorldActorAuthoringEntry ToDomain()
         {
@@ -149,7 +151,9 @@ namespace ShooterMmo.WorldData.Editor.Actors
                 Capabilities = (capabilities ?? Array.Empty<WorldActorEditorCapability>())
                     .Select(value => value.ToDomain()).ToArray(),
                 ActivityProfileId = activityProfileId,
-                RespawnProfileId = respawnProfileId
+                RespawnProfileId = respawnProfileId,
+                CorpsePersistenceMode = corpsePersistenceMode,
+                CorpseLifetimeSeconds = corpseLifetimeSeconds
             };
         }
     }

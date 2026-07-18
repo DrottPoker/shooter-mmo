@@ -433,6 +433,20 @@ namespace ShooterMmo.WorldData.Actors
                         respawnIds,
                         "runtime actor respawnProfileId",
                         errors);
+                    ValidateSupported(
+                        value.CorpsePersistenceMode,
+                        SupportedCorpsePersistenceModes,
+                        "runtime actor corpsePersistenceMode",
+                        errors);
+                    if (!IsFinite(value.CorpseLifetimeSeconds)
+                        || value.CorpseLifetimeSeconds
+                            < WorldActorCorpseRules.MinimumLifetimeSeconds
+                        || value.CorpseLifetimeSeconds
+                            > WorldActorCorpseRules.MaximumLifetimeSeconds)
+                    {
+                        errors.Add("runtime actor " + value.Id
+                            + " has an invalid corpse lifetime.");
+                    }
                 }
                 else
                 {
@@ -444,6 +458,15 @@ namespace ShooterMmo.WorldData.Actors
                         value.RespawnProfileId,
                         "runtime actor respawnProfileId",
                         errors);
+                    ValidateOptionalEmpty(
+                        value.CorpsePersistenceMode,
+                        "runtime actor corpsePersistenceMode",
+                        errors);
+                    if (value.CorpseLifetimeSeconds != 0f)
+                    {
+                        errors.Add("runtime NPC " + value.Id
+                            + " must not define a corpse lifetime.");
+                    }
                 }
 
                 if (value.InteractionBounds == null
@@ -565,6 +588,8 @@ namespace ShooterMmo.WorldData.Actors
                     Float(bounds.SizeZ),
                     value.ActivityProfileId,
                     value.RespawnProfileId,
+                    value.CorpsePersistenceMode,
+                    Float(value.CorpseLifetimeSeconds),
                     string.Join(",", capabilityFingerprints));
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,

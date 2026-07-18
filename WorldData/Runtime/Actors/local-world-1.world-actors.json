@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "catalogId": "core",
   "worldId": "local-world-1",
-  "revision": "0bcc36a3c3766670e87da7730dd8b89de3918dcced964e347b60e7439ac24322",
+  "revision": "953cda2ccf495a62dddf20a38218ae66422c9627c0b6c4270d71ba44eec681e5",
   "factions": [
     {
       "id": "city",
@@ -18,6 +18,12 @@
     }
   ],
   "presentationArchetypes": [
+    {
+      "id": "mob.feral_alpha",
+      "displayName": "Feral Alpha",
+      "actorKind": "mob",
+      "structuralFingerprint": "1e238691c16c2e1abd9cf867388b508793d0b9a0259db59e7fe343c7a17e3a32"
+    },
     {
       "id": "mob.feral_wolf",
       "displayName": "Feral Wolf",
@@ -57,6 +63,34 @@
   ],
   "actors": [
     {
+      "id": "mob.feral_alpha",
+      "displayName": "Feral Alpha",
+      "kind": "mob",
+      "factionId": "wild",
+      "disposition": "hostile",
+      "presentationArchetypeId": "mob.feral_alpha",
+      "damagePolicy": "damageable",
+      "tags": [
+        "boss",
+        "creature",
+        "wild"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 0.8,
+        "centerZ": 0,
+        "sizeX": 1.6,
+        "sizeY": 1.6,
+        "sizeZ": 2.2
+      },
+      "capabilities": [],
+      "activityProfileId": "mob.standard",
+      "respawnProfileId": "mob.normal",
+      "corpsePersistenceMode": "durable",
+      "corpseLifetimeSeconds": 600,
+      "structuralFingerprint": "b22a8d003e04283d4b74f9d8b9f76e8f887e55abe006759fde588570e7dcfbee"
+    },
+    {
       "id": "mob.feral_wolf",
       "displayName": "Feral Wolf",
       "kind": "mob",
@@ -79,7 +113,9 @@
       "capabilities": [],
       "activityProfileId": "mob.standard",
       "respawnProfileId": "mob.normal",
-      "structuralFingerprint": "587cc5232a277b2e209aadae3ba1599441d1670233e6ac6f8b77e2caf71daa13"
+      "corpsePersistenceMode": "live",
+      "corpseLifetimeSeconds": 120,
+      "structuralFingerprint": "01b3798e9e821580b51d08262479611766f42df54b17c9e5fddb804b4d674514"
     },
     {
       "id": "npc.city_guard",
@@ -117,7 +153,9 @@
       ],
       "activityProfileId": "",
       "respawnProfileId": "",
-      "structuralFingerprint": "8989b9cb27675b56b84d68a72c43f6ba95402131f58aec4e2bf121549c469074"
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "structuralFingerprint": "058f59083c3b65287f1de959e43ab70d37e5c6d11545d46d82acf74e57078857"
     },
     {
       "id": "npc.city_services",
@@ -191,7 +229,9 @@
       ],
       "activityProfileId": "",
       "respawnProfileId": "",
-      "structuralFingerprint": "80392f19969c312089fc8d87d848fdb81d57c2806d9c2a94b4d1f9edb6b84ab9"
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "structuralFingerprint": "d138f49600bac5449b519456e18984b2685a109ec107e536d4b9981df920f99c"
     }
   ],
   "spawnSources": [

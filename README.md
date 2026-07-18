@@ -65,6 +65,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   and lootable custody once, persists three-section five-minute corpses and
   presentation-only snapshots, restores unexpired corpses to the exact assigned
   worker runtime, and audits idempotent expiry destruction.
+- Content-controlled Mob corpse variants with a two-minute live worker default,
+  normal restart loss without PostgreSQL cleanup, deterministic idempotent loot
+  grant ids, and selected durable boss custody over the shared corpse
+  restoration and expiry foundation.
 - Exact-session concurrent corpse inspection and mutation with proximity and
   lifetime validation, targeted revisions, bidirectional full and partial item
   transfers, compatible stack merges, atomic ordinary slot and Bag aggregate
@@ -103,7 +107,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 13 of the slot-based item and world-actor foundation are
+Phases 1 through 14 of the slot-based item and world-actor foundation are
 implemented. Shared content, pure rules, Unity authoring, deterministic baking,
 the transactional PostgreSQL catalog mirror, constrained custody schema, and
 complete empty character item-state bootstrap now exist. AuthService exposes
@@ -123,8 +127,10 @@ death producer, final corpse art, and final UI art remain later phases. The
 scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
 deterministic WorldData, protocol version `13`, bounded worker state, existing
 spatial interest, server-authoritative interaction sessions, shared corpse
-targeting, typed insurance and quest item-lifecycle handlers, and permanent
-Unity state below a temporary uGUI panel. Combat,
+  targeting, typed insurance and quest item-lifecycle handlers, and permanent
+  Unity state below a temporary uGUI panel. Normal live Mob corpses and selected
+  durable boss corpse custody reuse that client and service foundation. Combat,
+  damage, death-event production, loot-table generation,
 durable unique actors, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 

@@ -107,6 +107,41 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
+    public Task<AuthServiceResult<PersistentMobCorpseResponse>>
+        CreatePersistentMobCorpseAsync(
+            CreatePersistentMobCorpseRequest request,
+            CancellationToken cancellationToken)
+    {
+        return PostAsync<CreatePersistentMobCorpseRequest, PersistentMobCorpseResponse>(
+            $"/api/simulation-workers/{Uri.EscapeDataString(request.WorkerId)}/mob-corpses/durable",
+            request,
+            response => response.OperationId == request.OperationId
+                && response.Corpse is not null
+                && response.Corpse.CorpseId == request.CorpseId
+                && response.Corpse.SourceCharacterId is null
+                && string.Equals(
+                    response.Corpse.SourceDisplayName,
+                    request.SourceDisplayName.Trim(),
+                    StringComparison.Ordinal)
+                && Math.Abs(((response.Corpse.ExpiresAt - response.Corpse.CreatedAt)
+                        - TimeSpan.FromSeconds(request.LifetimeSeconds)).TotalMilliseconds)
+                    <= 1d
+                && IsValidDurableCorpse(response.Corpse, request.ShardId, null),
+            cancellationToken);
+    }
+
+    public Task<AuthServiceResult<SimulationItemTransactionResponse>> GrantLiveMobLootAsync(
+        Guid simulationSessionId,
+        SimulationMobLootGrantRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationMobLootGrantRequest, SimulationItemTransactionResponse>(
+            $"/api/simulation-sessions/{simulationSessionId}/mob-loot-grants",
+            request,
+            response => IsValidLiveMobLootGrant(response, request),
+            cancellationToken);
+    }
+
     public Task<AuthServiceResult<CorpseViewSnapshotResponse>> OpenCorpseAsync(
         Guid simulationSessionId,
         Guid corpseId,
@@ -481,6 +516,35 @@ public sealed class AuthServiceClient(HttpClient httpClient)
                 revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
             && (response.Corpse is null
                 || IsValidCorpseView(response.Corpse, corpseId, request.ShardId));
+    }
+
+    private static bool IsValidLiveMobLootGrant(
+        SimulationItemTransactionResponse response,
+        SimulationMobLootGrantRequest request)
+    {
+        return response.OperationId == request.GrantId
+            && string.Equals(response.OperationKind, "grant_mob_loot", StringComparison.Ordinal)
+            && response.Succeeded
+            && response.Error is null
+            && response.CharacterRevisions is not null
+            && response.CharacterRevisions.Count == 1
+            && response.CharacterRevisions[0].CharacterId == request.CharacterId
+            && IsValidCarryState(
+                response.CharacterRevisions[0].Revision,
+                response.CharacterRevisions[0].CarriedWeight,
+                response.CharacterRevisions[0].CarryCapacity)
+            && response.ContainerRevisions is not null
+            && response.ContainerRevisions.Count == 1
+            && response.ContainerRevisions[0].ContainerId == request.DestinationContainerId
+            && response.ContainerRevisions[0].Revision
+                > request.ExpectedDestinationContainerRevision
+            && response.ItemRevisions is not null
+            && response.ItemRevisions.Count == 1
+            && response.ItemRevisions[0].ItemInstanceId != Guid.Empty
+            && response.ItemRevisions[0].Revision >= 0
+            && response.RecoveryDeliveryIds is not null
+            && response.RecoveryDeliveryIds.Count == 0
+            && response.SecureContainerEntitlementRevision is null;
     }
 
     private static bool IsValidCorpseView(

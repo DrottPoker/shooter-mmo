@@ -510,10 +510,13 @@ Current implementation note:
   integration, presentation-only actor prefabs, authoritative crosshair
   interaction, and a shared corpse interaction lease. The foundation is
   implemented.
-- Gameplay-created item grants, insurance NPC pricing, authoritative combat
-  death production, Mobs, final corpse art, and configurable Mob corpse
-  persistence are not implemented. Insurance consumption is implemented only
-  inside the durable death transaction.
+- Item-plan Phase 13 adds insurance NPC pricing and explicit policy lifecycle
+  plus protected quest-grant acceptance, abandonment, and reacceptance.
+- Item-plan Phase 14 adds content-controlled live or durable Mob corpse custody,
+  deterministic retry-safe live loot grants, and selected boss restoration over
+  the shared durable corpse and expiry path.
+- Gameplay combat death production, Mob loot-table generation, full Mob AI,
+  final corpse art, and final inventory UI remain unimplemented.
 
 ## Persistence Principles
 
@@ -561,7 +564,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 13 complete
+Status: In progress, item-plan Phases 1 through 14 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -607,11 +610,15 @@ Status: In progress, item-plan Phases 1 through 13 complete
 - Insurance apply and explicit removal, atomic server-owned pricing, safe policy
   source labels, quest grant lineage, abandonment cleanup, and idempotent
   reacceptance now reuse that authoritative NPC interaction foundation.
+- Live normal Mob corpses, durable selected boss corpses, per-definition
+  lifetimes, deterministic loot grant ids, restart semantics, and shared durable
+  expiry are complete. Combat still does not produce the death event or resolve
+  a loot table.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The next item-plan subphase is Phase 14 Mob corpse variants. It remains outside
-the current implementation.
+The next item-plan subphase is Phase 15 operations, performance, and recovery
+hardening. It remains outside the current implementation.
 
 ### Phase 5: Vendor And Gathering
 
@@ -662,8 +669,8 @@ Status: In progress, durable and interactive player-corpse foundation complete
   deltas to all current viewers.
 - Connect the prepared death boundary to the future authoritative combat event
   producer and replace the generic corpse presentation with final content.
-- Add configurable live or durable Mob corpse behavior.
-- Add insurance NPC lifecycle.
+- Completed item subphase: add configurable live or durable Mob corpse behavior.
+- Completed item subphase: add insurance NPC lifecycle.
 
 ## Deferred Features
 
