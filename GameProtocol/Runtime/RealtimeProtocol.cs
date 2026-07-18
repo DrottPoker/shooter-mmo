@@ -24,7 +24,14 @@ namespace ShooterMmo.GameProtocol
         CorpseInteractionIntent = 16,
         CorpseInteractionResult = 17,
         CorpseViewStateChunk = 18,
-        CorpseViewClosed = 19
+        CorpseViewClosed = 19,
+        WorldActorSpawn = 20,
+        WorldActorState = 21,
+        WorldActorDespawn = 22,
+        WorldInteractionIntent = 23,
+        WorldInteractionOpened = 24,
+        WorldInteractionResult = 25,
+        WorldInteractionClosed = 26
     }
 
     [Flags]
@@ -788,7 +795,7 @@ namespace ShooterMmo.GameProtocol
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 11;
+        public const ushort Version = 12;
         public const string ConnectionKey = "ShooterMmo.Realtime.v8";
         public const int MaximumPacketSize = 1200;
 

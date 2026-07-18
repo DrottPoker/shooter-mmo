@@ -1,0 +1,342 @@
+{
+  "formatVersion": 1,
+  "catalogId": "core",
+  "worldId": "local-world-1",
+  "revision": "5fbec3761590d4eef3281fc84bd96a0bc339ff8b61a3c0b2979f42b26a73c9bc",
+  "factions": [
+    {
+      "id": "city",
+      "displayName": "City",
+      "defaultDisposition": "friendly",
+      "structuralFingerprint": "99556f7ec722091355f75345283562a70a31df855c036f1d8816a7670266bad6"
+    },
+    {
+      "id": "wild",
+      "displayName": "Wild Creatures",
+      "defaultDisposition": "hostile",
+      "structuralFingerprint": "8e2395996120cb12e098120f31c9a058c4c3c369f81d741b187034ccbbf85421"
+    }
+  ],
+  "presentationArchetypes": [
+    {
+      "id": "mob.feral_wolf",
+      "displayName": "Feral Wolf",
+      "actorKind": "mob",
+      "structuralFingerprint": "176232753514d92cf6f1b1077d7b9b948a6052a09b328674afde4d39dfc0d159"
+    },
+    {
+      "id": "npc.city_guard",
+      "displayName": "City Guard",
+      "actorKind": "npc",
+      "structuralFingerprint": "d7bd6b5f3eaa72ef68f3ffd39f7a2fb96024263b9579e823eed6df654b9fbc39"
+    },
+    {
+      "id": "npc.city_services",
+      "displayName": "City Services",
+      "actorKind": "npc",
+      "structuralFingerprint": "abebd90d0dc23559272c78292a91c140d1458b03a1e41b0b347098838d6c9528"
+    }
+  ],
+  "activityProfiles": [
+    {
+      "id": "mob.standard",
+      "activationRange": 48,
+      "dormancyRange": 64,
+      "activeTickRateHz": 10,
+      "dormantTickRateHz": 0.5,
+      "structuralFingerprint": "c07ac939a884933fe81847676c04423a3f286a246bdb3f1f9e79eb27465930d1"
+    }
+  ],
+  "respawnProfiles": [
+    {
+      "id": "mob.normal",
+      "delaySeconds": 30,
+      "populationLimit": 32,
+      "structuralFingerprint": "5c7bc239d2ab3432d7ee00c2e9684a124dffb7ea8122033491fc976a5234c13b"
+    }
+  ],
+  "actors": [
+    {
+      "id": "mob.feral_wolf",
+      "displayName": "Feral Wolf",
+      "kind": "mob",
+      "factionId": "wild",
+      "disposition": "hostile",
+      "presentationArchetypeId": "mob.feral_wolf",
+      "damagePolicy": "damageable",
+      "tags": [
+        "creature",
+        "wild"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 0.55,
+        "centerZ": 0,
+        "sizeX": 1.2,
+        "sizeY": 1.1,
+        "sizeZ": 1.8
+      },
+      "capabilities": [],
+      "activityProfileId": "mob.standard",
+      "respawnProfileId": "mob.normal",
+      "structuralFingerprint": "074e288ca07b16d55e4c1ab16fc302236aef6b254b45c61b75f208116f04ffa5"
+    },
+    {
+      "id": "npc.city_guard",
+      "displayName": "City Guard",
+      "kind": "npc",
+      "factionId": "city",
+      "disposition": "friendly",
+      "presentationArchetypeId": "npc.city_guard",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "city",
+        "guard"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 1,
+        "centerZ": 0,
+        "sizeX": 0.8,
+        "sizeY": 2,
+        "sizeZ": 0.8
+      },
+      "capabilities": [
+        {
+          "id": "guard.dialogue",
+          "kind": "dialogue",
+          "displayName": "Talk",
+          "structuralFingerprint": "0f0e5c8df570634658fd43d871e5cfc8c16c3227fd18d1a123bd9bed7a84c17e"
+        },
+        {
+          "id": "guard.trainer",
+          "kind": "trainer",
+          "displayName": "Training",
+          "structuralFingerprint": "b3b1874100b8cb9f08300340c55d1192f6c0e030aa414e68d202ae254117249b"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "structuralFingerprint": "b8bd4870dec580e2a136b88805155e3a5e52a290cc84ec741a8737f1942e6a02"
+    },
+    {
+      "id": "npc.city_services",
+      "displayName": "Mira the Quartermaster",
+      "kind": "npc",
+      "factionId": "city",
+      "disposition": "friendly",
+      "presentationArchetypeId": "npc.city_services",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "city",
+        "service"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 1,
+        "centerZ": 0,
+        "sizeX": 0.8,
+        "sizeY": 2,
+        "sizeZ": 0.8
+      },
+      "capabilities": [
+        {
+          "id": "services.bank",
+          "kind": "bank",
+          "displayName": "Character Bank",
+          "structuralFingerprint": "9e347cecd4113bb4332bbefab1683da2d81ef20a31b087cd1b739514a5712b74"
+        },
+        {
+          "id": "services.crafting",
+          "kind": "crafting",
+          "displayName": "Crafting",
+          "structuralFingerprint": "3fe8b2fd4760235c7e64e6221cb6c0a841085f2b020d3d1cfeb646ab10a89d63"
+        },
+        {
+          "id": "services.dialogue",
+          "kind": "dialogue",
+          "displayName": "Talk",
+          "structuralFingerprint": "fa474086f67574f6007aba9d47ef975d925bf304541a9e7d86dd6a86bf5a4a34"
+        },
+        {
+          "id": "services.insurance",
+          "kind": "insurance",
+          "displayName": "Insurance",
+          "structuralFingerprint": "7be8f5c2d1583ac185fec9b583dd8606b9bd8cb3de351e0a950c1b12c3d5d012"
+        },
+        {
+          "id": "services.quest_offer",
+          "kind": "quest_offer",
+          "displayName": "Available Quests",
+          "structuralFingerprint": "427314a01783dee42ef33485b687e5725b130ee93b3a73d0d5970ba7d7bd649b"
+        },
+        {
+          "id": "services.quest_turn_in",
+          "kind": "quest_turn_in",
+          "displayName": "Complete Quest",
+          "structuralFingerprint": "9c9ac92ceef603bcc592e2a4d4aae6b1eb14743a2caf0ab50fec9f18932cca27"
+        },
+        {
+          "id": "services.recovery",
+          "kind": "recovery_storage",
+          "displayName": "Recovery Storage",
+          "structuralFingerprint": "091e429efbdb50dff133fee00ff15bf6b1603e7b922092ff1b46558261acfd8e"
+        },
+        {
+          "id": "services.vendor",
+          "kind": "vendor",
+          "displayName": "Trade",
+          "structuralFingerprint": "f09638af25f30f4fdf0d07f9aab32f0499fb5251751033f19966475158d7abe7"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "structuralFingerprint": "ac8373b456c80f4d164104ac7b9568ac43caea690f05589c817b48ed54292fad"
+    }
+  ],
+  "spawnSources": [
+    {
+      "id": "local.city_guards",
+      "kind": "group",
+      "actorId": "npc.city_guard",
+      "instanceCount": 2,
+      "patrolPathId": "",
+      "originX": -8,
+      "originY": 0,
+      "originZ": -8,
+      "minimumX": -9,
+      "minimumZ": -8,
+      "maximumX": -7,
+      "maximumZ": -8,
+      "yawDegrees": 45,
+      "rows": 1,
+      "columns": 2,
+      "spacing": 2,
+      "seed": 0,
+      "structuralFingerprint": "5d92c84a5e05aff11e869093b7ff60b3be5bd3aa3bc96af1f861013875cdfbbb"
+    },
+    {
+      "id": "local.city_services",
+      "kind": "point",
+      "actorId": "npc.city_services",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": 2.5,
+      "originY": 0,
+      "originZ": -1,
+      "minimumX": 2.5,
+      "minimumZ": -1,
+      "maximumX": 2.5,
+      "maximumZ": -1,
+      "yawDegrees": 270,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "0325cfa59da86d40ee197c73d3f879a5dd4ceb13f61a363d602540a555c364f2"
+    },
+    {
+      "id": "local.feral_wolves",
+      "kind": "area",
+      "actorId": "mob.feral_wolf",
+      "instanceCount": 2,
+      "patrolPathId": "local.wolf_patrol",
+      "originX": 9,
+      "originY": 0,
+      "originZ": 9,
+      "minimumX": 7,
+      "minimumZ": 7,
+      "maximumX": 11,
+      "maximumZ": 11,
+      "yawDegrees": 180,
+      "rows": 0,
+      "columns": 0,
+      "spacing": 0,
+      "seed": 1201,
+      "structuralFingerprint": "da18ffc3d30983529a4febfaab826f183c20f4c79ef67930c70d1166371e3e21"
+    }
+  ],
+  "spawnInstances": [
+    {
+      "id": "local.city_guards:0000",
+      "spawnDefinitionId": "local.city_guards",
+      "actorId": "npc.city_guard",
+      "x": -9,
+      "y": 0,
+      "z": -8,
+      "yawDegrees": 45,
+      "patrolPathId": "",
+      "structuralFingerprint": "d273a827806d69aca6ee618c3cb89224148b39026f9088c7cd0a4e4f96b48406"
+    },
+    {
+      "id": "local.city_guards:0001",
+      "spawnDefinitionId": "local.city_guards",
+      "actorId": "npc.city_guard",
+      "x": -7,
+      "y": 0,
+      "z": -8,
+      "yawDegrees": 45,
+      "patrolPathId": "",
+      "structuralFingerprint": "bf81aabb4570a714f7a1d4e890b5f6190cd0e6e6ce7869a96f72b94b6039fc31"
+    },
+    {
+      "id": "local.city_services:0000",
+      "spawnDefinitionId": "local.city_services",
+      "actorId": "npc.city_services",
+      "x": 2.5,
+      "y": 0,
+      "z": -1,
+      "yawDegrees": 270,
+      "patrolPathId": "",
+      "structuralFingerprint": "5cf5f670fc44a4a75d552493cf177574c2de03cc47a8b720470629c788e8bed9"
+    },
+    {
+      "id": "local.feral_wolves:0000",
+      "spawnDefinitionId": "local.feral_wolves",
+      "actorId": "mob.feral_wolf",
+      "x": 10.84627,
+      "y": 0,
+      "z": 10.440076,
+      "yawDegrees": 180,
+      "patrolPathId": "local.wolf_patrol",
+      "structuralFingerprint": "2069d7e149c91a1fa57c59c98748a220b4b294ecacaed9b8558e962540ce4f78"
+    },
+    {
+      "id": "local.feral_wolves:0001",
+      "spawnDefinitionId": "local.feral_wolves",
+      "actorId": "mob.feral_wolf",
+      "x": 9.98831,
+      "y": 0,
+      "z": 8.883711,
+      "yawDegrees": 180,
+      "patrolPathId": "local.wolf_patrol",
+      "structuralFingerprint": "b278c8ff347440ccd103652c851f2e9ebf0bd783c7f78180412c30a8d8c0c4da"
+    }
+  ],
+  "patrolPaths": [
+    {
+      "id": "local.wolf_patrol",
+      "points": [
+        {
+          "x": 7,
+          "y": 0,
+          "z": 7,
+          "waitSeconds": 1
+        },
+        {
+          "x": 11,
+          "y": 0,
+          "z": 7,
+          "waitSeconds": 0.5
+        },
+        {
+          "x": 9,
+          "y": 0,
+          "z": 11,
+          "waitSeconds": 1
+        }
+      ],
+      "structuralFingerprint": "0ea573dfccc4be978b2e39267396d04c99779f8226e2b150067290b1705ae402"
+    }
+  ]
+}

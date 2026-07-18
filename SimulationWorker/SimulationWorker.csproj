@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Shared\DotNet\GameProtocol\ShooterMmo.GameProtocol.csproj" />
     <ProjectReference Include="..\Shared\DotNet\GameSimulation\ShooterMmo.GameSimulation.csproj" />
+    <ProjectReference Include="..\Shared\DotNet\WorldData\ShooterMmo.WorldData.csproj" />
     <ProjectReference Include="..\Shared\ShooterMmo.Shared.csproj" />
   </ItemGroup>
 
@@ -24,6 +25,7 @@
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\WorldData\Runtime\Resources\ShooterMmo\WorldCollision\**\*" Link="CollisionData\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Runtime\Actors\**\*.json" Link="ActorData\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -12,6 +12,7 @@ using SimulationWorker.Entities;
 using SimulationWorker.Items;
 using SimulationWorker.Registry;
 using SimulationWorker.Sessions;
+using SimulationWorker.WorldActors;
 using SimulationWorker.WorldCollision;
 
 namespace SimulationWorker.Realtime;
@@ -36,13 +37,20 @@ public sealed class RealtimeSimulationService(
     SimulationInterestManager? providedInterestManager = null,
     RealtimeNetworkMetrics? providedNetworkMetrics = null,
     SimulationWorkerRegistrationLease? registrationLease = null,
-    RealtimePerformanceMetrics? providedPerformanceMetrics = null) : BackgroundService
+    RealtimePerformanceMetrics? providedPerformanceMetrics = null,
+    WorldActorStore? providedWorldActorStore = null,
+    WorldActorActivityScheduler? providedWorldActorActivityScheduler = null,
+    WorldInteractionLeaseRegistry? providedWorldInteractionLeases = null,
+    WorldInteractionAuthorityService? providedWorldInteractionAuthority = null,
+    WorldActorMetrics? providedWorldActorMetrics = null,
+    SimulationWorkerIdentity? workerIdentity = null) : BackgroundService
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
     private readonly Dictionary<int, PeerContext> peers = [];
     private readonly HashSet<Task> activeOperations = [];
     private readonly object activeOperationsLock = new();
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
+    private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
     private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
     private readonly List<SimulationVector3> collisionAnchorBuffer = [];
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
@@ -58,6 +66,14 @@ public sealed class RealtimeSimulationService(
         providedNetworkMetrics ?? new RealtimeNetworkMetrics();
     private readonly RealtimePerformanceMetrics performanceMetrics =
         providedPerformanceMetrics ?? new RealtimePerformanceMetrics();
+    private readonly WorldActorStore? worldActorStore = providedWorldActorStore;
+    private readonly WorldActorActivityScheduler? worldActorActivityScheduler =
+        providedWorldActorActivityScheduler;
+    private readonly WorldInteractionLeaseRegistry? worldInteractionLeases =
+        providedWorldInteractionLeases;
+    private readonly WorldInteractionAuthorityService? worldInteractionAuthority =
+        providedWorldInteractionAuthority;
+    private readonly WorldActorMetrics? worldActorMetrics = providedWorldActorMetrics;
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
@@ -65,6 +81,28 @@ public sealed class RealtimeSimulationService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (worldActorStore is not null)
+        {
+            if (workerIdentity is null)
+            {
+                throw new InvalidOperationException(
+                    "World actor runtime requires the current SimulationWorker identity.");
+            }
+
+            var actors = worldActorStore.ActivateAssignment(
+                config.WorldId,
+                config.ShardId,
+                workerIdentity.RuntimeId);
+            worldActorMetrics?.ObservePopulation(actors);
+            RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
+            networkMetrics.SetActiveEntities(GetActiveEntityCount());
+            logger.LogInformation(
+                "[SIMULATION] Activated {ActorCount} world actors from revision {WorldActorRevision} for worker runtime {RuntimeId}.",
+                actors.Count,
+                worldActorStore.ContentRevision,
+                workerIdentity.RuntimeId);
+        }
+
         var listener = new EventBasedNetListener();
         server = new NetManager(listener)
         {
@@ -153,6 +191,8 @@ public sealed class RealtimeSimulationService(
             entityRegistry.Clear();
             carryStateStore.Clear();
             corpseViewers.Clear();
+            worldInteractionLeases?.Clear();
+            worldActorStore?.Clear();
             corpseSnapshots.Clear();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
@@ -181,6 +221,7 @@ public sealed class RealtimeSimulationService(
         }
 
         interestManager.RemoveConnection(peer.Id);
+        worldInteractionLeases?.RemovePeer(peer.Id);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
 
@@ -469,6 +510,88 @@ public sealed class RealtimeSimulationService(
             }
 
             context.AuthorityOperationQueue.Enqueue(new QueuedCorpseOperation(intent));
+            StartNextAuthorityOperation(context);
+            return;
+        }
+
+        if (messageType == RealtimeMessageType.WorldInteractionIntent)
+        {
+            if (channel != RealtimeProtocol.ControlChannel
+                || deliveryMethod != DeliveryMethod.ReliableOrdered)
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "invalid_world_interaction_delivery",
+                    "World interaction intents require the reliable ordered control channel.");
+                return;
+            }
+
+            if (worldInteractionAuthority is null
+                || !TryGetBoundPlayer(context, out _))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "world_interaction_unavailable",
+                    "World interaction authority is not active for this peer.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldInteractionIntent(
+                    packet,
+                    out var intent,
+                    out var interactionError))
+            {
+                RejectProtocol(
+                    peer,
+                    context,
+                    "invalid_world_interaction",
+                    interactionError);
+                return;
+            }
+
+            if (!context.WorldInteractionIntentQuota.TryConsume())
+            {
+                SendWorldInteractionResult(
+                    peer,
+                    new WorldInteractionAuthorityResult(
+                        null,
+                        new RealtimeWorldInteractionResult(
+                            intent.OperationId,
+                            intent.InteractionSessionId,
+                            intent.OperationKind,
+                            false,
+                            0,
+                            new RealtimeError(
+                                WorldInteractionIntentLimiter.RejectionCode,
+                                "World interaction intents exceeded the per-peer rate limit.")),
+                        null));
+                return;
+            }
+
+            if (context.AuthorityOperationQueue.Count
+                >= PeerContext.MaximumQueuedAuthorityOperations)
+            {
+                SendWorldInteractionResult(
+                    peer,
+                    new WorldInteractionAuthorityResult(
+                        null,
+                        new RealtimeWorldInteractionResult(
+                            intent.OperationId,
+                            intent.InteractionSessionId,
+                            intent.OperationKind,
+                            false,
+                            0,
+                            new RealtimeError(
+                                "world_interaction_queue_full",
+                                "Too many authority operations are waiting for this peer.")),
+                        null));
+                return;
+            }
+
+            context.AuthorityOperationQueue.Enqueue(
+                new QueuedWorldInteractionOperation(intent));
             StartNextAuthorityOperation(context);
             return;
         }
@@ -832,7 +955,7 @@ public sealed class RealtimeSimulationService(
         SendEntityBaseline(peer, joiningInterest.Visible);
         SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();
-        networkMetrics.SetActiveEntities(entityRegistry.PlayerCount);
+        networkMetrics.SetActiveEntities(GetActiveEntityCount());
 
         if (session.IsSyntheticBot)
         {
@@ -1040,9 +1163,61 @@ public sealed class RealtimeSimulationService(
                     state.PositionY,
                     state.PositionZ);
                 break;
+            case QueuedWorldInteractionOperation worldInteractionOperation:
+                ProcessWorldInteractionOperation(
+                    context,
+                    entity,
+                    worldInteractionOperation.Intent);
+                break;
             default:
                 throw new InvalidOperationException(
                     "The queued authority operation type is not supported.");
+        }
+    }
+
+    private void ProcessWorldInteractionOperation(
+        PeerContext context,
+        PlayerSimulationEntity entity,
+        RealtimeWorldInteractionIntent intent)
+    {
+        context.AuthorityOperationInFlight = false;
+        if (worldInteractionAuthority is null
+            || !TryGetCurrentPeer(context, out var peer))
+        {
+            return;
+        }
+
+        var result = worldInteractionAuthority.Process(
+            context.PeerId,
+            entity,
+            intent);
+        SendWorldInteractionResult(peer, result);
+        StartNextAuthorityOperation(context);
+    }
+
+    private void SendWorldInteractionResult(
+        NetPeer peer,
+        WorldInteractionAuthorityResult result)
+    {
+        if (result.Opened is not null)
+        {
+            SendControl(
+                peer,
+                RealtimeProtocol.EncodeWorldInteractionOpened(result.Opened));
+        }
+
+        if (result.Result is not null)
+        {
+            SendControl(
+                peer,
+                RealtimeProtocol.EncodeWorldInteractionResult(result.Result));
+        }
+
+        if (result.Closed is not null)
+        {
+            SendControl(
+                peer,
+                RealtimeProtocol.EncodeWorldInteractionClosed(result.Closed));
         }
     }
 
@@ -1097,6 +1272,26 @@ public sealed class RealtimeSimulationService(
 
         if (intent.OperationKind == RealtimeCorpseInteractionKind.Open)
         {
+            var acquiredInteractionLease = false;
+            if (worldInteractionLeases is not null
+                && !worldInteractionLeases.TryAcquireCorpse(
+                    context.PeerId,
+                    intent.CorpseId,
+                    out acquiredInteractionLease,
+                    out var leaseCode,
+                    out var leaseMessage))
+            {
+                completedOperations.Enqueue(new CorpseOperationCompleted(
+                    context,
+                    session,
+                    SimulationCorpseInteractionResult.Rejected(
+                        intent,
+                        leaseCode,
+                        leaseMessage),
+                    false));
+                return;
+            }
+
             var alreadyViewing = corpseViewers.IsViewing(
                 context.PeerId,
                 intent.CorpseId);
@@ -1106,6 +1301,13 @@ public sealed class RealtimeSimulationService(
                     out var code,
                     out var message))
             {
+                if (acquiredInteractionLease)
+                {
+                    worldInteractionLeases?.ReleaseCorpse(
+                        context.PeerId,
+                        intent.CorpseId);
+                }
+
                 completedOperations.Enqueue(new CorpseOperationCompleted(
                     context,
                     session,
@@ -1157,6 +1359,9 @@ public sealed class RealtimeSimulationService(
             if (completed.RemoveOpenReservationOnFailure)
             {
                 corpseViewers.RemovePeer(completed.Context.PeerId);
+                worldInteractionLeases?.ReleaseCorpse(
+                    completed.Context.PeerId,
+                    completed.Result.Intent.CorpseId);
             }
 
             return;
@@ -1193,6 +1398,9 @@ public sealed class RealtimeSimulationService(
             if (completed.RemoveOpenReservationOnFailure)
             {
                 corpseViewers.RemovePeer(completed.Context.PeerId);
+                worldInteractionLeases?.ReleaseCorpse(
+                    completed.Context.PeerId,
+                    completed.Result.Intent.CorpseId);
             }
 
             SendCorpseOperationResult(peer, completed.Session, completed.Result);
@@ -1225,6 +1433,9 @@ public sealed class RealtimeSimulationService(
             == RealtimeCorpseInteractionKind.Close)
         {
             corpseViewers.Close(
+                completed.Context.PeerId,
+                completed.Result.Intent.CorpseId);
+            worldInteractionLeases?.ReleaseCorpse(
                 completed.Context.PeerId,
                 completed.Result.Intent.CorpseId);
             SendCorpseOperationResult(peer, completed.Session, completed.Result);
@@ -1410,7 +1621,9 @@ public sealed class RealtimeSimulationService(
         string code,
         string message)
     {
-        if (!corpseViewers.Close(context.PeerId, corpseId))
+        var closed = corpseViewers.Close(context.PeerId, corpseId);
+        worldInteractionLeases?.ReleaseCorpse(context.PeerId, corpseId);
+        if (!closed)
         {
             return;
         }
@@ -1429,6 +1642,7 @@ public sealed class RealtimeSimulationService(
     {
         foreach (var viewerPeerId in corpseViewers.CloseCorpse(corpseId))
         {
+            worldInteractionLeases?.ReleaseCorpse(viewerPeerId, corpseId);
             if (peers.TryGetValue(viewerPeerId, out var context)
                 && context.Session is not null
                 && TryGetCurrentPeer(context, out var peer))
@@ -1544,6 +1758,7 @@ public sealed class RealtimeSimulationService(
         carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
         context.AuthorityOperationQueue.Clear();
         corpseViewers.RemovePeer(context.PeerId);
+        worldInteractionLeases?.RemovePeer(context.PeerId);
         context.Session = null;
         RefreshPeerPopulationMetrics();
         context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
@@ -1580,6 +1795,43 @@ public sealed class RealtimeSimulationService(
             }
             performanceMetrics.RecordMovementSimulation(
                 Stopwatch.GetElapsedTime(phaseStarted));
+
+            if (worldActorActivityScheduler is not null)
+            {
+                foreach (var changedActor in worldActorActivityScheduler.Evaluate(
+                             playerBuffer,
+                             serverTick,
+                             config.MovementSimulation.TickRateHz))
+                {
+                    BroadcastWorldActorState(changedActor);
+                }
+
+                if (worldActorStore is not null)
+                {
+                    worldActorMetrics?.ObservePopulation(worldActorStore.ListActors());
+                }
+            }
+
+            var interactionValidationIntervalTicks = Math.Max(
+                1,
+                config.MovementSimulation.TickRateHz / 5);
+            if (worldInteractionAuthority is not null
+                && serverTick % interactionValidationIntervalTicks == 0)
+            {
+                foreach (var closure in worldInteractionAuthority.Revalidate(
+                             ResolvePlayerForInteraction))
+                {
+                    if (peers.TryGetValue(closure.PeerId, out var context)
+                        && context.Session is not null
+                        && TryGetCurrentPeer(context, out var peer))
+                    {
+                        SendControl(
+                            peer,
+                            RealtimeProtocol.EncodeWorldInteractionClosed(
+                                closure.Closed));
+                    }
+                }
+            }
 
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
             if (serverTick % snapshotIntervalTicks == 0)
@@ -1906,6 +2158,7 @@ public sealed class RealtimeSimulationService(
             previousContext.Session = null;
             previousContext.AuthorityOperationQueue.Clear();
             corpseViewers.RemovePeer(previousContext.PeerId);
+            worldInteractionLeases?.RemovePeer(previousContext.PeerId);
             RefreshPeerPopulationMetrics();
             previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
@@ -2031,6 +2284,20 @@ public sealed class RealtimeSimulationService(
                 SendSpawn(peer, entity);
             }
         }
+
+        if (worldActorStore is null)
+        {
+            return;
+        }
+
+        worldActorStore.CopyActorsTo(worldActorBuffer);
+        foreach (var actor in worldActorBuffer)
+        {
+            if (visibleEntityIds.Contains(actor.NetworkEntityId))
+            {
+                SendWorldActorSpawn(peer, actor);
+            }
+        }
     }
 
     private void SendEntitySpawnToConnections(
@@ -2067,11 +2334,41 @@ public sealed class RealtimeSimulationService(
                 {
                     SendSpawn(peer, enteredEntity!);
                 }
+                else if (worldActorStore is not null
+                    && worldActorStore.TryGetByEntityId(
+                        enteredEntityId,
+                        out var enteredActor))
+                {
+                    SendWorldActorSpawn(peer, enteredActor!);
+                }
             }
 
             foreach (var exitedEntityId in update.Exited)
             {
-                SendDespawn(peer, exitedEntityId, "out_of_interest");
+                if (worldActorStore is not null
+                    && worldActorStore.TryGetByEntityId(
+                        exitedEntityId,
+                        out var exitedActor))
+                {
+                    SendWorldActorDespawn(
+                        peer,
+                        exitedActor!,
+                        "out_of_interest");
+                }
+                else if (worldActorStore is not null
+                    && worldActorStore.TryGetDespawnedByEntityId(
+                        exitedEntityId,
+                        out var despawnedActor))
+                {
+                    SendWorldActorDespawn(
+                        peer,
+                        despawnedActor!,
+                        "despawned");
+                }
+                else
+                {
+                    SendDespawn(peer, exitedEntityId, "out_of_interest");
+                }
             }
         }
     }
@@ -2100,6 +2397,7 @@ public sealed class RealtimeSimulationService(
         string reason)
     {
         corpseViewers.RemovePeer(context.PeerId);
+        worldInteractionLeases?.RemovePeer(context.PeerId);
         context.AuthorityOperationQueue.Clear();
         if (!connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
             || !entityRegistry.RemovePlayer(
@@ -2114,7 +2412,7 @@ public sealed class RealtimeSimulationService(
         connectionBindings.UnbindConnection(context.PeerId, out _);
         interestManager.RemoveConnection(context.PeerId);
         BroadcastEntityDespawn(entityId, reason, context.PeerId);
-        networkMetrics.SetActiveEntities(entityRegistry.PlayerCount);
+        networkMetrics.SetActiveEntities(GetActiveEntityCount());
     }
 
     private void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
@@ -2149,6 +2447,18 @@ public sealed class RealtimeSimulationService(
             ToRealtimePlayerState(entity.Movement.State));
     }
 
+    private RealtimeWorldActorSpawn ToRealtimeWorldActorSpawn(
+        WorldActorRuntimeState actor)
+    {
+        return WorldActorProtocolMapper.ToSpawn(actor);
+    }
+
+    private static RealtimeWorldActorState ToRealtimeWorldActorState(
+        WorldActorRuntimeState actor)
+    {
+        return WorldActorProtocolMapper.ToState(actor);
+    }
+
     private static SimulationInterestEntity ToInterestEntity(
         PlayerSimulationEntity entity)
     {
@@ -2156,6 +2466,20 @@ public sealed class RealtimeSimulationService(
             entity.NetworkEntityId,
             entity.Movement.State.PositionX,
             entity.Movement.State.PositionZ);
+    }
+
+    private PlayerSimulationEntity? ResolvePlayerForInteraction(int peerId)
+    {
+        return peers.TryGetValue(peerId, out var context)
+            && context.Session is not null
+            && TryGetBoundPlayer(context, out var player)
+            ? player
+            : null;
+    }
+
+    private int GetActiveEntityCount()
+    {
+        return entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
     }
 
     private bool TryGetCurrentPeer(PeerContext context, out NetPeer peer)
@@ -2229,6 +2553,19 @@ public sealed class RealtimeSimulationService(
                 entity.Movement.State.PositionZ));
         }
 
+        if (worldActorStore is not null)
+        {
+            worldActorStore.CopyActorsTo(worldActorBuffer);
+            for (var index = 0; index < worldActorBuffer.Count; index++)
+            {
+                var actor = worldActorBuffer[index];
+                interestEntityBuffer.Add(new SimulationInterestEntity(
+                    actor.NetworkEntityId,
+                    actor.PositionX,
+                    actor.PositionZ));
+            }
+        }
+
         interestManager.Rebuild(interestEntityBuffer);
     }
 
@@ -2236,6 +2573,50 @@ public sealed class RealtimeSimulationService(
     {
         SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
         networkMetrics.RecordSpawnPacket();
+    }
+
+    private void SendWorldActorSpawn(
+        NetPeer peer,
+        WorldActorRuntimeState actor)
+    {
+        SendControl(
+            peer,
+            RealtimeProtocol.EncodeWorldActorSpawn(
+                ToRealtimeWorldActorSpawn(actor)));
+        networkMetrics.RecordSpawnPacket();
+    }
+
+    private void SendWorldActorDespawn(
+        NetPeer peer,
+        WorldActorRuntimeState actor,
+        string reason)
+    {
+        SendControl(
+            peer,
+            RealtimeProtocol.EncodeWorldActorDespawn(
+                new RealtimeWorldActorDespawn(
+                    actor.NetworkEntityId,
+                    actor.RuntimeActorId,
+                    reason)));
+        networkMetrics.RecordDespawnPacket();
+    }
+
+    private void BroadcastWorldActorState(WorldActorRuntimeState actor)
+    {
+        var packet = RealtimeProtocol.EncodeWorldActorState(
+            ToRealtimeWorldActorState(actor));
+        foreach (var context in peers.Values)
+        {
+            if (context.Session is null
+                || !interestManager.GetVisible(context.PeerId)
+                    .Contains(actor.NetworkEntityId)
+                || !TryGetCurrentPeer(context, out var peer))
+            {
+                continue;
+            }
+
+            SendControl(peer, packet);
+        }
     }
 
     private void SendDespawn(NetPeer peer, ulong entityId, string reason)
@@ -2299,6 +2680,8 @@ public sealed class RealtimeSimulationService(
 
         public UdpPeerQuota Quota { get; } = new(quotaConfig);
 
+        public WorldInteractionIntentLimiter WorldInteractionIntentQuota { get; } = new();
+
         public bool JoinStarted { get; set; }
 
         public bool LeaveStarted { get; set; }
@@ -2349,5 +2732,9 @@ public sealed class RealtimeSimulationService(
         : QueuedAuthorityOperation;
 
     private sealed record QueuedCorpseOperation(RealtimeCorpseInteractionIntent Intent)
+        : QueuedAuthorityOperation;
+
+    private sealed record QueuedWorldInteractionOperation(
+        RealtimeWorldInteractionIntent Intent)
         : QueuedAuthorityOperation;
 }

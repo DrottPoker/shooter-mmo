@@ -213,11 +213,13 @@ target becomes an authority. AuthService validates and mirrors the compiled
 catalog at startup. Future mutation paths must still reapply the authoritative
 rules before committing durable item state.
 
-Phase 12 is approved to add neutral actor and spawn authoring below
+Neutral actor and spawn authoring now lives below
 `WorldData/Authoring/Actors` and `WorldData/Authoring/ActorSpawns`, with
-deterministic compiled content below `WorldData/Runtime/Actors`. This is planned,
-not implemented. Unity scene authoring will import and export that content but
-will not replace it as the source consumed by SimulationWorker.
+deterministic compiled content below `WorldData/Runtime/Actors`.
+`Tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
+and tests use the same framework-neutral compiler and runtime validator. Unity
+scene authoring imports and exports that content but does not replace it as the
+source consumed by SimulationWorker.
 
 The current pure rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, Secure Container eligibility, empty and non-empty Bag
@@ -287,7 +289,7 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 11 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 12 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
 mutation plus Unity inventory integration, death partition, and durable player
@@ -438,12 +440,12 @@ The complete planned contract is defined in
 proposed schema and delivery order in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
-### Planned World Actor And Interaction Boundary
+### World Actor And Interaction Boundary
 
-Status: Approved Phase 12 architecture, implementation not started
+Status: Phase 12 foundation implemented
 
-Phase 12 extends the current repository boundaries without creating a new
-service or topology layer:
+Phase 12 extends the repository boundaries without creating a new service or
+topology layer:
 
 - WorldData owns deterministic actor definitions, NPC capability descriptors,
   factions, presentation references, spawn definitions, spawn groups, spawn
@@ -451,7 +453,7 @@ service or topology layer:
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
   authoritative interaction, range and line-of-sight validation, NPC capability
   dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol targets version `12` for actor presence and interaction messages
+- GameProtocol uses version `12` for actor presence and interaction messages
   compiled from the same source for .NET and Unity.
 - Unity owns advisory crosshair targeting, immutable replicated actor and
   interaction state, prefab presentation, temporary uGUI, and Editor authoring
@@ -470,9 +472,19 @@ Stable actor-definition and spawn-definition ids remain distinct from fresh
 worker-runtime actor and network entity ids. Selected unique actors may later
 opt into durable state without changing the normal population model.
 
-NPCs are event-driven. Mobs use central dormant and active scheduling tiers.
-No actor owns a task, timer, thread, database session, or HTTP poller. Actor
-visibility reuses the existing entity registry and spatial interest management.
+NPCs are event-driven. Mobs use bounded central dormant and active scheduling
+buckets keyed by activity profile, tier, and tick interval. No actor owns a
+task, timer, thread, database session, or HTTP poller. Actor visibility reuses
+the shared network-entity id allocator and existing spatial interest
+management. Bounded assignment-local despawn tombstones retain only the runtime
+identity required to send reliable actor-specific interest exits, and clear on
+assignment reconstruction or worker shutdown.
+
+The typed capability registry maps every supported capability kind to one
+authoritative handler. Phase 12 installs explicit deferred handlers by default,
+so a capability can be discovered and tested without fabricating vendor, quest,
+crafting, insurance, trainer, bank, or Recovery Storage business success. Later
+phases replace a kind's handler without changing actor identity or targeting.
 
 The generic interaction flow is:
 
@@ -502,7 +514,7 @@ into ordinary spawn or movement packets.
 Unity presentation resolves a `presentationArchetypeId` to a presentation-only
 `WorldActorView`, `NpcView`, or `MobView` prefab. Authoritative vendor, quest,
 crafting, insurance, or combat behavior never lives in a MonoBehaviour. The
-permanent Editor entry points will be
+permanent Editor entry points are
 `Shooter MMO > Tools > Content > Actor Studio` and
 `Shooter MMO > Tools > Content > Spawn Authoring`, with visual scene handles
 that export canonical neutral WorldData.

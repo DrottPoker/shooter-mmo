@@ -1,8 +1,8 @@
 {
   "name": "com.shootermmo.game-protocol",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "displayName": "Shooter MMO Game Protocol",
-  "description": "Versioned realtime wire protocol shared by SimulationWorker and the Unity client.",
+  "description": "Versioned player, corpse, world actor, and interaction wire protocol shared by SimulationWorker and Unity.",
   "unity": "6000.0",
   "author": {
     "name": "Shooter MMO"

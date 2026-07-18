@@ -16,8 +16,8 @@ rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
 dependency-ordered delivery plan is
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The approved scalable world-actor, NPC, Mob, spawn-authoring, and interaction
-contract is defined in
+The implemented scalable world-actor, NPC, Mob, spawn-authoring, and interaction
+foundation and its remaining design contract are defined in
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Core MVP Goal
@@ -330,8 +330,8 @@ wait until the basic combat loop works.
 
 ## NPC And Mob Foundation
 
-Item-plan Phase 12 establishes this approved foundation before service NPCs and
-the first combat Mob are implemented:
+Item-plan Phase 12 establishes this implemented foundation before service NPCs
+and the first combat Mob are implemented:
 
 - `NPC` means a social or service actor. Dialogue, vendor, quest, crafting,
   insurance, trainer, bank, and Recovery Storage roles are freely composable
@@ -505,10 +505,11 @@ Current implementation note:
   partial transfers, internal corpse rearrangement, typed equipment slots,
   ordinary occupied-slot swaps, atomic Bag aggregate swaps, committed viewer
   deltas, immutable Unity state, and a generic replaceable corpse presentation.
-- Item-plan Phase 12 is approved to add deterministic NPC, Mob, capability, and
-  spawn content, visual Unity authoring, SimulationWorker actor runtime and
-  interest integration, presentation-only actor prefabs, and authoritative
-  crosshair interaction. It is not implemented.
+- Item-plan Phase 12 adds deterministic NPC, Mob, capability, and spawn content,
+  visual Unity authoring, SimulationWorker actor runtime and interest
+  integration, presentation-only actor prefabs, authoritative crosshair
+  interaction, and a shared corpse interaction lease. The foundation is
+  implemented.
 - Gameplay-created item grants, insurance NPC pricing, authoritative combat
   death production, Mobs, final corpse art, and configurable Mob corpse
   persistence are not implemented. Insurance consumption is implemented only
@@ -560,8 +561,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 11 complete and Phase 12
-approved but not implemented
+Status: In progress, item-plan Phases 1 through 12 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -599,11 +599,16 @@ approved but not implemented
   swaps, atomic Bag swaps, committed
   deltas, generic Unity presentation, and the reusable typed drag path are
   complete. Live death activation waits for the authoritative combat producer.
+- Deterministic world-actor content, Actor Studio and Spawn Authoring, strict
+  worker startup validation, reconstructable NPC and Mob runtime identity,
+  reliable interest presence, central Mob scheduling, typed capability
+  dispatch, authoritative interaction, shared corpse targeting, and permanent
+  Unity state beneath temporary presentation are complete.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The next item-plan subphase is the shared actor and interaction foundation used
-by vendor, quest, crafting, insurance, Mob, and corpse-producing gameplay.
+The next item-plan subphase is Phase 13 insurance and quest lifecycle behavior
+on the shared actor and interaction foundation.
 
 ### Phase 5: Vendor And Gathering
 

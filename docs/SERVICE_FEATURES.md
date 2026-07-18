@@ -223,10 +223,14 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
 
-Protocol version 8 carries Shard and World identity plus the initial carry tuple
-in join acceptance. Reliable ordered carry-state updates deliver later committed
-item-state revisions, and typed item intents and results share that control path.
-A standalone client must be rebuilt when the protocol version changes.
+Protocol version `12` carries Shard and World identity plus the initial carry
+tuple in join acceptance. Reliable ordered control messages carry later item
+state, corpse, world-actor presence, bounded actor state, and correlated world
+interaction contracts. Ordinary actor spawn packets contain presentation,
+identity, bounds, disposition, state, and revision data, but not the complete
+player-specific capability summary. A standalone client must be rebuilt when
+the protocol version changes, and mismatched clients retain the explicit
+protocol rejection path.
 
 ## Entity Registry And Replication
 
@@ -259,6 +263,49 @@ set:
 
 This is process-local interest management for one complete shard. Cross-worker
 zone interest is deferred until zones exist.
+
+## World Actors And Interaction
+
+SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
+rejects malformed runtime content, revision drift, wrong World identity,
+unsupported values, invalid references, or unsafe collection bounds. The
+checked-in local runtime revision contains three definitions and five spawn
+instances for `local-world-1`.
+
+- Neutral actor and spawn JSON is compiled deterministically by
+  `Tools/WorldActorCompiler` into one revisioned runtime manifest.
+- Stable definition and spawn ids never substitute for fresh worker-runtime
+  actor ids or shared nonzero network entity ids.
+- Assignment activation reconstructs ordinary actors from compiled WorldData.
+  They do not receive one PostgreSQL row per live instance.
+- NPC and Mob are distinct actor kinds. Faction and disposition remain
+  independent, and every current NPC is authoritatively invulnerable.
+- NPCs are event-driven. Mobs occupy bounded central dormant or active schedule
+  buckets selected by their shared activity profile. No actor owns a task,
+  timer, thread, database session, or HTTP poller.
+- Actor presence reuses reliable interest enter and exit messages, while actor
+  state changes use bounded reliable updates. Assignment-local, bounded despawn
+  tombstones retain runtime identity until every interest exit can encode the
+  actor-specific despawn contract.
+- One typed capability registry composes dialogue, vendor, quest, crafting,
+  insurance, trainer, bank, and Recovery Storage descriptors. Each registered
+  kind has an explicit Phase 12 deferred handler unless a later phase replaces
+  it with durable business authority.
+- One world-interaction authority validates the exact simulation session,
+  worker runtime, assignment, Shard, target identity and revision, active
+  state, closest-point bounds distance, static and dynamic line of sight,
+  player-specific capability availability and revision, rate limits, and the
+  one-active-interaction lease.
+- Start range is `3.0` metres and maintain range is `3.5` metres. Open sessions
+  are revalidated at 5 Hz and close on target invalidation, range, line of
+  sight, disconnect, or assignment lifecycle changes.
+- Corpse views use the same target and lease registry while retaining the
+  complete protocol-v11 corpse state and AuthService transaction authority.
+
+Capability summaries are returned only after a successful interaction open and
+are independently revisioned for each player. Multiple players may interact
+with the same actor, but one player cannot overlap an actor interaction and a
+corpse view.
 
 ## Server-Authoritative Movement
 
@@ -295,7 +342,7 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 11 of the approved item plan are implemented. Offline account
+Phases 1 through 12 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
@@ -447,11 +494,12 @@ concurrent inspection, and authoritative looting:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `11` retains carry state on join, later committed
+- Realtime protocol version `12` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, and complete Recovery Storage claim. Version `11` carries
+  destruction, and complete Recovery Storage claim. The retained version `11`
+  corpse contract carries
   chunked corpse presence and view state, accepted destination slot tags, open,
   close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag
   aggregate swaps, operation result, delta, and view-closure messages.
@@ -616,6 +664,12 @@ The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
 - Spawn and despawn packet counts.
 - Snapshot entity record counts.
 
+The meter `ShooterMmo.SimulationWorker.WorldActors` exposes low-cardinality NPC
+and Mob population, event-driven, dormant, and active tier population, active
+interaction count, accepted and rejected interaction totals, and interaction
+latency. It does not label actor, spawn, player, character, session, or entity
+identities.
+
 Periodic structured logs expose the same totals. A worker status line also
 reports real players, synthetic bots, unauthenticated peers, process CPU
 normalized to total logical-core capacity, single-core-equivalent CPU, working
@@ -757,12 +811,17 @@ the test connection variable at development or production data.
   transaction after mutation, viewer deltas, stable close errors, dynamic MTU
   packing, monotonic corpse state, fixture creation, typed drag payloads, and
   persistent presentation bootstrap.
+- Phase 12 coverage verifies deterministic actor compilation, strict malformed
+  runtime rejection, identity scope separation, assignment reconstruction,
+  interest presence without capability leakage, central Mob scheduling,
+  composed capabilities and typed deferred dispatch, exact range and line of
+  sight authority, rate and session rejection, per-player summaries, lease
+  exclusion with corpses, closure causes, protocol round trips and bounds, Unity
+  monotonic state and targeting, and Editor import, export, preview, compile,
+  and verify through the shared compiler.
 
 ## Not Yet Implemented
 
-- The approved Phase 12 WorldData actor and spawn compiler, Actor Studio, Spawn
-  Authoring, SimulationWorker NPC and Mob runtime, actor presence protocol,
-  shared crosshair targeting, and authoritative world-interaction sessions.
 - Development or gameplay item grant routes. The guarded local fixture command
   is intentionally not a route.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
@@ -777,12 +836,14 @@ the test connection variable at development or production data.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.
 - Metric exporter, dashboards, and alerting.
-- Durable unique actor state, complete Mob AI, or combat simulation.
+- Durable unique actor state, complete Mob AI, capability business operations,
+  or combat simulation.
 - General terrain mesh and rigid-body collision.
 
 The locked product design and remaining implementation phases for the item
 system are documented in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The approved but unimplemented actor and interaction contract is documented in
+The implemented actor and interaction foundation and its deferred boundaries
+are documented in
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).

@@ -1,8 +1,8 @@
 {
   "name": "com.shootermmo.world-data",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "displayName": "Shooter MMO World Data",
-  "description": "Versioned World content, framework-neutral item rules, and Unity item catalog authoring tools.",
+  "description": "Versioned World content, framework-neutral item and actor rules, and Unity content authoring tools.",
   "unity": "6000.0",
   "author": {
     "name": "Shooter MMO"

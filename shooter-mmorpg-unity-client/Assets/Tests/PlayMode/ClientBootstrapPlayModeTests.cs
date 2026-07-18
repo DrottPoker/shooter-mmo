@@ -5,6 +5,7 @@ using ShooterMmo.Gameplay;
 using ShooterMmo.Items;
 using ShooterMmo.Networking;
 using ShooterMmo.Ui;
+using ShooterMmo.WorldActors;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
@@ -30,6 +31,8 @@ namespace ShooterMmo.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<RealtimeSimulationClient>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<InventoryClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<CorpseClientController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<WorldActorClientController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<WorldInteractionClientController>(), Is.Not.Null);
             Assert.That(ShooterMmoClientBootstrap.InventoryController.IsInitialized, Is.True);
             Assert.That(ShooterMmoClientBootstrap.CorpseController, Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
@@ -54,6 +57,9 @@ namespace ShooterMmo.Tests.PlayMode
             Assert.That(context.enabled, Is.False);
             Assert.That(Object.FindAnyObjectByType<LocalPlayerController>(), Is.Null);
             Assert.That(Object.FindAnyObjectByType<CorpsePresentationController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<WorldActorPresentationController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<WorldInteractionTargetingController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>(), Is.Not.Null);
             var inventoryPanel = Object.FindAnyObjectByType<TemporaryInventoryPanel>();
             Assert.That(inventoryPanel, Is.Not.Null);
             Assert.That(inventoryPanel.IsOpen, Is.False);

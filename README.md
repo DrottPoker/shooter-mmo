@@ -103,11 +103,11 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 11 of the slot-based item foundation are implemented. Shared
-content, pure rules, Unity authoring, deterministic baking, the transactional
-PostgreSQL catalog mirror, constrained custody schema, and complete empty
-character item-state bootstrap now exist. AuthService exposes revision-cached
-catalog reads, owned item-state, bank and Recovery Storage reads, and
+Phases 1 through 12 of the slot-based item and world-actor foundation are
+implemented. Shared content, pure rules, Unity authoring, deterministic baking,
+the transactional PostgreSQL catalog mirror, constrained custody schema, and
+complete empty character item-state bootstrap now exist. AuthService exposes
+revision-cached catalog reads, owned item-state, bank and Recovery Storage reads, and
 account-authenticated offline mutation routes. The same transaction kernel owns
 policy records, insurance removal, quest-grant cleanup, Secure Container tier
 changes, Recovery claims, idempotency, revisions, weight, and audit. Active
@@ -120,10 +120,12 @@ owns durable player-death partition, corpse custody, Recovery policy results,
 absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
 death producer, final corpse art, and final UI art remain later phases. The
-scalable NPC, Mob, spawn-authoring, and generic interaction foundation is now
-approved as item-plan Phase 12 but is not implemented. Combat, durable unique
-actors, zones, layers, complex terrain meshes, and production orchestration
-remain deferred.
+scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
+deterministic WorldData, protocol version `12`, bounded worker state, existing
+spatial interest, server-authoritative interaction sessions, shared corpse
+targeting, and permanent Unity state below a temporary uGUI panel. Combat,
+durable unique actors, zones, layers, complex terrain meshes, and production
+orchestration remain deferred.
 
 ## Requirements
 
@@ -160,7 +162,8 @@ Expected result:
 
 - AuthService listens on `http://localhost:5000`.
 - SimulationWorker binds UDP `27015`, registers
-  `local-simulation-worker-1`, and receives assignment to `local-shard-1`.
+  `local-simulation-worker-1`, loads the committed world-actor revision, and
+  receives assignment to `local-shard-1`.
 - `GET http://localhost:5000/api/shards` reports the local shard online.
 
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
@@ -190,6 +193,11 @@ dotnet run --project Tools/WorldCollisionCompiler -- `
   WorldData/Authoring/local-world-1.collision-authoring.json `
   WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
   --verify
+dotnet run --project Tools/WorldActorCompiler `
+  --configuration Release `
+  --no-build -- `
+  --verify
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
 
 Start the isolated PostgreSQL test database before running integration tests:
@@ -214,11 +222,11 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | Path | Responsibility |
 | --- | --- |
 | `AuthService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
-| `SimulationWorker` | Headless UDP, authoritative simulation, entity state, worker lease, bounded corpse presentation and viewer state, and owned config |
+| `SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |
-| `WorldData` | Neutral World content, including checksummed collision chunks and the deterministic item catalog and pure rules |
+| `WorldData` | Neutral World content, including checksummed collision chunks, deterministic item catalog and pure rules, actor definitions, and spawn authoring |
 | `Tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
 | `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `shooter-mmorpg-unity-client` | Unity project and Unity tests |
@@ -239,8 +247,8 @@ and recovery rules are in
 [Inventory And Death Loot Design](docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
 complete dependency-ordered delivery plan is in
 [Items And Inventory Implementation Plan](docs/ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The approved scalable world-actor, NPC, Mob, visual spawn-authoring, and
-interaction contract is in
+The implemented scalable world-actor, NPC, Mob, visual spawn-authoring, and
+interaction foundation plus its deferred contract is in
 [NPC And Mob System Design](docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,

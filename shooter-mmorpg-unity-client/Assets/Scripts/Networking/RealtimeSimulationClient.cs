@@ -38,6 +38,10 @@ namespace ShooterMmo.Networking
         private float latestSnapshotReceivedAt = -1f;
         private readonly Dictionary<ulong, RealtimeEntitySpawn> spawnedEntities =
             new Dictionary<ulong, RealtimeEntitySpawn>();
+        private readonly Dictionary<ulong, RealtimeWorldActorSpawn> spawnedWorldActors =
+            new Dictionary<ulong, RealtimeWorldActorSpawn>();
+        private readonly Dictionary<ulong, long> worldActorStateRevisions =
+            new Dictionary<ulong, long>();
 
         public event Action<RealtimeClientError> UnexpectedlyDisconnected;
 
@@ -58,6 +62,18 @@ namespace ShooterMmo.Networking
         public event Action<RealtimeEntitySpawn> EntitySpawned;
 
         public event Action<RealtimeEntityDespawn> EntityDespawned;
+
+        public event Action<RealtimeWorldActorSpawn> WorldActorSpawned;
+
+        public event Action<RealtimeWorldActorState> WorldActorStateReceived;
+
+        public event Action<RealtimeWorldActorDespawn> WorldActorDespawned;
+
+        public event Action<RealtimeWorldInteractionOpened> WorldInteractionOpened;
+
+        public event Action<RealtimeWorldInteractionResult> WorldInteractionCompleted;
+
+        public event Action<RealtimeWorldInteractionClosed> WorldInteractionClosed;
 
         public RealtimeConnectionState State { get; private set; }
 
@@ -106,6 +122,11 @@ namespace ShooterMmo.Networking
         public int SpawnedEntityCount
         {
             get { return spawnedEntities.Count; }
+        }
+
+        public IReadOnlyCollection<RealtimeWorldActorSpawn> SpawnedWorldActors
+        {
+            get { return new List<RealtimeWorldActorSpawn>(spawnedWorldActors.Values); }
         }
 
         public bool IsJoined
@@ -481,6 +502,35 @@ namespace ShooterMmo.Networking
             }
         }
 
+        public bool TrySendWorldInteraction(RealtimeWorldInteractionIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeWorldInteractionIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "World interaction could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public void Abort()
         {
             State = RealtimeConnectionState.Disconnected;
@@ -625,6 +675,24 @@ namespace ShooterMmo.Networking
                         break;
                     case RealtimeMessageType.CorpseViewClosed:
                         HandleCorpseViewClosed(packet);
+                        break;
+                    case RealtimeMessageType.WorldActorSpawn:
+                        HandleWorldActorSpawn(packet);
+                        break;
+                    case RealtimeMessageType.WorldActorState:
+                        HandleWorldActorState(packet);
+                        break;
+                    case RealtimeMessageType.WorldActorDespawn:
+                        HandleWorldActorDespawn(packet);
+                        break;
+                    case RealtimeMessageType.WorldInteractionOpened:
+                        HandleWorldInteractionOpened(packet);
+                        break;
+                    case RealtimeMessageType.WorldInteractionResult:
+                        HandleWorldInteractionResult(packet);
+                        break;
+                    case RealtimeMessageType.WorldInteractionClosed:
+                        HandleWorldInteractionClosed(packet);
                         break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
@@ -943,6 +1011,195 @@ namespace ShooterMmo.Networking
             CorpseViewClosed?.Invoke(closed);
         }
 
+        private void HandleWorldActorSpawn(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_world_actor_spawn",
+                    "World actor presence arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldActorSpawn(
+                    packet,
+                    out var spawn,
+                    out var error))
+            {
+                FailProtocol("invalid_world_actor_spawn", error);
+                return;
+            }
+
+            if (spawnedWorldActors.TryGetValue(spawn.EntityId, out var existing)
+                && !HasSameWorldActorPresenceIdentity(existing, spawn))
+            {
+                FailProtocol(
+                    "world_actor_entity_conflict",
+                    "SimulationWorker reused an active world actor entity id.");
+                return;
+            }
+
+            if (spawnedEntities.ContainsKey(spawn.EntityId))
+            {
+                FailProtocol(
+                    "world_actor_entity_scope_conflict",
+                    "SimulationWorker reused a player network entity id for a world actor.");
+                return;
+            }
+
+            if (worldActorStateRevisions.TryGetValue(spawn.EntityId, out var currentRevision)
+                && spawn.StateRevision < currentRevision)
+            {
+                return;
+            }
+
+            spawnedWorldActors[spawn.EntityId] = spawn;
+            worldActorStateRevisions[spawn.EntityId] = spawn.StateRevision;
+            WorldActorSpawned?.Invoke(spawn);
+        }
+
+        private void HandleWorldActorState(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_world_actor_state",
+                    "World actor state arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldActorState(
+                    packet,
+                    out var state,
+                    out var error))
+            {
+                FailProtocol("invalid_world_actor_state", error);
+                return;
+            }
+
+            if (!spawnedWorldActors.ContainsKey(state.EntityId))
+            {
+                FailProtocol(
+                    "world_actor_state_without_spawn",
+                    "World actor state arrived before reliable actor presence.");
+                return;
+            }
+
+            if (worldActorStateRevisions.TryGetValue(state.EntityId, out var revision)
+                && state.StateRevision < revision)
+            {
+                return;
+            }
+
+            worldActorStateRevisions[state.EntityId] = state.StateRevision;
+            WorldActorStateReceived?.Invoke(state);
+        }
+
+        private void HandleWorldActorDespawn(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_world_actor_despawn",
+                    "World actor despawn arrived outside an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldActorDespawn(
+                    packet,
+                    out var despawn,
+                    out var error))
+            {
+                FailProtocol("invalid_world_actor_despawn", error);
+                return;
+            }
+
+            if (spawnedWorldActors.TryGetValue(despawn.EntityId, out var existing)
+                && existing.RuntimeActorId != despawn.RuntimeActorId)
+            {
+                FailProtocol(
+                    "world_actor_despawn_conflict",
+                    "World actor despawn runtime identity does not match presence.");
+                return;
+            }
+
+            spawnedWorldActors.Remove(despawn.EntityId);
+            worldActorStateRevisions.Remove(despawn.EntityId);
+            WorldActorDespawned?.Invoke(despawn);
+        }
+
+        private void HandleWorldInteractionOpened(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_world_interaction_opened",
+                    "World interaction opened state arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldInteractionOpened(
+                    packet,
+                    out var opened,
+                    out var error))
+            {
+                FailProtocol(
+                    "invalid_world_interaction_opened",
+                    error);
+                return;
+            }
+
+            WorldInteractionOpened?.Invoke(opened);
+        }
+
+        private void HandleWorldInteractionResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_world_interaction_result",
+                    "World interaction result arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldInteractionResult(
+                    packet,
+                    out var result,
+                    out var error))
+            {
+                FailProtocol(
+                    "invalid_world_interaction_result",
+                    error);
+                return;
+            }
+
+            WorldInteractionCompleted?.Invoke(result);
+        }
+
+        private void HandleWorldInteractionClosed(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_world_interaction_closed",
+                    "World interaction closure arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeWorldInteractionClosed(
+                    packet,
+                    out var closed,
+                    out var error))
+            {
+                FailProtocol(
+                    "invalid_world_interaction_closed",
+                    error);
+                return;
+            }
+
+            WorldInteractionClosed?.Invoke(closed);
+        }
+
         private void HandleEntitySpawn(byte[] packet)
         {
             if (State != RealtimeConnectionState.Joined)
@@ -954,6 +1211,14 @@ namespace ShooterMmo.Networking
             if (!RealtimeProtocol.TryDecodeEntitySpawn(packet, out var spawn, out var error))
             {
                 FailProtocol("invalid_entity_spawn", error);
+                return;
+            }
+
+            if (spawnedWorldActors.ContainsKey(spawn.EntityId))
+            {
+                FailProtocol(
+                    "entity_scope_conflict",
+                    "SimulationWorker reused a world actor network entity id for a player.");
                 return;
             }
 
@@ -970,6 +1235,35 @@ namespace ShooterMmo.Networking
 
             spawnedEntities[spawn.EntityId] = spawn;
             EntitySpawned?.Invoke(spawn);
+        }
+
+        private static bool HasSameWorldActorPresenceIdentity(
+            RealtimeWorldActorSpawn first,
+            RealtimeWorldActorSpawn second)
+        {
+            return first.RuntimeActorId == second.RuntimeActorId
+                && string.Equals(
+                    first.ActorDefinitionId,
+                    second.ActorDefinitionId,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    first.SpawnDefinitionId,
+                    second.SpawnDefinitionId,
+                    StringComparison.Ordinal)
+                && string.Equals(first.DisplayName, second.DisplayName, StringComparison.Ordinal)
+                && first.Kind == second.Kind
+                && string.Equals(first.FactionId, second.FactionId, StringComparison.Ordinal)
+                && first.Disposition == second.Disposition
+                && string.Equals(
+                    first.PresentationArchetypeId,
+                    second.PresentationArchetypeId,
+                    StringComparison.Ordinal)
+                && first.BoundsCenterX.Equals(second.BoundsCenterX)
+                && first.BoundsCenterY.Equals(second.BoundsCenterY)
+                && first.BoundsCenterZ.Equals(second.BoundsCenterZ)
+                && first.BoundsSizeX.Equals(second.BoundsSizeX)
+                && first.BoundsSizeY.Equals(second.BoundsSizeY)
+                && first.BoundsSizeZ.Equals(second.BoundsSizeZ);
         }
 
         private void HandleEntityDespawn(byte[] packet)
@@ -1152,16 +1446,23 @@ namespace ShooterMmo.Networking
 
         private void ClearSpawnedEntities(string reason)
         {
-            if (spawnedEntities.Count == 0)
-            {
-                return;
-            }
-
             var entityIds = new List<ulong>(spawnedEntities.Keys);
             spawnedEntities.Clear();
             for (var index = 0; index < entityIds.Count; index++)
             {
                 EntityDespawned?.Invoke(new RealtimeEntityDespawn(entityIds[index], reason));
+            }
+
+            var worldActors = new List<RealtimeWorldActorSpawn>(spawnedWorldActors.Values);
+            spawnedWorldActors.Clear();
+            worldActorStateRevisions.Clear();
+            for (var index = 0; index < worldActors.Count; index++)
+            {
+                var actor = worldActors[index];
+                WorldActorDespawned?.Invoke(new RealtimeWorldActorDespawn(
+                    actor.EntityId,
+                    actor.RuntimeActorId,
+                    reason));
             }
         }
 

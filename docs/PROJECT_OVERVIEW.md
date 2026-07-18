@@ -57,8 +57,9 @@ scaling. They are not implemented and are not faked in the current runtime.
   schema, catalog mirror, character item-state bootstrap, and authenticated
   read models.
 - **SimulationWorker** is a headless .NET console process that owns the realtime
-  UDP transport, active entities, interest management, and authoritative
-  movement for its assigned shard.
+  UDP transport, active players and world actors, interest management,
+  authoritative movement, actor activity tiers, and interaction sessions for
+  its assigned shard.
 - **PostgreSQL** is the durable authority for identity, topology, assignments,
   tickets, session leases, mirrored item definitions, and the item custody
   foundation.
@@ -69,8 +70,8 @@ scaling. They are not implemented and are not faked in the current runtime.
 - **GameSimulation** is the fixed-step movement and collision implementation
   compiled from the same source for server authority and client prediction.
 - **WorldData** contains neutral world collision authoring, checksummed runtime
-  chunks, deterministic item content, and framework-neutral pure item rules. It
-  is also the approved source of truth for planned actor and spawn content.
+  chunks, deterministic item content, framework-neutral pure item rules, and
+  deterministic actor and spawn content.
 - **Shared** contains framework-neutral configuration, networking, and health
   helpers for backend processes.
 
@@ -132,9 +133,18 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `11`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `12`,
   movement revision `movement-simulation-v3`, and identical authoritative and
   predicted encumbrance behavior.
+- Deterministic NPC and Mob definitions, factions, presentation references,
+  activity and respawn profiles, spawn points, groups, areas, and patrol paths
+  with one shared command-line and Unity Editor compiler path.
+- Bounded worker-runtime actors with fresh runtime and network identities,
+  reliable interest presence, event-driven NPCs, and centrally bucketed Mob
+  dormant or active scheduling.
+- Server-authoritative crosshair interaction using exact-session, runtime,
+  Shard, target-revision, range, bounds, line-of-sight, capability, rate, and
+  one-active-session validation.
 
 ## Current Scale Boundary
 
@@ -148,9 +158,9 @@ partitions and layers as controlled population copies inside a shard. That work
 will extend SimulationAssignment and placement. It must not redefine World or
 introduce isolated realms.
 
-## Approved Next Foundation: World Actors, NPCs, Mobs, And Interaction
+## World Actors, NPCs, Mobs, And Interaction
 
-Item-plan Phase 12 is approved but not implemented. It adds one scalable
+Item-plan Phase 12 is implemented as one scalable
 WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors:
 
 - `NPC` means a social or service actor assembled from capabilities such as
@@ -172,7 +182,7 @@ WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors
 - Unity prefabs remain presentation-only. Visual authoring exports canonical
   actor and spawn content back to WorldData.
 
-The permanent Editor workflows will live at
+The permanent Editor workflows live at
 `Shooter MMO > Tools > Content > Actor Studio` and
 `Shooter MMO > Tools > Content > Spawn Authoring`. Phase 12 stops before vendor
 transactions, quest progression, crafting, combat AI, Mob loot, and Mob corpse
@@ -181,7 +191,7 @@ production. See
 
 ## Item Foundation Status
 
-Phases 1 through 11 of the durable item and inventory plan are complete. The
+Phases 1 through 12 of the durable item and inventory plan are implemented. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -249,8 +259,8 @@ The remaining locked direction is slot-based rather than grid-based and includes
 - The authoritative combat death producer, final corpse art and interaction
   polish, insurance NPC purchase behavior, and configurable Mob corpse
   persistence.
-- The approved Phase 12 world-actor, NPC, Mob, visual spawn-authoring, and
-  authoritative interaction foundation.
+- Phase 13 insurance and quest lifecycle handlers on the implemented world
+  interaction and typed capability-dispatch foundation.
 
 The persistent schema, character custody identities, authoritative reads,
 offline account mutations, policy services, internal item mutations, and
@@ -270,9 +280,10 @@ item grants. See
   representation, and loot transactions already exist behind the service
   boundary.
 - Crafting, gathering, professions, and the broader economy.
-- NPC and Mob runtime remains deferred until approved item-plan Phase 12 is
-  implemented. Durable unique actors, complete quests, guilds, social systems,
-  and world events remain later work.
+- Durable unique actor persistence, NPC capability business behavior, Mob AI,
+  combat, and loot remain deferred beyond the implemented Phase 12 neutral
+  actor and interaction runtime. Complete quests, guilds, social systems, and
+  world events also remain later work.
 - Production orchestration, metric export, dashboards, alerts, and live
   operations.
 

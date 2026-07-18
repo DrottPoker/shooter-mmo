@@ -9,6 +9,7 @@
     "ShooterMmo.WorldData",
     "ShooterMmo.WorldData.Client",
     "ShooterMmo.WorldData.Editor",
+    "ShooterMmo.WorldData.Actors.Editor",
     "ShooterMmo.Editor"
   ],
   "includePlatforms": [

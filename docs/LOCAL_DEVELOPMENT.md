@@ -26,6 +26,14 @@ SimulationWorker share `SIMULATION_WORKER_ID` and
 and parent directories for `.env`. Process environment variables and
 command-line values take precedence.
 
+SimulationWorker reads `SimulationWorker:ActorDataPath`. The checked-in default
+is `ActorData/local-world-1.world-actors.json`, copied from deterministic
+WorldData runtime content into build and publish output. Startup validates the
+World id, complete revision, structural fingerprints, references, ordering,
+collection bounds, and actor and spawn semantics before UDP admission begins.
+Use `SimulationWorker__ActorDataPath` only when a deployment intentionally
+places the same compiled manifest elsewhere.
+
 AuthService reads `Items:CatalogPath` from its configuration. The checked-in
 default points to `WorldData/Items/core.item-catalog.json`, which the AuthService
 project copies from the deterministic WorldData runtime catalog into build and
@@ -873,6 +881,105 @@ The future combat system is not required for this test. The fixture enters the
 same durable death, restore, interaction, transaction, and expiry boundaries
 that combat must call later.
 
+## Phase 12 World Actor And Interaction Verification
+
+Compile or verify the canonical actor content from any repository directory:
+
+```powershell
+dotnet run --project Tools/WorldActorCompiler --configuration Release
+dotnet run --project Tools/WorldActorCompiler `
+  --configuration Release `
+  --no-build -- `
+  --verify
+```
+
+Expected result: both commands report World `local-world-1`, the same complete
+revision, three definitions, and five runtime instances. Verify mode performs no
+write and fails if authoring, runtime JSON, references, bounds, transforms,
+fingerprints, ordering, or the complete revision diverge.
+
+Run the focused backend actor and protocol coverage, then the complete Unity
+workflow:
+
+```powershell
+dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+  --configuration Release `
+  --filter "FullyQualifiedName~WorldActor|FullyQualifiedName~RealtimeWorldActor"
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: every selected backend test and every Unity EditMode and
+PlayMode test passes. The coverage includes deterministic compilation, strict
+runtime validation, identity scopes, assignment reconstruction, reliable
+interest presence, central Mob scheduling, composable capabilities, typed
+deferred dispatch, range, line of sight, rate, revision, session and shared
+corpse-lease authority, protocol bounds, monotonic Unity state, targeting, and
+Editor compiler integration.
+
+### Manual Actor Authoring And Interaction Loop
+
+Existing canonical content and fallback presentation require no scene, prefab,
+Inspector, package, or build-setting change. Use these exact Unity Editor steps
+to exercise the authoring tools and optional presentation mapping:
+
+1. Open the Unity project and select `Shooter MMO > Tools > Content > Actor
+   Studio`. Select `Mira the Quartermaster`. Expected result: the window shows
+   an NPC with dialogue, vendor, quest offer, quest turn-in, crafting,
+   insurance, bank, and Recovery Storage capabilities, an invulnerable damage
+   policy, and authoritative interaction bounds.
+2. Click `Duplicate Selected`, give the copy a globally unique test actor id,
+   and use `Add Capability`, `Move Up`, `Move Down`, and `Remove Capability`.
+   Click `Preview Changes`. Expected result: inline validation and the exact
+   canonical JSON change appear without writing files. Click `Reload` to discard
+   the disposable copy unless it is intended as real content.
+3. Select `Feral Wolf`. Expected result: the same tool edits a Mob definition
+   with damageable policy plus activity and respawn profile references, without
+   adding a Mob runtime subclass.
+4. To use authored prefabs, click `Create Presentation Registry`, then assign a
+   prefab in `Replaceable prefab` for each presentation archetype. Expected
+   result: Unity creates
+   `Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`.
+   The prefab changes presentation only. This optional asset creation and prefab
+   assignment are the only manual Unity asset steps.
+5. Click `Save + Compile`, then `Verify Canonical`. Expected result: canonical
+   authoring and runtime JSON save deterministically and verification reports
+   the same revision. If no intentional content change was made, the files stay
+   byte-for-byte equivalent.
+6. Open `Shooter MMO > Tools > Content > Spawn Authoring` and click `Import`.
+   Inspect the Points, Groups, Areas, and Patrols tabs with `Scene Preview`
+   enabled. Expected result: scene handles show the service NPC point, two-guard
+   group, two-wolf seeded area, and wolf patrol path imported from neutral
+   WorldData.
+7. Add or duplicate a disposable entry, move it with the scene handle, click
+   `Ground Snap`, and inspect `Preview Changes`. Delete the disposable entry,
+   then click `Export + Compile` and `Verify Canonical`. Expected result: the
+   preview shows exact neutral JSON, ground snapping uses authored scene
+   collision, and clean export verifies deterministically.
+8. Start AuthService and SimulationWorker, join `local-shard-1`, and approach
+   Mira. Expected result: actor instances appear and disappear through normal
+   interest presence. The worker startup log reports the actor content revision,
+   three definitions, and five instances.
+9. Point the crosshair at Mira from at most `3.0` metres and press `E`. Expected
+   result: temporary uGUI opens only after the server accepts and lists the
+   player-specific authoritative capability summary. Clicking a capability
+   reports `world_interaction_capability_deferred`, never local success.
+10. Repeat from beyond `3.0` metres and with static collision blocking line of
+    sight. Expected result: the server rejects the request and no interaction
+    remains open. Open within range, move through `3.5` metres, and verify the
+    server closes only that session. Pressing `E` also closes an active session.
+11. Join with two clients and open Mira independently. Expected result: both
+    sessions coexist. One client cannot open a corpse while its NPC interaction
+    is active. After closing it with `E`, target a corpse and verify the existing
+    Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
+    unchanged.
+12. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
+    from compiled WorldData with fresh runtime identities, normal interest
+    presence returns, and no stale actor or interaction session survives.
+
+Ordinary NPCs remain event-driven. The Feral Wolf changes only between central
+dormant and active scheduling buckets based on player distance. No actor creates
+a durable instance row, timer, task, database session, or HTTP poller.
+
 Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 
@@ -1023,8 +1130,9 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 11, simulation revision, collision
-revision, and loaded collision chunks. Every 30 seconds it also logs aggregate
+`27015`, runtime id, realtime protocol version 12, simulation revision,
+collision revision, world-actor revision and population, and loaded collision
+chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
 interval logs a worker status line with connected real players, synthetic bots,
 unauthenticated peers, CPU, working set, packet and payload rates, snapshot
@@ -1356,11 +1464,32 @@ $env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.2f1\Editor\Un
 Expected result:
 
 - EditMode validates API parsing, client state, Input Actions, collision resource
-  loading, prediction, reconciliation, remote interpolation, both player prefab
-  contracts, and authored WorldScene composition.
+  loading, prediction, reconciliation, remote interpolation, world-actor and
+  interaction state, crosshair targeting, actor content tooling, both player
+  prefab contracts, and authored WorldScene composition.
 - PlayMode validates that loading `LoginMenu` creates the persistent client
-  bootstrap, realtime client, and runtime login panel, and that WorldScene
-  without a joined session creates no LocalPlayer.
+  bootstrap, realtime client, actor and interaction controllers, and runtime
+  login panel, and that WorldScene without a joined session creates no
+  LocalPlayer while creating the expected presentation and temporary UI
+  controllers.
+
+The headless workflow requires an active Unity Editor entitlement for the exact
+installed Editor version. If the script exits with code `198`, reports `Access
+token is unavailable`, or reports `No valid Unity Editor license found`, perform
+these exact manual steps:
+
+1. Exit every Unity Editor process and quit Unity Hub from its notification-area
+   icon.
+2. Start Unity Hub, sign in, and confirm that a valid Personal or organization
+   license is active under `Preferences > Licenses`.
+3. Open this project with Unity `6000.5.2f1` once and wait for package import and
+   script compilation to finish without a licensing error.
+4. Close the Editor, keep the signed-in Hub session available, and rerun
+   `Tools/Run-UnityTests.ps1`.
+
+Expected result: the script creates fresh EditMode and PlayMode XML files under
+`TestResults/Unity` and reports both suites as passed. License exit code `198`
+occurs before project tests start and is not a test failure.
 
 The CI Unity job uses a Windows self-hosted runner because Unity requires an
 installed and activated Editor. To enable it:

@@ -13,6 +13,7 @@ using SimulationWorker.Items;
 using SimulationWorker.Realtime;
 using SimulationWorker.Registry;
 using SimulationWorker.Sessions;
+using SimulationWorker.WorldActors;
 using SimulationWorker.WorldCollision;
 
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
@@ -38,6 +39,8 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = SimulationWorkerConfig.FromConfiguration(builder.Configuration);
+var worldActorRuntime = WorldActorLoader.Load(config);
+WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var developmentItemInteractionOptions =
     DevelopmentItemInteractionOptions.FromConfiguration(
         builder.Configuration,
@@ -61,6 +64,7 @@ var collisionWorld = new CompositeCollisionWorld(
     dynamicCollisionWorld);
 
 builder.Services.AddSingleton(config);
+builder.Services.AddSingleton(worldActorRuntime);
 builder.Services.AddSingleton(developmentItemInteractionOptions);
 builder.Services.AddSingleton(collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);
@@ -75,6 +79,15 @@ builder.Services.AddSingleton<ItemInteractionAccessService>();
 builder.Services.AddSingleton<SimulationItemInteractionService>();
 builder.Services.AddSingleton<SimulationCorpseInteractionService>();
 builder.Services.AddSingleton<SimulationEntityRegistry>();
+builder.Services.AddSingleton<WorldActorStore>();
+builder.Services.AddSingleton<WorldActorActivityScheduler>();
+builder.Services.AddSingleton<WorldInteractionLeaseRegistry>();
+builder.Services.AddSingleton<IWorldActorCapabilityAvailabilityPolicy,
+    DefaultWorldActorCapabilityAvailabilityPolicy>();
+builder.Services.AddSingleton<WorldActorCapabilityRegistry>();
+builder.Services.AddSingleton<WorldActorLineOfSightService>();
+builder.Services.AddSingleton<WorldActorMetrics>();
+builder.Services.AddSingleton<WorldInteractionAuthorityService>();
 builder.Services.AddSingleton<ConnectionEntityBindingRegistry>();
 builder.Services.AddSingleton<RealtimeTransportReadiness>();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -139,5 +152,11 @@ logger.LogInformation(
     staticCollisionWorld.Revision,
     collisionStreamingStore.LoadedChunkCount,
     collisionStreamingStore.AvailableChunkCount);
+
+logger.LogInformation(
+    "Loaded world actor revision {WorldActorRevision} with {ActorDefinitionCount} definitions and {ActorInstanceCount} assignment instances.",
+    worldActorRuntime.Revision,
+    worldActorRuntime.Actors.Length,
+    worldActorRuntime.SpawnInstances.Length);
 
 await host.RunAsync();

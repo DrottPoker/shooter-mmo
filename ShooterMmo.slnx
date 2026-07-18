@@ -12,5 +12,6 @@
   <Project Path="Tools/SimulationBotClient/ShooterMmo.Tools.SimulationBotClient.csproj" />
   <Project Path="Tools/ActiveSimulationBots/ActiveSimulationBots.csproj" />
   <Project Path="Tools/ItemCatalogCompiler/ItemCatalogCompiler.csproj" />
+  <Project Path="Tools/WorldActorCompiler/WorldActorCompiler.csproj" />
   <Project Path="Tools/WorldCollisionCompiler/WorldCollisionCompiler.csproj" />
 </Solution>

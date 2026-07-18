@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-18
 
-Status: Approved Phase 12 design contract, implementation not started
+Status: Canonical design, Phase 12 foundation implemented
 
 ## Purpose
 
@@ -19,10 +19,38 @@ project-wide topology and service boundaries remain owned by
 gate is Phase 12 in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
-Phase 12 builds a permanent content, runtime, protocol, client-state, and tooling
-foundation. Its Unity presentation may be temporary. Phase 12 does not implement
+Phase 12 implements a permanent content, runtime, protocol, client-state, and
+tooling foundation. Its Unity presentation is temporary. Phase 12 does not implement
 vendor economy, quest progression, crafting recipes, combat damage, complete Mob
 AI, Mob loot generation, final actor art, or final interaction UI.
+
+## Phase 12 Implementation Status
+
+The implemented foundation includes:
+
+- Strict canonical authoring in `WorldData/Authoring/Actors` and
+  `WorldData/Authoring/ActorSpawns`, plus deterministic runtime content in
+  `WorldData/Runtime/Actors`.
+- One framework-neutral compiler and runtime validator used by the command-line
+  tool, Unity Editor tools, SimulationWorker startup, and automated tests.
+- A checked-in `local-world-1` baseline with the Feral Wolf, City Guard, and
+  Mira the Quartermaster definitions and five deterministic actor instances.
+- Protocol version `12`, reliable interest-based actor presence, bounded actor
+  state, and correlated interaction messages.
+- A bounded worker-runtime actor store, fresh runtime and network identities,
+  restart reconstruction, event-driven NPCs, and central Mob schedule buckets.
+- A typed capability-handler registry. All Phase 12 capability kinds have an
+  explicit deferred server handler until their later business phase replaces
+  it. The client never turns that deferred result into success.
+- Exact-session, exact-runtime, assignment, Shard, bounds, range, line-of-sight,
+  target-revision, capability-revision, rate, and one-active-lease authority.
+- Permanent Unity actor, interaction, targeting, operation, revision, and
+  reconnect state beneath presentation-only actor views and temporary uGUI.
+- Shared target selection and lease ownership with the existing authoritative
+  corpse view and mutation flow.
+
+No Phase 13 insurance or quest transaction behavior, and no Phase 14 Mob loot
+or corpse behavior, is part of this implementation.
 
 ## Canonical Terminology
 
@@ -244,16 +272,19 @@ never restored after disconnect or worker restart.
 
 ## SimulationWorker Runtime Foundation
 
-SimulationWorker owns these planned responsibilities:
+SimulationWorker owns these implemented responsibilities:
 
-- `WorldActorStore` for bounded actor identity and state.
-- `WorldActorSpawnService` for assignment activation, spawn groups, despawn, and
-  restart reconstruction.
-- `WorldActorInterestAdapter` for the existing spatial entity registry.
-- `WorldInteractionService` for target, range, line-of-sight, session, and
-  capability validation.
-- `NpcCapabilityRegistry` for typed capability dispatch.
-- A central Mob scheduler that can move actors between dormant and active sets.
+- `WorldActorStore` for bounded actor identity, assignment activation, spawn
+  expansion, active state, restart reconstruction, and assignment-local
+  despawn tombstones.
+- `RealtimeSimulationService` integration for the shared network-entity id
+  allocator and existing spatial-interest enter and exit lifecycle.
+- `WorldInteractionAuthorityService` for target, range, line-of-sight, session,
+  revision, capability, and assignment validation.
+- `WorldActorCapabilityRegistry` for typed capability dispatch and explicit
+  deferred Phase 12 handlers.
+- `WorldActorActivityScheduler` for central bounded dormant and active Mob
+  buckets.
 
 NPCs do not tick merely because they exist. They react to interaction requests,
 content changes, or centrally scheduled events. Stationary NPCs should impose
@@ -572,7 +603,7 @@ formatter verification, the existing item-catalog and collision verification,
 test including isolated PostgreSQL integration tests, and all Unity EditMode and
 PlayMode tests.
 
-The future manual acceptance gate must prove:
+The manual acceptance gate must prove:
 
 1. Create one NPC in Actor Studio with at least dialogue, vendor, quest, and
    crafting capabilities.

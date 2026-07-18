@@ -247,7 +247,14 @@
           "LiteNetLib": "[2.1.4, )",
           "ShooterMmo.GameProtocol": "[1.0.0, )",
           "ShooterMmo.GameSimulation": "[1.0.0, )",
-          "ShooterMmo.Shared": "[1.0.0, )"
+          "ShooterMmo.Shared": "[1.0.0, )",
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
+      },
+      "worldactorcompiler": {
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
         }
       }
     }

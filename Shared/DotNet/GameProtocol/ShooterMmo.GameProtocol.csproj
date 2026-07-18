@@ -12,6 +12,8 @@
              Link="Runtime\RealtimeProtocol.cs" />
     <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeCorpseProtocol.cs"
              Link="Runtime\RealtimeCorpseProtocol.cs" />
+    <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeWorldActorProtocol.cs"
+             Link="Runtime\RealtimeWorldActorProtocol.cs" />
   </ItemGroup>
 
 </Project>

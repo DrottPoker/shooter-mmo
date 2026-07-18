@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ShooterMmo.Gameplay
@@ -39,6 +41,7 @@ namespace ShooterMmo.Gameplay
         private float currentFieldOfView;
         private bool debugCursorReleased;
         private bool uiCursorReleased;
+        private readonly HashSet<object> uiCursorOwners = new HashSet<object>();
         private bool applicationHasFocus;
         private bool cameraPoseInitialized;
 
@@ -129,6 +132,28 @@ namespace ShooterMmo.Gameplay
         public void SetUiCursorReleased(bool isReleased)
         {
             uiCursorReleased = isReleased;
+            if (target != null)
+            {
+                ApplyCursorMode();
+            }
+        }
+
+        public void SetUiCursorReleased(object owner, bool isReleased)
+        {
+            if (owner == null)
+            {
+                throw new ArgumentNullException(nameof(owner));
+            }
+
+            if (isReleased)
+            {
+                uiCursorOwners.Add(owner);
+            }
+            else
+            {
+                uiCursorOwners.Remove(owner);
+            }
+
             if (target != null)
             {
                 ApplyCursorMode();
@@ -243,6 +268,7 @@ namespace ShooterMmo.Gameplay
         {
             var shouldCapture = !debugCursorReleased
                 && !uiCursorReleased
+                && uiCursorOwners.Count == 0
                 && applicationHasFocus;
             SetPointerInputEnabled(shouldCapture);
 

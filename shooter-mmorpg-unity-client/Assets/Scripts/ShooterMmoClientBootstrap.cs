@@ -4,6 +4,7 @@ using ShooterMmo.Config;
 using ShooterMmo.Diagnostics;
 using ShooterMmo.Items;
 using ShooterMmo.Networking;
+using ShooterMmo.WorldActors;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -20,6 +21,10 @@ namespace ShooterMmo
         public static InventoryClientController InventoryController { get; private set; }
 
         public static CorpseClientController CorpseController { get; private set; }
+
+        public static WorldActorClientController WorldActorController { get; private set; }
+
+        public static WorldInteractionClientController WorldInteractionController { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -62,6 +67,25 @@ namespace ShooterMmo
 
             CorpseController.Initialize(SimulationClient, InventoryController);
 
+            WorldActorController = GetComponent<WorldActorClientController>();
+            if (WorldActorController == null)
+            {
+                WorldActorController = gameObject.AddComponent<WorldActorClientController>();
+            }
+
+            WorldActorController.Initialize(SimulationClient);
+
+            WorldInteractionController = GetComponent<WorldInteractionClientController>();
+            if (WorldInteractionController == null)
+            {
+                WorldInteractionController = gameObject.AddComponent<WorldInteractionClientController>();
+            }
+
+            WorldInteractionController.Initialize(
+                SimulationClient,
+                WorldActorController,
+                CorpseController);
+
             SimulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
         }
@@ -93,6 +117,8 @@ namespace ShooterMmo
             SimulationClient = null;
             InventoryController = null;
             CorpseController = null;
+            WorldActorController = null;
+            WorldInteractionController = null;
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -231,6 +257,9 @@ namespace ShooterMmo
                 AddControllerIfMissing<Ui.CrosshairPanel>();
                 AddControllerIfMissing<Ui.TemporaryInventoryPanel>();
                 AddControllerIfMissing<Gameplay.CorpsePresentationController>();
+                AddControllerIfMissing<WorldActors.WorldActorPresentationController>();
+                AddControllerIfMissing<WorldActors.WorldInteractionTargetingController>();
+                AddControllerIfMissing<Ui.TemporaryWorldInteractionPanel>();
             }
         }
 

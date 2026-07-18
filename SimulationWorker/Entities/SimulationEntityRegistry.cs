@@ -53,6 +53,14 @@ public sealed class SimulationEntityRegistry
         }
     }
 
+    public ulong AllocateNetworkEntityId()
+    {
+        lock (syncRoot)
+        {
+            return AllocateEntityId();
+        }
+    }
+
     public bool TryGetPlayer(ulong entityId, out PlayerSimulationEntity? entity)
     {
         lock (syncRoot)

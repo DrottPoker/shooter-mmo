@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\Tools\SimulationStressGenerator\SimulationStressGenerator.csproj" />
     <ProjectReference Include="..\..\Tools\ActiveSimulationBots\ActiveSimulationBots.csproj" />
     <ProjectReference Include="..\..\Tools\ItemCatalogCompiler\ItemCatalogCompiler.csproj" />
+    <ProjectReference Include="..\..\Tools\WorldActorCompiler\WorldActorCompiler.csproj" />
     <ProjectReference Include="..\..\Tools\SimulationBotClient\ShooterMmo.Tools.SimulationBotClient.csproj" />
   </ItemGroup>
 

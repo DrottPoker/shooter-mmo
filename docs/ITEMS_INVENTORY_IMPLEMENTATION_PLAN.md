@@ -2,8 +2,8 @@
 
 Last updated: 2026-07-18
 
-Status: Approved delivery baseline, Phases 1 through 11 completed, Phase 12
-approved and planned
+Status: Approved delivery baseline, Phases 1 through 12 implemented, Phase 12
+final verification in progress
 
 ## Purpose
 
@@ -37,9 +37,9 @@ integration tests accompany the phase that introduces each invariant rather than
 being postponed until the end.
 
 Phase 0 is the documentation and contract freeze. The dependency-ordered
-implementation sequence now contains Phases 1 through 15. Phase 12 is the new
-world-actor foundation, and the former Phases 12 through 14 are renumbered to
-Phases 13 through 15.
+implementation sequence contains Phases 1 through 15. Phase 12 is the
+implemented world-actor foundation, and the former Phases 12 through 14 remain
+renumbered to Phases 13 through 15.
 
 ## Architectural Decisions
 
@@ -1430,13 +1430,12 @@ dupe safe.
 
 The Phase 11 implementation, automated test, documentation, and deterministic
 exit gates are satisfied. The documented two-client flow remains the required
-manual player-facing acceptance check. Phase 12 has not started and no world
-actor, NPC, Mob, spawn-authoring, or generic interaction runtime is introduced
-here.
+manual player-facing acceptance check. Phase 12 builds on that corpse authority
+without changing its custody or protocol-v11 mutation contracts.
 
 ## Phase 12: Scalable World Actors, NPCs, Mobs, And Interaction Foundation
 
-Status: Approved design, implementation not started
+Status: Implemented 2026-07-18, final full-suite verification in progress
 
 Canonical contract:
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md)
@@ -1612,6 +1611,32 @@ server-authoritative crosshair interaction with stable range, line-of-sight,
 revision, session, and reconnect behavior. No per-actor database or asynchronous
 loop is required, and no Phase 13 policy business behavior or Phase 14 Mob loot
 behavior has leaked into the foundation.
+
+### Phase 12 Implementation Record
+
+- Added strict neutral actor and spawn authoring, deterministic runtime output,
+  structural fingerprints, one complete revision, and shared runtime
+  validation under WorldData.
+- Added the command-line compiler and verifier plus permanent Actor Studio and
+  Spawn Authoring Editor workflows. All paths invoke the same framework-neutral
+  compiler instead of copying validation rules into Unity.
+- Added a `local-world-1` baseline containing three actor definitions and five
+  deterministic instances across point, group, area, and patrol authoring.
+- Added protocol version `12` actor spawn, state, despawn, interaction intent,
+  open, result, and close contracts with strict validation and the existing
+  `1200` byte packet limit.
+- Added worker startup validation, bounded runtime identity and population
+  stores, assignment reconstruction, entity and interest integration,
+  event-driven NPC state, central Mob schedule buckets, invulnerable NPC policy,
+  typed capability handlers, exact interaction authority, shared corpse lease,
+  and low-cardinality metrics.
+- Added permanent Unity actor, presentation, targeting, interaction, operation,
+  revision, and reconnect state. Presentation-only views and temporary uGUI sit
+  above those controllers, and `E` opens or closes the selected actor or corpse
+  interaction.
+- Registered explicit deferred server handlers for later capability business
+  systems. No vendor transaction, insurance or quest lifecycle, combat, Mob AI,
+  loot generation, or Mob corpse creation is implemented in Phase 12.
 
 ## Phase 13: Insurance And Quest Lifecycle Integration
 

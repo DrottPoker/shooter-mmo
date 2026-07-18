@@ -1,0 +1,175 @@
+{
+  "formatVersion": 1,
+  "catalogId": "core",
+  "factions": [
+    {
+      "id": "city",
+      "displayName": "City",
+      "defaultDisposition": "friendly"
+    },
+    {
+      "id": "wild",
+      "displayName": "Wild Creatures",
+      "defaultDisposition": "hostile"
+    }
+  ],
+  "presentationArchetypes": [
+    {
+      "id": "mob.feral_wolf",
+      "displayName": "Feral Wolf",
+      "actorKind": "mob"
+    },
+    {
+      "id": "npc.city_guard",
+      "displayName": "City Guard",
+      "actorKind": "npc"
+    },
+    {
+      "id": "npc.city_services",
+      "displayName": "City Services",
+      "actorKind": "npc"
+    }
+  ],
+  "activityProfiles": [
+    {
+      "id": "mob.standard",
+      "activationRange": 48.0,
+      "dormancyRange": 64.0,
+      "activeTickRateHz": 10.0,
+      "dormantTickRateHz": 0.5
+    }
+  ],
+  "respawnProfiles": [
+    {
+      "id": "mob.normal",
+      "delaySeconds": 30.0,
+      "populationLimit": 32
+    }
+  ],
+  "actors": [
+    {
+      "id": "mob.feral_wolf",
+      "displayName": "Feral Wolf",
+      "kind": "mob",
+      "factionId": "wild",
+      "disposition": "hostile",
+      "presentationArchetypeId": "mob.feral_wolf",
+      "damagePolicy": "damageable",
+      "tags": [
+        "creature",
+        "wild"
+      ],
+      "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.55,
+        "centerZ": 0.0,
+        "sizeX": 1.2,
+        "sizeY": 1.1,
+        "sizeZ": 1.8
+      },
+      "capabilities": [],
+      "activityProfileId": "mob.standard",
+      "respawnProfileId": "mob.normal"
+    },
+    {
+      "id": "npc.city_guard",
+      "displayName": "City Guard",
+      "kind": "npc",
+      "factionId": "city",
+      "disposition": "friendly",
+      "presentationArchetypeId": "npc.city_guard",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "city",
+        "guard"
+      ],
+      "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 1.0,
+        "centerZ": 0.0,
+        "sizeX": 0.8,
+        "sizeY": 2.0,
+        "sizeZ": 0.8
+      },
+      "capabilities": [
+        {
+          "id": "guard.dialogue",
+          "kind": "dialogue",
+          "displayName": "Talk"
+        },
+        {
+          "id": "guard.trainer",
+          "kind": "trainer",
+          "displayName": "Training"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": ""
+    },
+    {
+      "id": "npc.city_services",
+      "displayName": "Mira the Quartermaster",
+      "kind": "npc",
+      "factionId": "city",
+      "disposition": "friendly",
+      "presentationArchetypeId": "npc.city_services",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "city",
+        "service"
+      ],
+      "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 1.0,
+        "centerZ": 0.0,
+        "sizeX": 0.8,
+        "sizeY": 2.0,
+        "sizeZ": 0.8
+      },
+      "capabilities": [
+        {
+          "id": "services.bank",
+          "kind": "bank",
+          "displayName": "Character Bank"
+        },
+        {
+          "id": "services.crafting",
+          "kind": "crafting",
+          "displayName": "Crafting"
+        },
+        {
+          "id": "services.dialogue",
+          "kind": "dialogue",
+          "displayName": "Talk"
+        },
+        {
+          "id": "services.insurance",
+          "kind": "insurance",
+          "displayName": "Insurance"
+        },
+        {
+          "id": "services.quest_offer",
+          "kind": "quest_offer",
+          "displayName": "Available Quests"
+        },
+        {
+          "id": "services.quest_turn_in",
+          "kind": "quest_turn_in",
+          "displayName": "Complete Quest"
+        },
+        {
+          "id": "services.recovery",
+          "kind": "recovery_storage",
+          "displayName": "Recovery Storage"
+        },
+        {
+          "id": "services.vendor",
+          "kind": "vendor",
+          "displayName": "Trade"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": ""
+    }
+  ]
+}

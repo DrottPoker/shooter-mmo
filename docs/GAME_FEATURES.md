@@ -338,18 +338,19 @@ Tools > Inventory Item Grants`. The generic capsule and current uGUI are
 temporary visuals over permanent protocol, state, authority, transaction, and
 revision foundations.
 
-## Approved Phase 12 World Interaction Experience
+## World Actors And Interaction
 
-Status: Planned, not implemented
+Status: Phase 12 foundation implemented with temporary presentation
 
-Phase 12 adds the shared player-facing foundation for NPCs, Mobs, corpses, and
-future world interactables:
+The shared player-facing foundation for NPCs, Mobs, corpses, and future world
+interactables is implemented:
 
 - `NPC` identifies a social or service actor with freely composable dialogue,
   vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
 - `Mob` identifies a combat actor with later AI, aggro, combat, loot, corpse,
   and respawn behavior.
 - The player points the crosshair at a registered target and presses `E`.
+  Pressing `E` again closes the active NPC or corpse interaction.
 - Unity may discover and prompt for targets within `6.0` metres using a direct
   ray and `0.15` metre spherecast tolerance.
 - SimulationWorker opens an interaction only within the authoritative `3.0`
@@ -368,8 +369,12 @@ future world interactables:
 
 All city NPCs, including guards, are invulnerable in the first version. Faction
 and disposition own friendly or hostile behavior independently from NPC or Mob
-kind. Phase 12 stops before vendor transactions, quest progression, crafting,
-combat AI, Mob loot, and Mob corpse creation.
+kind. The checked-in World contains one composable service NPC, one guard NPC,
+one Mob definition, and five deterministic actor instances. Capability buttons
+whose business systems belong to later phases return an explicit deferred
+server result and never fabricate success. Vendor transactions, quest
+progression, crafting, combat AI, Mob loot, and Mob corpse creation remain
+unimplemented.
 
 ## Planned Feature Categories
 
@@ -384,7 +389,6 @@ They remain in the MVP specification until working behavior is available:
 - Live combat death production, final corpse art and loot presentation,
   configurable Mob corpses, and insurance NPC purchase behavior.
 - Gathering, crafting, professions, and player economy.
-- The approved Phase 12 world-actor, NPC, Mob, spawn, and interaction foundation.
 - Complete NPC capability behavior, Mob AI, quests, events, and world
   activities.
 - Character progression and long-term persistence.
@@ -397,7 +401,8 @@ PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
 Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
 Phase 7 shared live encumbrance, Phase 8 active-character mutation, Phase 9
 Unity inventory foundation, Phase 10 durable player-death partition and corpse
-persistence, and Phase 11 concurrent corpse interaction now exist.
+persistence, Phase 11 concurrent corpse interaction, and Phase 12 world actors
+and authoritative interaction now exist.
 AuthService supports owned
 item-state, bank, Secure Container, and Recovery access plus offline relocation,
 split, merge, allowed destruction, Recovery claim, and tier-change operations.

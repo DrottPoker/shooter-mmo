@@ -8,10 +8,10 @@ This document is the source of truth for the current Unity client architecture.
 It describes runtime responsibilities, dependencies, state, scene flow, API
 handling, and local gameplay controls.
 
-The approved but unimplemented Phase 12 client and Editor contract for world
-actors is defined in
-[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). Planned behavior is
-called out explicitly below and is not part of the current runtime claim.
+The implemented Phase 12 client and Editor contract for world actors is defined
+in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). Later capability
+business behavior and final presentation remain explicitly outside the current
+runtime claim.
 
 ## Project Boundary
 
@@ -611,9 +611,9 @@ Unity CharacterController against the authored scene colliders as an offline
 authoring check. Authenticated movement does not use CharacterController to
 decide network position.
 
-## Planned Phase 12 World Actor And Interaction Client
+## Phase 12 World Actor And Interaction Client
 
-Status: Approved architecture, implementation not started
+Status: Permanent client foundation implemented with replaceable presentation
 
 Phase 12 adds permanent client state below replaceable presentation:
 
@@ -631,11 +631,12 @@ Phase 12 adds permanent client state below replaceable presentation:
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
-The actor and interaction messages target protocol version `12`. The persistent
+The actor and interaction messages use protocol version `12`. The persistent
 realtime client must decode them through the shared GameProtocol source and keep
 the existing explicit mismatch path for older or partially updated clients.
 
-The `E` input action requests interaction with the current crosshair target.
+The `E` input action requests interaction with the current crosshair target or
+closes the current NPC or corpse interaction.
 Client selection checks a direct centre ray first and then a `0.15` metre
 spherecast tolerance among registered targets within a `6.0` metre discovery
 distance. The result only chooses an intent. SimulationWorker independently owns
@@ -671,6 +672,12 @@ Editor scene components are authoring adapters. They import and export stable
 neutral definitions, but only compiled WorldData creates runtime actors. Actor
 and spawn content must remain buildable and verifiable without opening Unity.
 
+The persistent bootstrap creates the actor, presentation, targeting,
+interaction, and temporary panel controllers at runtime. Existing canonical
+content works through fallback presentation without scene edits. A content
+creator uses the Editor windows only when changing definitions, spawn source,
+or the optional presentation registry asset.
+
 ## Test Architecture
 
 EditMode tests cover client session cleanup, operation serialization, structured
@@ -692,10 +699,16 @@ verifies presence assembly, duplicate and stale chunks, complete canonical
 three-section views, targeted delta consistency, monotonic revisions, every
 typed corpse intent, and corpse drag payload identity.
 
+Phase 12 EditMode coverage verifies monotonic actor presence and state,
+reconnect cleanup, operation correlation, authoritative capability summaries,
+direct-ray and spherecast target selection, unrelated-collider filtering, and
+deterministic Actor Studio and Spawn Authoring compiler integration.
+
 PlayMode tests verify that loading LoginMenu creates the persistent client
-bootstrap, realtime, inventory, and corpse controllers, and runtime login panel.
-WorldScene coverage opens and closes the runtime uGUI inventory root and finds
-the runtime corpse presentation controller.
+bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and
+presentation controllers plus the runtime login panel. WorldScene coverage
+opens and closes the runtime uGUI inventory root and finds the runtime corpse
+and actor presentation controllers.
 
 Manual flows and expected results are documented in
 [Local Development](LOCAL_DEVELOPMENT.md).

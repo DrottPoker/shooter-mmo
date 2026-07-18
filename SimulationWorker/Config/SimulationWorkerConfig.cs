@@ -44,6 +44,10 @@ public sealed record SimulationWorkerConfig(
 
     public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
 
+    public string ActorDataPath { get; init; } = Path.Combine(
+        "ActorData",
+        "local-world-1.world-actors.json");
+
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
         var errors = new List<string>();
@@ -83,6 +87,9 @@ public sealed record SimulationWorkerConfig(
                 configuration["WORLD_COLLISION_DATA_PATH"]),
             "SimulationWorker:CollisionDataPath",
             errors);
+        var actorDataPath = First(
+            section["ActorDataPath"],
+            configuration["WORLD_ACTOR_DATA_PATH"]);
         var redis = Require(configuration.GetConnectionString("Redis"), "ConnectionStrings:Redis", errors);
 
         var udpPort = PositiveInt(
@@ -526,7 +533,10 @@ public sealed record SimulationWorkerConfig(
             CollisionStreaming = new CollisionStreamingConfig(
                 collisionLoadRadiusChunks,
                 collisionUnloadRadiusChunks),
-            ItemInteraction = itemInteraction
+            ItemInteraction = itemInteraction,
+            ActorDataPath = string.IsNullOrWhiteSpace(actorDataPath)
+                ? Path.Combine("ActorData", worldId! + ".world-actors.json")
+                : actorDataPath.Trim()
         };
     }
 

@@ -2,12 +2,12 @@
 
 Last updated: 2026-07-18
 
-Status: Locked design target; Phases 1 through 11 content, authoring, schema,
+Status: Locked design target; Phases 1 through 12 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
 encumbrance, realtime item mutation, Unity inventory foundation, death
-partition, durable player-corpse custody, and concurrent corpse looting
-implemented
+partition, durable player-corpse custody, concurrent corpse looting, shared
+world actors, and authoritative interaction implemented
 
 ## Purpose
 
@@ -746,7 +746,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 11 now implement the neutral catalog, structural
+claim. Phases 1 through 12 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -806,5 +806,7 @@ and uGUI are replaceable presentation.
 No vendor, gathering, insurance purchase, quest gameplay, or combat death
 producer calls the player-death boundary yet. Final corpse art, configurable Mob
 corpse persistence, and insurance NPC behavior remain later phases. Phase 12
-world actors and interaction are approved design only and are not implemented.
-No Zone or Layer identity was introduced.
+world actors, shared crosshair targeting, one-active-interaction lease, and
+authoritative capability discovery are implemented. Deferred capability
+handlers return an explicit server failure and do not simulate later business
+behavior. No Zone or Layer identity was introduced.
