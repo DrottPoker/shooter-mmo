@@ -73,7 +73,7 @@ namespace ShooterMmo.WorldActors
 
             PendingOperationId = Guid.Empty;
             LastErrorCode = result.Succeeded ? string.Empty : result.Error.Code;
-            LastMessage = result.Succeeded ? string.Empty : result.Error.Message;
+            LastMessage = result.Succeeded ? result.Message : result.Error.Message;
             Changed?.Invoke();
             return true;
         }
@@ -301,6 +301,27 @@ namespace ShooterMmo.WorldActors
 
         public bool TryExecuteCapability(string capabilityId, out string error)
         {
+            return TryExecuteCapability(
+                capabilityId,
+                RealtimeNpcLifecycleActionKind.None,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1,
+                out error);
+        }
+
+        public bool TryExecuteCapability(
+            string capabilityId,
+            RealtimeNpcLifecycleActionKind lifecycleAction,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex,
+            out string error)
+        {
             error = string.Empty;
             var active = State.ActiveInteraction;
             if (active == null || State.PendingOperationId != Guid.Empty)
@@ -337,7 +358,13 @@ namespace ShooterMmo.WorldActors
                 active.TargetRevision,
                 capabilityId,
                 capability.Kind,
-                capability.Revision);
+                capability.Revision,
+                lifecycleAction,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                destinationContainerId,
+                destinationSlotIndex);
             if (!simulationClient.TrySendWorldInteraction(intent))
             {
                 error = "The capability action request could not be sent.";
@@ -396,6 +423,13 @@ namespace ShooterMmo.WorldActors
                 simulationClient.DisconnectForClientFailure(
                     "world_interaction_operation_conflict",
                     error);
+                return;
+            }
+
+            if (result.Succeeded && result.ItemStateRevision > 0)
+            {
+                ShooterMmoClientBootstrap.InventoryController?.EnsureFullState(
+                    result.ItemStateRevision);
             }
         }
 

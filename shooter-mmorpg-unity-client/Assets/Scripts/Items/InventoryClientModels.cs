@@ -76,15 +76,18 @@ namespace ShooterMmo.Items
 
     public sealed class InventoryPolicy
     {
-        public InventoryPolicy(string kind, string status)
+        public InventoryPolicy(string kind, string status, string protectionSource)
         {
             Kind = kind;
             Status = status;
+            ProtectionSource = protectionSource;
         }
 
         public string Kind { get; }
 
         public string Status { get; }
+
+        public string ProtectionSource { get; }
     }
 
     public sealed class InventoryItem
@@ -1329,7 +1332,8 @@ namespace ShooterMmo.Items
                 .Where(policy => policy != null)
                 .Select(policy => new InventoryPolicy(
                     policy.policyKind ?? string.Empty,
-                    policy.status ?? string.Empty))
+                    policy.status ?? string.Empty,
+                    policy.protectionSource ?? string.Empty))
                 .ToArray();
             item = new InventoryItem(
                 itemId,

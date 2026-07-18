@@ -141,6 +141,35 @@ public sealed class RealtimeWorldActorProtocolTests
             decodedAction.CapabilityKind);
         Assert.Equal(1, decodedAction.ExpectedCapabilityRevision);
 
+        var insuranceItemId = Guid.NewGuid();
+        var insuranceAction = RealtimeWorldInteractionIntent.CreateCapabilityAction(
+            Guid.NewGuid(),
+            simulationSessionId,
+            interactionSessionId,
+            RealtimeWorldInteractionTargetKind.WorldActor,
+            88,
+            runtimeActorId,
+            3,
+            "services.insurance",
+            RealtimeWorldActorCapabilityKind.Insurance,
+            2,
+            RealtimeNpcLifecycleActionKind.ApplyInsurance,
+            14,
+            insuranceItemId,
+            7);
+        Assert.True(
+            RealtimeProtocol.TryDecodeWorldInteractionIntent(
+                RealtimeProtocol.EncodeWorldInteractionIntent(insuranceAction),
+                out var decodedInsuranceAction,
+                out error),
+            error);
+        Assert.Equal(
+            RealtimeNpcLifecycleActionKind.ApplyInsurance,
+            decodedInsuranceAction.LifecycleAction);
+        Assert.Equal(14, decodedInsuranceAction.ExpectedCharacterRevision);
+        Assert.Equal(insuranceItemId, decodedInsuranceAction.ItemInstanceId);
+        Assert.Equal(7, decodedInsuranceAction.ExpectedItemRevision);
+
         var result = new RealtimeWorldInteractionResult(
             action.OperationId,
             interactionSessionId,
@@ -157,6 +186,24 @@ public sealed class RealtimeWorldActorProtocolTests
                 out error),
             error);
         Assert.Equal("world_interaction_capability_deferred", decodedResult.Error.Code);
+
+        var committed = new RealtimeWorldInteractionResult(
+            insuranceAction.OperationId,
+            interactionSessionId,
+            RealtimeWorldInteractionOperationKind.CapabilityAction,
+            true,
+            3,
+            null!,
+            "Insurance applied.",
+            15);
+        Assert.True(
+            RealtimeProtocol.TryDecodeWorldInteractionResult(
+                RealtimeProtocol.EncodeWorldInteractionResult(committed),
+                out var decodedCommitted,
+                out error),
+            error);
+        Assert.Equal("Insurance applied.", decodedCommitted.Message);
+        Assert.Equal(15, decodedCommitted.ItemStateRevision);
 
         var closed = new RealtimeWorldInteractionClosed(
             interactionSessionId,

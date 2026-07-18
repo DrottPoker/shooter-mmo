@@ -223,7 +223,7 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
 
-Protocol version `12` carries Shard and World identity plus the initial carry
+Protocol version `13` carries Shard and World identity plus the initial carry
 tuple in join acceptance. Reliable ordered control messages carry later item
 state, corpse, world-actor presence, bounded actor state, and correlated world
 interaction contracts. Ordinary actor spawn packets contain presentation,
@@ -342,7 +342,7 @@ are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 12 of the approved item plan are implemented. Offline account
+Phases 1 through 13 of the approved item plan are implemented. Offline account
 mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
@@ -494,11 +494,12 @@ concurrent inspection, and authoritative looting:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `12` retains carry state on join, later committed
+- Realtime protocol version `13` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, and complete Recovery Storage claim. The retained version `11`
+  destruction, complete Recovery Storage claim, and typed NPC insurance and
+  quest item-lifecycle actions. The retained version `11`
   corpse contract carries
   chunked corpse presence and view state, accepted destination slot tags, open,
   close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag

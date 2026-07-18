@@ -49,8 +49,12 @@ The implemented foundation includes:
 - Shared target selection and lease ownership with the existing authoritative
   corpse view and mutation flow.
 
-No Phase 13 insurance or quest transaction behavior, and no Phase 14 Mob loot
-or corpse behavior, is part of this implementation.
+Phase 13 replaces the insurance, quest-offer, and quest-turn-in deferred slots
+with explicit handlers. Insurance and quest item lifecycle actions reuse the
+same validated interaction session and dispatch contract before crossing the
+service-authenticated AuthService boundary. Quest progression and completion
+remain unavailable. No Phase 14 Mob combat, loot, or corpse behavior is part of
+this implementation.
 
 ## Canonical Terminology
 
@@ -208,12 +212,13 @@ progression or access rules. A summary returned to one player must never be
 reused as authority for another player. Static capability identity may be shared
 internally, but availability and its expected revision remain session-scoped.
 
-Phase 12 proves composition and discovery. It does not fabricate the durable
-business transaction behind a capability. Later phases register handlers that
-bridge an already validated interaction session to the correct authoritative
-service. For example, insurance and quest lifecycle integration belongs to Phase
-13 and must reuse the Phase 12 target, session, capability, and dispatch
-contracts.
+Phase 12 proves composition and discovery. Phase 13 registers insurance and
+quest item-lifecycle handlers that bridge the already validated interaction
+session to AuthService. The worker passes exact session, worker runtime, Shard,
+interaction session, capability, operation, and revision identity. AuthService
+then commits the server-owned price, policy, or grant-lineage transaction. The
+handler does not repeat target, range, line-of-sight, or capability discovery
+logic.
 
 There must not be authoritative `VendorMonoBehaviour`,
 `QuestGiverMonoBehaviour`, or equivalent prefab scripts. Presentation helpers

@@ -10,7 +10,8 @@ namespace SimulationWorker.WorldActors;
 public sealed record WorldInteractionAuthorityResult(
     RealtimeWorldInteractionOpened? Opened,
     RealtimeWorldInteractionResult? Result,
-    RealtimeWorldInteractionClosed? Closed)
+    RealtimeWorldInteractionClosed? Closed,
+    bool ShouldDisconnect = false)
 {
     public bool Succeeded => Opened is not null || Result?.Succeeded == true;
 }
@@ -32,6 +33,17 @@ public sealed class WorldInteractionAuthorityService(
         int peerId,
         PlayerSimulationEntity player,
         RealtimeWorldInteractionIntent intent)
+    {
+        return ProcessAsync(peerId, player, intent, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+    }
+
+    public async Task<WorldInteractionAuthorityResult> ProcessAsync(
+        int peerId,
+        PlayerSimulationEntity player,
+        RealtimeWorldInteractionIntent intent,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(intent);
@@ -62,7 +74,12 @@ public sealed class WorldInteractionAuthorityService(
         }
         else
         {
-            result = ProcessResolved(peerId, player, intent, actor);
+            result = await ProcessResolvedAsync(
+                peerId,
+                player,
+                intent,
+                actor,
+                cancellationToken);
         }
 
         metrics.RecordInteraction(Stopwatch.GetElapsedTime(started), result.Succeeded);
@@ -141,11 +158,12 @@ public sealed class WorldInteractionAuthorityService(
         return closures;
     }
 
-    private WorldInteractionAuthorityResult ProcessResolved(
+    private async Task<WorldInteractionAuthorityResult> ProcessResolvedAsync(
         int peerId,
         PlayerSimulationEntity player,
         RealtimeWorldInteractionIntent intent,
-        WorldActorRuntimeState actor)
+        WorldActorRuntimeState actor,
+        CancellationToken cancellationToken)
     {
         if (!MatchesAssignment(player.Session, actor))
         {
@@ -249,7 +267,12 @@ public sealed class WorldInteractionAuthorityService(
 
         var definition = actor.Definition.Capabilities.Single(value =>
             string.Equals(value.Id, intent.CapabilityId, StringComparison.Ordinal));
-        var dispatch = capabilities.Dispatch(player.Session, actor, definition);
+        var dispatch = await capabilities.DispatchAsync(
+            player.Session,
+            actor,
+            definition,
+            intent,
+            cancellationToken);
         return new WorldInteractionAuthorityResult(
             null,
             new RealtimeWorldInteractionResult(
@@ -260,8 +283,11 @@ public sealed class WorldInteractionAuthorityService(
                 actor.InteractionRevision,
                 dispatch.Succeeded
                     ? null!
-                    : new RealtimeError(dispatch.Code, dispatch.Message)),
-            null);
+                    : new RealtimeError(dispatch.Code, dispatch.Message),
+                dispatch.Succeeded ? dispatch.Message : string.Empty,
+                dispatch.ItemStateRevision),
+            null,
+            dispatch.ShouldDisconnect);
     }
 
     private WorldInteractionAuthorityResult Open(

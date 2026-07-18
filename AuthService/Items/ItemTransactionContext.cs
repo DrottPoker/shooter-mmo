@@ -750,12 +750,23 @@ internal sealed class ItemTransactionContext(
 
     public void EnsureInsuranceNpcAccess()
     {
-        if (Actor.Authority == ItemTransactionAuthority.SimulationWorker
-            && !Actor.Simulation!.LiveAccess.InsuranceNpc)
+        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
+            || !Actor.Simulation!.LiveAccess.InsuranceNpc)
         {
             Reject(
                 ItemTransactionErrorCodes.AuthorityRequired,
-                "The character is outside validated insurance NPC access.");
+                "This operation requires a validated insurance NPC interaction.");
+        }
+    }
+
+    public void EnsureQuestNpcAccess()
+    {
+        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
+            || !Actor.Simulation!.LiveAccess.QuestNpc)
+        {
+            Reject(
+                ItemTransactionErrorCodes.AuthorityRequired,
+                "This operation requires a validated quest NPC interaction.");
         }
     }
 

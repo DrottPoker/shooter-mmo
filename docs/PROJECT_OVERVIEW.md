@@ -133,7 +133,7 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `12`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `13`,
   movement revision `movement-simulation-v3`, and identical authoritative and
   predicted encumbrance behavior.
 - Deterministic NPC and Mob definitions, factions, presentation references,
@@ -191,7 +191,7 @@ production. See
 
 ## Item Foundation Status
 
-Phases 1 through 12 of the durable item and inventory plan are implemented. The
+Phases 1 through 13 of the durable item and inventory plan are implemented. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
 Unity authoring and bake window, and a transactional AuthService PostgreSQL
@@ -257,10 +257,9 @@ The remaining locked direction is slot-based rather than grid-based and includes
 - Final inventory visual design, drag-and-drop interaction polish, accessibility,
   and item policy detail presentation on the implemented client foundation.
 - The authoritative combat death producer, final corpse art and interaction
-  polish, insurance NPC purchase behavior, and configurable Mob corpse
-  persistence.
-- Phase 13 insurance and quest lifecycle handlers on the implemented world
-  interaction and typed capability-dispatch foundation.
+  polish, and configurable Mob corpse persistence.
+- Quest progression, completion rewards, and final insurance or quest UI polish
+  above the implemented Phase 13 lifecycle handlers.
 
 The persistent schema, character custody identities, authoritative reads,
 offline account mutations, policy services, internal item mutations, and

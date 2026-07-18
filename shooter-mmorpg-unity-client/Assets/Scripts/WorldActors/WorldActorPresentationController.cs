@@ -11,12 +11,16 @@ namespace ShooterMmo.WorldActors
     {
         private readonly Dictionary<ulong, WorldActorView> presentations =
             new Dictionary<ulong, WorldActorView>();
-        private readonly MaterialPropertyBlock materialProperties =
-            new MaterialPropertyBlock();
+        private MaterialPropertyBlock materialProperties;
         private readonly HashSet<string> missingArchetypes = new HashSet<string>();
         private WorldActorClientController actorController;
         private WorldActorPresentationRegistry presentationRegistry;
         private Transform presentationRoot;
+
+        private void Awake()
+        {
+            materialProperties = new MaterialPropertyBlock();
+        }
 
         private void Start()
         {

@@ -403,7 +403,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             || response.ContainerRevisions is null
             || response.ItemRevisions is null
             || response.RecoveryDeliveryIds is null
-            || response.CharacterRevisions.Count != 1
+            || response.CharacterRevisions.Count > 1
             || response.ContainerRevisions.Count > 8
             || response.ItemRevisions.Count > 32
             || response.RecoveryDeliveryIds.Count > 8
@@ -412,13 +412,16 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             return false;
         }
 
-        var character = response.CharacterRevisions[0];
-        return character.CharacterId == request.CharacterId
-            && character.Revision >= request.ExpectedCharacterRevision
-            && IsValidCarryState(
-                character.Revision,
-                character.CarriedWeight,
-                character.CarryCapacity)
+        var characterValid = response.CharacterRevisions.Count == 0
+            ? request.OperationKind is "grant" or "abandon_quest_items"
+            : response.CharacterRevisions[0].CharacterId == request.CharacterId
+                && response.CharacterRevisions[0].Revision
+                    >= request.ExpectedCharacterRevision
+                && IsValidCarryState(
+                    response.CharacterRevisions[0].Revision,
+                    response.CharacterRevisions[0].CarriedWeight,
+                    response.CharacterRevisions[0].CarryCapacity);
+        return characterValid
             && response.ContainerRevisions.All(
                 revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
             && response.ItemRevisions.All(

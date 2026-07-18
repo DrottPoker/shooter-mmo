@@ -1007,6 +1007,55 @@ snapshot, and leave flow. Configuration, startup commands, expected behavior,
 capacity reservation, Ctrl+C cleanup, and the visual Unity test are documented
 in [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md).
 
+## Phase 13 Insurance And Quest Item Lifecycle
+
+Phase 13 uses Mira the Quartermaster and the existing Phase 12 world interaction
+session. No scene object, inspector assignment, or new Unity asset is required.
+The default AuthService lifecycle profile charges `100` currency for one-death
+insurance and grants one `quest_item.signal_transponder` with lineage
+`quest.local.signal_transponder`.
+
+Prepare a local character while it is offline:
+
+1. Open `Shooter MMO > Tools > Inventory Item Grants` and grant
+   `weapon.training_rifle` into a free Permanent Inventory slot.
+2. Give the character local development currency. With the default Compose
+   database values, replace the character name and run:
+
+```powershell
+docker exec shooter_mmo_postgres psql -U shooter_mmo -d shooter_mmo -c `
+  "update characters set currency = 500 where name = 'YOUR CHARACTER';"
+```
+
+Expected result: PostgreSQL reports `UPDATE 1`. If local database names or users
+differ, use the matching values from `.env`.
+
+Start AuthService and SimulationWorker, join `local-shard-1`, approach Mira
+within `3.0` metres, point the crosshair at her, and press `E`.
+
+Expected result:
+
+- The existing authoritative interaction opens and lists Insurance plus Quest
+  item lifecycle actions.
+- Applying insurance refreshes the same item with `Insured | source: Insurance
+  NPC`. The server charges the configured price atomically and rejects a second
+  active policy.
+- Explicit removal keeps the item instance and removes the insured label.
+- Accepting the quest creates one protected Signal Transponder with source
+  `Quest grant`. Repeated acceptance does not create a duplicate.
+- Generic destroy rejects the protected quest item. NPC abandonment removes only
+  that grant lineage, and reacceptance creates exactly one new required item.
+- Moving beyond `3.5` metres or losing line of sight still closes the interaction
+  through the Phase 12 authority path.
+
+Recovery Storage headings label `death_recovered_insured` as consumed insurance
+and `death_recovered_protected` as protected-on-death. Phase 13 intentionally has
+no Mob combat or other new death producer. Use the existing backend death
+fixture to verify first-death consumption and replay idempotency.
+
+No manual Unity Editor setup is required for Phase 13. Editor actions are needed
+only for the optional offline item grant used by this manual workflow.
+
 ## Isolated PostgreSQL Integration Tests
 
 The integration test resets the target database's `public` schema. Always use the
@@ -1130,7 +1179,7 @@ dotnet run --project SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
-`27015`, runtime id, realtime protocol version 12, simulation revision,
+`27015`, runtime id, realtime protocol version 13, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same

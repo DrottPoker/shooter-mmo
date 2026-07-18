@@ -1,4 +1,5 @@
 using AuthService.Config;
+using AuthService.Items;
 using Microsoft.Extensions.Configuration;
 using SimulationWorker.Config;
 using SimulationWorker.Items;
@@ -31,6 +32,32 @@ public sealed class ConfigurationValidationTests
         var config = AuthServiceConfig.FromConfiguration(configuration);
 
         Assert.Equal(TimeSpan.FromSeconds(30), config.SimulationWorkerHeartbeatTimeout);
+    }
+
+    [Fact]
+    public void NpcItemLifecycleRequiresPositiveServerOwnedInsurancePrice()
+    {
+        var validConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Items:NpcLifecycle:InsurancePrice"] = "175",
+                ["Items:NpcLifecycle:QuestGrantId"] = "quest.test.grant",
+                ["Items:NpcLifecycle:QuestItemDefinitionId"] = "quest_item.test",
+                ["Items:NpcLifecycle:QuestItemQuantity"] = "1"
+            })
+            .Build();
+
+        var options = NpcItemLifecycleOptions.FromConfiguration(validConfiguration);
+        Assert.Equal(175, options.InsurancePrice);
+
+        var invalidConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Items:NpcLifecycle:InsurancePrice"] = "0"
+            })
+            .Build();
+        Assert.Throws<InvalidOperationException>(() =>
+            NpcItemLifecycleOptions.FromConfiguration(invalidConfiguration));
     }
 
     [Fact]

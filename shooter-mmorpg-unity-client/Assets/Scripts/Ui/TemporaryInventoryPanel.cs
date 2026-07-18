@@ -507,7 +507,8 @@ namespace ShooterMmo.Ui
             if (item != null)
             {
                 label += "\n" + state.Catalog.GetDisplayName(item.DefinitionId)
-                    + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty);
+                    + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty)
+                    + PolicyLabel(item);
             }
 
             var payload = item == null
@@ -543,7 +544,8 @@ namespace ShooterMmo.Ui
             if (equipmentSlot.Item != null)
             {
                 label += "\n" + state.Catalog.GetDisplayName(
-                    equipmentSlot.Item.DefinitionId);
+                    equipmentSlot.Item.DefinitionId)
+                    + PolicyLabel(equipmentSlot.Item);
             }
 
             var payload = equipmentSlot.Item == null
@@ -585,7 +587,8 @@ namespace ShooterMmo.Ui
             {
                 CreateSubheader(
                     parent,
-                    delivery.SourceKind + "  revision " + delivery.Revision);
+                    RecoverySourceLabel(delivery.SourceKind)
+                        + "  revision " + delivery.Revision);
                 var grid = CreateGrid(parent, 4, 150f, 72f);
                 foreach (var deliveryItem in delivery.Items)
                 {
@@ -595,7 +598,8 @@ namespace ShooterMmo.Ui
                     CreateSlotButton(
                         grid,
                         state.Catalog.GetDisplayName(item.DefinitionId)
-                            + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty),
+                            + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty)
+                            + PolicyLabel(item),
                         item,
                         false,
                         false,
@@ -2009,6 +2013,54 @@ namespace ShooterMmo.Ui
                 InventoryItemLocationKind.Equipment => "equipment/" + location.EquipmentSlotId,
                 InventoryItemLocationKind.RecoveryStorage => "recovery/" + location.RecoveryDeliveryId,
                 _ => location.ContainerType + "/" + location.SlotIndex
+            };
+        }
+
+        private static string PolicyLabel(InventoryItem item)
+        {
+            if (item == null)
+            {
+                return string.Empty;
+            }
+
+            var labels = item.Policies
+                .Where(policy => string.Equals(
+                    policy.Status,
+                    ItemPolicyRules.ActiveStatus,
+                    StringComparison.Ordinal))
+                .Select(policy => policy.Kind switch
+                {
+                    ItemPolicyIds.Insured => "Insured | source: "
+                        + ProtectionSourceLabel(policy.ProtectionSource),
+                    ItemPolicyIds.ProtectedOnDeath => "Protected | source: "
+                        + ProtectionSourceLabel(policy.ProtectionSource),
+                    _ => policy.Kind + " | source: "
+                        + ProtectionSourceLabel(policy.ProtectionSource)
+                })
+                .ToArray();
+            return labels.Length == 0
+                ? string.Empty
+                : "\n[" + string.Join("] [", labels) + "]";
+        }
+
+        private static string ProtectionSourceLabel(string source)
+        {
+            return source switch
+            {
+                "insurance_npc" => "Insurance NPC",
+                "quest_grant" => "Quest grant",
+                "catalog_default" => "Catalog rule",
+                _ => "System"
+            };
+        }
+
+        private static string RecoverySourceLabel(string source)
+        {
+            return source switch
+            {
+                "death_recovered_insured" => "Recovery source: consumed insurance",
+                "death_recovered_protected" => "Recovery source: protected-on-death",
+                _ => "Recovery source: " + source
             };
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ShooterMmo.GameProtocol
 {
@@ -47,6 +48,15 @@ namespace ShooterMmo.GameProtocol
         Trainer = 7,
         Bank = 8,
         RecoveryStorage = 9
+    }
+
+    public enum RealtimeNpcLifecycleActionKind : byte
+    {
+        None = 0,
+        ApplyInsurance = 1,
+        RemoveInsurance = 2,
+        AcceptQuest = 3,
+        AbandonQuest = 4
     }
 
     public sealed class RealtimeWorldActorSpawn
@@ -188,7 +198,13 @@ namespace ShooterMmo.GameProtocol
             long expectedTargetRevision,
             string capabilityId,
             RealtimeWorldActorCapabilityKind capabilityKind,
-            long expectedCapabilityRevision)
+            long expectedCapabilityRevision,
+            RealtimeNpcLifecycleActionKind lifecycleAction,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex)
         {
             OperationId = operationId;
             SimulationSessionId = simulationSessionId;
@@ -201,6 +217,12 @@ namespace ShooterMmo.GameProtocol
             CapabilityId = capabilityId;
             CapabilityKind = capabilityKind;
             ExpectedCapabilityRevision = expectedCapabilityRevision;
+            LifecycleAction = lifecycleAction;
+            ExpectedCharacterRevision = expectedCharacterRevision;
+            ItemInstanceId = itemInstanceId;
+            ExpectedItemRevision = expectedItemRevision;
+            DestinationContainerId = destinationContainerId;
+            DestinationSlotIndex = destinationSlotIndex;
         }
 
         public Guid OperationId { get; }
@@ -214,6 +236,12 @@ namespace ShooterMmo.GameProtocol
         public string CapabilityId { get; }
         public RealtimeWorldActorCapabilityKind CapabilityKind { get; }
         public long ExpectedCapabilityRevision { get; }
+        public RealtimeNpcLifecycleActionKind LifecycleAction { get; }
+        public long ExpectedCharacterRevision { get; }
+        public Guid ItemInstanceId { get; }
+        public long ExpectedItemRevision { get; }
+        public Guid DestinationContainerId { get; }
+        public int DestinationSlotIndex { get; }
 
         public static RealtimeWorldInteractionIntent CreateOpen(
             Guid operationId,
@@ -234,7 +262,13 @@ namespace ShooterMmo.GameProtocol
                 expectedTargetRevision,
                 string.Empty,
                 default,
-                0);
+                0,
+                default,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1);
         }
 
         public static RealtimeWorldInteractionIntent CreateClose(
@@ -257,7 +291,13 @@ namespace ShooterMmo.GameProtocol
                 expectedTargetRevision,
                 string.Empty,
                 default,
-                0);
+                0,
+                default,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1);
         }
 
         public static RealtimeWorldInteractionIntent CreateCapabilityAction(
@@ -270,7 +310,13 @@ namespace ShooterMmo.GameProtocol
             long expectedTargetRevision,
             string capabilityId,
             RealtimeWorldActorCapabilityKind capabilityKind,
-            long expectedCapabilityRevision)
+            long expectedCapabilityRevision,
+            RealtimeNpcLifecycleActionKind lifecycleAction = RealtimeNpcLifecycleActionKind.None,
+            long expectedCharacterRevision = 0,
+            Guid itemInstanceId = default,
+            long expectedItemRevision = 0,
+            Guid destinationContainerId = default,
+            int destinationSlotIndex = -1)
         {
             return new RealtimeWorldInteractionIntent(
                 operationId,
@@ -283,7 +329,13 @@ namespace ShooterMmo.GameProtocol
                 expectedTargetRevision,
                 capabilityId,
                 capabilityKind,
-                expectedCapabilityRevision);
+                expectedCapabilityRevision,
+                lifecycleAction,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                destinationContainerId,
+                destinationSlotIndex);
         }
     }
 
@@ -353,7 +405,9 @@ namespace ShooterMmo.GameProtocol
             RealtimeWorldInteractionOperationKind operationKind,
             bool succeeded,
             long targetRevision,
-            RealtimeError error)
+            RealtimeError error,
+            string message = "",
+            long itemStateRevision = 0)
         {
             OperationId = operationId;
             InteractionSessionId = interactionSessionId;
@@ -361,6 +415,8 @@ namespace ShooterMmo.GameProtocol
             Succeeded = succeeded;
             TargetRevision = targetRevision;
             Error = error;
+            Message = message ?? string.Empty;
+            ItemStateRevision = itemStateRevision;
         }
 
         public Guid OperationId { get; }
@@ -369,6 +425,8 @@ namespace ShooterMmo.GameProtocol
         public bool Succeeded { get; }
         public long TargetRevision { get; }
         public RealtimeError Error { get; }
+        public string Message { get; }
+        public long ItemStateRevision { get; }
     }
 
     public sealed class RealtimeWorldInteractionClosed
@@ -402,6 +460,7 @@ namespace ShooterMmo.GameProtocol
         private const int MaximumWorldActorCapabilities = 16;
         private const int MaximumWorldActorCapabilityIdLength = 128;
         private const int MaximumWorldActorCapabilityNameLength = 128;
+        private const int MaximumWorldInteractionMessageLength = 512;
 
         public static byte[] EncodeWorldActorSpawn(RealtimeWorldActorSpawn spawn)
         {
@@ -648,6 +707,12 @@ namespace ShooterMmo.GameProtocol
                     WriteString(writer, intent.CapabilityId, MaximumWorldActorCapabilityIdLength, nameof(intent.CapabilityId));
                     writer.Write((byte)intent.CapabilityKind);
                     writer.Write(intent.ExpectedCapabilityRevision);
+                    writer.Write((byte)intent.LifecycleAction);
+                    writer.Write(intent.ExpectedCharacterRevision);
+                    WriteGuid(writer, intent.ItemInstanceId);
+                    writer.Write(intent.ExpectedItemRevision);
+                    WriteGuid(writer, intent.DestinationContainerId);
+                    writer.Write(intent.DestinationSlotIndex);
                 }
             });
         }
@@ -683,6 +748,12 @@ namespace ShooterMmo.GameProtocol
                 var capabilityKind = default(RealtimeWorldActorCapabilityKind);
                 var expectedCapabilityRevision = 0L;
                 var rawCapabilityKind = (byte)0;
+                var rawLifecycleAction = (byte)0;
+                var expectedCharacterRevision = 0L;
+                var itemInstanceId = Guid.Empty;
+                var expectedItemRevision = 0L;
+                var destinationContainerId = Guid.Empty;
+                var destinationSlotIndex = -1;
                 if (operationKind == RealtimeWorldInteractionOperationKind.CapabilityAction
                     && (!TryReadString(
                             reader,
@@ -693,7 +764,13 @@ namespace ShooterMmo.GameProtocol
                         || !TryReadInt64(
                             reader,
                             out expectedCapabilityRevision,
-                            out error)))
+                            out error)
+                        || !TryReadByte(reader, out rawLifecycleAction, out error)
+                        || !TryReadInt64(reader, out expectedCharacterRevision, out error)
+                        || !TryReadGuid(reader, out itemInstanceId, out error)
+                        || !TryReadInt64(reader, out expectedItemRevision, out error)
+                        || !TryReadGuid(reader, out destinationContainerId, out error)
+                        || !TryReadInt32(reader, out destinationSlotIndex, out error)))
                 {
                     return false;
                 }
@@ -743,7 +820,13 @@ namespace ShooterMmo.GameProtocol
                         expectedTargetRevision,
                         capabilityId,
                         capabilityKind,
-                        expectedCapabilityRevision);
+                        expectedCapabilityRevision,
+                        (RealtimeNpcLifecycleActionKind)rawLifecycleAction,
+                        expectedCharacterRevision,
+                        itemInstanceId,
+                        expectedItemRevision,
+                        destinationContainerId,
+                        destinationSlotIndex);
                 }
 
                 if (!IsValidWorldInteractionIntent(decoded))
@@ -860,6 +943,12 @@ namespace ShooterMmo.GameProtocol
                 writer.Write((byte)result.OperationKind);
                 writer.Write(result.Succeeded);
                 writer.Write(result.TargetRevision);
+                writer.Write(result.ItemStateRevision);
+                WriteOptionalWorldInteractionMessage(
+                    writer,
+                    result.Message,
+                    MaximumWorldInteractionMessageLength,
+                    nameof(result.Message));
                 if (!result.Succeeded)
                 {
                     WriteString(writer, result.Error.Code, MaximumErrorCodeLength, nameof(result.Error.Code));
@@ -886,7 +975,13 @@ namespace ShooterMmo.GameProtocol
                     || !TryReadGuid(reader, out var interactionSessionId, out error)
                     || !TryReadByte(reader, out var rawOperationKind, out error)
                     || !TryReadBoolean(reader, out var succeeded, out error)
-                    || !TryReadInt64(reader, out var targetRevision, out error))
+                    || !TryReadInt64(reader, out var targetRevision, out error)
+                    || !TryReadInt64(reader, out var itemStateRevision, out error)
+                    || !TryReadOptionalWorldInteractionMessage(
+                        reader,
+                        MaximumWorldInteractionMessageLength,
+                        out var message,
+                        out error))
                 {
                     return false;
                 }
@@ -895,12 +990,12 @@ namespace ShooterMmo.GameProtocol
                 if (!succeeded)
                 {
                     if (!TryReadString(reader, MaximumErrorCodeLength, out var code, out error)
-                        || !TryReadString(reader, MaximumErrorMessageLength, out var message, out error))
+                        || !TryReadString(reader, MaximumErrorMessageLength, out var errorMessage, out error))
                     {
                         return false;
                     }
 
-                    resultError = new RealtimeError(code, message);
+                    resultError = new RealtimeError(code, errorMessage);
                 }
 
                 if (!TryFinish(stream, out error))
@@ -914,7 +1009,9 @@ namespace ShooterMmo.GameProtocol
                     (RealtimeWorldInteractionOperationKind)rawOperationKind,
                     succeeded,
                     targetRevision,
-                    resultError);
+                    resultError,
+                    message,
+                    itemStateRevision);
                 if (!IsValidWorldInteractionResult(decoded))
                 {
                     error = "World interaction result is invalid.";
@@ -1146,21 +1243,72 @@ namespace ShooterMmo.GameProtocol
                     intent.InteractionSessionId == Guid.Empty
                     && string.IsNullOrEmpty(intent.CapabilityId)
                     && intent.CapabilityKind == default
-                    && intent.ExpectedCapabilityRevision == 0,
+                    && intent.ExpectedCapabilityRevision == 0
+                    && HasEmptyLifecyclePayload(intent),
                 RealtimeWorldInteractionOperationKind.Close =>
                     intent.InteractionSessionId != Guid.Empty
                     && string.IsNullOrEmpty(intent.CapabilityId)
                     && intent.CapabilityKind == default
-                    && intent.ExpectedCapabilityRevision == 0,
+                    && intent.ExpectedCapabilityRevision == 0
+                    && HasEmptyLifecyclePayload(intent),
                 RealtimeWorldInteractionOperationKind.CapabilityAction =>
                     intent.InteractionSessionId != Guid.Empty
                     && IsCapabilityId(intent.CapabilityId)
                     && Enum.IsDefined(
                         typeof(RealtimeWorldActorCapabilityKind),
                         intent.CapabilityKind)
-                    && intent.ExpectedCapabilityRevision > 0,
+                    && intent.ExpectedCapabilityRevision > 0
+                    && IsValidLifecyclePayload(intent),
                 _ => false
             };
+        }
+
+        private static bool HasEmptyLifecyclePayload(RealtimeWorldInteractionIntent intent)
+        {
+            return intent.LifecycleAction == RealtimeNpcLifecycleActionKind.None
+                && intent.ExpectedCharacterRevision == 0
+                && intent.ItemInstanceId == Guid.Empty
+                && intent.ExpectedItemRevision == 0
+                && intent.DestinationContainerId == Guid.Empty
+                && intent.DestinationSlotIndex == -1;
+        }
+
+        private static bool IsValidLifecyclePayload(RealtimeWorldInteractionIntent intent)
+        {
+            return intent.LifecycleAction switch
+            {
+                RealtimeNpcLifecycleActionKind.None => HasEmptyLifecyclePayload(intent),
+                RealtimeNpcLifecycleActionKind.ApplyInsurance =>
+                    IsValidInsurancePayload(intent),
+                RealtimeNpcLifecycleActionKind.RemoveInsurance =>
+                    IsValidInsurancePayload(intent),
+                RealtimeNpcLifecycleActionKind.AcceptQuest =>
+                    intent.CapabilityKind == RealtimeWorldActorCapabilityKind.QuestOffer
+                    && intent.ExpectedCharacterRevision >= 0
+                    && intent.ItemInstanceId == Guid.Empty
+                    && intent.ExpectedItemRevision == 0
+                    && intent.DestinationContainerId != Guid.Empty
+                    && intent.DestinationSlotIndex >= -1,
+                RealtimeNpcLifecycleActionKind.AbandonQuest =>
+                    intent.CapabilityKind == RealtimeWorldActorCapabilityKind.QuestOffer
+                    && intent.ExpectedCharacterRevision >= 0
+                    && intent.ItemInstanceId == Guid.Empty
+                    && intent.ExpectedItemRevision == 0
+                    && intent.DestinationContainerId == Guid.Empty
+                    && intent.DestinationSlotIndex == -1,
+                _ => false
+            };
+        }
+
+        private static bool IsValidInsurancePayload(
+            RealtimeWorldInteractionIntent intent)
+        {
+            return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.Insurance
+                && intent.ExpectedCharacterRevision >= 0
+                && intent.ItemInstanceId != Guid.Empty
+                && intent.ExpectedItemRevision >= 0
+                && intent.DestinationContainerId == Guid.Empty
+                && intent.DestinationSlotIndex == -1;
         }
 
         private static bool IsValidWorldInteractionOpened(RealtimeWorldInteractionOpened opened)
@@ -1207,6 +1355,9 @@ namespace ShooterMmo.GameProtocol
                 && result.OperationId != Guid.Empty
                 && Enum.IsDefined(typeof(RealtimeWorldInteractionOperationKind), result.OperationKind)
                 && result.TargetRevision >= 0
+                && result.ItemStateRevision >= 0
+                && result.Message != null
+                && result.Message.Length <= MaximumWorldInteractionMessageLength
                 && (result.OperationKind == RealtimeWorldInteractionOperationKind.Open
                     ? result.InteractionSessionId == Guid.Empty && !result.Succeeded
                     : result.InteractionSessionId != Guid.Empty)
@@ -1218,6 +1369,69 @@ namespace ShooterMmo.GameProtocol
                         && result.Error.Code.Length <= MaximumErrorCodeLength
                         && !string.IsNullOrWhiteSpace(result.Error.Message)
                         && result.Error.Message.Length <= MaximumErrorMessageLength);
+        }
+
+        private static void WriteOptionalWorldInteractionMessage(
+            BinaryWriter writer,
+            string value,
+            int maximumLength,
+            string parameterName)
+        {
+            if (value == null || value.Length > maximumLength)
+            {
+                throw new ArgumentException(
+                    $"Value must contain at most {maximumLength} characters.",
+                    parameterName);
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(value);
+            writer.Write((ushort)bytes.Length);
+            writer.Write(bytes);
+        }
+
+        private static bool TryReadOptionalWorldInteractionMessage(
+            BinaryReader reader,
+            int maximumLength,
+            out string value,
+            out string error)
+        {
+            value = string.Empty;
+            error = string.Empty;
+            try
+            {
+                var byteLength = reader.ReadUInt16();
+                if (byteLength > maximumLength * 4)
+                {
+                    error = "Packet world interaction message length is invalid.";
+                    return false;
+                }
+
+                var bytes = reader.ReadBytes(byteLength);
+                if (bytes.Length != byteLength)
+                {
+                    error = "Packet world interaction message is incomplete.";
+                    return false;
+                }
+
+                value = new UTF8Encoding(false, true).GetString(bytes);
+                if (value.Length > maximumLength)
+                {
+                    error = "Packet world interaction message exceeds its character limit.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Packet world interaction message is incomplete.";
+                return false;
+            }
+            catch (DecoderFallbackException)
+            {
+                error = "Packet world interaction message is not valid UTF-8.";
+                return false;
+            }
         }
 
         private static bool IsValidWorldInteractionClosed(RealtimeWorldInteractionClosed closed)

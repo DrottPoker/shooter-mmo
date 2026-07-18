@@ -184,6 +184,30 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void LifecycleCompletionPreservesCommittedMessageAndItemRevision()
+        {
+            var state = new WorldInteractionClientState();
+            var operationId = Guid.NewGuid();
+            var interactionId = Guid.NewGuid();
+            state.Begin(operationId);
+            var result = new RealtimeWorldInteractionResult(
+                operationId,
+                interactionId,
+                RealtimeWorldInteractionOperationKind.CapabilityAction,
+                true,
+                3,
+                null,
+                "Insurance applied.",
+                42);
+
+            Assert.That(state.TryComplete(result, out var error), Is.True, error);
+            Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
+            Assert.That(state.LastErrorCode, Is.Empty);
+            Assert.That(state.LastMessage, Is.EqualTo("Insurance applied."));
+            Assert.That(result.ItemStateRevision, Is.EqualTo(42));
+        }
+
+        [Test]
         public void DirectCrosshairCandidateWinsAndSphereToleranceIsFallback()
         {
             var direct = new FakeTarget("Direct");

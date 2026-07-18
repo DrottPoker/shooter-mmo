@@ -173,7 +173,7 @@ public sealed class WorldActorRuntimeTests
     }
 
     [Fact]
-    public void CapabilityDispatchUsesTypedHandlersAndDeferredDefaults()
+    public async Task CapabilityDispatchUsesTypedHandlersAndDeferredDefaults()
     {
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
@@ -195,8 +195,18 @@ public sealed class WorldActorRuntimeTests
         var vendor = actor.Definition.Capabilities.Single(value =>
             value.Kind == WorldActorCapabilityKindIds.Vendor);
 
-        var deferred = capabilityRegistry.Dispatch(session, actor, dialogue);
-        var handled = capabilityRegistry.Dispatch(session, actor, vendor);
+        var deferred = await capabilityRegistry.DispatchAsync(
+            session,
+            actor,
+            dialogue,
+            CreateCapabilityIntent(session, actor, dialogue),
+            CancellationToken.None);
+        var handled = await capabilityRegistry.DispatchAsync(
+            session,
+            actor,
+            vendor,
+            CreateCapabilityIntent(session, actor, vendor),
+            CancellationToken.None);
 
         Assert.False(deferred.Succeeded);
         Assert.Equal("world_interaction_capability_deferred", deferred.Code);
@@ -732,12 +742,37 @@ public sealed class WorldActorRuntimeTests
         public RealtimeWorldActorCapabilityKind Kind =>
             RealtimeWorldActorCapabilityKind.Vendor;
 
-        public WorldActorCapabilityDispatchResult Execute(
-            WorldActorCapabilityOperationContext context)
+        public Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
+            WorldActorCapabilityOperationContext context,
+            CancellationToken cancellationToken)
         {
             Assert.Equal(WorldActorCapabilityKindIds.Vendor, context.Capability.Kind);
-            return new WorldActorCapabilityDispatchResult(true, string.Empty, string.Empty);
+            return Task.FromResult(
+                new WorldActorCapabilityDispatchResult(true, string.Empty, string.Empty));
         }
+    }
+
+    private static RealtimeWorldInteractionIntent CreateCapabilityIntent(
+        ActiveSimulationSession session,
+        WorldActorRuntimeState actor,
+        WorldActorCapabilityDefinition capability)
+    {
+        var summary = new WorldActorCapabilityRegistry(
+                new DefaultWorldActorCapabilityAvailabilityPolicy())
+            .BuildSummary(session, actor);
+        var protocolCapability = summary.Capabilities.Single(value =>
+            string.Equals(value.Id, capability.Id, StringComparison.Ordinal));
+        return RealtimeWorldInteractionIntent.CreateCapabilityAction(
+            Guid.NewGuid(),
+            session.SimulationSessionId,
+            Guid.NewGuid(),
+            RealtimeWorldInteractionTargetKind.WorldActor,
+            actor.NetworkEntityId,
+            actor.RuntimeActorId,
+            actor.InteractionRevision,
+            protocolCapability.Id,
+            protocolCapability.Kind,
+            protocolCapability.Revision);
     }
 
     private sealed class EmptyCollisionWorld : ICollisionWorld

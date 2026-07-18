@@ -2,12 +2,13 @@
 
 Last updated: 2026-07-18
 
-Status: Locked design target; Phases 1 through 12 content, authoring, schema,
+Status: Locked design target; Phases 1 through 13 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
 transaction kernel, offline account APIs, carry-state delivery, and shared
 encumbrance, realtime item mutation, Unity inventory foundation, death
 partition, durable player-corpse custody, concurrent corpse looting, shared
-world actors, and authoritative interaction implemented
+world actors, authoritative interaction, insurance NPC lifecycle, and quest
+item grant lifecycle implemented
 
 ## Purpose
 
@@ -746,7 +747,7 @@ control flow.
 ## Explicitly Not Implemented Yet
 
 This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 12 now implement the neutral catalog, structural
+claim. Phases 1 through 13 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
@@ -803,10 +804,16 @@ ordering. Unity assembles protocol-v11 presence, complete snapshots, slot tags,
 and committed deltas without applying optimistic custody. The generic capsule
 and uGUI are replaceable presentation.
 
-No vendor, gathering, insurance purchase, quest gameplay, or combat death
-producer calls the player-death boundary yet. Final corpse art, configurable Mob
-corpse persistence, and insurance NPC behavior remain later phases. Phase 12
-world actors, shared crosshair targeting, one-active-interaction lease, and
-authoritative capability discovery are implemented. Deferred capability
-handlers return an explicit server failure and do not simulate later business
-behavior. No Zone or Layer identity was introduced.
+Phase 13 adds the live insurance and quest item-lifecycle bridge on the Phase 12
+NPC interaction. Insurance pricing is server-owned and charged atomically with
+the policy. Explicit removal preserves item identity. Quest accept, abandon,
+and reaccept use one exact protected grant lineage. Safe item and Recovery
+source labels expose lifecycle meaning without exposing raw lineage ids.
+
+No vendor, gathering, quest progression, or combat death producer calls the
+player-death boundary yet. Final corpse art and configurable Mob corpse
+persistence remain later phases. Phase 13 routes insurance and quest item
+lifecycle actions through the Phase 12 world actor, shared crosshair targeting,
+one-active-interaction lease, and authoritative capability dispatch. AuthService
+owns the atomic insurance charge, policy mutation, exact quest grant lineage,
+and audit. No Zone or Layer identity was introduced.

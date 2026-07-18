@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "catalogId": "core",
   "worldId": "local-world-1",
-  "revision": "5fbec3761590d4eef3281fc84bd96a0bc339ff8b61a3c0b2979f42b26a73c9bc",
+  "revision": "0bcc36a3c3766670e87da7730dd8b89de3918dcced964e347b60e7439ac24322",
   "factions": [
     {
       "id": "city",
@@ -44,7 +44,7 @@
       "dormancyRange": 64,
       "activeTickRateHz": 10,
       "dormantTickRateHz": 0.5,
-      "structuralFingerprint": "c07ac939a884933fe81847676c04423a3f286a246bdb3f1f9e79eb27465930d1"
+      "structuralFingerprint": "f1a02d94afb10fd150257a3e46727fb8a0e2f799e4e106c2546e53c3f85f980b"
     }
   ],
   "respawnProfiles": [
@@ -52,7 +52,7 @@
       "id": "mob.normal",
       "delaySeconds": 30,
       "populationLimit": 32,
-      "structuralFingerprint": "5c7bc239d2ab3432d7ee00c2e9684a124dffb7ea8122033491fc976a5234c13b"
+      "structuralFingerprint": "834a2190ee0f2699738bac72b5cdbdb49342a8f0decb182004fce8fccbf50da4"
     }
   ],
   "actors": [
@@ -79,7 +79,7 @@
       "capabilities": [],
       "activityProfileId": "mob.standard",
       "respawnProfileId": "mob.normal",
-      "structuralFingerprint": "074e288ca07b16d55e4c1ab16fc302236aef6b254b45c61b75f208116f04ffa5"
+      "structuralFingerprint": "587cc5232a277b2e209aadae3ba1599441d1670233e6ac6f8b77e2caf71daa13"
     },
     {
       "id": "npc.city_guard",
@@ -117,7 +117,7 @@
       ],
       "activityProfileId": "",
       "respawnProfileId": "",
-      "structuralFingerprint": "b8bd4870dec580e2a136b88805155e3a5e52a290cc84ec741a8737f1942e6a02"
+      "structuralFingerprint": "8989b9cb27675b56b84d68a72c43f6ba95402131f58aec4e2bf121549c469074"
     },
     {
       "id": "npc.city_services",
@@ -191,7 +191,7 @@
       ],
       "activityProfileId": "",
       "respawnProfileId": "",
-      "structuralFingerprint": "ac8373b456c80f4d164104ac7b9568ac43caea690f05589c817b48ed54292fad"
+      "structuralFingerprint": "80392f19969c312089fc8d87d848fdb81d57c2806d9c2a94b4d1f9edb6b84ab9"
     }
   ],
   "spawnSources": [
@@ -213,7 +213,7 @@
       "columns": 2,
       "spacing": 2,
       "seed": 0,
-      "structuralFingerprint": "5d92c84a5e05aff11e869093b7ff60b3be5bd3aa3bc96af1f861013875cdfbbb"
+      "structuralFingerprint": "8af8658fd4f14c6898e48bffb664c1fc0338d0930c5b34c3690eef0b5e744396"
     },
     {
       "id": "local.city_services",
@@ -233,7 +233,7 @@
       "columns": 1,
       "spacing": 0,
       "seed": 0,
-      "structuralFingerprint": "0325cfa59da86d40ee197c73d3f879a5dd4ceb13f61a363d602540a555c364f2"
+      "structuralFingerprint": "1ad7f0a8b99c92c8ada22b5cb444fb9067bd362ce36781f19272893a59071d83"
     },
     {
       "id": "local.feral_wolves",
@@ -253,7 +253,7 @@
       "columns": 0,
       "spacing": 0,
       "seed": 1201,
-      "structuralFingerprint": "da18ffc3d30983529a4febfaab826f183c20f4c79ef67930c70d1166371e3e21"
+      "structuralFingerprint": "d689275384654db8125738990cec31befbb71ea6e656b5ce07010add55e7d83e"
     }
   ],
   "spawnInstances": [
@@ -266,7 +266,7 @@
       "z": -8,
       "yawDegrees": 45,
       "patrolPathId": "",
-      "structuralFingerprint": "d273a827806d69aca6ee618c3cb89224148b39026f9088c7cd0a4e4f96b48406"
+      "structuralFingerprint": "dcd88a16065592c4bcab667ead41054d15f19f62bb7bf7824a67d6eee73d8721"
     },
     {
       "id": "local.city_guards:0001",
@@ -277,7 +277,7 @@
       "z": -8,
       "yawDegrees": 45,
       "patrolPathId": "",
-      "structuralFingerprint": "bf81aabb4570a714f7a1d4e890b5f6190cd0e6e6ce7869a96f72b94b6039fc31"
+      "structuralFingerprint": "0f70927f7b7539e351cdec93f6a834c291ae60cd264d0cddf448fc32e0d03970"
     },
     {
       "id": "local.city_services:0000",
@@ -288,7 +288,7 @@
       "z": -1,
       "yawDegrees": 270,
       "patrolPathId": "",
-      "structuralFingerprint": "5cf5f670fc44a4a75d552493cf177574c2de03cc47a8b720470629c788e8bed9"
+      "structuralFingerprint": "a08d5372c4e408d9749e7822511c245090880ba64b132211102f8e8d245b5f79"
     },
     {
       "id": "local.feral_wolves:0000",
@@ -299,7 +299,7 @@
       "z": 10.440076,
       "yawDegrees": 180,
       "patrolPathId": "local.wolf_patrol",
-      "structuralFingerprint": "2069d7e149c91a1fa57c59c98748a220b4b294ecacaed9b8558e962540ce4f78"
+      "structuralFingerprint": "fc31076fb49e55f83848d0d226ab78c765eb1fda2c4718df639d5e8cc1726194"
     },
     {
       "id": "local.feral_wolves:0001",
@@ -310,7 +310,7 @@
       "z": 8.883711,
       "yawDegrees": 180,
       "patrolPathId": "local.wolf_patrol",
-      "structuralFingerprint": "b278c8ff347440ccd103652c851f2e9ebf0bd783c7f78180412c30a8d8c0c4da"
+      "structuralFingerprint": "12bc092c4c7258365d998ba75a30e1ffa08cde900ee21d378a6e0e49d5a4a541"
     }
   ],
   "patrolPaths": [
@@ -336,7 +336,7 @@
           "waitSeconds": 1
         }
       ],
-      "structuralFingerprint": "0ea573dfccc4be978b2e39267396d04c99779f8226e2b150067290b1705ae402"
+      "structuralFingerprint": "9dadabd1bc0669ba1bafe75b026178e73f501a7f7f28e016b88cb18d17128185"
     }
   ]
 }

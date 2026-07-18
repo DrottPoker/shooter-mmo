@@ -43,7 +43,8 @@ public sealed record ItemInstanceSnapshotResponse(
 
 public sealed record ItemPolicySummaryResponse(
     string PolicyKind,
-    string Status);
+    string Status,
+    string ProtectionSource);
 
 public sealed record EquippedBagSnapshotResponse(
     ItemInstanceSnapshotResponse Item,

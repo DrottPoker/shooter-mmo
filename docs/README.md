@@ -48,9 +48,10 @@ operations, and future design do not drift into duplicate descriptions.
   boundary, persistent Unity inventory foundation, idempotent death partition,
   durable player corpses, worker restart restoration, and audited expiry are also
   complete, together with concurrent bidirectional corpse interaction. Phase 12
-  adds the implemented deterministic actor content and tools, bounded worker
-  actors, protocol version `12`, shared crosshair targeting, and authoritative
-  NPC interaction.
+  adds deterministic actor content and tools, bounded worker actors, shared
+  crosshair targeting, and authoritative NPC interaction. Phase 13 adds
+  protocol version `13` and insurance plus quest item-lifecycle handlers on that
+  interaction.
   Former Phases 12 through 14 are now Phases 13 through 15.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and

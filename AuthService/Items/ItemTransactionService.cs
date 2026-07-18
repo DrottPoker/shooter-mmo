@@ -245,7 +245,15 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
             : definition.RuntimeDefinition.Id;
         if (hasPolicySourceKind)
         {
-            context.EnsureSystemAuthority();
+            if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
+            {
+                context.EnsureQuestNpcAccess();
+            }
+            else
+            {
+                context.EnsureSystemAuthority();
+            }
+
             if (!string.Equals(
                     policySourceKind,
                     ItemPolicySourceKinds.QuestGrant,
@@ -1318,7 +1326,6 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
         ApplyItemPolicyCommand command,
         CancellationToken cancellationToken)
     {
-        context.EnsureSystemAuthority();
         if (string.IsNullOrWhiteSpace(command.PolicyKind)
             || string.IsNullOrWhiteSpace(command.SourceKind)
             || string.IsNullOrWhiteSpace(command.SourceId))
@@ -1344,6 +1351,31 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
         var policyKind = command.PolicyKind.Trim();
         if (string.Equals(policyKind, ItemPolicyIds.Insured, StringComparison.Ordinal))
         {
+            if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
+            {
+                context.EnsureInsuranceNpcAccess();
+                if (command.Price <= 0
+                    || !string.Equals(
+                        command.SourceKind.Trim(),
+                        ItemPolicySourceKinds.InsuranceService,
+                        StringComparison.Ordinal))
+                {
+                    ItemTransactionContext.Reject(
+                        ItemTransactionErrorCodes.ItemPolicyRestricted,
+                        "NPC insurance requires a positive server-owned price and insurance lineage.");
+                }
+            }
+            else
+            {
+                context.EnsureSystemAuthority();
+                if (command.Price != 0)
+                {
+                    ItemTransactionContext.Reject(
+                        ItemTransactionErrorCodes.ItemPolicyRestricted,
+                        "System insurance fixtures cannot charge character currency.");
+                }
+            }
+
             if (!ItemPolicyRules.CanApplyInsurance(definition.RuntimeDefinition))
             {
                 ItemTransactionContext.Reject(
@@ -1360,6 +1392,16 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
                 ItemTransactionErrorCodes.ItemPolicyRestricted,
                 "The requested item policy kind is unsupported.");
         }
+        else
+        {
+            context.EnsureSystemAuthority();
+            if (command.Price != 0)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.ItemPolicyRestricted,
+                    "Protected item grants cannot charge insurance currency.");
+            }
+        }
 
         var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
         if (policies.Any(policy =>
@@ -1369,6 +1411,33 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemPolicyRestricted,
                 "The item already has an active policy of the requested kind.");
+        }
+
+        if (command.Price > 0)
+        {
+            var currencyBefore = await context.Connection.QuerySingleAsync<long>(
+                new CommandDefinition(
+                    "select currency from characters where id = @CharacterId for update;",
+                    new { command.CharacterId },
+                    context.Transaction,
+                    cancellationToken: cancellationToken));
+            if (currencyBefore < command.Price)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.CurrencyInsufficient,
+                    "The character does not have enough currency for this insurance policy.");
+            }
+
+            var currencyAfter = currencyBefore - command.Price;
+            await context.Connection.ExecuteAsync(new CommandDefinition(
+                "update characters set currency = @Currency where id = @CharacterId;",
+                new { command.CharacterId, Currency = currencyAfter },
+                context.Transaction,
+                cancellationToken: cancellationToken));
+            context.AddMetadataAudit(
+                "item_insurance_currency_charged",
+                new { command.CharacterId, Currency = currencyBefore },
+                new { command.CharacterId, Currency = currencyAfter, command.Price });
         }
 
         var beforeState = await context.CaptureItemStateJsonAsync(
@@ -1418,7 +1487,14 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
         RemoveInsurancePolicyCommand command,
         CancellationToken cancellationToken)
     {
-        context.EnsureSystemAuthority();
+        if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
+        {
+            context.EnsureInsuranceNpcAccess();
+        }
+        else
+        {
+            context.EnsureSystemAuthority();
+        }
         await context.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
@@ -1479,7 +1555,14 @@ public sealed partial class ItemTransactionService(NpgsqlDataSource dataSource)
         AbandonQuestItemsCommand command,
         CancellationToken cancellationToken)
     {
-        context.EnsureSystemAuthority();
+        if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
+        {
+            context.EnsureQuestNpcAccess();
+        }
+        else
+        {
+            context.EnsureSystemAuthority();
+        }
         if (string.IsNullOrWhiteSpace(command.QuestGrantId))
         {
             ItemTransactionContext.Reject(

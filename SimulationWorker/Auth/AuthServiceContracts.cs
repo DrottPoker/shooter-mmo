@@ -46,7 +46,8 @@ public sealed record SimulationSessionLeaseResponse(
 public sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
-    bool InsuranceNpc);
+    bool InsuranceNpc,
+    bool QuestNpc = false);
 
 public sealed record SimulationItemRevisionExpectation(
     Guid ItemInstanceId,
@@ -73,7 +74,9 @@ public sealed record SimulationItemOperationRequest(
     string? EquipmentSlotId = null,
     Guid? RecoveryDeliveryId = null,
     long? ExpectedRecoveryDeliveryRevision = null,
-    IReadOnlyList<SimulationItemRevisionExpectation>? Items = null);
+    IReadOnlyList<SimulationItemRevisionExpectation>? Items = null,
+    Guid? InteractionSessionId = null,
+    string? CapabilityId = null);
 
 public sealed record SimulationPlayerDeathRequest(
     Guid OperationId,

@@ -15,6 +15,7 @@ public static class ItemTransactionErrorCodes
     public const string ItemPolicyRestricted = "item_policy_restricted";
     public const string ItemPolicyNotFound = "item_policy_not_found";
     public const string QuestGrantInvalid = "quest_grant_invalid";
+    public const string CurrencyInsufficient = "currency_insufficient";
     public const string ItemDestroyForbidden = "item_destroy_forbidden";
     public const string BagNotEmpty = "bag_not_empty";
     public const string BagStateChanged = "bag_state_changed";

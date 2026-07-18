@@ -1,5 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using ShooterMmo.GameProtocol;
 using ShooterMmo.Gameplay;
+using ShooterMmo.Items;
+using ShooterMmo.WorldData.Items;
 using ShooterMmo.WorldActors;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -20,11 +25,13 @@ namespace ShooterMmo.Ui
         private Text prompt;
         private Font font;
         private ThirdPersonCameraController playerCamera;
+        private InventoryClientController inventoryController;
         private bool cursorReleased;
 
         private void Start()
         {
             interactionController = ShooterMmoClientBootstrap.WorldInteractionController;
+            inventoryController = ShooterMmoClientBootstrap.InventoryController;
             targetingController = FindAnyObjectByType<WorldInteractionTargetingController>();
             if (interactionController != null)
             {
@@ -34,6 +41,11 @@ namespace ShooterMmo.Ui
             if (targetingController != null)
             {
                 targetingController.Changed += Rebuild;
+            }
+
+            if (inventoryController != null)
+            {
+                inventoryController.State.Changed += Rebuild;
             }
 
             BuildUi();
@@ -63,6 +75,11 @@ namespace ShooterMmo.Ui
             if (targetingController != null)
             {
                 targetingController.Changed -= Rebuild;
+            }
+
+            if (inventoryController != null)
+            {
+                inventoryController.State.Changed -= Rebuild;
             }
 
             SetCursorReleased(false);
@@ -154,6 +171,18 @@ namespace ShooterMmo.Ui
                 for (var index = 0; index < active.Capabilities.Length; index++)
                 {
                     var capability = active.Capabilities[index];
+                    if (capability.Kind == RealtimeWorldActorCapabilityKind.Insurance)
+                    {
+                        DrawInsuranceCapability(capability);
+                        continue;
+                    }
+
+                    if (capability.Kind == RealtimeWorldActorCapabilityKind.QuestOffer)
+                    {
+                        DrawQuestCapability(capability);
+                        continue;
+                    }
+
                     var label = capability.DisplayName
                         + (capability.IsAvailable ? string.Empty : " (Unavailable)");
                     AddButton(
@@ -178,6 +207,165 @@ namespace ShooterMmo.Ui
                 if (active == null && state.PendingOperationId == Guid.Empty)
                 {
                     AddButton("Dismiss", true, state.ClearMessage);
+                }
+            }
+        }
+
+        private void DrawInsuranceCapability(RealtimeWorldActorCapability capability)
+        {
+            AddText("Insurance", 19, TextAnchor.MiddleLeft);
+            var state = inventoryController?.State;
+            if (!capability.IsAvailable || state?.FullSnapshot == null || state.Catalog == null)
+            {
+                AddText(
+                    capability.IsAvailable
+                        ? "Authoritative inventory state is loading."
+                        : "Insurance is currently unavailable.",
+                    14,
+                    TextAnchor.MiddleLeft);
+                inventoryController?.EnsureFullState();
+                return;
+            }
+
+            var eligible = CollectOwnedItems(state.FullSnapshot)
+                .Where(item => state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                    && ItemPolicyRules.CanApplyInsurance(definition))
+                .OrderBy(item => state.Catalog.GetDisplayName(item.DefinitionId), StringComparer.Ordinal)
+                .ThenBy(item => item.ItemInstanceId)
+                .ToArray();
+            if (eligible.Length == 0)
+            {
+                AddText("No insurance-eligible owned items.", 14, TextAnchor.MiddleLeft);
+                return;
+            }
+
+            foreach (var item in eligible)
+            {
+                var insured = item.Policies.Any(policy =>
+                    string.Equals(policy.Kind, ItemPolicyIds.Insured, StringComparison.Ordinal)
+                    && string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal));
+                var action = insured
+                    ? RealtimeNpcLifecycleActionKind.RemoveInsurance
+                    : RealtimeNpcLifecycleActionKind.ApplyInsurance;
+                var label = (insured ? "Insured, remove: " : "Insure: ")
+                    + state.Catalog.GetDisplayName(item.DefinitionId);
+                AddButton(
+                    label,
+                    state.CanMutate,
+                    () => SubmitLifecycle(
+                        capability.Id,
+                        action,
+                        state.KnownItemStateRevision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        Guid.Empty,
+                        -1));
+            }
+        }
+
+        private void DrawQuestCapability(RealtimeWorldActorCapability capability)
+        {
+            AddText("Quest item lifecycle", 19, TextAnchor.MiddleLeft);
+            var state = inventoryController?.State;
+            if (!capability.IsAvailable || state?.FullSnapshot == null)
+            {
+                AddText(
+                    capability.IsAvailable
+                        ? "Authoritative inventory state is loading."
+                        : "Quest lifecycle is currently unavailable.",
+                    14,
+                    TextAnchor.MiddleLeft);
+                inventoryController?.EnsureFullState();
+                return;
+            }
+
+            AddButton(
+                "Accept quest and grant required item",
+                state.CanMutate,
+                () => SubmitLifecycle(
+                    capability.Id,
+                    RealtimeNpcLifecycleActionKind.AcceptQuest,
+                    state.KnownItemStateRevision,
+                    Guid.Empty,
+                    0,
+                    state.FullSnapshot.PermanentInventory.ContainerId,
+                    -1));
+            AddButton(
+                "Abandon quest and remove its grant lineage",
+                state.CanMutate,
+                () => SubmitLifecycle(
+                    capability.Id,
+                    RealtimeNpcLifecycleActionKind.AbandonQuest,
+                    state.KnownItemStateRevision,
+                    Guid.Empty,
+                    0,
+                    Guid.Empty,
+                    -1));
+        }
+
+        private void SubmitLifecycle(
+            string capabilityId,
+            RealtimeNpcLifecycleActionKind action,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            Guid destinationContainerId,
+            int destinationSlotIndex)
+        {
+            if (!interactionController.TryExecuteCapability(
+                    capabilityId,
+                    action,
+                    expectedCharacterRevision,
+                    itemInstanceId,
+                    expectedItemRevision,
+                    destinationContainerId,
+                    destinationSlotIndex,
+                    out var error))
+            {
+                interactionController.State.SetLocalError(
+                    "world_interaction_client_rejected",
+                    error);
+            }
+        }
+
+        private static IReadOnlyCollection<InventoryItem> CollectOwnedItems(
+            CharacterInventorySnapshot snapshot)
+        {
+            var items = new Dictionary<Guid, InventoryItem>();
+            AddContainerItems(snapshot.PermanentInventory, items);
+            AddContainerItems(snapshot.Bank, items);
+            AddContainerItems(snapshot.SecureContainer?.Contents, items);
+            if (snapshot.EquippedBag != null)
+            {
+                items[snapshot.EquippedBag.Item.ItemInstanceId] = snapshot.EquippedBag.Item;
+                AddContainerItems(snapshot.EquippedBag.Contents, items);
+            }
+
+            foreach (var slot in snapshot.Equipment)
+            {
+                if (slot.Item != null)
+                {
+                    items[slot.Item.ItemInstanceId] = slot.Item;
+                }
+            }
+
+            return items.Values;
+        }
+
+        private static void AddContainerItems(
+            InventoryContainer container,
+            IDictionary<Guid, InventoryItem> items)
+        {
+            if (container == null)
+            {
+                return;
+            }
+
+            foreach (var slot in container.Slots)
+            {
+                if (slot.Item != null)
+                {
+                    items[slot.Item.ItemInstanceId] = slot.Item;
                 }
             }
         }

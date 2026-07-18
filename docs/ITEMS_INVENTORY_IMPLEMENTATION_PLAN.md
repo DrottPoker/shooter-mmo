@@ -2,8 +2,7 @@
 
 Last updated: 2026-07-18
 
-Status: Approved delivery baseline, Phases 1 through 12 implemented, Phase 12
-final verification in progress
+Status: Approved delivery baseline, Phases 1 through 13 implemented
 
 ## Purpose
 
@@ -1435,7 +1434,7 @@ without changing its custody or protocol-v11 mutation contracts.
 
 ## Phase 12: Scalable World Actors, NPCs, Mobs, And Interaction Foundation
 
-Status: Implemented 2026-07-18, final full-suite verification in progress
+Status: Completed 2026-07-18
 
 Canonical contract:
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md)
@@ -1640,7 +1639,7 @@ behavior has leaked into the foundation.
 
 ## Phase 13: Insurance And Quest Lifecycle Integration
 
-Status: Planned, not implemented
+Status: Completed 2026-07-18
 
 ### Work
 
@@ -1667,9 +1666,121 @@ Status: Planned, not implemented
 - Quest abandonment removes only the correct grant lineage.
 - Protected quest items cannot use the generic destroy action.
 
+### Implementation Record
+
+- GameProtocol version `13` adds typed insurance apply or remove and quest
+  accept or abandon payloads to the existing capability action. It preserves
+  the Phase 12 interaction session, actor identity, target revision, capability
+  revision, range, and line-of-sight fences.
+- SimulationWorker registers async insurance, quest-offer, and explicit
+  quest-turn-in handlers. Only the insurance and quest item-lifecycle actions
+  implemented in this phase cross the service-authenticated AuthService
+  boundary. Quest completion remains unavailable because progression is not a
+  Phase 13 item-lifecycle operation.
+- AuthService maps those trusted worker requests into the existing item
+  transaction kernel. Insurance price is server-owned configuration, charged
+  atomically with policy creation, and recorded in the operation audit.
+  Ownership, definition eligibility, active-policy state, exact live session,
+  worker runtime, Shard, assignment, and NPC access are revalidated.
+- Quest acceptance uses one configured grant id and protected quest item
+  definition. Duplicate active acceptance returns the existing grant,
+  abandonment removes only that lineage, and later reacceptance creates one new
+  protected item.
+- Active insurance continues to deny owner transfer, trade, auction, and vendor
+  sale through shared WorldData policy capabilities. Explicit NPC removal marks
+  the policy removed without replacing the item instance.
+- Item snapshots expose a safe protection-source label without exposing raw
+  quest or insurance lineage ids. The temporary Unity panels label protected
+  and insured items plus the source of each Recovery delivery.
+
+### Verification Gate
+
+Run the repository verification sequence from the repository root:
+
+```powershell
+dotnet restore ShooterMmo.slnx --locked-mode
+dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
+powershell -ExecutionPolicy Bypass -File Tools/Verify-DependencyPolicy.ps1
+dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet run --project Tools/ItemCatalogCompiler --configuration Release --no-build -- `
+  WorldData/Authoring/Items/core.item-catalog.json `
+  WorldData/Runtime/Items/core.item-catalog.json `
+  --verify
+dotnet run --project Tools/WorldCollisionCompiler --configuration Release --no-build -- `
+  WorldData/Authoring/local-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  --verify
+dotnet run --project Tools/WorldActorCompiler --configuration Release --no-build -- --verify
+```
+
+Start the isolated PostgreSQL test database and run every backend test:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d --wait
+$testConnectionLine = Get-Content .env |
+  Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" } |
+  Select-Object -First 1
+$env:SHOOTER_MMO_TEST_POSTGRES = $testConnectionLine.Split("=", 2)[1]
+dotnet test ShooterMmo.slnx --configuration Release --no-build
+docker compose -f docker-compose.test.yml down
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+```
+
+Run all licensed Unity suites:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: all commands exit successfully, no integration test is
+skipped, and both Unity EditMode and PlayMode suites pass.
+
+Verified 2026-07-18: locked restore, formatter verification, dependency policy,
+all three content verifiers, and the warning-free Release build passed. The
+isolated PostgreSQL run passed `385/385` backend tests with no skips. Licensed
+Unity `6000.5.2f1` passed `93/93` EditMode and `2/2` PlayMode tests.
+
+### Manual Test Gate
+
+1. While the test character is offline, use
+   `Shooter MMO > Tools > Inventory Item Grants` to grant
+   `weapon.training_rifle` into a free Permanent Inventory slot.
+2. Give the local development character at least `200` currency. With the
+   default local PostgreSQL values, run
+   `docker exec shooter_mmo_postgres psql -U shooter_mmo -d shooter_mmo -c
+   "update characters set currency = 500 where name = 'YOUR CHARACTER';"`.
+   Expected result: PostgreSQL reports one updated row.
+3. Start AuthService and SimulationWorker, join `local-shard-1`, approach Mira
+   within `3.0` metres, point the crosshair at her, and press `E`. Expected
+   result: the authoritative interaction opens and displays Insurance plus
+   Quest item lifecycle actions.
+4. Select the rifle insurance action. Expected result: the committed refresh
+   labels the same item `Insured` with source `Insurance NPC`. Repeating apply
+   is unavailable in the UI and is rejected by the server if a stale request is
+   replayed. Trade, auction, and vendor capability checks remain false while
+   the policy is active.
+5. Select the explicit remove action. Expected result: the same item id remains,
+   the insurance label disappears after refresh, and normal transfer
+   capabilities are restored.
+6. Select `Accept quest and grant required item`. Expected result: one Signal
+   Transponder appears as `Protected` with source `Quest grant`. Accept again
+   and verify no second item appears.
+7. Attempt the generic destroy action on the protected quest item. Expected
+   result: AuthService rejects it. Select the NPC abandon action and verify only
+   that grant disappears. Accept again and verify exactly one new protected
+   item is granted.
+8. Inspect Recovery Storage after an insured or protected death fixture.
+   Expected result: the delivery heading says either `Recovery source: consumed
+   insurance` or `Recovery source: protected-on-death`. Phase 13 adds no Mob
+   damage, death, loot, or corpse producer, so the existing backend death
+   fixture remains the automated way to create this state without later-phase
+   behavior.
+
 ### Exit Gate
 
-Policy lifecycle is explicit, auditable, and independent from item category.
+Policy lifecycle is explicit, auditable, independent from item category, and
+routed through the existing authoritative NPC interaction session. Phase 14 Mob
+combat, loot, and corpse behavior remains unimplemented.
 
 ## Phase 14: Mob Corpse Variants
 

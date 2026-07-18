@@ -84,6 +84,13 @@ builder.Services.AddSingleton<WorldActorActivityScheduler>();
 builder.Services.AddSingleton<WorldInteractionLeaseRegistry>();
 builder.Services.AddSingleton<IWorldActorCapabilityAvailabilityPolicy,
     DefaultWorldActorCapabilityAvailabilityPolicy>();
+builder.Services.AddSingleton<NpcItemLifecycleCapabilityExecutor>();
+builder.Services.AddSingleton<IWorldActorCapabilityHandler,
+    InsuranceWorldActorCapabilityHandler>();
+builder.Services.AddSingleton<IWorldActorCapabilityHandler,
+    QuestOfferWorldActorCapabilityHandler>();
+builder.Services.AddSingleton<IWorldActorCapabilityHandler,
+    QuestTurnInWorldActorCapabilityHandler>();
 builder.Services.AddSingleton<WorldActorCapabilityRegistry>();
 builder.Services.AddSingleton<WorldActorLineOfSightService>();
 builder.Services.AddSingleton<WorldActorMetrics>();

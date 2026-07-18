@@ -69,9 +69,10 @@ public sealed record SimulationItemTransactionAuthority(
 public sealed record ItemTransactionLiveAccess(
     bool Bank,
     bool RecoveryStorage,
-    bool InsuranceNpc)
+    bool InsuranceNpc,
+    bool QuestNpc = false)
 {
-    public static ItemTransactionLiveAccess None { get; } = new(false, false, false);
+    public static ItemTransactionLiveAccess None { get; } = new(false, false, false, false);
 }
 
 public sealed record ItemTransactionRequest<TCommand>(
@@ -202,7 +203,8 @@ public sealed record ApplyItemPolicyCommand(
     long ExpectedItemRevision,
     string PolicyKind,
     string SourceKind,
-    string SourceId);
+    string SourceId,
+    long Price = 0);
 
 public sealed record RemoveInsurancePolicyCommand(
     Guid CharacterId,

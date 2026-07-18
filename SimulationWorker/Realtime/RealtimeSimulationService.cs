@@ -824,6 +824,9 @@ public sealed class RealtimeSimulationService(
                 case CorpseOperationCompleted corpseCompleted:
                     ProcessCorpseOperationCompleted(corpseCompleted);
                     break;
+                case WorldInteractionOperationCompleted worldInteractionCompleted:
+                    ProcessWorldInteractionOperationCompleted(worldInteractionCompleted);
+                    break;
             }
 
             if (Stopwatch.GetElapsedTime(started) >= budget)
@@ -1180,19 +1183,97 @@ public sealed class RealtimeSimulationService(
         PlayerSimulationEntity entity,
         RealtimeWorldInteractionIntent intent)
     {
-        context.AuthorityOperationInFlight = false;
         if (worldInteractionAuthority is null
-            || !TryGetCurrentPeer(context, out var peer))
+            || !TryGetCurrentPeer(context, out _))
+        {
+            context.AuthorityOperationInFlight = false;
+            return;
+        }
+
+        TrackOperation(CompleteWorldInteractionOperationAsync(
+            context,
+            entity,
+            intent));
+    }
+
+    private async Task CompleteWorldInteractionOperationAsync(
+        PeerContext context,
+        PlayerSimulationEntity entity,
+        RealtimeWorldInteractionIntent intent)
+    {
+        WorldInteractionAuthorityResult result;
+        try
+        {
+            result = await worldInteractionAuthority!.ProcessAsync(
+                context.PeerId,
+                entity,
+                intent,
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "[SIMULATION] Unhandled error while processing world interaction {OperationId}.",
+                intent.OperationId);
+            result = new WorldInteractionAuthorityResult(
+                null,
+                new RealtimeWorldInteractionResult(
+                    intent.OperationId,
+                    intent.InteractionSessionId,
+                    intent.OperationKind,
+                    false,
+                    0,
+                    new RealtimeError(
+                        "world_interaction_failed",
+                        "SimulationWorker could not complete the world interaction.")),
+                null);
+        }
+
+        completedOperations.Enqueue(new WorldInteractionOperationCompleted(
+            context,
+            entity.Session,
+            result));
+    }
+
+    private void ProcessWorldInteractionOperationCompleted(
+        WorldInteractionOperationCompleted completed)
+    {
+        completed.Context.AuthorityOperationInFlight = false;
+        if (!TryGetCurrentPeer(completed.Context, out var peer)
+            || completed.Context.Session is null
+            || completed.Context.Session.SimulationSessionId
+                != completed.Session.SimulationSessionId
+            || !string.Equals(
+                completed.Context.Session.SimulationSessionToken,
+                completed.Session.SimulationSessionToken,
+                StringComparison.Ordinal))
         {
             return;
         }
 
-        var result = worldInteractionAuthority.Process(
-            context.PeerId,
-            entity,
-            intent);
-        SendWorldInteractionResult(peer, result);
-        StartNextAuthorityOperation(context);
+        if (completed.Result.ShouldDisconnect)
+        {
+            SendWorldInteractionResult(peer, completed.Result);
+            var error = completed.Result.Result!.Error!;
+            DisconnectForItemAuthorityFailure(
+                peer,
+                completed.Context,
+                completed.Session,
+                error.Code,
+                error.Message);
+            return;
+        }
+
+        if (entityRegistry.TryGetPlayerByCharacterId(
+                completed.Session.CharacterId,
+                out var entity))
+        {
+            ApplyLatestCarryState(entity!);
+        }
+
+        SendWorldInteractionResult(peer, completed.Result);
+        StartNextAuthorityOperation(completed.Context);
     }
 
     private void SendWorldInteractionResult(
@@ -2724,6 +2805,12 @@ public sealed class RealtimeSimulationService(
         ActiveSimulationSession Session,
         SimulationCorpseInteractionResult Result,
         bool RemoveOpenReservationOnFailure)
+        : RealtimeOperationResult(PeerContext);
+
+    private sealed record WorldInteractionOperationCompleted(
+        PeerContext PeerContext,
+        ActiveSimulationSession Session,
+        WorldInteractionAuthorityResult Result)
         : RealtimeOperationResult(PeerContext);
 
     private abstract record QueuedAuthorityOperation;

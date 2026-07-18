@@ -103,7 +103,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 12 of the slot-based item and world-actor foundation are
+Phases 1 through 13 of the slot-based item and world-actor foundation are
 implemented. Shared content, pure rules, Unity authoring, deterministic baking,
 the transactional PostgreSQL catalog mirror, constrained custody schema, and
 complete empty character item-state bootstrap now exist. AuthService exposes
@@ -121,9 +121,10 @@ absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
 death producer, final corpse art, and final UI art remain later phases. The
 scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
-deterministic WorldData, protocol version `12`, bounded worker state, existing
+deterministic WorldData, protocol version `13`, bounded worker state, existing
 spatial interest, server-authoritative interaction sessions, shared corpse
-targeting, and permanent Unity state below a temporary uGUI panel. Combat,
+targeting, typed insurance and quest item-lifecycle handlers, and permanent
+Unity state below a temporary uGUI panel. Combat,
 durable unique actors, zones, layers, complex terrain meshes, and production
 orchestration remain deferred.
 

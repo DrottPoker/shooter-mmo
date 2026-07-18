@@ -38,6 +38,8 @@ var config = AuthServiceConfig.FromConfiguration(builder.Configuration);
 var developmentSimulationBotOptions = DevelopmentSimulationBotOptions.FromConfiguration(
     builder.Configuration,
     builder.Environment.IsDevelopment());
+var npcItemLifecycleOptions = NpcItemLifecycleOptions.FromConfiguration(
+    builder.Configuration);
 
 builder.Services.AddSingleton(_ =>
 {
@@ -46,6 +48,7 @@ builder.Services.AddSingleton(_ =>
 
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(developmentSimulationBotOptions);
+builder.Services.AddSingleton(npcItemLifecycleOptions);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(ItemCatalogSource.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton<DevelopmentSimulationBotAuthority>();

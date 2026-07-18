@@ -172,6 +172,7 @@ namespace ShooterMmo.Api
     {
         public string policyKind;
         public string status;
+        public string protectionSource;
     }
 
     [Serializable]

@@ -1,5 +1,6 @@
 param(
     [string]$UnityEditorPath = $env:UNITY_EDITOR_PATH,
+    [string]$UnityCliPath = $env:UNITY_CLI_PATH,
     [string]$ProjectPath = (Join-Path $PSScriptRoot "..\shooter-mmorpg-unity-client"),
     [string]$ResultsPath = (Join-Path $PSScriptRoot "..\TestResults\Unity")
 )
@@ -14,7 +15,15 @@ if ([string]::IsNullOrWhiteSpace($UnityEditorPath)) {
     }
 }
 
-if ([string]::IsNullOrWhiteSpace($UnityEditorPath) -or -not (Test-Path -LiteralPath $UnityEditorPath)) {
+if ([string]::IsNullOrWhiteSpace($UnityCliPath) -and ($IsWindows -or $env:OS -eq "Windows_NT")) {
+    $UnityCliPath = Join-Path $env:LOCALAPPDATA "Unity\bin\unity.exe"
+}
+
+$useUnityCli = -not [string]::IsNullOrWhiteSpace($UnityCliPath) -and
+    (Test-Path -LiteralPath $UnityCliPath)
+
+if (-not $useUnityCli -and
+    ([string]::IsNullOrWhiteSpace($UnityEditorPath) -or -not (Test-Path -LiteralPath $UnityEditorPath))) {
     throw "Unity Editor $requiredVersion was not found. Set UNITY_EDITOR_PATH to the Unity executable."
 }
 
@@ -38,22 +47,42 @@ function ConvertTo-ProcessArgument {
 foreach ($platform in @("EditMode", "PlayMode")) {
     $resultFile = Join-Path $ResultsPath "$platform-results.xml"
     $logFile = Join-Path $ResultsPath "$platform-unity.log"
-    Remove-Item -LiteralPath $resultFile, $logFile -Force -ErrorAction SilentlyContinue
-    $arguments = @(
-        "-batchmode",
-        "-nographics",
-        "-projectPath", $resolvedProjectPath,
-        "-runTests",
-        "-testPlatform", $platform,
-        "-testResults", $resultFile,
-        "-logFile", $logFile
-    )
+    $cliLogFile = Join-Path $ResultsPath "$platform-cli.log"
+    Remove-Item -LiteralPath $resultFile, $logFile, $cliLogFile `
+        -Force -ErrorAction SilentlyContinue
+    if ($useUnityCli) {
+        $arguments = @(
+            "--non-interactive",
+            "--no-banner",
+            "test", $resolvedProjectPath,
+            "--mode", $platform,
+            "--output", $resultFile,
+            "--editor-version", $requiredVersion,
+            "--timeout", "900",
+            "--",
+            "-nographics",
+            "-logFile", $logFile
+        )
+    }
+    else {
+        $arguments = @(
+            "-batchmode",
+            "-nographics",
+            "-projectPath", $resolvedProjectPath,
+            "-runTests",
+            "-testPlatform", $platform,
+            "-testResults", $resultFile,
+            "-logFile", $logFile
+        )
+    }
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $UnityEditorPath
+    $startInfo.FileName = if ($useUnityCli) { $UnityCliPath } else { $UnityEditorPath }
     $startInfo.Arguments = ($arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join ' '
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $useUnityCli
+    $startInfo.RedirectStandardError = $useUnityCli
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
     try {
@@ -61,8 +90,18 @@ foreach ($platform in @("EditMode", "PlayMode")) {
             throw "Unity $platform tests could not start the Unity process."
         }
 
+        if ($useUnityCli) {
+            $standardOutput = $process.StandardOutput.ReadToEndAsync()
+            $standardError = $process.StandardError.ReadToEndAsync()
+        }
+
         $process.WaitForExit()
         $exitCode = $process.ExitCode
+        if ($useUnityCli) {
+            $cliLog = $standardOutput.GetAwaiter().GetResult() +
+                $standardError.GetAwaiter().GetResult()
+            [System.IO.File]::WriteAllText($cliLogFile, $cliLog)
+        }
     }
     finally {
         $process.Dispose()
@@ -73,7 +112,8 @@ foreach ($platform in @("EditMode", "PlayMode")) {
             Get-Content -LiteralPath $logFile -Tail 100
         }
 
-        throw "Unity $platform tests failed with exit code $exitCode."
+        $cliHint = if ($useUnityCli) { " Inspect '$cliLogFile' locally." } else { "" }
+        throw "Unity $platform tests failed with exit code $exitCode.$cliHint"
     }
 
     if (-not (Test-Path -LiteralPath $resultFile)) {
@@ -95,4 +135,5 @@ foreach ($platform in @("EditMode", "PlayMode")) {
     Write-Output "Unity $platform tests passed: $($testRun.passed)/$($testRun.total)."
 }
 
-Write-Output "Unity EditMode and PlayMode tests passed with Unity $requiredVersion."
+$runner = if ($useUnityCli) { "the licensed Unity CLI" } else { "the Unity Editor" }
+Write-Output "Unity EditMode and PlayMode tests passed with Unity $requiredVersion through $runner."

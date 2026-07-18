@@ -289,11 +289,12 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 12 content, authoring, schema, catalog mirror, character
+Status: Phases 1 through 13 content, authoring, schema, catalog mirror, character
 bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
 offline account APIs, carry-state delivery, shared encumbrance, and realtime item
-mutation plus Unity inventory integration, death partition, and durable player
-corpse custody plus concurrent corpse interaction implemented
+mutation plus Unity inventory integration, death partition, durable player
+corpse custody, concurrent corpse interaction, and NPC insurance and quest item
+lifecycle implemented
 
 AuthService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -343,11 +344,12 @@ access and exact live-session access are actor requirements enforced while the
 durable character lock is held.
 
 `ItemPolicyService` applies protected-on-death and eligible one-death insurance
-records and removes active insurance through idempotent system transactions.
+records and removes active insurance through idempotent transactions.
 `QuestItemService` grants protected quest items with exact quest-grant lineage,
 suppresses duplicate active grants, and removes only that lineage on abandon.
-These internal services do not add an insurance NPC, quest gameplay runtime, or
-public grant route.
+Phase 13 exposes no account-owned policy or grant route. The live path begins in
+the validated NPC interaction and uses the service-authenticated simulation item
+boundary.
 
 Bag content containers and Bag item rows form one aggregate. Every child command
 locks the Bag item before its child container or item, and aggregate swaps verify
@@ -371,9 +373,12 @@ mutation. The worker applies carry state only from a committed result and never
 writes inventory tables or holds an item collection.
 
 Bank and Recovery Storage operations require a matching worker-validated service
-point. Secure Container operations require no city service. Insurance NPC access
-is represented at the live boundary, but insurance purchase behavior remains a
-later phase.
+point. Secure Container operations require no city service. Insurance and quest
+item-lifecycle operations require a matching Phase 12 interaction session and
+capability handler. The worker asserts only the access already validated by that
+session. AuthService revalidates the live authority tuple, uses server-owned
+insurance price and quest grant configuration, and commits through the same item
+transaction kernel.
 
 SimulationWorker also owns live corpse discovery, proximity, and viewer state.
 The runtime store contains only AuthService-provided corpse identity, transform,
@@ -442,7 +447,7 @@ proposed schema and delivery order in
 
 ### World Actor And Interaction Boundary
 
-Status: Phase 12 foundation implemented
+Status: Phase 12 foundation and Phase 13 item lifecycle integration implemented
 
 Phase 12 extends the repository boundaries without creating a new service or
 topology layer:
@@ -453,7 +458,8 @@ topology layer:
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
   authoritative interaction, range and line-of-sight validation, NPC capability
   dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol uses version `12` for actor presence and interaction messages
+- GameProtocol uses version `13` for actor presence, interaction messages, and
+  typed insurance or quest item-lifecycle actions
   compiled from the same source for .NET and Unity.
 - Unity owns advisory crosshair targeting, immutable replicated actor and
   interaction state, prefab presentation, temporary uGUI, and Editor authoring
@@ -481,10 +487,11 @@ identity required to send reliable actor-specific interest exits, and clear on
 assignment reconstruction or worker shutdown.
 
 The typed capability registry maps every supported capability kind to one
-authoritative handler. Phase 12 installs explicit deferred handlers by default,
-so a capability can be discovered and tested without fabricating vendor, quest,
-crafting, insurance, trainer, bank, or Recovery Storage business success. Later
-phases replace a kind's handler without changing actor identity or targeting.
+authoritative handler. Deferred handlers remain the safe default. Phase 13
+registers async insurance, quest-offer, and explicit quest-turn-in handlers
+without changing actor identity or targeting. Insurance apply or removal and
+quest accept or abandon reuse the established interaction session. Quest
+completion remains unavailable because no progression authority exists yet.
 
 The generic interaction flow is:
 
@@ -521,9 +528,10 @@ that export canonical neutral WorldData.
 
 The existing corpse view and transaction protocols remain authoritative. Phase
 12 registers corpse presentation in the shared client target-selection
-foundation and makes its view consume the shared interaction lease. Vendor
-transactions, insurance and quest lifecycle, complete Mob AI, combat, loot
-generation, and Mob corpse creation remain later phases.
+foundation and makes its view consume the shared interaction lease. Phase 13
+adds policy and quest item lifecycle only. Vendor transactions, quest
+progression, complete Mob AI, combat, loot generation, and Mob corpse creation
+remain later phases.
 
 ## Durable Data Model
 

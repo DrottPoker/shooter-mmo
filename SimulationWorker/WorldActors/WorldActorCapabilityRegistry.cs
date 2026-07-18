@@ -34,19 +34,23 @@ public sealed record WorldActorCapabilitySummary(
 public sealed record WorldActorCapabilityOperationContext(
     ActiveSimulationSession Session,
     WorldActorRuntimeState Actor,
-    WorldActorCapabilityDefinition Capability);
+    WorldActorCapabilityDefinition Capability,
+    RealtimeWorldInteractionIntent Intent);
 
 public sealed record WorldActorCapabilityDispatchResult(
     bool Succeeded,
     string Code,
-    string Message);
+    string Message,
+    long ItemStateRevision = 0,
+    bool ShouldDisconnect = false);
 
 public interface IWorldActorCapabilityHandler
 {
     RealtimeWorldActorCapabilityKind Kind { get; }
 
-    WorldActorCapabilityDispatchResult Execute(
-        WorldActorCapabilityOperationContext context);
+    Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
+        WorldActorCapabilityOperationContext context,
+        CancellationToken cancellationToken);
 }
 
 public sealed class DeferredWorldActorCapabilityHandler(
@@ -54,14 +58,15 @@ public sealed class DeferredWorldActorCapabilityHandler(
 {
     public RealtimeWorldActorCapabilityKind Kind { get; } = kind;
 
-    public WorldActorCapabilityDispatchResult Execute(
-        WorldActorCapabilityOperationContext context)
+    public Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
+        WorldActorCapabilityOperationContext context,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        return new WorldActorCapabilityDispatchResult(
+        return Task.FromResult(new WorldActorCapabilityDispatchResult(
             false,
             "world_interaction_capability_deferred",
-            "This capability handler is intentionally deferred beyond Phase 12.");
+            "This capability handler is intentionally deferred beyond Phase 13."));
     }
 }
 
@@ -132,10 +137,12 @@ public sealed class WorldActorCapabilityRegistry
             capabilities);
     }
 
-    public WorldActorCapabilityDispatchResult Dispatch(
+    public Task<WorldActorCapabilityDispatchResult> DispatchAsync(
         ActiveSimulationSession session,
         WorldActorRuntimeState actor,
-        WorldActorCapabilityDefinition capability)
+        WorldActorCapabilityDefinition capability,
+        RealtimeWorldInteractionIntent intent,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(actor);
@@ -143,16 +150,17 @@ public sealed class WorldActorCapabilityRegistry
         var kind = ToProtocolKind(capability.Kind);
         if (!handlers.TryGetValue(kind, out var handler))
         {
-            return new WorldActorCapabilityDispatchResult(
+            return Task.FromResult(new WorldActorCapabilityDispatchResult(
                 false,
                 "world_interaction_capability_unavailable",
-                "No authoritative handler is registered for this capability.");
+                "No authoritative handler is registered for this capability."));
         }
 
-        return handler.Execute(new WorldActorCapabilityOperationContext(
+        return handler.ExecuteAsync(new WorldActorCapabilityOperationContext(
             session,
             actor,
-            capability));
+            capability,
+            intent), cancellationToken);
     }
 
     private static long ComputeSummaryRevision(

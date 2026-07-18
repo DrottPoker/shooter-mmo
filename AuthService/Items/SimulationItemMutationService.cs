@@ -1,11 +1,16 @@
 using AuthService.Auth;
 using AuthService.Http;
+using ShooterMmo.WorldData.Items;
 
 namespace AuthService.Items;
 
-public sealed class SimulationItemMutationService(ItemTransactionService transactionService)
+public sealed class SimulationItemMutationService(
+    ItemTransactionService transactionService,
+    NpcItemLifecycleOptions? configuredNpcOptions = null)
 {
     public const int MaximumRecoveryClaimItems = 24;
+    private readonly NpcItemLifecycleOptions npcOptions =
+        configuredNpcOptions ?? NpcItemLifecycleOptions.Default;
 
     public async Task<ServiceResult<ItemTransactionResult>> ExecuteAsync(
         string authenticatedWorkerId,
@@ -40,7 +45,8 @@ public sealed class SimulationItemMutationService(ItemTransactionService transac
             new ItemTransactionLiveAccess(
                 request.Access!.Bank,
                 request.Access.RecoveryStorage,
-                request.Access.InsuranceNpc));
+                request.Access.InsuranceNpc,
+                request.Access.QuestNpc));
 
         var operationKind = request.OperationKind!.Trim();
         var operation = operationKind switch
@@ -74,6 +80,22 @@ public sealed class SimulationItemMutationService(ItemTransactionService transac
                 request,
                 cancellationToken),
             ItemOperationKinds.ClaimRecoveryDelivery => ExecuteRecoveryClaimAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.ApplyItemPolicy => ExecuteInsuranceApplyAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.RemoveInsurancePolicy => ExecuteInsuranceRemovalAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.Grant => ExecuteQuestGrantAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.AbandonQuestItems => ExecuteQuestAbandonAsync(
                 actor,
                 request,
                 cancellationToken),
@@ -264,6 +286,98 @@ public sealed class SimulationItemMutationService(ItemTransactionService transac
             : null;
     }
 
+    private Task<ItemTransactionResult>? ExecuteInsuranceApplyAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasItem(request)
+            && HasNpcContext(request, "services.insurance")
+            && request.Access!.InsuranceNpc
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<ApplyItemPolicyCommand>(
+                    request.OperationId,
+                    actor,
+                    new ApplyItemPolicyCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        ItemPolicyIds.Insured,
+                        ItemPolicySourceKinds.InsuranceService,
+                        CreateInsuranceGrantId(request),
+                        npcOptions.InsurancePrice)),
+                cancellationToken)
+            : null;
+    }
+
+    private Task<ItemTransactionResult>? ExecuteInsuranceRemovalAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasItem(request)
+            && HasNpcContext(request, "services.insurance")
+            && request.Access!.InsuranceNpc
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<RemoveInsurancePolicyCommand>(
+                    request.OperationId,
+                    actor,
+                    new RemoveInsurancePolicyCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value)),
+                cancellationToken)
+            : null;
+    }
+
+    private Task<ItemTransactionResult>? ExecuteQuestGrantAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasNpcContext(request, "services.quest_offer")
+            && request.Access!.QuestNpc
+            && request.DestinationContainerId is not null
+            && request.DestinationContainerId != Guid.Empty
+            && request.DestinationSlotIndex is null or >= 0
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<GrantItemCommand>(
+                    request.OperationId,
+                    actor,
+                    new GrantItemCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        npcOptions.QuestItemDefinitionId,
+                        npcOptions.QuestItemQuantity,
+                        request.DestinationContainerId.Value,
+                        request.DestinationSlotIndex,
+                        ItemPolicySourceKinds.QuestGrant,
+                        npcOptions.QuestGrantId)),
+                cancellationToken)
+            : null;
+    }
+
+    private Task<ItemTransactionResult>? ExecuteQuestAbandonAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasNpcContext(request, "services.quest_offer")
+            && request.Access!.QuestNpc
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<AbandonQuestItemsCommand>(
+                    request.OperationId,
+                    actor,
+                    new AbandonQuestItemsCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        npcOptions.QuestGrantId)),
+                cancellationToken)
+            : null;
+    }
+
     private static ServiceResult<ItemTransactionResult>? ValidateCommon(
         Guid simulationSessionId,
         SimulationItemOperationRequest request)
@@ -301,6 +415,24 @@ public sealed class SimulationItemMutationService(ItemTransactionService transac
             && request.DestinationContainerId is not null
             && request.DestinationContainerId != Guid.Empty
             && request.DestinationSlotIndex is null or >= 0;
+    }
+
+    private static bool HasNpcContext(
+        SimulationItemOperationRequest request,
+        string expectedCapabilityId)
+    {
+        return request.InteractionSessionId is not null
+            && request.InteractionSessionId != Guid.Empty
+            && string.Equals(
+                request.CapabilityId,
+                expectedCapabilityId,
+                StringComparison.Ordinal);
+    }
+
+    private static string CreateInsuranceGrantId(SimulationItemOperationRequest request)
+    {
+        return "npc:" + request.InteractionSessionId!.Value.ToString("N")
+            + ":" + request.OperationId.ToString("N");
     }
 
     private static bool IsValidIdentifier(string? value)

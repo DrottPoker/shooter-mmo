@@ -171,6 +171,42 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void MapperPreservesSafeInsuranceProtectionSource()
+        {
+            var response = CreateFullResponse(Guid.NewGuid(), 4);
+            response.bank.slots[0].item = new ItemInstanceSnapshotResponse
+            {
+                itemInstanceId = Guid.NewGuid().ToString(),
+                definitionId = "material.iron_ore",
+                quantity = 1,
+                revision = 2,
+                policies = new[]
+                {
+                    new ItemPolicySummaryResponse
+                    {
+                        policyKind = "insured",
+                        status = "active",
+                        protectionSource = "insurance_npc"
+                    }
+                }
+            };
+
+            Assert.That(
+                InventorySnapshotMapper.TryMap(
+                    response,
+                    catalog,
+                    out var snapshot,
+                    out var error),
+                Is.True,
+                error);
+            Assert.That(snapshot.Bank.Slots[0].Item.Policies.Count, Is.EqualTo(1));
+            var policy = snapshot.Bank.Slots[0].Item.Policies[0];
+            Assert.That(policy.Kind, Is.EqualTo("insured"));
+            Assert.That(policy.Status, Is.EqualTo("active"));
+            Assert.That(policy.ProtectionSource, Is.EqualTo("insurance_npc"));
+        }
+
+        [Test]
         public void RequiredRecoveryItemsRejectJsonNullPlaceholders()
         {
             var response = CreateFullResponse(Guid.NewGuid(), 0);

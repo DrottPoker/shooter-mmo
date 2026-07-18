@@ -631,9 +631,12 @@ Phase 12 adds permanent client state below replaceable presentation:
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
-The actor and interaction messages use protocol version `12`. The persistent
-realtime client must decode them through the shared GameProtocol source and keep
+The actor and interaction messages use protocol version `13`. The persistent
+realtime client decodes them through the shared GameProtocol source and keeps
 the existing explicit mismatch path for older or partially updated clients.
+Phase 13 adds typed insurance apply or remove and quest accept or abandon
+payloads to the existing capability action instead of adding a second NPC or
+item interaction transport.
 
 The `E` input action requests interaction with the current crosshair target or
 closes the current NPC or corpse interaction.
@@ -649,9 +652,18 @@ component, or Mob AI component in Unity. Changing a prefab cannot change actor
 kind, capability, faction, spawn, damage policy, or interaction rules.
 
 The panel displays only the authoritative capability summary received after an
-interaction opens. It may list Talk, Shop, Quests, Crafting, Insurance, Bank, or
-Recovery before those business handlers exist, but it must label unavailable
-handlers and must never simulate a successful transaction locally.
+interaction opens. Insurance actions enumerate eligible items from the
+persistent authoritative inventory snapshot and submit exact character and item
+revisions. Quest item-lifecycle actions submit the exact character revision and
+Permanent Inventory destination. The panel never applies an optimistic policy,
+grant, removal, currency charge, or item deletion. A committed result triggers a
+full inventory refresh at the returned item-state revision.
+
+Inventory policy summaries carry a safe presentation source, not a raw grant or
+insurance lineage id. Temporary item labels distinguish `Insured` from
+`Protected` and render `Insurance NPC`, `Quest grant`, or `Catalog rule` as the
+source. Recovery headings translate the durable source kind into consumed
+insurance or protected-on-death delivery labels.
 
 Current corpse presentation registers with the shared target controller and
 its open view consumes the shared one-active-interaction lease while retaining
@@ -703,6 +715,10 @@ Phase 12 EditMode coverage verifies monotonic actor presence and state,
 reconnect cleanup, operation correlation, authoritative capability summaries,
 direct-ray and spherecast target selection, unrelated-collider filtering, and
 deterministic Actor Studio and Spawn Authoring compiler integration.
+
+Phase 13 coverage round-trips typed lifecycle payloads and committed
+item-revision messages, verifies safe policy-source mapping, and keeps the
+temporary panel below the persistent inventory and interaction controllers.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and

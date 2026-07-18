@@ -3,7 +3,8 @@ namespace AuthService.Items;
 public sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
-    bool InsuranceNpc);
+    bool InsuranceNpc,
+    bool QuestNpc = false);
 
 public sealed record SimulationItemOperationRequest(
     Guid OperationId,
@@ -26,4 +27,6 @@ public sealed record SimulationItemOperationRequest(
     string? EquipmentSlotId = null,
     Guid? RecoveryDeliveryId = null,
     long? ExpectedRecoveryDeliveryRevision = null,
-    IReadOnlyList<ItemRevisionExpectation>? Items = null);
+    IReadOnlyList<ItemRevisionExpectation>? Items = null,
+    Guid? InteractionSessionId = null,
+    string? CapabilityId = null);

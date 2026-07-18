@@ -380,8 +380,8 @@ The first economy should be simple and NPC-driven:
 - Player can sell basic loot or gathered resources.
 - Player can buy basic supplies.
 - Currency is stored persistently and remains with the character on death.
-- One insurance NPC can grant and remove one-death insurance later in the
-  death-loot milestone.
+- One insurance NPC grants and explicitly removes one-death insurance through
+  the implemented authoritative interaction lifecycle.
 
 Auction house, direct player trading, regional markets, and advanced crafting
 should wait until core item and economy transactions are stable.
@@ -561,7 +561,7 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 12 complete
+Status: In progress, item-plan Phases 1 through 13 complete
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -604,11 +604,14 @@ Status: In progress, item-plan Phases 1 through 12 complete
   reliable interest presence, central Mob scheduling, typed capability
   dispatch, authoritative interaction, shared corpse targeting, and permanent
   Unity state beneath temporary presentation are complete.
+- Insurance apply and explicit removal, atomic server-owned pricing, safe policy
+  source labels, quest grant lineage, abandonment cleanup, and idempotent
+  reacceptance now reuse that authoritative NPC interaction foundation.
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
-The next item-plan subphase is Phase 13 insurance and quest lifecycle behavior
-on the shared actor and interaction foundation.
+The next item-plan subphase is Phase 14 Mob corpse variants. It remains outside
+the current implementation.
 
 ### Phase 5: Vendor And Gathering
 

@@ -1423,7 +1423,8 @@ namespace ShooterMmo.WorldData.Actors
 
         private static string Float(float value)
         {
-            return value.ToString("R", CultureInfo.InvariantCulture);
+            var bits = unchecked((uint)BitConverter.ToInt32(BitConverter.GetBytes(value), 0));
+            return bits.ToString("x8", CultureInfo.InvariantCulture);
         }
 
         private static string Fingerprint(params string[] values)

@@ -333,7 +333,8 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             select
                 policy.item_instance_id as "ItemInstanceId",
                 policy.policy_kind as "PolicyKind",
-                policy.status as "Status"
+                policy.status as "Status",
+                policy.source_kind as "SourceKind"
             from item_instance_policies policy
             join item_instances item on item.id = policy.item_instance_id
             where item.container_id = @ContainerId
@@ -395,7 +396,8 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             select
                 policy.item_instance_id as "ItemInstanceId",
                 policy.policy_kind as "PolicyKind",
-                policy.status as "Status"
+                policy.status as "Status",
+                policy.source_kind as "SourceKind"
             from item_instance_policies policy
             join item_instances item on item.id = policy.item_instance_id
             where item.equipped_character_id = @CharacterId
@@ -571,7 +573,19 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             row.Revision,
             policies.Select(policy => new ItemPolicySummaryResponse(
                 policy.PolicyKind,
-                policy.Status)).ToArray());
+                policy.Status,
+                ToProtectionSource(policy.SourceKind))).ToArray());
+    }
+
+    private static string ToProtectionSource(string sourceKind)
+    {
+        return sourceKind switch
+        {
+            ItemPolicySourceKinds.InsuranceService => "insurance_npc",
+            ItemPolicySourceKinds.QuestGrant => "quest_grant",
+            ItemPolicySourceKinds.CatalogDefault => "catalog_default",
+            _ => "system"
+        };
     }
 
     private static int CalculateLoadRatioBasisPoints(long carriedWeight, long capacity)
@@ -663,6 +677,8 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
         public string PolicyKind { get; set; } = string.Empty;
 
         public string Status { get; set; } = string.Empty;
+
+        public string SourceKind { get; set; } = string.Empty;
     }
 
     private sealed class EquipmentSlotRow
