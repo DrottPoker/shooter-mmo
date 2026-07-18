@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Purpose
 
@@ -447,11 +447,11 @@ concurrent inspection, and authoritative looting:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `10` retains carry state on join, later committed
+- Realtime protocol version `11` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, and complete Recovery Storage claim. Version `10` carries
+  destruction, and complete Recovery Storage claim. Version `11` carries
   chunked corpse presence and view state, accepted destination slot tags, open,
   close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag
   aggregate swaps, operation result, delta, and view-closure messages.
@@ -760,6 +760,9 @@ the test connection variable at development or production data.
 
 ## Not Yet Implemented
 
+- The approved Phase 12 WorldData actor and spawn compiler, Actor Studio, Spawn
+  Authoring, SimulationWorker NPC and Mob runtime, actor presence protocol,
+  shared crosshair targeting, and authoritative world-interaction sessions.
 - Development or gameplay item grant routes. The guarded local fixture command
   is intentionally not a route.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
@@ -767,17 +770,19 @@ the test connection variable at development or production data.
 - The authoritative combat death producer and final corpse visuals. The durable
   authenticated death boundary and generic active corpse representation are
   ready, but combat is not fabricated by the current movement-only gameplay.
-- Insurance NPC pricing and purchase behavior or configurable NPC corpse
+- Insurance NPC pricing and purchase behavior or configurable Mob corpse
   persistence. Effective one-death insurance
   consumption inside durable player death is implemented.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.
 - Metric exporter, dashboards, and alerting.
-- Persistent NPC or combat simulation.
+- Durable unique actor state, complete Mob AI, or combat simulation.
 - General terrain mesh and rigid-body collision.
 
 The locked product design and remaining implementation phases for the item
 system are documented in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The approved but unimplemented actor and interaction contract is documented in
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).

@@ -119,9 +119,11 @@ Carry state drives shared authoritative and predicted movement. AuthService now
 owns durable player-death partition, corpse custody, Recovery policy results,
 absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
-death producer, final corpse art, and final UI art remain later phases.
-Combat, persistent NPCs, zones, layers, complex terrain meshes, and production
-orchestration remain deferred.
+death producer, final corpse art, and final UI art remain later phases. The
+scalable NPC, Mob, spawn-authoring, and generic interaction foundation is now
+approved as item-plan Phase 12 but is not implemented. Combat, durable unique
+actors, zones, layers, complex terrain meshes, and production orchestration
+remain deferred.
 
 ## Requirements
 
@@ -237,6 +239,9 @@ and recovery rules are in
 [Inventory And Death Loot Design](docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
 complete dependency-ordered delivery plan is in
 [Items And Inventory Implementation Plan](docs/ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The approved scalable world-actor, NPC, Mob, visual spawn-authoring, and
+interaction contract is in
+[NPC And Mob System Design](docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,
 configuration, architecture, and user workflows must be documented and manually

@@ -1,13 +1,14 @@
 # Project Architecture
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Purpose
 
 This document is the source of truth for project-wide architecture, naming,
 ownership, trust boundaries, and runtime flows. Detailed Unity internals belong
 in [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md). Implemented
-behavior belongs in the two feature documents.
+behavior belongs in the two feature documents. The approved planned world-actor
+contract belongs in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Canonical Terminology
 
@@ -24,6 +25,9 @@ The following terms are architectural contracts. Do not use `WorldServer`,
 | Worker runtime | One process generation identified by a unique runtime id |
 | SimulationAssignment | The authoritative worker-to-shard mapping |
 | Shard | A player-selectable copy of the shared world simulation |
+| World actor | A server-owned runtime entity created from shared World content |
+| NPC | A social or service-oriented world actor assembled from composable capabilities |
+| Mob | A combat-oriented world actor with future AI, aggro, loot, corpse, and respawn behavior |
 | Zone | A future authoritative spatial partition inside a shard |
 | Layer | A future population copy of a zone or area inside one shard |
 
@@ -209,6 +213,12 @@ target becomes an authority. AuthService validates and mirrors the compiled
 catalog at startup. Future mutation paths must still reapply the authoritative
 rules before committing durable item state.
 
+Phase 12 is approved to add neutral actor and spawn authoring below
+`WorldData/Authoring/Actors` and `WorldData/Authoring/ActorSpawns`, with
+deterministic compiled content below `WorldData/Runtime/Actors`. This is planned,
+not implemented. Unity scene authoring will import and export that content but
+will not replace it as the source consumed by SimulationWorker.
+
 The current pure rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, Secure Container eligibility, empty and non-empty Bag
 locations, Bag containment-cycle rejection, unitless integer weight arithmetic,
@@ -392,7 +402,7 @@ advanced. The corpse row still serializes final custody, and Bag roots are locke
 before either aggregate's contents. After commit, the worker broadcasts a
 targeted delta or complete replacement to every viewer and never holds a
 database transaction while waiting for a client.
-Normal NPC corpses may remain worker-owned and disappear on restart, while
+Normal Mob corpses may remain worker-owned and disappear on restart, while
 content-selected bosses may later reuse the durable path. These choices do not
 introduce Zone or Layer ownership.
 
@@ -417,7 +427,7 @@ Unity presence and view state, temporary presentation, bidirectional item
 transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
 death generation remains a later gameplay boundary.
 
-Protocol version `10` retains the existing framing and adds corpse presence,
+Protocol version `11` retains the existing framing and adds corpse presence,
 interaction, result, chunked view-state, and view-closure message types. Corpse
 chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
 The Phase 8 ordinary container-item swap continues to reuse its existing
@@ -427,6 +437,81 @@ The complete planned contract is defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
 proposed schema and delivery order in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+
+### Planned World Actor And Interaction Boundary
+
+Status: Approved Phase 12 architecture, implementation not started
+
+Phase 12 extends the current repository boundaries without creating a new
+service or topology layer:
+
+- WorldData owns deterministic actor definitions, NPC capability descriptors,
+  factions, presentation references, spawn definitions, spawn groups, spawn
+  areas, respawn profiles, and patrol paths.
+- SimulationWorker owns live actor identity, spawn lifecycle, active state,
+  authoritative interaction, range and line-of-sight validation, NPC capability
+  dispatch, and centrally scheduled Mob activity for its assigned Shard.
+- GameProtocol targets version `12` for actor presence and interaction messages
+  compiled from the same source for .NET and Unity.
+- Unity owns advisory crosshair targeting, immutable replicated actor and
+  interaction state, prefab presentation, temporary uGUI, and Editor authoring
+  tools.
+- AuthService remains the durable authority when a later capability mutates
+  items, currency, quests, policies, or progression.
+
+NPC and Mob are distinct actor kinds. NPC capability combinations are content,
+not subclasses. Faction and disposition determine friendly or hostile behavior.
+Every first-version city NPC, including guards, is invulnerable by an
+authoritative server rule.
+
+Normal actors do not receive individual PostgreSQL rows. SimulationWorker
+reconstructs their baseline from compiled WorldData when an assignment starts.
+Stable actor-definition and spawn-definition ids remain distinct from fresh
+worker-runtime actor and network entity ids. Selected unique actors may later
+opt into durable state without changing the normal population model.
+
+NPCs are event-driven. Mobs use central dormant and active scheduling tiers.
+No actor owns a task, timer, thread, database session, or HTTP poller. Actor
+visibility reuses the existing entity registry and spatial interest management.
+
+The generic interaction flow is:
+
+```text
+Unity crosshair target and E intent
+  -> assigned SimulationWorker
+  -> exact session, target, Shard, revision, range, line-of-sight, state,
+     capability, and rate validation
+  -> one authoritative player-to-target interaction session
+  -> focused capability summary and correlated results
+  -> revalidation on every later capability operation
+```
+
+The shared values are a `6.0` metre client discovery distance, a `0.15` metre
+client spherecast tolerance, a `3.0` metre authoritative start range, and a
+`3.5` metre authoritative maintain range. The server measures from the
+authoritative player root to the closest point on server-owned target bounds.
+Client hit data is advisory and never proves authority.
+
+One player may hold one active world interaction session, including an existing
+corpse view. Many players may hold independent sessions with the same target.
+Target despawn, target revision change, range or line-of-sight failure,
+disconnect, or assignment change closes the affected session. The
+player-specific capability summary is returned after open and is not duplicated
+into ordinary spawn or movement packets.
+
+Unity presentation resolves a `presentationArchetypeId` to a presentation-only
+`WorldActorView`, `NpcView`, or `MobView` prefab. Authoritative vendor, quest,
+crafting, insurance, or combat behavior never lives in a MonoBehaviour. The
+permanent Editor entry points will be
+`Shooter MMO > Tools > Content > Actor Studio` and
+`Shooter MMO > Tools > Content > Spawn Authoring`, with visual scene handles
+that export canonical neutral WorldData.
+
+The existing corpse view and transaction protocols remain authoritative. Phase
+12 registers corpse presentation in the shared client target-selection
+foundation and makes its view consume the shared interaction lease. Vendor
+transactions, insurance and quest lifecycle, complete Mob AI, combat, loot
+generation, and Mob corpse creation remain later phases.
 
 ## Durable Data Model
 

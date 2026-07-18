@@ -1,34 +1,45 @@
 # Items And Inventory Implementation Plan
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
-Status: Approved delivery baseline, Phases 1 through 11 completed
+Status: Approved delivery baseline, Phases 1 through 11 completed, Phase 12
+approved and planned
 
 ## Purpose
 
 This document defines the complete dependency-ordered implementation plan for
 the design in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and the
+world-actor bridge in
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 It covers the long-term backend foundation, realtime authority boundary, Unity
-contracts, persistent player corpses, configurable NPC corpses, and verification
-needed to prevent item duplication or loss. It does not change the canonical
-runtime hierarchy and does not introduce Realms, Zones, or Layers.
+contracts, persistent player corpses, configurable Mob corpses, and verification
+needed to prevent item duplication or loss. It also establishes the scalable
+NPC, Mob, spawn-authoring, and world-interaction foundation required before
+service NPCs and Mob loot connect to item authority. It does not change the
+canonical runtime hierarchy and does not introduce Realms, Zones, or Layers.
 
 ## Delivery Strategy
 
-Implementation should proceed through four milestones:
+Implementation should proceed through five milestones:
 
 | Milestone | Outcome |
 | --- | --- |
 | A | Unity item-catalog authoring, durable item, slot inventory, equipment, Bag, bank, Secure Container, Recovery Storage, policy, and transaction foundation |
 | B | Carry weight, encumbrance, in-world mutation authority, and Unity inventory flow |
 | C | Idempotent death partition, durable player corpses, concurrent looting, Bag swaps, and one-death insurance |
-| D | NPC corpse variants, client polish, load testing, documentation, and release hardening |
+| D | Scalable world actors, visual spawn authoring, composable NPC capabilities, Mob contracts, and authoritative interaction |
+| E | Insurance and quest integration, Mob corpse variants, client polish, load testing, documentation, and release hardening |
 
 Each phase must leave the repository buildable and documented. PostgreSQL
 integration tests accompany the phase that introduces each invariant rather than
 being postponed until the end.
+
+Phase 0 is the documentation and contract freeze. The dependency-ordered
+implementation sequence now contains Phases 1 through 15. Phase 12 is the new
+world-actor foundation, and the former Phases 12 through 14 are renumbered to
+Phases 13 through 15.
 
 ## Architectural Decisions
 
@@ -57,6 +68,24 @@ being postponed until the end.
 - Seed or reconcile the PostgreSQL definition mirror after schema migration and
   before item traffic is accepted.
 - Keep definition ids globally stable and independent of Shard identity.
+
+### World Actor Bridge
+
+- Store neutral actor and spawn authoring under `WorldData/Authoring/Actors` and
+  `WorldData/Authoring/ActorSpawns`.
+- Compile deterministic runtime actor content under `WorldData/Runtime/Actors`.
+- Keep NPC and Mob as distinct actor kinds while faction and disposition own
+  friendly or hostile state.
+- Compose NPC service roles through typed capabilities rather than runtime
+  subclasses or authoritative prefab scripts.
+- Reuse the existing SimulationWorker entity registry and spatial interest
+  management for actor visibility.
+- Keep normal actor runtime state in SimulationWorker and reconstruct it from
+  WorldData after restart without creating one PostgreSQL row per actor.
+- Use one server-authoritative world-interaction foundation for NPCs and future
+  interactables while preserving the existing corpse transaction authority.
+- Keep Unity prefabs presentation-only and make visual scene authoring export
+  back to neutral WorldData.
 
 ### Transaction Kernel
 
@@ -189,13 +218,13 @@ relational current-state columns.
 
 | Table | Responsibility |
 | --- | --- |
-| `corpses` | Source type, character or NPC reference, Shard, transform, created time, absolute expiry, persistence mode, revision, and closed state |
+| `corpses` | Source type, character or Mob reference, Shard, transform, created time, absolute expiry, persistence mode, revision, and closed state |
 | `corpse_sections` | General inventory, equipment, and Bag section container bindings |
 | `corpse_snapshots` | Non-interactive Secure Container, insured item, and protected or insured Bag presentation metadata |
 | `death_events` | Idempotent death event id and committed partition result |
 
-Normal non-persistent NPC corpses remain SimulationWorker state. Only durable
-player and configured persistent NPC or boss corpses use these tables.
+Normal non-persistent Mob corpses remain SimulationWorker state. Only durable
+player and configured persistent Mob or boss corpses use these tables.
 
 ## Locking And Concurrency Contract
 
@@ -230,7 +259,7 @@ recovery, quest cleanup, and future trade or vendor transactions.
 - Replaying the same operation id and canonical payload returns the stored
   result without another mutation.
 - Reusing an operation id with a different payload returns a stable conflict.
-- Death events, loot claims, NPC grants, insurance changes, quest cleanup, tier
+- Death events, loot claims, Mob grants, insurance changes, quest cleanup, tier
   changes, and expiry cleanup all require idempotency keys.
 
 ## Phase 0: Documentation And Contract Freeze
@@ -243,7 +272,7 @@ Deliverables:
 - Secure Container ownership and account-tier rule.
 - Weight and 140 percent encumbrance curve.
 - Policy behavior for protected-on-death and insured items.
-- Player and NPC corpse persistence policy.
+- Player and Mob corpse persistence policy.
 - AuthService and SimulationWorker authority boundary.
 - Updated MVP and architecture references.
 
@@ -1338,7 +1367,7 @@ dupe safe.
 
 ### Implementation Record
 
-- GameProtocol version `10` adds reliable corpse presence, accepted slot tags,
+- GameProtocol version `11` adds reliable corpse presence, accepted slot tags,
   open, close, refresh, full-item and partial-stack loot or deposit, atomic
   ordinary slot and Bag-swap, operation-result,
   chunked view-state, and stable view-closure messages. Chunk builders measure
@@ -1401,14 +1430,198 @@ dupe safe.
 
 The Phase 11 implementation, automated test, documentation, and deterministic
 exit gates are satisfied. The documented two-client flow remains the required
-manual player-facing acceptance check. Phase 12 has not started and no insurance
-NPC or quest lifecycle behavior is introduced here.
+manual player-facing acceptance check. Phase 12 has not started and no world
+actor, NPC, Mob, spawn-authoring, or generic interaction runtime is introduced
+here.
 
-## Phase 12: Insurance And Quest Lifecycle Integration
+## Phase 12: Scalable World Actors, NPCs, Mobs, And Interaction Foundation
+
+Status: Approved design, implementation not started
+
+Canonical contract:
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md)
 
 ### Work
 
-- Add an insurance NPC service for granting and explicitly removing one-death
+- Add deterministic neutral NPC, Mob, capability, faction, presentation,
+  lifecycle, Mob-activity, spawn-point, spawn-group, spawn-area, respawn, and
+  patrol-path definitions under WorldData.
+- Add `Tools/WorldActorCompiler` over one framework-neutral actor compiler and
+  verifier used by Unity tooling, SimulationWorker, tests, command-line
+  verification, and CI. Its no-write `--verify` mode uses committed canonical
+  manifests by default.
+- Give actor definitions and spawn definitions globally stable content ids while
+  keeping worker-runtime actor ids and network entity ids explicitly separate.
+- Add `Shooter MMO > Tools > Content > Actor Studio` for searchable NPC and Mob
+  authoring, safe duplication, templates, capability composition, reference
+  dropdowns, inline validation, change preview, and one-click compile and verify.
+- Add `Shooter MMO > Tools > Content > Spawn Authoring` for visual spawn points,
+  spawn groups, spawn areas, patrol paths, ground snapping, prefab preview,
+  deterministic import and export, and one-click compile and verify.
+- Keep neutral WorldData authoritative. Unity scene components are Editor-only
+  authoring adapters and cannot become the sole spawn source.
+- Add a bounded SimulationWorker world-actor store, spawn lifecycle, restart
+  reconstruction, entity-registry integration, and existing spatial-interest
+  integration.
+- Distinguish NPC and Mob actor kinds. Keep faction and disposition independent
+  from actor kind.
+- Make every Phase 12 NPC, including city guards, server-authoritatively
+  invulnerable.
+- Add a typed NPC capability registry that freely composes dialogue, vendor,
+  quest offer, quest turn-in, crafting, insurance, trainer, bank, and Recovery
+  Storage descriptors without requiring an actor subclass for each combination.
+- Establish event-driven NPC state and centrally scheduled dormant and active
+  Mob tiers. Do not add per-actor tasks, timers, database rows, or HTTP polling.
+- Add protocol version `12` with reliable actor presence and bounded actor state
+  contracts, strict payload validation, and MTU enforcement.
+- Add one authoritative world-interaction service with operation correlation,
+  target revision, one active interaction session per player, and multiple
+  players allowed on the same NPC.
+- Bind interaction to the `E` action and advisory crosshair targeting. Use a
+  direct ray plus a `0.15` metre client spherecast tolerance, a `6.0` metre
+  discovery distance, a `3.0` metre authoritative start range, and a `3.5`
+  metre authoritative maintain range.
+- Measure authoritative distance from the player root to the closest point on
+  server-owned target bounds. Validate exact session, worker runtime, Shard,
+  target identity, target revision, active state, range, line of sight,
+  capability, rate limits, and one-active-session state.
+- Revalidate target state, range, line of sight, and capability on every later
+  operation. Close the interaction on target despawn, revision invalidation,
+  range or line-of-sight failure, disconnect, or assignment change.
+- Return an authoritative capability summary only after interaction open. Do
+  not include complete capability state in every actor spawn or movement packet.
+  Filter availability and revision state independently for each player.
+- Add permanent Unity actor, interaction, targeting, revision, operation, and
+  reconnect state controllers below a replaceable temporary uGUI interaction
+  panel.
+- Add presentation-only `WorldActorView`, `NpcView`, and `MobView` foundations
+  resolved through `presentationArchetypeId`. Do not add authoritative vendor,
+  quest, crafting, insurance, or combat MonoBehaviours.
+- Register current corpse presentation and view with the shared targeting and
+  one-active-interaction lease while preserving the Phase 11 corpse view and
+  transaction protocols.
+- Add low-cardinality actor population, active or dormant tier, interaction
+  latency, and rejection metrics without actor, spawn, player, character,
+  session, or entity ids as labels.
+- Document the content workflow, runtime ownership, protocol, Unity state,
+  security boundary, configuration, manual test flow, and deferred capability
+  handlers.
+
+### Automated Tests
+
+- Equivalent actor and spawn authoring produces deterministic compiled output
+  and one stable revision.
+- Duplicate ids, missing references, invalid transforms, invalid bounds,
+  unsupported enum values, and damageable Phase 12 NPC definitions fail
+  validation.
+- One NPC composes multiple capabilities without a new runtime actor class.
+- Actor Studio and Spawn Authoring import, export, preview, compile, and verify
+  through the shared compiler instead of editor-local rule copies.
+- Worker assignment activation creates the expected actors, and restart
+  reconstructs normal actor baseline from WorldData with fresh runtime ids.
+- Content ids, spawn ids, runtime actor ids, and network entity ids cannot be
+  confused or reused across their identity scopes.
+- Actor presence uses the existing interest lifecycle, and ordinary spawn
+  packets do not contain complete capability state.
+- Direct ray selection wins when valid, spherecast tolerance handles a near
+  crosshair target, and unrelated colliders are ignored.
+- Interaction opens at or inside `3.0` metres, rejects beyond that range, stays
+  open through `3.5` metres, and closes beyond the maintain range.
+- Closest-point bounds distance and authoritative static or dynamic line of
+  sight determine server acceptance independently from client hit data.
+- Wrong Shard, stale target revision, missing target, inactive target, invalid
+  session, unavailable capability, malformed payload, or excessive intent rate
+  returns the correct stable result without local authority changes.
+- One player cannot overlap world interaction sessions, while two players can
+  independently interact with the same NPC.
+- One player cannot hold an NPC interaction and corpse view simultaneously,
+  while different players may still interact with either target.
+- Two players may receive different capability availability from the same NPC
+  without one player's summary or revision authorizing the other.
+- Target despawn, revision change, movement, disconnect, and worker assignment
+  change close only the affected sessions with stable reasons.
+- Every new protocol message round-trips between .NET and Unity, rejects
+  malformed or oversized data, and preserves explicit version mismatch behavior.
+- Unity applies only authoritative monotonic actor and interaction state, never
+  spawns an authority object from scene-only data, and clears stale interaction
+  state on reconnect.
+- Replacing a presentation prefab does not change actor definition, capability,
+  faction, interaction, or spawn behavior.
+- Corpse crosshair selection uses the shared targeting controller while its
+  existing open, view, and mutation authority remains unchanged.
+- Dormant and active Mob scheduling uses central bounded collections and creates
+  no per-actor task, timer, database row, or HTTP poller.
+
+### Verification Gate
+
+Run locked restore, dependency policy, formatting, the complete Release build,
+all backend tests against the isolated PostgreSQL test database, and the
+existing deterministic item-catalog and collision verification. Add and run the
+actor verifier:
+
+```powershell
+dotnet run --project Tools/WorldActorCompiler `
+  --configuration Release `
+  --no-build -- `
+  --verify
+```
+
+Run all Unity EditMode and PlayMode tests through the repository workflow:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+```
+
+Expected result: every command exits successfully, committed actor runtime data
+matches canonical authoring, the Release build has no warnings or errors, every
+backend test passes, and both Unity suites pass. No existing item, corpse,
+movement, interest, reconnect, or protocol-v11 test may regress.
+
+### Manual Test Gate
+
+- Open `Shooter MMO > Tools > Content > Actor Studio` and create one NPC with
+  dialogue, vendor, quest, and crafting capabilities.
+- Create one Mob through the same window and map both actors to replaceable
+  presentation prefabs.
+- Open `Shooter MMO > Tools > Content > Spawn Authoring`, place both actors with
+  visual handles, ground-snap them, add a Mob patrol preview, inspect the export
+  change, and run save, compile, and verify.
+- Start AuthService and SimulationWorker, join the local Shard, and verify both
+  actors appear only when admitted by normal interest messages.
+- Point the crosshair at the NPC from within `3.0` metres and press `E`. Verify
+  the temporary uGUI displays the authoritative action summary.
+- Attempt the same interaction outside range and through blocking collision.
+  Verify the server rejects it and no local interaction remains open.
+- Open the same NPC from two Unity clients. Verify both sessions work, then move
+  one player beyond `3.5` metres and verify only that session closes.
+- Close the NPC interaction, target a corpse with the same crosshair flow, and
+  verify existing Phase 11 corpse inspection and drag-and-drop behavior still
+  works.
+- Restart SimulationWorker and reconnect. Verify actors reconstruct from the
+  compiled WorldData and stale interaction state does not return.
+- Inspect diagnostics and verify ordinary NPCs remain event-driven, the Mob can
+  enter dormant or active scheduling, and no actor creates a durable instance
+  row.
+
+### Exit Gate
+
+Content creators can create, compose, place, preview, compile, and verify NPCs
+and Mobs without adding a runtime class. SimulationWorker reconstructs and
+replicates them through existing interest management, and Unity can open a
+server-authoritative crosshair interaction with stable range, line-of-sight,
+revision, session, and reconnect behavior. No per-actor database or asynchronous
+loop is required, and no Phase 13 policy business behavior or Phase 14 Mob loot
+behavior has leaked into the foundation.
+
+## Phase 13: Insurance And Quest Lifecycle Integration
+
+Status: Planned, not implemented
+
+### Work
+
+- Register insurance and quest capability handlers on the Phase 12 NPC
+  interaction and dispatch foundation.
+- Add insurance NPC behavior for granting and explicitly removing one-death
   insurance.
 - Validate insurance price, ownership, eligible definitions, and active policy.
 - Block vendor sale, trade, and auction while insured.
@@ -1417,6 +1630,8 @@ NPC or quest lifecycle behavior is introduced here.
 - Ensure reaccepting a quest can regrant required protected items once.
 - Add UI labels for protection source, insured state, and recovery delivery
   source.
+- Keep NPC targeting, range, line of sight, interaction sessions, and capability
+  discovery in Phase 12 services rather than duplicating them in item endpoints.
 
 ### Tests
 
@@ -1431,41 +1646,46 @@ NPC or quest lifecycle behavior is introduced here.
 
 Policy lifecycle is explicit, auditable, and independent from item category.
 
-## Phase 13: NPC Corpse Variants
+## Phase 14: Mob Corpse Variants
+
+Status: Planned, not implemented
 
 ### Work
 
-- Add NPC content settings for corpse lifetime and persistence mode.
-- Default normal NPC corpses to approximately two minutes and live
+- Add Mob content settings for corpse lifetime and persistence mode.
+- Default normal Mob corpses to approximately two minutes and live
   SimulationWorker ownership.
-- Allow normal NPC corpses and unclaimed loot to disappear on restart.
+- Allow normal Mob corpses and unclaimed loot to disappear on restart.
 - Generate deterministic, idempotent loot grant ids so successful player claims
   cannot duplicate after retry.
-- Allow boss or selected NPC definitions to use durable corpse custody and
+- Allow boss or selected Mob definitions to use durable corpse custody and
   restart restoration.
-- Reuse player corpse transaction and expiry code for persistent NPC corpses.
+- Reuse player corpse transaction and expiry code for persistent Mob corpses.
 
 ### Tests
 
-- Normal NPC corpse disappears on worker restart without persistent cleanup
+- Normal Mob corpse disappears on worker restart without persistent cleanup
   requirements.
-- A retried NPC loot grant creates one persistent player item.
+- A retried Mob loot grant creates one persistent player item.
 - Boss corpse survives restart with unchanged expiry and custody.
 - Per-definition lifetime overrides apply without operational configuration
   branching.
 
 ### Exit Gate
 
-NPC persistence is content-controlled and normal NPC volume does not force every
-corpse into PostgreSQL.
+Mob corpse persistence is content-controlled and normal Mob volume does not
+force every corpse into PostgreSQL.
 
-## Phase 14: Performance, Operations, And Release Hardening
+## Phase 15: Performance, Operations, And Release Hardening
+
+Status: Planned, not implemented
 
 ### Work
 
 - Add low-cardinality metrics for item transaction latency, lock waits,
   conflicts, stale revisions, death partition, corpse count, expiry cleanup,
-  recovery backlog, and policy actions.
+  recovery backlog, policy actions, actor population, dormant or active Mobs,
+  and world interactions.
 - Never use item, character, account, operation, corpse, or session ids as metric
   labels.
 - Add structured logs with correlation and operation ids while excluding secret
@@ -1473,7 +1693,9 @@ corpse into PostgreSQL.
 - Bound transaction timeouts and command payload sizes.
 - Add cleanup jobs for expired audit retention where policy permits, closed
   corpses, and expired recovery deliveries.
-- Add load scenarios for concurrent loot hotspots and repeated Bag swaps.
+- Add load scenarios for large event-driven NPC populations, dormant and active
+  Mob transitions, concurrent NPC interaction hotspots, concurrent corpse loot
+  hotspots, and repeated Bag swaps.
 - Rerun SimulationWorker movement and network baselines after encumbrance and
   corpse interaction are active.
 - Update all feature, architecture, setup, and manual-test documentation as each
@@ -1543,6 +1765,15 @@ corpse_view_not_open
 corpse_interaction_active
 item_already_looted
 item_quantity_changed
+world_actor_not_found
+world_actor_unavailable
+world_interaction_invalid
+world_interaction_active
+world_interaction_out_of_range
+world_interaction_line_of_sight_blocked
+world_interaction_target_changed
+world_interaction_capability_unavailable
+world_interaction_session_invalid
 wrong_simulation_worker
 worker_runtime_changed
 simulation_session_invalid
@@ -1559,6 +1790,8 @@ Update documentation in the same change whenever behavior becomes real:
 - `SERVICE_FEATURES.md` for implemented routes, persistence, and operations.
 - `GAME_FEATURES.md` for implemented player behavior.
 - `MVP_SPEC.md` when scope or product rules change.
+- `NPC_AND_MOB_SYSTEM_DESIGN.md` for world-actor, NPC, Mob, spawning,
+  interaction, and authoring contracts.
 - `LOCAL_DEVELOPMENT.md` for commands and manual test procedures.
 - `UNITY_CLIENT_ARCHITECTURE.md` for client state and scene integration.
 - Root and docs README files when entry points or status change.

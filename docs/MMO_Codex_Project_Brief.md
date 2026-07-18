@@ -1,12 +1,13 @@
 # MMO Project Brief for Codex
 
-_Original brief: 2026-07-06. Current-design alignment: 2026-07-15._
+_Original brief: 2026-07-06. Current-design alignment: 2026-07-18._
 
 > This is the original broad vision document. Current terminology and
 > architecture are defined in `PROJECT_ARCHITECTURE.md`. Current item,
 > inventory, carry-weight, insurance, corpse, and death-loot decisions are
 > defined in `INVENTORY_AND_DEATH_LOOT_DESIGN.md` and supersede conflicting
-> historical ideas below.
+> historical ideas below. Current World actor, NPC, Mob, spawn-authoring, and
+> interaction terminology is defined in `NPC_AND_MOB_SYSTEM_DESIGN.md`.
 
 ## Purpose
 
@@ -77,7 +78,7 @@ Shard-specific live state:
 
 - Player position
 - Live combat
-- Mobs/NPC simulation
+- Mob and NPC simulation
 - Wilderness encounters
 - Local world events
 - Loot containers in the world

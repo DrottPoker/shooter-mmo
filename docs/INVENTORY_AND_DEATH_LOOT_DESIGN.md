@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 Status: Locked design target; Phases 1 through 11 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
@@ -27,6 +27,8 @@ topology systems and are not introduced by this design.
 Implementation sequencing, proposed database tables, service contracts, and test
 gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+NPC, Mob, actor-spawn, and generic world-interaction terminology and ownership
+are defined in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Canonical Item Terminology
 
@@ -39,7 +41,7 @@ gates are defined in
 | Bag | A physical item that can be equipped in the character's Bag equipment slot and can provide item slots and carry-capacity bonuses |
 | Secure Container | Permanent per-character protected storage whose tier and slot capacity are selected by an account-level entitlement |
 | Recovery Storage | A per-character, system-write-only delivery queue accessible from every major city |
-| Corpse | A bidirectional loot container backed by durable custody for players and selected persistent NPCs |
+| Corpse | A bidirectional loot container backed by durable custody for players and selected persistent Mobs |
 | Snapshot | Non-interactive corpse presentation metadata that never grants ownership or references a lootable item instance |
 
 `Bag` is the canonical equipment and item term. A Bag may be presented as a
@@ -576,9 +578,9 @@ section even though the real Bag has moved to Recovery Storage.
 
 No Zone or Layer identity is stored because those systems do not exist.
 
-## NPC Corpse Lifecycle
+## Mob Corpse Lifecycle
 
-Normal NPC corpses are live SimulationWorker state by default:
+Normal Mob corpses are live SimulationWorker state by default:
 
 - Default lifetime is approximately two minutes.
 - They do not need to survive a SimulationWorker restart.
@@ -586,8 +588,8 @@ Normal NPC corpses are live SimulationWorker state by default:
 - Loot materialized into persistent player custody uses an idempotent grant id so
   a retry cannot duplicate it.
 
-NPC content definitions may override corpse lifetime and persistence. Bosses may
-use durable corpse custody and restart restoration. Persistent NPC corpse
+Mob content definitions may override corpse lifetime and persistence. Bosses may
+use durable corpse custody and restart restoration. Persistent Mob corpse
 behavior reuses the player-corpse transaction and expiry foundation without
 changing the topology model.
 
@@ -688,6 +690,14 @@ Bank and Recovery Storage access additionally require a city-service validation
 from SimulationWorker. Secure Container operations are allowed in the world but
 remain category, slot, policy, weight, and session validated.
 
+Phase 12 adds the generic NPC and world-interaction session that later service
+capabilities use. Insurance, bank, Recovery Storage, vendor, quest, and crafting
+handlers must reuse its authoritative target, range, line-of-sight, revision,
+and session checks instead of adding capability-specific target authority. The
+existing corpse view and transaction boundary remains authoritative for corpse
+contents while its client target selection and one-active-interaction lease join
+the shared interaction UX.
+
 When no simulation session is active, account-authenticated APIs may perform
 appropriate non-world mutations without inventing a live SimulationWorker.
 
@@ -728,7 +738,7 @@ The architecture does not depend on locking these values now:
 - Which non-weapon definitions are Secure Container eligible.
 - Insurance price and NPC availability.
 - Corpse presentation art and interaction duration.
-- NPC corpse lifetime overrides.
+- Mob corpse lifetime overrides.
 
 These remain content or balance data and must not be embedded in transaction
 control flow.
@@ -794,6 +804,7 @@ and committed deltas without applying optimistic custody. The generic capsule
 and uGUI are replaceable presentation.
 
 No vendor, gathering, insurance purchase, quest gameplay, or combat death
-producer calls the player-death boundary yet. Final corpse art, configurable NPC
-corpse persistence, and insurance NPC behavior remain later phases. No Zone or
-Layer identity was introduced.
+producer calls the player-death boundary yet. Final corpse art, configurable Mob
+corpse persistence, and insurance NPC behavior remain later phases. Phase 12
+world actors and interaction are approved design only and are not implemented.
+No Zone or Layer identity was introduced.

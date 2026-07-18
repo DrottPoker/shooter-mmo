@@ -1,12 +1,17 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Purpose
 
 This document is the source of truth for the current Unity client architecture.
 It describes runtime responsibilities, dependencies, state, scene flow, API
 handling, and local gameplay controls.
+
+The approved but unimplemented Phase 12 client and Editor contract for world
+actors is defined in
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). Planned behavior is
+called out explicitly below and is not part of the current runtime claim.
 
 ## Project Boundary
 
@@ -606,6 +611,66 @@ Unity CharacterController against the authored scene colliders as an offline
 authoring check. Authenticated movement does not use CharacterController to
 decide network position.
 
+## Planned Phase 12 World Actor And Interaction Client
+
+Status: Approved architecture, implementation not started
+
+Phase 12 adds permanent client state below replaceable presentation:
+
+- `WorldActorClientController` owns immutable, monotonic actor presence and
+  replicated state across scene transitions and reconnect cleanup.
+- `WorldInteractionClientController` owns correlated operations, the active
+  authoritative interaction session, capability summaries, server closure, and
+  uncertain-state cleanup.
+- `WorldInteractionTargetingController` owns advisory crosshair targeting
+  against registered NPC, corpse, and future world-object views.
+- `WorldActorView` provides presentation identity and target registration.
+  `NpcView` and `MobView` add kind-specific presentation hooks without actor
+  authority.
+- A presentation registry maps `presentationArchetypeId` to authored prefabs.
+- `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
+  permanent controller and capability contracts.
+
+The actor and interaction messages target protocol version `12`. The persistent
+realtime client must decode them through the shared GameProtocol source and keep
+the existing explicit mismatch path for older or partially updated clients.
+
+The `E` input action requests interaction with the current crosshair target.
+Client selection checks a direct centre ray first and then a `0.15` metre
+spherecast tolerance among registered targets within a `6.0` metre discovery
+distance. The result only chooses an intent. SimulationWorker independently owns
+the `3.0` metre start range, `3.5` metre maintain range, closest-point bounds
+distance, line of sight, target revision, capability, and session validation.
+
+Actor prefabs are presentation-only. There is no authoritative
+`VendorMonoBehaviour`, `QuestGiverMonoBehaviour`, crafting component, insurance
+component, or Mob AI component in Unity. Changing a prefab cannot change actor
+kind, capability, faction, spawn, damage policy, or interaction rules.
+
+The panel displays only the authoritative capability summary received after an
+interaction opens. It may list Talk, Shop, Quests, Crafting, Insurance, Bank, or
+Recovery before those business handlers exist, but it must label unavailable
+handlers and must never simulate a successful transaction locally.
+
+Current corpse presentation registers with the shared target controller and
+its open view consumes the shared one-active-interaction lease while retaining
+`CorpseClientController`, the Phase 11 corpse protocol, and durable transaction
+authority. Phase 12 changes selection and session coordination, not corpse
+custody.
+
+All new Editor tools remain under the established menu root:
+
+- `Shooter MMO > Tools > Content > Actor Studio` owns searchable NPC and Mob
+  authoring, templates, safe duplication, capability composition, references,
+  validation, preview, compile, and verify.
+- `Shooter MMO > Tools > Content > Spawn Authoring` owns scene handles, ground
+  snapping, spawn areas and groups, patrol paths, prefab preview, canonical
+  change preview, export, compile, and verify.
+
+Editor scene components are authoring adapters. They import and export stable
+neutral definitions, but only compiled WorldData creates runtime actors. Actor
+and spawn content must remain buildable and verifiable without opening Unity.
+
 ## Test Architecture
 
 EditMode tests cover client session cleanup, operation serialization, structured
@@ -647,6 +712,8 @@ Manual flows and expected results are documented in
 - Keep prediction and reconciliation separate from remote interpolation.
 - Keep persistent cross-scene session state in `ShooterMmoClientSession` and
   item and corpse state in their bootstrap-owned controllers, not scene panels.
+- Keep planned actor and world-interaction state in bootstrap-owned controllers,
+  not actor prefabs or the temporary interaction panel.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
 - Route every WorldScene exit through exact-session UDP leave or disconnect

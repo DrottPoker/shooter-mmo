@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## What Shooter MMO Is
 
@@ -69,7 +69,8 @@ scaling. They are not implemented and are not faked in the current runtime.
 - **GameSimulation** is the fixed-step movement and collision implementation
   compiled from the same source for server authority and client prediction.
 - **WorldData** contains neutral world collision authoring, checksummed runtime
-  chunks, deterministic item content, and framework-neutral pure item rules.
+  chunks, deterministic item content, and framework-neutral pure item rules. It
+  is also the approved source of truth for planned actor and spawn content.
 - **Shared** contains framework-neutral configuration, networking, and health
   helpers for backend processes.
 
@@ -131,7 +132,7 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `10`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `11`,
   movement revision `movement-simulation-v3`, and identical authoritative and
   predicted encumbrance behavior.
 
@@ -146,6 +147,37 @@ When required, the next scale step is to add zones as authoritative spatial
 partitions and layers as controlled population copies inside a shard. That work
 will extend SimulationAssignment and placement. It must not redefine World or
 introduce isolated realms.
+
+## Approved Next Foundation: World Actors, NPCs, Mobs, And Interaction
+
+Item-plan Phase 12 is approved but not implemented. It adds one scalable
+WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors:
+
+- `NPC` means a social or service actor assembled from capabilities such as
+  dialogue, vendor, quest, crafting, insurance, trainer, bank, or Recovery
+  Storage.
+- `Mob` means a combat actor with future AI, aggro, combat, loot, corpse, and
+  respawn behavior.
+- Faction and disposition own friendly or hostile state. Actor kind does not.
+- City NPCs, including guards, are invulnerable in the first version.
+- Normal actors are reconstructed from compiled WorldData after worker restart
+  instead of receiving one PostgreSQL row per instance.
+- NPCs are event-driven. Mobs use centrally scheduled dormant and active tiers
+  without per-actor asynchronous loops.
+- Players point the crosshair at a nearby actor and press `E`. SimulationWorker
+  validates exact session, target, Shard, revision, range, line of sight, active
+  state, and capability before opening one interaction session.
+- One player may hold one active interaction, including a corpse view, while
+  many players may interact with the same target.
+- Unity prefabs remain presentation-only. Visual authoring exports canonical
+  actor and spawn content back to WorldData.
+
+The permanent Editor workflows will live at
+`Shooter MMO > Tools > Content > Actor Studio` and
+`Shooter MMO > Tools > Content > Spawn Authoring`. Phase 12 stops before vendor
+transactions, quest progression, crafting, combat AI, Mob loot, and Mob corpse
+production. See
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Item Foundation Status
 
@@ -215,8 +247,10 @@ The remaining locked direction is slot-based rather than grid-based and includes
 - Final inventory visual design, drag-and-drop interaction polish, accessibility,
   and item policy detail presentation on the implemented client foundation.
 - The authoritative combat death producer, final corpse art and interaction
-  polish, insurance NPC purchase behavior, and configurable NPC corpse
+  polish, insurance NPC purchase behavior, and configurable Mob corpse
   persistence.
+- The approved Phase 12 world-actor, NPC, Mob, visual spawn-authoring, and
+  authoritative interaction foundation.
 
 The persistent schema, character custody identities, authoritative reads,
 offline account mutations, policy services, internal item mutations, and
@@ -236,7 +270,9 @@ item grants. See
   representation, and loot transactions already exist behind the service
   boundary.
 - Crafting, gathering, professions, and the broader economy.
-- Persistent NPCs, quests, guilds, social systems, and world events.
+- NPC and Mob runtime remains deferred until approved item-plan Phase 12 is
+  implemented. Durable unique actors, complete quests, guilds, social systems,
+  and world events remain later work.
 - Production orchestration, metric export, dashboards, alerts, and live
   operations.
 
@@ -261,5 +297,7 @@ implementation.
 - [MVP Specification](MVP_SPEC.md) defines the current product scope.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) defines
   the locked planned inventory and death-loot rules.
+- [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) defines the approved
+  world-actor, NPC, Mob, spawn-authoring, and interaction foundation.
 - [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   defines how that foundation will be delivered and verified.

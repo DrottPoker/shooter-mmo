@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Requirements
 
@@ -474,7 +474,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `10` and simulation revision
+   startup reports realtime protocol version `11` and simulation revision
    `movement-simulation-v3`.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -533,7 +533,7 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `10` and loads the configured local bank,
+   reports realtime protocol version `11` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,

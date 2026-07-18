@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Purpose
 
@@ -338,6 +338,39 @@ Tools > Inventory Item Grants`. The generic capsule and current uGUI are
 temporary visuals over permanent protocol, state, authority, transaction, and
 revision foundations.
 
+## Approved Phase 12 World Interaction Experience
+
+Status: Planned, not implemented
+
+Phase 12 adds the shared player-facing foundation for NPCs, Mobs, corpses, and
+future world interactables:
+
+- `NPC` identifies a social or service actor with freely composable dialogue,
+  vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
+- `Mob` identifies a combat actor with later AI, aggro, combat, loot, corpse,
+  and respawn behavior.
+- The player points the crosshair at a registered target and presses `E`.
+- Unity may discover and prompt for targets within `6.0` metres using a direct
+  ray and `0.15` metre spherecast tolerance.
+- SimulationWorker opens an interaction only within the authoritative `3.0`
+  metre start range after validating session, Shard, target identity and
+  revision, active state, line of sight, capability, and request limits.
+- An open interaction remains valid through `3.5` metres to avoid boundary
+  flicker, but the server revalidates every later action.
+- One player may hold one active interaction, including a corpse view. Multiple
+  players may interact with the same target independently.
+- The temporary uGUI lists only the capability summary returned by the server.
+  Permanent actor, target, operation, revision, interaction-session, and
+  reconnect state remains outside that panel.
+- Corpse targeting joins the shared crosshair selection UX and interaction
+  lease without replacing the existing authoritative corpse view and mutation
+  flow.
+
+All city NPCs, including guards, are invulnerable in the first version. Faction
+and disposition own friendly or hostile behavior independently from NPC or Mob
+kind. Phase 12 stops before vendor transactions, quest progression, crafting,
+combat AI, Mob loot, and Mob corpse creation.
+
 ## Planned Feature Categories
 
 These categories are defined by the project direction but are not implemented.
@@ -349,9 +382,11 @@ They remain in the MVP specification until working behavior is available:
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
 - Live combat death production, final corpse art and loot presentation,
-  configurable NPC corpses, and insurance NPC purchase behavior.
+  configurable Mob corpses, and insurance NPC purchase behavior.
 - Gathering, crafting, professions, and player economy.
-- NPCs, enemies, quests, events, and world activities.
+- The approved Phase 12 world-actor, NPC, Mob, spawn, and interaction foundation.
+- Complete NPC capability behavior, Mob AI, quests, events, and world
+  activities.
 - Character progression and long-term persistence.
 - Zone partitioning, cross-zone handoff, and population layers.
 - Social, grouping, guild, chat, and trading systems.

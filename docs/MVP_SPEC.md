@@ -1,6 +1,6 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Purpose
 
@@ -16,6 +16,9 @@ rules are defined in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
 dependency-ordered delivery plan is
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The approved scalable world-actor, NPC, Mob, spawn-authoring, and interaction
+contract is defined in
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Core MVP Goal
 
@@ -28,7 +31,7 @@ The MVP should prove the core loop:
 5. Player leaves the city into an unsafe open-world area.
 6. Player gathers or loots a resource.
 7. Player sells to a simple NPC vendor or retains the item for later crafting.
-8. Player fights a simple mob or another player.
+8. Player fights a simple Mob or another player.
 9. Player death applies transactional protection and corpse-loot rules.
 10. Player returns to a city to claim Recovery Storage, bank, sell, equip, and
     prepare again.
@@ -66,8 +69,8 @@ The MVP should avoid becoming a large feature collection before this loop works.
   active Shard per SimulationWorker.
 - Accounts, characters, persistent items, inventory, progression, and the
   future economy are global across every Fleet and Shard.
-- Shard-specific live state includes movement, combat, mobs, interactions, and
-  live corpse presentation.
+- Shard-specific live state includes movement, combat, NPCs, Mobs, interactions,
+  and live corpse presentation.
 - Durable player corpse custody remains global PostgreSQL data with a Shard
   reference used for restoration by the assigned SimulationWorker.
 - There are no Realms. Topological Zones and Layers are future scaling systems
@@ -99,11 +102,13 @@ as unsafe.
 - NPC vendor, bank, Recovery Storage, and insurance NPC access.
 - Equipment and inventory management.
 - Future location for crafting stations, quest NPCs, and social services.
+- NPC interaction uses the crosshair and `E`, with SimulationWorker validating
+  target identity, range, line of sight, state, and capability.
 
 ### Open Risk Rule Area
 
 - PvP is allowed.
-- Simple mobs can exist.
+- Simple Mobs can exist.
 - Gathering and loot containers can exist.
 - The character can manage carried inventory and eligible Secure Container
   items, subject to server-authoritative action and policy rules.
@@ -323,9 +328,35 @@ The first combat implementation should include:
 Advanced ballistics, limb damage, armor penetration, and complex recoil should
 wait until the basic combat loop works.
 
+## NPC And Mob Foundation
+
+Item-plan Phase 12 establishes this approved foundation before service NPCs and
+the first combat Mob are implemented:
+
+- `NPC` means a social or service actor. Dialogue, vendor, quest, crafting,
+  insurance, trainer, bank, and Recovery Storage roles are freely composable
+  capabilities.
+- `Mob` means a combat actor with future AI, aggro, combat, loot, corpse, and
+  respawn behavior.
+- Actor kind is separate from faction and disposition. Guards are NPCs and all
+  city NPCs are invulnerable in the first version.
+- NPC and Mob definitions plus spawn content are canonical neutral WorldData.
+  Unity provides visual authoring and presentation, not authority.
+- Normal actors are reconstructed from WorldData after worker restart and do
+  not require one PostgreSQL row per instance.
+- NPCs are event-driven. Mobs use centrally scheduled dormant and active tiers.
+- The player points the crosshair at an actor and presses `E`. The server owns
+  the `3.0` metre start range, `3.5` metre maintain range, line of sight, target
+  revision, and one-active-interaction rule.
+- The one-active-interaction rule includes the existing corpse view, while many
+  players may still interact with one target.
+
+Phase 12 does not implement vendor transactions, quest progression, crafting,
+combat, complete Mob AI, Mob loot, or Mob corpses.
+
 ## Mob MVP
 
-The first mob needs enough behavior to test combat and loot:
+The first Mob needs enough behavior to test combat and loot:
 
 - Spawn.
 - Idle or patrol.
@@ -337,8 +368,8 @@ The first mob needs enough behavior to test combat and loot:
 - Drop simple loot.
 - Respawn after a timer.
 
-Normal NPC corpses default to approximately two minutes of live
-SimulationWorker state and may disappear on restart. NPC content can override
+Normal Mob corpses default to approximately two minutes of live
+SimulationWorker state and may disappear on restart. Mob content can override
 lifetime and persistence. Bosses may use the durable corpse path.
 
 ## Economy MVP
@@ -414,9 +445,10 @@ Planned item service split:
   instances, policies, slot and equipment assignments, bank, Secure Container,
   Recovery Storage, durable player corpse custody, audit, and all durable item
   transactions.
-- SimulationWorker owns live inventory and corpse interaction validation,
-  proximity, combat, death-event production, active corpse presentation,
-  one-active-loot-interaction enforcement, and authoritative encumbrance.
+- SimulationWorker owns live world actors, spawn lifecycle, inventory and corpse
+  interaction validation, proximity, combat, death-event production, active
+  corpse presentation, one-active-interaction enforcement, and authoritative
+  encumbrance when those planned systems are implemented.
 - While a character is active, SimulationWorker requests durable mutations over
   a service-authenticated AuthService boundary fenced to exact session, worker,
   runtime, character, and Shard.
@@ -473,8 +505,12 @@ Current implementation note:
   partial transfers, internal corpse rearrangement, typed equipment slots,
   ordinary occupied-slot swaps, atomic Bag aggregate swaps, committed viewer
   deltas, immutable Unity state, and a generic replaceable corpse presentation.
+- Item-plan Phase 12 is approved to add deterministic NPC, Mob, capability, and
+  spawn content, visual Unity authoring, SimulationWorker actor runtime and
+  interest integration, presentation-only actor prefabs, and authoritative
+  crosshair interaction. It is not implemented.
 - Gameplay-created item grants, insurance NPC pricing, authoritative combat
-  death production, mobs, final corpse art, and configurable NPC corpse
+  death production, Mobs, final corpse art, and configurable Mob corpse
   persistence are not implemented. Insurance consumption is implemented only
   inside the durable death transaction.
 
@@ -524,7 +560,8 @@ Status: Completed
 
 ### Phase 4: Items, Inventory, Equipment, And Carry Weight
 
-Status: In progress, item-plan Phases 1 through 11 complete
+Status: In progress, item-plan Phases 1 through 11 complete and Phase 12
+approved but not implemented
 
 - Deterministic item catalog, categories, tags, equipment compatibility, Bag
   layouts, Secure Container tiers, structural fingerprints, and pure rules are
@@ -565,10 +602,14 @@ Status: In progress, item-plan Phases 1 through 11 complete
 
 The complete subphase order and exit gates are defined in
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The next item-plan subphase is the shared actor and interaction foundation used
+by vendor, quest, crafting, insurance, Mob, and corpse-producing gameplay.
 
 ### Phase 5: Vendor And Gathering
 
-- Add one NPC vendor.
+- Build on the item-plan Phase 12 actor, capability, target, and interaction
+  contracts.
+- Add one NPC vendor capability handler.
 - Add one resource node type.
 - Add one tool item.
 - Gather into inventory through the item transaction service.
@@ -580,7 +621,7 @@ The complete subphase order and exit gates are defined in
 - Add projectile simulation.
 - Add health and damage.
 - Add authoritative death event generation.
-- Add one simple mob and live NPC loot.
+- Add one simple Mob and live Mob loot.
 
 ### Phase 7: Gameplay Rule Areas And Presence Lifecycle
 
@@ -613,7 +654,7 @@ Status: In progress, durable and interactive player-corpse foundation complete
   deltas to all current viewers.
 - Connect the prepared death boundary to the future authoritative combat event
   producer and replace the generic corpse presentation with final content.
-- Add configurable live or durable NPC corpse behavior.
+- Add configurable live or durable Mob corpse behavior.
 - Add insurance NPC lifecycle.
 
 ## Deferred Features
@@ -626,7 +667,7 @@ These should not block the first playable MVP:
 - Guilds and SocialService chat.
 - Auction house and direct player trading.
 - Complex crafting and multiple professions.
-- Advanced mobs and bosses beyond the first persistence test.
+- Advanced Mobs and bosses beyond the first persistence test.
 - Complex quests.
 - Insured stack quantities.
 - Detailed armor and penetration systems.
@@ -638,7 +679,7 @@ These should not block the first playable MVP:
 - Should resource nodes be per-Shard live state only, or persisted with respawn
   timestamps?
 - Should the first tool be a pickaxe, axe, or generic starter tool?
-- Should the first mob be hostile by default or only aggressive when attacked?
+- Should the first Mob be hostile by default or only aggressive when attacked?
 - Which non-weapon definitions are initially eligible for Secure Container?
 - What progression unlocks additional bank slots?
 - What expiry policy should Recovery Storage use after the initial unlimited

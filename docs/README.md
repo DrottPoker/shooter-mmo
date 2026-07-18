@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -28,6 +28,10 @@ operations, and future design do not drift into duplicate descriptions.
 
 - [MVP Specification](MVP_SPEC.md) defines the working MVP scope and product
   decisions.
+- [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) is the approved
+  source of truth for the planned scalable world-actor model, NPC and Mob
+  distinction, composable NPC capabilities, visual spawn authoring, crosshair
+  interaction, runtime ownership, and actor scaling rules.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
   current product and domain source of truth for planned items, slot inventory,
   Bags, Secure Container, carry weight, death loot, corpses, insurance, and
@@ -35,14 +39,17 @@ operations, and future design do not drift into duplicate descriptions.
 - [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   defines the dependency-ordered delivery phases, proposed persistence model,
   service boundaries, and verification gates for that design. Phases 1 through
-  10 are complete, including the item catalog, Unity authoring, PostgreSQL schema,
+  11 are complete, including the item catalog, Unity authoring, PostgreSQL schema,
   transactional catalog mirror, character item-state bootstrap, authoritative
   reads, the race-safe transaction kernel, policy and quest-grant lifecycle,
   offline-safe account APIs, exact-session carry-state delivery, and shared
   SimulationWorker and Unity encumbrance. The exact-session in-world mutation
   boundary, persistent Unity inventory foundation, idempotent death partition,
   durable player corpses, worker restart restoration, and audited expiry are also
-  complete.
+  complete, together with concurrent bidirectional corpse interaction. The new
+  Phase 12 is the approved but not implemented world-actor, NPC, Mob, spawn, and
+  interaction foundation. Former Phases 12 through 14 are now Phases 13 through
+  15.
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and
   feature-specific design documents supersede conflicting details in that brief.
