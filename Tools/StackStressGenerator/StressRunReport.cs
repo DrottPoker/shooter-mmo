@@ -76,6 +76,7 @@ public sealed record StressBotAggregate(
 
 public sealed record StressRunConfiguration(
     string Mode,
+    string Workload,
     string AuthorityUrl,
     string WorkerHost,
     int WorkerUdpPort,
@@ -89,6 +90,8 @@ public sealed record StressRunConfiguration(
     int RampStep,
     double RampIntervalSeconds,
     double SteadyDurationSeconds,
+    double InventoryOperationIntervalSeconds,
+    double LootOperationIntervalSeconds,
     int Seed);
 
 public sealed record StressRunReport(
@@ -102,6 +105,7 @@ public sealed record StressRunReport(
     StressProcessSummary? GeneratorProcess,
     StressPostgresSummary? Postgres,
     StressFullStackSummary? FullStack,
+    StressGameplaySummary Gameplay,
     StressBotAggregate Bots,
     StressAuthorityCounters? Authority)
 {
@@ -114,7 +118,8 @@ public sealed record StressRunReport(
         StressProcessSummary? workerProcess,
         StressProcessSummary? generatorProcess,
         IReadOnlyCollection<StressBotSnapshot> bots,
-        StressLatencySummary? inputAcknowledgementLatency)
+        StressLatencySummary? inputAcknowledgementLatency,
+        StressGameplaySummary gameplay)
     {
         var failureCodes = bots
             .Where(bot => bot.FailureCode is not null)
@@ -151,6 +156,7 @@ public sealed record StressRunReport(
             (endedAt - startedAt).TotalSeconds,
             new StressRunConfiguration(
                 StressGeneratorOptions.FormatMode(options.Mode),
+                StressGeneratorOptions.FormatWorkload(options.Workload),
                 options.AuthorityUrl.ToString(),
                 providerReport.Worker?.Host ?? options.WorkerHost,
                 providerReport.Worker?.UdpPort ?? options.WorkerUdpPort,
@@ -164,6 +170,8 @@ public sealed record StressRunReport(
                 options.RampStep,
                 options.RampInterval.TotalSeconds,
                 options.SteadyDuration.TotalSeconds,
+                options.InventoryOperationInterval.TotalSeconds,
+                options.LootOperationInterval.TotalSeconds,
                 options.Seed),
             providerReport.Worker ?? target.Worker,
             workerProcess,
@@ -171,6 +179,7 @@ public sealed record StressRunReport(
             generatorProcess,
             providerReport.Postgres,
             providerReport.FullStack,
+            gameplay,
             aggregate,
             providerReport.Authority);
     }

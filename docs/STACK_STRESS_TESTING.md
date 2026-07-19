@@ -13,6 +13,16 @@ separately from account, placement, session, AuthService, and PostgreSQL load.
 | `worker-only` | No | No | Yes | Isolate SimulationWorker hotspots and capacity |
 | `full-stack` | Yes | Yes | Yes | Measure the complete login-to-game lifecycle and shared stack pressure |
 
+Mode selects the stack boundary. Workload selects what every admitted client
+does after joining:
+
+| Workload | Supported mode | Durable item traffic | Movement pattern | Primary use |
+| --- | --- | :---: | --- | --- |
+| `lifecycle` | `worker-only`, `full-stack` | No | Existing square path | Preserve the comparable admission and realtime baseline |
+| `inventory` | `full-stack` | Yes | Existing square path | Relocate one item between Permanent Inventory and Secure Container |
+| `loot-hotspot` | `full-stack` | Yes | Hold at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
+| `mixed-gameplay` | `full-stack` | Yes | Bounded movement near the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
+
 Both modes run independent headless LiteNetLib clients through the real join,
 movement, snapshot, entity lifecycle, simulation-session, and graceful-leave
 paths. The current small map keeps every bot inside the same interest radius.
@@ -64,10 +74,13 @@ Each full-stack bot completes the normal public lifecycle:
    worker-only mode.
 8. Leave the simulation cleanly and log out the account session.
 
-The generator never bypasses production authentication or adds a stress-only
-route to AuthService or SimulationWorker. Each bot owns an independent UDP
-endpoint. Clients use LiteNetLib manual polling so the harness does not create
-one transport thread per bot.
+All bots still use production account authentication, placement, join tickets,
+UDP item commands, worker authority checks, AuthService transactions, and
+PostgreSQL custody. Non-lifecycle workloads use guarded Development-only fixture
+routes only to create each bot's initial items and the shared durable corpse.
+The measured gameplay operations do not call those fixture routes. Each bot owns
+an independent UDP endpoint. Clients use LiteNetLib manual polling so the
+harness does not create one transport thread per bot.
 
 ## Full-stack Database Safety
 
@@ -80,6 +93,21 @@ It refuses to start unless all of these checks pass:
 - AuthService has initialized the schema.
 - The `accounts` table is empty before the run.
 - The final account row count matches the number of successful registrations.
+
+Gameplay fixtures add another safety boundary. AuthService accepts fixture
+creation only when all of these conditions hold:
+
+- The hosting environment is `Development`.
+- `StackStressFixtures:Enabled` is explicitly true.
+- AuthService is connected to loopback PostgreSQL whose database name contains
+  `stress` or `test`.
+- The request is authenticated as a real account, originates from loopback, and
+  supplies the configured fixture secret.
+
+Fixture creation uses `ItemTransactionService` and the durable corpse service.
+It does not write inventory rows directly. The generator validates final item
+quantity, slot uniqueness, custody, and pending-operation invariants through its
+separate read-only PostgreSQL sampler.
 
 The generator does not delete accounts or other durable rows. Recreate the
 disposable stack before every full-stack run. Never point this mode at a normal
@@ -203,6 +231,18 @@ dotnet run --project AuthService --configuration Release --no-build
 Expected result: migrations complete and AuthService listens on
 `http://127.0.0.1:5500`.
 
+For `inventory`, `loot-hotspot`, or `mixed-gameplay`, also set the guarded
+fixture configuration before starting AuthService:
+
+```powershell
+$env:DOTNET_ENVIRONMENT = "Development"
+$env:StackStressFixtures__Enabled = "true"
+$env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
+```
+
+The fixture secret is local test data, but it must contain at least 32
+characters and match the value used by the generator.
+
 In terminal 2, start SimulationWorker with the matching secret and isolated
 Redis endpoint:
 
@@ -221,6 +261,14 @@ dotnet run --project SimulationWorker --configuration Release --no-build
 Expected result: the worker registers `local-shard-1` and
 `development-world-2` with AuthService and advertises UDP port `27025`.
 
+For `loot-hotspot` or `mixed-gameplay`, use a one-second durable corpse
+reconciliation interval so a newly provisioned stress corpse becomes visible
+quickly:
+
+```powershell
+$env:SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds = "1"
+```
+
 In terminal 3, run the complete lifecycle. Set the connection string in the
 environment instead of passing it as an argument:
 
@@ -231,6 +279,7 @@ dotnet run --project Tools/StackStressGenerator `
   --no-build `
   -- `
   --mode full-stack `
+  --workload lifecycle `
   --auth-service-url http://127.0.0.1:5500 `
   --confirm-disposable-database shooter_mmo_stack_stress_test `
   --bots 100 `
@@ -251,6 +300,48 @@ Expected result:
 - The final database account count is exactly 100.
 - The command exits zero and writes a full-stack JSON report.
 
+### Run Gameplay Workloads
+
+After starting the same disposable stack with the fixture configuration, select
+one explicit workload in terminal 3. This example runs the complete mixed path:
+
+```powershell
+$env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
+$env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
+dotnet run --project Tools/StackStressGenerator `
+  --configuration Release `
+  --no-build `
+  -- `
+  --mode full-stack `
+  --workload mixed-gameplay `
+  --auth-service-url http://127.0.0.1:5500 `
+  --confirm-disposable-database shooter_mmo_stack_stress_test `
+  --bots 100 `
+  --http-concurrency 32 `
+  --ramp-step 25 `
+  --ramp-interval-seconds 10 `
+  --duration-seconds 300 `
+  --inventory-operation-interval-seconds 3 `
+  --loot-operation-interval-seconds 4 `
+  --report-interval-seconds 10
+```
+
+Replace `mixed-gameplay` with `inventory` or `loot-hotspot` to isolate one item
+path. Recreate the Docker stack before every workload because the database must
+start empty.
+
+Expected result:
+
+- Every gameplay bot receives only the minimal initial fixture items.
+- Loot workloads create one shared durable Mob corpse at the configured hotspot.
+- Item and corpse commands travel over UDP and are authorized by the worker.
+- AuthService commits every accepted change through its normal item transaction
+  boundary.
+- Concurrent revision conflicts are reported as expected conflicts, not hidden
+  as successes or counted as infrastructure failures.
+- The run exits zero only when lifecycle checks, gameplay operations, and final
+  PostgreSQL item invariants pass.
+
 Stop AuthService and SimulationWorker with Ctrl+C, then clean up:
 
 ```powershell
@@ -269,7 +360,11 @@ Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_ADVERTISED_UDP_PORT -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORLD_ID -ErrorAction SilentlyContinue
 Remove-Item Env:SimulationWorker__NetworkMetricsLogSeconds -ErrorAction SilentlyContinue
+Remove-Item Env:SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds -ErrorAction SilentlyContinue
 Remove-Item Env:STACK_STRESS_POSTGRES -ErrorAction SilentlyContinue
+Remove-Item Env:STACK_STRESS_FIXTURE_SECRET -ErrorAction SilentlyContinue
+Remove-Item Env:StackStressFixtures__Enabled -ErrorAction SilentlyContinue
+Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue
 ```
 
 No manual Unity Editor steps are required for either mode.
@@ -318,15 +413,21 @@ release counters from the in-memory authority.
 
 Full-stack reports additionally contain:
 
-- Registered, provisioned, logged-in, admitted, and logged-out account totals.
+- Registered, fixture, provisioned, logged-in, admitted, and logged-out account
+  totals.
 - Per-operation HTTP request, success, failure, status-code, stable failure-code,
   and latency summaries.
+- Per-gameplay-operation request, success, expected-conflict,
+  unexpected-rejection, timeout, incomplete-request, stable result-code, and
+  latency summaries.
 - AuthService process CPU, memory, and thread summaries when the local process
   can be identified.
 - PostgreSQL connection, active wait, idle-in-transaction, transaction, row,
   temporary-file, I/O timing, and deadlock statistics.
 - Maximum active and expired unreleased simulation sessions, minimum observed
   lease headroom, and session-table insert and update counts.
+- Final expected and actual item quantities, duplicate occupied slots, invalid
+  item custody, and pending item-operation counts.
 
 SimulationWorker logs interval timing for network polling, asynchronous
 completion handling, join queue and finalization, simulation ticks and lag,
@@ -347,7 +448,12 @@ A tier is not supported merely because every process remains alive. Require:
 - Worker, AuthService, and generator working sets stabilize after warmup.
 - Worker registration and simulation-session leases remain valid.
 - Full-stack HTTP operations complete without unexpected failure codes.
+- Gameplay profiles complete without unexpected item or corpse rejection and
+  without operation timeouts. Expected concurrent revision conflicts remain
+  visible as a separate result.
 - Full-stack mode has no expired unreleased sessions or PostgreSQL deadlocks.
+- Gameplay profiles preserve exact item quantities, unique occupied slots,
+  valid custody, and zero pending item operations.
 
 Record the first boundary that fails and the phase whose duration grows with
 load. Optimize only after a repeatable run identifies the limiting phase, then
@@ -418,11 +524,16 @@ budget would remove protection rather than fix the all-to-all workload.
 
 ## Scope Boundary
 
-Full-stack mode currently measures account registration, character creation,
-login, shard discovery, placement, tickets, simulation-session leases, UDP
-gameplay traffic, leave, and logout. It does not generate mixed inventory,
-trading, death, or corpse-loot HTTP workloads. Those should be added as explicit
-workload profiles rather than hidden inside this baseline.
+Full-stack mode measures account registration, character creation, login, shard
+discovery, placement, tickets, simulation-session leases, UDP gameplay traffic,
+leave, and logout. Explicit gameplay workloads also measure durable inventory
+relocation and shared corpse deposit and loot through the real worker and
+AuthService transaction path.
+
+Trading, combat-driven deaths, insurance claims, quest item policies, Bank,
+Recovery Storage, equipment, Bag nesting, and multiple geographically separated
+loot hotspots are not generated. Add those as explicit future workload profiles
+so the stable lifecycle baseline does not silently change.
 
 Distributed load generation and remote service targets are not implemented.
 
@@ -437,6 +548,7 @@ dotnet run --project Tools/StackStressGenerator -- --help
 Important mode-specific options are:
 
 - `--mode worker-only|full-stack`
+- `--workload lifecycle|inventory|loot-hotspot|mixed-gameplay`
 - `--authority-url` for the worker-only in-memory authority
 - `--auth-service-url` for full-stack AuthService
 - `--confirm-disposable-database` for the exact full-stack database name
@@ -446,6 +558,13 @@ Important mode-specific options are:
 Common load options include `--bots`, `--bot-start-index`, `--ramp-step`,
 `--ramp-interval-seconds`, `--duration-seconds`, `--join-timeout-seconds`,
 `--report-interval-seconds`, `--seed`, and `--output`.
+
+Gameplay options include `--inventory-operation-interval-seconds`,
+`--loot-operation-interval-seconds`,
+`--gameplay-operation-timeout-seconds`, and `--loot-hotspot-x`,
+`--loot-hotspot-y`, and `--loot-hotspot-z`. Supply the fixture secret through
+`STACK_STRESS_FIXTURE_SECRET`; it is intentionally not accepted as a command-line
+argument.
 
 The same seed and bot indices reproduce movement patterns. Tickets, account
 session tokens, and generated passwords remain random for every run.

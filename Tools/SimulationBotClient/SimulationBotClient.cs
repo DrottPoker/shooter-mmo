@@ -13,6 +13,7 @@ public sealed class SimulationBotClient : IDisposable
     private readonly SimulationBotIdentity identity;
     private readonly ISimulationBotInputSource inputSource;
     private readonly Action<double>? inputAcknowledged;
+    private readonly ISimulationBotRealtimeObserver? realtimeObserver;
     private readonly EventBasedNetListener listener = new();
     private readonly NetManager client;
     private readonly List<PendingInput> pendingInputs = [];
@@ -46,13 +47,15 @@ public sealed class SimulationBotClient : IDisposable
         SimulationBotConnectionOptions connectionOptions,
         SimulationBotIdentity identity,
         ISimulationBotInputSource inputSource,
-        Action<double>? inputAcknowledged = null)
+        Action<double>? inputAcknowledged = null,
+        ISimulationBotRealtimeObserver? realtimeObserver = null)
     {
         this.connectionOptions = connectionOptions
             ?? throw new ArgumentNullException(nameof(connectionOptions));
         this.identity = identity ?? throw new ArgumentNullException(nameof(identity));
         this.inputSource = inputSource ?? throw new ArgumentNullException(nameof(inputSource));
         this.inputAcknowledged = inputAcknowledged;
+        this.realtimeObserver = realtimeObserver;
         ValidateOptions(connectionOptions, identity);
 
         client = new NetManager(listener)
@@ -153,6 +156,18 @@ public sealed class SimulationBotClient : IDisposable
             connectionOptions.JoinAndLeaveTimeout);
     }
 
+    public bool SendItemOperation(RealtimeItemOperationIntent intent)
+    {
+        ArgumentNullException.ThrowIfNull(intent);
+        return SendJoinedControl(RealtimeProtocol.EncodeItemOperationIntent(intent));
+    }
+
+    public bool SendCorpseInteraction(RealtimeCorpseInteractionIntent intent)
+    {
+        ArgumentNullException.ThrowIfNull(intent);
+        return SendJoinedControl(RealtimeProtocol.EncodeCorpseInteractionIntent(intent));
+    }
+
     public SimulationBotClientSnapshot Capture()
     {
         return new SimulationBotClientSnapshot(
@@ -245,8 +260,20 @@ public sealed class SimulationBotClient : IDisposable
                 case RealtimeMessageType.CarryStateChanged:
                     HandleCarryStateChanged(packet, channel, deliveryMethod);
                     break;
+                case RealtimeMessageType.ItemOperationResult:
+                    HandleItemOperationResult(packet, channel, deliveryMethod);
+                    break;
                 case RealtimeMessageType.CorpsePresenceSnapshotChunk:
                     HandleCorpsePresence(packet, channel, deliveryMethod);
+                    break;
+                case RealtimeMessageType.CorpseInteractionResult:
+                    HandleCorpseInteractionResult(packet, channel, deliveryMethod);
+                    break;
+                case RealtimeMessageType.CorpseViewStateChunk:
+                    HandleCorpseViewState(packet, channel, deliveryMethod);
+                    break;
+                case RealtimeMessageType.CorpseViewClosed:
+                    HandleCorpseViewClosed(packet, channel, deliveryMethod);
                     break;
                 case RealtimeMessageType.WorldActorSpawn:
                     HandleWorldActorSpawn(packet, channel, deliveryMethod);
@@ -317,6 +344,7 @@ public sealed class SimulationBotClient : IDisposable
         var now = Stopwatch.GetTimestamp();
         joinLatencyMs = Stopwatch.GetElapsedTime(startedTimestamp, now).TotalMilliseconds;
         nextInputTimestamp = now;
+        realtimeObserver?.OnJoined(session);
     }
 
     private void HandleJoinRejected(byte[] packet)
@@ -349,6 +377,26 @@ public sealed class SimulationBotClient : IDisposable
         }
     }
 
+    private void HandleItemOperationResult(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail("invalid_item_operation_result", "Item operation result delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeItemOperationResult(packet, out var result, out var error))
+        {
+            Fail("invalid_item_operation_result", error);
+            return;
+        }
+
+        realtimeObserver?.OnItemOperationResult(result);
+    }
+
     private void HandleCorpsePresence(
         byte[] packet,
         byte channel,
@@ -364,11 +412,79 @@ public sealed class SimulationBotClient : IDisposable
 
         if (!RealtimeProtocol.TryDecodeCorpsePresenceSnapshotChunk(
                 packet,
-                out _,
+                out var chunk,
                 out var error))
         {
             Fail("invalid_corpse_presence", error);
+            return;
         }
+
+        realtimeObserver?.OnCorpsePresence(chunk);
+    }
+
+    private void HandleCorpseInteractionResult(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail(
+                "invalid_corpse_interaction_result",
+                "Corpse interaction result delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeCorpseInteractionResult(
+                packet,
+                out var result,
+                out var error))
+        {
+            Fail("invalid_corpse_interaction_result", error);
+            return;
+        }
+
+        realtimeObserver?.OnCorpseInteractionResult(result);
+    }
+
+    private void HandleCorpseViewState(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail("invalid_corpse_view_state", "Corpse view-state delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeCorpseViewStateChunk(packet, out var chunk, out var error))
+        {
+            Fail("invalid_corpse_view_state", error);
+            return;
+        }
+
+        realtimeObserver?.OnCorpseViewState(chunk);
+    }
+
+    private void HandleCorpseViewClosed(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail("invalid_corpse_view_closed", "Corpse view closure delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeCorpseViewClosed(packet, out var closed, out var error))
+        {
+            Fail("invalid_corpse_view_closed", error);
+            return;
+        }
+
+        realtimeObserver?.OnCorpseViewClosed(closed);
     }
 
     private void HandleWorldActorSpawn(
@@ -633,6 +749,21 @@ public sealed class SimulationBotClient : IDisposable
     {
         packetsSent++;
         bytesSent += packetLength;
+    }
+
+    private bool SendJoinedControl(byte[] packet)
+    {
+        ThrowIfDisposed();
+        if (State != SimulationBotClientState.Joined
+            || serverPeer is null
+            || joinedSession is null)
+        {
+            return false;
+        }
+
+        serverPeer.Send(packet, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+        RecordSent(packet.Length);
+        return true;
     }
 
     private void Fail(string code, string message)

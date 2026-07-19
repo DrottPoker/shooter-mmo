@@ -314,10 +314,13 @@ contains repository-wide verification, collision and item content builds, and
 external stress tools. `StackStressGenerator` has a worker-only mode with an
 in-memory loopback authority and a full-stack mode that uses normal AuthService
 account, character, login, placement, and session routes against a guarded
-disposable local PostgreSQL database. Both modes use manually polled headless
-UDP clients without per-bot transport threads or stress admission paths in
-production services. Bounded latency reservoirs and process samplers keep long
-local soak tests from accumulating every acknowledgement sample.
+disposable local PostgreSQL database. Explicit full-stack inventory and shared
+loot workloads provision minimal starting state through secret-protected,
+Development-only, loopback fixture endpoints, then measure the normal UDP worker
+authority, AuthService item transaction, and PostgreSQL custody path. Both modes
+use manually polled headless UDP clients without per-bot transport threads.
+Bounded latency reservoirs and process samplers keep long local soak tests from
+accumulating every acknowledgement sample.
 
 `ActiveSimulationBots` reuses the same tool-only headless UDP client core but
 runs beside the real AuthService and SimulationWorker. A Development-only,
@@ -443,6 +446,10 @@ five-minute expiry. AuthService partitions one death event transactionally,
 persists the corpse transform and presentation metadata, and expires remaining
 loot through one durable cleanup operation. A replacement SimulationWorker
 restores only open, unexpired corpses for its exact runtime and Shard assignment.
+The worker continues reconciling that durable assignment at a bounded interval
+so a newly created durable corpse becomes discoverable without restarting the
+worker. Reconciliation remains idempotent and never imports another runtime's
+corpse.
 AuthService serves complete three-section view snapshots and commits corpse loot
 through the existing transaction kernel. Targeted item and container revisions
 let unrelated corpse operations commit even when the global corpse revision has

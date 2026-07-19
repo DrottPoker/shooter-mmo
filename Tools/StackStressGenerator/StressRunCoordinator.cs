@@ -14,6 +14,7 @@ public sealed class StressRunCoordinator(
         new(options.Seed);
     private readonly StressLatencyAccumulator intervalInputAcknowledgementLatencies =
         new(unchecked(options.Seed + 1));
+    private readonly StressGameplayMetrics gameplayMetrics = new(options.Seed);
     private int launchedBots;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
@@ -25,6 +26,7 @@ public sealed class StressRunCoordinator(
             cancellationToken);
         Console.WriteLine(
             $"Stress target shard {target.ShardId}, World {target.WorldId}, capacity {target.Capacity} is ready.");
+        await admissionProvider.PrepareAsync(cancellationToken);
         await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         using var processSampler = target.Worker is not null
             ? StressProcessSampler.TryAttach(target.Worker.StartedAt)
@@ -53,7 +55,7 @@ public sealed class StressRunCoordinator(
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var now = Stopwatch.GetTimestamp();
-                PollBots(now);
+                PollBots(now, cancellationToken);
                 await CompleteAdmissionsAsync(cancellationToken);
 
                 if (launchedBots < options.BotCount && now >= nextRampTimestamp)
@@ -105,6 +107,7 @@ public sealed class StressRunCoordinator(
             processSampler?.Sample();
             generatorProcessSampler.Sample();
             await admissionProvider.SampleAsync(cancellationToken);
+            await DrainGameplayAsync(cancellationToken);
             await LeaveAsync(cancellationToken);
             await admissionProvider.CompleteAsync(
                 admittedBotIndexes.ToArray(),
@@ -125,7 +128,10 @@ public sealed class StressRunCoordinator(
                 processSampler?.CreateSummary(),
                 generatorProcessSampler.CreateSummary(),
                 snapshots,
-                inputAcknowledgementLatencies.CaptureSummary());
+                inputAcknowledgementLatencies.CaptureSummary(),
+                gameplayMetrics.Capture(
+                    options.Workload,
+                    providerReport.FullStack?.LootHotspotCorpseId));
         }
         finally
         {
@@ -194,17 +200,21 @@ public sealed class StressRunCoordinator(
                 options,
                 admission,
                 inputAcknowledgementLatencies,
-                intervalInputAcknowledgementLatencies);
+                intervalInputAcknowledgementLatencies,
+                gameplayMetrics,
+                token => admissionProvider.RefreshInventoryAsync(
+                    admission.BotIndex,
+                    token));
             bots.Add(bot);
             bot.Start();
         }
     }
 
-    private void PollBots(long nowTimestamp)
+    private void PollBots(long nowTimestamp, CancellationToken cancellationToken)
     {
         foreach (var bot in bots)
         {
-            bot.Poll(nowTimestamp);
+            bot.Poll(nowTimestamp, cancellationToken);
         }
     }
 
@@ -222,7 +232,7 @@ public sealed class StressRunCoordinator(
         {
             cancellationToken.ThrowIfCancellationRequested();
             now = Stopwatch.GetTimestamp();
-            PollBots(now);
+            PollBots(now, cancellationToken);
             if (bots.All(bot => bot.State is StressBotState.Completed or StressBotState.Failed))
             {
                 break;
@@ -231,7 +241,35 @@ public sealed class StressRunCoordinator(
             await Task.Delay(1, cancellationToken);
         }
 
-        PollBots(Stopwatch.GetTimestamp());
+        PollBots(Stopwatch.GetTimestamp(), cancellationToken);
+    }
+
+    private async Task DrainGameplayAsync(CancellationToken cancellationToken)
+    {
+        foreach (var bot in bots)
+        {
+            bot.BeginGameplayDrain();
+        }
+
+        var drainTimeout = options.GameplayOperationTimeout > options.HttpTimeout
+            ? options.GameplayOperationTimeout
+            : options.HttpTimeout;
+        var deadline = AddDuration(
+            Stopwatch.GetTimestamp(),
+            drainTimeout + TimeSpan.FromSeconds(1));
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PollBots(Stopwatch.GetTimestamp(), cancellationToken);
+            if (bots.All(bot => bot.IsGameplayIdle))
+            {
+                return;
+            }
+
+            await Task.Delay(1, cancellationToken);
+        }
+
+        PollBots(Stopwatch.GetTimestamp(), cancellationToken);
     }
 
     private void WriteProgress()

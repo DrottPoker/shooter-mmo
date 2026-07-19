@@ -11,10 +11,13 @@ public sealed record StressHttpOperationSummary(
 public sealed record StressFullStackSummary(
     string RunId,
     int RegisteredBots,
+    int FixtureAccounts,
+    int InventoryFixtureBots,
     int ProvisionedBots,
     int LoggedInBots,
     int AdmittedBots,
     int LoggedOutBots,
+    Guid? LootHotspotCorpseId,
     IReadOnlyDictionary<string, StressHttpOperationSummary> Operations);
 
 public sealed class FullStackStressMetrics(int seed)

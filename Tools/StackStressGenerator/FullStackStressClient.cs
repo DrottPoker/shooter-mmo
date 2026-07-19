@@ -106,6 +106,54 @@ public sealed class FullStackStressClient(
             cancellationToken);
     }
 
+    public Task<FullStackCharacterInventoryResponse> GetInventoryAsync(
+        string sessionToken,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        return SendAsync<FullStackCharacterInventoryResponse>(
+            "inventory_refresh",
+            HttpMethod.Get,
+            $"/api/characters/{characterId:D}/item-state",
+            null,
+            sessionToken,
+            cancellationToken);
+    }
+
+    public Task<FullStackStackStressInventoryFixtureResponse> SeedInventoryFixtureAsync(
+        string sessionToken,
+        Guid characterId,
+        string workload,
+        string runId,
+        string fixtureSecret,
+        CancellationToken cancellationToken)
+    {
+        return SendAsync<FullStackStackStressInventoryFixtureResponse>(
+            "stress_inventory_fixture",
+            HttpMethod.Post,
+            $"/api/development/stack-stress/characters/{characterId:D}/inventory-fixture",
+            new FullStackStackStressInventoryFixtureRequest(workload, runId),
+            sessionToken,
+            cancellationToken,
+            fixtureSecret);
+    }
+
+    public Task<FullStackStackStressLootHotspotResponse> CreateLootHotspotAsync(
+        string sessionToken,
+        FullStackStackStressLootHotspotRequest request,
+        string fixtureSecret,
+        CancellationToken cancellationToken)
+    {
+        return SendAsync<FullStackStackStressLootHotspotResponse>(
+            "stress_loot_hotspot_fixture",
+            HttpMethod.Post,
+            "/api/development/stack-stress/loot-hotspot",
+            request,
+            sessionToken,
+            cancellationToken,
+            fixtureSecret);
+    }
+
     public Task LogoutAsync(
         string sessionToken,
         CancellationToken cancellationToken)
@@ -125,12 +173,18 @@ public sealed class FullStackStressClient(
         string path,
         object? body,
         string? sessionToken,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? fixtureSecret = null)
     {
         var started = Stopwatch.GetTimestamp();
         try
         {
-            using var request = CreateRequest(method, path, body, sessionToken);
+            using var request = CreateRequest(
+                method,
+                path,
+                body,
+                sessionToken,
+                fixtureSecret);
             using var response = await httpClient.SendAsync(request, cancellationToken);
             var statusCode = (int)response.StatusCode;
             if (!response.IsSuccessStatusCode)
@@ -200,12 +254,18 @@ public sealed class FullStackStressClient(
         string path,
         object? body,
         string? sessionToken,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? fixtureSecret = null)
     {
         var started = Stopwatch.GetTimestamp();
         try
         {
-            using var request = CreateRequest(method, path, body, sessionToken);
+            using var request = CreateRequest(
+                method,
+                path,
+                body,
+                sessionToken,
+                fixtureSecret);
             using var response = await httpClient.SendAsync(request, cancellationToken);
             var statusCode = (int)response.StatusCode;
             if (!response.IsSuccessStatusCode)
@@ -239,7 +299,8 @@ public sealed class FullStackStressClient(
         HttpMethod method,
         string path,
         object? body,
-        string? sessionToken)
+        string? sessionToken,
+        string? fixtureSecret)
     {
         var request = new HttpRequestMessage(method, path);
         if (body is not null)
@@ -252,6 +313,11 @@ public sealed class FullStackStressClient(
             request.Headers.Authorization = new AuthenticationHeaderValue(
                 "Bearer",
                 sessionToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(fixtureSecret))
+        {
+            request.Headers.Add("X-Stack-Stress-Fixture-Key", fixtureSecret);
         }
 
         return request;
@@ -340,3 +406,81 @@ public sealed record FullStackJoinShardResponse(
     bool IsReconnect);
 
 public sealed record FullStackProblem(string? Code, string? Detail);
+
+public sealed record FullStackItemInstanceResponse(
+    Guid ItemInstanceId,
+    string DefinitionId,
+    int Quantity,
+    long Revision);
+
+public sealed record FullStackItemSlotResponse(
+    int SlotIndex,
+    string SlotKind,
+    IReadOnlyList<string> AcceptedTags,
+    FullStackItemInstanceResponse? Item);
+
+public sealed record FullStackItemContainerResponse(
+    Guid ContainerId,
+    string ContainerType,
+    long Revision,
+    int? SlotCapacity,
+    IReadOnlyList<FullStackItemSlotResponse> Slots);
+
+public sealed record FullStackEquipmentSlotResponse(
+    string EquipmentSlotId,
+    int SortOrder,
+    FullStackItemInstanceResponse? Item);
+
+public sealed record FullStackEquippedBagResponse(
+    FullStackItemInstanceResponse Item,
+    FullStackItemContainerResponse Contents);
+
+public sealed record FullStackSecureContainerResponse(
+    string TierId,
+    long EntitlementRevision,
+    FullStackItemContainerResponse Contents);
+
+public sealed record FullStackRecoveryStorageResponse(
+    Guid ContainerId,
+    long Revision,
+    IReadOnlyList<object> Deliveries);
+
+public sealed record FullStackCharacterInventoryResponse(
+    Guid CharacterId,
+    string CatalogRevision,
+    long ItemStateRevision,
+    FullStackItemContainerResponse PermanentInventory,
+    IReadOnlyList<FullStackEquipmentSlotResponse> Equipment,
+    FullStackEquippedBagResponse? EquippedBag,
+    FullStackItemContainerResponse Bank,
+    FullStackSecureContainerResponse SecureContainer,
+    FullStackRecoveryStorageResponse RecoveryStorage,
+    long CarriedWeight,
+    long CarryCapacity,
+    int LoadRatioBasisPoints,
+    bool SprintEligible,
+    int MovementMultiplierBasisPoints);
+
+public sealed record FullStackStackStressInventoryFixtureRequest(
+    string Workload,
+    string RunId);
+
+public sealed record FullStackStackStressInventoryFixtureResponse(
+    string Workload,
+    FullStackCharacterInventoryResponse Inventory);
+
+public sealed record FullStackStackStressLootHotspotRequest(
+    string RunId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double LifetimeSeconds);
+
+public sealed record FullStackStackStressLootHotspotResponse(
+    Guid CorpseId,
+    int LootStacks,
+    int QuantityPerStack,
+    DateTime ExpiresAt);

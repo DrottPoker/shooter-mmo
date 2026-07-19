@@ -39,6 +39,10 @@ var worldManifestCatalog = WorldManifestCatalog.FromConfiguration(builder.Config
 var developmentSimulationBotOptions = DevelopmentSimulationBotOptions.FromConfiguration(
     builder.Configuration,
     builder.Environment.IsDevelopment());
+var stackStressFixtureOptions = StackStressFixtureOptions.FromConfiguration(
+    builder.Configuration,
+    builder.Environment.IsDevelopment(),
+    config.PostgresConnectionString);
 var npcItemLifecycleOptions = NpcItemLifecycleOptions.FromConfiguration(
     builder.Configuration);
 var itemOperationsOptions = ItemOperationsOptions.FromConfiguration(builder.Configuration);
@@ -55,6 +59,7 @@ builder.Services.AddSingleton(_ =>
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(worldManifestCatalog);
 builder.Services.AddSingleton(developmentSimulationBotOptions);
+builder.Services.AddSingleton(stackStressFixtureOptions);
 builder.Services.AddSingleton(npcItemLifecycleOptions);
 builder.Services.AddSingleton(itemOperationsOptions);
 builder.Services.AddSingleton<ItemOperationsMetrics>();
@@ -81,6 +86,7 @@ builder.Services.AddScoped<CorpseService>();
 builder.Services.AddScoped<ItemOperationsMaintenanceService>();
 builder.Services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
 builder.Services.AddScoped<DevelopmentItemToolService>();
+builder.Services.AddScoped<StackStressFixtureService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ShardService>();
 builder.Services.AddScoped<SimulationSessionService>();
@@ -239,6 +245,7 @@ app.MapSimulationItemEndpoints();
 app.MapCorpseEndpoints();
 app.MapSimulationEndpoints();
 app.MapDevelopmentSimulationBotEndpoints(developmentSimulationBotOptions);
+app.MapStackStressFixtureEndpoints(stackStressFixtureOptions);
 
 app.Run();
 

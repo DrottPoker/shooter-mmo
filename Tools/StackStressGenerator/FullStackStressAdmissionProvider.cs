@@ -12,16 +12,19 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private readonly FullStackStressClient client;
     private readonly StressPostgresSampler postgresSampler;
     private readonly SemaphoreSlim concurrency;
-    private readonly ConcurrentDictionary<int, string> activeAccountSessions = [];
+    private readonly ConcurrentDictionary<int, ActiveAccountSession> activeAccountSessions = [];
     private readonly object workerGate = new();
     private readonly string password;
     private StressProcessSampler? authServiceProcessSampler;
     private StressWorkerRegistration? worker;
     private int registeredBots;
+    private int fixtureAccounts;
+    private int inventoryFixtureBots;
     private int provisionedBots;
     private int loggedInBots;
     private int admittedBots;
     private int loggedOutBots;
+    private Guid? lootHotspotCorpseId;
 
     public FullStackStressAdmissionProvider(StressGeneratorOptions options)
     {
@@ -135,6 +138,20 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 cancellationToken);
             Interlocked.Increment(ref provisionedBots);
 
+            FullStackCharacterInventoryResponse? inventory = null;
+            if (options.Workload != StressWorkloadProfile.Lifecycle)
+            {
+                var fixture = await client.SeedInventoryFixtureAsync(
+                    registration.SessionToken,
+                    character.Id,
+                    StressGeneratorOptions.FormatWorkload(options.Workload),
+                    options.RunId,
+                    options.FixtureSecret!,
+                    cancellationToken);
+                inventory = fixture.Inventory;
+                Interlocked.Increment(ref inventoryFixtureBots);
+            }
+
             await client.LogoutAsync(registration.SessionToken, cancellationToken);
             var login = await client.LoginAsync(username, password, cancellationToken);
             activeToken = login.SessionToken;
@@ -170,7 +187,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             ValidateJoin(character, join);
             CaptureWorker(join);
 
-            if (!activeAccountSessions.TryAdd(botIndex, login.SessionToken))
+            if (!activeAccountSessions.TryAdd(
+                    botIndex,
+                    new ActiveAccountSession(login.SessionToken, character.Id)))
             {
                 throw new InvalidOperationException(
                     $"Bot index {botIndex} already owns a full-stack account session.");
@@ -188,7 +207,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 join.Endpoint.Host,
                 join.Endpoint.UdpPort,
                 join.Shard.Id,
-                join.Shard.WorldId));
+                join.Shard.WorldId,
+                inventory,
+                lootHotspotCorpseId));
         }
         catch (FullStackApiException exception)
         {
@@ -229,14 +250,14 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             },
             async (botIndex, token) =>
             {
-                if (!activeAccountSessions.TryRemove(botIndex, out var sessionToken))
+                if (!activeAccountSessions.TryRemove(botIndex, out var session))
                 {
                     return;
                 }
 
                 try
                 {
-                    await client.LogoutAsync(sessionToken, token);
+                    await client.LogoutAsync(session.SessionToken, token);
                     Interlocked.Increment(ref loggedOutBots);
                 }
                 catch (FullStackApiException exception)
@@ -247,7 +268,12 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             });
 
         await postgresSampler.VerifyAccountCountAsync(
-            Volatile.Read(ref registeredBots),
+            Volatile.Read(ref registeredBots) + Volatile.Read(ref fixtureAccounts),
+            cancellationToken);
+        await postgresSampler.VerifyGameplayInvariantsAsync(
+            options.Workload,
+            Volatile.Read(ref inventoryFixtureBots),
+            lootHotspotCorpseId is not null,
             cancellationToken);
         await postgresSampler.SampleAsync(cancellationToken);
         authServiceProcessSampler?.Sample();
@@ -257,6 +283,92 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     {
         authServiceProcessSampler?.Sample();
         await postgresSampler.SampleAsync(cancellationToken);
+    }
+
+    public async Task PrepareAsync(CancellationToken cancellationToken)
+    {
+        if (options.Workload is not (
+                StressWorkloadProfile.LootHotspot
+                or StressWorkloadProfile.MixedGameplay))
+        {
+            return;
+        }
+
+        var username = $"stress_{options.RunId}_fixture";
+        var sessionToken = string.Empty;
+        try
+        {
+            var registration = await client.RegisterAsync(
+                $"{username}@stack-stress.local",
+                username,
+                password,
+                cancellationToken);
+            sessionToken = registration.SessionToken;
+            Interlocked.Increment(ref fixtureAccounts);
+            var character = await client.CreateCharacterAsync(
+                registration.SessionToken,
+                $"Fixture {options.RunId}",
+                cancellationToken);
+            var join = await client.JoinShardAsync(
+                registration.SessionToken,
+                options.ShardId,
+                character.Id,
+                cancellationToken);
+            ValidateJoin(character, join);
+            CaptureWorker(join);
+
+            var rampSteps = Math.Max(0, (int)Math.Ceiling(
+                options.BotCount / (double)options.RampStep) - 1);
+            var requestedLifetime = options.SteadyDuration
+                + TimeSpan.FromTicks(options.RampInterval.Ticks * rampSteps)
+                + TimeSpan.FromMinutes(5);
+            var fixture = await client.CreateLootHotspotAsync(
+                registration.SessionToken,
+                new FullStackStackStressLootHotspotRequest(
+                    options.RunId,
+                    join.Endpoint.WorkerId,
+                    join.Endpoint.RuntimeId,
+                    join.Shard.Id,
+                    options.LootHotspotX,
+                    options.LootHotspotY,
+                    options.LootHotspotZ,
+                    Math.Clamp(requestedLifetime.TotalSeconds, 60d, 86_400d)),
+                options.FixtureSecret!,
+                cancellationToken);
+            lootHotspotCorpseId = fixture.CorpseId;
+            Console.WriteLine(
+                $"Prepared loot hotspot corpse {fixture.CorpseId} with {fixture.LootStacks} stacks of {fixture.QuantityPerStack} items at ({options.LootHotspotX}, {options.LootHotspotY}, {options.LootHotspotZ}).");
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(sessionToken))
+            {
+                try
+                {
+                    await client.LogoutAsync(sessionToken, cancellationToken);
+                }
+                catch (FullStackApiException exception)
+                {
+                    Console.WriteLine(
+                        $"Loot fixture account logout failed with {exception.Code}: {exception.Message}");
+                }
+            }
+        }
+    }
+
+    public async Task<FullStackCharacterInventoryResponse?> RefreshInventoryAsync(
+        int botIndex,
+        CancellationToken cancellationToken)
+    {
+        if (!activeAccountSessions.TryGetValue(botIndex, out var session))
+        {
+            return null;
+        }
+
+        return await client.GetInventoryAsync(
+            session.SessionToken,
+            session.CharacterId,
+            cancellationToken);
     }
 
     public void MarkSteadyState()
@@ -278,10 +390,13 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             new StressFullStackSummary(
                 options.RunId,
                 Volatile.Read(ref registeredBots),
+                Volatile.Read(ref fixtureAccounts),
+                Volatile.Read(ref inventoryFixtureBots),
                 Volatile.Read(ref provisionedBots),
                 Volatile.Read(ref loggedInBots),
                 Volatile.Read(ref admittedBots),
                 Volatile.Read(ref loggedOutBots),
+                lootHotspotCorpseId,
                 metrics.Capture()),
             authServiceProcessSampler?.CreateSummary(),
             postgresSampler.CreateSummary());
@@ -373,4 +488,6 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 $"Could not revoke a failed full-stack admission session: {exception.Message}");
         }
     }
+
+    private sealed record ActiveAccountSession(string SessionToken, Guid CharacterId);
 }

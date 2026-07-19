@@ -9,8 +9,17 @@ public enum StressRunMode
     FullStack
 }
 
+public enum StressWorkloadProfile
+{
+    Lifecycle,
+    Inventory,
+    LootHotspot,
+    MixedGameplay
+}
+
 public sealed record StressGeneratorOptions(
     StressRunMode Mode,
+    StressWorkloadProfile Workload,
     Uri AuthorityUrl,
     string WorkerHost,
     int WorkerUdpPort,
@@ -22,6 +31,7 @@ public sealed record StressGeneratorOptions(
     string? WorkerSecret,
     string? PostgresConnectionString,
     string? ConfirmedDisposableDatabase,
+    string? FixtureSecret,
     string RunId,
     TimeSpan HttpTimeout,
     int HttpConcurrency,
@@ -32,12 +42,19 @@ public sealed record StressGeneratorOptions(
     TimeSpan SteadyDuration,
     TimeSpan WorkerWaitTimeout,
     TimeSpan JoinTimeout,
+    TimeSpan InventoryOperationInterval,
+    TimeSpan LootOperationInterval,
+    TimeSpan GameplayOperationTimeout,
+    int LootHotspotX,
+    int LootHotspotY,
+    int LootHotspotZ,
     TimeSpan ReportInterval,
     int Seed,
     string OutputPath)
 {
     public const int MaximumBotCount = 10_000;
     public const string PostgresConnectionEnvironmentVariable = "STACK_STRESS_POSTGRES";
+    public const string FixtureSecretEnvironmentVariable = "STACK_STRESS_FIXTURE_SECRET";
 
     public static StressGeneratorOptions Parse(string[] args, string workingDirectory)
     {
@@ -46,6 +63,13 @@ public sealed record StressGeneratorOptions(
 
         var values = ParseValues(args);
         var mode = ParseMode(Get(values, "mode", "worker-only"));
+        var workload = ParseWorkload(Get(values, "workload", "lifecycle"));
+        if (mode == StressRunMode.WorkerOnly
+            && workload != StressWorkloadProfile.Lifecycle)
+        {
+            throw new StressGeneratorOptionException(
+                "Inventory and loot workload profiles require --mode full-stack because synthetic worker-only sessions cannot mutate durable items.");
+        }
         var authorityKey = mode == StressRunMode.WorkerOnly
             ? "authority-url"
             : "auth-service-url";
@@ -66,6 +90,7 @@ public sealed record StressGeneratorOptions(
         string? workerSecret = null;
         string? postgresConnectionString = null;
         string? confirmedDisposableDatabase = null;
+        string? fixtureSecret = null;
         if (mode == StressRunMode.WorkerOnly)
         {
             workerSecret = Get(values, "worker-secret", CreateSecret());
@@ -91,6 +116,18 @@ public sealed record StressGeneratorOptions(
                 throw new StressGeneratorOptionException(
                     "Full-stack mode requires --confirm-disposable-database with the exact stress database name.");
             }
+
+            if (workload != StressWorkloadProfile.Lifecycle)
+            {
+                fixtureSecret = Environment.GetEnvironmentVariable(
+                    FixtureSecretEnvironmentVariable)?.Trim();
+                if (string.IsNullOrWhiteSpace(fixtureSecret)
+                    || fixtureSecret.Length < 32)
+                {
+                    throw new StressGeneratorOptionException(
+                        $"The {FormatWorkload(workload)} workload requires {FixtureSecretEnvironmentVariable} with at least 32 characters.");
+                }
+            }
         }
 
         var botCount = ParseInt(values, "bots", 100, 1, MaximumBotCount);
@@ -103,11 +140,12 @@ public sealed record StressGeneratorOptions(
                 workingDirectory,
                 "artifacts",
                 "stress",
-                $"stack-stress-{FormatMode(mode)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json"));
+                $"stack-stress-{FormatMode(mode)}-{FormatWorkload(workload)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json"));
         var runId = ValidateRunId(Get(values, "run-id", CreateRunId()));
 
         return new StressGeneratorOptions(
             mode,
+            workload,
             authorityUrl,
             Require(Get(values, "worker-host", "127.0.0.1"), "worker-host"),
             ParseInt(values, "worker-udp-port", 27015, 1, ushort.MaxValue),
@@ -119,6 +157,7 @@ public sealed record StressGeneratorOptions(
             workerSecret,
             postgresConnectionString?.Trim(),
             confirmedDisposableDatabase?.Trim(),
+            fixtureSecret,
             runId,
             TimeSpan.FromSeconds(ParseInt(values, "http-timeout-seconds", 30, 1, 300)),
             ParseInt(values, "http-concurrency", 32, 1, 512),
@@ -129,6 +168,27 @@ public sealed record StressGeneratorOptions(
             TimeSpan.FromSeconds(ParseInt(values, "duration-seconds", 300, 1, 86_400)),
             TimeSpan.FromSeconds(ParseInt(values, "worker-wait-seconds", 120, 1, 3600)),
             TimeSpan.FromSeconds(ParseInt(values, "join-timeout-seconds", 10, 1, 300)),
+            TimeSpan.FromSeconds(ParseInt(
+                values,
+                "inventory-operation-interval-seconds",
+                8,
+                1,
+                3600)),
+            TimeSpan.FromSeconds(ParseInt(
+                values,
+                "loot-operation-interval-seconds",
+                3,
+                1,
+                3600)),
+            TimeSpan.FromSeconds(ParseInt(
+                values,
+                "gameplay-operation-timeout-seconds",
+                30,
+                1,
+                300)),
+            ParseInt(values, "loot-hotspot-x", 0, -1_000_000, 1_000_000),
+            ParseInt(values, "loot-hotspot-y", 0, -1_000_000, 1_000_000),
+            ParseInt(values, "loot-hotspot-z", -16, -1_000_000, 1_000_000),
             TimeSpan.FromSeconds(ParseInt(values, "report-interval-seconds", 10, 1, 3600)),
             ParseInt(values, "seed", 1337, int.MinValue, int.MaxValue),
             Path.GetFullPath(output, workingDirectory));
@@ -144,10 +204,11 @@ public sealed record StressGeneratorOptions(
         StackStressGenerator
 
         Drives headless LiteNetLib bots through worker-only or full-stack account,
-        placement, session, join, movement, and leave flows.
+        placement, session, join, movement, item, loot, and leave flows.
 
         Options:
           --mode <worker-only|full-stack>   Run mode. Default: worker-only
+          --workload <profile>              lifecycle, inventory, loot-hotspot, or mixed-gameplay. Default: lifecycle
           --authority-url <url>             Loopback authority URL. Default: http://127.0.0.1:5099
           --auth-service-url <url>          Full-stack AuthService URL. Default: http://127.0.0.1:5000
           --postgres-connection-string <cs> Full-stack metrics and safety connection. Prefer STACK_STRESS_POSTGRES.
@@ -170,6 +231,10 @@ public sealed record StressGeneratorOptions(
           --duration-seconds <seconds>      Steady-load duration after the ramp. Default: 300
           --worker-wait-seconds <seconds>   Worker registration timeout. Default: 120
           --join-timeout-seconds <seconds>  Per-bot join timeout. Default: 10
+          --inventory-operation-interval-seconds <seconds> Inventory mutation cadence. Default: 8
+          --loot-operation-interval-seconds <seconds> Corpse mutation cadence. Default: 3
+          --gameplay-operation-timeout-seconds <seconds> Realtime operation timeout. Default: 30
+          --loot-hotspot-x|y|z <coordinate> Corpse position. Default: 0, 0, -16
           --report-interval-seconds <sec>   Console report interval. Default: 10
           --seed <number>                   Deterministic movement seed. Default: 1337
           --output <path>                   JSON result path under artifacts/stress by default.
@@ -209,6 +274,7 @@ public sealed record StressGeneratorOptions(
         var supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "mode",
+            "workload",
             "authority-url",
             "auth-service-url",
             "postgres-connection-string",
@@ -231,6 +297,12 @@ public sealed record StressGeneratorOptions(
             "duration-seconds",
             "worker-wait-seconds",
             "join-timeout-seconds",
+            "inventory-operation-interval-seconds",
+            "loot-operation-interval-seconds",
+            "gameplay-operation-timeout-seconds",
+            "loot-hotspot-x",
+            "loot-hotspot-y",
+            "loot-hotspot-z",
             "report-interval-seconds",
             "seed",
             "output"
@@ -256,6 +328,19 @@ public sealed record StressGeneratorOptions(
         };
     }
 
+    private static StressWorkloadProfile ParseWorkload(string value)
+    {
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "lifecycle" => StressWorkloadProfile.Lifecycle,
+            "inventory" => StressWorkloadProfile.Inventory,
+            "loot-hotspot" => StressWorkloadProfile.LootHotspot,
+            "mixed-gameplay" => StressWorkloadProfile.MixedGameplay,
+            _ => throw new StressGeneratorOptionException(
+                "--workload must be lifecycle, inventory, loot-hotspot, or mixed-gameplay.")
+        };
+    }
+
     public static string FormatMode(StressRunMode mode)
     {
         return mode switch
@@ -263,6 +348,18 @@ public sealed record StressGeneratorOptions(
             StressRunMode.WorkerOnly => "worker-only",
             StressRunMode.FullStack => "full-stack",
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+    }
+
+    public static string FormatWorkload(StressWorkloadProfile workload)
+    {
+        return workload switch
+        {
+            StressWorkloadProfile.Lifecycle => "lifecycle",
+            StressWorkloadProfile.Inventory => "inventory",
+            StressWorkloadProfile.LootHotspot => "loot-hotspot",
+            StressWorkloadProfile.MixedGameplay => "mixed-gameplay",
+            _ => throw new ArgumentOutOfRangeException(nameof(workload))
         };
     }
 

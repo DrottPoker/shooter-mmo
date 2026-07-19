@@ -108,7 +108,9 @@ public sealed record StressBotAdmission(
     string WorkerHost,
     int WorkerUdpPort,
     string ShardId,
-    string WorldId);
+    string WorldId,
+    FullStackCharacterInventoryResponse? Inventory = null,
+    Guid? LootHotspotCorpseId = null);
 
 public sealed record StressAdmissionResult(
     StressBotAdmission? Admission,

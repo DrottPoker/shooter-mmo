@@ -10,6 +10,7 @@ public sealed class StressGeneratorOptionsTests
         var options = StressGeneratorOptions.Parse([], Directory.GetCurrentDirectory());
 
         Assert.Equal(StressRunMode.WorkerOnly, options.Mode);
+        Assert.Equal(StressWorkloadProfile.Lifecycle, options.Workload);
         Assert.True(options.AuthorityUrl.IsLoopback);
         Assert.Equal(100, options.BotCount);
         Assert.Equal(25, options.RampStep);
@@ -17,6 +18,17 @@ public sealed class StressGeneratorOptionsTests
         Assert.Equal("Stress Bot 1", $"Stress Bot {options.BotStartIndex}");
         Assert.NotNull(options.WorkerSecret);
         Assert.True(options.WorkerSecret.Length >= 32);
+    }
+
+    [Fact]
+    public void WorkerOnlyRejectsDurableGameplayWorkload()
+    {
+        var exception = Assert.Throws<StressGeneratorOptionException>(() =>
+            StressGeneratorOptions.Parse(
+                ["--mode", "worker-only", "--workload", "inventory"],
+                Directory.GetCurrentDirectory()));
+
+        Assert.Contains("full-stack", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

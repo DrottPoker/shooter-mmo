@@ -111,6 +111,51 @@ public sealed class DurableCorpseStoreTests
             section => section.SectionKind == "general_inventory").ContainerRevision);
     }
 
+    [Fact]
+    public void RepeatedRestoreDoesNotRegressConcurrentLocalState()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var corpseId = Guid.NewGuid();
+        var original = CreateCorpse(
+            corpseId,
+            databaseTime.AddMinutes(-1),
+            databaseTime.AddMinutes(4),
+            isEmpty: false) with
+        { Revision = 5 };
+        var store = new DurableCorpseStore(TimeProvider.System);
+        store.Replace(
+            new CorpseRestoreResponse(databaseTime, [original]),
+            "local-shard-1");
+        store.Apply(original with { Revision = 6, IsEmpty = true });
+
+        store.Replace(
+            new CorpseRestoreResponse(databaseTime.AddSeconds(1), [original]),
+            "local-shard-1");
+
+        var active = Assert.Single(store.ListActive());
+        Assert.Equal(6, active.Revision);
+        Assert.True(active.IsEmpty);
+    }
+
+    [Fact]
+    public void RestoreSnapshotPreservesCorpseCreatedAfterItsDatabaseTime()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var createdAfterSnapshot = CreateCorpse(
+            Guid.NewGuid(),
+            databaseTime.AddMilliseconds(1),
+            databaseTime.AddMinutes(4),
+            isEmpty: false);
+        var store = new DurableCorpseStore(TimeProvider.System);
+        store.Apply(createdAfterSnapshot);
+
+        store.Replace(
+            new CorpseRestoreResponse(databaseTime, []),
+            "local-shard-1");
+
+        Assert.Equal(createdAfterSnapshot.CorpseId, Assert.Single(store.ListActive()).CorpseId);
+    }
+
     private static DurableCorpseResponse CreateCorpse(
         Guid corpseId,
         DateTime createdAt,

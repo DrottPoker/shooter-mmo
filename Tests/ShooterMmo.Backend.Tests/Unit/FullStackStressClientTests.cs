@@ -80,6 +80,55 @@ public sealed class FullStackStressClientTests
         Assert.Equal(1, operation.FailureCodes["rate_limit_exceeded"]);
     }
 
+    [Fact]
+    public async Task LootFixtureUsesGuardedDevelopmentEndpointAndAuthorityHeader()
+    {
+        string? requestPath = null;
+        string? authority = null;
+        string? authorization = null;
+        var corpseId = Guid.NewGuid();
+        using var handler = new StubHttpMessageHandler(request =>
+        {
+            requestPath = request.RequestUri?.AbsolutePath;
+            authority = request.Headers.GetValues("X-Stack-Stress-Fixture-Key").Single();
+            authorization = request.Headers.Authorization?.ToString();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new FullStackStackStressLootHotspotResponse(
+                    corpseId,
+                    24,
+                    50,
+                    DateTime.UtcNow.AddMinutes(5)))
+            });
+        });
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:5000")
+        };
+        var client = new FullStackStressClient(
+            httpClient,
+            new FullStackStressMetrics(1337));
+
+        var response = await client.CreateLootHotspotAsync(
+            "account-session",
+            new FullStackStackStressLootHotspotRequest(
+                "run123",
+                "worker-1",
+                "runtime-1",
+                "shard-1",
+                0,
+                0,
+                -16,
+                300),
+            "fixture-secret-that-is-long-enough-2026",
+            CancellationToken.None);
+
+        Assert.Equal("/api/development/stack-stress/loot-hotspot", requestPath);
+        Assert.Equal("fixture-secret-that-is-long-enough-2026", authority);
+        Assert.Equal("Bearer account-session", authorization);
+        Assert.Equal(corpseId, response.CorpseId);
+    }
+
     private sealed class StubHttpMessageHandler(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {

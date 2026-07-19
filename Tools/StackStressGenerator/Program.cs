@@ -43,6 +43,8 @@ public static class Program
                 && report.Bots.CompletedBots == options.BotCount
                 && (report.FullStack is null
                     || report.FullStack.LoggedOutBots == report.FullStack.AdmittedBots)
+                && report.Gameplay.UnexpectedFailures == 0
+                && (report.Postgres?.ItemInvariants?.Violations ?? 0) == 0
                 ? 0
                 : 1;
         }
@@ -150,13 +152,26 @@ public static class Program
         if (report.FullStack is not null)
         {
             Console.WriteLine(
-                $"Full-stack lifecycle: {report.FullStack.RegisteredBots} registered, {report.FullStack.ProvisionedBots} provisioned, {report.FullStack.LoggedInBots} logged in, {report.FullStack.AdmittedBots} admitted, {report.FullStack.LoggedOutBots} logged out.");
+                $"Full-stack lifecycle: {report.FullStack.RegisteredBots} registered, {report.FullStack.FixtureAccounts} fixture accounts, {report.FullStack.InventoryFixtureBots} inventory fixtures, {report.FullStack.ProvisionedBots} provisioned, {report.FullStack.LoggedInBots} logged in, {report.FullStack.AdmittedBots} admitted, {report.FullStack.LoggedOutBots} logged out.");
+        }
+
+        foreach (var operation in report.Gameplay.Operations)
+        {
+            var latency = operation.Value.Latency;
+            Console.WriteLine(
+                $"Gameplay {operation.Key}: {operation.Value.Requests} requests, {operation.Value.Successes} successes, {operation.Value.ExpectedRejections} expected conflicts, {operation.Value.UnexpectedRejections} unexpected rejections, {operation.Value.Timeouts} timeouts, {operation.Value.IncompleteRequests} incomplete, p95 {(latency is null ? "n/a" : $"{latency.P95Ms:0.0} ms")}.");
         }
 
         if (report.Postgres is not null)
         {
             Console.WriteLine(
                 $"PostgreSQL: {report.Postgres.CommittedTransactions} commits, {report.Postgres.RolledBackTransactions} rollbacks, max {report.Postgres.MaximumConnections} connections, max {report.Postgres.MaximumWaitingConnections} active waits, {report.Postgres.SimulationSessionRowsUpdated} simulation-session updates, {report.Postgres.MaximumExpiredUnreleasedSimulationSessions} expired unreleased sessions, {report.Postgres.Deadlocks} deadlocks.");
+        }
+
+        if (report.Postgres?.ItemInvariants is { } invariants)
+        {
+            Console.WriteLine(
+                $"Item invariants: iron {invariants.ActualIronOreQuantity}/{invariants.ExpectedIronOreQuantity}, field dressing {invariants.ActualFieldDressingQuantity}/{invariants.ExpectedFieldDressingQuantity}, duplicate slots {invariants.DuplicateContainerSlots}, invalid custody {invariants.InvalidItemCustodyRows}, pending operations {invariants.PendingItemOperations}.");
         }
 
         Console.WriteLine($"JSON report: {outputPath}");

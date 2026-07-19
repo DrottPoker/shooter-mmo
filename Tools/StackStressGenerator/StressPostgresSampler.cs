@@ -25,13 +25,32 @@ public sealed record StressPostgresSummary(
     long TemporaryBytes,
     long Deadlocks,
     double BlockReadMilliseconds,
-    double BlockWriteMilliseconds);
+    double BlockWriteMilliseconds,
+    StressItemInvariantSummary? ItemInvariants);
+
+public sealed record StressItemInvariantSummary(
+    long ExpectedIronOreQuantity,
+    long ActualIronOreQuantity,
+    long ExpectedFieldDressingQuantity,
+    long ActualFieldDressingQuantity,
+    int DuplicateContainerSlots,
+    int InvalidItemCustodyRows,
+    int PendingItemOperations)
+{
+    public int Violations =>
+        (ExpectedIronOreQuantity == ActualIronOreQuantity ? 0 : 1)
+        + (ExpectedFieldDressingQuantity == ActualFieldDressingQuantity ? 0 : 1)
+        + DuplicateContainerSlots
+        + InvalidItemCustodyRows
+        + PendingItemOperations;
+}
 
 public sealed class StressPostgresSampler : IAsyncDisposable
 {
     private readonly NpgsqlDataSource dataSource;
     private readonly string expectedDatabase;
     private readonly List<PostgresSample> samples = [];
+    private StressItemInvariantSummary? itemInvariants;
 
     private StressPostgresSampler(
         NpgsqlDataSource dataSource,
@@ -247,6 +266,71 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         }
     }
 
+    public async Task VerifyGameplayInvariantsAsync(
+        StressWorkloadProfile workload,
+        int inventoryFixtureBots,
+        bool hasLootHotspot,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            select
+                coalesce(sum(item.quantity) filter (
+                    where item.definition_id = 'material.iron_ore'), 0)::bigint,
+                coalesce(sum(item.quantity) filter (
+                    where item.definition_id = 'medical.field_dressing'), 0)::bigint,
+                (select count(*)::integer
+                 from (
+                     select duplicate.container_id, duplicate.container_slot_index
+                     from item_instances duplicate
+                     where duplicate.container_id is not null
+                     group by duplicate.container_id, duplicate.container_slot_index
+                     having count(*) > 1
+                 ) duplicate_slots),
+                count(*) filter (
+                    where not (
+                        (item.container_id is not null
+                         and item.container_slot_index is not null
+                         and item.equipped_character_id is null
+                         and item.equipment_slot_id is null)
+                        or
+                        (item.container_id is null
+                         and item.container_slot_index is null
+                         and item.equipped_character_id is not null
+                         and item.equipment_slot_id is not null)))::integer,
+                (select count(*)::integer
+                 from item_operations operation
+                 where operation.status = 'pending')
+            from item_instances item;
+            """;
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "PostgreSQL did not return stack stress item invariants.");
+        }
+
+        var expectedIron = workload is StressWorkloadProfile.LootHotspot
+            or StressWorkloadProfile.MixedGameplay
+                ? inventoryFixtureBots + (hasLootHotspot ? 24L * 50L : 0L)
+                : 0L;
+        var expectedDressing = workload is StressWorkloadProfile.Inventory
+            or StressWorkloadProfile.MixedGameplay
+                ? inventoryFixtureBots
+                : 0L;
+        itemInvariants = new StressItemInvariantSummary(
+            expectedIron,
+            reader.GetInt64(0),
+            expectedDressing,
+            reader.GetInt64(1),
+            reader.GetInt32(2),
+            reader.GetInt32(3),
+            reader.GetInt32(4));
+    }
+
     public StressPostgresSummary? CreateSummary()
     {
         if (samples.Count < 2)
@@ -289,7 +373,8 @@ public sealed class StressPostgresSampler : IAsyncDisposable
             NonNegativeDelta(last.TemporaryBytes, first.TemporaryBytes),
             NonNegativeDelta(last.Deadlocks, first.Deadlocks),
             NonNegativeDelta(last.BlockReadMilliseconds, first.BlockReadMilliseconds),
-            NonNegativeDelta(last.BlockWriteMilliseconds, first.BlockWriteMilliseconds));
+            NonNegativeDelta(last.BlockWriteMilliseconds, first.BlockWriteMilliseconds),
+            itemInvariants);
     }
 
     public async ValueTask DisposeAsync()

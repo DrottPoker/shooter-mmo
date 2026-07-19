@@ -106,6 +106,24 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
 
         lock (sync)
         {
+            foreach (var current in corpses.Values)
+            {
+                if (replacement.TryGetValue(current.CorpseId, out var restored))
+                {
+                    if (current.Revision > restored.Revision)
+                    {
+                        replacement[current.CorpseId] = current;
+                    }
+
+                    continue;
+                }
+
+                if (current.CreatedAt > response.DatabaseTime)
+                {
+                    replacement.Add(current.CorpseId, current);
+                }
+            }
+
             corpses = replacement;
             databaseTimeAtSnapshot = response.DatabaseTime;
             timestampAtSnapshot = timeProvider.GetTimestamp();

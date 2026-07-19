@@ -35,6 +35,21 @@ public interface ISimulationBotInputSource
         RealtimeJoinAccepted joinedSession);
 }
 
+public interface ISimulationBotRealtimeObserver
+{
+    void OnJoined(RealtimeJoinAccepted session);
+
+    void OnItemOperationResult(RealtimeItemOperationResult result);
+
+    void OnCorpsePresence(RealtimeCorpsePresenceSnapshotChunk chunk);
+
+    void OnCorpseInteractionResult(RealtimeCorpseInteractionResult result);
+
+    void OnCorpseViewState(RealtimeCorpseViewStateChunk chunk);
+
+    void OnCorpseViewClosed(RealtimeCorpseViewClosed closed);
+}
+
 public sealed record SimulationBotClientSnapshot(
     int BotIndex,
     string CharacterName,

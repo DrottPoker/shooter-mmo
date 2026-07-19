@@ -24,6 +24,7 @@ public sealed class DurableCorpseRestorationService(
             await Task.Delay(AuthorityPollInterval, stoppingToken);
         }
 
+        var restoredOnce = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             var result = await authServiceClient.RestoreDurableCorpsesAsync(
@@ -34,12 +35,20 @@ public sealed class DurableCorpseRestorationService(
             if (result.Succeeded)
             {
                 corpseStore.Replace(result.Value!, config.ShardId);
-                logger.LogInformation(
-                    "Restored {CorpseCount} unexpired durable corpses for Shard {ShardId} and runtime {RuntimeId}.",
-                    result.Value!.Corpses.Count,
-                    config.ShardId,
-                    identity.RuntimeId);
-                return;
+                if (!restoredOnce)
+                {
+                    restoredOnce = true;
+                    logger.LogInformation(
+                        "Restored {CorpseCount} unexpired durable corpses for Shard {ShardId} and runtime {RuntimeId}.",
+                        result.Value!.Corpses.Count,
+                        config.ShardId,
+                        identity.RuntimeId);
+                }
+
+                await Task.Delay(
+                    config.ItemInteraction.DurableCorpseRefreshInterval,
+                    stoppingToken);
+                continue;
             }
 
             logger.LogWarning(

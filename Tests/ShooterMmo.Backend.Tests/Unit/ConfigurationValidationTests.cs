@@ -75,6 +75,36 @@ public sealed class ConfigurationValidationTests
     }
 
     [Fact]
+    public void StackStressFixturesRequireDevelopmentLoopbackTestDatabaseAndSecret()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["StackStressFixtures:Enabled"] = "true",
+            [StackStressFixtureOptions.SecretEnvironmentVariable] =
+                "test-stack-stress-fixture-secret-at-least-32-characters"
+        };
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+
+        var options = StackStressFixtureOptions.FromConfiguration(
+            configuration,
+            isDevelopment: true,
+            "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test");
+
+        Assert.True(options.Enabled);
+
+        var production = Assert.Throws<InvalidOperationException>(() =>
+            StackStressFixtureOptions.FromConfiguration(
+                configuration,
+                isDevelopment: false,
+                "Host=database.example;Database=game;Username=test;Password=test"));
+        Assert.Contains("Development", production.Message, StringComparison.Ordinal);
+        Assert.Contains("loopback", production.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stress", production.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void NpcItemLifecycleRequiresPositiveServerOwnedInsurancePrice()
     {
         var validConfiguration = new ConfigurationBuilder()
@@ -173,6 +203,7 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(3, config.ItemInteraction.ServicePoints.Count);
         Assert.Equal(3f, config.ItemInteraction.CorpseInteractionRadius);
         Assert.Equal(32f, config.ItemInteraction.CorpseDiscoveryRadius);
+        Assert.Equal(TimeSpan.FromSeconds(30), config.ItemInteraction.DurableCorpseRefreshInterval);
 
         var access = new ItemInteractionAccessService(config);
         Assert.True(access.Evaluate(0f, 0f, -1f).Bank);

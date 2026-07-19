@@ -6,6 +6,8 @@ public interface IStressAdmissionProvider : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken);
 
+    Task PrepareAsync(CancellationToken cancellationToken);
+
     Task<StressAdmissionResult> AdmitAsync(
         int botIndex,
         CancellationToken cancellationToken);
@@ -15,6 +17,10 @@ public interface IStressAdmissionProvider : IAsyncDisposable
         CancellationToken cancellationToken);
 
     Task SampleAsync(CancellationToken cancellationToken);
+
+    Task<FullStackCharacterInventoryResponse?> RefreshInventoryAsync(
+        int botIndex,
+        CancellationToken cancellationToken);
 
     void MarkSteadyState();
 
@@ -64,6 +70,12 @@ public sealed class WorkerOnlyStressAdmissionProvider(
         return Task.FromResult(StressAdmissionResult.Success(admission));
     }
 
+    public Task PrepareAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
     public Task CompleteAsync(
         IReadOnlyCollection<int> botIndexes,
         CancellationToken cancellationToken)
@@ -76,6 +88,14 @@ public sealed class WorkerOnlyStressAdmissionProvider(
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.CompletedTask;
+    }
+
+    public Task<FullStackCharacterInventoryResponse?> RefreshInventoryAsync(
+        int botIndex,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<FullStackCharacterInventoryResponse?>(null);
     }
 
     public void MarkSteadyState()
