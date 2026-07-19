@@ -135,6 +135,14 @@ relationship.
 Feature folders remain inside the service that owns them. Configuration lives
 under `AuthService/Config`.
 
+AuthService owns one bounded Npgsql pool per process. The checked-in
+`Database:MaximumPoolSize` is `64`, leaving connection headroom on a default
+100-connection PostgreSQL server for worker traffic, health probes, stress
+sampling, administration, and shutdown. Deployments with multiple AuthService
+replicas must budget the combined per-process pool limits below PostgreSQL's
+non-reserved connection capacity. Transient Npgsql connection failures return
+`503 database_unavailable` instead of an unclassified internal server error.
+
 ### SimulationWorker
 
 `SimulationWorker` is a .NET Generic Host console application. It does not host

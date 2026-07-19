@@ -1,6 +1,7 @@
 using AuthService.Config;
 using AuthService.Items;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 using ShooterMmo.Shared.Worlds;
 using SimulationWorker.Config;
 using SimulationWorker.Items;
@@ -33,6 +34,28 @@ public sealed class ConfigurationValidationTests
         var config = AuthServiceConfig.FromConfiguration(configuration);
 
         Assert.Equal(TimeSpan.FromSeconds(30), config.SimulationWorkerHeartbeatTimeout);
+        var postgres = new NpgsqlConnectionStringBuilder(config.PostgresConnectionString);
+        Assert.Equal(64, postgres.MaxPoolSize);
+        Assert.Equal("ShooterMmo.AuthService", postgres.ApplicationName);
+    }
+
+    [Theory]
+    [InlineData("0", "positive integer")]
+    [InlineData("1001", "must not exceed")]
+    public void AuthServiceRejectsUnsafePostgresPoolSize(
+        string maximumPoolSize,
+        string expectedMessage)
+    {
+        var settings = AuthSettings(includeSecrets: true);
+        settings["Database:MaximumPoolSize"] = maximumPoolSize;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => AuthServiceConfig.FromConfiguration(configuration));
+
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -277,6 +300,7 @@ public sealed class ConfigurationValidationTests
             ["ConnectionStrings:Redis"] = "localhost:6379",
             ["HealthChecks:TimeoutMilliseconds"] = "1000",
             ["Database:RunMigrationsOnStartup"] = "true",
+            ["Database:MaximumPoolSize"] = "64",
             ["Auth:SessionLifetimeHours"] = "24",
             ["Game:MaxCharactersPerAccount"] = "5",
             ["Simulation:JoinTicketLifetimeSeconds"] = "30",

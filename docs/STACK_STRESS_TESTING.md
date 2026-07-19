@@ -92,6 +92,13 @@ session secrets are not written to the JSON report.
 PostgreSQL uses a temporary in-memory filesystem, so `docker compose down`
 discards the complete stress database.
 
+AuthService caps its Npgsql pool at `Database:MaximumPoolSize`, currently `64`.
+Do not raise this value merely to make a stress tier pass. The combined pool
+limits of all AuthService replicas plus worker, health, monitoring, and
+administrative clients must remain below PostgreSQL's non-reserved connection
+capacity. Pool saturation should queue bounded work. A transient database
+connection failure returns `503 database_unavailable`.
+
 ## Build
 
 Run from the repository root:
@@ -361,6 +368,7 @@ sharing one Windows development machine:
 | Before optimization | 200 | 30 s | 200/200 | 0 | 144.0 ms | 69.2% | at most 50 ms | 111.9 MiB | Outside tick budget |
 | Snapshot and interest optimization | 200 | 30 s | 200/200 | 0 | 137.4 ms | 54.9% | at most 8 ms | 112.5 MiB | Clean short run |
 | Final clean tier | 250 | 30 s | 250/250 | 0 | 148.9 ms | 70.8% | at most 16 ms | 129.8 MiB | Clean short run |
+| 2026-07-19 validation | 250 | 60 s | 250/250 | 0 | 144.2 ms | 61.8% | at most 16 ms | 107.9 MiB | Clean short run |
 | Controlled overload | 400 | 120 s | 400/400 | 461,263 | 427.0 ms | 95.6% | at most 50 ms | 239.5 MiB | Not a supported quality tier |
 
 At 200 bots, reusable interest state and visibility-set packet sharing reduced
@@ -372,7 +380,41 @@ The 400-bot overload run remained available by dropping unreliable snapshots,
 but it fails the quality boundary because snapshot gaps grow and simulation tick
 p99 crosses 33.34 ms. The 250-bot result is only a short clean run. A 30 to 60
 minute soak is still required before declaring supported capacity. No comparable
-full-stack capacity baseline has been accepted yet.
+full-stack production capacity baseline has been accepted yet.
+
+## Current Full-stack Baseline
+
+These local runs were recorded on 2026-07-19 on the same Ryzen 7 5800 machine.
+They used the normal AuthService account and placement APIs, real PostgreSQL,
+real worker ticket consumption and session leases, and the realtime UDP load.
+
+| Run | Bots | HTTP concurrency | Steady interval | Complete lifecycle | HTTP failures | PostgreSQL max connections | Snapshot gaps | Input ack p95 | Result |
+| --- | ---: | ---: | ---: | :---: | ---: | ---: | ---: | ---: | --- |
+| Initial baseline | 100 | 32 | 60 s | 100/100 | 0 | 34 | 0 | 126.2 ms | Clean short run |
+| Before pool bound | 250 | 64 | 60 s | 198/250 | 48 | 100 | 0 | 133.7 ms | PostgreSQL connection exhaustion |
+| After pool bound | 250 | 64 | 60 s | 250/250 | 0 | 66 | 0 | 148.4 ms | Clean short run |
+| Controlled overload | 400 | 64 | 30 s | 400/400 | 0 | 66 | 128,529 | 479.5 ms | Worker snapshot quality boundary failed |
+
+Before the pool bound, one AuthService process could grow its implicit Npgsql
+pool to PostgreSQL's complete 100-connection limit. PostgreSQL logged repeated
+`too many clients already` failures across registration, character, login,
+placement, and worker ticket-consumption requests. This caused 52 bot failures.
+
+With `Database:MaximumPoolSize` set to `64`, the exact same 250-bot and
+64-concurrency profile completed every lifecycle. Database connections remained
+at or below 66 including non-AuthService clients, with no rollback, deadlock, or
+expired unreleased session. Registration and login p95 were 5.46 and 5.33
+seconds under the intentional password-hashing and pool queue burst. This is
+bounded admission backpressure, not a steady-state gameplay delay.
+
+The 400-bot run proves the pool boundary also holds during controlled overload.
+Every account and session lifecycle completed, but the dense map exceeded the
+worker-wide 38 MiB/s snapshot budget. SimulationWorker deliberately dropped
+about 2.52 million unreliable snapshots to remain available. Simulation tick
+p99 reached the 50 ms bucket, snapshot gaps grew, and input acknowledgement p95
+reached 479.5 ms. This is a SimulationWorker bandwidth and dense-interest
+quality boundary, not an AuthService or PostgreSQL failure. Raising the snapshot
+budget would remove protection rather than fix the all-to-all workload.
 
 ## Scope Boundary
 

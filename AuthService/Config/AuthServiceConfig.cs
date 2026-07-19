@@ -10,6 +10,8 @@ public sealed record AuthServiceConfig(
     TimeSpan SimulationWorkerHeartbeatTimeout,
     SimulationTopologyConfig SimulationTopology)
 {
+    public const int MaximumPostgresPoolSizeLimit = 1_000;
+
     public static AuthServiceConfig FromConfiguration(IConfiguration configuration)
     {
         var errors = new List<string>();
@@ -19,6 +21,15 @@ public sealed record AuthServiceConfig(
         ValidatePostgres(postgres, errors);
         ValidateRedis(redis, errors);
         ValidateBoolean(configuration, "Database:RunMigrationsOnStartup", errors);
+        var postgresMaximumPoolSize = ValidatePositiveInt(
+            configuration,
+            "Database:MaximumPoolSize",
+            errors);
+        if (postgresMaximumPoolSize > MaximumPostgresPoolSizeLimit)
+        {
+            errors.Add(
+                $"Database:MaximumPoolSize must not exceed {MaximumPostgresPoolSizeLimit}.");
+        }
         ValidatePositiveInt(configuration, "Auth:SessionLifetimeHours", errors);
         ValidatePositiveInt(configuration, "Game:MaxCharactersPerAccount", errors);
         ValidatePositiveInt(configuration, "Simulation:JoinTicketLifetimeSeconds", errors);
@@ -76,11 +87,23 @@ public sealed record AuthServiceConfig(
         }
 
         return new AuthServiceConfig(
-            postgres!,
+            ConfigurePostgresConnectionString(postgres!, postgresMaximumPoolSize),
             redis!,
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds),
             TimeSpan.FromSeconds(workerHeartbeatTimeoutSeconds),
             simulationTopology);
+    }
+
+    private static string ConfigurePostgresConnectionString(
+        string connectionString,
+        int maximumPoolSize)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "ShooterMmo.AuthService",
+            MaxPoolSize = maximumPoolSize
+        };
+        return builder.ConnectionString;
     }
 
     private static string? RequireConnectionString(

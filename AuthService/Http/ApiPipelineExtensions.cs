@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace AuthService.Http;
 
@@ -61,14 +62,26 @@ internal sealed class ApiExceptionHandler(
         CancellationToken cancellationToken)
     {
         var isBadRequest = exception is BadHttpRequestException;
+        var isDatabaseUnavailable = IsDatabaseUnavailable(exception);
         var statusCode = isBadRequest
             ? StatusCodes.Status400BadRequest
-            : StatusCodes.Status500InternalServerError;
+            : isDatabaseUnavailable
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status500InternalServerError;
 
         if (isBadRequest)
         {
             logger.LogWarning(
                 "Rejected malformed request {Method} {Path} with correlation id {CorrelationId}.",
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier);
+        }
+        else if (isDatabaseUnavailable)
+        {
+            logger.LogWarning(
+                exception,
+                "Database unavailable for {Method} {Path} with correlation id {CorrelationId}.",
                 httpContext.Request.Method,
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier);
@@ -94,13 +107,25 @@ internal sealed class ApiExceptionHandler(
                 Title = ReasonPhrases.GetReasonPhrase(statusCode),
                 Detail = isBadRequest
                     ? "The request body or parameters are invalid."
-                    : "An unexpected server error occurred.",
+                    : isDatabaseUnavailable
+                        ? "The database is temporarily unavailable."
+                        : "An unexpected server error occurred.",
                 Extensions =
                 {
-                    ["code"] = isBadRequest ? "invalid_request" : "internal_server_error"
+                    ["code"] = isBadRequest
+                        ? "invalid_request"
+                        : isDatabaseUnavailable
+                            ? "database_unavailable"
+                            : "internal_server_error"
                 }
             }
         });
+    }
+
+    private static bool IsDatabaseUnavailable(Exception exception)
+    {
+        return exception is NpgsqlException and not PostgresException
+            || exception is PostgresException { IsTransient: true };
     }
 }
 
