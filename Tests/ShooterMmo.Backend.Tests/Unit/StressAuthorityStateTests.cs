@@ -1,5 +1,5 @@
 using ShooterMmo.GameProtocol;
-using ShooterMmo.Tools.SimulationStressGenerator;
+using ShooterMmo.Tools.StackStressGenerator;
 
 namespace ShooterMmo.Backend.Tests.Unit;
 

@@ -8,7 +8,7 @@
   <Project Path="AuthService/AuthService.csproj" />
   <Project Path="SimulationWorker/SimulationWorker.csproj" />
   <Project Path="Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj" />
-  <Project Path="Tools/SimulationStressGenerator/SimulationStressGenerator.csproj" />
+  <Project Path="Tools/StackStressGenerator/StackStressGenerator.csproj" />
   <Project Path="Tools/SimulationBotClient/ShooterMmo.Tools.SimulationBotClient.csproj" />
   <Project Path="Tools/ActiveSimulationBots/ActiveSimulationBots.csproj" />
   <Project Path="Tools/ItemCatalogCompiler/ItemCatalogCompiler.csproj" />

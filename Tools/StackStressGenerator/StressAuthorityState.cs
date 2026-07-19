@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using ShooterMmo.GameProtocol;
 
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
 
 public sealed class StressAuthorityState
 {
@@ -39,7 +39,7 @@ public sealed class StressAuthorityState
             return false;
         }
 
-        var expected = Encoding.UTF8.GetBytes(options.WorkerSecret);
+        var expected = Encoding.UTF8.GetBytes(options.WorkerSecret!);
         var actual = Encoding.UTF8.GetBytes(secret);
         return expected.Length == actual.Length
             && CryptographicOperations.FixedTimeEquals(expected, actual);

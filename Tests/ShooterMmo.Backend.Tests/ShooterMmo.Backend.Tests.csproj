@@ -28,7 +28,7 @@
     <ProjectReference Include="..\..\Shared\DotNet\WorldData\ShooterMmo.WorldData.csproj" />
     <ProjectReference Include="..\..\Shared\ShooterMmo.Shared.csproj" />
     <ProjectReference Include="..\..\SimulationWorker\SimulationWorker.csproj" />
-    <ProjectReference Include="..\..\Tools\SimulationStressGenerator\SimulationStressGenerator.csproj" />
+    <ProjectReference Include="..\..\Tools\StackStressGenerator\StackStressGenerator.csproj" />
     <ProjectReference Include="..\..\Tools\ActiveSimulationBots\ActiveSimulationBots.csproj" />
     <ProjectReference Include="..\..\Tools\ItemCatalogCompiler\ItemCatalogCompiler.csproj" />
     <ProjectReference Include="..\..\Tools\WorldActorCompiler\WorldActorCompiler.csproj" />

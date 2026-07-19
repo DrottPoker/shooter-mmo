@@ -19,8 +19,8 @@ operations, and future design do not drift into duplicate descriptions.
 5. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
 6. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
    instructions.
-7. [Simulation Stress Testing](SIMULATION_STRESS_TESTING.md) for repeatable
-   headless SimulationWorker hotspot, ramp, soak, and bottleneck measurement.
+7. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
+   and full-stack AuthService, PostgreSQL, and SimulationWorker load testing.
 8. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
    bot population that can share the real shard with a Unity player.
 

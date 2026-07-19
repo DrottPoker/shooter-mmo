@@ -1,4 +1,4 @@
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
 
 public sealed record StressWorkerHeartbeatRequest(
     string FleetId,
@@ -97,6 +97,42 @@ public sealed record StressIssuedTicket(
     string CharacterName,
     string Ticket,
     DateTime ExpiresAt);
+
+public sealed record StressBotAdmission(
+    int BotIndex,
+    Guid AccountId,
+    Guid CharacterId,
+    string CharacterName,
+    string Ticket,
+    DateTime ExpiresAt,
+    string WorkerHost,
+    int WorkerUdpPort,
+    string ShardId,
+    string WorldId);
+
+public sealed record StressAdmissionResult(
+    StressBotAdmission? Admission,
+    string? ErrorCode,
+    string? ErrorMessage)
+{
+    public bool Succeeded => Admission is not null;
+
+    public static StressAdmissionResult Success(StressBotAdmission admission)
+    {
+        return new StressAdmissionResult(admission, null, null);
+    }
+
+    public static StressAdmissionResult Failure(string code, string message)
+    {
+        return new StressAdmissionResult(null, code, message);
+    }
+}
+
+public sealed record StressRunTarget(
+    string ShardId,
+    string WorldId,
+    int Capacity,
+    StressWorkerRegistration? Worker);
 
 public sealed record StressWorkerRegistration(
     string WorkerId,

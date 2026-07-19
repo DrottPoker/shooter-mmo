@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
 
 public sealed record StressLatencySummary(
     long Samples,
@@ -75,6 +75,7 @@ public sealed record StressBotAggregate(
     IReadOnlyDictionary<string, int> FailureCodes);
 
 public sealed record StressRunConfiguration(
+    string Mode,
     string AuthorityUrl,
     string WorkerHost,
     int WorkerUdpPort,
@@ -95,22 +96,25 @@ public sealed record StressRunReport(
     DateTime EndedAt,
     double DurationSeconds,
     StressRunConfiguration Configuration,
-    StressWorkerRegistration Worker,
+    StressWorkerRegistration? Worker,
     StressProcessSummary? WorkerProcess,
+    StressProcessSummary? AuthServiceProcess,
     StressProcessSummary? GeneratorProcess,
+    StressPostgresSummary? Postgres,
+    StressFullStackSummary? FullStack,
     StressBotAggregate Bots,
-    StressAuthorityCounters Authority)
+    StressAuthorityCounters? Authority)
 {
     public static StressRunReport Create(
         DateTime startedAt,
         DateTime endedAt,
         StressGeneratorOptions options,
-        StressWorkerRegistration worker,
+        StressRunTarget target,
+        StressProviderReport providerReport,
         StressProcessSummary? workerProcess,
         StressProcessSummary? generatorProcess,
         IReadOnlyCollection<StressBotSnapshot> bots,
-        StressLatencySummary? inputAcknowledgementLatency,
-        StressAuthorityCounters authority)
+        StressLatencySummary? inputAcknowledgementLatency)
     {
         var failureCodes = bots
             .Where(bot => bot.FailureCode is not null)
@@ -146,25 +150,29 @@ public sealed record StressRunReport(
             endedAt,
             (endedAt - startedAt).TotalSeconds,
             new StressRunConfiguration(
+                StressGeneratorOptions.FormatMode(options.Mode),
                 options.AuthorityUrl.ToString(),
-                options.WorkerHost,
-                options.WorkerUdpPort,
+                providerReport.Worker?.Host ?? options.WorkerHost,
+                providerReport.Worker?.UdpPort ?? options.WorkerUdpPort,
                 options.WorkerId,
                 options.FleetId,
                 options.NodeId,
-                options.ShardId,
-                options.WorldId,
+                target.ShardId,
+                target.WorldId,
                 options.BotCount,
                 options.BotStartIndex,
                 options.RampStep,
                 options.RampInterval.TotalSeconds,
                 options.SteadyDuration.TotalSeconds,
                 options.Seed),
-            worker,
+            providerReport.Worker ?? target.Worker,
             workerProcess,
+            providerReport.AuthServiceProcess,
             generatorProcess,
+            providerReport.Postgres,
+            providerReport.FullStack,
             aggregate,
-            authority);
+            providerReport.Authority);
     }
 
     public async Task WriteAsync(string path, CancellationToken cancellationToken)

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
 
 public sealed record StressProcessSummary(
     int ProcessId,
@@ -33,7 +33,7 @@ public sealed record StressProcessSummary(
     double SteadyStatePrivateMemoryTrendBytesPerMinute,
     int MaximumThreadCount);
 
-public sealed class WorkerProcessSampler : IDisposable
+public sealed class StressProcessSampler : IDisposable
 {
     private readonly Process process;
     private readonly List<ProcessSample> samples = [];
@@ -42,30 +42,43 @@ public sealed class WorkerProcessSampler : IDisposable
     private bool hasBaseline;
     private int? steadyStateStartIndex;
 
-    private WorkerProcessSampler(Process process)
+    private StressProcessSampler(Process process)
     {
         this.process = process;
     }
 
-    public static WorkerProcessSampler AttachCurrent()
+    public static StressProcessSampler AttachCurrent()
     {
-        return new WorkerProcessSampler(Process.GetCurrentProcess());
+        return new StressProcessSampler(Process.GetCurrentProcess());
     }
 
-    public static WorkerProcessSampler? TryAttach(DateTime workerStartedAt)
+    public static StressProcessSampler? TryAttach(DateTime workerStartedAt)
     {
-        var candidates = Process.GetProcessesByName("SimulationWorker")
+        return TryAttach("SimulationWorker", workerStartedAt);
+    }
+
+    public static StressProcessSampler? TryAttach(
+        string processName,
+        DateTime? expectedStartedAt = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(processName);
+        var candidates = Process.GetProcessesByName(processName)
             .Where(process => !process.HasExited)
             .ToArray();
-        var selected = candidates
-            .Select(process => new
-            {
-                Process = process,
-                StartDistance = GetStartDistance(process, workerStartedAt)
-            })
-            .Where(candidate => candidate.StartDistance <= TimeSpan.FromMinutes(2))
-            .OrderBy(candidate => candidate.StartDistance)
-            .FirstOrDefault();
+        var selected = expectedStartedAt.HasValue
+            ? candidates
+                .Select(process => new
+                {
+                    Process = process,
+                    StartDistance = GetStartDistance(process, expectedStartedAt.Value)
+                })
+                .Where(candidate => candidate.StartDistance <= TimeSpan.FromMinutes(2))
+                .OrderBy(candidate => candidate.StartDistance)
+                .Select(candidate => candidate.Process)
+                .FirstOrDefault()
+            : candidates.Length == 1
+                ? candidates[0]
+                : null;
         if (selected is null)
         {
             foreach (var candidate in candidates)
@@ -75,18 +88,20 @@ public sealed class WorkerProcessSampler : IDisposable
 
             Console.WriteLine(
                 candidates.Length == 0
-                    ? "SimulationWorker process metrics are unavailable because no native SimulationWorker process was found."
-                    : "SimulationWorker process metrics are unavailable because no native process matched the registered runtime start time.");
+                    ? $"{processName} process metrics are unavailable because no native process was found."
+                    : expectedStartedAt.HasValue
+                        ? $"{processName} process metrics are unavailable because no native process matched the expected start time."
+                        : $"{processName} process metrics are unavailable because multiple native processes are running.");
             return null;
         }
 
-        foreach (var candidate in candidates.Where(candidate => candidate.Id != selected.Process.Id))
+        foreach (var candidate in candidates.Where(candidate => candidate.Id != selected.Id))
         {
             candidate.Dispose();
         }
 
-        Console.WriteLine($"Monitoring SimulationWorker process {selected.Process.Id}.");
-        return new WorkerProcessSampler(selected.Process);
+        Console.WriteLine($"Monitoring {processName} process {selected.Id}.");
+        return new StressProcessSampler(selected);
     }
 
     private static TimeSpan GetStartDistance(Process process, DateTime workerStartedAt)

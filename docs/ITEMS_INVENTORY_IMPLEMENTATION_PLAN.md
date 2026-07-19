@@ -2064,7 +2064,7 @@ dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
 ```
 
 Run the `100` bot Release baseline through
-`docs/SIMULATION_STRESS_TESTING.md`. Expected result: all bots join, receive
+`docs/STACK_STRESS_TESTING.md`. Expected result: all bots join, receive
 snapshots and input acknowledgements, then leave cleanly with no estimated
 snapshot gaps, catch-up-budget warning, or process-memory growth trend.
 

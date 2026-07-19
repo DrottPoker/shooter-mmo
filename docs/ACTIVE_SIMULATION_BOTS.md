@@ -14,8 +14,8 @@ session heartbeat, and graceful leave flow.
 Use this tool to inspect a populated test map, remote interpolation, reliable
 spawn and despawn, interest behavior, collision, movement, and connection churn.
 It is not a capacity benchmark. Use
-[Simulation Stress Testing](SIMULATION_STRESS_TESTING.md) for repeatable hotspot,
-ramp, soak, resource, and latency measurements.
+[Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only or
+full-stack ramp, soak, resource, and latency measurements.
 
 ## Architecture And Safety Boundary
 

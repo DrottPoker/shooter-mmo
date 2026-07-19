@@ -2,7 +2,7 @@ using ShooterMmo.GameProtocol;
 using ShooterMmo.Tools.SimulationBotClient;
 using HeadlessSimulationBotClient = ShooterMmo.Tools.SimulationBotClient.SimulationBotClient;
 
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
 
 public enum StressBotState
 {
@@ -21,29 +21,29 @@ public sealed class StressBot : IDisposable
 
     public StressBot(
         StressGeneratorOptions options,
-        StressIssuedTicket identity,
+        StressBotAdmission admission,
         StressLatencyAccumulator inputAcknowledgementLatencies,
         StressLatencyAccumulator intervalInputAcknowledgementLatencies)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(admission);
         ArgumentNullException.ThrowIfNull(inputAcknowledgementLatencies);
         ArgumentNullException.ThrowIfNull(intervalInputAcknowledgementLatencies);
 
         client = new HeadlessSimulationBotClient(
             new SimulationBotConnectionOptions(
-                options.WorkerHost,
-                options.WorkerUdpPort,
+                admission.WorkerHost,
+                admission.WorkerUdpPort,
                 options.JoinTimeout),
             new SimulationBotIdentity(
-                identity.BotIndex,
-                identity.AccountId,
-                identity.CharacterId,
-                identity.CharacterName,
-                identity.Ticket,
-                options.ShardId,
-                options.WorldId),
-            new StressBotInputSource(identity.BotIndex, options.Seed),
+                admission.BotIndex,
+                admission.AccountId,
+                admission.CharacterId,
+                admission.CharacterName,
+                admission.Ticket,
+                admission.ShardId,
+                admission.WorldId),
+            new StressBotInputSource(admission.BotIndex, options.Seed),
             latencyMilliseconds =>
             {
                 inputAcknowledgementLatencies.Record(latencyMilliseconds);

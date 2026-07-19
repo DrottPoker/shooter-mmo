@@ -1,9 +1,16 @@
 using System.Globalization;
 using System.Security.Cryptography;
 
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
+
+public enum StressRunMode
+{
+    WorkerOnly,
+    FullStack
+}
 
 public sealed record StressGeneratorOptions(
+    StressRunMode Mode,
     Uri AuthorityUrl,
     string WorkerHost,
     int WorkerUdpPort,
@@ -12,7 +19,12 @@ public sealed record StressGeneratorOptions(
     string NodeId,
     string ShardId,
     string WorldId,
-    string WorkerSecret,
+    string? WorkerSecret,
+    string? PostgresConnectionString,
+    string? ConfirmedDisposableDatabase,
+    string RunId,
+    TimeSpan HttpTimeout,
+    int HttpConcurrency,
     int BotCount,
     int BotStartIndex,
     int RampStep,
@@ -25,6 +37,7 @@ public sealed record StressGeneratorOptions(
     string OutputPath)
 {
     public const int MaximumBotCount = 10_000;
+    public const string PostgresConnectionEnvironmentVariable = "STACK_STRESS_POSTGRES";
 
     public static StressGeneratorOptions Parse(string[] args, string workingDirectory)
     {
@@ -32,20 +45,52 @@ public sealed record StressGeneratorOptions(
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
 
         var values = ParseValues(args);
+        var mode = ParseMode(Get(values, "mode", "worker-only"));
+        var authorityKey = mode == StressRunMode.WorkerOnly
+            ? "authority-url"
+            : "auth-service-url";
         var authorityUrl = ParseHttpUri(
-            Get(values, "authority-url", "http://127.0.0.1:5099"),
-            "authority-url");
+            Get(
+                values,
+                authorityKey,
+                mode == StressRunMode.WorkerOnly
+                    ? "http://127.0.0.1:5099"
+                    : "http://127.0.0.1:5000"),
+            authorityKey);
         if (!authorityUrl.IsLoopback)
         {
             throw new StressGeneratorOptionException(
-                "--authority-url must use a loopback address so the stress authority is not exposed to the network.");
+                $"--{authorityKey} must use a loopback address so stress traffic is not sent to a remote environment.");
         }
 
-        var workerSecret = Get(values, "worker-secret", CreateSecret());
-        if (workerSecret.Length < 32)
+        string? workerSecret = null;
+        string? postgresConnectionString = null;
+        string? confirmedDisposableDatabase = null;
+        if (mode == StressRunMode.WorkerOnly)
         {
-            throw new StressGeneratorOptionException(
-                "--worker-secret must contain at least 32 characters.");
+            workerSecret = Get(values, "worker-secret", CreateSecret());
+            if (workerSecret.Length < 32)
+            {
+                throw new StressGeneratorOptionException(
+                    "--worker-secret must contain at least 32 characters.");
+            }
+        }
+        else
+        {
+            postgresConnectionString = GetOptional(values, "postgres-connection-string")
+                ?? Environment.GetEnvironmentVariable(PostgresConnectionEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(postgresConnectionString))
+            {
+                throw new StressGeneratorOptionException(
+                    $"Full-stack mode requires --postgres-connection-string or {PostgresConnectionEnvironmentVariable}.");
+            }
+
+            confirmedDisposableDatabase = GetOptional(values, "confirm-disposable-database");
+            if (string.IsNullOrWhiteSpace(confirmedDisposableDatabase))
+            {
+                throw new StressGeneratorOptionException(
+                    "Full-stack mode requires --confirm-disposable-database with the exact stress database name.");
+            }
         }
 
         var botCount = ParseInt(values, "bots", 100, 1, MaximumBotCount);
@@ -58,9 +103,11 @@ public sealed record StressGeneratorOptions(
                 workingDirectory,
                 "artifacts",
                 "stress",
-                $"simulation-stress-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json"));
+                $"stack-stress-{FormatMode(mode)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json"));
+        var runId = ValidateRunId(Get(values, "run-id", CreateRunId()));
 
         return new StressGeneratorOptions(
+            mode,
             authorityUrl,
             Require(Get(values, "worker-host", "127.0.0.1"), "worker-host"),
             ParseInt(values, "worker-udp-port", 27015, 1, ushort.MaxValue),
@@ -68,8 +115,13 @@ public sealed record StressGeneratorOptions(
             Require(Get(values, "fleet-id", "local-fleet"), "fleet-id"),
             Require(Get(values, "node-id", "local-node-1"), "node-id"),
             Require(Get(values, "shard-id", "local-shard-1"), "shard-id"),
-            Require(Get(values, "world-id", "development-world-1"), "world-id"),
+            Require(Get(values, "world-id", "development-world-2"), "world-id"),
             workerSecret,
+            postgresConnectionString?.Trim(),
+            confirmedDisposableDatabase?.Trim(),
+            runId,
+            TimeSpan.FromSeconds(ParseInt(values, "http-timeout-seconds", 30, 1, 300)),
+            ParseInt(values, "http-concurrency", 32, 1, 512),
             botCount,
             botStartIndex,
             rampStep,
@@ -89,20 +141,27 @@ public sealed record StressGeneratorOptions(
 
     public static string HelpText =>
         """
-        SimulationStressGenerator
+        StackStressGenerator
 
-        Hosts an in-memory stress authority and drives headless LiteNetLib bots
-        through the real SimulationWorker join and movement protocol.
+        Drives headless LiteNetLib bots through worker-only or full-stack account,
+        placement, session, join, movement, and leave flows.
 
         Options:
+          --mode <worker-only|full-stack>   Run mode. Default: worker-only
           --authority-url <url>             Loopback authority URL. Default: http://127.0.0.1:5099
+          --auth-service-url <url>          Full-stack AuthService URL. Default: http://127.0.0.1:5000
+          --postgres-connection-string <cs> Full-stack metrics and safety connection. Prefer STACK_STRESS_POSTGRES.
+          --confirm-disposable-database <n> Exact disposable database name required by full-stack mode.
+          --run-id <id>                     Short identifier used in durable stress identities.
+          --http-timeout-seconds <seconds>  Full-stack HTTP timeout. Default: 30
+          --http-concurrency <count>        Maximum concurrent full-stack lifecycles. Default: 32
           --worker-host <host>              UDP host used by bots. Default: 127.0.0.1
           --worker-udp-port <port>          UDP port used by bots. Default: 27015
           --worker-id <id>                  Expected worker id. Default: local-simulation-worker-1
           --fleet-id <id>                   Expected fleet id. Default: local-fleet
           --node-id <id>                    Expected node id. Default: local-node-1
           --shard-id <id>                   Expected shard id. Default: local-shard-1
-          --world-id <id>                   World returned by the authority. Default: development-world-1
+          --world-id <id>                   Expected World. Default: development-world-2
           --worker-secret <secret>          Ephemeral worker secret. A random value is generated by default.
           --bots <count>                    Total bots. Default: 100
           --bot-start-index <index>         First bot display index. Default: 1
@@ -149,7 +208,14 @@ public sealed record StressGeneratorOptions(
 
         var supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
+            "mode",
             "authority-url",
+            "auth-service-url",
+            "postgres-connection-string",
+            "confirm-disposable-database",
+            "run-id",
+            "http-timeout-seconds",
+            "http-concurrency",
             "worker-host",
             "worker-udp-port",
             "worker-id",
@@ -179,12 +245,55 @@ public sealed record StressGeneratorOptions(
         return values;
     }
 
+    private static StressRunMode ParseMode(string value)
+    {
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "worker-only" => StressRunMode.WorkerOnly,
+            "full-stack" => StressRunMode.FullStack,
+            _ => throw new StressGeneratorOptionException(
+                "--mode must be either worker-only or full-stack.")
+        };
+    }
+
+    public static string FormatMode(StressRunMode mode)
+    {
+        return mode switch
+        {
+            StressRunMode.WorkerOnly => "worker-only",
+            StressRunMode.FullStack => "full-stack",
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+    }
+
+    private static string ValidateRunId(string value)
+    {
+        var runId = Require(value, "run-id");
+        if (runId.Length > 12
+            || !runId.All(character => char.IsAsciiLetterOrDigit(character)))
+        {
+            throw new StressGeneratorOptionException(
+                "--run-id must contain 1 to 12 ASCII letters or numbers.");
+        }
+
+        return runId.ToLowerInvariant();
+    }
+
     private static string Get(
         IReadOnlyDictionary<string, string> values,
         string key,
         string fallback)
     {
         return values.TryGetValue(key, out var value) ? value : fallback;
+    }
+
+    private static string? GetOptional(
+        IReadOnlyDictionary<string, string> values,
+        string key)
+    {
+        return values.TryGetValue(key, out var value)
+            ? value
+            : null;
     }
 
     private static int ParseInt(
@@ -235,6 +344,11 @@ public sealed record StressGeneratorOptions(
     private static string CreateSecret()
     {
         return Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+    }
+
+    private static string CreateRunId()
+    {
+        return $"{DateTime.UtcNow:MMddHHmm}{RandomNumberGenerator.GetInt32(0, 10_000):D4}";
     }
 }
 

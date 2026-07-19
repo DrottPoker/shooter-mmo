@@ -237,13 +237,6 @@
       "shootermmo.worlddata": {
         "type": "Project"
       },
-      "simulationstressgenerator": {
-        "type": "Project",
-        "dependencies": {
-          "ShooterMmo.GameProtocol": "[1.0.0, )",
-          "ShooterMmo.Tools.SimulationBotClient": "[1.0.0, )"
-        }
-      },
       "simulationworker": {
         "type": "Project",
         "dependencies": {
@@ -252,6 +245,14 @@
           "ShooterMmo.GameSimulation": "[1.0.0, )",
           "ShooterMmo.Shared": "[1.0.0, )",
           "ShooterMmo.WorldData": "[1.0.0, )"
+        }
+      },
+      "stackstressgenerator": {
+        "type": "Project",
+        "dependencies": {
+          "Npgsql": "[9.0.3, )",
+          "ShooterMmo.GameProtocol": "[1.0.0, )",
+          "ShooterMmo.Tools.SimulationBotClient": "[1.0.0, )"
         }
       },
       "worldactorcompiler": {

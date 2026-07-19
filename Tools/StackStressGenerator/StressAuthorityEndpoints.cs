@@ -1,4 +1,4 @@
-namespace ShooterMmo.Tools.SimulationStressGenerator;
+namespace ShooterMmo.Tools.StackStressGenerator;
 
 public static class StressAuthorityEndpoints
 {

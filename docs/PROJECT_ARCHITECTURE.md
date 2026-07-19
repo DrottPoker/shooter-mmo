@@ -303,11 +303,13 @@ and metrics.
 `Tests/ShooterMmo.Backend.Tests` contains unit, socket-level, and isolated
 PostgreSQL integration tests. Unity tests live inside the Unity project. `Tools`
 contains repository-wide verification, collision and item content builds, and
-external stress tools. `SimulationStressGenerator` hosts an in-memory loopback
-authority and manually polled headless UDP clients without adding per-bot
-transport threads or a stress admission path to production services. Its
-bounded latency reservoirs and process samplers make longer local soak tests
-safe to run without the tool itself accumulating every acknowledgement sample.
+external stress tools. `StackStressGenerator` has a worker-only mode with an
+in-memory loopback authority and a full-stack mode that uses normal AuthService
+account, character, login, placement, and session routes against a guarded
+disposable local PostgreSQL database. Both modes use manually polled headless
+UDP clients without per-bot transport threads or stress admission paths in
+production services. Bounded latency reservoirs and process samplers keep long
+local soak tests from accumulating every acknowledgement sample.
 
 `ActiveSimulationBots` reuses the same tool-only headless UDP client core but
 runs beside the real AuthService and SimulationWorker. A Development-only,

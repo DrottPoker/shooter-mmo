@@ -1002,12 +1002,13 @@ dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
 Expected result: 25,000 entities and 1,000 observers complete spatial selection
 and snapshot encode/decode inside the five-second regression budget.
 
-Run the external headless SimulationWorker stress flow before accepting a new
-capacity baseline or after changing the realtime loop, collision, interest,
-snapshot, or session-heartbeat behavior. The generator uses in-memory stress
-identities and tickets, so it does not write accounts or characters to
-PostgreSQL. Complete commands, expected results, measurements, and cleanup are
-documented in [Simulation Stress Testing](SIMULATION_STRESS_TESTING.md).
+Run the external headless stack stress flow before accepting a new capacity
+baseline or after changing the realtime loop, collision, interest, snapshot,
+session-heartbeat, account, placement, or database behavior. Worker-only mode
+uses in-memory identities to isolate SimulationWorker. Full-stack mode drives
+normal AuthService APIs against a guarded disposable PostgreSQL database.
+Complete commands, expected results, measurements, safety checks, and cleanup
+are documented in [Stack Stress Testing](STACK_STRESS_TESTING.md).
 
 Use `Tools/ActiveSimulationBots` when a long-running synthetic population must
 share the normal AuthService, SimulationWorker, and shard with a Unity player.
@@ -1174,8 +1175,8 @@ transition without actor-owned loops, `128` players hold independent NPC leases,
 eight concurrent corpse claims commit once each, and forty repeated Bag swaps
 preserve every aggregate and child custody relation.
 
-Run the `100` bot Release hotspot workflow in
-[Simulation Stress Testing](SIMULATION_STRESS_TESTING.md). Expected result:
+Run the `100` bot Release worker-only hotspot workflow in
+[Stack Stress Testing](STACK_STRESS_TESTING.md). Expected result:
 `100/100` bots join and leave cleanly, movement inputs receive acknowledgement,
 snapshot gaps remain zero under the accepted baseline, process measurements
 refer to the registered worker runtime, and the worker log contains no movement
