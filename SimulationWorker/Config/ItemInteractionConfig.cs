@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using ShooterMmo.GameSimulation;
+using ShooterMmo.WorldData.Worlds;
 
 namespace SimulationWorker.Config;
 
@@ -31,21 +32,22 @@ public sealed record ItemInteractionConfig(
 
     internal static ItemInteractionConfig FromConfiguration(
         IConfigurationSection sharedSection,
-        IConfigurationSection worldProfileSection,
+        WorldManifestDocument? worldManifest,
         MovementSimulationSettings? movement,
         ICollection<string> errors)
     {
         var points = new List<ItemServicePointConfig>();
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var pointSection in worldProfileSection.GetSection("ServicePoints").GetChildren())
+        foreach (var point in worldManifest?.servicePoints
+            ?? Array.Empty<WorldServicePointDocument>())
         {
-            var prefix = $"{worldProfileSection.Path}:ServicePoints:{pointSection.Key}";
-            var id = pointSection["Id"]?.Trim();
-            var kindValue = pointSection["Kind"]?.Trim();
-            var x = ParseFinite(pointSection["X"], $"{prefix}:X", errors);
-            var y = ParseFinite(pointSection["Y"], $"{prefix}:Y", errors);
-            var z = ParseFinite(pointSection["Z"], $"{prefix}:Z", errors);
-            var radius = ParseFinite(pointSection["Radius"], $"{prefix}:Radius", errors);
+            var prefix = $"WorldManifest:{worldManifest!.worldId}:ServicePoints:{point.id}";
+            var id = point.id?.Trim();
+            var kindValue = point.kind?.Trim();
+            var x = point.x;
+            var y = point.y;
+            var z = point.z;
+            var radius = point.radius;
 
             if (!IsValidIdentifier(id))
             {

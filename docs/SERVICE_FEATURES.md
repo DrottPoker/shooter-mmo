@@ -334,7 +334,8 @@ corpse view.
 
 ## Collision Data And Streaming
 
-- `WorldData/Authoring` contains neutral JSON source.
+- Each `WorldData/Worlds/<WorldId>/Authoring/collision.json` contains neutral
+  collision source for that World.
 - `Tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest.
 - Each chunk has a SHA-256 checksum.
 - The manifest has a deterministic complete collision revision.
@@ -358,14 +359,14 @@ boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
 concurrent inspection, and authoritative looting:
 
-- `WorldData/Authoring/Items/core.item-catalog.json` is the strict neutral
+- `WorldData/Shared/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
 - `Tools/ItemCatalogCompiler` rejects unknown or duplicate JSON properties,
   missing values, invalid identifiers and references, duplicate ids and Bag
   slots, negative or decimal weights, invalid stack limits, and impossible Bag,
   equipment, policy, or Secure Container combinations.
 - The compiler emits sorted deterministic runtime content under
-  `WorldData/Runtime/Items`, including one catalog revision and structural
+  `WorldData/Shared/Runtime/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
 - The checked-in development catalog has nine representative definitions, all
   canonical equipment slots, the medical, material, and ammunition tags, one
@@ -738,6 +739,9 @@ Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
 - Worker routes use the `SimulationWorker` handler and policy.
 - Worker credentials use `X-Simulation-Worker-ID` and
   `X-Simulation-Worker-Secret`.
+- Local shared-secret mode authenticates any valid worker identifier and leaves
+  topology authorization to the registry. When a per-worker credential map is
+  configured, it becomes an exact allowlist and shared fallback is disabled.
 - Secrets are compared in fixed time.
 - Central middleware converts unhandled failures into RFC Problem Details.
 - Responses carry `X-Correlation-ID`.
@@ -755,15 +759,23 @@ UDP port availability and exits 0 only when all checks pass.
 
 All application settings fail fast. Checked-in non-secret defaults live in each
 service's `Config` folder. The ignored root `.env` contains local credentials
-and overrides. Environment variables and command-line options have higher
-precedence.
+and connection strings, not worker topology or World selection. Explicit
+environment variables and command-line options have higher precedence.
 
-SimulationWorker requires one unique `WorldProfiles` entry for its configured
-`WorldId`. The selected profile supplies movement bounds, authoritative spawn,
-and bank, Recovery Storage, and insurance service points. This prevents a shard
-restart on another World from silently retaining coordinates from the previous
-map. Missing profiles, invalid bounds, out-of-bounds spawns, and invalid service
-points fail before UDP admission.
+SimulationWorker requires one valid `WorldData/Worlds/<WorldId>/world.json` for
+its configured `WorldId`. The manifest supplies the client scene, movement
+bounds, authoritative spawn, and bank, Recovery Storage, and insurance service
+points. Actor and collision data resolve below the same World directory. This
+prevents a shard restart on another World from silently retaining coordinates
+from the previous map. Missing manifests, invalid bounds, out-of-bounds spawns,
+invalid service points, or invalid runtime content fail before UDP admission.
+
+AuthService seeds World definitions from those manifests but does not select a
+World for a shard. The worker proposes its desired `WorldId` in the heartbeat.
+AuthService validates that the World exists and atomically persists a first
+binding or safe offline rebind while preserving assignment, ticket, session,
+corpse, Fleet, and runtime-fencing boundaries. Unknown Worlds and blocked
+rebinds are definitive worker authority failures.
 
 `Items:Operations` bounds item statement and lock timeouts, canonical command
 and HTTP request sizes, metrics and maintenance intervals, cleanup batch size,

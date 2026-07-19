@@ -319,7 +319,8 @@
       "shootermmo.shared": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.Configuration": "[10.0.9, )"
+          "Microsoft.Extensions.Configuration": "[10.0.9, )",
+          "ShooterMmo.WorldData": "[1.0.0, )"
         }
       },
       "shootermmo.worlddata": {

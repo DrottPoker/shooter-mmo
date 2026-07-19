@@ -16,9 +16,10 @@ the shard is fully offline and drained.
 | `development-world-1` | `DevelopmentWorld1` | Complete baseline | X/Z `-14` to `14` | `(0, 0, -1)` |
 | `development-world-2` | `DevelopmentWorld2` | Complete greybox baseline | X/Z `-254` to `254` | `(0, 0, -16)` |
 
-`local-shard-1` remains bound to `development-world-1`. Development World 2 now
-has an authored scene and checked-in collision data, but registering and
-building a World does not bind or start it.
+The checked-in SimulationWorker configuration requests `development-world-2`
+for `local-shard-1` during broader gameplay testing. AuthService accepts and
+persists that binding only when the shard is offline and drained. Both Worlds
+remain reusable content.
 
 The client catalog maps `development-world-2` to `DevelopmentWorld2`, and both
 development scenes are enabled in Build Profiles.
@@ -42,7 +43,7 @@ authoritative playable area. Unity units are meters.
 | Southwest wilderness | X/Z `-224` to `-80` | Initial wolf spawn and patrol region |
 | Southeast expansion pad | X `80` to `224`, Z `-224` to `-80` | Leave mostly empty for future systems |
 
-The worker profile and actor content already reserve these coordinates:
+The canonical World manifest and actor content already reserve these coordinates:
 
 | Content | Position or area |
 | --- | --- |
@@ -53,8 +54,8 @@ The worker profile and actor content already reserve these coordinates:
 | City Guard group | centered at `(-16, 0, 12)` |
 | Feral Wolf spawn area | X/Z `-190` to `-130` |
 
-Do not move these authored landmarks without updating the matching worker
-profile and actor spawn content in the same change.
+Do not move these authored landmarks without updating the matching `world.json`
+manifest and actor spawn content in the same change.
 
 ## Manual Unity Authoring Workflow
 
@@ -83,8 +84,8 @@ change is green:
     Scene`.
 11. Confirm the Console reports a successful bake for
     `development-world-2`. The bake must create
-    `WorldData/Authoring/development-world-2.collision-authoring.json` and
-    `WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2`.
+    `WorldData/Worlds/development-world-2/Authoring/collision.json` and
+    `WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2`.
 12. Open `File > Build Profiles`, add `DevelopmentWorld2` to the scene list,
     and keep `LoginMenu` and `CharacterSelect` before the World scenes.
 13. Save the project and return to Codex for verification before changing any
@@ -102,8 +103,8 @@ From the repository root, verify the new collision outputs:
 dotnet run --project Tools/WorldCollisionCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Authoring/development-world-2.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
+  WorldData/Worlds/development-world-2/Authoring/collision.json `
+  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
   --verify
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
@@ -113,5 +114,7 @@ chunks and a deterministic revision, and all Unity EditMode and PlayMode tests
 pass. `Bake Build World Scenes` also verifies every catalog-to-Build Profiles
 mapping before writing collision output.
 
-The authored baseline has passed review. Do not rebind `local-shard-1` as part
-of map authoring; a rebind remains a separate offline operational step.
+The authored baseline has passed review. The local worker configuration now
+requests Development World 2 for `local-shard-1`. Future changes between
+development Worlds remain separate offline operational steps that AuthService
+validates and commits on the replacement worker's first heartbeat.

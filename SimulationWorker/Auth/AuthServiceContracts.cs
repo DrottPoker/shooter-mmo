@@ -193,6 +193,7 @@ public sealed record SimulationWorkerHeartbeatRequest(
     string FleetId,
     string NodeId,
     string ShardId,
+    string WorldId,
     string RuntimeId,
     DateTime StartedAt,
     string Host,

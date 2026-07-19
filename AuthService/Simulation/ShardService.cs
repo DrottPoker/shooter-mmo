@@ -69,6 +69,7 @@ public sealed class ShardService(
                   and pending_ticket.expires_at > now()
             ) ticket_usage on true
             where shard.is_enabled
+              and shard.world_id is not null
               and fleet.is_enabled
             group by shard.id, fleet.id
             order by fleet.id, shard.id;
@@ -605,6 +606,7 @@ public sealed class ShardService(
                 join fleets fleet on fleet.id = shard.fleet_id
                 where shard.id = @ShardId
                   and shard.is_enabled
+                  and shard.world_id is not null
                   and fleet.is_enabled
                 for update of shard;
                 """,

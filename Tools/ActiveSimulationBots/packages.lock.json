@@ -11,7 +11,10 @@
         "type": "Project"
       },
       "shootermmo.shared": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
       },
       "shootermmo.tools.simulationbotclient": {
         "type": "Project",
@@ -19,6 +22,9 @@
           "LiteNetLib": "[2.1.4, )",
           "ShooterMmo.GameProtocol": "[1.0.0, )"
         }
+      },
+      "shootermmo.worlddata": {
+        "type": "Project"
       }
     }
   }

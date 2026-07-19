@@ -21,7 +21,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(14, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(15, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -415,7 +415,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(14, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(15, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             1,
             await context.ExecuteScalarIntAsync(
@@ -619,6 +619,74 @@ public sealed class AuthSimulationFlowIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task WorkerHeartbeatRejectsUnknownWorldWithoutChangingTheShardBinding()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+
+        var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                WorldId = "unknown-world"
+            },
+            CancellationToken.None);
+
+        Assert.False(heartbeat.Succeeded);
+        Assert.Equal("simulation_world_not_found", heartbeat.Error!.Code);
+        Assert.Equal(
+            "development-world-1",
+            await context.ExecuteScalarStringAsync(
+                "select world_id from shards where id = 'local-shard-1';"));
+        Assert.Equal(
+            1,
+            await context.ExecuteScalarIntAsync(
+                """
+                select count(*)
+                from simulation_workers
+                where id = 'local-simulation-worker-1'
+                  and not is_online
+                  and runtime_id is null;
+                """));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task FirstWorkerHeartbeatBindsAnUnboundShardToItsConfiguredWorld()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        await context.ExecuteAsync(
+            """
+            insert into shards (id, display_name, fleet_id, rule_set)
+            values ('unbound-shard', 'Unbound Shard', 'local-fleet', 'mvp-open-risk');
+            """);
+        var beforeHeartbeat = await context.ShardService.ListShardsAsync(CancellationToken.None);
+        Assert.DoesNotContain(beforeHeartbeat.Value!, shard => shard.Id == "unbound-shard");
+
+        var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            "unbound-worker",
+            PostgresIntegrationTestContext.CreateHeartbeatRequest(
+                runtimeId: "unbound-runtime",
+                workerShardId: "unbound-shard") with
+            {
+                WorldId = "development-world-2"
+            },
+            CancellationToken.None);
+
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        Assert.Equal("development-world-2", heartbeat.Value!.WorldId);
+        Assert.Equal(
+            "development-world-2",
+            await context.ExecuteScalarStringAsync(
+                "select world_id from shards where id = 'unbound-shard';"));
+        var afterHeartbeat = await context.ShardService.ListShardsAsync(CancellationToken.None);
+        Assert.Contains(
+            afterHeartbeat.Value!,
+            shard => shard.Id == "unbound-shard"
+                && shard.WorldId == "development-world-2");
+    }
+
+    [PostgresIntegrationFact]
     public async Task ShardWorldRebindRequiresOfflineRuntimeAndThenFencesTheReplacementWorld()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -645,18 +713,16 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(pendingPlayer.Character.Id),
             CancellationToken.None);
         Assert.True(pendingJoin.Succeeded, pendingJoin.Error?.Message);
-        var rebindSeeder = CreateWorldRebindSeeder(context, "development-world-2");
+        var blocked = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("replacement-runtime") with
+            {
+                WorldId = "development-world-2"
+            },
+            CancellationToken.None);
 
-        var blocked = await Assert.ThrowsAsync<ShardWorldRebindBlockedException>(
-            () => rebindSeeder.SeedAsync(CancellationToken.None));
-
-        Assert.Equal(LocalShardId, blocked.ShardId);
-        Assert.Equal("development-world-1", blocked.CurrentWorldId);
-        Assert.Equal("development-world-2", blocked.RequestedWorldId);
-        Assert.Equal(1, blocked.ActiveAssignments);
-        Assert.Equal(1, blocked.PendingJoinTickets);
-        Assert.Equal(1, blocked.ActiveSimulationSessions);
-        Assert.Equal(0, blocked.OpenCorpses);
+        Assert.False(blocked.Succeeded);
+        Assert.Equal("shard_assignment_conflict", blocked.Error!.Code);
 
         var offline = await context.SimulationWorkerRegistryService.MarkOfflineAsync(
             LocalWorkerId,
@@ -664,11 +730,12 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(offline.Succeeded, offline.Error?.Message);
 
-        await rebindSeeder.SeedAsync(CancellationToken.None);
-
         var replacementHeartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
             LocalWorkerId,
-            PostgresIntegrationTestContext.CreateHeartbeatRequest("replacement-runtime"),
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("replacement-runtime") with
+            {
+                WorldId = "development-world-2"
+            },
             CancellationToken.None);
         Assert.True(replacementHeartbeat.Succeeded, replacementHeartbeat.Error?.Message);
         Assert.Equal("development-world-2", replacementHeartbeat.Value!.WorldId);
@@ -719,15 +786,17 @@ public sealed class AuthSimulationFlowIntegrationTests
                 now() + interval '5 minutes',
                 '20000000-0000-0000-0000-000000000001');
             """);
-        var rebindSeeder = CreateWorldRebindSeeder(context, "development-world-2");
+        var blocked = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("replacement-runtime") with
+            {
+                WorldId = "development-world-2"
+            },
+            CancellationToken.None);
 
-        var blocked = await Assert.ThrowsAsync<ShardWorldRebindBlockedException>(
-            () => rebindSeeder.SeedAsync(CancellationToken.None));
-
-        Assert.Equal(0, blocked.ActiveAssignments);
-        Assert.Equal(0, blocked.PendingJoinTickets);
-        Assert.Equal(0, blocked.ActiveSimulationSessions);
-        Assert.Equal(1, blocked.OpenCorpses);
+        Assert.False(blocked.Succeeded);
+        Assert.Equal("shard_world_rebind_blocked", blocked.Error!.Code);
+        Assert.Contains("1 open durable corpses", blocked.Error.Message);
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
         Assert.Equal("development-world-1", Assert.Single(shards.Value!).WorldId);
     }
@@ -859,33 +928,6 @@ public sealed class AuthSimulationFlowIntegrationTests
     private static SimulationSessionCredentialRequest Credential(string token)
     {
         return new SimulationSessionCredentialRequest(LocalRuntimeId, token);
-    }
-
-    private static SimulationTopologySeeder CreateWorldRebindSeeder(
-        PostgresIntegrationTestContext context,
-        string worldId)
-    {
-        var topology = new SimulationTopologyConfig(
-            [
-                new WorldDefinitionBootstrapConfig(
-                    "development-world-1",
-                    "Development World 1"),
-                new WorldDefinitionBootstrapConfig(
-                    "development-world-2",
-                    "Development World 2")
-            ],
-            [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
-            [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
-            [new ShardBootstrapConfig(
-                LocalShardId,
-                worldId,
-                "local-fleet",
-                "Local Shard 1",
-                "mvp-open-risk")]);
-        return new SimulationTopologySeeder(
-            context.DataSource,
-            context.AuthServiceConfig with { SimulationTopology = topology },
-            NullLogger<SimulationTopologySeeder>.Instance);
     }
 
     private static Task<int> CountFoundationTablesAsync(PostgresIntegrationTestContext context)

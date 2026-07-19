@@ -36,6 +36,7 @@ internal static class WorldActorTestData
     private static string ActorAuthoringPath => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
+        "Shared",
         "Authoring",
         "Actors",
         "core.world-actors.json");
@@ -43,16 +44,18 @@ internal static class WorldActorTestData
     private static string SpawnAuthoringPath(string worldId) => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
+        "Worlds",
+        worldId,
         "Authoring",
-        "ActorSpawns",
-        $"{worldId}.actor-spawns.json");
+        "actor-spawns.json");
 
     private static string RuntimePath(string worldId) => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
+        "Worlds",
+        worldId,
         "Runtime",
-        "Actors",
-        $"{worldId}.world-actors.json");
+        "world-actors.json");
 
     private static string FindRepositoryRoot()
     {

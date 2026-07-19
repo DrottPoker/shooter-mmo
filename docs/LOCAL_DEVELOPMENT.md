@@ -17,23 +17,22 @@ backend service:
 Copy-Item .env.example .env
 ```
 
-Replace every `replace-with-...` placeholder in `.env`. AuthService and
-SimulationWorker share `SIMULATION_WORKER_ID` and
-`SIMULATION_WORKER_SERVICE_SECRET`. The local worker also receives
-`SIMULATION_FLEET_ID`, `SIMULATION_NODE_ID`, `SIMULATION_SHARD_ID`, and
-`SIMULATION_WORLD_ID`. These values must match the topology in
-`AuthService/Config/appsettings.json`. Both services search their content root
-and parent directories for `.env`. Process environment variables and
-command-line values take precedence.
+Replace every `replace-with-...` placeholder in `.env`. The file contains local
+credentials and connection strings, including the shared
+`SIMULATION_WORKER_SERVICE_SECRET`, but does not select worker, fleet, node,
+shard, or World identities. Those identities live together in
+`SimulationWorker/Config/appsettings.json`. AuthService owns only the available
+fleet, node, and shard topology. Both services search their content root and
+parent directories for `.env`. Explicit process environment variables and
+command-line values can still override service configuration for deployments.
 
-SimulationWorker derives its default actor path as
-`ActorData/<WorldId>.world-actors.json`. The checked-in actor content for both
-development Worlds is copied from deterministic WorldData runtime content into
-build and publish output. Startup validates the World id, complete revision, structural
-fingerprints, references, ordering, collection bounds, and actor and spawn
-semantics before UDP admission begins. Use
-`SimulationWorker__ActorDataPath` only when a deployment intentionally places
-the matching compiled manifest elsewhere.
+SimulationWorker loads `WorldData/Worlds/<WorldId>/world.json` and derives actor
+and collision paths below the same World directory. The checked-in content for
+both development Worlds is copied into build and publish output. Startup
+validates identity, bounds, spawn, service points, actor revisions, references,
+ordering, collision checksums, and content semantics before UDP admission
+begins. `SimulationWorker__WorldDataPath` can point a deployment at a different
+canonical Worlds root.
 
 AuthService reads `Items:CatalogPath` from its configuration. The checked-in
 default points to `WorldData/Items/core.item-catalog.json`, which the AuthService
@@ -64,8 +63,8 @@ dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet run --project Tools/ItemCatalogCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json `
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet test ShooterMmo.slnx --configuration Release --no-build
 ```
@@ -93,10 +92,10 @@ quality gate before merging. `LiteNetLib` must stay aligned between
 ## Item Catalog Authoring And Verification
 
 The neutral source catalog is
-`WorldData/Authoring/Items/core.item-catalog.json`. It defines stable category,
+`WorldData/Shared/Authoring/Items/core.item-catalog.json`. It defines stable category,
 tag, equipment-slot, item, Bag-layout, location-eligibility, policy-default, and
 Secure Container tier content. The generated runtime catalog is
-`WorldData/Runtime/Items/core.item-catalog.json`.
+`WorldData/Shared/Runtime/Items/core.item-catalog.json`.
 
 Catalog format version 2 uses unitless non-negative integer `unitWeight` and
 `carryCapacityBonus` fields. Do not add physical-unit or decimal weight fields.
@@ -120,7 +119,7 @@ The canonical content workflow is available in Unity at
    and presentation JSON. Structural changes require explicit confirmation.
 
 The gameplay source remains
-`WorldData/Authoring/Items/core.item-catalog.json`. The Editor-only assembly does
+`WorldData/Shared/Authoring/Items/core.item-catalog.json`. The Editor-only assembly does
 not duplicate its rules. It invokes `Tools/ItemCatalogCompiler`, which remains
 the validation and structural-fingerprint authority used by backend development
 and CI.
@@ -138,16 +137,16 @@ After an intentional authoring change, compile the runtime catalog:
 
 ```powershell
 dotnet run --project Tools/ItemCatalogCompiler -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json
 ```
 
 Then verify the checked-in result:
 
 ```powershell
 dotnet run --project Tools/ItemCatalogCompiler -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json `
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 ```
 
@@ -167,7 +166,7 @@ explicit data migration before the new catalog can become current. Display-only
 changes remain safe because they preserve the structural fingerprint.
 
 The complete authoring contract is documented in
-`WorldData/Authoring/Items/README.md`. No Unity Editor action is required for
+`WorldData/Shared/Authoring/Items/README.md`. No Unity Editor action is required for
 command-line item catalog compilation or verification.
 
 If `Validate`, `Save`, or `Save And Bake` fails, read the field paths in the
@@ -897,9 +896,9 @@ dotnet run --project Tools/WorldActorCompiler `
 dotnet run --project Tools/WorldActorCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Authoring/Actors/core.world-actors.json `
-  WorldData/Authoring/ActorSpawns/development-world-2.actor-spawns.json `
-  WorldData/Runtime/Actors/development-world-2.world-actors.json `
+  WorldData/Shared/Authoring/Actors/core.world-actors.json `
+  WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
+  WorldData/Worlds/development-world-2/Runtime/world-actors.json `
   --verify
 ```
 
@@ -1314,7 +1313,7 @@ dotnet run --project SimulationWorker
 
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
-node `local-node-1`, shard `local-shard-1`, World `development-world-1`, UDP port
+node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
 `27015`, runtime id, realtime protocol version 13, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
@@ -1394,7 +1393,7 @@ $join = Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join `
 ```
 
 Expected result: `join.shard.id` is `local-shard-1`, `join.shard.worldId` is
-`development-world-1`, and `join.endpoint` identifies
+`development-world-2`, and `join.endpoint` identifies
 `local-simulation-worker-1`, its current runtime, and `127.0.0.1:27015`. The
 public shard list did not contain that endpoint.
 
@@ -1592,8 +1591,8 @@ Expected result: Unity Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
 updates:
 
-- `WorldData/Authoring/development-world-1.collision-authoring.json`
-- `WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1/manifest.json`
+- `WorldData/Worlds/development-world-1/Authoring/collision.json`
+- `WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1/manifest.json`
 - Four `chunk_*.bytes` files in the same runtime directory
 
 The bake stops with a red error if the collision root contains enabled,
@@ -1604,12 +1603,12 @@ Verify the checked-in bake from the repository root:
 
 ```powershell
 dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Authoring/development-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  WorldData/Worlds/development-world-1/Authoring/collision.json `
+  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Authoring/development-world-2.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
+  WorldData/Worlds/development-world-2/Authoring/collision.json `
+  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
   --verify
 ```
 
@@ -1746,15 +1745,13 @@ Shard-to-World binding is intentionally changeable between worker process
 generations. It is not a runtime map switch. Prepare all target World content
 before changing a shard:
 
-- Add the target World under `Simulation:Topology:Worlds` in
-  `AuthService/Config/appsettings.json`.
-- Provide `SimulationWorker/CollisionData/<WorldId>/manifest.json` and its
-  checksummed chunks.
-- Provide `SimulationWorker/ActorData/<WorldId>.world-actors.json` when the
-  World uses actor content. `ActorDataPath` defaults to this World-keyed path.
-- Add or review the target entry under `SimulationWorker:WorldProfiles`.
-  Movement bounds, spawn position, and item service points are selected from
-  that profile by `SimulationWorker:WorldId`.
+- Add `WorldData/Worlds/<WorldId>/world.json` with the stable identity, client
+  scene, bounds, spawn, and item service points.
+- Provide `Authoring/collision.json` and the checksummed collision runtime below
+  that World directory.
+- Provide `Authoring/actor-spawns.json` and `Runtime/world-actors.json` when the
+  World uses actor content. Shared actor definitions remain under
+  `WorldData/Shared/Authoring/Actors`.
 - Add the authored Unity scene to the client build and map its `WorldId` in
   `Assets/Resources/Worlds/world-scene-catalog.json`.
 
@@ -1765,42 +1762,43 @@ Perform the rebind in this order:
 2. Confirm players have left and allow all open durable corpses for that shard
    to expire or close through their normal lifecycle. Do not rewrite World-local
    coordinates in PostgreSQL by hand.
-3. Change that shard's `WorldId` under `Simulation:Topology:Shards` in
-   `AuthService/Config/appsettings.json`.
-4. Set the same `SimulationWorker:WorldId` in
-   `SimulationWorker/Config/appsettings.json` and verify that its World profile
-   plus collision and actor content exist.
-5. Start or restart AuthService while the worker remains stopped. Startup
-   topology reconciliation locks the shard and applies the new World binding.
-6. If startup reports `ShardWorldRebindBlockedException`, leave the replacement
-   worker stopped. The error lists active assignments, pending join tickets,
-   active simulation sessions, and open corpses. Drain the reported state and
-   retry AuthService startup.
-7. Start SimulationWorker only after AuthService accepts the rebind. Its first
-   heartbeat must return the same World identity.
-8. Join through CharacterSelect. Unity resolves the accepted `WorldId` through
+3. Change only `SimulationWorker:WorldId` in
+   `SimulationWorker/Config/appsettings.json` and verify that the selected World
+   directory contains its manifest, collision, and actor runtime data.
+4. Start SimulationWorker. Its first authenticated heartbeat proposes the
+   configured World. AuthService locks the shard, verifies that the World exists
+   in the database, checks the offline rebind blockers, and atomically persists
+   the new binding with the worker assignment.
+5. If the worker stops after AuthService returns
+   `shard_world_rebind_blocked`, leave it stopped. The error lists active
+   assignments, pending join tickets, active simulation sessions, and open
+   corpses. Drain the reported state and start the worker again.
+6. If AuthService returns `simulation_world_not_found`, correct the World
+   manifest or configured `WorldId`, restart AuthService so it reconciles the
+   canonical manifest catalog, and then start the worker again.
+7. Join through CharacterSelect. Unity resolves the accepted `WorldId` through
    its client catalog before it requests a ticket, revalidates the exact World
    returned by placement, and loads the mapped scene only after the realtime
    join succeeds.
 
 Expected result: no player can enter during the rebind, stale worker content
 cannot claim the shard, and the next worker runtime plus Unity client use the
-same World identity. The repository contains complete scene, collision, actor,
-worker-profile, and client-catalog baselines for both development Worlds.
-`development-world-2` remains intentionally unbound. Follow
+same World identity. The repository contains complete manifest, scene,
+collision, actor, and client-catalog baselines for both development Worlds.
+The local worker configuration currently requests `development-world-2` for
+`local-shard-1`. Follow
 [Development Worlds](DEVELOPMENT_WORLDS.md) and repeat its verification before
-performing a real rebind.
+performing another rebind.
 
-The current catalog maps `development-world-1` to `DevelopmentWorld1`,
-which is already part of the build. The exact manual Unity scene, collision
-bake, and Build Profiles workflow for `development-world-2` is documented in
-[Development Worlds](DEVELOPMENT_WORLDS.md).
+The current catalog maps both development World IDs to their scenes, and both
+scenes are part of the build. Their exact Unity scene, collision-bake, and Build
+Profiles workflow is documented in [Development Worlds](DEVELOPMENT_WORLDS.md).
 
 Scene flow:
 
 - `LoginMenu`
 - `CharacterSelect`
-- the scene mapped from the selected shard's `WorldId`, currently `DevelopmentWorld1`
+- the scene mapped from the selected shard's `WorldId`, currently `DevelopmentWorld2`
 
 Expected result in `LoginMenu`:
 
@@ -1823,12 +1821,12 @@ Manual Unity test flow:
 5. Select a character.
 6. Select `Local Shard 1`.
 7. Click `Join Selected Shard`.
-8. Unity loads `DevelopmentWorld1`.
+8. Unity loads `DevelopmentWorld2`.
 
 Expected result:
 
-- `DevelopmentWorld1` shows the selected character on shard `local-shard-1` using
-  World `development-world-1`.
+- `DevelopmentWorld2` shows the selected character on shard `local-shard-1`
+  using World `development-world-2`.
 - A local test player is instantiated only after the accepted join and starts
   from the authoritative state associated with the authored PlayerSpawn.
 - You can move with `WASD`, sprint with `Shift`, jump with `Space`, control the
@@ -1837,7 +1835,7 @@ Expected result:
 - F1 releases or recaptures the debug cursor, and F2 hides or restores the
   scrollable bottom-left World Client Debug panel.
 - World Debug displays `Joined` and `127.0.0.1:27015/udp`.
-- World Debug displays shard `local-shard-1`, World `development-world-1`, worker
+- World Debug displays shard `local-shard-1`, World `development-world-2`, worker
   `local-simulation-worker-1`, and the current runtime id.
 - World Debug displays an increasing observed server tick, the configured 30 Hz
   simulation and 15 Hz snapshot rates, client FPS and frame timing, prediction
@@ -1863,7 +1861,7 @@ Expected Unity Console sequence for a successful login and simulation join:
 [AUTH] AuthService issued a short-lived join ticket for character 'Hero One' on shard 'local-shard-1'.
 [CLIENT] Opening UDP connection to SimulationWorker 'local-simulation-worker-1' runtime '<worker-runtime-id>' at 127.0.0.1:27015/udp for shard 'local-shard-1'.
 [CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to SimulationWorker.
-[SIMULATION] Account '<account-id>' with character 'Hero One' (<character-id>) connected to shard 'local-shard-1' for world 'development-world-1' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
+[SIMULATION] Account '<account-id>' with character 'Hero One' (<character-id>) connected to shard 'local-shard-1' for world 'development-world-2' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
 [CLIENT] Server-authoritative movement is active at 30 ticks per second with 15 snapshots per second.
 ```
 

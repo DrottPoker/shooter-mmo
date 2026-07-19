@@ -45,18 +45,7 @@ public sealed record AuthServiceConfig(
             .ToArray();
         if (simulationWorkers.Length == 0)
         {
-            var workerId = configuration["SIMULATION_WORKER_ID"];
             var workerSecret = configuration["SIMULATION_WORKER_SERVICE_SECRET"];
-            if (string.IsNullOrWhiteSpace(workerId))
-            {
-                errors.Add(
-                    "SIMULATION_WORKER_ID is required when no simulation worker credential map is configured.");
-            }
-            else if (!IsValidIdentifier(workerId))
-            {
-                errors.Add("SIMULATION_WORKER_ID must be a valid identifier.");
-            }
-
             if (string.IsNullOrWhiteSpace(workerSecret) || workerSecret.Length < 32)
             {
                 errors.Add("SIMULATION_WORKER_SERVICE_SECRET must be at least 32 characters.");

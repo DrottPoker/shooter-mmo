@@ -841,6 +841,7 @@ public sealed class AuthServiceClientTests
             "local-fleet",
             "local-node-1",
             "local-shard-1",
+            "development-world-1",
             "runtime-1",
             DateTime.UtcNow.AddMinutes(-1),
             "worker.example.test",

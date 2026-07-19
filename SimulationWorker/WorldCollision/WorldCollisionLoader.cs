@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ShooterMmo.GameSimulation;
+using ShooterMmo.Shared.Worlds;
 using SimulationWorker.Config;
 
 namespace SimulationWorker.WorldCollision;
@@ -21,18 +22,9 @@ public static class WorldCollisionLoader
 
     public static WorldCollisionStreamingStore LoadStreaming(SimulationWorkerConfig config)
     {
-        var rootPath = Path.IsPathRooted(config.CollisionDataPath)
-            ? config.CollisionDataPath
-            : Path.Combine(AppContext.BaseDirectory, config.CollisionDataPath);
-        var fullRootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
-        var worldPath = Path.GetFullPath(Path.Combine(fullRootPath, config.WorldId));
-        if (!worldPath.StartsWith(
-                fullRootPath + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "Configured world id resolves outside the collision data root.");
-        }
+        var worldPath = WorldManifestFileStore.ResolveCollisionRuntimePath(
+            config.WorldDataPath,
+            config.WorldId);
         var manifestPath = Path.Combine(worldPath, "manifest.json");
         if (!File.Exists(manifestPath))
         {

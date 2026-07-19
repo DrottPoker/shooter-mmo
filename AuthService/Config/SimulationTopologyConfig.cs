@@ -1,7 +1,6 @@
 namespace AuthService.Config;
 
 public sealed record SimulationTopologyConfig(
-    IReadOnlyCollection<WorldDefinitionBootstrapConfig> Worlds,
     IReadOnlyCollection<FleetBootstrapConfig> Fleets,
     IReadOnlyCollection<SimulationNodeBootstrapConfig> Nodes,
     IReadOnlyCollection<ShardBootstrapConfig> Shards)
@@ -11,12 +10,6 @@ public sealed record SimulationTopologyConfig(
         ICollection<string> errors)
     {
         var section = configuration.GetSection("Simulation:Topology");
-        var worlds = section.GetSection("Worlds")
-            .GetChildren()
-            .Select(item => new WorldDefinitionBootstrapConfig(
-                item["Id"]?.Trim() ?? string.Empty,
-                item["DisplayName"]?.Trim() ?? string.Empty))
-            .ToArray();
         var fleets = section.GetSection("Fleets")
             .GetChildren()
             .Select(item => new FleetBootstrapConfig(
@@ -35,27 +28,18 @@ public sealed record SimulationTopologyConfig(
             .GetChildren()
             .Select(item => new ShardBootstrapConfig(
                 item["Id"]?.Trim() ?? string.Empty,
-                item["WorldId"]?.Trim() ?? string.Empty,
                 item["FleetId"]?.Trim() ?? string.Empty,
                 item["DisplayName"]?.Trim() ?? string.Empty,
                 item["RuleSet"]?.Trim() ?? string.Empty))
             .ToArray();
 
-        ValidateRequiredCollection(worlds, "Worlds", errors);
         ValidateRequiredCollection(fleets, "Fleets", errors);
         ValidateRequiredCollection(nodes, "Nodes", errors);
         ValidateRequiredCollection(shards, "Shards", errors);
 
-        ValidateUniqueIds(worlds.Select(item => item.Id), "Worlds", errors);
         ValidateUniqueIds(fleets.Select(item => item.Id), "Fleets", errors);
         ValidateUniqueIds(nodes.Select(item => item.Id), "Nodes", errors);
         ValidateUniqueIds(shards.Select(item => item.Id), "Shards", errors);
-
-        foreach (var world in worlds)
-        {
-            ValidateIdentifier(world.Id, $"Worlds:{world.Id}:Id", errors);
-            ValidateDisplayName(world.DisplayName, $"Worlds:{world.Id}:DisplayName", errors);
-        }
 
         foreach (var fleet in fleets)
         {
@@ -72,8 +56,6 @@ public sealed record SimulationTopologyConfig(
         }
 
         var fleetIds = fleets.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-        var worldIds = worlds.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-
         foreach (var node in nodes)
         {
             ValidateIdentifier(node.Id, $"Nodes:{node.Id}:Id", errors);
@@ -89,12 +71,6 @@ public sealed record SimulationTopologyConfig(
         {
             ValidateIdentifier(shard.Id, $"Shards:{shard.Id}:Id", errors);
             ValidateDisplayName(shard.DisplayName, $"Shards:{shard.Id}:DisplayName", errors);
-            if (!worldIds.Contains(shard.WorldId))
-            {
-                errors.Add(
-                    $"Simulation:Topology:Shards:{shard.Id}:WorldId references an unknown world.");
-            }
-
             if (!fleetIds.Contains(shard.FleetId))
             {
                 errors.Add(
@@ -108,7 +84,7 @@ public sealed record SimulationTopologyConfig(
             }
         }
 
-        return new SimulationTopologyConfig(worlds, fleets, nodes, shards);
+        return new SimulationTopologyConfig(fleets, nodes, shards);
     }
 
     private static void ValidateRequiredCollection<T>(
@@ -166,15 +142,12 @@ public sealed record SimulationTopologyConfig(
     }
 }
 
-public sealed record WorldDefinitionBootstrapConfig(string Id, string DisplayName);
-
 public sealed record FleetBootstrapConfig(string Id, string DisplayName, string RegionCode);
 
 public sealed record SimulationNodeBootstrapConfig(string Id, string FleetId, string DisplayName);
 
 public sealed record ShardBootstrapConfig(
     string Id,
-    string WorldId,
     string FleetId,
     string DisplayName,
     string RuleSet);

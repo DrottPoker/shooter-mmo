@@ -238,10 +238,14 @@ namespace ShooterMmo.Editor
             CollisionWorldBakeResult result)
         {
             var repositoryRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
-            var authoringDirectory = Path.Combine(repositoryRoot, "WorldData", "Authoring");
-            var outputDirectory = Path.Combine(
+            var worldDirectory = Path.Combine(
                 repositoryRoot,
                 "WorldData",
+                "Worlds",
+                result.Manifest.WorldId);
+            var authoringDirectory = Path.Combine(worldDirectory, "Authoring");
+            var outputDirectory = Path.Combine(
+                worldDirectory,
                 "Runtime",
                 "Resources",
                 "ShooterMmo",
@@ -252,7 +256,7 @@ namespace ShooterMmo.Editor
 
             var authoringPath = Path.Combine(
                 authoringDirectory,
-                result.Manifest.WorldId + ".collision-authoring.json");
+                "collision.json");
             File.WriteAllText(authoringPath, JsonUtility.ToJson(document, true) + Environment.NewLine);
             File.WriteAllText(
                 Path.Combine(outputDirectory, "manifest.json"),

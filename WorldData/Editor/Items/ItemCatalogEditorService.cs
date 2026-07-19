@@ -43,12 +43,14 @@ namespace ShooterMmo.WorldData.Editor.Items
                 Path.Combine(
                     repositoryRoot,
                     "WorldData",
+                    "Shared",
                     "Authoring",
                     "Items",
                     "core.item-catalog.json"),
                 Path.Combine(
                     repositoryRoot,
                     "WorldData",
+                    "Shared",
                     "Runtime",
                     "Items",
                     "core.item-catalog.json"),

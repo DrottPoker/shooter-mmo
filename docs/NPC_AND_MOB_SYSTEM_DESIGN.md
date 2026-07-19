@@ -28,9 +28,9 @@ AI, Mob loot generation, final actor art, or final interaction UI.
 
 The implemented foundation includes:
 
-- Strict canonical authoring in `WorldData/Authoring/Actors` and
-  `WorldData/Authoring/ActorSpawns`, plus deterministic runtime content in
-  `WorldData/Runtime/Actors`.
+- Strict shared actor definitions in `WorldData/Shared/Authoring/Actors`,
+  per-World spawn authoring under `WorldData/Worlds/<WorldId>/Authoring`, and
+  deterministic runtime actor content in each World's `Runtime` directory.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
 - A shared four-definition actor catalog, a checked-in

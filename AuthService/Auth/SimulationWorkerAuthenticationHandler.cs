@@ -30,9 +30,10 @@ public sealed class SimulationWorkerAuthenticationHandler(
                 "Simulation worker identity is invalid."));
         }
 
-        var configuredSecret = configuration[$"ServiceAuthentication:SimulationWorkers:{workerId}"];
+        var workerSecrets = configuration.GetSection("ServiceAuthentication:SimulationWorkers");
+        var configuredSecret = workerSecrets[workerId];
         if (string.IsNullOrWhiteSpace(configuredSecret)
-            && string.Equals(configuration["SIMULATION_WORKER_ID"], workerId, StringComparison.Ordinal))
+            && !workerSecrets.GetChildren().Any())
         {
             configuredSecret = configuration["SIMULATION_WORKER_SERVICE_SECRET"];
         }

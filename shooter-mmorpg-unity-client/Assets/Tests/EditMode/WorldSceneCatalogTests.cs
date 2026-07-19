@@ -1,5 +1,10 @@
+using System;
+using System.Linq;
 using NUnit.Framework;
+using ShooterMmo.WorldData.Worlds;
 using ShooterMmo.Worlds;
+using UnityEditor;
+using UnityEngine;
 
 namespace ShooterMmo.Tests.EditMode
 {
@@ -29,6 +34,37 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(resolved, Is.True, error);
             Assert.That(sceneName, Is.EqualTo("DevelopmentWorld2"));
             Assert.That(WorldSceneCatalog.IsWorldScene(sceneName), Is.True);
+        }
+
+        [Test]
+        public void CheckedInCatalogMatchesEveryCanonicalWorldManifest()
+        {
+            const string worldsRoot = "Packages/com.shootermmo.world-data/Worlds";
+            var manifests = AssetDatabase
+                .FindAssets("t:TextAsset", new[] { worldsRoot })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => path.EndsWith("/world.json", StringComparison.Ordinal))
+                .Select(path => AssetDatabase.LoadAssetAtPath<TextAsset>(path))
+                .Select(asset => JsonUtility.FromJson<WorldManifestDocument>(asset.text))
+                .OrderBy(manifest => manifest.worldId, StringComparer.Ordinal)
+                .ToArray();
+            var catalogAsset = Resources.Load<TextAsset>(WorldSceneCatalog.ResourcePath);
+
+            Assert.That(manifests, Is.Not.Empty);
+            Assert.That(catalogAsset, Is.Not.Null);
+            Assert.That(
+                WorldSceneCatalog.TryParse(catalogAsset.text, out var catalog, out var error),
+                Is.True,
+                error);
+            Assert.That(catalog.entries, Has.Length.EqualTo(manifests.Length));
+            foreach (var manifest in manifests)
+            {
+                Assert.DoesNotThrow(() => WorldManifestValidator.Validate(manifest));
+                var entry = catalog.entries.SingleOrDefault(
+                    candidate => candidate.worldId == manifest.worldId);
+                Assert.That(entry, Is.Not.Null, "Missing client mapping for " + manifest.worldId);
+                Assert.That(entry.sceneName, Is.EqualTo(manifest.clientSceneName));
+            }
         }
 
         [Test]

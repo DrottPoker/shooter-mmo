@@ -21,7 +21,10 @@
         "contentHash": "tPvY61CxOAWxNsKLEBg+oR646X4Bc8UmyQ/tJszL/7mEmIXQnnBhVJZrZEEUv0Bstu0mEsHZD5At3EO8zQRAYw=="
       },
       "shootermmo.shared": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
       },
       "shootermmo.worlddata": {
         "type": "Project"

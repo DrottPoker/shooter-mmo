@@ -22,6 +22,7 @@ internal static class ItemCatalogTestData
     private static string AuthoringPath => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
+        "Shared",
         "Authoring",
         "Items",
         "core.item-catalog.json");
@@ -29,6 +30,7 @@ internal static class ItemCatalogTestData
     private static string RuntimePath => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
+        "Shared",
         "Runtime",
         "Items",
         "core.item-catalog.json");

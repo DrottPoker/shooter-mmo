@@ -78,6 +78,7 @@ public sealed class SimulationWorkerHeartbeatService(
                 config.FleetId,
                 config.NodeId,
                 config.ShardId,
+                config.WorldId,
                 identity.RuntimeId,
                 identity.StartedAt,
                 config.AdvertisedHost,
@@ -134,9 +135,11 @@ public sealed class SimulationWorkerHeartbeatService(
     private static bool IsAuthorityFailure(string code)
     {
         return code is "shard_assignment_conflict"
+            or "shard_world_rebind_blocked"
             or "worker_runtime_changed"
             or "simulation_topology_mismatch"
             or "simulation_assignment_target_not_found"
+            or "simulation_world_not_found"
             or "invalid_simulation_worker_identity"
             or "invalid_worker_started_at"
             or "invalid_worker_host"

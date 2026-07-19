@@ -12,6 +12,8 @@
              Link="Runtime\ItemDomain\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\..\WorldData\Runtime\ActorDomain\**\*.cs"
              Link="Runtime\ActorDomain\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\..\WorldData\Runtime\WorldDomain\**\*.cs"
+             Link="Runtime\WorldDomain\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

@@ -2,6 +2,8 @@ using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Shared.Networking;
+using ShooterMmo.Shared.Worlds;
+using ShooterMmo.WorldData.Worlds;
 
 namespace SimulationWorker.Config;
 
@@ -11,7 +13,7 @@ public sealed record SimulationWorkerConfig(
     string NodeId,
     string ShardId,
     string WorldId,
-    string CollisionDataPath,
+    string WorldDataPath,
     int UdpPort,
     string AdvertisedHost,
     int AdvertisedUdpPort,
@@ -44,9 +46,7 @@ public sealed record SimulationWorkerConfig(
 
     public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
 
-    public string ActorDataPath { get; init; } = Path.Combine(
-        "ActorData",
-        "development-world-1.world-actors.json");
+    public string ActorDataPath { get; init; } = string.Empty;
 
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
@@ -81,16 +81,30 @@ public sealed record SimulationWorkerConfig(
             First(section["AuthServiceSecret"], configuration["SIMULATION_WORKER_SERVICE_SECRET"]),
             "SimulationWorker:AuthServiceSecret",
             errors);
-        var collisionDataPath = Require(
+        var worldDataPath = Require(
             First(
-                section["CollisionDataPath"],
-                configuration["WORLD_COLLISION_DATA_PATH"]),
-            "SimulationWorker:CollisionDataPath",
+                section["WorldDataPath"],
+                configuration["WORLD_DATA_PATH"]),
+            "SimulationWorker:WorldDataPath",
             errors);
-        var actorDataPath = First(
-            section["ActorDataPath"],
-            configuration["WORLD_ACTOR_DATA_PATH"]);
-        var worldProfileSection = ResolveWorldProfile(section, worldId, errors);
+        WorldManifestDocument? worldManifest = null;
+        if (worldDataPath is not null && worldId is not null)
+        {
+            try
+            {
+                worldManifest = WorldManifestFileStore.Load(worldDataPath, worldId);
+            }
+            catch (Exception exception) when (
+                exception is IOException
+                or InvalidDataException
+                or UnauthorizedAccessException
+                or WorldManifestValidationException)
+            {
+                errors.Add(
+                    "SimulationWorker:WorldDataPath could not load the configured World: "
+                    + exception.Message);
+            }
+        }
         var redis = Require(configuration.GetConnectionString("Redis"), "ConnectionStrings:Redis", errors);
 
         var udpPort = PositiveInt(
@@ -168,26 +182,11 @@ public sealed record SimulationWorkerConfig(
             movementSection["GroundedVerticalVelocity"],
             "SimulationWorker:Movement:GroundedVerticalVelocity",
             errors);
-        var groundHeight = FiniteFloat(
-            worldProfileSection["GroundHeight"],
-            $"{worldProfileSection.Path}:GroundHeight",
-            errors);
-        var minimumX = FiniteFloat(
-            worldProfileSection["MinimumX"],
-            $"{worldProfileSection.Path}:MinimumX",
-            errors);
-        var maximumX = FiniteFloat(
-            worldProfileSection["MaximumX"],
-            $"{worldProfileSection.Path}:MaximumX",
-            errors);
-        var minimumZ = FiniteFloat(
-            worldProfileSection["MinimumZ"],
-            $"{worldProfileSection.Path}:MinimumZ",
-            errors);
-        var maximumZ = FiniteFloat(
-            worldProfileSection["MaximumZ"],
-            $"{worldProfileSection.Path}:MaximumZ",
-            errors);
+        var groundHeight = worldManifest?.groundHeight ?? 0f;
+        var minimumX = worldManifest?.bounds.minimumX ?? 0f;
+        var maximumX = worldManifest?.bounds.maximumX ?? 0f;
+        var minimumZ = worldManifest?.bounds.minimumZ ?? 0f;
+        var maximumZ = worldManifest?.bounds.maximumZ ?? 0f;
         var characterRadius = FiniteFloat(
             movementSection["CharacterRadius"],
             "SimulationWorker:Movement:CharacterRadius",
@@ -216,23 +215,10 @@ public sealed record SimulationWorkerConfig(
             movementSection["MaximumPenetrationIterations"],
             "SimulationWorker:Movement:MaximumPenetrationIterations",
             errors);
-        var spawnSection = worldProfileSection.GetSection("Spawn");
-        var spawnX = FiniteFloat(
-            spawnSection["X"],
-            $"{spawnSection.Path}:X",
-            errors);
-        var spawnY = FiniteFloat(
-            spawnSection["Y"],
-            $"{spawnSection.Path}:Y",
-            errors);
-        var spawnZ = FiniteFloat(
-            spawnSection["Z"],
-            $"{spawnSection.Path}:Z",
-            errors);
-        var spawnYaw = FiniteFloat(
-            spawnSection["YawDegrees"],
-            $"{spawnSection.Path}:YawDegrees",
-            errors);
+        var spawnX = worldManifest?.spawn.x ?? 0f;
+        var spawnY = worldManifest?.spawn.y ?? 0f;
+        var spawnZ = worldManifest?.spawn.z ?? 0f;
+        var spawnYaw = worldManifest?.spawn.yawDegrees ?? 0f;
         var authTimeoutSeconds = PositiveInt(
             First(section["AuthServiceTimeoutSeconds"], configuration["AUTH_SERVICE_TIMEOUT_SECONDS"]),
             "SimulationWorker:AuthServiceTimeoutSeconds",
@@ -453,7 +439,7 @@ public sealed record SimulationWorkerConfig(
 
         var itemInteraction = ItemInteractionConfig.FromConfiguration(
             section.GetSection("ItemInteraction"),
-            worldProfileSection,
+            worldManifest,
             movementSimulation,
             errors);
 
@@ -464,7 +450,7 @@ public sealed record SimulationWorkerConfig(
                 || spawnZ < movementSimulation.MinimumZ
                 || spawnZ > movementSimulation.MaximumZ))
         {
-            errors.Add($"{spawnSection.Path} must be inside the configured World bounds.");
+            errors.Add("The selected World manifest spawn must be inside its movement bounds.");
         }
 
         var parsedAuthServiceUrl = ParseHttpUri(authServiceUrl, "SimulationWorker:AuthServiceBaseUrl", errors);
@@ -499,7 +485,7 @@ public sealed record SimulationWorkerConfig(
             nodeId!,
             shardId!,
             worldId!,
-            collisionDataPath!,
+            worldDataPath!,
             udpPort,
             advertisedHost!,
             advertisedUdpPort,
@@ -537,9 +523,9 @@ public sealed record SimulationWorkerConfig(
                 collisionLoadRadiusChunks,
                 collisionUnloadRadiusChunks),
             ItemInteraction = itemInteraction,
-            ActorDataPath = string.IsNullOrWhiteSpace(actorDataPath)
-                ? Path.Combine("ActorData", worldId! + ".world-actors.json")
-                : actorDataPath.Trim()
+            ActorDataPath = WorldManifestFileStore.ResolveActorRuntimePath(
+                worldDataPath!,
+                worldId!)
         };
     }
 
@@ -552,50 +538,6 @@ public sealed record SimulationWorkerConfig(
         }
 
         return value.Trim();
-    }
-
-    private static IConfigurationSection ResolveWorldProfile(
-        IConfigurationSection workerSection,
-        string? worldId,
-        ICollection<string> errors)
-    {
-        var profiles = workerSection.GetSection("WorldProfiles").GetChildren().ToArray();
-        if (profiles.Length == 0)
-        {
-            errors.Add("SimulationWorker:WorldProfiles must contain at least one entry.");
-        }
-
-        var worldIds = new HashSet<string>(StringComparer.Ordinal);
-        IConfigurationSection? selected = null;
-        foreach (var profile in profiles)
-        {
-            var profileWorldId = profile["WorldId"]?.Trim();
-            var key = $"{profile.Path}:WorldId";
-            ValidateIdentifier(profileWorldId, key, errors);
-            if (string.IsNullOrWhiteSpace(profileWorldId))
-            {
-                errors.Add($"{key} is required.");
-                continue;
-            }
-
-            if (!worldIds.Add(profileWorldId))
-            {
-                errors.Add($"SimulationWorker:WorldProfiles contains duplicate WorldId '{profileWorldId}'.");
-            }
-
-            if (string.Equals(profileWorldId, worldId, StringComparison.Ordinal))
-            {
-                selected = profile;
-            }
-        }
-
-        if (selected is null && !string.IsNullOrWhiteSpace(worldId))
-        {
-            errors.Add(
-                $"SimulationWorker:WorldProfiles must contain the configured WorldId '{worldId}'.");
-        }
-
-        return selected ?? workerSection.GetSection("WorldProfiles:missing");
     }
 
     private static void ValidateIdentifier(

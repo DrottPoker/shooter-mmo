@@ -56,9 +56,9 @@ renumbered to Phases 13 through 15.
 
 ### Shared Content
 
-- Store neutral item catalog authoring under `WorldData/Authoring/Items`.
+- Store neutral item catalog authoring under `WorldData/Shared/Authoring/Items`.
 - Compile or validate deterministic runtime catalog data under
-  `WorldData/Runtime/Items`.
+  `WorldData/Shared/Runtime/Items`.
 - Provide an Editor-only Unity authoring window over the canonical JSON without
   making Unity assets a second source of truth.
 - Use the same framework-neutral compiler for Unity baking, command-line
@@ -70,9 +70,9 @@ renumbered to Phases 13 through 15.
 
 ### World Actor Bridge
 
-- Store neutral actor and spawn authoring under `WorldData/Authoring/Actors` and
-  `WorldData/Authoring/ActorSpawns`.
-- Compile deterministic runtime actor content under `WorldData/Runtime/Actors`.
+- Store neutral actor definitions under `WorldData/Shared/Authoring/Actors` and
+  per-World spawn authoring under `WorldData/Worlds/<WorldId>/Authoring`.
+- Compile deterministic actor content under each World's `Runtime` directory.
 - Keep NPC and Mob as distinct actor kinds while faction and disposition own
   friendly or hostile state.
 - Compose NPC service roles through typed capabilities rather than runtime
@@ -332,9 +332,9 @@ needed, and independent of HTTP, Unity, and PostgreSQL.
 Implementation result:
 
 - Strict neutral authoring lives in
-  `WorldData/Authoring/Items/core.item-catalog.json`.
+  `WorldData/Shared/Authoring/Items/core.item-catalog.json`.
 - Deterministic runtime content lives in
-  `WorldData/Runtime/Items/core.item-catalog.json` with one catalog revision and
+  `WorldData/Shared/Runtime/Items/core.item-catalog.json` with one catalog revision and
   per-definition and per-tier structural fingerprints.
 - Framework-neutral contracts, compiler validation, and pure rules live under
   `WorldData/Runtime/ItemDomain` and compile for .NET through
@@ -364,7 +364,7 @@ before persistent item definitions depend on it.
 - Add an Editor-only assembly under `WorldData/Editor/Items` with no
   `UnityEditor` reference from runtime assemblies.
 - Add `Shooter MMO > Tools > Item Catalog` as the canonical authoring window.
-- Load and present `WorldData/Authoring/Items/core.item-catalog.json` through:
+- Load and present `WorldData/Shared/Authoring/Items/core.item-catalog.json` through:
   - Searchable and filterable definition list.
   - Create and duplicate actions.
   - Stable id and display-name fields.
@@ -1703,12 +1703,12 @@ dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 powershell -ExecutionPolicy Bypass -File Tools/Verify-DependencyPolicy.ps1
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet run --project Tools/ItemCatalogCompiler --configuration Release --no-build -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json `
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler --configuration Release --no-build -- `
-  WorldData/Authoring/development-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  WorldData/Worlds/development-world-1/Authoring/collision.json `
+  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```
@@ -1849,12 +1849,12 @@ dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
 powershell -ExecutionPolicy Bypass -File Tools/Verify-DependencyPolicy.ps1
 dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet run --project Tools/ItemCatalogCompiler --configuration Release --no-build -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json `
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler --configuration Release --no-build -- `
-  WorldData/Authoring/development-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  WorldData/Worlds/development-world-1/Authoring/collision.json `
+  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```

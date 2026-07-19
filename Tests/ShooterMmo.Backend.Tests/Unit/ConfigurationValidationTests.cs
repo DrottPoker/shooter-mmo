@@ -1,6 +1,7 @@
 using AuthService.Config;
 using AuthService.Items;
 using Microsoft.Extensions.Configuration;
+using ShooterMmo.Shared.Worlds;
 using SimulationWorker.Config;
 using SimulationWorker.Items;
 
@@ -27,6 +28,22 @@ public sealed class ConfigurationValidationTests
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(AuthSettings(includeSecrets: true))
+            .Build();
+
+        var config = AuthServiceConfig.FromConfiguration(configuration);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), config.SimulationWorkerHeartbeatTimeout);
+    }
+
+    [Fact]
+    public void AuthServiceAcceptsSharedWorkerSecretWithoutEnvironmentWorkerIdentity()
+    {
+        var settings = AuthSettings(includeSecrets: true);
+        settings.Remove("ServiceAuthentication:SimulationWorkers:local-simulation-worker-1");
+        settings["SIMULATION_WORKER_SERVICE_SECRET"] =
+            "test-shared-simulation-secret-at-least-32-characters";
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
             .Build();
 
         var config = AuthServiceConfig.FromConfiguration(configuration);
@@ -113,7 +130,9 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("local-shard-1", config.ShardId);
         Assert.Equal("development-world-1", config.WorldId);
         Assert.Equal(
-            Path.Combine("ActorData", "development-world-1.world-actors.json"),
+            WorldManifestFileStore.ResolveActorRuntimePath(
+                WorldDataRootPath(),
+                "development-world-1"),
             config.ActorDataPath);
         Assert.Equal("127.0.0.1", config.AdvertisedHost);
         Assert.Equal(27015, config.AdvertisedUdpPort);
@@ -135,7 +154,7 @@ public sealed class ConfigurationValidationTests
         var access = new ItemInteractionAccessService(config);
         Assert.True(access.Evaluate(0f, 0f, -1f).Bank);
         Assert.True(access.Evaluate(0f, 0f, -1f).RecoveryStorage);
-        Assert.False(access.Evaluate(0f, 0f, -1f).InsuranceNpc);
+        Assert.True(access.Evaluate(0f, 0f, -1f).InsuranceNpc);
         Assert.False(access.Evaluate(4f, 0f, -1f).Bank);
     }
 
@@ -144,7 +163,6 @@ public sealed class ConfigurationValidationTests
     {
         var settings = WorkerSettings();
         settings["SimulationWorker:WorldId"] = "development-world-2";
-        AddDevelopmentWorldTwoProfile(settings);
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(settings)
             .Build();
@@ -152,7 +170,9 @@ public sealed class ConfigurationValidationTests
         var config = SimulationWorkerConfig.FromConfiguration(configuration);
 
         Assert.Equal(
-            Path.Combine("ActorData", "development-world-2.world-actors.json"),
+            WorldManifestFileStore.ResolveActorRuntimePath(
+                WorldDataRootPath(),
+                "development-world-2"),
             config.ActorDataPath);
         Assert.Equal(-254f, config.MovementSimulation.MinimumX);
         Assert.Equal(254f, config.MovementSimulation.MaximumX);
@@ -163,10 +183,10 @@ public sealed class ConfigurationValidationTests
     }
 
     [Fact]
-    public void SimulationWorkerRejectsMissingSelectedWorldProfile()
+    public void SimulationWorkerRejectsMissingSelectedWorldManifest()
     {
         var settings = WorkerSettings();
-        settings["SimulationWorker:WorldId"] = "development-world-2";
+        settings["SimulationWorker:WorldId"] = "missing-world";
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(settings)
             .Build();
@@ -175,7 +195,7 @@ public sealed class ConfigurationValidationTests
             () => SimulationWorkerConfig.FromConfiguration(configuration));
 
         Assert.Contains(
-            "WorldProfiles must contain the configured WorldId 'development-world-2'",
+            "could not load the configured World",
             exception.Message);
     }
 
@@ -236,13 +256,9 @@ public sealed class ConfigurationValidationTests
     }
 
     [Fact]
-    public void SimulationWorkerRejectsInvalidItemServicePoints()
+    public void SimulationWorkerRejectsInvalidSharedItemInteractionRadii()
     {
         var settings = WorkerSettings();
-        settings["SimulationWorker:WorldProfiles:0:ServicePoints:0:Radius"] = "101";
-        settings["SimulationWorker:WorldProfiles:0:ServicePoints:1:Id"] =
-            "development_world_1_city_bank";
-        settings["SimulationWorker:WorldProfiles:0:ServicePoints:2:Kind"] = "corpse";
         settings["SimulationWorker:ItemInteraction:CorpseInteractionRadius"] = "21";
         settings["SimulationWorker:ItemInteraction:CorpseDiscoveryRadius"] = "2";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
@@ -250,9 +266,6 @@ public sealed class ConfigurationValidationTests
         var exception = Assert.Throws<InvalidOperationException>(
             () => SimulationWorkerConfig.FromConfiguration(configuration));
 
-        Assert.Contains("Radius must be greater than 0 and at most 100", exception.Message);
-        Assert.Contains("Id must be unique", exception.Message);
-        Assert.Contains("Kind must be bank, recovery_storage, or insurance_npc", exception.Message);
         Assert.Contains("CorpseInteractionRadius must be greater than 0 and at most 20", exception.Message);
         Assert.Contains("CorpseDiscoveryRadius must be at least the interaction radius", exception.Message);
     }
@@ -269,10 +282,6 @@ public sealed class ConfigurationValidationTests
             ["Simulation:JoinTicketLifetimeSeconds"] = "30",
             ["Simulation:SessionLeaseLifetimeSeconds"] = "30",
             ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30",
-            ["Simulation:Topology:Worlds:0:Id"] = "development-world-1",
-            ["Simulation:Topology:Worlds:0:DisplayName"] = "Development World 1",
-            ["Simulation:Topology:Worlds:1:Id"] = "development-world-2",
-            ["Simulation:Topology:Worlds:1:DisplayName"] = "Development World 2",
             ["Simulation:Topology:Fleets:0:Id"] = "local-fleet",
             ["Simulation:Topology:Fleets:0:DisplayName"] = "Local Development",
             ["Simulation:Topology:Fleets:0:RegionCode"] = "LOCAL",
@@ -280,7 +289,6 @@ public sealed class ConfigurationValidationTests
             ["Simulation:Topology:Nodes:0:FleetId"] = "local-fleet",
             ["Simulation:Topology:Nodes:0:DisplayName"] = "Local Node 1",
             ["Simulation:Topology:Shards:0:Id"] = "local-shard-1",
-            ["Simulation:Topology:Shards:0:WorldId"] = "development-world-1",
             ["Simulation:Topology:Shards:0:FleetId"] = "local-fleet",
             ["Simulation:Topology:Shards:0:DisplayName"] = "Local Shard 1",
             ["Simulation:Topology:Shards:0:RuleSet"] = "mvp-open-risk",
@@ -308,7 +316,7 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:NodeId"] = "local-node-1",
             ["SimulationWorker:ShardId"] = "local-shard-1",
             ["SimulationWorker:WorldId"] = "development-world-1",
-            ["SimulationWorker:CollisionDataPath"] = "CollisionData",
+            ["SimulationWorker:WorldDataPath"] = WorldDataRootPath(),
             ["SimulationWorker:UdpPort"] = "27015",
             ["SimulationWorker:AdvertisedHost"] = "127.0.0.1",
             ["SimulationWorker:AdvertisedUdpPort"] = "27015",
@@ -335,34 +343,6 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:InterestManagement:ExitRadius"] = "144",
             ["SimulationWorker:CollisionStreaming:LoadRadiusChunks"] = "2",
             ["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "3",
-            ["SimulationWorker:WorldProfiles:0:WorldId"] = "development-world-1",
-            ["SimulationWorker:WorldProfiles:0:GroundHeight"] = "0",
-            ["SimulationWorker:WorldProfiles:0:MinimumX"] = "-14",
-            ["SimulationWorker:WorldProfiles:0:MaximumX"] = "14",
-            ["SimulationWorker:WorldProfiles:0:MinimumZ"] = "-14",
-            ["SimulationWorker:WorldProfiles:0:MaximumZ"] = "14",
-            ["SimulationWorker:WorldProfiles:0:Spawn:X"] = "0",
-            ["SimulationWorker:WorldProfiles:0:Spawn:Y"] = "0",
-            ["SimulationWorker:WorldProfiles:0:Spawn:Z"] = "-1",
-            ["SimulationWorker:WorldProfiles:0:Spawn:YawDegrees"] = "0",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Id"] = "development_world_1_city_bank",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Kind"] = "bank",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:X"] = "0",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Y"] = "0",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Z"] = "-1",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Radius"] = "3",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Id"] = "development_world_1_city_recovery",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Kind"] = "recovery_storage",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:X"] = "0",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Y"] = "0",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Z"] = "-1",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Radius"] = "3",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Id"] = "development_world_1_insurance_npc",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Kind"] = "insurance_npc",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:X"] = "2",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Y"] = "0",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Z"] = "-1",
-            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Radius"] = "1",
             ["SimulationWorker:Movement:TickRateHz"] = "30",
             ["SimulationWorker:Movement:SnapshotRateHz"] = "15",
             ["SimulationWorker:Movement:InputSilenceTimeoutMilliseconds"] = "500",
@@ -385,25 +365,20 @@ public sealed class ConfigurationValidationTests
         };
     }
 
-    private static void AddDevelopmentWorldTwoProfile(
-        IDictionary<string, string?> settings)
+    private static string WorldDataRootPath()
     {
-        const string profile = "SimulationWorker:WorldProfiles:1";
-        settings[$"{profile}:WorldId"] = "development-world-2";
-        settings[$"{profile}:GroundHeight"] = "0";
-        settings[$"{profile}:MinimumX"] = "-254";
-        settings[$"{profile}:MaximumX"] = "254";
-        settings[$"{profile}:MinimumZ"] = "-254";
-        settings[$"{profile}:MaximumZ"] = "254";
-        settings[$"{profile}:Spawn:X"] = "0";
-        settings[$"{profile}:Spawn:Y"] = "0";
-        settings[$"{profile}:Spawn:Z"] = "-16";
-        settings[$"{profile}:Spawn:YawDegrees"] = "0";
-        settings[$"{profile}:ServicePoints:0:Id"] = "development_world_2_city_bank";
-        settings[$"{profile}:ServicePoints:0:Kind"] = "bank";
-        settings[$"{profile}:ServicePoints:0:X"] = "-8";
-        settings[$"{profile}:ServicePoints:0:Y"] = "0";
-        settings[$"{profile}:ServicePoints:0:Z"] = "4";
-        settings[$"{profile}:ServicePoints:0:Radius"] = "3";
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "ShooterMmo.slnx")))
+            {
+                return Path.Combine(directory.FullName, "WorldData", "Worlds");
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate the Shooter MMO repository root.");
     }
 }

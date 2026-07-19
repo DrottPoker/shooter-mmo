@@ -35,6 +35,7 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = AuthServiceConfig.FromConfiguration(builder.Configuration);
+var worldManifestCatalog = WorldManifestCatalog.FromConfiguration(builder.Configuration);
 var developmentSimulationBotOptions = DevelopmentSimulationBotOptions.FromConfiguration(
     builder.Configuration,
     builder.Environment.IsDevelopment());
@@ -52,6 +53,7 @@ builder.Services.AddSingleton(_ =>
 });
 
 builder.Services.AddSingleton(config);
+builder.Services.AddSingleton(worldManifestCatalog);
 builder.Services.AddSingleton(developmentSimulationBotOptions);
 builder.Services.AddSingleton(npcItemLifecycleOptions);
 builder.Services.AddSingleton(itemOperationsOptions);

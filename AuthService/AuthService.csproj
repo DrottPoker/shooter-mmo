@@ -15,8 +15,12 @@
     <Content Update="Config\appsettings*.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\WorldData\Runtime\Items\core.item-catalog.json"
+    <Content Include="..\WorldData\Shared\Runtime\Items\core.item-catalog.json"
              Link="WorldData\Items\core.item-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Worlds\**\world.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

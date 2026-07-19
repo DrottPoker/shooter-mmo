@@ -117,7 +117,7 @@ The game does not use weapon attachments in the current design.
 ### Catalog Authoring Workflow
 
 Phase 2 provides a custom Unity Editor window for item authoring. It operates on
-the canonical authoring JSON under `WorldData/Authoring/Items` and invokes the
+the canonical authoring JSON under `WorldData/Shared/Authoring/Items` and invokes the
 same deterministic catalog compiler used by command-line verification and CI.
 
 The Editor is a content-authoring interface, not an item authority. Unity assets

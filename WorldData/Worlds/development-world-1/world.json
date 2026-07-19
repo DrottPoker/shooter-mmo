@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "worldId": "development-world-1",
+  "displayName": "Development World 1",
+  "clientSceneName": "DevelopmentWorld1",
+  "groundHeight": 0.0,
+  "bounds": {
+    "minimumX": -14.0,
+    "maximumX": 14.0,
+    "minimumZ": -14.0,
+    "maximumZ": 14.0
+  },
+  "spawn": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": -1.0,
+    "yawDegrees": 0.0
+  },
+  "servicePoints": [
+    {
+      "id": "development_world_1_city_bank",
+      "kind": "bank",
+      "x": 0.0,
+      "y": 0.0,
+      "z": -1.0,
+      "radius": 3.0
+    },
+    {
+      "id": "development_world_1_city_recovery",
+      "kind": "recovery_storage",
+      "x": 0.0,
+      "y": 0.0,
+      "z": -1.0,
+      "radius": 3.0
+    },
+    {
+      "id": "development_world_1_insurance_npc",
+      "kind": "insurance_npc",
+      "x": 2.0,
+      "y": 0.0,
+      "z": -1.0,
+      "radius": 2.0
+    }
+  ]
+}

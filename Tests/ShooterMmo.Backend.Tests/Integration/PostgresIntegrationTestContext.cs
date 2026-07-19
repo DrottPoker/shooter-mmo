@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.GameSimulation;
+using ShooterMmo.Shared.Worlds;
 
 namespace ShooterMmo.Backend.Tests.Integration;
 
@@ -60,6 +61,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         SimulationTopologySeeder = new SimulationTopologySeeder(
             dataSource,
             authServiceConfig,
+            LoadWorldManifestCatalog(),
             NullLogger<SimulationTopologySeeder>.Instance);
         AuthServiceConfig = authServiceConfig;
     }
@@ -140,19 +142,10 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 .Build();
 
             var topology = new SimulationTopologyConfig(
-                [
-                    new WorldDefinitionBootstrapConfig(
-                        "development-world-1",
-                        "Development World 1"),
-                    new WorldDefinitionBootstrapConfig(
-                        "development-world-2",
-                        "Development World 2")
-                ],
                 [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
                 [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
                 [new ShardBootstrapConfig(
                     "local-shard-1",
-                    "development-world-1",
                     "local-fleet",
                     "Local Shard 1",
                     "mvp-open-risk")]);
@@ -201,6 +194,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             "local-fleet",
             "local-node-1",
             workerShardId,
+            "development-world-1",
             runtimeId,
             DateTime.UtcNow.AddMinutes(-1),
             host,
@@ -210,6 +204,28 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
             "integration-collision-revision");
+    }
+
+    private static WorldManifestCatalog LoadWorldManifestCatalog()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var solutionPath = Path.Combine(directory.FullName, "ShooterMmo.slnx");
+            if (File.Exists(solutionPath))
+            {
+                return WorldManifestCatalog.FromManifests(
+                    WorldManifestFileStore.LoadAll(Path.Combine(
+                        directory.FullName,
+                        "WorldData",
+                        "Worlds")));
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate the Shooter MMO repository root.");
     }
 
     public async Task<IntegrationPlayer> RegisterPlayerAsync(
@@ -269,6 +285,12 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     {
         await using var command = DataSource.CreateCommand(sql);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    public async Task<string?> ExecuteScalarStringAsync(string sql)
+    {
+        await using var command = DataSource.CreateCommand(sql);
+        return (string?)await command.ExecuteScalarAsync();
     }
 
     public async Task ExecuteAsync(string sql)

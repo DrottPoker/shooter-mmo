@@ -64,19 +64,19 @@ Shard: local-shard-1
   Fleet: local-fleet
 ```
 
-Both development Worlds are registered independently of shard placement.
-`local-shard-1` remains bound to `development-world-1`; adding
-`development-world-2` does not start it or hot-swap the running shard.
+Both development Worlds are registered independently of shard placement from
+their canonical manifests. The local worker currently requests
+`development-world-2`; adding another World does not start it or hot-swap a
+running shard.
 
 A shard belongs to one fleet and references exactly one World definition at a
-time. The binding is operational configuration, not permanent character or
-shard ownership. It may change during AuthService topology reconciliation only
-while the shard has no active assignment, pending unexpired join ticket, active
-unexpired simulation session, or open durable corpse. The seeder locks the shard
-row while checking these blockers and changing `world_id`, which serializes the
-change against worker registration. A legacy assignment placeholder that has
-never owned a worker runtime does not block the change. A running shard cannot
-hot-swap Worlds.
+time. The binding is accepted runtime state, not permanent character or shard
+ownership. A replacement worker proposes its configured `WorldId` on its first
+heartbeat. AuthService locks the shard row and may persist the new binding only
+when there is no healthy assignment, pending unexpired join ticket, active
+unexpired simulation session, or open durable corpse. The same transaction
+creates the new assignment, so concurrent registration cannot bypass the
+check. A running shard cannot hot-swap Worlds.
 
 A node also belongs to one fleet. AuthService permits an assignment only when
 the worker's node and target shard belong to the same fleet. After a successful
@@ -157,12 +157,13 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - Fail-fast configuration and collision validation.
 
 Configuration lives under `SimulationWorker/Config`. A process receives its
-Fleet, Node, Shard, and World identity through validated configuration.
-`SimulationWorker:WorldProfiles` owns map-local movement bounds, authoritative
-spawn, and item service coordinates. Selecting `SimulationWorker:WorldId`
-selects exactly one matching profile as well as World-keyed collision and actor
-content. Shared movement physics, networking, quotas, interest, collision
-streaming, and corpse radii remain process policy rather than map content.
+worker, Fleet, Node, Shard, and desired World identity through validated
+configuration. `WorldData/Worlds/<WorldId>/world.json` owns map-local identity,
+client scene, movement bounds, authoritative spawn, and item service
+coordinates. Selecting `SimulationWorker:WorldId` loads that self-contained
+World directory, including collision and actor runtime content. Shared movement
+physics, networking, quotas, interest, collision streaming, and corpse radii
+remain process policy rather than map content.
 
 ### Shared
 
@@ -219,17 +220,20 @@ presentation dependency.
 
 ### WorldData
 
-`WorldData` is shared content, so it correctly remains at repository root. It
-contains neutral collision authoring and compiled, checksummed chunks keyed by
-World id. A shard references a World and its worker loads that World's data.
+`WorldData` is shared content, so it correctly remains at repository root.
+`WorldData/Shared` contains global catalogs and domain rules.
+`WorldData/Worlds/<WorldId>` is a self-contained map package with a canonical
+`world.json`, collision and actor authoring, deterministic actor runtime, and
+compiled checksummed collision chunks. A shard references one World and its
+worker loads that directory.
 
 `Tools/WorldCollisionCompiler` builds and verifies the same data consumed by
 SimulationWorker and Unity. Static collision is deterministic and shared.
 Dynamic collision uses a mutable spatial hash behind the same collision-query
 interface, leaving room for doors, lifts, and other server-owned objects.
 
-`WorldData/Authoring/Items` now owns the strict neutral item catalog source, and
-`WorldData/Runtime/Items` contains its deterministic compiled form. The catalog
+`WorldData/Shared/Authoring/Items` owns the strict neutral item catalog source,
+and `WorldData/Shared/Runtime/Items` contains its deterministic compiled form. The catalog
 has stable identities, one complete revision, per-definition and per-tier
 structural fingerprints, and no Shard identity. Framework-neutral catalog and
 pure rule source is compiled for Unity by the `ShooterMmo.WorldData` assembly and
@@ -238,9 +242,10 @@ target becomes an authority. AuthService validates and mirrors the compiled
 catalog at startup. Future mutation paths must still reapply the authoritative
 rules before committing durable item state.
 
-Neutral actor and spawn authoring now lives below
-`WorldData/Authoring/Actors` and `WorldData/Authoring/ActorSpawns`, with
-deterministic compiled content below `WorldData/Runtime/Actors`.
+Neutral actor definitions live below
+`WorldData/Shared/Authoring/Actors`. Each World owns its spawn authoring at
+`WorldData/Worlds/<WorldId>/Authoring/actor-spawns.json` and deterministic
+runtime content at `WorldData/Worlds/<WorldId>/Runtime/world-actors.json`.
 `Tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
 and tests use the same framework-neutral compiler and runtime validator. Unity
 scene authoring imports and exports that content but does not replace it as the
@@ -688,25 +693,26 @@ revision, and collision revision.
 
 ### Topology Bootstrap
 
-1. AuthService validates `Simulation:Topology` at startup.
+1. AuthService validates `Simulation:Topology` and loads every canonical World
+   manifest at startup.
 2. Database migrations create or upgrade the durable topology schema.
-3. The seeder idempotently ensures configured Worlds, Fleets, Nodes, and Shards.
-4. If an existing shard changes `WorldId`, the seeder locks it and rejects the
-   change until its assignment, join tickets, simulation sessions, and durable
-   corpses are drained.
+3. The seeder idempotently mirrors World definitions from manifests and ensures
+   configured Fleets, Nodes, and Shards without selecting a World for them.
+4. A newly created shard may remain unbound and is excluded from discovery and
+   join admission until a worker completes its first accepted heartbeat.
 5. Seeded shards remain offline because topology alone does not create a healthy
    worker assignment.
 
 ### Worker Registration
 
-1. SimulationWorker validates config, loads
-   `CollisionData/<WorldId>/manifest.json`, and derives its default actor data
-   path as `ActorData/<WorldId>.world-actors.json`.
+1. SimulationWorker validates config and loads
+   `WorldData/Worlds/<WorldId>/world.json`, actor runtime, and collision runtime.
 2. It binds UDP and reports transport readiness.
-3. It sends worker, runtime, topology, endpoint, capacity, protocol, simulation,
-   and collision metadata to AuthService.
-4. AuthService validates or creates the assignment and returns a database-timed
-   online lease.
+3. It sends worker, runtime, topology, desired World, endpoint, capacity,
+   protocol, simulation, and collision metadata to AuthService.
+4. AuthService validates the World database entry and fleet boundaries, safely
+   binds or rebinds the shard, creates the assignment, and returns a
+   database-timed online lease.
 5. The worker renews its local registration lease and continues heartbeats.
 
 ### Shard Discovery And Placement

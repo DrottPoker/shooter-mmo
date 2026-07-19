@@ -222,7 +222,10 @@
         }
       },
       "shootermmo.shared": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "ShooterMmo.WorldData": "[1.0.0, )"
+        }
       },
       "shootermmo.tools.simulationbotclient": {
         "type": "Project",

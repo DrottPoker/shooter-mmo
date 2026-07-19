@@ -185,11 +185,11 @@ Expected result:
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
-The current small map is `development-world-1`. The registered large-map
-foundation for `development-world-2` and its manual Unity authoring workflow are
-defined in [Development Worlds](docs/DEVELOPMENT_WORLDS.md). The local shard
-remains intentionally bound to Development World 1. Switching it is a separate
-offline operational step.
+The original focused test map is `development-world-1`. The larger greybox map
+is `development-world-2`; its layout and Unity workflow are defined in
+[Development Worlds](docs/DEVELOPMENT_WORLDS.md). The local shard is currently
+bound to Development World 2 for broader gameplay testing. Switching either
+direction remains a separate offline operational step.
 
 AuthService and SimulationWorker load the root `.env` for local development.
 Real environment variables and command-line values override it. Never commit
@@ -207,17 +207,17 @@ dotnet build ShooterMmo.slnx --configuration Release --no-restore
 dotnet run --project Tools/ItemCatalogCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json `
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet test ShooterMmo.slnx --configuration Release --no-build
 dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Authoring/development-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  WorldData/Worlds/development-world-1/Authoring/collision.json `
+  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Authoring/development-world-2.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
+  WorldData/Worlds/development-world-2/Authoring/collision.json `
+  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
   --verify
 dotnet run --project Tools/WorldActorCompiler `
   --configuration Release `
@@ -226,9 +226,9 @@ dotnet run --project Tools/WorldActorCompiler `
 dotnet run --project Tools/WorldActorCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Authoring/Actors/core.world-actors.json `
-  WorldData/Authoring/ActorSpawns/development-world-2.actor-spawns.json `
-  WorldData/Runtime/Actors/development-world-2.world-actors.json `
+  WorldData/Shared/Authoring/Actors/core.world-actors.json `
+  WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
+  WorldData/Worlds/development-world-2/Runtime/world-actors.json `
   --verify
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
@@ -259,7 +259,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |
 | `GameSimulation` | Local Unity package containing shared simulation source |
-| `WorldData` | Neutral World content, including checksummed collision chunks, deterministic item catalog and pure rules, actor definitions, and spawn authoring |
+| `WorldData` | Shared catalogs and domain rules plus self-contained `Worlds/<WorldId>` manifests, authoring, actor runtime, and checksummed collision data |
 | `Tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
 | `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `shooter-mmorpg-unity-client` | Unity project and Unity tests |

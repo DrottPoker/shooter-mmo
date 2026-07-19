@@ -26,6 +26,7 @@ public sealed class SimulationWorkerRegistryService(
         var normalizedFleetId = request.FleetId!.Trim();
         var normalizedNodeId = request.NodeId!.Trim();
         var normalizedShardId = request.ShardId!.Trim();
+        var normalizedWorldId = request.WorldId!.Trim();
         var normalizedRuntimeId = request.RuntimeId!.Trim();
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -36,6 +37,7 @@ public sealed class SimulationWorkerRegistryService(
             transaction,
             normalizedNodeId,
             normalizedShardId,
+            normalizedWorldId,
             cancellationToken);
         if (topology is null)
         {
@@ -43,6 +45,14 @@ public sealed class SimulationWorkerRegistryService(
             return ServiceResult<SimulationWorkerHeartbeatResponse>.NotFound(
                 "simulation_assignment_target_not_found",
                 "The configured simulation node or shard was not found or is disabled.");
+        }
+
+        if (!topology.WorldExists)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<SimulationWorkerHeartbeatResponse>.NotFound(
+                "simulation_world_not_found",
+                $"World {normalizedWorldId} is not registered in the authoritative World database.");
         }
 
         if (!string.Equals(topology.NodeFleetId, normalizedFleetId, StringComparison.Ordinal)
@@ -60,9 +70,17 @@ public sealed class SimulationWorkerRegistryService(
             normalizedShardId,
             (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds,
             cancellationToken);
+        var worldChanged = !string.Equals(
+            topology.CurrentWorldId,
+            normalizedWorldId,
+            StringComparison.Ordinal);
         if (assignedWorker is not null
-            && !string.Equals(assignedWorker.WorkerId, normalizedWorkerId, StringComparison.Ordinal)
-            && assignedWorker.IsHealthy)
+            && assignedWorker.IsHealthy
+            && (!string.Equals(
+                    assignedWorker.WorkerId,
+                    normalizedWorkerId,
+                    StringComparison.Ordinal)
+                || worldChanged))
         {
             await transaction.RollbackAsync(cancellationToken);
             return ServiceResult<SimulationWorkerHeartbeatResponse>.Conflict(
@@ -71,7 +89,11 @@ public sealed class SimulationWorkerRegistryService(
         }
 
         if (assignedWorker is not null
-            && !string.Equals(assignedWorker.WorkerId, normalizedWorkerId, StringComparison.Ordinal))
+            && (!string.Equals(
+                    assignedWorker.WorkerId,
+                    normalizedWorkerId,
+                    StringComparison.Ordinal)
+                || worldChanged))
         {
             await ReleaseWorkerRuntimeAsync(
                 connection,
@@ -82,13 +104,47 @@ public sealed class SimulationWorkerRegistryService(
                 cancellationToken);
         }
 
+        if (worldChanged && topology.CurrentWorldId is not null)
+        {
+            var blockers = await LoadWorldRebindBlockersAsync(
+                connection,
+                transaction,
+                normalizedShardId,
+                cancellationToken);
+            if (blockers.HasAny)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                var blocked = new ShardWorldRebindBlockedException(
+                    normalizedShardId,
+                    topology.CurrentWorldId,
+                    normalizedWorldId,
+                    blockers.ActiveAssignments,
+                    blockers.PendingJoinTickets,
+                    blockers.ActiveSimulationSessions,
+                    blockers.OpenCorpses);
+                return ServiceResult<SimulationWorkerHeartbeatResponse>.Conflict(
+                    "shard_world_rebind_blocked",
+                    blocked.Message);
+            }
+        }
+
+        if (worldChanged)
+        {
+            await UpdateShardWorldAsync(
+                connection,
+                transaction,
+                normalizedShardId,
+                normalizedWorldId,
+                cancellationToken);
+        }
+
         var heartbeat = await UpsertWorkerAsync(
             connection,
             transaction,
             normalizedWorkerId,
             normalizedNodeId,
             normalizedShardId,
-            topology.WorldId,
+            normalizedWorldId,
             request,
             normalizedRuntimeId,
             cancellationToken);
@@ -322,12 +378,18 @@ public sealed class SimulationWorkerRegistryService(
         NpgsqlTransaction transaction,
         string nodeId,
         string shardId,
+        string worldId,
         CancellationToken cancellationToken)
     {
         const string sql = """
             select node.fleet_id as "NodeFleetId",
                    shard.fleet_id as "ShardFleetId",
-                   shard.world_id as "WorldId"
+                   shard.world_id as "CurrentWorldId",
+                   exists (
+                       select 1
+                       from world_definitions world
+                       where world.id = @WorldId
+                   ) as "WorldExists"
             from simulation_nodes node
             cross join shards shard
             join fleets fleet on fleet.id = shard.fleet_id and fleet.is_enabled
@@ -340,7 +402,67 @@ public sealed class SimulationWorkerRegistryService(
 
         return await connection.QuerySingleOrDefaultAsync<TopologyRow>(new CommandDefinition(
             sql,
-            new { NodeId = nodeId, ShardId = shardId },
+            new { NodeId = nodeId, ShardId = shardId, WorldId = worldId },
+            transaction,
+            cancellationToken: cancellationToken));
+    }
+
+    private static Task<ShardWorldRebindBlockers> LoadWorldRebindBlockersAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string shardId,
+        CancellationToken cancellationToken)
+    {
+        return connection.QuerySingleAsync<ShardWorldRebindBlockers>(new CommandDefinition(
+            """
+            select
+                (
+                    select count(*)
+                    from simulation_assignments assignment
+                    where assignment.shard_id = @ShardId
+                      and assignment.released_at is null
+                ) as "ActiveAssignments",
+                (
+                    select count(*)
+                    from simulation_join_tickets
+                    where shard_id = @ShardId
+                      and consumed_at is null
+                      and expires_at > now()
+                ) as "PendingJoinTickets",
+                (
+                    select count(*)
+                    from character_simulation_sessions
+                    where shard_id = @ShardId
+                      and released_at is null
+                      and expires_at > now()
+                ) as "ActiveSimulationSessions",
+                (
+                    select count(*)
+                    from corpses
+                    where shard_id = @ShardId
+                      and closed_at is null
+                ) as "OpenCorpses";
+            """,
+            new { ShardId = shardId },
+            transaction,
+            cancellationToken: cancellationToken));
+    }
+
+    private static Task UpdateShardWorldAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string shardId,
+        string worldId,
+        CancellationToken cancellationToken)
+    {
+        return connection.ExecuteAsync(new CommandDefinition(
+            """
+            update shards
+            set world_id = @WorldId,
+                updated_at = now()
+            where id = @ShardId;
+            """,
+            new { ShardId = shardId, WorldId = worldId },
             transaction,
             cancellationToken: cancellationToken));
     }
@@ -497,11 +619,12 @@ public sealed class SimulationWorkerRegistryService(
             || !IsValidIdentifier(request.FleetId)
             || !IsValidIdentifier(request.NodeId)
             || !IsValidIdentifier(request.ShardId)
+            || !IsValidIdentifier(request.WorldId)
             || !IsValidIdentifier(request.RuntimeId))
         {
             return (
                 "invalid_simulation_worker_identity",
-                "Fleet, node, shard, worker, and runtime ids must be valid identifiers.");
+                "Fleet, node, shard, World, worker, and runtime ids must be valid identifiers.");
         }
 
         if (request.StartedAt == default || request.StartedAt.Kind != DateTimeKind.Utc)
@@ -560,7 +683,23 @@ public sealed class SimulationWorkerRegistryService(
             && !revision.Any(char.IsWhiteSpace);
     }
 
-    private sealed record TopologyRow(string NodeFleetId, string ShardFleetId, string WorldId);
+    private sealed record TopologyRow(
+        string NodeFleetId,
+        string ShardFleetId,
+        string? CurrentWorldId,
+        bool WorldExists);
 
     private sealed record AssignedWorkerRow(string WorkerId, string? RuntimeId, bool IsHealthy);
+
+    private sealed record ShardWorldRebindBlockers(
+        long ActiveAssignments,
+        long PendingJoinTickets,
+        long ActiveSimulationSessions,
+        long OpenCorpses)
+    {
+        public bool HasAny => ActiveAssignments > 0
+            || PendingJoinTickets > 0
+            || ActiveSimulationSessions > 0
+            || OpenCorpses > 0;
+    }
 }

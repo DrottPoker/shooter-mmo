@@ -104,21 +104,24 @@ static bool TryResolveArguments(
         actorAuthoringPath = Path.Combine(
             root,
             "WorldData",
+            "Shared",
             "Authoring",
             "Actors",
             "core.world-actors.json");
         spawnAuthoringPath = Path.Combine(
             root,
             "WorldData",
+            "Worlds",
+            "development-world-1",
             "Authoring",
-            "ActorSpawns",
-            "development-world-1.actor-spawns.json");
+            "actor-spawns.json");
         runtimePath = Path.Combine(
             root,
             "WorldData",
+            "Worlds",
+            "development-world-1",
             "Runtime",
-            "Actors",
-            "development-world-1.world-actors.json");
+            "world-actors.json");
         return true;
     }
 

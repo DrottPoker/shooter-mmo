@@ -24,8 +24,16 @@
     <None Update="Config\appsettings.Development.json"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\WorldData\Runtime\Resources\ShooterMmo\WorldCollision\**\*" Link="CollisionData\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\WorldData\Runtime\Actors\**\*.json" Link="ActorData\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Worlds\**\world.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Worlds\**\Runtime\world-actors.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\WorldData\Worlds\**\Runtime\Resources\ShooterMmo\WorldCollision\**\*"
+             Exclude="..\WorldData\Worlds\**\*.meta"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

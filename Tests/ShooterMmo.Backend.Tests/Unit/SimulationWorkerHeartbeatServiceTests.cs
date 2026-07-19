@@ -66,16 +66,20 @@ public sealed class SimulationWorkerHeartbeatServiceTests
         Assert.Equal("local-fleet", handler.HeartbeatRequest.FleetId);
         Assert.Equal("local-node-1", handler.HeartbeatRequest.NodeId);
         Assert.Equal("local-shard-1", handler.HeartbeatRequest.ShardId);
+        Assert.Equal("development-world-1", handler.HeartbeatRequest.WorldId);
         Assert.Equal("test-worker-runtime", handler.HeartbeatRequest.RuntimeId);
         Assert.Equal(100, handler.HeartbeatRequest.MaxConnections);
         Assert.Equal(0, handler.HeartbeatRequest.ActiveConnections);
         Assert.Equal("test-worker-runtime", handler.OfflineRequest!.RuntimeId);
     }
 
-    [Fact]
-    public async Task DefinitiveAuthorityFailureStopsTheWorkerImmediately()
+    [Theory]
+    [InlineData("worker_runtime_changed")]
+    [InlineData("simulation_world_not_found")]
+    [InlineData("shard_world_rebind_blocked")]
+    public async Task DefinitiveAuthorityFailureStopsTheWorkerImmediately(string errorCode)
     {
-        var handler = new AuthorityFailureRegistryHandler();
+        var handler = new AuthorityFailureRegistryHandler(errorCode);
         using var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri("http://auth-service.test")
@@ -211,7 +215,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
         }
     }
 
-    private sealed class AuthorityFailureRegistryHandler : HttpMessageHandler
+    private sealed class AuthorityFailureRegistryHandler(string errorCode) : HttpMessageHandler
     {
         public TaskCompletionSource HeartbeatReceived { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -227,8 +231,8 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                 {
                     Content = JsonContent.Create(new
                     {
-                        code = "worker_runtime_changed",
-                        detail = "A newer runtime owns this worker identity."
+                        code = errorCode,
+                        detail = "The worker cannot own the requested shard and World binding."
                     })
                 });
             }
@@ -237,8 +241,8 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             {
                 Content = JsonContent.Create(new
                 {
-                    code = "worker_runtime_changed",
-                    detail = "A newer runtime owns this worker identity."
+                    code = errorCode,
+                    detail = "The worker cannot own the requested shard and World binding."
                 })
             });
         }

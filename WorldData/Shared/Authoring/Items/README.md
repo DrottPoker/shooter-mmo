@@ -2,7 +2,7 @@
 
 `core.item-catalog.json` is the neutral source of truth for the current shared
 item catalog. `Tools/ItemCatalogCompiler` validates and compiles it into
-`WorldData/Runtime/Items/core.item-catalog.json`.
+`WorldData/Shared/Runtime/Items/core.item-catalog.json`.
 
 ## Authoring Contract
 
@@ -101,16 +101,16 @@ From the repository root, compile an intentional authoring change:
 
 ```powershell
 dotnet run --project Tools/ItemCatalogCompiler -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json
 ```
 
 Verify that checked-in runtime content matches authoring:
 
 ```powershell
 dotnet run --project Tools/ItemCatalogCompiler -- `
-  WorldData/Authoring/Items/core.item-catalog.json `
-  WorldData/Runtime/Items/core.item-catalog.json `
+  WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 ```
 
