@@ -30,7 +30,7 @@ public sealed class RealtimeProtocolTests
             Guid.NewGuid().ToString("D"),
             "Protocol Hero",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             42,
             GameSimulationCompatibility.Revision,
             "collision-revision-123",

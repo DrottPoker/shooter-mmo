@@ -46,7 +46,7 @@ public sealed record SimulationWorkerConfig(
 
     public string ActorDataPath { get; init; } = Path.Combine(
         "ActorData",
-        "local-world-1.world-actors.json");
+        "development-world-1.world-actors.json");
 
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
@@ -90,6 +90,7 @@ public sealed record SimulationWorkerConfig(
         var actorDataPath = First(
             section["ActorDataPath"],
             configuration["WORLD_ACTOR_DATA_PATH"]);
+        var worldProfileSection = ResolveWorldProfile(section, worldId, errors);
         var redis = Require(configuration.GetConnectionString("Redis"), "ConnectionStrings:Redis", errors);
 
         var udpPort = PositiveInt(
@@ -168,24 +169,24 @@ public sealed record SimulationWorkerConfig(
             "SimulationWorker:Movement:GroundedVerticalVelocity",
             errors);
         var groundHeight = FiniteFloat(
-            movementSection["GroundHeight"],
-            "SimulationWorker:Movement:GroundHeight",
+            worldProfileSection["GroundHeight"],
+            $"{worldProfileSection.Path}:GroundHeight",
             errors);
         var minimumX = FiniteFloat(
-            movementSection["MinimumX"],
-            "SimulationWorker:Movement:MinimumX",
+            worldProfileSection["MinimumX"],
+            $"{worldProfileSection.Path}:MinimumX",
             errors);
         var maximumX = FiniteFloat(
-            movementSection["MaximumX"],
-            "SimulationWorker:Movement:MaximumX",
+            worldProfileSection["MaximumX"],
+            $"{worldProfileSection.Path}:MaximumX",
             errors);
         var minimumZ = FiniteFloat(
-            movementSection["MinimumZ"],
-            "SimulationWorker:Movement:MinimumZ",
+            worldProfileSection["MinimumZ"],
+            $"{worldProfileSection.Path}:MinimumZ",
             errors);
         var maximumZ = FiniteFloat(
-            movementSection["MaximumZ"],
-            "SimulationWorker:Movement:MaximumZ",
+            worldProfileSection["MaximumZ"],
+            $"{worldProfileSection.Path}:MaximumZ",
             errors);
         var characterRadius = FiniteFloat(
             movementSection["CharacterRadius"],
@@ -215,21 +216,22 @@ public sealed record SimulationWorkerConfig(
             movementSection["MaximumPenetrationIterations"],
             "SimulationWorker:Movement:MaximumPenetrationIterations",
             errors);
+        var spawnSection = worldProfileSection.GetSection("Spawn");
         var spawnX = FiniteFloat(
-            movementSection["SpawnX"],
-            "SimulationWorker:Movement:SpawnX",
+            spawnSection["X"],
+            $"{spawnSection.Path}:X",
             errors);
         var spawnY = FiniteFloat(
-            movementSection["SpawnY"],
-            "SimulationWorker:Movement:SpawnY",
+            spawnSection["Y"],
+            $"{spawnSection.Path}:Y",
             errors);
         var spawnZ = FiniteFloat(
-            movementSection["SpawnZ"],
-            "SimulationWorker:Movement:SpawnZ",
+            spawnSection["Z"],
+            $"{spawnSection.Path}:Z",
             errors);
         var spawnYaw = FiniteFloat(
-            movementSection["SpawnYawDegrees"],
-            "SimulationWorker:Movement:SpawnYawDegrees",
+            spawnSection["YawDegrees"],
+            $"{spawnSection.Path}:YawDegrees",
             errors);
         var authTimeoutSeconds = PositiveInt(
             First(section["AuthServiceTimeoutSeconds"], configuration["AUTH_SERVICE_TIMEOUT_SECONDS"]),
@@ -451,6 +453,7 @@ public sealed record SimulationWorkerConfig(
 
         var itemInteraction = ItemInteractionConfig.FromConfiguration(
             section.GetSection("ItemInteraction"),
+            worldProfileSection,
             movementSimulation,
             errors);
 
@@ -461,7 +464,7 @@ public sealed record SimulationWorkerConfig(
                 || spawnZ < movementSimulation.MinimumZ
                 || spawnZ > movementSimulation.MaximumZ))
         {
-            errors.Add("SimulationWorker:Movement spawn must be inside the configured world bounds.");
+            errors.Add($"{spawnSection.Path} must be inside the configured World bounds.");
         }
 
         var parsedAuthServiceUrl = ParseHttpUri(authServiceUrl, "SimulationWorker:AuthServiceBaseUrl", errors);
@@ -549,6 +552,50 @@ public sealed record SimulationWorkerConfig(
         }
 
         return value.Trim();
+    }
+
+    private static IConfigurationSection ResolveWorldProfile(
+        IConfigurationSection workerSection,
+        string? worldId,
+        ICollection<string> errors)
+    {
+        var profiles = workerSection.GetSection("WorldProfiles").GetChildren().ToArray();
+        if (profiles.Length == 0)
+        {
+            errors.Add("SimulationWorker:WorldProfiles must contain at least one entry.");
+        }
+
+        var worldIds = new HashSet<string>(StringComparer.Ordinal);
+        IConfigurationSection? selected = null;
+        foreach (var profile in profiles)
+        {
+            var profileWorldId = profile["WorldId"]?.Trim();
+            var key = $"{profile.Path}:WorldId";
+            ValidateIdentifier(profileWorldId, key, errors);
+            if (string.IsNullOrWhiteSpace(profileWorldId))
+            {
+                errors.Add($"{key} is required.");
+                continue;
+            }
+
+            if (!worldIds.Add(profileWorldId))
+            {
+                errors.Add($"SimulationWorker:WorldProfiles contains duplicate WorldId '{profileWorldId}'.");
+            }
+
+            if (string.Equals(profileWorldId, worldId, StringComparison.Ordinal))
+            {
+                selected = profile;
+            }
+        }
+
+        if (selected is null && !string.IsNullOrWhiteSpace(worldId))
+        {
+            errors.Add(
+                $"SimulationWorker:WorldProfiles must contain the configured WorldId '{worldId}'.");
+        }
+
+        return selected ?? workerSection.GetSection("WorldProfiles:missing");
     }
 
     private static void ValidateIdentifier(

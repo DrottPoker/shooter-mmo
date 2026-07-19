@@ -346,7 +346,7 @@ namespace ShooterMmo.Tests.EditMode
                 Guid.NewGuid().ToString("D"),
                 "Collision Hero",
                 "local-shard-1",
-                "local-world-1",
+                "development-world-1",
                 1,
                 simulationRevision,
                 collisionRevision,
@@ -417,7 +417,7 @@ namespace ShooterMmo.Tests.EditMode
         {
             Assert.That(
                 UnityWorldCollisionLoader.TryLoad(
-                    "local-world-1",
+                    "development-world-1",
                     out var collisionWorld,
                     out var error),
                 Is.True,

@@ -48,13 +48,13 @@ namespace ShooterMmo.WorldData.Editor.Actors
                     "WorldData",
                     "Authoring",
                     "ActorSpawns",
-                    "local-world-1.actor-spawns.json"),
+                    "development-world-1.actor-spawns.json"),
                 Path.Combine(
                     repositoryRoot,
                     "WorldData",
                     "Runtime",
                     "Actors",
-                    "local-world-1.world-actors.json"),
+                    "development-world-1.world-actors.json"),
                 Path.Combine(
                     repositoryRoot,
                     "Tools",

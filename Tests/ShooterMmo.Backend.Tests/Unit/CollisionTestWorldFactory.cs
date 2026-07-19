@@ -9,7 +9,7 @@ internal static class CollisionTestWorldFactory
         var bake = CollisionWorldCompiler.Compile(new CollisionWorldAuthoringDocument
         {
             FormatVersion = CollisionDataFormat.Version,
-            WorldId = "local-world-1",
+            WorldId = "development-world-1",
             ChunkSize = 32f,
             Boxes =
             [

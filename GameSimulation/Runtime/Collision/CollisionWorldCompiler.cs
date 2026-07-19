@@ -43,9 +43,24 @@ namespace ShooterMmo.GameSimulation
             return new CollisionBox(
                 stableId,
                 LayerMask,
-                new SimulationVector3(CenterX, CenterY, CenterZ),
-                new SimulationVector3(HalfExtentX, HalfExtentY, HalfExtentZ),
-                new SimulationQuaternion(RotationX, RotationY, RotationZ, RotationW));
+                new SimulationVector3(
+                    CanonicalizeZero(CenterX),
+                    CanonicalizeZero(CenterY),
+                    CanonicalizeZero(CenterZ)),
+                new SimulationVector3(
+                    CanonicalizeZero(HalfExtentX),
+                    CanonicalizeZero(HalfExtentY),
+                    CanonicalizeZero(HalfExtentZ)),
+                new SimulationQuaternion(
+                    CanonicalizeZero(RotationX),
+                    CanonicalizeZero(RotationY),
+                    CanonicalizeZero(RotationZ),
+                    CanonicalizeZero(RotationW)));
+        }
+
+        private static float CanonicalizeZero(float value)
+        {
+            return value == 0f ? 0f : value;
         }
 
         private static ulong ParseStableId(string value)

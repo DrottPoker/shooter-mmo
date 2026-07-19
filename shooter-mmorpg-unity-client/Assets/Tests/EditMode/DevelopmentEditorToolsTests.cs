@@ -16,6 +16,9 @@ namespace ShooterMmo.Tests.EditMode
                 WorldCollisionBaker.MenuPath,
                 Does.StartWith("Shooter MMO/Tools/"));
             Assert.That(
+                WorldCollisionBaker.BakeBuildWorldScenesMenuPath,
+                Does.StartWith("Shooter MMO/Tools/"));
+            Assert.That(
                 ItemCatalogEditorWindow.MenuPath,
                 Does.StartWith("Shooter MMO/Tools/"));
         }

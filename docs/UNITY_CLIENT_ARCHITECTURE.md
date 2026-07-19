@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ## Purpose
 
@@ -87,7 +87,7 @@ Realtime movement
 `ShooterMmoClientBootstrap` creates the persistent runtime root and survives scene
 changes. It initializes configuration, owns one `RealtimeSimulationClient` and
 one `InventoryClientController`, observes scene transitions, and performs
-fallback leave when an active WorldScene is left outside the normal panel flow.
+fallback leave when an active World scene is left outside the normal panel flow.
 
 The fallback release is bound to the exact simulation-session identity. Completion of
 an older request cannot clear a newer local reconnect state. If graceful leave
@@ -123,8 +123,8 @@ build-specific configuration assets or a future build configuration pipeline.
 
 This state is a client cache, not an authority. AuthService and SimulationWorker remain
 authoritative. The persistent bootstrap validates an authenticated account
-session every five seconds, including outside WorldScene. HTTP 401 clears all
-local session state before loading LoginMenu.
+session every five seconds, including outside the active World scene. HTTP 401
+clears all local session state before loading LoginMenu.
 
 ## API Layer
 
@@ -212,7 +212,8 @@ snapshot delivery:
 Every accepted simulation session identifies the local player's server-assigned
 nonzero network entity id. `RealtimeSimulationClient` owns an in-memory registry of
 the reliable spawn baseline and subsequent spawn or despawn changes. The
-registry survives the CharacterSelect to WorldScene transition, so entities
+registry survives the transition from CharacterSelect to the selected World
+scene, so entities
 that spawned before scene loading are still presented. Conflicting reuse of an
 active entity id is treated as a protocol failure. Snapshots never create or
 remove entities. They update only ids already admitted by the reliable
@@ -253,9 +254,10 @@ SimulationWorker never send a scene path. CharacterSelect resolves the selected
 shard's World before requesting a join ticket and rejects an unknown mapping or
 a scene missing from the build. It resolves the authoritative placement World
 again before opening UDP, so a shard list cached across an offline rebind cannot
-load the previous scene. The checked-in catalog currently maps only
-`local-world-1` to `WorldScene`; the next development map can add a second entry
-without changing the join protocol.
+load the previous scene. The checked-in catalog maps `development-world-1` to
+`DevelopmentWorld1` and `development-world-2` to `DevelopmentWorld2`. Both
+scenes are authored and included in Build Profiles. CharacterSelect still
+rejects a mapped scene that is absent from the build.
 
 ### LoginMenu
 
@@ -270,7 +272,7 @@ character creation, selection, refresh, logout, and simulation join. Join ticket
 creation and the UDP handshake run inside one coroutine so the operation cannot
 be partially overlapped by another click.
 
-### WorldScene
+### World Scenes
 
 `WorldScenePanel` displays scrollable client-observed diagnostics in the bottom-left
 corner. F2 toggles its visibility through the Player Input Actions asset. Its
@@ -325,7 +327,8 @@ never generates a player asset, map object, material, light, or collider.
 Runtime instances of the explicitly authored RemotePlayer prefab are created
 only from reliable player-entity spawn messages and are parented under the
 scene-authored `EntityPresentationRoot`. The runtime local player remains
-separate from that presentation hierarchy and is destroyed with WorldScene.
+separate from that presentation hierarchy and is destroyed with the active
+World scene.
 
 `LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
 prefab. The referenced Input Actions asset defines movement, sprint, jump, aim,
@@ -354,9 +357,9 @@ this extra blend. Presentation never feeds back into prediction, reconciliation,
 input packets, or SimulationWorker state.
 
 `LocalPlayerController` retains an offline CharacterController path for isolated
-prefab testing, but WorldScene does not create an offline player. A runtime
-WorldScene player always uses `ClientMovementPrediction` and the exact shared
-fixed-step capsule simulation and baked collision world. Normal movement faces
+prefab testing, but registered World scenes do not create an offline player. A
+runtime World-scene player always uses `ClientMovementPrediction` and the exact
+shared fixed-step capsule simulation and baked collision world. Normal movement faces
 its travel direction. Aim faces the camera heading so left and right movement
 become shooter-style strafing. Sprint is a grounded state transition: it may
 remain active through a jump but cannot start while airborne. Both isolated
@@ -419,7 +422,7 @@ to resolve the committed outcome.
 ### Inventory UI
 
 `TemporaryInventoryPanel` is the only replaceable part of the Phase 9 inventory
-implementation. It creates runtime uGUI below a WorldScene controller and reads
+implementation. It creates runtime uGUI below a World-scene controller and reads
 the persistent state without embedding API, protocol, revision, or item-rule
 ownership. `B` toggles character storage only, `C` toggles equipment plus
 character storage, and `I` toggles the complete Development view with contextual
@@ -542,7 +545,9 @@ service points.
 All Unity Editor commands owned by the project use the shared
 `Shooter MMO > Tools` root. The item catalog authoring window is at
 `Shooter MMO > Tools > Item Catalog`, and collision baking is at
-`Shooter MMO > Tools > World Collision > Bake Open Scene`.
+`Shooter MMO > Tools > World Collision > Bake Open Scene`. `Bake Build World
+Scenes` validates the World catalog against enabled Build Profiles scenes and
+bakes every mapped scene in one pass.
 
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
@@ -578,7 +583,9 @@ layer mask on an authored scene object. The Editor command
 `Shooter MMO > Tools > World Collision > Bake Open Scene` scans enabled, non-trigger
 BoxColliders below that root and writes neutral authoring JSON plus versioned
 binary resources into `WorldData`. Unsupported collider types fail the bake
-explicitly. Runtime code never scans the Unity scene or treats PhysX as network
+explicitly. The shared compiler canonicalizes signed floating-point zero before
+encoding, so Unity and .NET produce identical chunk hashes for equivalent
+transforms. Runtime code never scans the Unity scene or treats PhysX as network
 authority.
 
 `RemotePlayerView` is presentation-only. It has no input, camera, audio listener,
@@ -719,8 +726,8 @@ Problem Details parsing, diagnostic prefix formatting, configuration loading,
 PlayerInput action binding, invalid array rejection, dynamic crosshair
 configuration, local reconciliation, redundant input batches, remote
 interpolation, collision resource loading, authored player prefab contracts, and
-WorldScene composition. They also execute the shared encumbrance reference
-points, sprint threshold, movement prediction, and monotonic carry-revision
+development-world scene composition. They also execute the shared encumbrance
+reference points, sprint threshold, movement prediction, and monotonic carry-revision
 handling used by SimulationWorker. Phase 8 EditMode coverage also round-trips
 typed Secure Container intents and committed item results without adding client
 authority fields. Phase 9 coverage loads the real bundled gameplay and
@@ -752,7 +759,7 @@ EditMode and PlayMode tests still run as the release-hardening regression gate.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and
-presentation controllers plus the runtime login panel. WorldScene coverage
+presentation controllers plus the runtime login panel. World-scene coverage
 opens and closes the runtime uGUI inventory root and finds the runtime corpse
 and actor presentation controllers.
 
@@ -775,7 +782,7 @@ Manual flows and expected results are documented in
   not actor prefabs or the temporary interaction panel.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
-- Route every WorldScene exit through exact-session UDP leave or disconnect
+- Route every World-scene exit through exact-session UDP leave or disconnect
   fallback.
 - Add player-facing behavior to [Game Features](GAME_FEATURES.md) when it becomes
   implemented.

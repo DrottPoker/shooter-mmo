@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ## Purpose
 
@@ -47,9 +47,10 @@ A selected character can enter an online local shard through the authenticated
 placement and join-ticket flow. AuthService selects the assigned healthy worker
 runtime and returns its endpoint only with the ticket. The client validates the
 placement, connects with LiteNetLib, sends the ticket through the shared
-versioned protocol, and loads WorldScene only after SimulationWorker accepts the
-session. WorldScene displays character, shard, World, worker, runtime, session,
-and UDP connection state.
+versioned protocol, and loads the World scene mapped from the accepted WorldId
+only after SimulationWorker accepts the session. The selected World scene
+displays character, shard, World, worker, runtime, session, and UDP connection
+state.
 
 Leave sends the exact simulation-session id over the active peer and waits for server
 acknowledgement before returning to CharacterSelect. Unexpected disconnects
@@ -61,20 +62,22 @@ LoginMenu.
 
 Status: Initial content on implemented network gameplay foundation
 
-WorldScene contains a 30 by 30 meter scene-authored test map, a LocalPlayer
-prefab reference, an explicit spawn point, and a separate entity presentation
-root. After SimulationWorker accepts a character join, WorldScene creates one
+DevelopmentWorld1 contains the original 30 by 30 meter scene-authored test map.
+DevelopmentWorld2 provides a 512 by 512 meter greybox map for broader traversal
+and content development. Each registered World scene owns a LocalPlayer prefab
+reference, an explicit spawn point, and a separate entity presentation root.
+After SimulationWorker accepts a character join, the mapped scene creates one
 runtime LocalPlayer instance whose prefab owns the configured third-person
 camera. Without an active joined session, no local player exists in the scene.
-The map includes static boundaries, a slope, three step heights, cover, and a
-dedicated camera-collision wall.
+DevelopmentWorld1 retains the static boundaries, slope, three step heights,
+cover, and dedicated camera-collision wall used by focused movement tests.
 
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
 rendered from interpolated SimulationWorker snapshots. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
-Remote instances are kept under WorldScene's separate
+Remote instances are kept under the active World scene's separate
 `EntityPresentationRoot`, outside the runtime LocalPlayer hierarchy.
 SimulationWorker uses distance-based interest management, so distant entities are
 removed reliably and recreated reliably when they enter the configured area of
@@ -141,12 +144,13 @@ normal gravity and CharacterController collision without forced per-frame ground
 snapping. Authenticated play keeps simulation at the shared fixed tick rate and
 renders an interpolated presentation state at the same root convention.
 
-The current test map is baked into versioned collision chunks shared by the
-server and client prediction. Authenticated movement therefore collides with all
-12 current BoxColliders. SimulationWorker sends the authoritative collision revision
+Each development map is baked into versioned collision chunks shared by the
+server and client prediction. Authenticated movement therefore collides with
+the selected scene's authored BoxColliders. SimulationWorker sends the authoritative collision revision
 when the character joins, and the client refuses to predict against a different
 revision. Isolated LocalPlayer prefab tests may use Unity CharacterController,
-but WorldScene movement requires the joined SimulationWorker session.
+but authenticated World-scene movement requires the joined SimulationWorker
+session.
 
 Complex terrain meshes, caves, moving platforms, dynamic doors, and rigid-body
 objects are not gameplay features yet. Dynamic server collision already has a
@@ -236,8 +240,9 @@ service-point requirement, and insurance access is never included in the
 Development override.
 
 Unity now exposes the first player-facing inventory loop. Press `B` in
-WorldScene for character storage only, `C` for equipment together with character
-storage, or `I` for the complete Development view including Bank and Recovery.
+an active World scene for character storage only, `C` for equipment together
+with character storage, or `I` for the complete Development view including Bank
+and Recovery.
 Drag items to valid container or equipment destinations. Dropping onto an
 occupied compatible container slot merges compatible stacks and otherwise
 submits one atomic swap. Click selection is retained only for split and

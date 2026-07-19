@@ -25,7 +25,7 @@ public sealed class MobCorpseLifecycleServiceTests
             () => runtimeIds[runtimeIndex++]);
         var identity = new SimulationWorkerIdentity("phase14-runtime", DateTime.UtcNow);
         var actors = actorStore.ActivateAssignment(
-            "local-world-1",
+            "development-world-1",
             "local-shard-1",
             identity.RuntimeId);
         var wolf = actors.First(actor => actor.Definition.Id == "mob.feral_wolf");

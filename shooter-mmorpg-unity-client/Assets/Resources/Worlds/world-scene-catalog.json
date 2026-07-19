@@ -2,8 +2,12 @@
   "formatVersion": 1,
   "entries": [
     {
-      "worldId": "local-world-1",
-      "sceneName": "WorldScene"
+      "worldId": "development-world-1",
+      "sceneName": "DevelopmentWorld1"
+    },
+    {
+      "worldId": "development-world-2",
+      "sceneName": "DevelopmentWorld2"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ## Purpose
 
@@ -9,6 +9,8 @@ ownership, trust boundaries, and runtime flows. Detailed Unity internals belong
 in [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md). Implemented
 behavior belongs in the two feature documents. The approved planned world-actor
 contract belongs in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
+Development map identities and scene-authoring coordinates belong in
+[Development Worlds](DEVELOPMENT_WORLDS.md).
 
 ## Canonical Terminology
 
@@ -45,8 +47,11 @@ Global Services
   Redis
   future economy, social, inventory, and persistence services
 
-World: local-world-1
-  shared map, collision, and future content definitions
+World: development-world-1
+  complete small-map development content
+
+World: development-world-2
+  registered large-map development content, Unity scene and collision pending
 
 Fleet: local-fleet
   Node: local-node-1
@@ -55,9 +60,13 @@ Fleet: local-fleet
       SimulationAssignment: worker -> local-shard-1
 
 Shard: local-shard-1
-  World: local-world-1
+  World: development-world-1
   Fleet: local-fleet
 ```
+
+Both development Worlds are registered independently of shard placement.
+`local-shard-1` remains bound to `development-world-1`; adding
+`development-world-2` does not start it or hot-swap the running shard.
 
 A shard belongs to one fleet and references exactly one World definition at a
 time. The binding is operational configuration, not permanent character or
@@ -149,6 +158,11 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 
 Configuration lives under `SimulationWorker/Config`. A process receives its
 Fleet, Node, Shard, and World identity through validated configuration.
+`SimulationWorker:WorldProfiles` owns map-local movement bounds, authoritative
+spawn, and item service coordinates. Selecting `SimulationWorker:WorldId`
+selects exactly one matching profile as well as World-keyed collision and actor
+content. Shared movement physics, networking, quotas, interest, collision
+streaming, and corpse radii remain process policy rather than map content.
 
 ### Shared
 

@@ -31,13 +31,13 @@ namespace ShooterMmo.Tests.EditMode
             {
                 id = "local-shard-1",
                 displayName = "Local Shard 1",
-                worldId = "local-world-1"
+                worldId = "development-world-1"
             };
             ShooterMmoClientSession.ActiveSimulationSession = new ActiveSimulationSessionResponse
             {
                 characterId = "character-1",
                 shardId = "local-shard-1",
-                worldId = "local-world-1"
+                worldId = "development-world-1"
             };
 
             ShooterMmoClientSession.Clear();

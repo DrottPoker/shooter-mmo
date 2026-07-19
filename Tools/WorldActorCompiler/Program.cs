@@ -112,13 +112,13 @@ static bool TryResolveArguments(
             "WorldData",
             "Authoring",
             "ActorSpawns",
-            "local-world-1.actor-spawns.json");
+            "development-world-1.actor-spawns.json");
         runtimePath = Path.Combine(
             root,
             "WorldData",
             "Runtime",
             "Actors",
-            "local-world-1.world-actors.json");
+            "development-world-1.world-actors.json");
         return true;
     }
 

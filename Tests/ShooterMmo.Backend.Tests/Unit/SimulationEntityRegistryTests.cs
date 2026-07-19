@@ -173,7 +173,7 @@ public sealed class SimulationEntityRegistryTests
             Guid.NewGuid(),
             "Registry Hero",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "local-simulation-worker-1",
             "worker-runtime-1",
             DateTime.UtcNow,

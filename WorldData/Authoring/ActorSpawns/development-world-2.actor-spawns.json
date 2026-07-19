@@ -1,0 +1,70 @@
+{
+  "formatVersion": 1,
+  "worldId": "development-world-2",
+  "actorCatalogId": "core",
+  "spawnPoints": [
+    {
+      "id": "development_world_2.central_services",
+      "actorId": "npc.city_services",
+      "x": 8.0,
+      "y": 0.0,
+      "z": 4.0,
+      "yawDegrees": 270.0,
+      "patrolPathId": ""
+    }
+  ],
+  "spawnGroups": [
+    {
+      "id": "development_world_2.central_guards",
+      "actorId": "npc.city_guard",
+      "centerX": -16.0,
+      "centerY": 0.0,
+      "centerZ": 12.0,
+      "yawDegrees": 45.0,
+      "rows": 1,
+      "columns": 2,
+      "spacing": 3.0,
+      "patrolPathId": ""
+    }
+  ],
+  "spawnAreas": [
+    {
+      "id": "development_world_2.feral_wolves",
+      "actorId": "mob.feral_wolf",
+      "minimumX": -190.0,
+      "minimumZ": -190.0,
+      "maximumX": -130.0,
+      "maximumZ": -130.0,
+      "y": 0.0,
+      "yawDegrees": 45.0,
+      "count": 4,
+      "seed": 2201,
+      "patrolPathId": "development_world_2.wolf_patrol"
+    }
+  ],
+  "patrolPaths": [
+    {
+      "id": "development_world_2.wolf_patrol",
+      "points": [
+        {
+          "x": -184.0,
+          "y": 0.0,
+          "z": -184.0,
+          "waitSeconds": 1.0
+        },
+        {
+          "x": -136.0,
+          "y": 0.0,
+          "z": -176.0,
+          "waitSeconds": 0.5
+        },
+        {
+          "x": -148.0,
+          "y": 0.0,
+          "z": -136.0,
+          "waitSeconds": 1.0
+        }
+      ]
+    }
+  ]
+}

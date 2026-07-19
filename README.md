@@ -185,6 +185,12 @@ Expected result:
 Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
+The current small map is `development-world-1`. The registered large-map
+foundation for `development-world-2` and its manual Unity authoring workflow are
+defined in [Development Worlds](docs/DEVELOPMENT_WORLDS.md). The local shard
+remains intentionally bound to Development World 1. Switching it is a separate
+offline operational step.
+
 AuthService and SimulationWorker load the root `.env` for local development.
 Real environment variables and command-line values override it. Never commit
 `.env`.
@@ -206,12 +212,23 @@ dotnet run --project Tools/ItemCatalogCompiler `
   --verify
 dotnet test ShooterMmo.slnx --configuration Release --no-build
 dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Authoring/local-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  WorldData/Authoring/development-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  --verify
+dotnet run --project Tools/WorldCollisionCompiler -- `
+  WorldData/Authoring/development-world-2.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
   --verify
 dotnet run --project Tools/WorldActorCompiler `
   --configuration Release `
   --no-build -- `
+  --verify
+dotnet run --project Tools/WorldActorCompiler `
+  --configuration Release `
+  --no-build -- `
+  WorldData/Authoring/Actors/core.world-actors.json `
+  WorldData/Authoring/ActorSpawns/development-world-2.actor-spawns.json `
+  WorldData/Runtime/Actors/development-world-2.world-actors.json `
   --verify
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```

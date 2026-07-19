@@ -251,7 +251,7 @@ public sealed class DevelopmentSimulationBotAuthorityTests
     {
         return new DevelopmentSimulationBotPlacement(
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "worker-1",
             "runtime-1",
             "127.0.0.1",

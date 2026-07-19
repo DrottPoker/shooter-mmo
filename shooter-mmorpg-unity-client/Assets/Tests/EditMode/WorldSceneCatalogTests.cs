@@ -6,15 +6,28 @@ namespace ShooterMmo.Tests.EditMode
     public sealed class WorldSceneCatalogTests
     {
         [Test]
-        public void CheckedInCatalogResolvesTheLocalWorldScene()
+        public void CheckedInCatalogResolvesDevelopmentWorldOne()
         {
             var resolved = WorldSceneCatalog.TryResolveScene(
-                "local-world-1",
+                "development-world-1",
                 out var sceneName,
                 out var error);
 
             Assert.That(resolved, Is.True, error);
-            Assert.That(sceneName, Is.EqualTo("WorldScene"));
+            Assert.That(sceneName, Is.EqualTo("DevelopmentWorld1"));
+            Assert.That(WorldSceneCatalog.IsWorldScene(sceneName), Is.True);
+        }
+
+        [Test]
+        public void CheckedInCatalogResolvesDevelopmentWorldTwo()
+        {
+            var resolved = WorldSceneCatalog.TryResolveScene(
+                "development-world-2",
+                out var sceneName,
+                out var error);
+
+            Assert.That(resolved, Is.True, error);
+            Assert.That(sceneName, Is.EqualTo("DevelopmentWorld2"));
             Assert.That(WorldSceneCatalog.IsWorldScene(sceneName), Is.True);
         }
 

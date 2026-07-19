@@ -12,13 +12,27 @@ public sealed class WorldActorCompilerTests
 
         Assert.Equal(WorldActorDataFormat.Version, runtime.FormatVersion);
         Assert.Equal("core", runtime.CatalogId);
-        Assert.Equal("local-world-1", runtime.WorldId);
+        Assert.Equal("development-world-1", runtime.WorldId);
         Assert.Equal(64, runtime.Revision.Length);
         Assert.Equal(4, runtime.Actors.Length);
         Assert.Equal(5, runtime.SpawnInstances.Length);
         Assert.Equal(
             WorldActorJson.SerializeRuntime(runtime),
             NormalizeLineEndings(WorldActorTestData.RuntimeJson));
+    }
+
+    [Fact]
+    public void DevelopmentWorldTwoAuthoringMatchesDeterministicRuntime()
+    {
+        const string worldId = "development-world-2";
+        var runtime = WorldActorTestData.Compile(worldId);
+
+        Assert.Equal(worldId, runtime.WorldId);
+        Assert.Equal(4, runtime.Actors.Length);
+        Assert.Equal(7, runtime.SpawnInstances.Length);
+        Assert.Equal(
+            WorldActorJson.SerializeRuntime(runtime),
+            NormalizeLineEndings(WorldActorTestData.RuntimeJsonFor(worldId)));
     }
 
     [Fact]
@@ -221,8 +235,8 @@ public sealed class WorldActorCompilerTests
             "\"catalogId\": \"core\",\n  \"unknown\": true,",
             StringComparison.Ordinal);
         var duplicate = WorldActorTestData.SpawnAuthoringJson.Replace(
-            "\"worldId\": \"local-world-1\",",
-            "\"worldId\": \"local-world-1\",\n  \"worldId\": \"duplicate\",",
+            "\"worldId\": \"development-world-1\",",
+            "\"worldId\": \"development-world-1\",\n  \"worldId\": \"duplicate\",",
             StringComparison.Ordinal);
 
         Assert.Throws<InvalidDataException>(() => WorldActorJson.DeserializeActors(unknown));

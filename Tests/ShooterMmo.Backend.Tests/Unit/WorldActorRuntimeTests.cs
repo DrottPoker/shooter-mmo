@@ -53,7 +53,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actors = actorStore.ActivateAssignment(
-            "local-world-1",
+            "development-world-1",
             "local-shard-1",
             "test-runtime");
         var player = RegisterPlayer(registry, CreateSession(), 0f, -1f);
@@ -68,7 +68,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actor = actorStore.ActivateAssignment(
-                "local-world-1",
+                "development-world-1",
                 "local-shard-1",
                 "test-runtime")
             .Single(value => value.Definition.Id == "npc.city_services");
@@ -98,7 +98,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actor = actorStore.ActivateAssignment(
-                "local-world-1",
+                "development-world-1",
                 "local-shard-1",
                 "test-runtime")
             .Single(value => value.Definition.Id == "npc.city_services");
@@ -112,7 +112,7 @@ public sealed class WorldActorRuntimeTests
         Assert.Equal(actor.RuntimeActorId, tombstone!.RuntimeActorId);
 
         actorStore.ActivateAssignment(
-            "local-world-1",
+            "development-world-1",
             "local-shard-1",
             "replacement-runtime");
         Assert.False(actorStore.TryGetDespawnedByEntityId(actor.NetworkEntityId, out _));
@@ -123,7 +123,7 @@ public sealed class WorldActorRuntimeTests
     {
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
-        actorStore.ActivateAssignment("local-world-1", "local-shard-1", "test-runtime");
+        actorStore.ActivateAssignment("development-world-1", "local-shard-1", "test-runtime");
         var scheduler = new WorldActorActivityScheduler(actorStore);
         var player = RegisterPlayer(registry, CreateSession(), 0f, -1f);
 
@@ -155,7 +155,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actor = actorStore.ActivateAssignment(
-                "local-world-1",
+                "development-world-1",
                 "local-shard-1",
                 "test-runtime")
             .Single(value => value.Definition.Id == "npc.city_services");
@@ -178,7 +178,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actor = actorStore.ActivateAssignment(
-                "local-world-1",
+                "development-world-1",
                 "local-shard-1",
                 "test-runtime")
             .Single(value => value.Definition.Id == "npc.city_services");
@@ -245,7 +245,7 @@ public sealed class WorldActorRuntimeTests
             WorldActorTestData.LoadSpawns());
         var store = new WorldActorStore(runtime, new SimulationEntityRegistry());
         var actors = store.ActivateAssignment(
-            "local-world-1",
+            "development-world-1",
             "local-shard-1",
             "test-runtime");
 
@@ -261,7 +261,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actor = actorStore.ActivateAssignment(
-                "local-world-1",
+                "development-world-1",
                 "local-shard-1",
                 "test-runtime")
             .First();
@@ -535,7 +535,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
         var actors = actorStore.ActivateAssignment(
-            "local-world-1",
+            "development-world-1",
             "local-shard-1",
             "test-runtime");
 
@@ -574,7 +574,7 @@ public sealed class WorldActorRuntimeTests
         var registry = new SimulationEntityRegistry();
         var actorStore = new WorldActorStore(runtime, registry);
         var actors = actorStore.ActivateAssignment(
-            "local-world-1",
+            "development-world-1",
             "local-shard-1",
             "test-runtime");
         var scheduler = new WorldActorActivityScheduler(actorStore);
@@ -741,7 +741,7 @@ public sealed class WorldActorRuntimeTests
             Guid.NewGuid(),
             "World Actor Tester",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "local-simulation-worker-1",
             "test-runtime",
             DateTime.UtcNow,
@@ -757,7 +757,7 @@ public sealed class WorldActorRuntimeTests
             "local-fleet",
             "local-node-1",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "CollisionData",
             27015,
             "127.0.0.1",

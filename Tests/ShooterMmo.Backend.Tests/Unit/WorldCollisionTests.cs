@@ -39,6 +39,41 @@ public sealed class WorldCollisionTests
     }
 
     [Fact]
+    public void CompilerCanonicalizesNegativeZeroAcrossRuntimes()
+    {
+        var negativeZero = BitConverter.Int32BitsToSingle(unchecked((int)0x80000000));
+        var positive = CreateAuthoring(Box(
+            "Test/CanonicalZero",
+            0f,
+            0f,
+            0f,
+            1f,
+            1f,
+            1f));
+        var negative = CreateAuthoring(Box(
+            "Test/CanonicalZero",
+            negativeZero,
+            0f,
+            negativeZero,
+            1f,
+            1f,
+            1f,
+            negativeZero,
+            negativeZero,
+            negativeZero));
+
+        var positiveBake = CollisionWorldCompiler.Compile(positive);
+        var negativeBake = CollisionWorldCompiler.Compile(negative);
+
+        Assert.Equal(positiveBake.Manifest.Revision, negativeBake.Manifest.Revision);
+        Assert.Equal(positiveBake.Chunks.Count, negativeBake.Chunks.Count);
+        for (var index = 0; index < positiveBake.Chunks.Count; index++)
+        {
+            Assert.Equal(positiveBake.Chunks[index].Data, negativeBake.Chunks[index].Data);
+        }
+    }
+
+    [Fact]
     public void AuthoritativeCapsuleStopsAtWallWithoutTunneling()
     {
         var world = CompileWorld(
@@ -324,7 +359,7 @@ public sealed class WorldCollisionTests
         return new CollisionWorldAuthoringDocument
         {
             FormatVersion = CollisionDataFormat.Version,
-            WorldId = "local-world-1",
+            WorldId = "development-world-1",
             ChunkSize = 32f,
             Boxes = boxes
         };

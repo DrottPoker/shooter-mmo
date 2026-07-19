@@ -21,7 +21,15 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(13, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(14, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(
+            2,
+            await context.ExecuteScalarIntAsync(
+                "select count(*) from world_definitions where id in ('development-world-1', 'development-world-2');"));
+        Assert.Equal(
+            0,
+            await context.ExecuteScalarIntAsync(
+                "select count(*) from world_definitions where id = 'local-world-1';"));
 
         var player = await context.RegisterPlayerAsync();
         var characters = await context.CharacterService.ListAsync(
@@ -40,7 +48,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(join.Succeeded, join.Error?.Message);
         Assert.False(join.Value!.IsReconnect);
         Assert.Equal(LocalShardId, join.Value.Shard.Id);
-        Assert.Equal("local-world-1", join.Value.Shard.WorldId);
+        Assert.Equal("development-world-1", join.Value.Shard.WorldId);
         Assert.Equal(LocalWorkerId, join.Value.Endpoint.WorkerId);
         Assert.Equal(LocalRuntimeId, join.Value.Endpoint.RuntimeId);
 
@@ -63,7 +71,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(player.Character.Id, consumed.Value!.CharacterId);
         Assert.Equal("Integration Hero", consumed.Value.CharacterName);
         Assert.Equal(LocalShardId, consumed.Value.ShardId);
-        Assert.Equal("local-world-1", consumed.Value.WorldId);
+        Assert.Equal("development-world-1", consumed.Value.WorldId);
         Assert.Equal(LocalWorkerId, consumed.Value.WorkerId);
         Assert.Equal(LocalRuntimeId, consumed.Value.WorkerRuntimeId);
         Assert.NotEqual(Guid.Empty, consumed.Value.SimulationSessionId);
@@ -407,7 +415,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(13, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(14, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             1,
             await context.ExecuteScalarIntAsync(
@@ -556,7 +564,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
         Assert.Equal(LocalShardId, heartbeat.Value!.ShardId);
-        Assert.Equal("local-world-1", heartbeat.Value.WorldId);
+        Assert.Equal("development-world-1", heartbeat.Value.WorldId);
         Assert.Equal("worker.test.local", heartbeat.Value.Host);
         Assert.Equal(28015, heartbeat.Value.UdpPort);
 
@@ -637,14 +645,14 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(pendingPlayer.Character.Id),
             CancellationToken.None);
         Assert.True(pendingJoin.Succeeded, pendingJoin.Error?.Message);
-        var rebindSeeder = CreateWorldRebindSeeder(context, "development-world-1");
+        var rebindSeeder = CreateWorldRebindSeeder(context, "development-world-2");
 
         var blocked = await Assert.ThrowsAsync<ShardWorldRebindBlockedException>(
             () => rebindSeeder.SeedAsync(CancellationToken.None));
 
         Assert.Equal(LocalShardId, blocked.ShardId);
-        Assert.Equal("local-world-1", blocked.CurrentWorldId);
-        Assert.Equal("development-world-1", blocked.RequestedWorldId);
+        Assert.Equal("development-world-1", blocked.CurrentWorldId);
+        Assert.Equal("development-world-2", blocked.RequestedWorldId);
         Assert.Equal(1, blocked.ActiveAssignments);
         Assert.Equal(1, blocked.PendingJoinTickets);
         Assert.Equal(1, blocked.ActiveSimulationSessions);
@@ -663,10 +671,10 @@ public sealed class AuthSimulationFlowIntegrationTests
             PostgresIntegrationTestContext.CreateHeartbeatRequest("replacement-runtime"),
             CancellationToken.None);
         Assert.True(replacementHeartbeat.Succeeded, replacementHeartbeat.Error?.Message);
-        Assert.Equal("development-world-1", replacementHeartbeat.Value!.WorldId);
+        Assert.Equal("development-world-2", replacementHeartbeat.Value!.WorldId);
 
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
-        Assert.Equal("development-world-1", Assert.Single(shards.Value!).WorldId);
+        Assert.Equal("development-world-2", Assert.Single(shards.Value!).WorldId);
     }
 
     [PostgresIntegrationFact]
@@ -711,7 +719,7 @@ public sealed class AuthSimulationFlowIntegrationTests
                 now() + interval '5 minutes',
                 '20000000-0000-0000-0000-000000000001');
             """);
-        var rebindSeeder = CreateWorldRebindSeeder(context, "development-world-1");
+        var rebindSeeder = CreateWorldRebindSeeder(context, "development-world-2");
 
         var blocked = await Assert.ThrowsAsync<ShardWorldRebindBlockedException>(
             () => rebindSeeder.SeedAsync(CancellationToken.None));
@@ -721,7 +729,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(0, blocked.ActiveSimulationSessions);
         Assert.Equal(1, blocked.OpenCorpses);
         var shards = await context.ShardService.ListShardsAsync(CancellationToken.None);
-        Assert.Equal("local-world-1", Assert.Single(shards.Value!).WorldId);
+        Assert.Equal("development-world-1", Assert.Single(shards.Value!).WorldId);
     }
 
     [PostgresIntegrationFact]
@@ -809,7 +817,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.ExecuteAsync(
             """
             insert into shards (id, display_name, world_id, fleet_id, rule_set)
-            values ('secondary-shard', 'Secondary Shard', 'local-world-1', 'local-fleet', 'mvp-open-risk');
+            values ('secondary-shard', 'Secondary Shard', 'development-world-1', 'local-fleet', 'mvp-open-risk');
             """);
 
         var replacementHeartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
@@ -859,8 +867,12 @@ public sealed class AuthSimulationFlowIntegrationTests
     {
         var topology = new SimulationTopologyConfig(
             [
-                new WorldDefinitionBootstrapConfig("local-world-1", "Local Test World"),
-                new WorldDefinitionBootstrapConfig(worldId, "Development Test World")
+                new WorldDefinitionBootstrapConfig(
+                    "development-world-1",
+                    "Development World 1"),
+                new WorldDefinitionBootstrapConfig(
+                    "development-world-2",
+                    "Development World 2")
             ],
             [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
             [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],

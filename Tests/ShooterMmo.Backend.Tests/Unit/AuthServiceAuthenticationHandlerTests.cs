@@ -34,7 +34,7 @@ public sealed class AuthServiceAuthenticationHandlerTests
             "local-fleet",
             "local-node-1",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "CollisionData",
             27015,
             "127.0.0.1",

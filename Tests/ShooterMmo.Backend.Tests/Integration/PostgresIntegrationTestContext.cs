@@ -140,12 +140,19 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 .Build();
 
             var topology = new SimulationTopologyConfig(
-                [new WorldDefinitionBootstrapConfig("local-world-1", "Local Test World")],
+                [
+                    new WorldDefinitionBootstrapConfig(
+                        "development-world-1",
+                        "Development World 1"),
+                    new WorldDefinitionBootstrapConfig(
+                        "development-world-2",
+                        "Development World 2")
+                ],
                 [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
                 [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
                 [new ShardBootstrapConfig(
                     "local-shard-1",
-                    "local-world-1",
+                    "development-world-1",
                     "local-fleet",
                     "Local Shard 1",
                     "mvp-open-risk")]);
@@ -240,7 +247,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         await using var command = DataSource.CreateCommand(
             """
             insert into shards (id, display_name, world_id, fleet_id, rule_set)
-            values (@ShardId, @DisplayName, 'local-world-1', 'local-fleet', 'mvp-open-risk');
+            values (@ShardId, @DisplayName, 'development-world-1', 'local-fleet', 'mvp-open-risk');
             """);
 
         command.Parameters.AddWithValue("ShardId", shardId);

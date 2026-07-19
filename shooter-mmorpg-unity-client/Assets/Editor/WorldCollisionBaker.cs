@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using ShooterMmo.Collision;
 using ShooterMmo.GameSimulation;
+using ShooterMmo.Worlds;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -13,34 +15,15 @@ namespace ShooterMmo.Editor
     public static class WorldCollisionBaker
     {
         public const string MenuPath = "Shooter MMO/Tools/World Collision/Bake Open Scene";
+        public const string BakeBuildWorldScenesMenuPath =
+            "Shooter MMO/Tools/World Collision/Bake Build World Scenes";
 
         [MenuItem(MenuPath)]
         public static void BakeOpenScene()
         {
             try
             {
-                var authoring = FindAuthoringComponent();
-                if (!authoring.TryValidate(out var validationError))
-                {
-                    throw new InvalidOperationException(validationError);
-                }
-
-                var boxes = BuildBoxEntries(authoring).ToArray();
-                var document = new CollisionWorldAuthoringDocument
-                {
-                    FormatVersion = CollisionDataFormat.Version,
-                    WorldId = authoring.WorldId.Trim(),
-                    ChunkSize = authoring.ChunkSize,
-                    Boxes = boxes
-                };
-                var result = CollisionWorldCompiler.Compile(document);
-                WriteBakeOutputs(document, result);
-                AssetDatabase.Refresh();
-                Debug.Log(
-                    "[WORLD COLLISION] Baked world '" + result.Manifest.WorldId
-                    + "' at revision " + result.Manifest.Revision
-                    + " with " + boxes.Length + " boxes in " + result.Chunks.Count
-                    + " chunks.");
+                BakeActiveScene();
             }
             catch (Exception exception)
             {
@@ -53,6 +36,117 @@ namespace ShooterMmo.Editor
         {
             return !EditorApplication.isPlayingOrWillChangePlaymode
                 && SceneManager.GetActiveScene().isLoaded;
+        }
+
+        [MenuItem(BakeBuildWorldScenesMenuPath)]
+        public static void BakeBuildWorldScenes()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                throw new InvalidOperationException(
+                    "World collision cannot be baked while entering or running Play Mode.");
+            }
+
+            if (!Application.isBatchMode
+                && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
+
+            var originalSetup = EditorSceneManager.GetSceneManagerSetup();
+            TextAsset catalogAsset = null;
+            try
+            {
+                catalogAsset = Resources.Load<TextAsset>(WorldSceneCatalog.ResourcePath);
+                if (catalogAsset == null)
+                {
+                    throw new InvalidOperationException(
+                        "The client world scene catalog resource is missing.");
+                }
+
+                if (!WorldSceneCatalog.TryParse(
+                        catalogAsset.text,
+                        out var catalog,
+                        out var catalogError))
+                {
+                    throw new InvalidOperationException(catalogError);
+                }
+
+                var buildScenes = EditorBuildSettings.scenes
+                    .Where(scene => scene.enabled)
+                    .GroupBy(
+                        scene => Path.GetFileNameWithoutExtension(scene.path),
+                        StringComparer.Ordinal)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(scene => scene.path).ToArray(),
+                        StringComparer.Ordinal);
+                foreach (var entry in catalog.entries)
+                {
+                    if (!buildScenes.TryGetValue(entry.sceneName, out var scenePaths)
+                        || scenePaths.Length != 1)
+                    {
+                        throw new InvalidOperationException(
+                            "World '" + entry.worldId + "' must map to exactly one enabled "
+                            + "Build Profiles scene named '" + entry.sceneName + "'.");
+                    }
+
+                    EditorSceneManager.OpenScene(scenePaths[0], OpenSceneMode.Single);
+                    BakeActiveScene(entry.worldId);
+                }
+            }
+            finally
+            {
+                if (catalogAsset != null)
+                {
+                    Resources.UnloadAsset(catalogAsset);
+                }
+
+                if (originalSetup.Length > 0)
+                {
+                    EditorSceneManager.RestoreSceneManagerSetup(originalSetup);
+                }
+            }
+        }
+
+        private static CollisionWorldBakeResult BakeActiveScene(
+            string expectedWorldId = null)
+        {
+            var authoring = FindAuthoringComponent();
+            if (!authoring.TryValidate(out var validationError))
+            {
+                throw new InvalidOperationException(validationError);
+            }
+
+            if (!string.IsNullOrWhiteSpace(expectedWorldId)
+                && !string.Equals(
+                    authoring.WorldId.Trim(),
+                    expectedWorldId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Scene '" + SceneManager.GetActiveScene().name + "' authored world '"
+                    + authoring.WorldId.Trim() + "' instead of catalog world '"
+                    + expectedWorldId + "'.");
+            }
+
+            var boxes = BuildBoxEntries(authoring).ToArray();
+            var document = new CollisionWorldAuthoringDocument
+            {
+                FormatVersion = CollisionDataFormat.Version,
+                WorldId = authoring.WorldId.Trim(),
+                ChunkSize = authoring.ChunkSize,
+                Boxes = boxes
+            };
+            var result = CollisionWorldCompiler.Compile(document);
+            WriteBakeOutputs(document, result);
+            AssetDatabase.Refresh();
+            Debug.Log(
+                "[WORLD COLLISION] Baked world '" + result.Manifest.WorldId
+                + "' at revision " + result.Manifest.Revision
+                + " with " + boxes.Length + " boxes in " + result.Chunks.Count
+                + " chunks.");
+            return result;
         }
 
         private static WorldCollisionAuthoring FindAuthoringComponent()

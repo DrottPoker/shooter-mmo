@@ -1619,7 +1619,7 @@ behavior has leaked into the foundation.
 - Added the command-line compiler and verifier plus permanent Actor Studio and
   Spawn Authoring Editor workflows. All paths invoke the same framework-neutral
   compiler instead of copying validation rules into Unity.
-- Added a `local-world-1` baseline containing three actor definitions and five
+- Added a `development-world-1` baseline containing three actor definitions and five
   deterministic instances across point, group, area, and patrol authoring.
 - Added protocol version `12` actor spawn, state, despawn, interaction intent,
   open, result, and close contracts with strict validation and the existing
@@ -1707,8 +1707,8 @@ dotnet run --project Tools/ItemCatalogCompiler --configuration Release --no-buil
   WorldData/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler --configuration Release --no-build -- `
-  WorldData/Authoring/local-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  WorldData/Authoring/development-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```
@@ -1853,8 +1853,8 @@ dotnet run --project Tools/ItemCatalogCompiler --configuration Release --no-buil
   WorldData/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler --configuration Release --no-build -- `
-  WorldData/Authoring/local-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  WorldData/Authoring/development-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```

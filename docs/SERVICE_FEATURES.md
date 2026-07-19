@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ## Purpose
 
@@ -278,8 +278,9 @@ zone interest is deferred until zones exist.
 SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
 rejects malformed runtime content, revision drift, wrong World identity,
 unsupported values, invalid references, or unsafe collection bounds. The
-checked-in local runtime revision contains three definitions and five spawn
-instances for `local-world-1`.
+checked-in development content contains four shared definitions, five spawn
+instances for `development-world-1`, and seven prepared spawn instances for
+`development-world-2`.
 
 - Neutral actor and spawn JSON is compiled deterministically by
   `Tools/WorldActorCompiler` into one revisioned runtime manifest.
@@ -757,6 +758,13 @@ service's `Config` folder. The ignored root `.env` contains local credentials
 and overrides. Environment variables and command-line options have higher
 precedence.
 
+SimulationWorker requires one unique `WorldProfiles` entry for its configured
+`WorldId`. The selected profile supplies movement bounds, authoritative spawn,
+and bank, Recovery Storage, and insurance service points. This prevents a shard
+restart on another World from silently retaining coordinates from the previous
+map. Missing profiles, invalid bounds, out-of-bounds spawns, and invalid service
+points fail before UDP admission.
+
 `Items:Operations` bounds item statement and lock timeouts, canonical command
 and HTTP request sizes, metrics and maintenance intervals, cleanup batch size,
 and audit plus closed-corpse retention. Lock timeout cannot exceed transaction
@@ -773,6 +781,11 @@ Previously shipped migration ids and their source-schema references retain their
 historical names because changing an applied migration would break upgrade
 compatibility. The resulting current schema uses only the canonical topology
 names listed above.
+
+The development World identity migration replaces the legacy
+`local-world-1` content identifier with `development-world-1` without changing
+the shard id or runtime ownership. It is an identity upgrade for the same map,
+not a live World rebind.
 
 Phase 15 adds partial indexes for completed operation retention, closed-corpse
 retention, and unclaimed Recovery expiry. A bounded hosted maintenance service

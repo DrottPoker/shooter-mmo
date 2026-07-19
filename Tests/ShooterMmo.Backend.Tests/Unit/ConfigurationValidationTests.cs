@@ -111,9 +111,9 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("local-fleet", config.FleetId);
         Assert.Equal("local-node-1", config.NodeId);
         Assert.Equal("local-shard-1", config.ShardId);
-        Assert.Equal("local-world-1", config.WorldId);
+        Assert.Equal("development-world-1", config.WorldId);
         Assert.Equal(
-            Path.Combine("ActorData", "local-world-1.world-actors.json"),
+            Path.Combine("ActorData", "development-world-1.world-actors.json"),
             config.ActorDataPath);
         Assert.Equal("127.0.0.1", config.AdvertisedHost);
         Assert.Equal(27015, config.AdvertisedUdpPort);
@@ -143,7 +143,8 @@ public sealed class ConfigurationValidationTests
     public void SimulationWorkerDerivesActorDataPathFromWorldIdentity()
     {
         var settings = WorkerSettings();
-        settings["SimulationWorker:WorldId"] = "development-world-1";
+        settings["SimulationWorker:WorldId"] = "development-world-2";
+        AddDevelopmentWorldTwoProfile(settings);
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(settings)
             .Build();
@@ -151,8 +152,31 @@ public sealed class ConfigurationValidationTests
         var config = SimulationWorkerConfig.FromConfiguration(configuration);
 
         Assert.Equal(
-            Path.Combine("ActorData", "development-world-1.world-actors.json"),
+            Path.Combine("ActorData", "development-world-2.world-actors.json"),
             config.ActorDataPath);
+        Assert.Equal(-254f, config.MovementSimulation.MinimumX);
+        Assert.Equal(254f, config.MovementSimulation.MaximumX);
+        Assert.Equal(-16f, config.MovementSpawn.Z);
+        Assert.Contains(
+            config.ItemInteraction.ServicePoints,
+            point => point.Id == "development_world_2_city_bank" && point.X == -8f);
+    }
+
+    [Fact]
+    public void SimulationWorkerRejectsMissingSelectedWorldProfile()
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:WorldId"] = "development-world-2";
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+
+        Assert.Contains(
+            "WorldProfiles must contain the configured WorldId 'development-world-2'",
+            exception.Message);
     }
 
     [Fact]
@@ -215,10 +239,10 @@ public sealed class ConfigurationValidationTests
     public void SimulationWorkerRejectsInvalidItemServicePoints()
     {
         var settings = WorkerSettings();
-        settings["SimulationWorker:ItemInteraction:ServicePoints:0:Radius"] = "101";
-        settings["SimulationWorker:ItemInteraction:ServicePoints:1:Id"] =
-            "local_city_bank";
-        settings["SimulationWorker:ItemInteraction:ServicePoints:2:Kind"] = "corpse";
+        settings["SimulationWorker:WorldProfiles:0:ServicePoints:0:Radius"] = "101";
+        settings["SimulationWorker:WorldProfiles:0:ServicePoints:1:Id"] =
+            "development_world_1_city_bank";
+        settings["SimulationWorker:WorldProfiles:0:ServicePoints:2:Kind"] = "corpse";
         settings["SimulationWorker:ItemInteraction:CorpseInteractionRadius"] = "21";
         settings["SimulationWorker:ItemInteraction:CorpseDiscoveryRadius"] = "2";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
@@ -245,8 +269,10 @@ public sealed class ConfigurationValidationTests
             ["Simulation:JoinTicketLifetimeSeconds"] = "30",
             ["Simulation:SessionLeaseLifetimeSeconds"] = "30",
             ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30",
-            ["Simulation:Topology:Worlds:0:Id"] = "local-world-1",
-            ["Simulation:Topology:Worlds:0:DisplayName"] = "Local Test World",
+            ["Simulation:Topology:Worlds:0:Id"] = "development-world-1",
+            ["Simulation:Topology:Worlds:0:DisplayName"] = "Development World 1",
+            ["Simulation:Topology:Worlds:1:Id"] = "development-world-2",
+            ["Simulation:Topology:Worlds:1:DisplayName"] = "Development World 2",
             ["Simulation:Topology:Fleets:0:Id"] = "local-fleet",
             ["Simulation:Topology:Fleets:0:DisplayName"] = "Local Development",
             ["Simulation:Topology:Fleets:0:RegionCode"] = "LOCAL",
@@ -254,7 +280,7 @@ public sealed class ConfigurationValidationTests
             ["Simulation:Topology:Nodes:0:FleetId"] = "local-fleet",
             ["Simulation:Topology:Nodes:0:DisplayName"] = "Local Node 1",
             ["Simulation:Topology:Shards:0:Id"] = "local-shard-1",
-            ["Simulation:Topology:Shards:0:WorldId"] = "local-world-1",
+            ["Simulation:Topology:Shards:0:WorldId"] = "development-world-1",
             ["Simulation:Topology:Shards:0:FleetId"] = "local-fleet",
             ["Simulation:Topology:Shards:0:DisplayName"] = "Local Shard 1",
             ["Simulation:Topology:Shards:0:RuleSet"] = "mvp-open-risk",
@@ -281,7 +307,7 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:FleetId"] = "local-fleet",
             ["SimulationWorker:NodeId"] = "local-node-1",
             ["SimulationWorker:ShardId"] = "local-shard-1",
-            ["SimulationWorker:WorldId"] = "local-world-1",
+            ["SimulationWorker:WorldId"] = "development-world-1",
             ["SimulationWorker:CollisionDataPath"] = "CollisionData",
             ["SimulationWorker:UdpPort"] = "27015",
             ["SimulationWorker:AdvertisedHost"] = "127.0.0.1",
@@ -309,24 +335,34 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:InterestManagement:ExitRadius"] = "144",
             ["SimulationWorker:CollisionStreaming:LoadRadiusChunks"] = "2",
             ["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "3",
-            ["SimulationWorker:ItemInteraction:ServicePoints:0:Id"] = "local_city_bank",
-            ["SimulationWorker:ItemInteraction:ServicePoints:0:Kind"] = "bank",
-            ["SimulationWorker:ItemInteraction:ServicePoints:0:X"] = "0",
-            ["SimulationWorker:ItemInteraction:ServicePoints:0:Y"] = "0",
-            ["SimulationWorker:ItemInteraction:ServicePoints:0:Z"] = "-1",
-            ["SimulationWorker:ItemInteraction:ServicePoints:0:Radius"] = "3",
-            ["SimulationWorker:ItemInteraction:ServicePoints:1:Id"] = "local_city_recovery",
-            ["SimulationWorker:ItemInteraction:ServicePoints:1:Kind"] = "recovery_storage",
-            ["SimulationWorker:ItemInteraction:ServicePoints:1:X"] = "0",
-            ["SimulationWorker:ItemInteraction:ServicePoints:1:Y"] = "0",
-            ["SimulationWorker:ItemInteraction:ServicePoints:1:Z"] = "-1",
-            ["SimulationWorker:ItemInteraction:ServicePoints:1:Radius"] = "3",
-            ["SimulationWorker:ItemInteraction:ServicePoints:2:Id"] = "local_insurance_npc",
-            ["SimulationWorker:ItemInteraction:ServicePoints:2:Kind"] = "insurance_npc",
-            ["SimulationWorker:ItemInteraction:ServicePoints:2:X"] = "2",
-            ["SimulationWorker:ItemInteraction:ServicePoints:2:Y"] = "0",
-            ["SimulationWorker:ItemInteraction:ServicePoints:2:Z"] = "-1",
-            ["SimulationWorker:ItemInteraction:ServicePoints:2:Radius"] = "1",
+            ["SimulationWorker:WorldProfiles:0:WorldId"] = "development-world-1",
+            ["SimulationWorker:WorldProfiles:0:GroundHeight"] = "0",
+            ["SimulationWorker:WorldProfiles:0:MinimumX"] = "-14",
+            ["SimulationWorker:WorldProfiles:0:MaximumX"] = "14",
+            ["SimulationWorker:WorldProfiles:0:MinimumZ"] = "-14",
+            ["SimulationWorker:WorldProfiles:0:MaximumZ"] = "14",
+            ["SimulationWorker:WorldProfiles:0:Spawn:X"] = "0",
+            ["SimulationWorker:WorldProfiles:0:Spawn:Y"] = "0",
+            ["SimulationWorker:WorldProfiles:0:Spawn:Z"] = "-1",
+            ["SimulationWorker:WorldProfiles:0:Spawn:YawDegrees"] = "0",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Id"] = "development_world_1_city_bank",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Kind"] = "bank",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:X"] = "0",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Y"] = "0",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Z"] = "-1",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:0:Radius"] = "3",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Id"] = "development_world_1_city_recovery",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Kind"] = "recovery_storage",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:X"] = "0",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Y"] = "0",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Z"] = "-1",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:1:Radius"] = "3",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Id"] = "development_world_1_insurance_npc",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Kind"] = "insurance_npc",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:X"] = "2",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Y"] = "0",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Z"] = "-1",
+            ["SimulationWorker:WorldProfiles:0:ServicePoints:2:Radius"] = "1",
             ["SimulationWorker:Movement:TickRateHz"] = "30",
             ["SimulationWorker:Movement:SnapshotRateHz"] = "15",
             ["SimulationWorker:Movement:InputSilenceTimeoutMilliseconds"] = "500",
@@ -337,11 +373,6 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:Movement:MaximumFallSpeed"] = "55",
             ["SimulationWorker:Movement:JumpVelocity"] = "7",
             ["SimulationWorker:Movement:GroundedVerticalVelocity"] = "-2",
-            ["SimulationWorker:Movement:GroundHeight"] = "0",
-            ["SimulationWorker:Movement:MinimumX"] = "-14",
-            ["SimulationWorker:Movement:MaximumX"] = "14",
-            ["SimulationWorker:Movement:MinimumZ"] = "-14",
-            ["SimulationWorker:Movement:MaximumZ"] = "14",
             ["SimulationWorker:Movement:CharacterRadius"] = "0.35",
             ["SimulationWorker:Movement:CharacterHeight"] = "2",
             ["SimulationWorker:Movement:StepHeight"] = "0.35",
@@ -349,12 +380,30 @@ public sealed class ConfigurationValidationTests
             ["SimulationWorker:Movement:GroundSnapDistance"] = "0.4",
             ["SimulationWorker:Movement:MaximumSubstepDistance"] = "0.1",
             ["SimulationWorker:Movement:MaximumPenetrationIterations"] = "6",
-            ["SimulationWorker:Movement:SpawnX"] = "0",
-            ["SimulationWorker:Movement:SpawnY"] = "0",
-            ["SimulationWorker:Movement:SpawnZ"] = "-1",
-            ["SimulationWorker:Movement:SpawnYawDegrees"] = "0",
             ["ConnectionStrings:Redis"] = "localhost:6379",
             ["HealthChecks:TimeoutMilliseconds"] = "1000"
         };
+    }
+
+    private static void AddDevelopmentWorldTwoProfile(
+        IDictionary<string, string?> settings)
+    {
+        const string profile = "SimulationWorker:WorldProfiles:1";
+        settings[$"{profile}:WorldId"] = "development-world-2";
+        settings[$"{profile}:GroundHeight"] = "0";
+        settings[$"{profile}:MinimumX"] = "-254";
+        settings[$"{profile}:MaximumX"] = "254";
+        settings[$"{profile}:MinimumZ"] = "-254";
+        settings[$"{profile}:MaximumZ"] = "254";
+        settings[$"{profile}:Spawn:X"] = "0";
+        settings[$"{profile}:Spawn:Y"] = "0";
+        settings[$"{profile}:Spawn:Z"] = "-16";
+        settings[$"{profile}:Spawn:YawDegrees"] = "0";
+        settings[$"{profile}:ServicePoints:0:Id"] = "development_world_2_city_bank";
+        settings[$"{profile}:ServicePoints:0:Kind"] = "bank";
+        settings[$"{profile}:ServicePoints:0:X"] = "-8";
+        settings[$"{profile}:ServicePoints:0:Y"] = "0";
+        settings[$"{profile}:ServicePoints:0:Z"] = "4";
+        settings[$"{profile}:ServicePoints:0:Radius"] = "3";
     }
 }

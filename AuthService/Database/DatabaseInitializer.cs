@@ -29,7 +29,8 @@ public sealed class DatabaseInitializer(
         new(ItemPersistenceFoundationMigration.Id, ItemPersistenceFoundationMigration.Sql),
         new(PlayerCorpsePersistenceMigration.Id, PlayerCorpsePersistenceMigration.Sql),
         new(PlayerDeathCarryOverflowMigration.Id, PlayerDeathCarryOverflowMigration.Sql),
-        new(ItemOperationsHardeningMigration.Id, ItemOperationsHardeningMigration.Sql)
+        new(ItemOperationsHardeningMigration.Id, ItemOperationsHardeningMigration.Sql),
+        new(DevelopmentWorldIdentityMigration.Id, DevelopmentWorldIdentityMigration.Sql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)

@@ -33,8 +33,9 @@ The implemented foundation includes:
   `WorldData/Runtime/Actors`.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
-- A checked-in `local-world-1` baseline with the Feral Wolf, City Guard, and
-  Mira the Quartermaster definitions and five deterministic actor instances.
+- A shared four-definition actor catalog, a checked-in
+  `development-world-1` baseline with five deterministic instances, and
+  prepared `development-world-2` content with seven deterministic instances.
 - Protocol version `12`, reliable interest-based actor presence, bounded actor
   state, and correlated interaction messages.
 - A bounded worker-runtime actor store, fresh runtime and network identities,

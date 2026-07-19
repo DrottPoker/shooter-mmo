@@ -1,0 +1,2568 @@
+{
+    "FormatVersion": 1,
+    "WorldId": "development-world-2",
+    "Revision": "03f0e625deda82adf7d59acb5f2b91e5f583c3a24c95b25b27aef2f54cfbeb1f",
+    "ChunkSize": 32.0,
+    "Chunks": [
+        {
+            "X": -8,
+            "Z": 0,
+            "ResourceName": "chunk_n8_p0",
+            "Sha256": "f7afdbd6cf32056e28af5b5285e44d8356d0a33a2808ec6a230083ea0e185d7c",
+            "MinimumX": -256.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -8,
+            "Z": 1,
+            "ResourceName": "chunk_n8_p1",
+            "Sha256": "b84317d761f229cfdec4bdcda9b9ed2c3106b6879056f12346f415a562ff0b53",
+            "MinimumX": -256.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -8,
+            "Z": 2,
+            "ResourceName": "chunk_n8_p2",
+            "Sha256": "dfdc96468712d5db5bb88628674bd628f4076514a05e61e3c5d083a90c37ff37",
+            "MinimumX": -256.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -8,
+            "Z": 3,
+            "ResourceName": "chunk_n8_p3",
+            "Sha256": "7ced67dfe56643ecbf86e46aa509a185ca2e44d51a1ecdd00afdfe6f1309099f",
+            "MinimumX": -256.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -8,
+            "Z": 4,
+            "ResourceName": "chunk_n8_p4",
+            "Sha256": "947cc7fb35529aa2324fadfae59ace96360a4e9875f8416a2f65675594f1c5d2",
+            "MinimumX": -256.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -8,
+            "Z": 5,
+            "ResourceName": "chunk_n8_p5",
+            "Sha256": "74054c489979bd4f3aed0f1d1bb03aa5c4acc5fa71edc6faea32155d3a6dcac6",
+            "MinimumX": -256.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -8,
+            "Z": 6,
+            "ResourceName": "chunk_n8_p6",
+            "Sha256": "14c45a5017d627e25c78e788e4580cc5611aac853762d42913c5136a002a7c82",
+            "MinimumX": -256.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -8,
+            "Z": 7,
+            "ResourceName": "chunk_n8_p7",
+            "Sha256": "7aa6f707597410b1d281a88646f7a2ab69e5e5fe9d2aaa57dc6e2855f40b46d6",
+            "MinimumX": -256.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -8,
+            "Z": -8,
+            "ResourceName": "chunk_n8_n8",
+            "Sha256": "2b33396bf191bad17c8d8490ae46bc366f8e00cf77238d7748a02380f1a84aec",
+            "MinimumX": -256.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -8,
+            "Z": -7,
+            "ResourceName": "chunk_n8_n7",
+            "Sha256": "fc5cd61f4f495efb07fb9faa72c1bd2cc70fa0f73cff74ad2482187bab6b332c",
+            "MinimumX": -256.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -8,
+            "Z": -6,
+            "ResourceName": "chunk_n8_n6",
+            "Sha256": "7301dd142f3308df8295ed1aa6f038f95e5546add5968602cb651e9393f0a7a9",
+            "MinimumX": -256.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -8,
+            "Z": -5,
+            "ResourceName": "chunk_n8_n5",
+            "Sha256": "904cef1b44954747210746ee6383e69f970824db2264831f14709c7c12452e2f",
+            "MinimumX": -256.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -8,
+            "Z": -4,
+            "ResourceName": "chunk_n8_n4",
+            "Sha256": "ad46858e06394dec6bf4ac98f9e0332ac6e08238c4f486de2b8695f62e394236",
+            "MinimumX": -256.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -8,
+            "Z": -3,
+            "ResourceName": "chunk_n8_n3",
+            "Sha256": "c1626116cfe1d4f9cd40b03f8980096d5616d70baaa08c43d99666c880da3a18",
+            "MinimumX": -256.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -8,
+            "Z": -2,
+            "ResourceName": "chunk_n8_n2",
+            "Sha256": "f36f68a3daf2df278bfd20ad73cc390ad81a793dd81a8924dd00e078bb5144ca",
+            "MinimumX": -256.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -224.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -8,
+            "Z": -1,
+            "ResourceName": "chunk_n8_n1",
+            "Sha256": "a13d9d41f22d38fdf06eeb48ed1a0703c3ecdff8faa17580937b4e3963d5d65b",
+            "MinimumX": -256.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -224.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -7,
+            "Z": 0,
+            "ResourceName": "chunk_n7_p0",
+            "Sha256": "7303485b0c6a7308c0267aaa718ee582f4aece1428fca3a9dc2c27501ad13dae",
+            "MinimumX": -224.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -7,
+            "Z": 1,
+            "ResourceName": "chunk_n7_p1",
+            "Sha256": "eaed6daccb960ee224de46145d9ddeb93db9960ef495e4481fea92bb0fcb0e10",
+            "MinimumX": -224.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -7,
+            "Z": 2,
+            "ResourceName": "chunk_n7_p2",
+            "Sha256": "5ee3d11c0faccd5d2dcd7eddfd4061c0f086d2251996c76c01d36504da3e0d6e",
+            "MinimumX": -224.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -7,
+            "Z": 3,
+            "ResourceName": "chunk_n7_p3",
+            "Sha256": "33f5ff15110f9a4caf2c173a5cb570db214074e8a5bae02441d2c8d23419939a",
+            "MinimumX": -224.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -7,
+            "Z": 4,
+            "ResourceName": "chunk_n7_p4",
+            "Sha256": "b5960ad5d17381dff786fc7cd9320fb51b8f0ef957d3fad86e2c911a8d268013",
+            "MinimumX": -224.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -7,
+            "Z": 5,
+            "ResourceName": "chunk_n7_p5",
+            "Sha256": "1deb0cea96c786aff49e82ad80848e7353a9c7b1b87c9e56d330880748c6d248",
+            "MinimumX": -224.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -7,
+            "Z": 6,
+            "ResourceName": "chunk_n7_p6",
+            "Sha256": "04a0a1f5230f660a13a35adb61310ff53db35a3f2fd30a59f78b1a36accf6539",
+            "MinimumX": -224.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -7,
+            "Z": 7,
+            "ResourceName": "chunk_n7_p7",
+            "Sha256": "a82dd7044f082649d9115e3b0e94a70a85c8be3f650d875c9ad36e7926847a44",
+            "MinimumX": -224.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -7,
+            "Z": -8,
+            "ResourceName": "chunk_n7_n8",
+            "Sha256": "d54fb81d30a87f34578ca83c6c1168afbd43d2b3108a6a847c9aca2c6152ccdb",
+            "MinimumX": -224.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -7,
+            "Z": -7,
+            "ResourceName": "chunk_n7_n7",
+            "Sha256": "6962ede32454abd68c2fde96ca9e4178a0bb9dc13e8cd7bc008da096ad1dd53b",
+            "MinimumX": -224.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -7,
+            "Z": -6,
+            "ResourceName": "chunk_n7_n6",
+            "Sha256": "37826c04950301546ea9941f9cebdf32cd9896dc165ac66c1b66bcfd2872509b",
+            "MinimumX": -224.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -7,
+            "Z": -5,
+            "ResourceName": "chunk_n7_n5",
+            "Sha256": "e8753a59a313ab2bd445d7471a954be5067d572a88c0b5ab496be85d9fbea736",
+            "MinimumX": -224.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -7,
+            "Z": -4,
+            "ResourceName": "chunk_n7_n4",
+            "Sha256": "f1f9bd11c2f1d95a1af1186e9f0939366fef3f1ffe5e9deca97808433c20d550",
+            "MinimumX": -224.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -7,
+            "Z": -3,
+            "ResourceName": "chunk_n7_n3",
+            "Sha256": "0e15dd14fa1d8a8df165df0c689c09b0b6e4d529ff0ab570a23b37a8cfe7a070",
+            "MinimumX": -224.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -7,
+            "Z": -2,
+            "ResourceName": "chunk_n7_n2",
+            "Sha256": "e7eb1c69efff07c6e77e909205985296577a534ea06f9def47657cacfdd92b00",
+            "MinimumX": -224.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -192.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -7,
+            "Z": -1,
+            "ResourceName": "chunk_n7_n1",
+            "Sha256": "8557b13c7c5c468f464a87077bb7dea498815f82932d78b7c46b6374bbf7d530",
+            "MinimumX": -224.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -192.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -6,
+            "Z": 0,
+            "ResourceName": "chunk_n6_p0",
+            "Sha256": "3c9fd39d6b2c24feb89bd9a2908534a761b0ccd5301afed846ee138a2eb6cd35",
+            "MinimumX": -192.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -6,
+            "Z": 1,
+            "ResourceName": "chunk_n6_p1",
+            "Sha256": "8b9138345fb7de5703624b97c11984b7d887e0d84897195431105881d044b152",
+            "MinimumX": -192.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -6,
+            "Z": 2,
+            "ResourceName": "chunk_n6_p2",
+            "Sha256": "57bdfe00a1a5d0ec6f2a587e43d1c488d3164635d631dc5be4972798e3de4bf2",
+            "MinimumX": -192.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -6,
+            "Z": 3,
+            "ResourceName": "chunk_n6_p3",
+            "Sha256": "d20adfb402d1afe8195a6414f1b9c4e04529ca781e60dafd7373d752a204d6a0",
+            "MinimumX": -192.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -6,
+            "Z": 4,
+            "ResourceName": "chunk_n6_p4",
+            "Sha256": "dc71a9f6b1ac2282b550751fe720e266a6390a1bbea7a02d0af488b0f93ea653",
+            "MinimumX": -192.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -6,
+            "Z": 5,
+            "ResourceName": "chunk_n6_p5",
+            "Sha256": "8df397c15c22729250c908b147bdcb43a6878f90dee6cf96fef6597c33811208",
+            "MinimumX": -192.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -6,
+            "Z": 6,
+            "ResourceName": "chunk_n6_p6",
+            "Sha256": "178874a3a089e070f83b131ccce9f6cd14c6a085446df052a3542f38ddc27e72",
+            "MinimumX": -192.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -6,
+            "Z": 7,
+            "ResourceName": "chunk_n6_p7",
+            "Sha256": "2612722a0505be428b202fcbdc3acd247a2aa9396908b4ee8a4281e252acc03b",
+            "MinimumX": -192.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -6,
+            "Z": -8,
+            "ResourceName": "chunk_n6_n8",
+            "Sha256": "1bc9ff5d71d8e2a2b1fc8dc5284c0b2deed56a349b81d02b19abd83e4efbab97",
+            "MinimumX": -192.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -6,
+            "Z": -7,
+            "ResourceName": "chunk_n6_n7",
+            "Sha256": "0d8bd07dc2de97014b909ea0686ffd97317b69d681ee9b3d7a9209a2abc8eb82",
+            "MinimumX": -192.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -6,
+            "Z": -6,
+            "ResourceName": "chunk_n6_n6",
+            "Sha256": "95a84d7d787a8a9d2f46058165f9d88d392c15a6038be53fed26ec4b3de592d0",
+            "MinimumX": -192.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -6,
+            "Z": -5,
+            "ResourceName": "chunk_n6_n5",
+            "Sha256": "3b63ddaf7545bea2a8d55c60e18353b0c98b32d30e73181a6c71750dc1c01576",
+            "MinimumX": -192.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -6,
+            "Z": -4,
+            "ResourceName": "chunk_n6_n4",
+            "Sha256": "ab82847378e451be4ef0ddab664918628c79fe256eea75c668e9e119ecbf99c8",
+            "MinimumX": -192.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -6,
+            "Z": -3,
+            "ResourceName": "chunk_n6_n3",
+            "Sha256": "f898605b1daea5fc962d7d248a4eea4ae26e904d85e3d052c13b86a5c3812c9c",
+            "MinimumX": -192.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -6,
+            "Z": -2,
+            "ResourceName": "chunk_n6_n2",
+            "Sha256": "25b84de3fa389963942e561fc67e81ca3a33360150a453b473c55e3923aee118",
+            "MinimumX": -192.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -160.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -6,
+            "Z": -1,
+            "ResourceName": "chunk_n6_n1",
+            "Sha256": "e7908b59563f68a2a2a750c4395586d7917bf658120208e61292d7983a9fc096",
+            "MinimumX": -192.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -160.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -5,
+            "Z": 0,
+            "ResourceName": "chunk_n5_p0",
+            "Sha256": "f7e4c058bd48db635388ed02d7a45dc8702af540e8a82edabd6ab2f1d5896880",
+            "MinimumX": -160.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -5,
+            "Z": 1,
+            "ResourceName": "chunk_n5_p1",
+            "Sha256": "5ec0b9a5f5425571d6b1a551fc25d8e7e0b62b717a4be8af2bfae44eeaa54cc0",
+            "MinimumX": -160.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -5,
+            "Z": 2,
+            "ResourceName": "chunk_n5_p2",
+            "Sha256": "d76c683228cc5ff383bd8222b9dc0269fe48473262c986b66780da25ac506001",
+            "MinimumX": -160.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -5,
+            "Z": 3,
+            "ResourceName": "chunk_n5_p3",
+            "Sha256": "4cd944cba47594e52ae00cd6fcf8ec18a40fa936c7faa56edea4c7800ef7c472",
+            "MinimumX": -160.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -5,
+            "Z": 4,
+            "ResourceName": "chunk_n5_p4",
+            "Sha256": "ec1a337285096864adf1ae986412507348f081628464f1666ac45d6253c41eca",
+            "MinimumX": -160.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -5,
+            "Z": 5,
+            "ResourceName": "chunk_n5_p5",
+            "Sha256": "dd2705de7ecd2e963c660ae1af27db8d859f5d051a7abe90722ec4259b8bafa1",
+            "MinimumX": -160.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -5,
+            "Z": 6,
+            "ResourceName": "chunk_n5_p6",
+            "Sha256": "fcc092320ab9641a4c0e6d3aaf15975478b7a7bdf8147c7285932cc6d2585142",
+            "MinimumX": -160.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -5,
+            "Z": 7,
+            "ResourceName": "chunk_n5_p7",
+            "Sha256": "58d724dc405ddb6783b3d63a5787e7bcd70bd870c39830d53376c427103b6075",
+            "MinimumX": -160.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -5,
+            "Z": -8,
+            "ResourceName": "chunk_n5_n8",
+            "Sha256": "95997b4d53aada0a701612b118f5b106e5bac38fae43516b8622170c5cd54725",
+            "MinimumX": -160.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -5,
+            "Z": -7,
+            "ResourceName": "chunk_n5_n7",
+            "Sha256": "22e6f499cc6757937cd42158aeab1f52b24225c357efabda941341d1a6df775a",
+            "MinimumX": -160.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -5,
+            "Z": -6,
+            "ResourceName": "chunk_n5_n6",
+            "Sha256": "3e2feba4ffcbc35e1758b5440ed6b7e7937bbc8aed62d98a6ffcc3c18c84440a",
+            "MinimumX": -160.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -5,
+            "Z": -5,
+            "ResourceName": "chunk_n5_n5",
+            "Sha256": "41e3cf8615cf591804ed676431dc376da63014beaeafe0eefe4b7af4713373ef",
+            "MinimumX": -160.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -5,
+            "Z": -4,
+            "ResourceName": "chunk_n5_n4",
+            "Sha256": "e02c193d94560d8d7fc1c5b4332ca7ba38e3d9d5015d379f0adf5b53321a1f07",
+            "MinimumX": -160.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -5,
+            "Z": -3,
+            "ResourceName": "chunk_n5_n3",
+            "Sha256": "c1c369aa7d50a3ea36f3948eeae85525e2a32f6256b3e549dae38d9d07dc51ab",
+            "MinimumX": -160.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -5,
+            "Z": -2,
+            "ResourceName": "chunk_n5_n2",
+            "Sha256": "35c9dbfd0ad27366a88d40246bf43b990ff1cabe2877655c2b07e0290104eeef",
+            "MinimumX": -160.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -128.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -5,
+            "Z": -1,
+            "ResourceName": "chunk_n5_n1",
+            "Sha256": "228d8ebea869cdc7446d10c53e30f0c23746ac5d3e80551afc5039a84e010c95",
+            "MinimumX": -160.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -128.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -4,
+            "Z": 0,
+            "ResourceName": "chunk_n4_p0",
+            "Sha256": "792fce3a3e95af1e713433ead5c7346263a510aaad18ea92dbb078e61ce63c4e",
+            "MinimumX": -128.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -4,
+            "Z": 1,
+            "ResourceName": "chunk_n4_p1",
+            "Sha256": "e3c0af67a4747edc0f30eaa3a9b0bc5500b2f16dba89048d4e3c94d8d9f51c3b",
+            "MinimumX": -128.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -4,
+            "Z": 2,
+            "ResourceName": "chunk_n4_p2",
+            "Sha256": "2d52ec363b1ddd47e97f651050a09ea25c509cff93680c0a337340e02e94bbce",
+            "MinimumX": -128.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -4,
+            "Z": 3,
+            "ResourceName": "chunk_n4_p3",
+            "Sha256": "0fcdda4f348fb51805aab408a25c9900d1f6d210c47557acd6b57db491facf20",
+            "MinimumX": -128.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -4,
+            "Z": 4,
+            "ResourceName": "chunk_n4_p4",
+            "Sha256": "aeb1d8c9950ae71b9ff242833d5730dc67bd3c9f0f677d8d83b3a8a20dc2f4d7",
+            "MinimumX": -128.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -4,
+            "Z": 5,
+            "ResourceName": "chunk_n4_p5",
+            "Sha256": "562a9dcebf09c0f22e77312c2886ae1552664eabd2248e8afd30a520d7f2f3fe",
+            "MinimumX": -128.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -4,
+            "Z": 6,
+            "ResourceName": "chunk_n4_p6",
+            "Sha256": "85196bddd1ae0d8bc4b533e073ce4a19369725beeb823a9f3a49d8c874bfebbd",
+            "MinimumX": -128.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -4,
+            "Z": 7,
+            "ResourceName": "chunk_n4_p7",
+            "Sha256": "d7e34f5429585e7bdcfbd577fdb19cc7646d6277b9c0d6b1d1cbb472eabd947e",
+            "MinimumX": -128.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -4,
+            "Z": -8,
+            "ResourceName": "chunk_n4_n8",
+            "Sha256": "9551a9d5b70418a684699c7bc4373310da96ace653caa8564ef79a6294800681",
+            "MinimumX": -128.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -4,
+            "Z": -7,
+            "ResourceName": "chunk_n4_n7",
+            "Sha256": "7382ab983e0e5e1803132aa30d98bd0caa374942f4d68b02797b63c4b31412a0",
+            "MinimumX": -128.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -4,
+            "Z": -6,
+            "ResourceName": "chunk_n4_n6",
+            "Sha256": "143d39841758893ac9f8e4bfa06e9615350b03ab0ad156b7a5845771e8da3045",
+            "MinimumX": -128.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -4,
+            "Z": -5,
+            "ResourceName": "chunk_n4_n5",
+            "Sha256": "2bd0debaa4c9e2352992eab1f858e253d0cf5dd9684721433a19d482f9a62dcc",
+            "MinimumX": -128.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -4,
+            "Z": -4,
+            "ResourceName": "chunk_n4_n4",
+            "Sha256": "3d84e852fe1c64d7f2648ec9724d259acdc5b3d6ae93ba05121427b5d89c30c0",
+            "MinimumX": -128.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -4,
+            "Z": -3,
+            "ResourceName": "chunk_n4_n3",
+            "Sha256": "739fab678da071c8cf283c0b4f2b093f1f1a3dd2bded0e64948c62f54802ef86",
+            "MinimumX": -128.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -4,
+            "Z": -2,
+            "ResourceName": "chunk_n4_n2",
+            "Sha256": "882aec894d04ad287ec58e3e3cf657122d420a1f5f7d63b988dd8858ea0fb318",
+            "MinimumX": -128.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -96.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -4,
+            "Z": -1,
+            "ResourceName": "chunk_n4_n1",
+            "Sha256": "b44e24c3c2f481d1068b7b947eb1dc48c9fe1c3678c5facd7e6abf8aae2ab5de",
+            "MinimumX": -128.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -96.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -3,
+            "Z": 0,
+            "ResourceName": "chunk_n3_p0",
+            "Sha256": "03833adf17340292c06f15f33961d388622de65e15311f95dc19411859d5751a",
+            "MinimumX": -96.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -3,
+            "Z": 1,
+            "ResourceName": "chunk_n3_p1",
+            "Sha256": "f8ef4b781170f195cb4a0f2f993c02c765f0ea026bf8fdd95e8b01ba79b27743",
+            "MinimumX": -96.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -3,
+            "Z": 2,
+            "ResourceName": "chunk_n3_p2",
+            "Sha256": "8ecceaa90210b5769fd9b87756215438c00114dd61759640399ddb9a1cbd3d50",
+            "MinimumX": -96.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -3,
+            "Z": 3,
+            "ResourceName": "chunk_n3_p3",
+            "Sha256": "9fe191e378f9ffca2cc8a0ad692229fb5822508669b36d44f0159241009dbb0a",
+            "MinimumX": -96.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -3,
+            "Z": 4,
+            "ResourceName": "chunk_n3_p4",
+            "Sha256": "f581673ca9e0a47700076c0b8049e38390c818b3cf42b6e338d80f0329c44efb",
+            "MinimumX": -96.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -3,
+            "Z": 5,
+            "ResourceName": "chunk_n3_p5",
+            "Sha256": "304c2327dbcbc1fe35c4c907846c1de28a6be1f6b3c162cdd391faa999a2e4e5",
+            "MinimumX": -96.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -3,
+            "Z": 6,
+            "ResourceName": "chunk_n3_p6",
+            "Sha256": "23c1c08ee7ea68b304354c2221d81bfdfbd549ecd81c33111fd170e3d5b4ab24",
+            "MinimumX": -96.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -3,
+            "Z": 7,
+            "ResourceName": "chunk_n3_p7",
+            "Sha256": "47c84ee3bb58b80222b5af53dab65293d98c50e36ad338bd27e150493631446f",
+            "MinimumX": -96.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -3,
+            "Z": -8,
+            "ResourceName": "chunk_n3_n8",
+            "Sha256": "3568e27165c4689e4872db740c572c9d5dc0e6da3536c56bb9838bff27000a95",
+            "MinimumX": -96.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -3,
+            "Z": -7,
+            "ResourceName": "chunk_n3_n7",
+            "Sha256": "6ad9a2eeb51317a60f014af7c9ec48e69e9adb64ac9e2b3e4a86b5e39243cfba",
+            "MinimumX": -96.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -3,
+            "Z": -6,
+            "ResourceName": "chunk_n3_n6",
+            "Sha256": "2554eb806c25e6ce2d1bdb2bd3e58afa93f0c8a0d40ff691218cc43bafb3e419",
+            "MinimumX": -96.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -3,
+            "Z": -5,
+            "ResourceName": "chunk_n3_n5",
+            "Sha256": "f35fc841eacc162103c1041ddebb8180bd080748f1c8eef48f0d156d8b80205b",
+            "MinimumX": -96.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -3,
+            "Z": -4,
+            "ResourceName": "chunk_n3_n4",
+            "Sha256": "68d083719456c92597378f5ae9135a88eb17ccd44a8fd69781a829b4f4d8b55a",
+            "MinimumX": -96.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -3,
+            "Z": -3,
+            "ResourceName": "chunk_n3_n3",
+            "Sha256": "bf0804b2ee76d21bdbcaf1551181e540cfd029209db3fa283b9730c6b766e8be",
+            "MinimumX": -96.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -3,
+            "Z": -2,
+            "ResourceName": "chunk_n3_n2",
+            "Sha256": "171878550178b9a1898cf56366fed153e76d0e414c163da7fd96a2adad850563",
+            "MinimumX": -96.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -64.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -3,
+            "Z": -1,
+            "ResourceName": "chunk_n3_n1",
+            "Sha256": "230ae5c9a06db81a705d42e3a3cd87ec3f58db96304ba91823da475b64337507",
+            "MinimumX": -96.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -64.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -2,
+            "Z": 0,
+            "ResourceName": "chunk_n2_p0",
+            "Sha256": "b2591c68b66a31be8ede4672424acc145b8c05e9e44c06e0fe1a3a8b07045ebb",
+            "MinimumX": -64.0,
+            "MinimumZ": 0.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -2,
+            "Z": 1,
+            "ResourceName": "chunk_n2_p1",
+            "Sha256": "e9e543336cbbe0ee8e7f408c2e27eae685b77c0b17fb3e7a9042124fd9760bbf",
+            "MinimumX": -64.0,
+            "MinimumZ": 32.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -2,
+            "Z": 2,
+            "ResourceName": "chunk_n2_p2",
+            "Sha256": "ba982b154514b0ca132c1e2dad9adfcf5740cfe9555341a8d038ffde178ef069",
+            "MinimumX": -64.0,
+            "MinimumZ": 64.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -2,
+            "Z": 3,
+            "ResourceName": "chunk_n2_p3",
+            "Sha256": "f82e2e767ad4eda0e48cad28e5a5d524d3a8fd5116791e347566600d965a2b10",
+            "MinimumX": -64.0,
+            "MinimumZ": 96.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -2,
+            "Z": 4,
+            "ResourceName": "chunk_n2_p4",
+            "Sha256": "ab3c6790f0ecb8a59d570156444d2498e4e4c4aa9a2fa8074de13d62c59d16fe",
+            "MinimumX": -64.0,
+            "MinimumZ": 128.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -2,
+            "Z": 5,
+            "ResourceName": "chunk_n2_p5",
+            "Sha256": "67de01dce3fdfc119028468590f8a5bf202c3bb6fbcc6ce7892f9b22de9ed6eb",
+            "MinimumX": -64.0,
+            "MinimumZ": 160.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -2,
+            "Z": 6,
+            "ResourceName": "chunk_n2_p6",
+            "Sha256": "3ce3f8e9c672c634a03b7752dc7f481a0b541555bf8a9a6cd59b3a8ad93bc6fb",
+            "MinimumX": -64.0,
+            "MinimumZ": 192.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -2,
+            "Z": 7,
+            "ResourceName": "chunk_n2_p7",
+            "Sha256": "bc944f869330d4f280c8ac159cad861996b227697078ef30304989091626b696",
+            "MinimumX": -64.0,
+            "MinimumZ": 224.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -2,
+            "Z": -8,
+            "ResourceName": "chunk_n2_n8",
+            "Sha256": "c4781010bccb7741196c2ce0cdffc70b6a9edd1929301c034f8d3230619a1bc2",
+            "MinimumX": -64.0,
+            "MinimumZ": -256.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -2,
+            "Z": -7,
+            "ResourceName": "chunk_n2_n7",
+            "Sha256": "8241a22f9f51b33da6813df3fc02be9ca8e2ee74613e7348da4e7fc70b80dccf",
+            "MinimumX": -64.0,
+            "MinimumZ": -224.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -2,
+            "Z": -6,
+            "ResourceName": "chunk_n2_n6",
+            "Sha256": "4f8562f2265adc26a0cf5b16f1f1d9154a215996fc18519cb8924dae024d82f0",
+            "MinimumX": -64.0,
+            "MinimumZ": -192.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -2,
+            "Z": -5,
+            "ResourceName": "chunk_n2_n5",
+            "Sha256": "ef84cbd3c43aeafbbe1170102e51f72e7b7b49863d8babf6b43a936eed19c145",
+            "MinimumX": -64.0,
+            "MinimumZ": -160.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -2,
+            "Z": -4,
+            "ResourceName": "chunk_n2_n4",
+            "Sha256": "119a9be53e537f226ad68970045630469b9f3a70d3ddc46ce2b67e6babf855b8",
+            "MinimumX": -64.0,
+            "MinimumZ": -128.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -2,
+            "Z": -3,
+            "ResourceName": "chunk_n2_n3",
+            "Sha256": "e0dab7694f88db89e2682cb208cc2af6ee868765f55a2ab0b57dd2c0704899ec",
+            "MinimumX": -64.0,
+            "MinimumZ": -96.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -2,
+            "Z": -2,
+            "ResourceName": "chunk_n2_n2",
+            "Sha256": "a5eca20bf7d6a81be86fbdd75901fc946296c03d11e945274e368fea857ddc6c",
+            "MinimumX": -64.0,
+            "MinimumZ": -64.0,
+            "MaximumX": -32.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -2,
+            "Z": -1,
+            "ResourceName": "chunk_n2_n1",
+            "Sha256": "a8d5493395556dd6ac5c2bb66b8c9e7444aa090b0a159ca46f1ef98fa547c6c0",
+            "MinimumX": -64.0,
+            "MinimumZ": -32.0,
+            "MaximumX": -32.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": -1,
+            "Z": 0,
+            "ResourceName": "chunk_n1_p0",
+            "Sha256": "0e957f77438a557cb2e403de4259255a9da71ff6a85e406721b38ea018e58c21",
+            "MinimumX": -32.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": -1,
+            "Z": 1,
+            "ResourceName": "chunk_n1_p1",
+            "Sha256": "7df76d3f3050b4a1e9f99d27d5e7dc3e06e58bebf14bfb9513c61650315cd2bd",
+            "MinimumX": -32.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": -1,
+            "Z": 2,
+            "ResourceName": "chunk_n1_p2",
+            "Sha256": "b09a9cba97645eaf0260463de5603ca8c4269440b3c7a66549b6f122210618ea",
+            "MinimumX": -32.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": -1,
+            "Z": 3,
+            "ResourceName": "chunk_n1_p3",
+            "Sha256": "d2dead2b95e6e3e12e9992602c5089b8fc7ab11f7d3f4ecc0b8cf2acce91bcdb",
+            "MinimumX": -32.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": -1,
+            "Z": 4,
+            "ResourceName": "chunk_n1_p4",
+            "Sha256": "a8b570f37b043e74ba25f84db37b8c6858022b07791c90d135842b6b81ee3871",
+            "MinimumX": -32.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": -1,
+            "Z": 5,
+            "ResourceName": "chunk_n1_p5",
+            "Sha256": "74665ddad00028b7248cd455099c7aa07ae700315eddc710d598f3baf47ab750",
+            "MinimumX": -32.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": -1,
+            "Z": 6,
+            "ResourceName": "chunk_n1_p6",
+            "Sha256": "74a65e71e915fda5685daec3bf18a39538272f2ad757c8cf40f42e00c8bae41c",
+            "MinimumX": -32.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": -1,
+            "Z": 7,
+            "ResourceName": "chunk_n1_p7",
+            "Sha256": "72fa8f4d4c41a0edc1e476570cc17ee9f5ff8d8038f84bc81143a3c2bd88e4c2",
+            "MinimumX": -32.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": -1,
+            "Z": -8,
+            "ResourceName": "chunk_n1_n8",
+            "Sha256": "d0bbbd3df5ffb4bfcffa04111b8394cf0d0266c235388a9f3f61575db28ec905",
+            "MinimumX": -32.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": -1,
+            "Z": -7,
+            "ResourceName": "chunk_n1_n7",
+            "Sha256": "5a959598dee7453a26bfbfed1fb0ef852c3d1b4afbc0fce5d9465e0dc2db3020",
+            "MinimumX": -32.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": -1,
+            "Z": -6,
+            "ResourceName": "chunk_n1_n6",
+            "Sha256": "875601ff80661d3aaf0b3775b085d2b0aa831547474fb6e3236b1525b67a0cb6",
+            "MinimumX": -32.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": -1,
+            "Z": -5,
+            "ResourceName": "chunk_n1_n5",
+            "Sha256": "be1f4b39be3caa7c5b3be44dc007ddddb7cde4e8d770e476645322157ba33964",
+            "MinimumX": -32.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": -1,
+            "Z": -4,
+            "ResourceName": "chunk_n1_n4",
+            "Sha256": "91e7a6bfff43b9c412f130b68c1cbd9733443d65d95fb4c7b1386bad57df9aa3",
+            "MinimumX": -32.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": -1,
+            "Z": -3,
+            "ResourceName": "chunk_n1_n3",
+            "Sha256": "d7856ef8cb7eea6283928e6db653a8470ada15522a7d7f41d172c72e2788dec8",
+            "MinimumX": -32.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": -1,
+            "Z": -2,
+            "ResourceName": "chunk_n1_n2",
+            "Sha256": "1c5df35ca639e18ea0822885ff3dcb3114a3539801d092d59ab9a7c615613896",
+            "MinimumX": -32.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 0.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": -1,
+            "Z": -1,
+            "ResourceName": "chunk_n1_n1",
+            "Sha256": "4a7112d6dee2f8af633384fe8cea8e6df53c03b550db4e35d2a7755342d37259",
+            "MinimumX": -32.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 0.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 0,
+            "Z": 0,
+            "ResourceName": "chunk_p0_p0",
+            "Sha256": "1b3d8eaf0f7d6028f6e32e95d69851815550ad297bebdcc781ca1a3298d06f40",
+            "MinimumX": 0.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 0,
+            "Z": 1,
+            "ResourceName": "chunk_p0_p1",
+            "Sha256": "ece4b991c05cd8c964f07df1bbf895af1a7787e831ad2b45e9c306a5224a7722",
+            "MinimumX": 0.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 0,
+            "Z": 2,
+            "ResourceName": "chunk_p0_p2",
+            "Sha256": "fb1c0e9ea60721770c80041fc74d40beec57d4f190012c0e713fe299ea1406f3",
+            "MinimumX": 0.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 0,
+            "Z": 3,
+            "ResourceName": "chunk_p0_p3",
+            "Sha256": "7d237dec1b4a9314c3bfae38c4fbc4fedebaf0365d8c645f0dbe8a919807a22e",
+            "MinimumX": 0.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 0,
+            "Z": 4,
+            "ResourceName": "chunk_p0_p4",
+            "Sha256": "4f9db2e2feedf8d929f07d085cb79a1ab3bb6c7686cfdf896dc7c45b13217a90",
+            "MinimumX": 0.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 0,
+            "Z": 5,
+            "ResourceName": "chunk_p0_p5",
+            "Sha256": "1ed726ed1f169a25bea7a3e3b7585d75e09496ab6af21c56a5b4f9adba5843d7",
+            "MinimumX": 0.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 0,
+            "Z": 6,
+            "ResourceName": "chunk_p0_p6",
+            "Sha256": "3444fe8367cb555857ec70191053bbcf75f3d037ea345f4cbee0e6c92d59c7d4",
+            "MinimumX": 0.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 0,
+            "Z": 7,
+            "ResourceName": "chunk_p0_p7",
+            "Sha256": "26cef8eb72544e55ccef3d8fe5f8e4dde1e5d431a89670987c50f6070338be08",
+            "MinimumX": 0.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 0,
+            "Z": -8,
+            "ResourceName": "chunk_p0_n8",
+            "Sha256": "3bd598bda42bb4d2035f5f1c520f1a0b110746e7bfd8b1624e21e95b1431e6a4",
+            "MinimumX": 0.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 0,
+            "Z": -7,
+            "ResourceName": "chunk_p0_n7",
+            "Sha256": "1317ad81dd645deac57a8cb5bce6d5b5036974eb3e544c32d921613d77509189",
+            "MinimumX": 0.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 0,
+            "Z": -6,
+            "ResourceName": "chunk_p0_n6",
+            "Sha256": "54d26328f805ac9512bfe82f80fde3a78c22e550c6607a54ed617066dd8df0fb",
+            "MinimumX": 0.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 0,
+            "Z": -5,
+            "ResourceName": "chunk_p0_n5",
+            "Sha256": "9463ab6b3a3ccf8105c4584599f2c300de7a166c614e09c1dad9db9c1e3cd9a4",
+            "MinimumX": 0.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 0,
+            "Z": -4,
+            "ResourceName": "chunk_p0_n4",
+            "Sha256": "8fb0759ca23fa430dbe9300038c94c9b689862a2b7b4e9b79248996f4eff319c",
+            "MinimumX": 0.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 0,
+            "Z": -3,
+            "ResourceName": "chunk_p0_n3",
+            "Sha256": "dc7074980bb78e8bc09b2ef4302ed2346262123b4d708583e786a8be57e36442",
+            "MinimumX": 0.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 0,
+            "Z": -2,
+            "ResourceName": "chunk_p0_n2",
+            "Sha256": "2c7f80e9266d2370f9b3904b7e846ae638ac607b4a16d05b992f232412efb7f0",
+            "MinimumX": 0.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 32.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 0,
+            "Z": -1,
+            "ResourceName": "chunk_p0_n1",
+            "Sha256": "2931e271d6992ca93b89415b41a11f4bdf561dc012c182cedd126f7f0cd60c68",
+            "MinimumX": 0.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 32.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 1,
+            "Z": 0,
+            "ResourceName": "chunk_p1_p0",
+            "Sha256": "7446df9a5a729e00ba95f71f5e93283124a9c02ed218c90a38b1187eb32b5c61",
+            "MinimumX": 32.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 1,
+            "Z": 1,
+            "ResourceName": "chunk_p1_p1",
+            "Sha256": "f5cd41d2e3dfc5da4edb1ccd33596189cc65481b2465e55f1542ada836695095",
+            "MinimumX": 32.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 1,
+            "Z": 2,
+            "ResourceName": "chunk_p1_p2",
+            "Sha256": "cc40c7b60025618c951d973f6500716162341b064b5541c363f5e9abf7775e3d",
+            "MinimumX": 32.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 1,
+            "Z": 3,
+            "ResourceName": "chunk_p1_p3",
+            "Sha256": "d074eda8f9b5dc9c54f32a7fbf745652ed9d073d8be62363689fb706b9bab9c0",
+            "MinimumX": 32.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 1,
+            "Z": 4,
+            "ResourceName": "chunk_p1_p4",
+            "Sha256": "7c9352f6b07bd6cc2e185d9d055dbcab898e6bdf16ecbaf75e3b379c0743ee23",
+            "MinimumX": 32.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 1,
+            "Z": 5,
+            "ResourceName": "chunk_p1_p5",
+            "Sha256": "04d04a5ec91bc229be2f6af67f3a53abe58ef9cc7fa71e276c595e76f8546356",
+            "MinimumX": 32.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 1,
+            "Z": 6,
+            "ResourceName": "chunk_p1_p6",
+            "Sha256": "9d4acf9c8dc9bd5f04fb1f44b46eaf892761079abc335ca8695f680b22a64a26",
+            "MinimumX": 32.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 1,
+            "Z": 7,
+            "ResourceName": "chunk_p1_p7",
+            "Sha256": "2d8d2ee8c1575ad91c1a5d108ad75dd885fffa7b531da4c822e8fbbbe1294c6f",
+            "MinimumX": 32.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 1,
+            "Z": -8,
+            "ResourceName": "chunk_p1_n8",
+            "Sha256": "f4db8ff38796ba1e692fc0fe896a3d163a9e91c3a266c1239e16b1e4b0b9c2c9",
+            "MinimumX": 32.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 1,
+            "Z": -7,
+            "ResourceName": "chunk_p1_n7",
+            "Sha256": "af4070b902aba7a23fff7b6ca3d6c5c0db7bbfbc607575bbbcaf666f642bc703",
+            "MinimumX": 32.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 1,
+            "Z": -6,
+            "ResourceName": "chunk_p1_n6",
+            "Sha256": "dffd7ce996d3dc6b99789244f0de79ae2370238305650af19047f89430350bbb",
+            "MinimumX": 32.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 1,
+            "Z": -5,
+            "ResourceName": "chunk_p1_n5",
+            "Sha256": "282bb70d90827ae22f8f3a9ab962fbe12d1fe9f71939cec5f234f4411ca593bc",
+            "MinimumX": 32.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 1,
+            "Z": -4,
+            "ResourceName": "chunk_p1_n4",
+            "Sha256": "c9cd3a962d8409f841f0f36cb4ddb797ab220d08fd732f97864444060a1a980f",
+            "MinimumX": 32.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 1,
+            "Z": -3,
+            "ResourceName": "chunk_p1_n3",
+            "Sha256": "9b2edd626e8702bdfdba80df86cc859eed66caa499ab66467b2be9bbff9daa4f",
+            "MinimumX": 32.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 1,
+            "Z": -2,
+            "ResourceName": "chunk_p1_n2",
+            "Sha256": "9675d2d856528b49af5843843b44826f56ed8fb2d516d8ec40cbc9aa4554d54d",
+            "MinimumX": 32.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 64.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 1,
+            "Z": -1,
+            "ResourceName": "chunk_p1_n1",
+            "Sha256": "712e3c63504195320ba3b4f42f13892615f0a8705fcfef3e683c069cb6e0a755",
+            "MinimumX": 32.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 64.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 2,
+            "Z": 0,
+            "ResourceName": "chunk_p2_p0",
+            "Sha256": "07f30557f33d2ca079b3b8d4bd6ab5dbd36f27ec5c9e2f7bd2a074ccc6a15c26",
+            "MinimumX": 64.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 2,
+            "Z": 1,
+            "ResourceName": "chunk_p2_p1",
+            "Sha256": "86d6d9f86d12d670b2cad43b2fb7446fd666c1a365d105335b87023add19a3f8",
+            "MinimumX": 64.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 2,
+            "Z": 2,
+            "ResourceName": "chunk_p2_p2",
+            "Sha256": "c464e545921fdd903ad82703a457565ff46bfd6cc33ec85c86735b2a6607fe3d",
+            "MinimumX": 64.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 2,
+            "Z": 3,
+            "ResourceName": "chunk_p2_p3",
+            "Sha256": "7bcb9e1df20647809c3cee36828b12db9da641b2844e271a7d9c82cd9a52bff4",
+            "MinimumX": 64.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 2,
+            "Z": 4,
+            "ResourceName": "chunk_p2_p4",
+            "Sha256": "d3937e22e14d4cbd56a64335abe288b6e1c61491c3b248bdccd9120ba07308b5",
+            "MinimumX": 64.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 2,
+            "Z": 5,
+            "ResourceName": "chunk_p2_p5",
+            "Sha256": "f209bd96b97a078dea916c0f53e310c82dcbe6ec2119efaee48560fc85e385d3",
+            "MinimumX": 64.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 2,
+            "Z": 6,
+            "ResourceName": "chunk_p2_p6",
+            "Sha256": "2b98e92ea32bb9600023c9244aed8d5d02b80cbb2c2a04d63af3b3d62f9c7c5f",
+            "MinimumX": 64.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 2,
+            "Z": 7,
+            "ResourceName": "chunk_p2_p7",
+            "Sha256": "a4c522db4a5641f52fb256cf4dce248087fdf131cc4a3ab9e0cd5e02f11d51d6",
+            "MinimumX": 64.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 2,
+            "Z": -8,
+            "ResourceName": "chunk_p2_n8",
+            "Sha256": "9b08ae642ad65043b264efc6e6e6e19cf017300585119a65f87e8d1f7d70ae8f",
+            "MinimumX": 64.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 2,
+            "Z": -7,
+            "ResourceName": "chunk_p2_n7",
+            "Sha256": "23b0e6c29b9c9a9ee463c5cbd8c55f163842c1214aa3d978da8ce4df99c48091",
+            "MinimumX": 64.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 2,
+            "Z": -6,
+            "ResourceName": "chunk_p2_n6",
+            "Sha256": "1b42bf702c04aaf41428f77bda0d745a780a03f605cc9fd346981d3a68138d34",
+            "MinimumX": 64.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 2,
+            "Z": -5,
+            "ResourceName": "chunk_p2_n5",
+            "Sha256": "3251897c7a46ba9a8ad672313812498d469a59e7a29788d3bb04c77282a735c7",
+            "MinimumX": 64.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 2,
+            "Z": -4,
+            "ResourceName": "chunk_p2_n4",
+            "Sha256": "c784db5daf4829a2d8a0d2cee75032fab653f16e75e14a708300f62405bffef3",
+            "MinimumX": 64.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 2,
+            "Z": -3,
+            "ResourceName": "chunk_p2_n3",
+            "Sha256": "8705d74d16ae07f8f935a9018e1432fbfc861c26f965d712ef0a5dd82e378de7",
+            "MinimumX": 64.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 2,
+            "Z": -2,
+            "ResourceName": "chunk_p2_n2",
+            "Sha256": "d973f90c7b814a2225fb9492c8eb588ba7ea03bd8dea72b30bc8a0b5e32ce55a",
+            "MinimumX": 64.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 96.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 2,
+            "Z": -1,
+            "ResourceName": "chunk_p2_n1",
+            "Sha256": "a0e78ef5c50ea296df9234b4d953c022553f7d72db7ab6f12a8bd1add29f5689",
+            "MinimumX": 64.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 96.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 3,
+            "Z": 0,
+            "ResourceName": "chunk_p3_p0",
+            "Sha256": "993ec90b88b7871840cf469e9b23e1b7e657ece0a8ce391f1fe099c77da79562",
+            "MinimumX": 96.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 3,
+            "Z": 1,
+            "ResourceName": "chunk_p3_p1",
+            "Sha256": "d53e31e5a670cc4a8a3665301320a20ffc333c0a72dd33b7f525164d84d3ebd0",
+            "MinimumX": 96.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 3,
+            "Z": 2,
+            "ResourceName": "chunk_p3_p2",
+            "Sha256": "a623068e0bb9f8e6c942eff87f2bd6a3b866afe637f7d8f4922f0036e8b76bb7",
+            "MinimumX": 96.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 3,
+            "Z": 3,
+            "ResourceName": "chunk_p3_p3",
+            "Sha256": "006d2b4599a654aa94249a3525f13fa8eb876e8668e7216af9d535af35184896",
+            "MinimumX": 96.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 3,
+            "Z": 4,
+            "ResourceName": "chunk_p3_p4",
+            "Sha256": "675d1ab2cc7cf08b7ff40d805a266acdd42021e278ae954f7dfe93f97ccb1d58",
+            "MinimumX": 96.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 3,
+            "Z": 5,
+            "ResourceName": "chunk_p3_p5",
+            "Sha256": "5f688114304f1d9ed1911a06e72e7d278dbd817dbebae65c0fede068c64ee79c",
+            "MinimumX": 96.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 3,
+            "Z": 6,
+            "ResourceName": "chunk_p3_p6",
+            "Sha256": "6fe26ac823c368fc0c968f47b626ba22c53c979484b0ace9a0508aebd3ace85c",
+            "MinimumX": 96.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 3,
+            "Z": 7,
+            "ResourceName": "chunk_p3_p7",
+            "Sha256": "67c513b29592d033bd4248aeecbfdacaad12d41002f696847f375cd838c6bace",
+            "MinimumX": 96.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 3,
+            "Z": -8,
+            "ResourceName": "chunk_p3_n8",
+            "Sha256": "f152f845236f2bbea57611346116923f468876e75d8b40fa4050dc40e78a3da7",
+            "MinimumX": 96.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 3,
+            "Z": -7,
+            "ResourceName": "chunk_p3_n7",
+            "Sha256": "7411451e03be1c82da2d6f9618433b95f6e4b3f10cb4f41e204ec768373254f1",
+            "MinimumX": 96.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 3,
+            "Z": -6,
+            "ResourceName": "chunk_p3_n6",
+            "Sha256": "489cb4db5416fef80d04d2c718b7495d2bc941b082eb0ea4ec57f5620f455fdb",
+            "MinimumX": 96.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 3,
+            "Z": -5,
+            "ResourceName": "chunk_p3_n5",
+            "Sha256": "a19b245bead5b6a02fb11753019f76539ccf97f23d28c1b2d28447da6da29847",
+            "MinimumX": 96.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 3,
+            "Z": -4,
+            "ResourceName": "chunk_p3_n4",
+            "Sha256": "c9abbdc980d603efe70a7d42d28add46bac62837d7bff9cbde2aecb68fc75876",
+            "MinimumX": 96.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 3,
+            "Z": -3,
+            "ResourceName": "chunk_p3_n3",
+            "Sha256": "8f2f27902c76d3bd6541ef168d6a17d5d09e4dcba65920e5e7c74396e2f2d2d4",
+            "MinimumX": 96.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 3,
+            "Z": -2,
+            "ResourceName": "chunk_p3_n2",
+            "Sha256": "9186aff3e2b10d2dbc51061bc5fec69d06b36717335abcde3c28df72b8bc98d1",
+            "MinimumX": 96.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 128.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 3,
+            "Z": -1,
+            "ResourceName": "chunk_p3_n1",
+            "Sha256": "f292b407eee050447a68fcd0d409b5a6e2f78943f98895fb11885326b0faa4de",
+            "MinimumX": 96.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 128.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 4,
+            "Z": 0,
+            "ResourceName": "chunk_p4_p0",
+            "Sha256": "fa94e49235efcff52cc753ba7bae89cf1f323539ac0a11fa038c3381e9e47b42",
+            "MinimumX": 128.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 4,
+            "Z": 1,
+            "ResourceName": "chunk_p4_p1",
+            "Sha256": "b7d8cc134a27028272d0186c28f9d504c1cb58ca438acefae467f6cee3245c5a",
+            "MinimumX": 128.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 4,
+            "Z": 2,
+            "ResourceName": "chunk_p4_p2",
+            "Sha256": "7b5f54ec49598b58b799cf78228706a079d4c19cf190c0e9dc4c859c555ede74",
+            "MinimumX": 128.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 4,
+            "Z": 3,
+            "ResourceName": "chunk_p4_p3",
+            "Sha256": "dd4e3782f6bed6a7d7ea21cea0ea3032d80cdef67060e15593bd15de4e7e0796",
+            "MinimumX": 128.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 4,
+            "Z": 4,
+            "ResourceName": "chunk_p4_p4",
+            "Sha256": "db6e1e4a1d7b9ee6da66e10d847345070fd1ea09e12c89507f86726af8c565fc",
+            "MinimumX": 128.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 4,
+            "Z": 5,
+            "ResourceName": "chunk_p4_p5",
+            "Sha256": "49c1131f29297704ad71fbc655e4bc10ccbfc0b5aa5be96bd5ac8e7db049da09",
+            "MinimumX": 128.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 4,
+            "Z": 6,
+            "ResourceName": "chunk_p4_p6",
+            "Sha256": "448132f361c3fd938dce1cd10f59a53ec5d736e1c363c4fa4805d63edfcda65a",
+            "MinimumX": 128.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 4,
+            "Z": 7,
+            "ResourceName": "chunk_p4_p7",
+            "Sha256": "6ed90ab258507950599802008027e5be1e10752e0c563d5c7f88b6c949790655",
+            "MinimumX": 128.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 4,
+            "Z": -8,
+            "ResourceName": "chunk_p4_n8",
+            "Sha256": "f65cef95287636ffaf3cb2061c9e2ff94de0e4dfd8440a06a81ecad9b41226e3",
+            "MinimumX": 128.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 4,
+            "Z": -7,
+            "ResourceName": "chunk_p4_n7",
+            "Sha256": "9c526e81207c78992df39ddc2b3df39bff7f109d8e275a09643b6595555b1244",
+            "MinimumX": 128.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 4,
+            "Z": -6,
+            "ResourceName": "chunk_p4_n6",
+            "Sha256": "7c06b6412f1d13437e2343cb02f620263e750808f4444cb5f2a774959e6c63d4",
+            "MinimumX": 128.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 4,
+            "Z": -5,
+            "ResourceName": "chunk_p4_n5",
+            "Sha256": "f451acdf5a64339fc80e08268395a4bf442c0e5b89aeb3216829680b2f53c852",
+            "MinimumX": 128.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 4,
+            "Z": -4,
+            "ResourceName": "chunk_p4_n4",
+            "Sha256": "c1ed15f2e6f127eb31c083fa4feef38f2727044b3614c6dce3bc2133b4f54512",
+            "MinimumX": 128.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 4,
+            "Z": -3,
+            "ResourceName": "chunk_p4_n3",
+            "Sha256": "d5f5cb1061e06deb16ec1d82364bb8927c937eb2221faed002de07f4087c881a",
+            "MinimumX": 128.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 4,
+            "Z": -2,
+            "ResourceName": "chunk_p4_n2",
+            "Sha256": "740b935cebf6538683b41b917071ca25c91a543619b1aa6d96a5ea81ff1d1bfd",
+            "MinimumX": 128.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 160.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 4,
+            "Z": -1,
+            "ResourceName": "chunk_p4_n1",
+            "Sha256": "b4c683decbfaddf4b08255356e8d5a7347287668935ebda0735a3a4df5675772",
+            "MinimumX": 128.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 160.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 5,
+            "Z": 0,
+            "ResourceName": "chunk_p5_p0",
+            "Sha256": "1a0de5b17ed2b36ac7089d0077674c38e7d159297ac05ad58f6fbb2cdfcf2184",
+            "MinimumX": 160.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 5,
+            "Z": 1,
+            "ResourceName": "chunk_p5_p1",
+            "Sha256": "1a54c40db52a44baea9d8b299fcbf5f6f17eba5391fd8936a26b0901e01071be",
+            "MinimumX": 160.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 5,
+            "Z": 2,
+            "ResourceName": "chunk_p5_p2",
+            "Sha256": "60c45802d3fde90a5f5866d7d52fc25372c31100d2e38609d064b862132a127f",
+            "MinimumX": 160.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 5,
+            "Z": 3,
+            "ResourceName": "chunk_p5_p3",
+            "Sha256": "0cb63102626eafd16234cc964ed26ab1863008b8490a6f7d27e8457f53c2e2f8",
+            "MinimumX": 160.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 5,
+            "Z": 4,
+            "ResourceName": "chunk_p5_p4",
+            "Sha256": "5fffa73b574b5605fbb0231e21a71c645bff1ad96d8df06052765c07d2764ee0",
+            "MinimumX": 160.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 5,
+            "Z": 5,
+            "ResourceName": "chunk_p5_p5",
+            "Sha256": "9c8d56a94669af3dc1ad3752d5d75e6f68577671b3a62ddc08c29ac65084cdba",
+            "MinimumX": 160.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 5,
+            "Z": 6,
+            "ResourceName": "chunk_p5_p6",
+            "Sha256": "d6bf6aa521d8d98b5d1fb75118e1bb729c66010a89d69aeee1742a7249340132",
+            "MinimumX": 160.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 5,
+            "Z": 7,
+            "ResourceName": "chunk_p5_p7",
+            "Sha256": "069a087f0c46e9522510b8233b9ab1f146742d07a1245be4f13ac12bd45f81fd",
+            "MinimumX": 160.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 5,
+            "Z": -8,
+            "ResourceName": "chunk_p5_n8",
+            "Sha256": "045481c6152395c0c951ab454baec7f2153ea9e03bd9c573687b33dd187cbb07",
+            "MinimumX": 160.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 5,
+            "Z": -7,
+            "ResourceName": "chunk_p5_n7",
+            "Sha256": "5eaf2d218dbba4321aa43f28c21494e6a006dda1a3fd0e8822c6db2ad7605119",
+            "MinimumX": 160.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 5,
+            "Z": -6,
+            "ResourceName": "chunk_p5_n6",
+            "Sha256": "8097dd2a6efe48f530658b29d5622e06ed4c84d79ddb57cb6349ad06a7e0278f",
+            "MinimumX": 160.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 5,
+            "Z": -5,
+            "ResourceName": "chunk_p5_n5",
+            "Sha256": "147503c03822c649c8e3f219694959497c96d8f54c4d2227a2d76e6db418bf23",
+            "MinimumX": 160.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 5,
+            "Z": -4,
+            "ResourceName": "chunk_p5_n4",
+            "Sha256": "4d79ebd41890b5b28a6d691fd053d4a49c411a23739cd1fa97a2a70ecf6f7c92",
+            "MinimumX": 160.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 5,
+            "Z": -3,
+            "ResourceName": "chunk_p5_n3",
+            "Sha256": "5645fb1f0bbd472cdd79687bc304d78ea98f1eeba2bd5cf761c675d7702aa3d6",
+            "MinimumX": 160.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 5,
+            "Z": -2,
+            "ResourceName": "chunk_p5_n2",
+            "Sha256": "bf6c5e313f9c782c8a839d540f9adeabce9cc75cf156a38169acdb246fe5256b",
+            "MinimumX": 160.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 192.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 5,
+            "Z": -1,
+            "ResourceName": "chunk_p5_n1",
+            "Sha256": "4f3558aa4333f532a3895c150ff42d6892a790a997a33ee0a30976eda1872aea",
+            "MinimumX": 160.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 192.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 6,
+            "Z": 0,
+            "ResourceName": "chunk_p6_p0",
+            "Sha256": "0f7d0ec4b9c916ae95693a1d0e0ffc0de0509801c43ae1009ae3fdcecf3fd8d0",
+            "MinimumX": 192.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 6,
+            "Z": 1,
+            "ResourceName": "chunk_p6_p1",
+            "Sha256": "ad207c640580a012fcf2cdb1dcdfb65e215b03807b2b7e3a2482bae31c38ac98",
+            "MinimumX": 192.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 6,
+            "Z": 2,
+            "ResourceName": "chunk_p6_p2",
+            "Sha256": "6044b95a5624a096e32dc486e470c93a6ad8259c208f5239f874530eb690d6b4",
+            "MinimumX": 192.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 6,
+            "Z": 3,
+            "ResourceName": "chunk_p6_p3",
+            "Sha256": "955e8638f152573a659b69c471f192e3f95c519583815433ac80001b2e53103a",
+            "MinimumX": 192.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 6,
+            "Z": 4,
+            "ResourceName": "chunk_p6_p4",
+            "Sha256": "744923f4917b8a7843abf15ca3d67091e6999319ce601dc9a04227f3a7dd641b",
+            "MinimumX": 192.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 6,
+            "Z": 5,
+            "ResourceName": "chunk_p6_p5",
+            "Sha256": "730f363cc425baac45c00d09928567b71afd2810208471ef1853c6364daa022f",
+            "MinimumX": 192.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 6,
+            "Z": 6,
+            "ResourceName": "chunk_p6_p6",
+            "Sha256": "55a3c5528808135c56f5f9ec9c803af36b771122bdea3ede5ebd67881937ce65",
+            "MinimumX": 192.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 6,
+            "Z": 7,
+            "ResourceName": "chunk_p6_p7",
+            "Sha256": "36b082de3cfba694ce5afe4e4c7d147d86cc2f826befffc2feddfcfd0ff696fd",
+            "MinimumX": 192.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 6,
+            "Z": -8,
+            "ResourceName": "chunk_p6_n8",
+            "Sha256": "c4aa0c0f8dc708fc4ec7f46c473dcec977e92adac27ffa7d7318377ce808b7d2",
+            "MinimumX": 192.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 6,
+            "Z": -7,
+            "ResourceName": "chunk_p6_n7",
+            "Sha256": "41a57b913619f6a15790eef945895f50f756d5f52a730b8117258422ebd7bdeb",
+            "MinimumX": 192.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 6,
+            "Z": -6,
+            "ResourceName": "chunk_p6_n6",
+            "Sha256": "b681b87ca1810ea109a3c19d210e528e7a791e59a131195274a64304d4d1884f",
+            "MinimumX": 192.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 6,
+            "Z": -5,
+            "ResourceName": "chunk_p6_n5",
+            "Sha256": "52f22adee389d9707154b776a7e82d039c904b50aed6a3fc38f47f16fa1e0b61",
+            "MinimumX": 192.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 6,
+            "Z": -4,
+            "ResourceName": "chunk_p6_n4",
+            "Sha256": "91e0a6f39776a2c5790e3aa12a71ee1060e1ac0dad5a6710bf9d7b5fc90e472a",
+            "MinimumX": 192.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 6,
+            "Z": -3,
+            "ResourceName": "chunk_p6_n3",
+            "Sha256": "b533812110d5c95eb01ddc9d09a70ede46686b5a18c482b7accbbdb3b2061d19",
+            "MinimumX": 192.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 6,
+            "Z": -2,
+            "ResourceName": "chunk_p6_n2",
+            "Sha256": "29b7c624726ba084b0f3589835658e90ae006644615c4eeb9e385efcb531dd00",
+            "MinimumX": 192.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 224.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 6,
+            "Z": -1,
+            "ResourceName": "chunk_p6_n1",
+            "Sha256": "993ace37375cd4d60af27d63888b20f4e21b681b001b887b9730391b8b5d7353",
+            "MinimumX": 192.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 224.0,
+            "MaximumZ": 0.0
+        },
+        {
+            "X": 7,
+            "Z": 0,
+            "ResourceName": "chunk_p7_p0",
+            "Sha256": "95c0d6d081355170962ea3c7f89229c43f76c7004ad2ba2e9857a6359f616017",
+            "MinimumX": 224.0,
+            "MinimumZ": 0.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 32.0
+        },
+        {
+            "X": 7,
+            "Z": 1,
+            "ResourceName": "chunk_p7_p1",
+            "Sha256": "12012df2360fb90eef32501498c0c6f1d050116757798c2dc284144f5e79d130",
+            "MinimumX": 224.0,
+            "MinimumZ": 32.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 64.0
+        },
+        {
+            "X": 7,
+            "Z": 2,
+            "ResourceName": "chunk_p7_p2",
+            "Sha256": "c358c255fce80e71da283f9df68d5a80306b98009254aa58b736216a1c2b3405",
+            "MinimumX": 224.0,
+            "MinimumZ": 64.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 96.0
+        },
+        {
+            "X": 7,
+            "Z": 3,
+            "ResourceName": "chunk_p7_p3",
+            "Sha256": "c694c698d625e2b87a583ebab1ba09f34a7f72f5de494b0ef35f433d703d9abb",
+            "MinimumX": 224.0,
+            "MinimumZ": 96.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 128.0
+        },
+        {
+            "X": 7,
+            "Z": 4,
+            "ResourceName": "chunk_p7_p4",
+            "Sha256": "202a5c8cc37858b0fe1b339f52c7701b9e6646046840d386458eb4f519e9e541",
+            "MinimumX": 224.0,
+            "MinimumZ": 128.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 160.0
+        },
+        {
+            "X": 7,
+            "Z": 5,
+            "ResourceName": "chunk_p7_p5",
+            "Sha256": "4127a80a4cc4765cc6db520669cff39c2e5746c332ade244016859419e4b1ce9",
+            "MinimumX": 224.0,
+            "MinimumZ": 160.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 192.0
+        },
+        {
+            "X": 7,
+            "Z": 6,
+            "ResourceName": "chunk_p7_p6",
+            "Sha256": "18a87be00d86126480978c3b8a5ff079cafee12a000176e4f50ac109224a41a8",
+            "MinimumX": 224.0,
+            "MinimumZ": 192.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 224.0
+        },
+        {
+            "X": 7,
+            "Z": 7,
+            "ResourceName": "chunk_p7_p7",
+            "Sha256": "fa6cfab19bc08276fed34f97af149993b96cc0e5271d0f894eeefe9eaa9e4110",
+            "MinimumX": 224.0,
+            "MinimumZ": 224.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 256.0
+        },
+        {
+            "X": 7,
+            "Z": -8,
+            "ResourceName": "chunk_p7_n8",
+            "Sha256": "9db956257e33f806f4273099fc30389d7bf983c1bacdeabc8ec1afa9decba511",
+            "MinimumX": 224.0,
+            "MinimumZ": -256.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -224.0
+        },
+        {
+            "X": 7,
+            "Z": -7,
+            "ResourceName": "chunk_p7_n7",
+            "Sha256": "458337dc914b28cca921a02ddd7d29179f42d726753a6285410c766fe573ca84",
+            "MinimumX": 224.0,
+            "MinimumZ": -224.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -192.0
+        },
+        {
+            "X": 7,
+            "Z": -6,
+            "ResourceName": "chunk_p7_n6",
+            "Sha256": "9e82240947ba48777646658710bf4aaa224e91028e6856c479896229ae60ea20",
+            "MinimumX": 224.0,
+            "MinimumZ": -192.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -160.0
+        },
+        {
+            "X": 7,
+            "Z": -5,
+            "ResourceName": "chunk_p7_n5",
+            "Sha256": "7cd60570cda9f83e221a8451e47c4a4629a070cbfe973b5fd54ce023964f6e3a",
+            "MinimumX": 224.0,
+            "MinimumZ": -160.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -128.0
+        },
+        {
+            "X": 7,
+            "Z": -4,
+            "ResourceName": "chunk_p7_n4",
+            "Sha256": "0c7b0bc5d0433acd37cdb6f6f91afdd77b72ad450726f7b5727923656b2cfb7a",
+            "MinimumX": 224.0,
+            "MinimumZ": -128.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -96.0
+        },
+        {
+            "X": 7,
+            "Z": -3,
+            "ResourceName": "chunk_p7_n3",
+            "Sha256": "42c924b34feb1e93a7b8b8f38ef734611debdfdbf9c5c5c4e9fcd4d505d0d7e2",
+            "MinimumX": 224.0,
+            "MinimumZ": -96.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -64.0
+        },
+        {
+            "X": 7,
+            "Z": -2,
+            "ResourceName": "chunk_p7_n2",
+            "Sha256": "e1ec2d4ce199983513ab8c8402311d18a773f486e0c8d6b1359cf9010a7f49ae",
+            "MinimumX": 224.0,
+            "MinimumZ": -64.0,
+            "MaximumX": 256.0,
+            "MaximumZ": -32.0
+        },
+        {
+            "X": 7,
+            "Z": -1,
+            "ResourceName": "chunk_p7_n1",
+            "Sha256": "495c861f1688733b100556f055b1e4d6cdcdc743c269b73fc90fe589c8b64a38",
+            "MinimumX": 224.0,
+            "MinimumZ": -32.0,
+            "MaximumX": 256.0,
+            "MaximumZ": 0.0
+        }
+    ]
+}

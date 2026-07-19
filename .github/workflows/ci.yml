@@ -75,8 +75,37 @@ jobs:
           --configuration Release
           --no-build
           --
-          WorldData/Authoring/local-world-1.collision-authoring.json
-          WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1
+          WorldData/Authoring/development-world-1.collision-authoring.json
+          WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1
+          --verify
+
+      - name: Verify Development World 2 collision data
+        run: >-
+          dotnet run --project Tools/WorldCollisionCompiler
+          --configuration Release
+          --no-build
+          --
+          WorldData/Authoring/development-world-2.collision-authoring.json
+          WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2
+          --verify
+
+      - name: Verify Development World 1 actors
+        run: >-
+          dotnet run --project Tools/WorldActorCompiler
+          --configuration Release
+          --no-build
+          --
+          --verify
+
+      - name: Verify Development World 2 actors
+        run: >-
+          dotnet run --project Tools/WorldActorCompiler
+          --configuration Release
+          --no-build
+          --
+          WorldData/Authoring/Actors/core.world-actors.json
+          WorldData/Authoring/ActorSpawns/development-world-2.actor-spawns.json
+          WorldData/Runtime/Actors/development-world-2.world-actors.json
           --verify
 
       - name: Test

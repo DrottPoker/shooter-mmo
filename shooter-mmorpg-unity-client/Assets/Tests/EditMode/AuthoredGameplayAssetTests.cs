@@ -17,7 +17,10 @@ namespace ShooterMmo.Tests.EditMode
         private const string InputActionsPath = "Assets/Input/PlayerControls.inputactions";
         private const string LocalPlayerPrefabPath = "Assets/Prefabs/Player/LocalPlayer.prefab";
         private const string RemotePlayerPrefabPath = "Assets/Prefabs/Player/RemotePlayer.prefab";
-        private const string WorldScenePath = "Assets/Scenes/WorldScene.unity";
+        private const string DevelopmentWorld1ScenePath =
+            "Assets/Scenes/DevelopmentWorld1.unity";
+        private const string DevelopmentWorld2ScenePath =
+            "Assets/Scenes/DevelopmentWorld2.unity";
 
         [Test]
         public void PlayerControlsDefinesRequiredGameplayActions()
@@ -239,14 +242,16 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
-        public void WorldSceneUsesAuthoredGameplayComposition()
+        public void DevelopmentWorldOneUsesAuthoredGameplayComposition()
         {
-            var scene = SceneManager.GetSceneByPath(WorldScenePath);
+            var scene = SceneManager.GetSceneByPath(DevelopmentWorld1ScenePath);
             var openedForTest = !scene.IsValid() || !scene.isLoaded;
 
             if (openedForTest)
             {
-                scene = EditorSceneManager.OpenScene(WorldScenePath, OpenSceneMode.Additive);
+                scene = EditorSceneManager.OpenScene(
+                    DevelopmentWorld1ScenePath,
+                    OpenSceneMode.Additive);
             }
 
             try
@@ -305,10 +310,72 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
+        public void DevelopmentWorldTwoMatchesItsAuthoredWorldContract()
+        {
+            var scene = SceneManager.GetSceneByPath(DevelopmentWorld2ScenePath);
+            var openedForTest = !scene.IsValid() || !scene.isLoaded;
+
+            if (openedForTest)
+            {
+                scene = EditorSceneManager.OpenScene(
+                    DevelopmentWorld2ScenePath,
+                    OpenSceneMode.Additive);
+            }
+
+            try
+            {
+                var environment = FindGameObject(scene, "Environment");
+                var gameplay = FindGameObject(scene, "Gameplay");
+                var spawnPoint = FindGameObject(scene, "PlayerSpawn");
+                var authoring = scene.GetRootGameObjects()
+                    .SelectMany(root => root.GetComponentsInChildren<WorldCollisionAuthoring>(true))
+                    .Single();
+
+                Assert.That(environment, Is.Not.Null);
+                Assert.That(gameplay, Is.Not.Null);
+                Assert.That(spawnPoint, Is.Not.Null);
+                Assert.That(spawnPoint.transform.parent, Is.EqualTo(gameplay.transform));
+                Assert.That(
+                    spawnPoint.transform.localPosition,
+                    Is.EqualTo(new Vector3(0f, 0f, -16f)));
+                Assert.That(authoring.WorldId, Is.EqualTo("development-world-2"));
+                Assert.That(authoring.ChunkSize, Is.EqualTo(32f));
+                Assert.That(authoring.CollisionRoot, Is.EqualTo(environment.transform));
+
+                AssertTransform(scene, "Ground", new Vector3(0f, -0.25f, 0f),
+                    new Vector3(512f, 0.5f, 512f));
+                AssertTransform(scene, "NorthWall", new Vector3(0f, 3f, 255f),
+                    new Vector3(512f, 6f, 2f));
+                AssertTransform(scene, "SouthWall", new Vector3(0f, 3f, -255f),
+                    new Vector3(512f, 6f, 2f));
+                AssertTransform(scene, "EastWall", new Vector3(255f, 3f, 0f),
+                    new Vector3(2f, 6f, 512f));
+                AssertTransform(scene, "WestWall", new Vector3(-255f, 3f, 0f),
+                    new Vector3(2f, 6f, 512f));
+
+                Assert.That(FindGameObject(scene, "CentralHub"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "NorthTraversal"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "EastSightline"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "SouthwestWilderness"), Is.Not.Null);
+                var colliders = environment.GetComponentsInChildren<Collider>(true);
+                Assert.That(colliders, Has.Length.EqualTo(13));
+                Assert.That(colliders.All(collider => collider is BoxCollider), Is.True);
+                Assert.That(colliders.All(collider => !collider.isTrigger), Is.True);
+            }
+            finally
+            {
+                if (openedForTest)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        [Test]
         public void BakedWorldCollisionLoadsAllAuthoredBoxes()
         {
             var loaded = UnityWorldCollisionLoader.TryLoad(
-                "local-world-1",
+                "development-world-1",
                 out var collisionWorld,
                 out var error);
 
@@ -323,6 +390,39 @@ namespace ShooterMmo.Tests.EditMode
                 CollisionLayers.CharacterMovement,
                 buffer);
             Assert.That(buffer.Boxes, Has.Count.EqualTo(13));
+        }
+
+        [Test]
+        public void BakedDevelopmentWorldTwoCollisionLoadsAllAuthoredBoxes()
+        {
+            var loaded = UnityWorldCollisionLoader.TryLoad(
+                "development-world-2",
+                out var collisionWorld,
+                out var error);
+
+            Assert.That(loaded, Is.True, error);
+            Assert.That(collisionWorld.ChunkCount, Is.EqualTo(256));
+            Assert.That(collisionWorld.Revision, Is.Not.Empty);
+            var buffer = new CollisionQueryBuffer();
+            collisionWorld.QueryBoxes(
+                new CollisionAabb(
+                    new SimulationVector3(-256f, -2f, -256f),
+                    new SimulationVector3(256f, 8f, 256f)),
+                CollisionLayers.CharacterMovement,
+                buffer);
+            Assert.That(buffer.Boxes, Has.Count.EqualTo(13));
+        }
+
+        private static void AssertTransform(
+            Scene scene,
+            string objectName,
+            Vector3 expectedPosition,
+            Vector3 expectedScale)
+        {
+            var gameObject = FindGameObject(scene, objectName);
+            Assert.That(gameObject, Is.Not.Null, objectName + " is missing.");
+            Assert.That(gameObject.transform.localPosition, Is.EqualTo(expectedPosition));
+            Assert.That(gameObject.transform.localScale, Is.EqualTo(expectedScale));
         }
 
         private static GameObject FindGameObject(Scene scene, string objectName)

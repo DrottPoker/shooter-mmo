@@ -6,7 +6,7 @@ namespace ShooterMmo.Collision
     [DisallowMultipleComponent]
     public sealed class WorldCollisionAuthoring : MonoBehaviour
     {
-        [SerializeField] private string worldId = "local-world-1";
+        [SerializeField] private string worldId = "development-world-1";
         [SerializeField, Min(1f)] private float chunkSize = 32f;
         [SerializeField] private Transform collisionRoot;
         [SerializeField] private uint layerMask =

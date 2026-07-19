@@ -12,7 +12,10 @@ EditorBuildSettings:
     path: Assets/Scenes/CharacterSelect.unity
     guid: c8818efab465a18428b8256f8955d6fc
   - enabled: 1
-    path: Assets/Scenes/WorldScene.unity
+    path: Assets/Scenes/DevelopmentWorld1.unity
     guid: 99c9720ab356a0642a771bea13969a05
+  - enabled: 1
+    path: Assets/Scenes/DevelopmentWorld2.unity
+    guid: f27a7e4256d187a49be417e26ab2ef14
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

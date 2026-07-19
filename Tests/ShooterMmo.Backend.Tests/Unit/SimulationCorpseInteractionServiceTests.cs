@@ -189,7 +189,7 @@ public sealed class SimulationCorpseInteractionServiceTests
             Guid.NewGuid(),
             "Corpse Hero",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "local-simulation-worker-1",
             "runtime-1",
             DateTime.UtcNow,

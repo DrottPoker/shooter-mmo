@@ -30,15 +30,16 @@ public sealed record ItemInteractionConfig(
         32f);
 
     internal static ItemInteractionConfig FromConfiguration(
-        IConfigurationSection section,
+        IConfigurationSection sharedSection,
+        IConfigurationSection worldProfileSection,
         MovementSimulationSettings? movement,
         ICollection<string> errors)
     {
         var points = new List<ItemServicePointConfig>();
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var pointSection in section.GetSection("ServicePoints").GetChildren())
+        foreach (var pointSection in worldProfileSection.GetSection("ServicePoints").GetChildren())
         {
-            var prefix = $"{section.Path}:ServicePoints:{pointSection.Key}";
+            var prefix = $"{worldProfileSection.Path}:ServicePoints:{pointSection.Key}";
             var id = pointSection["Id"]?.Trim();
             var kindValue = pointSection["Kind"]?.Trim();
             var x = ParseFinite(pointSection["X"], $"{prefix}:X", errors);
@@ -86,24 +87,24 @@ public sealed record ItemInteractionConfig(
         }
 
         var corpseInteractionRadius = ParseFinite(
-            section["CorpseInteractionRadius"] ?? "3",
-            $"{section.Path}:CorpseInteractionRadius",
+            sharedSection["CorpseInteractionRadius"] ?? "3",
+            $"{sharedSection.Path}:CorpseInteractionRadius",
             errors);
         var corpseDiscoveryRadius = ParseFinite(
-            section["CorpseDiscoveryRadius"] ?? "32",
-            $"{section.Path}:CorpseDiscoveryRadius",
+            sharedSection["CorpseDiscoveryRadius"] ?? "32",
+            $"{sharedSection.Path}:CorpseDiscoveryRadius",
             errors);
         if (corpseInteractionRadius <= 0f || corpseInteractionRadius > 20f)
         {
             errors.Add(
-                $"{section.Path}:CorpseInteractionRadius must be greater than 0 and at most 20.");
+                $"{sharedSection.Path}:CorpseInteractionRadius must be greater than 0 and at most 20.");
         }
 
         if (corpseDiscoveryRadius < corpseInteractionRadius
             || corpseDiscoveryRadius > 1_000f)
         {
             errors.Add(
-                $"{section.Path}:CorpseDiscoveryRadius must be at least the interaction radius and at most 1000.");
+                $"{sharedSection.Path}:CorpseDiscoveryRadius must be at least the interaction radius and at most 1000.");
         }
 
         return new ItemInteractionConfig(

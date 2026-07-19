@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ## Requirements
 
@@ -27,9 +27,9 @@ and parent directories for `.env`. Process environment variables and
 command-line values take precedence.
 
 SimulationWorker derives its default actor path as
-`ActorData/<WorldId>.world-actors.json`. The checked-in `local-world-1` content
-is copied from deterministic WorldData runtime content into build and publish
-output. Startup validates the World id, complete revision, structural
+`ActorData/<WorldId>.world-actors.json`. The checked-in actor content for both
+development Worlds is copied from deterministic WorldData runtime content into
+build and publish output. Startup validates the World id, complete revision, structural
 fingerprints, references, ordering, collection bounds, and actor and spawn
 semantics before UDP admission begins. Use
 `SimulationWorker__ActorDataPath` only when a deployment intentionally places
@@ -487,8 +487,9 @@ For a manual default-state and reconnect check:
    `movement-simulation-v3`.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
-5. Press F2 in WorldScene. A new empty character shows weight `0 / 200`, movement
-   `100%`, sprint allowed, and its committed item-state revision.
+5. Press F2 in the active World scene. A new empty character shows weight
+   `0 / 200`, movement `100%`, sprint allowed, and its committed item-state
+   revision.
 6. Leave to CharacterSelect and join the same character again. The carry tuple
    and revision are restored and movement remains available.
 7. Exit Play Mode and stop both backend processes and Compose services.
@@ -546,7 +547,8 @@ For a manual runtime smoke check:
    Recovery Storage, and insurance NPC service points without a configuration
    error.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
-   enter Play Mode, log in, select a character and shard, and join WorldScene.
+   enter Play Mode, log in, select a character and shard, and join the mapped
+   development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
    This step verifies the Phase 8 boundary. The current Phase 9 build also has
    the inventory panel documented below.
@@ -892,12 +894,20 @@ dotnet run --project Tools/WorldActorCompiler `
   --configuration Release `
   --no-build -- `
   --verify
+dotnet run --project Tools/WorldActorCompiler `
+  --configuration Release `
+  --no-build -- `
+  WorldData/Authoring/Actors/core.world-actors.json `
+  WorldData/Authoring/ActorSpawns/development-world-2.actor-spawns.json `
+  WorldData/Runtime/Actors/development-world-2.world-actors.json `
+  --verify
 ```
 
-Expected result: both commands report World `local-world-1`, the same complete
-revision, three definitions, and five runtime instances. Verify mode performs no
-write and fails if authoring, runtime JSON, references, bounds, transforms,
-fingerprints, ordering, or the complete revision diverge.
+Expected result: the first two commands report World `development-world-1`
+with four definitions and five runtime instances. The third reports
+`development-world-2` with four definitions and seven runtime instances. Verify
+mode performs no write and fails if authoring, runtime JSON, references, bounds,
+transforms, fingerprints, ordering, or the complete revision diverge.
 
 Run the focused backend actor and protocol coverage, then the complete Unity
 workflow:
@@ -959,7 +969,7 @@ to exercise the authoring tools and optional presentation mapping:
 8. Start AuthService and SimulationWorker, join `local-shard-1`, and approach
    Mira. Expected result: actor instances appear and disappear through normal
    interest presence. The worker startup log reports the actor content revision,
-   three definitions, and five instances.
+   four definitions, and five instances.
 9. Point the crosshair at Mira from at most `3.0` metres and press `E`. Expected
    result: temporary uGUI opens only after the server accepts and lists the
    player-specific authoritative capability summary. Clicking a capability
@@ -1080,7 +1090,7 @@ Verify the content manually:
 
 Expected result: every action succeeds, there are four actor definitions and
 five runtime instances, and the checked-in actor runtime revision is
-`953cda2ccf495a62dddf20a38218ae66422c9627c0b6c4270d71ba44eec681e5`.
+`69ee1d2fdf104ea5600d5011c6a0ce0cb801faddc116715898429ea5f4c70916`.
 
 Run the worker-memory lifecycle workflow:
 
@@ -1304,7 +1314,7 @@ dotnet run --project SimulationWorker
 
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
-node `local-node-1`, shard `local-shard-1`, World `local-world-1`, UDP port
+node `local-node-1`, shard `local-shard-1`, World `development-world-1`, UDP port
 `27015`, runtime id, realtime protocol version 13, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
@@ -1384,7 +1394,7 @@ $join = Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join `
 ```
 
 Expected result: `join.shard.id` is `local-shard-1`, `join.shard.worldId` is
-`local-world-1`, and `join.endpoint` identifies
+`development-world-1`, and `join.endpoint` identifies
 `local-simulation-worker-1`, its current runtime, and `127.0.0.1:27015`. The
 public shard list did not contain that endpoint.
 
@@ -1425,7 +1435,7 @@ are maintained as long-term foundations. The UI is created automatically when
 each scene starts. The local player and test map must be authored as Unity assets
 and are not generated at runtime.
 
-## One-Time Unity WorldScene Authoring
+## One-Time Unity World Scene Authoring
 
 The code foundation expects real scene and prefab assets. Complete these manual
 steps in Unity Editor after the scripts compile.
@@ -1452,8 +1462,8 @@ seven actions with no missing bindings.
 ### Create The LocalPlayer Prefab
 
 1. Create the folders `Assets/Prefabs` and `Assets/Prefabs/Player`.
-2. In an empty scene or the current WorldScene, create an empty GameObject named
-   `LocalPlayer` at position `0, 0, 0`.
+2. In an empty scene or the current development World scene, create an empty
+   GameObject named `LocalPlayer` at position `0, 0, 0`.
 3. Add `CharacterController` and use:
    - Radius: `0.35`
    - Height: `2`
@@ -1498,7 +1508,7 @@ seven actions with no missing bindings.
 12. Adjust the visual or material as desired without changing the root scale.
 13. Drag the `LocalPlayer` root into `Assets/Prefabs/Player` to create
    `LocalPlayer.prefab`, then delete the temporary scene instance if it was not
-   created directly in WorldScene.
+   created directly in the development World scene.
 
 Expected result: the prefab root has CharacterController, PlayerInput,
 CharacterBody, LocalPlayerInput, and LocalPlayerController. There is exactly one
@@ -1509,8 +1519,8 @@ Camera and one AudioListener in the prefab.
 
 ### Create The RemotePlayer Prefab
 
-1. In an empty scene or the current WorldScene, create an empty GameObject named
-   `RemotePlayer` at position `0, 0, 0`.
+1. In an empty scene or the current development World scene, create an empty
+   GameObject named `RemotePlayer` at position `0, 0, 0`.
 2. Add `RemotePlayerView` to the root.
 3. Add an empty child named `PlayerVisual` at local position `0, 0, 0`.
 4. Add a Capsule child named `Body` below PlayerVisual at local position
@@ -1529,7 +1539,7 @@ view with no local input, physics authority, camera, or audio listener.
 
 ### Build The Test Map
 
-1. Open `Assets/Scenes/WorldScene.unity`.
+1. Open `Assets/Scenes/DevelopmentWorld1.unity`.
 2. Create an empty root named `Environment` with empty `Boundaries` and
    `Obstacles` children. Reset all three transforms.
 3. Create these Cube objects. Parent the walls under `Boundaries`, the test
@@ -1552,34 +1562,38 @@ view with no local input, physics authority, camera, or audio listener.
    `Assets/Art/Materials/TestMap` and assign them to make collision surfaces
    visually distinct.
 
-Expected result: WorldScene contains a bounded movement area with flat ground,
+Expected result: DevelopmentWorld1 contains a bounded movement area with flat ground,
 a slope, three step heights, low and high cover, and a dedicated wall for camera
 collision testing.
 
 ### Configure And Bake World Collision
 
-This is required once for the existing WorldScene and again whenever an
+This is required once for DevelopmentWorld1 and again whenever an
 authoritative map collider changes.
 
-1. Exit Play Mode and open `Assets/Scenes/WorldScene.unity`.
+1. Exit Play Mode and open `Assets/Scenes/DevelopmentWorld1.unity`.
 2. Select the `Environment` root.
 3. Click `Add Component` and add `World Collision Authoring`.
 4. Configure the component:
-   - World Id: `local-world-1`
+   - World Id: `development-world-1`
    - Chunk Size: `32`
    - Collision Root: drag the same `Environment` object into this field
    - Layer Mask: `3`
-5. Save WorldScene.
+5. Save DevelopmentWorld1.
 6. Select `Shooter MMO > Tools > World Collision > Bake Open Scene` from Unity's top
    menu.
 7. Wait for asset import and script compilation to complete.
 
+After both development scenes exist in Build Profiles, use `Shooter MMO >
+Tools > World Collision > Bake Build World Scenes` to validate each catalog
+mapping and bake every enabled World scene in one deterministic pass.
+
 Expected result: Unity Console reports `[WORLD COLLISION] Baked world
-'local-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
+'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
 updates:
 
-- `WorldData/Authoring/local-world-1.collision-authoring.json`
-- `WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1/manifest.json`
+- `WorldData/Authoring/development-world-1.collision-authoring.json`
+- `WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1/manifest.json`
 - Four `chunk_*.bytes` files in the same runtime directory
 
 The bake stops with a red error if the collision root contains enabled,
@@ -1590,22 +1604,28 @@ Verify the checked-in bake from the repository root:
 
 ```powershell
 dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Authoring/local-world-1.collision-authoring.json `
-  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/local-world-1 `
+  WorldData/Authoring/development-world-1.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  --verify
+dotnet run --project Tools/WorldCollisionCompiler -- `
+  WorldData/Authoring/development-world-2.collision-authoring.json `
+  WorldData/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
   --verify
 ```
 
-Expected result: the command reports the same world revision and four verified
-chunks. It exits with code 1 if the authoring JSON and runtime data differ.
+Expected result: the commands report the same World revisions, four verified
+chunks for Development World 1, and 256 verified chunks for Development World
+2. Either command exits with code 1 if its authoring JSON and runtime data
+differ.
 
-### Compose WorldScene
+### Compose DevelopmentWorld1
 
 1. Create an empty root named `Gameplay` and reset its transform.
 2. Add a child named `PlayerSpawn` at position `0, 0, -1` with rotation
    `0, 0, 0`.
-3. Do not place a LocalPlayer instance in WorldScene. The player exists only
-   after an accepted character join.
-4. Remove any separate Main Camera from WorldScene. The runtime LocalPlayer owns
+3. Do not place a LocalPlayer instance in DevelopmentWorld1. The player exists
+   only after an accepted character join.
+4. Remove any separate Main Camera from DevelopmentWorld1. The runtime LocalPlayer owns
    the only gameplay camera and AudioListener.
 5. Create an empty child of Gameplay named `EntityPresentationRoot` and reset
    its transform. This object owns runtime views for replicated entities and
@@ -1620,12 +1640,12 @@ chunks. It exits with code 1 if the authoring JSON and runtime data differ.
 9. Assign Entity Presentation Root to the `EntityPresentationRoot` transform.
 10. Keep one Directional Light in the scene and save the scene.
 
-Expected result: WorldScene contains no LocalPlayer or gameplay camera before a
-join. After an accepted join, WorldSceneContext creates one LocalPlayer from the
-assigned prefab at PlayerSpawn, connects it to the authoritative movement state,
-and connects its camera. Runtime remote views remain below
-`EntityPresentationRoot`. Opening WorldScene directly without a joined session
-creates no player and reports no missing-reference error.
+Expected result: DevelopmentWorld1 contains no LocalPlayer or gameplay camera
+before a join. After an accepted join, WorldSceneContext creates one LocalPlayer
+from the assigned prefab at PlayerSpawn, connects it to the authoritative
+movement state, and connects its camera. Runtime remote views remain below
+`EntityPresentationRoot`. Opening DevelopmentWorld1 directly without a joined
+session creates no player and reports no missing-reference error.
 
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
@@ -1641,10 +1661,10 @@ Expected result:
 - EditMode validates API parsing, client state, Input Actions, collision resource
   loading, prediction, reconciliation, remote interpolation, world-actor and
   interaction state, crosshair targeting, actor content tooling, both player
-  prefab contracts, and authored WorldScene composition.
+  prefab contracts, and authored development-world scene composition.
 - PlayMode validates that loading `LoginMenu` creates the persistent client
   bootstrap, realtime client, actor and interaction controllers, and runtime
-  login panel, and that WorldScene without a joined session creates no
+  login panel, and that DevelopmentWorld1 without a joined session creates no
   LocalPlayer while creating the expected presentation and temporary UI
   controllers.
 
@@ -1732,8 +1752,9 @@ before changing a shard:
   checksummed chunks.
 - Provide `SimulationWorker/ActorData/<WorldId>.world-actors.json` when the
   World uses actor content. `ActorDataPath` defaults to this World-keyed path.
-- Review worker movement bounds, spawn position, and item service points because
-  those coordinates must match the target World.
+- Add or review the target entry under `SimulationWorker:WorldProfiles`.
+  Movement bounds, spawn position, and item service points are selected from
+  that profile by `SimulationWorker:WorldId`.
 - Add the authored Unity scene to the client build and map its `WorldId` in
   `Assets/Resources/Worlds/world-scene-catalog.json`.
 
@@ -1747,8 +1768,8 @@ Perform the rebind in this order:
 3. Change that shard's `WorldId` under `Simulation:Topology:Shards` in
    `AuthService/Config/appsettings.json`.
 4. Set the same `SimulationWorker:WorldId` in
-   `SimulationWorker/Config/appsettings.json` and verify its World-specific
-   content and coordinate settings.
+   `SimulationWorker/Config/appsettings.json` and verify that its World profile
+   plus collision and actor content exist.
 5. Start or restart AuthService while the worker remains stopped. Startup
    topology reconciliation locks the shard and applies the new World binding.
 6. If startup reports `ShardWorldRebindBlockedException`, leave the replacement
@@ -1764,20 +1785,22 @@ Perform the rebind in this order:
 
 Expected result: no player can enter during the rebind, stale worker content
 cannot claim the shard, and the next worker runtime plus Unity client use the
-same World identity. The repository currently contains only the existing
-`local-world-1` mapping. Do not perform a real rebind until the next development
-World and all of its content have been added.
+same World identity. The repository contains complete scene, collision, actor,
+worker-profile, and client-catalog baselines for both development Worlds.
+`development-world-2` remains intentionally unbound. Follow
+[Development Worlds](DEVELOPMENT_WORLDS.md) and repeat its verification before
+performing a real rebind.
 
-No manual Unity Editor action is required for this architecture-only step. The
-current catalog already maps `local-world-1` to the existing `WorldScene`, which
-is already part of the build. The next development-map step will require exact
-scene authoring and Build Settings actions.
+The current catalog maps `development-world-1` to `DevelopmentWorld1`,
+which is already part of the build. The exact manual Unity scene, collision
+bake, and Build Profiles workflow for `development-world-2` is documented in
+[Development Worlds](DEVELOPMENT_WORLDS.md).
 
 Scene flow:
 
 - `LoginMenu`
 - `CharacterSelect`
-- the scene mapped from the selected shard's `WorldId`, currently `WorldScene`
+- the scene mapped from the selected shard's `WorldId`, currently `DevelopmentWorld1`
 
 Expected result in `LoginMenu`:
 
@@ -1800,12 +1823,12 @@ Manual Unity test flow:
 5. Select a character.
 6. Select `Local Shard 1`.
 7. Click `Join Selected Shard`.
-8. Unity loads `WorldScene`.
+8. Unity loads `DevelopmentWorld1`.
 
 Expected result:
 
-- `WorldScene` shows the selected character on shard `local-shard-1` using
-  World `local-world-1`.
+- `DevelopmentWorld1` shows the selected character on shard `local-shard-1` using
+  World `development-world-1`.
 - A local test player is instantiated only after the accepted join and starts
   from the authoritative state associated with the authored PlayerSpawn.
 - You can move with `WASD`, sprint with `Shift`, jump with `Space`, control the
@@ -1814,7 +1837,7 @@ Expected result:
 - F1 releases or recaptures the debug cursor, and F2 hides or restores the
   scrollable bottom-left World Client Debug panel.
 - World Debug displays `Joined` and `127.0.0.1:27015/udp`.
-- World Debug displays shard `local-shard-1`, World `local-world-1`, worker
+- World Debug displays shard `local-shard-1`, World `development-world-1`, worker
   `local-simulation-worker-1`, and the current runtime id.
 - World Debug displays an increasing observed server tick, the configured 30 Hz
   simulation and 15 Hz snapshot rates, client FPS and frame timing, prediction
@@ -1840,7 +1863,7 @@ Expected Unity Console sequence for a successful login and simulation join:
 [AUTH] AuthService issued a short-lived join ticket for character 'Hero One' on shard 'local-shard-1'.
 [CLIENT] Opening UDP connection to SimulationWorker 'local-simulation-worker-1' runtime '<worker-runtime-id>' at 127.0.0.1:27015/udp for shard 'local-shard-1'.
 [CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to SimulationWorker.
-[SIMULATION] Account '<account-id>' with character 'Hero One' (<character-id>) connected to shard 'local-shard-1' for world 'local-world-1' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
+[SIMULATION] Account '<account-id>' with character 'Hero One' (<character-id>) connected to shard 'local-shard-1' for world 'development-world-1' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
 [CLIENT] Server-authoritative movement is active at 30 ticks per second with 15 snapshots per second.
 ```
 
@@ -1870,13 +1893,13 @@ Unity client stability test:
 3. Stop SimulationWorker, click `Join Selected Shard`, and wait for the realtime
    timeout.
 4. Verify CharacterSelect shows a structured realtime network or timeout error
-   and does not load WorldScene.
+   and does not load a development World scene.
 5. Restart SimulationWorker, join again, and use `Leave Shard`.
 6. Verify only one leave runs, CharacterSelect loads after acknowledgement, and
    SimulationWorker logs the released session.
 7. Verify that an in-flight simulation snapshot during leave does not produce
    `invalid_snapshot_delivery`.
-8. Join again and stop SimulationWorker while WorldScene is active.
+8. Join again and stop SimulationWorker while the selected World scene is active.
 9. Verify the client clears shard state and returns to CharacterSelect after the
    unexpected disconnect.
 10. Revoke the current account session, then refresh characters.
@@ -1954,8 +1977,8 @@ Expected result:
 Server-authoritative movement test:
 
 1. Start PostgreSQL, Redis, AuthService, and SimulationWorker with the commands above.
-2. Enter WorldScene through LoginMenu and CharacterSelect. Do not start directly
-   from WorldScene for this test.
+2. Enter DevelopmentWorld1 through LoginMenu and CharacterSelect. Do not start
+   directly from DevelopmentWorld1 for this test.
 3. Confirm World Debug shows server-authoritative client prediction and an
    increasing observed server tick value.
 4. Move, rotate, sprint, jump, release movement, and change direction sharply.
@@ -1996,7 +2019,7 @@ Expected result:
 Remote interpolation test with a standalone build:
 
 1. Create a Windows development build containing LoginMenu, CharacterSelect,
-   and WorldScene in that order.
+   and DevelopmentWorld1 in that order.
 2. Run the build and keep Unity Editor available as the second client.
 3. Log in with two different accounts and select two different characters on
    `local-shard-1`.
@@ -2012,9 +2035,9 @@ restores its intended buffer instead of retaining permanent extra delay.
 Leaving or disconnecting sends reliable despawn and removes the corresponding
 remote view immediately without waiting for a snapshot timeout.
 
-WorldScene lifecycle test without a join:
+DevelopmentWorld1 lifecycle test without a join:
 
-1. Open `Assets/Scenes/WorldScene.unity`.
+1. Open `Assets/Scenes/DevelopmentWorld1.unity`.
 2. Press Play.
 
 Expected result:
@@ -2025,8 +2048,9 @@ Expected result:
 - World Debug reports that no active simulation session exists.
 
 Use the full login and simulation join flow above to test movement across the
-ramp, steps, cover, and camera wall. WorldScene movement is intentionally not an
-offline preview because a local player represents an accepted world presence.
+ramp, steps, cover, and camera wall. Authenticated World-scene movement is
+intentionally not an offline preview because a local player represents an
+accepted world presence.
 
 ## Related Documentation
 

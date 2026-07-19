@@ -10,21 +10,28 @@ internal static class WorldActorTestData
         return WorldActorJson.DeserializeActors(File.ReadAllText(ActorAuthoringPath));
     }
 
-    public static WorldActorSpawnAuthoringDocument LoadSpawns()
+    public static WorldActorSpawnAuthoringDocument LoadSpawns(
+        string worldId = "development-world-1")
     {
-        return WorldActorJson.DeserializeSpawns(File.ReadAllText(SpawnAuthoringPath));
+        return WorldActorJson.DeserializeSpawns(File.ReadAllText(SpawnAuthoringPath(worldId)));
     }
 
-    public static WorldActorRuntimeDocument Compile()
+    public static WorldActorRuntimeDocument Compile(string worldId = "development-world-1")
     {
-        return WorldActorCompiler.Compile(LoadActors(), LoadSpawns());
+        return WorldActorCompiler.Compile(LoadActors(), LoadSpawns(worldId));
     }
 
     public static string ActorAuthoringJson => File.ReadAllText(ActorAuthoringPath);
 
-    public static string SpawnAuthoringJson => File.ReadAllText(SpawnAuthoringPath);
+    public static string SpawnAuthoringJson => File.ReadAllText(
+        SpawnAuthoringPath("development-world-1"));
 
-    public static string RuntimeJson => File.ReadAllText(RuntimePath);
+    public static string RuntimeJson => RuntimeJsonFor("development-world-1");
+
+    public static string RuntimeJsonFor(string worldId)
+    {
+        return File.ReadAllText(RuntimePath(worldId));
+    }
 
     private static string ActorAuthoringPath => Path.Combine(
         FindRepositoryRoot(),
@@ -33,19 +40,19 @@ internal static class WorldActorTestData
         "Actors",
         "core.world-actors.json");
 
-    private static string SpawnAuthoringPath => Path.Combine(
+    private static string SpawnAuthoringPath(string worldId) => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
         "Authoring",
         "ActorSpawns",
-        "local-world-1.actor-spawns.json");
+        $"{worldId}.actor-spawns.json");
 
-    private static string RuntimePath => Path.Combine(
+    private static string RuntimePath(string worldId) => Path.Combine(
         FindRepositoryRoot(),
         "WorldData",
         "Runtime",
         "Actors",
-        "local-world-1.world-actors.json");
+        $"{worldId}.world-actors.json");
 
     private static string FindRepositoryRoot()
     {

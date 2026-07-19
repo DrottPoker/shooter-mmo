@@ -42,7 +42,8 @@ namespace ShooterMmo.Tests.PlayMode
         public IEnumerator LoadingWorldSceneWithoutJoinedSessionDoesNotSpawnLocalPlayer()
         {
             ShooterMmoClientSession.Clear();
-            var loadOperation = SceneManager.LoadSceneAsync(ShooterMmoSceneNames.WorldScene);
+            var loadOperation = SceneManager.LoadSceneAsync(
+                ShooterMmoSceneNames.DevelopmentWorld1);
             Assert.That(loadOperation, Is.Not.Null);
 
             while (!loadOperation.isDone)

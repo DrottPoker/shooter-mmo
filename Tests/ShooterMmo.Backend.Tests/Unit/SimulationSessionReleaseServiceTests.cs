@@ -81,7 +81,7 @@ public sealed class SimulationSessionReleaseServiceTests
             characterId,
             "Reconnect Hero",
             "local-shard-1",
-            "local-world-1",
+            "development-world-1",
             "local-simulation-worker-1",
             "runtime-1",
             DateTime.UtcNow,
