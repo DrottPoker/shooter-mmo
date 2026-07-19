@@ -358,6 +358,48 @@ public sealed class RealtimeProtocolTests
     }
 
     [Fact]
+    public void OwnerSimulationSnapshotRoundTripsPrioritizedReconciliationState()
+    {
+        var expected = new RealtimeOwnerSimulationSnapshot(
+            5,
+            91,
+            13,
+            CreatePlayerState(4f));
+        var packet = RealtimeProtocol.EncodeOwnerSimulationSnapshot(expected);
+
+        var decoded = RealtimeProtocol.TryDecodeOwnerSimulationSnapshot(
+            packet,
+            out var actual,
+            out var error);
+
+        Assert.True(decoded, error);
+        Assert.Equal(RealtimeProtocol.OwnerSimulationSnapshotPacketSize, packet.Length);
+        Assert.Equal(5u, actual.SnapshotSequence);
+        Assert.Equal(91u, actual.ServerTick);
+        Assert.Equal(13u, actual.LastProcessedInputSequence);
+        Assert.Equal(4f, actual.State.PositionX);
+    }
+
+    [Fact]
+    public void MaximumSimulationSnapshotChunkStaysInsideProtocolPacketLimit()
+    {
+        var entities = Enumerable.Range(1, RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
+            .Select(index => new RealtimeEntitySnapshot(
+                (ulong)index,
+                (uint)index,
+                CreatePlayerState(index)))
+            .ToArray();
+        var packet = RealtimeProtocol.EncodeSimulationSnapshot(
+            new RealtimeSimulationSnapshot(1, 1, 0, 1, entities));
+
+        Assert.Equal(
+            RealtimeProtocol.SimulationSnapshotPacketHeaderSize
+                + (entities.Length * RealtimeProtocol.SimulationSnapshotEntitySize),
+            packet.Length);
+        Assert.True(packet.Length <= RealtimeProtocol.MaximumUnreliablePacketSize);
+    }
+
+    [Fact]
     public void EntityLifecycleRejectsZeroNetworkIds()
     {
         Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySpawn(

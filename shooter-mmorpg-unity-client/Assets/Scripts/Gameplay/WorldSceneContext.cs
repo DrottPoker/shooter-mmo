@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.GameProtocol;
 using ShooterMmo.Networking;
@@ -190,21 +189,6 @@ namespace ShooterMmo.Gameplay
             var movementSession = simulationClient != null ? simulationClient.MovementSession : null;
             if (movementSession == null)
             {
-                return;
-            }
-
-            var collisionAnchors = snapshot.Entities
-                .Select(entity => new SimulationVector3(
-                    entity.State.PositionX,
-                    entity.State.PositionY,
-                    entity.State.PositionZ));
-            if (!movementSession.TryRefreshCollisionStreaming(
-                    collisionAnchors,
-                    out var collisionError))
-            {
-                simulationClient.DisconnectForClientFailure(
-                    "collision_stream_failed",
-                    collisionError);
                 return;
             }
 

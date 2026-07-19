@@ -61,6 +61,7 @@ public sealed class RealtimeSimulationService(
     private readonly SnapshotPacketCache snapshotPacketCache = new();
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly Dictionary<Guid, CorpseViewSnapshotResponse> corpseSnapshots = [];
+    private readonly CorpseMutationCoordinator corpseMutationCoordinator = new();
     private readonly TokenBucket aggregateSnapshotBytes = new(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
         config.UdpQuotas.AggregateSnapshotByteBurst);
@@ -173,9 +174,15 @@ public sealed class RealtimeSimulationService(
                 phaseStarted = Stopwatch.GetTimestamp();
                 performanceMetrics.ObserveCompletedOperationBacklog(
                     completedOperations.Count);
+                performanceMetrics.ObserveCorpseMutationCoordinator(
+                    corpseMutationCoordinator.WaitingMutationCount,
+                    corpseMutationCoordinator.ActiveCorpseCount);
                 ProcessCompletedOperations(completedOperationBudget);
                 performanceMetrics.ObserveCompletedOperationBacklog(
                     completedOperations.Count);
+                performanceMetrics.ObserveCorpseMutationCoordinator(
+                    corpseMutationCoordinator.WaitingMutationCount,
+                    corpseMutationCoordinator.ActiveCorpseCount);
                 performanceMetrics.RecordCompletedOperations(
                     Stopwatch.GetElapsedTime(phaseStarted));
                 ProcessSimulationTicks(
@@ -754,15 +761,11 @@ public sealed class RealtimeSimulationService(
                     or RealtimeCorpseInteractionKind.MoveItem
                     or RealtimeCorpseInteractionKind.MovePartialStack
                     or RealtimeCorpseInteractionKind.SwapBag =>
-                    isLiveMobCorpse
-                        ? await interactionService!.MutateAsync(
-                            session,
-                            intent,
-                            CancellationToken.None)
-                        : await corpseInteractionService.MutateAsync(
-                            session,
-                            intent,
-                            CancellationToken.None),
+                    await CompleteCorpseMutationAsync(
+                        interactionService,
+                        session,
+                        intent,
+                        isLiveMobCorpse),
                 _ => throw new InvalidOperationException(
                     "The queued corpse operation is not supported by AuthService.")
             };
@@ -789,6 +792,26 @@ public sealed class RealtimeSimulationService(
                     requiresCorpseRefresh: true),
                 removeOpenReservationOnFailure));
         }
+    }
+
+    private async Task<SimulationCorpseInteractionResult> CompleteCorpseMutationAsync(
+        LiveMobCorpseInteractionService? interactionService,
+        ActiveSimulationSession session,
+        RealtimeCorpseInteractionIntent intent,
+        bool isLiveMobCorpse)
+    {
+        using var mutationLease = await corpseMutationCoordinator.AcquireAsync(
+            intent.CorpseId,
+            CancellationToken.None);
+        return isLiveMobCorpse
+            ? await interactionService!.MutateAsync(
+                session,
+                intent,
+                CancellationToken.None)
+            : await corpseInteractionService.MutateAsync(
+                session,
+                intent,
+                CancellationToken.None);
     }
 
     private async Task ReleaseDisconnectedSessionAsync(ActiveSimulationSession session)
@@ -1576,8 +1599,8 @@ public sealed class RealtimeSimulationService(
         }
 
         SendCorpseOperationResult(peer, completed.Session, completed.Result);
-        var snapshot = completed.Result.Snapshot;
-        if (snapshot is null)
+        var resultSnapshot = completed.Result.Snapshot;
+        if (resultSnapshot is null)
         {
             CloseCorpseForAll(
                 completed.Result.Intent.CorpseId,
@@ -1588,30 +1611,54 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        if (corpseSnapshots.TryGetValue(snapshot.CorpseId, out var newerSnapshot)
-            && newerSnapshot.Revision > snapshot.Revision)
+        var hasCachedSnapshot = corpseSnapshots.TryGetValue(
+            resultSnapshot.CorpseId,
+            out var cachedSnapshot);
+        var hasMutation = completed.Result.Mutation is not null;
+        if (hasCachedSnapshot
+            && cachedSnapshot!.Revision >= resultSnapshot.Revision)
         {
-            snapshot = newerSnapshot;
+            if (!hasMutation)
+            {
+                SendCorpseState(
+                    peer,
+                    EncodeCorpseStatePackets(
+                        CorpseRealtimePacketBuilder.BuildSnapshot(cachedSnapshot)));
+            }
+
+            StartNextAuthorityOperation(completed.Context);
+            return;
         }
 
         if (liveMobCorpseStore is null
-            || !liveMobCorpseStore.TryGetActive(snapshot.CorpseId, out _))
+            || !liveMobCorpseStore.TryGetActive(resultSnapshot.CorpseId, out _))
         {
-            corpseStore.ApplySnapshot(snapshot);
+            corpseStore.ApplySnapshot(resultSnapshot);
         }
+
         IReadOnlyList<RealtimeCorpseViewStateChunk> chunks;
-        if (completed.Result.Mutation is not null
-            && corpseSnapshots.TryGetValue(snapshot.CorpseId, out var previousSnapshot))
+        if (hasCachedSnapshot)
         {
-            chunks = CorpseRealtimePacketBuilder.BuildDelta(previousSnapshot, snapshot);
+            chunks = CorpseRealtimePacketBuilder.BuildDelta(
+                cachedSnapshot!,
+                resultSnapshot);
         }
         else
         {
-            chunks = CorpseRealtimePacketBuilder.BuildSnapshot(snapshot);
+            chunks = CorpseRealtimePacketBuilder.BuildSnapshot(resultSnapshot);
         }
 
-        corpseSnapshots[snapshot.CorpseId] = snapshot;
-        BroadcastCorpseState(snapshot.CorpseId, chunks);
+        corpseSnapshots[resultSnapshot.CorpseId] = resultSnapshot;
+        var packets = EncodeCorpseStatePackets(chunks);
+        if (hasMutation || hasCachedSnapshot)
+        {
+            BroadcastCorpseState(resultSnapshot.CorpseId, packets);
+        }
+        else
+        {
+            SendCorpseState(peer, packets);
+        }
+
         StartNextAuthorityOperation(completed.Context);
     }
 
@@ -1713,9 +1760,25 @@ public sealed class RealtimeSimulationService(
             SimulationCorpseInteractionResult.Rejected(intent, code, message));
     }
 
+    private static IReadOnlyList<byte[]> EncodeCorpseStatePackets(
+        IReadOnlyList<RealtimeCorpseViewStateChunk> chunks)
+    {
+        return chunks
+            .Select(RealtimeProtocol.EncodeCorpseViewStateChunk)
+            .ToArray();
+    }
+
+    private void SendCorpseState(NetPeer peer, IReadOnlyList<byte[]> packets)
+    {
+        foreach (var packet in packets)
+        {
+            SendControl(peer, packet);
+        }
+    }
+
     private void BroadcastCorpseState(
         Guid corpseId,
-        IReadOnlyList<RealtimeCorpseViewStateChunk> chunks)
+        IReadOnlyList<byte[]> packets)
     {
         foreach (var viewerPeerId in corpseViewers.GetViewers(corpseId))
         {
@@ -1726,10 +1789,7 @@ public sealed class RealtimeSimulationService(
                 continue;
             }
 
-            foreach (var chunk in chunks)
-            {
-                SendControl(peer, RealtimeProtocol.EncodeCorpseViewStateChunk(chunk));
-            }
+            SendCorpseState(peer, packets);
         }
     }
 
@@ -1987,6 +2047,8 @@ public sealed class RealtimeSimulationService(
     {
         var broadcastStarted = Stopwatch.GetTimestamp();
         var sentPacketCount = 0;
+        var encodedOwnerPacketCount = 0;
+        long deferredEntityUpdateCount = 0;
         try
         {
             snapshotPacketCache.Reset();
@@ -2024,18 +2086,63 @@ public sealed class RealtimeSimulationService(
             foreach (var context in peers.Values)
             {
                 if (context.Session is null
-                    || !connectionBindings.TryGetEntityId(context.PeerId, out _)
+                    || !connectionBindings.TryGetEntityId(
+                        context.PeerId,
+                        out var controlledEntityId)
                     || !TryGetCurrentPeer(context, out var peer))
                 {
                     continue;
                 }
 
-                snapshotRecipientBuffer.Add(new SnapshotRecipient(context, peer));
+                snapshotRecipientBuffer.Add(new SnapshotRecipient(
+                    context,
+                    peer,
+                    controlledEntityId));
             }
 
             if (snapshotRecipientBuffer.Count == 0)
             {
                 return;
+            }
+
+            var bytesPerRecipient = Math.Max(
+                RealtimeProtocol.OwnerSimulationSnapshotPacketSize,
+                config.UdpQuotas.AggregateSnapshotBytesPerSecond
+                    / config.SnapshotRateHz
+                    / snapshotRecipientBuffer.Count);
+
+            foreach (var recipient in snapshotRecipientBuffer)
+            {
+                if (!snapshotPacketCache.TryGetSnapshot(
+                        recipient.ControlledEntityId,
+                        out var controlledSnapshot))
+                {
+                    continue;
+                }
+
+                var ownerPacket = RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+                    new RealtimeOwnerSimulationSnapshot(
+                        snapshotSequence,
+                        serverTick,
+                        controlledSnapshot!.LastProcessedInputSequence,
+                        controlledSnapshot.State));
+                encodedOwnerPacketCount++;
+                if (!aggregateSnapshotBytes.TryConsume(ownerPacket.Length))
+                {
+                    networkMetrics.RecordSnapshotBackpressureDropped(1);
+                    continue;
+                }
+
+                if (!recipient.Context.Quota.TryConsumeSnapshot(ownerPacket.Length))
+                {
+                    networkMetrics.RecordSnapshotDropped(1);
+                    continue;
+                }
+
+                recipient.Peer.Send(ownerPacket, DeliveryMethod.Unreliable);
+                sentPacketCount++;
+                networkMetrics.RecordSent(ownerPacket.Length);
+                networkMetrics.RecordSnapshotEntities(1);
             }
 
             var recipientStart = snapshotRecipientRotation.Begin(
@@ -2050,7 +2157,10 @@ public sealed class RealtimeSimulationService(
                 var packetBatch = snapshotPacketCache.GetOrCreate(
                     interestManager.GetVisibleOrdered(recipient.Context.PeerId),
                     snapshotSequence,
-                    serverTick);
+                    serverTick,
+                    bytesPerRecipient,
+                    config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
+                deferredEntityUpdateCount += packetBatch.DeferredEntityCount;
                 if (packetBatch.Packets.Count == 0)
                 {
                     continue;
@@ -2091,8 +2201,9 @@ public sealed class RealtimeSimulationService(
         {
             performanceMetrics.RecordSnapshotPacketReuse(
                 snapshotPacketCache.VisibilityGroupCount,
-                snapshotPacketCache.EncodedPacketCount,
-                sentPacketCount);
+                snapshotPacketCache.EncodedPacketCount + encodedOwnerPacketCount,
+                sentPacketCount,
+                deferredEntityUpdateCount);
             performanceMetrics.RecordSnapshotBroadcast(
                 Stopwatch.GetElapsedTime(broadcastStarted));
         }
@@ -2826,7 +2937,10 @@ public sealed class RealtimeSimulationService(
         public DateTime? DisconnectAfterUtc { get; set; }
     }
 
-    private readonly record struct SnapshotRecipient(PeerContext Context, NetPeer Peer);
+    private readonly record struct SnapshotRecipient(
+        PeerContext Context,
+        NetPeer Peer,
+        ulong ControlledEntityId);
 
     private abstract record RealtimeOperationResult(PeerContext Context);
 

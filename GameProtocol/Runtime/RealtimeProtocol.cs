@@ -31,7 +31,8 @@ namespace ShooterMmo.GameProtocol
         WorldInteractionIntent = 23,
         WorldInteractionOpened = 24,
         WorldInteractionResult = 25,
-        WorldInteractionClosed = 26
+        WorldInteractionClosed = 26,
+        OwnerSimulationSnapshot = 27
     }
 
     [Flags]
@@ -733,6 +734,29 @@ namespace ShooterMmo.GameProtocol
         public RealtimePlayerState State { get; }
     }
 
+    public sealed class RealtimeOwnerSimulationSnapshot
+    {
+        public RealtimeOwnerSimulationSnapshot(
+            uint snapshotSequence,
+            uint serverTick,
+            uint lastProcessedInputSequence,
+            RealtimePlayerState state)
+        {
+            SnapshotSequence = snapshotSequence;
+            ServerTick = serverTick;
+            LastProcessedInputSequence = lastProcessedInputSequence;
+            State = state;
+        }
+
+        public uint SnapshotSequence { get; }
+
+        public uint ServerTick { get; }
+
+        public uint LastProcessedInputSequence { get; }
+
+        public RealtimePlayerState State { get; }
+    }
+
     public sealed class RealtimeSimulationSnapshot
     {
         public RealtimeSimulationSnapshot(
@@ -789,13 +813,17 @@ namespace ShooterMmo.GameProtocol
         private const int MaximumItemResultRecoveryDeliveries = 8;
 
         public const int MaximumInputBatchSize = 4;
-        public const int MaximumSnapshotEntitiesPerChunk = 20;
+        public const int MaximumUnreliablePacketSize = 1_023;
+        public const int MaximumSnapshotEntitiesPerChunk = 24;
+        public const int SimulationSnapshotPacketHeaderSize = 20;
+        public const int SimulationSnapshotEntitySize = 41;
+        public const int OwnerSimulationSnapshotPacketSize = 48;
         public const byte ControlChannel = 0;
         public const byte MovementInputChannel = 1;
         public const byte UnreliableReceiveChannel = 0;
         public const byte ChannelCount = 2;
 
-        public const ushort Version = 13;
+        public const ushort Version = 14;
         public const string ConnectionKey = "ShooterMmo.Realtime.v8";
         public const int MaximumPacketSize = 1200;
 
@@ -1698,6 +1726,65 @@ namespace ShooterMmo.GameProtocol
                 }
 
                 inputs = decoded;
+                return true;
+            }
+        }
+
+        public static byte[] EncodeOwnerSimulationSnapshot(
+            RealtimeOwnerSimulationSnapshot snapshot)
+        {
+            if (snapshot == null || !IsValidPlayerState(snapshot.State))
+            {
+                throw new ArgumentException(
+                    "Owner simulation snapshot metadata is invalid.",
+                    nameof(snapshot));
+            }
+
+            return Encode(RealtimeMessageType.OwnerSimulationSnapshot, writer =>
+            {
+                writer.Write(snapshot.SnapshotSequence);
+                writer.Write(snapshot.ServerTick);
+                writer.Write(snapshot.LastProcessedInputSequence);
+                WritePlayerState(writer, snapshot.State);
+            });
+        }
+
+        public static bool TryDecodeOwnerSimulationSnapshot(
+            byte[] data,
+            out RealtimeOwnerSimulationSnapshot snapshot,
+            out string error)
+        {
+            snapshot = null;
+            if (!TryCreateReader(
+                    data,
+                    RealtimeMessageType.OwnerSimulationSnapshot,
+                    out var stream,
+                    out var reader,
+                    out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadUInt32(reader, out var snapshotSequence, out error)
+                    || !TryReadUInt32(reader, out var serverTick, out error)
+                    || !TryReadUInt32(
+                        reader,
+                        out var lastProcessedInputSequence,
+                        out error)
+                    || !TryReadPlayerState(reader, out var state, out error)
+                    || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                snapshot = new RealtimeOwnerSimulationSnapshot(
+                    snapshotSequence,
+                    serverTick,
+                    lastProcessedInputSequence,
+                    state);
                 return true;
             }
         }

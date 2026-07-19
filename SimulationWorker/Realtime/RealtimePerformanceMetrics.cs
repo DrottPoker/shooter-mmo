@@ -22,6 +22,9 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     RealtimeDurationSummary? SnapshotBroadcast,
     int CompletedOperationBacklog,
     int MaximumCompletedOperationBacklog,
+    int CorpseMutationBacklog,
+    int MaximumCorpseMutationBacklog,
+    int ActiveCorpseMutations,
     long TickResynchronizations,
     long ProcessAllocatedBytes,
     int Generation0Collections,
@@ -32,7 +35,8 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     long TotalManagedMemoryBytes,
     long SnapshotVisibilityGroups,
     long SnapshotPacketsEncoded,
-    long SnapshotPacketsSent);
+    long SnapshotPacketsSent,
+    long SnapshotEntityUpdatesDeferred);
 
 public sealed class RealtimePerformanceMetrics : IDisposable
 {
@@ -53,6 +57,9 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Counter<long> snapshotVisibilityGroupCounter;
     private readonly Counter<long> snapshotPacketEncodingCounter;
     private readonly Counter<long> snapshotPacketSendCounter;
+    private readonly Counter<long> snapshotEntityUpdateDeferredCounter;
+    private readonly ObservableGauge<int> corpseMutationBacklogGauge;
+    private readonly ObservableGauge<int> activeCorpseMutationGauge;
     private readonly DurationAccumulator networkPoll = new();
     private readonly DurationAccumulator completedOperations = new();
     private readonly DurationAccumulator joinQueueDelay = new();
@@ -65,6 +72,9 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly DurationAccumulator snapshotBroadcast = new();
     private int completedOperationBacklog;
     private int maximumCompletedOperationBacklog;
+    private int corpseMutationBacklog;
+    private int maximumCorpseMutationBacklog;
+    private int activeCorpseMutations;
     private long tickResynchronizations;
     private long previousAllocatedBytes = GC.GetTotalAllocatedBytes(false);
     private int previousGeneration0Collections = GC.CollectionCount(0);
@@ -73,6 +83,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private long snapshotVisibilityGroups;
     private long snapshotPacketsEncoded;
     private long snapshotPacketsSent;
+    private long snapshotEntityUpdatesDeferred;
 
     public RealtimePerformanceMetrics()
     {
@@ -94,6 +105,14 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             "simulation_worker.simulation.snapshot.packets_encoded");
         snapshotPacketSendCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.snapshot.packets_sent");
+        snapshotEntityUpdateDeferredCounter = meter.CreateCounter<long>(
+            "simulation_worker.simulation.snapshot.entity_updates_deferred");
+        corpseMutationBacklogGauge = meter.CreateObservableGauge(
+            "simulation_worker.corpse.mutation.backlog",
+            () => Volatile.Read(ref corpseMutationBacklog));
+        activeCorpseMutationGauge = meter.CreateObservableGauge(
+            "simulation_worker.corpse.mutation.active_aggregates",
+            () => Volatile.Read(ref activeCorpseMutations));
     }
 
     public void RecordNetworkPoll(TimeSpan duration) =>
@@ -132,6 +151,31 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         }
     }
 
+    public void ObserveCorpseMutationCoordinator(int backlog, int activeCorpses)
+    {
+        if (backlog < 0 || activeCorpses < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(backlog));
+        }
+
+        Volatile.Write(ref corpseMutationBacklog, backlog);
+        Volatile.Write(ref activeCorpseMutations, activeCorpses);
+        var observedMaximum = Volatile.Read(ref maximumCorpseMutationBacklog);
+        while (backlog > observedMaximum)
+        {
+            var previous = Interlocked.CompareExchange(
+                ref maximumCorpseMutationBacklog,
+                backlog,
+                observedMaximum);
+            if (previous == observedMaximum)
+            {
+                break;
+            }
+
+            observedMaximum = previous;
+        }
+    }
+
     public void RecordSimulationTick(TimeSpan duration) =>
         Record(simulationTick, simulationTickHistogram, duration);
 
@@ -159,9 +203,13 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     public void RecordSnapshotPacketReuse(
         int visibilityGroups,
         int packetsEncoded,
-        int packetsSent)
+        int packetsSent,
+        long entityUpdatesDeferred)
     {
-        if (visibilityGroups < 0 || packetsEncoded < 0 || packetsSent < 0)
+        if (visibilityGroups < 0
+            || packetsEncoded < 0
+            || packetsSent < 0
+            || entityUpdatesDeferred < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(visibilityGroups));
         }
@@ -169,9 +217,11 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         Interlocked.Add(ref snapshotVisibilityGroups, visibilityGroups);
         Interlocked.Add(ref snapshotPacketsEncoded, packetsEncoded);
         Interlocked.Add(ref snapshotPacketsSent, packetsSent);
+        Interlocked.Add(ref snapshotEntityUpdatesDeferred, entityUpdatesDeferred);
         snapshotVisibilityGroupCounter.Add(visibilityGroups);
         snapshotPacketEncodingCounter.Add(packetsEncoded);
         snapshotPacketSendCounter.Add(packetsSent);
+        snapshotEntityUpdateDeferredCounter.Add(entityUpdatesDeferred);
     }
 
     public RealtimePerformanceMetricsSnapshot CaptureAndReset()
@@ -188,6 +238,12 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             Interlocked.Exchange(
                 ref maximumCompletedOperationBacklog,
                 currentCompletedOperationBacklog));
+        var currentCorpseMutationBacklog = Volatile.Read(ref corpseMutationBacklog);
+        var maximumCorpseBacklog = Math.Max(
+            currentCorpseMutationBacklog,
+            Interlocked.Exchange(
+                ref maximumCorpseMutationBacklog,
+                currentCorpseMutationBacklog));
         return new RealtimePerformanceMetricsSnapshot(
             networkPoll.CaptureAndReset(),
             completedOperations.CaptureAndReset(),
@@ -201,6 +257,9 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             snapshotBroadcast.CaptureAndReset(),
             currentCompletedOperationBacklog,
             maximumBacklog,
+            currentCorpseMutationBacklog,
+            maximumCorpseBacklog,
+            Volatile.Read(ref activeCorpseMutations),
             Interlocked.Exchange(ref tickResynchronizations, 0),
             Math.Max(0, allocatedBytes - Interlocked.Exchange(ref previousAllocatedBytes, allocatedBytes)),
             Math.Max(
@@ -223,7 +282,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             GC.GetTotalMemory(false),
             Interlocked.Exchange(ref snapshotVisibilityGroups, 0),
             Interlocked.Exchange(ref snapshotPacketsEncoded, 0),
-            Interlocked.Exchange(ref snapshotPacketsSent, 0));
+            Interlocked.Exchange(ref snapshotPacketsSent, 0),
+            Interlocked.Exchange(ref snapshotEntityUpdatesDeferred, 0));
     }
 
     public void Dispose()

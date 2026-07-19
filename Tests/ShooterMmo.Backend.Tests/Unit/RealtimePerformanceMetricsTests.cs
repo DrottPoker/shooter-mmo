@@ -17,8 +17,11 @@ public sealed class RealtimePerformanceMetricsTests
         metrics.ObserveCompletedOperationBacklog(2);
         metrics.ObserveCompletedOperationBacklog(7);
         metrics.ObserveCompletedOperationBacklog(3);
+        metrics.ObserveCorpseMutationCoordinator(4, 2);
+        metrics.ObserveCorpseMutationCoordinator(9, 3);
+        metrics.ObserveCorpseMutationCoordinator(5, 2);
         metrics.RecordTickResynchronization();
-        metrics.RecordSnapshotPacketReuse(2, 4, 40);
+        metrics.RecordSnapshotPacketReuse(2, 4, 40, 80);
 
         var snapshot = metrics.CaptureAndReset();
 
@@ -30,6 +33,9 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Equal(1, snapshot.JoinFinalization!.Samples);
         Assert.Equal(3, snapshot.CompletedOperationBacklog);
         Assert.Equal(7, snapshot.MaximumCompletedOperationBacklog);
+        Assert.Equal(5, snapshot.CorpseMutationBacklog);
+        Assert.Equal(9, snapshot.MaximumCorpseMutationBacklog);
+        Assert.Equal(2, snapshot.ActiveCorpseMutations);
         Assert.Equal(1, snapshot.TickResynchronizations);
         Assert.True(snapshot.ProcessAllocatedBytes >= 0);
         Assert.True(snapshot.Generation0Collections >= 0);
@@ -41,6 +47,7 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Equal(2, snapshot.SnapshotVisibilityGroups);
         Assert.Equal(4, snapshot.SnapshotPacketsEncoded);
         Assert.Equal(40, snapshot.SnapshotPacketsSent);
+        Assert.Equal(80, snapshot.SnapshotEntityUpdatesDeferred);
 
         var reset = metrics.CaptureAndReset();
         Assert.Null(reset.SimulationTick);
@@ -49,10 +56,14 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Null(reset.JoinFinalization);
         Assert.Equal(3, reset.CompletedOperationBacklog);
         Assert.Equal(3, reset.MaximumCompletedOperationBacklog);
+        Assert.Equal(5, reset.CorpseMutationBacklog);
+        Assert.Equal(5, reset.MaximumCorpseMutationBacklog);
+        Assert.Equal(2, reset.ActiveCorpseMutations);
         Assert.Equal(0, reset.TickResynchronizations);
         Assert.Equal(0, reset.SnapshotVisibilityGroups);
         Assert.Equal(0, reset.SnapshotPacketsEncoded);
         Assert.Equal(0, reset.SnapshotPacketsSent);
+        Assert.Equal(0, reset.SnapshotEntityUpdatesDeferred);
     }
 
     [Fact]

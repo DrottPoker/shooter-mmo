@@ -82,6 +82,38 @@ The measured gameplay operations do not call those fixture routes. Each bot owns
 an independent UDP endpoint. Clients use LiteNetLib manual polling so the
 harness does not create one transport thread per bot.
 
+### Dense Replication And Shared Corpse Scheduling
+
+Protocol version `14` separates local authority from degradable remote
+presentation. Every joined client receives a small owner snapshot at the full
+configured 15 Hz. That packet carries the authoritative local state and input
+acknowledgement. Remote visible entities use MTU-safe chunks of at most 24
+records and a rotating fair scheduler. When a dense visibility set cannot fit
+inside the worker-wide byte budget, remote entity cadence decreases while owner
+cadence remains fixed.
+
+`SimulationWorker:SnapshotReplication:OverloadTargetUtilizationBasisPoints`
+defaults to `9500`. The scheduler targets 95 percent of each recipient's fair
+share, leaving token-bucket margin for tick jitter. The worker reports remote
+work not sent in the current frame through
+`simulation_worker.simulation.snapshot.entity_updates_deferred`. This is
+scheduled quality degradation, not a dropped owner frame. Stress report
+`estimatedMissingSnapshots` counts owner sequence gaps only. At the current
+38 MiB/s aggregate budget, 400 mutually visible players receive owner state at
+15 Hz and about 5.6 Hz average remote entity state. A larger World should reduce
+the visible set before this dense fallback is needed.
+
+Shared corpse traffic has two separate bounds. One committed mutation is
+encoded once and reuses the same packet bytes for every viewer. Open and refresh
+state targets only the requester. Mutations for one corpse enter AuthService one
+at a time through a worker-local coordinator, while different corpses remain
+parallel. This retains AuthService idempotency and final PostgreSQL validation
+without occupying the complete connection pool with waiters for one corpse row.
+The performance meter publishes
+`simulation_worker.corpse.mutation.backlog` and
+`simulation_worker.corpse.mutation.active_aggregates`, and the interval log
+retains the maximum observed queue depth.
+
 ## Full-stack Database Safety
 
 Full-stack mode is intentionally restricted to a disposable local database.
@@ -171,7 +203,7 @@ start the worker. The following metrics override is also useful:
 
 ```powershell
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project SimulationWorker --configuration Release --no-build
+dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result:
@@ -225,7 +257,7 @@ $env:DevelopmentSimulationBots__Enabled = "false"
 $env:RateLimiting__Authentication__PermitLimit = "100000"
 $env:RateLimiting__Authentication__WindowSeconds = "60"
 $env:ASPNETCORE_URLS = "http://127.0.0.1:5500"
-dotnet run --project AuthService --configuration Release --no-build
+dotnet run --project AuthService --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result: migrations complete and AuthService listens on
@@ -255,7 +287,7 @@ $env:SIMULATION_WORKER_ADVERTISED_HOST = "127.0.0.1"
 $env:SIMULATION_WORKER_ADVERTISED_UDP_PORT = "27025"
 $env:SIMULATION_WORLD_ID = "development-world-2"
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project SimulationWorker --configuration Release --no-build
+dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result: the worker registers `local-shard-1` and
@@ -403,7 +435,8 @@ Every JSON report contains:
 - Requested, joined, completed, and failed bot totals plus stable failure codes.
 - Join and input acknowledgement latency percentiles.
 - Sent and received packets and bytes.
-- Snapshot counts and estimated missing snapshot sequences.
+- Owner and remote snapshot packet counts plus estimated missing owner
+  sequences.
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
   summaries, including steady-state memory trend windows.
@@ -434,7 +467,8 @@ completion handling, join queue and finalization, simulation ticks and lag,
 movement, collision streaming, interest work, snapshot construction and send,
 and fixed-tick resynchronization. Timing metrics are also published through the
 `ShooterMmo.SimulationWorker.Performance` meter. Network counters remain under
-`ShooterMmo.SimulationWorker.Realtime`.
+`ShooterMmo.SimulationWorker.Realtime`. Performance counters also expose shared
+snapshot packet encoding, sent packets, and deferred remote entity updates.
 
 ## Quality Boundary
 
@@ -444,7 +478,11 @@ A tier is not supported merely because every process remains alive. Require:
 - No unexpected disconnect, protocol error, or normal-input quota rejection.
 - No fixed-tick resynchronization during the steady interval.
 - Simulation tick p99 remains below the 33.34 ms fixed-tick budget.
-- Snapshot gaps and input acknowledgement latency remain stable.
+- Owner snapshot gaps are zero, snapshot drops are zero, and input
+  acknowledgement latency remains stable.
+- Remote entity cadence and deferred-update rate match the tier's documented
+  quality target. A process remaining alive is not enough if remote presentation
+  falls below that target.
 - Worker, AuthService, and generator working sets stabilize after warmup.
 - Worker registration and simulation-session leases remain valid.
 - Full-stack HTTP operations complete without unexpected failure codes.
@@ -458,6 +496,11 @@ A tier is not supported merely because every process remains alive. Require:
 Record the first boundary that fails and the phase whose duration grows with
 load. Optimize only after a repeatable run identifies the limiting phase, then
 rerun the same seed, mode, and tier for comparison.
+
+Every future high-frequency gameplay feature must add or extend a workload that
+captures its fan-out, database operations, allocation rate, backlog, and encoded
+bytes before a higher tier is accepted. Preserve owner feedback and session
+leases before degrading remote presentation work.
 
 ## Current Worker-only Baseline
 
@@ -476,17 +519,32 @@ sharing one Windows development machine:
 | Final clean tier | 250 | 30 s | 250/250 | 0 | 148.9 ms | 70.8% | at most 16 ms | 129.8 MiB | Clean short run |
 | 2026-07-19 validation | 250 | 60 s | 250/250 | 0 | 144.2 ms | 61.8% | at most 16 ms | 107.9 MiB | Clean short run |
 | Controlled overload | 400 | 120 s | 400/400 | 461,263 | 427.0 ms | 95.6% | at most 50 ms | 239.5 MiB | Not a supported quality tier |
+| Protocol 13 identical baseline | 400 | 60 s | 400/400 | 226,962 | 425.0 ms | 76.5% | at most 24 ms | 176.7 MiB | Snapshot quality failed |
+| Protocol 14 owner-priority scheduling | 400 | 60 s | 400/400 | 0 | 160.1 ms | 78.9% | at most 24 ms | 155.1 MiB | Clean owner path, remote cadence about 5.6 Hz |
 
 At 200 bots, reusable interest state and visibility-set packet sharing reduced
 steady process allocation from about 1,690 MiB to 258 MiB per ten-second metrics
 interval. Snapshot-pipeline average fell from 11.9 ms to 2.4 ms and worker CPU
 fell by about 21 percent.
 
-The 400-bot overload run remained available by dropping unreliable snapshots,
-but it fails the quality boundary because snapshot gaps grow and simulation tick
-p99 crosses 33.34 ms. The 250-bot result is only a short clean run. A 30 to 60
-minute soak is still required before declaring supported capacity. No comparable
-full-stack production capacity baseline has been accepted yet.
+The identical 400-bot comparison used seed `1337`, four 100-bot ramp steps five
+seconds apart, and a 60-second steady interval. Protocol 13 attempted the full
+400-entity set for every recipient at 15 Hz. That required about 100 MB/s before
+transport overhead while the checked-in worker budget is 38 MiB/s. Aggregate
+backpressure therefore created 226,962 snapshot sequence gaps and raised input
+acknowledgement p95 to 425.0 ms.
+
+Protocol 14 preserves a dedicated 15 Hz owner packet, applies the 95 percent
+fair-share target, and rotates 149 remote entity records per dense frame. The
+same tier completed with zero owner sequence gaps, zero snapshot drops, input
+acknowledgement p95 of 160.1 ms, and no tick resynchronization. Steady worker
+traffic was about 36.9 MiB/s. This establishes a clean local authority path for
+400 co-located players, not 15 Hz full-state replication of all 399 remote
+players. The current average remote entity cadence is about 5.6 Hz. Raising the
+budget is not the default fix. Larger maps should reduce interest cardinality,
+and future protocol work may add measured quantization or delta compression.
+The 250- and 400-bot results are short runs. A 30 to 60 minute soak is still
+required before declaring a supported production tier.
 
 ## Current Full-stack Baseline
 
@@ -513,14 +571,50 @@ expired unreleased session. Registration and login p95 were 5.46 and 5.33
 seconds under the intentional password-hashing and pool queue burst. This is
 bounded admission backpressure, not a steady-state gameplay delay.
 
-The 400-bot run proves the pool boundary also holds during controlled overload.
-Every account and session lifecycle completed, but the dense map exceeded the
-worker-wide 38 MiB/s snapshot budget. SimulationWorker deliberately dropped
-about 2.52 million unreliable snapshots to remain available. Simulation tick
-p99 reached the 50 ms bucket, snapshot gaps grew, and input acknowledgement p95
-reached 479.5 ms. This is a SimulationWorker bandwidth and dense-interest
-quality boundary, not an AuthService or PostgreSQL failure. Raising the snapshot
-budget would remove protection rather than fix the all-to-all workload.
+The historical 400-bot full-stack run proves the pool boundary also held during
+protocol 13 controlled overload. Its lifecycle completed, but dense replication
+failed the old worker quality boundary. The protocol 14 worker-only comparison
+above fixes owner starvation. A protocol 14 full-stack 400-bot lifecycle rerun
+is still required before replacing this historical row.
+
+### Mixed Gameplay Results
+
+The following profiles used one shared durable corpse, real UDP item and corpse
+commands, AuthService transactions, PostgreSQL custody, and final database
+invariant checks. The 250-bot comparisons used the same seed, 64-way HTTP
+admission, five 50-bot ramp steps five seconds apart, three-second inventory
+operations, four-second corpse operations, and a 60-second steady interval.
+
+| Run | Bots | Complete lifecycle | Unexpected gameplay rejections | Transaction timeout codes | PostgreSQL max connections | Maximum active waits | Input ack p95 | Worker average single-core CPU | Maximum working set | Result |
+| --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Clean mixed baseline | 100 | 100/100 | 0 | 0 | 55 | 17 | 135.5 ms | 39.4% | 122.5 MiB | Clean short run |
+| Before corpse fan-out optimization | 250 | 250/250 | 322 | 10 | 66 | 62 | 662.0 ms | 115.6% | 602.7 MiB | Failed gameplay quality |
+| Encoded reuse and targeted refresh | 250 | 250/250 | 3 | 3 | 67 | 61 | 190.3 ms | 73.7% | 168.1 MiB | Database hotspot remained |
+| Per-corpse mutation coordination | 250 | 250/250 | 0 | 0 | 66 | 39 | 186.5 ms | 68.9% | Clean short run |
+
+Before optimization, every successful open or refresh rebuilt a full corpse
+view and broadcast it to every viewer. Every viewer also re-encoded identical
+chunks. The resulting multiplicative fan-out drove worker allocation above
+2 GiB per ten-second metrics interval, grew the completion backlog to 188, and
+produced hundreds of range and transaction failures as acknowledgements fell
+behind.
+
+The final implementation sends open and refresh state only to the requester,
+encodes each committed update once for all viewers, reserves snapshot burst
+headroom, and serializes only mutations that target the same corpse. Different
+corpses and ordinary inventory operations remain parallel. The final run had
+zero snapshot drops, zero operation timeouts, zero unexpected gameplay results,
+zero deadlocks, zero expired unreleased sessions, and exact item quantity, slot,
+custody, and operation-journal invariants. It completed 5,056 successful
+inventory relocations and 2,514 successful corpse refreshes.
+
+The intentionally pathological shared corpse still exposes aggregate latency:
+2,407 stale deposit attempts were reported as expected conflicts and deposit
+p95 was 3.44 seconds because one corpse is one serialized custody aggregate.
+This is now bounded backpressure instead of database pool exhaustion. Multiple
+geographically separate corpse hotspots need a future workload to verify that
+the per-corpse coordinator preserves parallel throughput. The clean result is a
+short stability run, not a production capacity declaration.
 
 ## Scope Boundary
 

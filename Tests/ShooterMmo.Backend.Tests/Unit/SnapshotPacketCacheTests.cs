@@ -19,13 +19,13 @@ public sealed class SnapshotPacketCacheTests
             .Select(value => (ulong)value)
             .ToArray();
         var equalVisibility = firstVisibility.ToArray();
-        var first = cache.GetOrCreate(firstVisibility, 7, 11);
-        var reused = cache.GetOrCreate(equalVisibility, 7, 11);
+        var first = cache.GetOrCreate(firstVisibility, 7, 11, int.MaxValue, 9_500);
+        var reused = cache.GetOrCreate(equalVisibility, 7, 11, int.MaxValue, 9_500);
 
         Assert.Same(first, reused);
         Assert.Equal(1, cache.VisibilityGroupCount);
         Assert.Equal(2, cache.EncodedPacketCount);
-        Assert.Equal([20, 5], first.EntityCounts);
+        Assert.Equal([24, 1], first.EntityCounts);
         Assert.Equal(first.Packets.Sum(packet => packet.Length), first.TotalBytes);
         Assert.All(first.Packets, packet =>
         {
@@ -49,8 +49,8 @@ public sealed class SnapshotPacketCacheTests
         cache.Add(CreateSnapshot(1));
         cache.Add(CreateSnapshot(2));
 
-        var first = cache.GetOrCreate([1, 2], 1, 1);
-        var second = cache.GetOrCreate([2, 3], 1, 1);
+        var first = cache.GetOrCreate([1, 2], 1, 1, int.MaxValue, 9_500);
+        var second = cache.GetOrCreate([2, 3], 1, 1, int.MaxValue, 9_500);
 
         Assert.NotSame(first, second);
         Assert.Equal(2, cache.VisibilityGroupCount);

@@ -47,6 +47,8 @@ namespace ShooterMmo.Networking
 
         public event Action<RealtimeSimulationSnapshot> SimulationSnapshotReceived;
 
+        public event Action<RealtimeOwnerSimulationSnapshot> OwnerSimulationSnapshotReceived;
+
         public event Action<PlayerCarryState> CarryStateChanged;
 
         public event Action<RealtimeItemOperationResult> ItemOperationCompleted;
@@ -606,7 +608,8 @@ namespace ShooterMmo.Networking
                     return;
                 }
 
-                if (messageType == RealtimeMessageType.SimulationSnapshot)
+                if (messageType == RealtimeMessageType.SimulationSnapshot
+                    || messageType == RealtimeMessageType.OwnerSimulationSnapshot)
                 {
                     if (channel != RealtimeProtocol.UnreliableReceiveChannel
                         || deliveryMethod != DeliveryMethod.Unreliable)
@@ -622,7 +625,15 @@ namespace ShooterMmo.Networking
                         return;
                     }
 
-                    HandleSimulationSnapshot(packet);
+                    if (messageType == RealtimeMessageType.OwnerSimulationSnapshot)
+                    {
+                        HandleOwnerSimulationSnapshot(packet);
+                    }
+                    else
+                    {
+                        HandleSimulationSnapshot(packet);
+                    }
+
                     return;
                 }
 
@@ -817,6 +828,21 @@ namespace ShooterMmo.Networking
             }
 
             SnapshotPacketsReceived++;
+            SimulationSnapshotReceived?.Invoke(snapshot);
+        }
+
+        private void HandleOwnerSimulationSnapshot(byte[] packet)
+        {
+            if (!RealtimeProtocol.TryDecodeOwnerSimulationSnapshot(
+                    packet,
+                    out var snapshot,
+                    out var error))
+            {
+                FailProtocol("invalid_owner_simulation_snapshot", error);
+                return;
+            }
+
+            SnapshotPacketsReceived++;
             if (!hasSnapshotSequence)
             {
                 hasSnapshotSequence = true;
@@ -848,7 +874,7 @@ namespace ShooterMmo.Networking
                 || MovementSequence.IsNewer(snapshot.ServerTick, LatestServerTick))
             {
                 LatestServerTick = snapshot.ServerTick;
-                SimulationSnapshotReceived?.Invoke(snapshot);
+                OwnerSimulationSnapshotReceived?.Invoke(snapshot);
             }
         }
 

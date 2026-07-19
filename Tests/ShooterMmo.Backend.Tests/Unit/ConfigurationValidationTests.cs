@@ -193,6 +193,9 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(TimeSpan.FromSeconds(10), config.RegistryHeartbeatInterval);
         Assert.Equal(8, config.SimulationSessionHeartbeatMaxConcurrency);
         Assert.Equal(128f, config.InterestManagement.EnterRadius);
+        Assert.Equal(
+            9_500,
+            config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
         Assert.Equal(2, config.CollisionStreaming.LoadRadiusChunks);
         Assert.Equal(38 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotBytesPerSecond);
         Assert.Equal(4 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotByteBurst);

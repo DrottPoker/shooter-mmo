@@ -278,7 +278,8 @@ public sealed class RealtimeEntityLifecycleTests
             {
                 var packet = reader.GetRemainingBytes();
                 Assert.True(RealtimeProtocol.TryReadMessageType(packet, out var messageType));
-                if (messageType == RealtimeMessageType.SimulationSnapshot)
+                if (messageType is RealtimeMessageType.SimulationSnapshot
+                    or RealtimeMessageType.OwnerSimulationSnapshot)
                 {
                     return;
                 }

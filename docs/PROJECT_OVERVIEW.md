@@ -141,7 +141,7 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `13`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `14`,
   movement revision `movement-simulation-v3`, and identical authoritative and
   predicted encumbrance behavior.
 - Deterministic NPC and Mob definitions, factions, presentation references,

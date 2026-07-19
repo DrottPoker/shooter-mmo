@@ -287,6 +287,9 @@ public sealed class SimulationBotClient : IDisposable
                 case RealtimeMessageType.SimulationSnapshot:
                     HandleSnapshot(packet, channel, deliveryMethod);
                     break;
+                case RealtimeMessageType.OwnerSimulationSnapshot:
+                    HandleOwnerSnapshot(packet, channel, deliveryMethod);
+                    break;
                 case RealtimeMessageType.LeaveAccepted:
                     HandleLeaveAccepted(packet);
                     break;
@@ -554,7 +557,7 @@ public sealed class SimulationBotClient : IDisposable
         byte channel,
         DeliveryMethod deliveryMethod)
     {
-        return State == SimulationBotClientState.Joined
+        return State is SimulationBotClientState.Joined or SimulationBotClientState.Leaving
             && channel == RealtimeProtocol.ControlChannel
             && deliveryMethod == DeliveryMethod.ReliableOrdered;
     }
@@ -616,6 +619,30 @@ public sealed class SimulationBotClient : IDisposable
         }
 
         snapshotsReceived++;
+    }
+
+    private void HandleOwnerSnapshot(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod)
+    {
+        if (channel != RealtimeProtocol.UnreliableReceiveChannel
+            || deliveryMethod != DeliveryMethod.Unreliable)
+        {
+            Fail("invalid_owner_snapshot", "Owner snapshot delivery is invalid.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeOwnerSimulationSnapshot(
+                packet,
+                out var snapshot,
+                out var error))
+        {
+            Fail("invalid_owner_snapshot", error);
+            return;
+        }
+
+        snapshotsReceived++;
         latestServerTick = snapshot.ServerTick;
         if (!hasSnapshotSequence)
         {
@@ -632,17 +659,7 @@ public sealed class SimulationBotClient : IDisposable
             lastSnapshotSequence = snapshot.SnapshotSequence;
         }
 
-        if (joinedSession is null)
-        {
-            return;
-        }
-
-        var localEntity = snapshot.Entities.FirstOrDefault(
-            entity => entity.EntityId == joinedSession.ControlledEntityId);
-        if (localEntity is not null)
-        {
-            AcknowledgeInputs(localEntity.LastProcessedInputSequence);
-        }
+        AcknowledgeInputs(snapshot.LastProcessedInputSequence);
     }
 
     private void HandleLeaveAccepted(byte[] packet)

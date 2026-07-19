@@ -41,6 +41,9 @@ public sealed record SimulationWorkerConfig(
     public InterestManagementConfig InterestManagement { get; init; } =
         InterestManagementConfig.Default;
 
+    public SnapshotReplicationConfig SnapshotReplication { get; init; } =
+        SnapshotReplicationConfig.Default;
+
     public CollisionStreamingConfig CollisionStreaming { get; init; } =
         CollisionStreamingConfig.Default;
 
@@ -287,6 +290,11 @@ public sealed record SimulationWorkerConfig(
             interestSection["ExitRadius"],
             "SimulationWorker:InterestManagement:ExitRadius",
             errors);
+        var snapshotReplicationSection = section.GetSection("SnapshotReplication");
+        var overloadTargetUtilizationBasisPoints = PositiveInt(
+            snapshotReplicationSection["OverloadTargetUtilizationBasisPoints"] ?? "9500",
+            "SimulationWorker:SnapshotReplication:OverloadTargetUtilizationBasisPoints",
+            errors);
         var collisionStreamingSection = section.GetSection("CollisionStreaming");
         var collisionLoadRadiusChunks = PositiveInt(
             collisionStreamingSection["LoadRadiusChunks"],
@@ -380,6 +388,12 @@ public sealed record SimulationWorkerConfig(
             || interestExitRadius / interestCellSize > 64f)
         {
             errors.Add("SimulationWorker interest management requires bounded positive radii, a positive cell size, an exit radius greater than or equal to the enter radius, and no more than 64 searched cells per axis direction.");
+        }
+
+        if (overloadTargetUtilizationBasisPoints > 10_000)
+        {
+            errors.Add(
+                "SimulationWorker:SnapshotReplication:OverloadTargetUtilizationBasisPoints must not exceed 10000.");
         }
 
         if (collisionUnloadRadiusChunks < collisionLoadRadiusChunks)
@@ -519,6 +533,8 @@ public sealed record SimulationWorkerConfig(
                 interestCellSize,
                 interestEnterRadius,
                 interestExitRadius),
+            SnapshotReplication = new SnapshotReplicationConfig(
+                overloadTargetUtilizationBasisPoints),
             CollisionStreaming = new CollisionStreamingConfig(
                 collisionLoadRadiusChunks,
                 collisionUnloadRadiusChunks),
@@ -639,6 +655,11 @@ public sealed record InterestManagementConfig(
     float ExitRadius)
 {
     public static InterestManagementConfig Default { get; } = new(64f, 128f, 144f);
+}
+
+public sealed record SnapshotReplicationConfig(int OverloadTargetUtilizationBasisPoints)
+{
+    public static SnapshotReplicationConfig Default { get; } = new(9_500);
 }
 
 public sealed record CollisionStreamingConfig(

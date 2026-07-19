@@ -32,6 +32,8 @@ namespace ShooterMmo.Gameplay
             new CollisionQueryBuffer();
         private readonly GroundedVerticalPresentation groundedVerticalPresentation =
             new GroundedVerticalPresentation();
+        private readonly SimulationVector3[] collisionStreamingAnchor =
+            new SimulationVector3[1];
         private MovementSimulationSettings networkSettings;
         private float networkTickAccumulator;
         private bool isInitialNetworkTickPending;
@@ -184,7 +186,7 @@ namespace ShooterMmo.Gameplay
                 networkSettings,
                 simulationClient.MovementSession.CarryState,
                 simulationClient.MovementSession.CollisionWorld);
-            realtimeClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+            realtimeClient.OwnerSimulationSnapshotReceived += OnOwnerSimulationSnapshotReceived;
             realtimeClient.CarryStateChanged += OnCarryStateChanged;
             networkTickAccumulator = 0f;
             isInitialNetworkTickPending = true;
@@ -206,7 +208,7 @@ namespace ShooterMmo.Gameplay
         {
             if (realtimeClient != null)
             {
-                realtimeClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
+                realtimeClient.OwnerSimulationSnapshotReceived -= OnOwnerSimulationSnapshotReceived;
                 realtimeClient.CarryStateChanged -= OnCarryStateChanged;
             }
 
@@ -336,7 +338,8 @@ namespace ShooterMmo.Gameplay
             realtimeClient.TrySendMovementInputs(movementPrediction.CreateRedundantInputBatch());
         }
 
-        private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
+        private void OnOwnerSimulationSnapshotReceived(
+            RealtimeOwnerSimulationSnapshot snapshot)
         {
             var movementSession = realtimeClient != null ? realtimeClient.MovementSession : null;
             if (movementSession == null)
@@ -344,31 +347,35 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            for (var index = 0; index < snapshot.Entities.Length; index++)
+            var state = snapshot.State;
+            collisionStreamingAnchor[0] = new SimulationVector3(
+                state.PositionX,
+                state.PositionY,
+                state.PositionZ);
+            if (!movementSession.TryRefreshCollisionStreaming(
+                    collisionStreamingAnchor,
+                    out var collisionError))
             {
-                var entity = snapshot.Entities[index];
-                if (entity.EntityId != movementSession.ControlledEntityId)
-                {
-                    continue;
-                }
-
-                var state = entity.State;
-                var authoritative = new PlayerMovementState(
-                    state.PositionX,
-                    state.PositionY,
-                    state.PositionZ,
-                    state.VelocityX,
-                    state.VelocityY,
-                    state.VelocityZ,
-                    state.YawDegrees,
-                    state.IsGrounded,
-                    state.IsSprinting);
-                var reconciliation = movementPrediction.Reconcile(
-                    authoritative,
-                    entity.LastProcessedInputSequence);
-                ApplyReconciliationCorrection(reconciliation);
+                realtimeClient.DisconnectForClientFailure(
+                    "collision_stream_failed",
+                    collisionError);
                 return;
             }
+
+            var authoritative = new PlayerMovementState(
+                state.PositionX,
+                state.PositionY,
+                state.PositionZ,
+                state.VelocityX,
+                state.VelocityY,
+                state.VelocityZ,
+                state.YawDegrees,
+                state.IsGrounded,
+                state.IsSprinting);
+            var reconciliation = movementPrediction.Reconcile(
+                authoritative,
+                snapshot.LastProcessedInputSequence);
+            ApplyReconciliationCorrection(reconciliation);
         }
 
         private void OnCarryStateChanged(PlayerCarryState carryState)

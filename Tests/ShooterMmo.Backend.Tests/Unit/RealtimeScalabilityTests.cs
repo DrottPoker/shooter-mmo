@@ -77,4 +77,91 @@ public sealed class RealtimeScalabilityTests
             stopwatch.Elapsed < TimeSpan.FromSeconds(5),
             $"Realtime scalability workload exceeded its five-second budget: {stopwatch.Elapsed}.");
     }
+
+    [Fact]
+    public void DenseSnapshotBudgetRotatesRemoteEntitiesWithoutExceedingFairShare()
+    {
+        const int entityCount = 400;
+        var visible = Enumerable.Range(1, entityCount)
+            .Select(index => (ulong)index)
+            .ToArray();
+        var cache = CreateSnapshotCache(visible);
+        var bytesPerRecipient = (38 * 1024 * 1024) / 15 / entityCount;
+
+        var first = cache.GetOrCreate(visible, 1, 1, bytesPerRecipient, 9_500);
+        var firstIds = DecodeEntityIds(first);
+        cache.Reset();
+        foreach (var entityId in visible)
+        {
+            AddSnapshot(cache, entityId);
+        }
+
+        var second = cache.GetOrCreate(visible, 2, 2, bytesPerRecipient, 9_500);
+        var secondIds = DecodeEntityIds(second);
+
+        Assert.Equal(149, first.EntityCount);
+        Assert.Equal(251, first.DeferredEntityCount);
+        Assert.Equal(7, first.Packets.Count);
+        Assert.True(
+            first.TotalBytes + RealtimeProtocol.OwnerSimulationSnapshotPacketSize
+                <= (bytesPerRecipient * 9_500) / 10_000);
+        Assert.Empty(firstIds.Intersect(secondIds));
+        Assert.Equal(298, firstIds.Concat(secondIds).Distinct().Count());
+    }
+
+    [Fact]
+    public void SnapshotBudgetKeepsConfiguredHeadroomBeforeAggregateBackpressure()
+    {
+        const int entityCount = 250;
+        var visible = Enumerable.Range(1, entityCount)
+            .Select(index => (ulong)index)
+            .ToArray();
+        var cache = CreateSnapshotCache(visible);
+        var bytesPerRecipient = (38 * 1024 * 1024) / 15 / entityCount;
+
+        var batch = cache.GetOrCreate(visible, 1, 1, bytesPerRecipient, 9_500);
+
+        Assert.Equal(240, batch.EntityCount);
+        Assert.Equal(10, batch.DeferredEntityCount);
+        Assert.Equal(10, batch.Packets.Count);
+        Assert.True(
+            batch.TotalBytes + RealtimeProtocol.OwnerSimulationSnapshotPacketSize
+                <= (bytesPerRecipient * 9_500) / 10_000);
+    }
+
+    private static SnapshotPacketCache CreateSnapshotCache(IEnumerable<ulong> entityIds)
+    {
+        var cache = new SnapshotPacketCache();
+        foreach (var entityId in entityIds)
+        {
+            AddSnapshot(cache, entityId);
+        }
+
+        return cache;
+    }
+
+    private static void AddSnapshot(SnapshotPacketCache cache, ulong entityId)
+    {
+        cache.Add(new RealtimeEntitySnapshot(
+            entityId,
+            1,
+            new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true, false)));
+    }
+
+    private static IReadOnlyList<ulong> DecodeEntityIds(SnapshotPacketBatch batch)
+    {
+        var entityIds = new List<ulong>();
+        foreach (var packet in batch.Packets)
+        {
+            Assert.True(
+                RealtimeProtocol.TryDecodeSimulationSnapshot(
+                    packet,
+                    out var snapshot,
+                    out var error),
+                error);
+            entityIds.AddRange(snapshot.Entities.Select(entity => entity.EntityId));
+        }
+
+        return entityIds;
+    }
 }

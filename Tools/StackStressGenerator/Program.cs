@@ -127,7 +127,8 @@ public static class Program
         Console.WriteLine($"$env:SIMULATION_WORKER_UDP_PORT='{options.WorkerUdpPort}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_ADVERTISED_HOST='{options.WorkerHost}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_ADVERTISED_UDP_PORT='{options.WorkerUdpPort}'");
-        Console.WriteLine("dotnet run --project SimulationWorker --configuration Release");
+        Console.WriteLine(
+            "dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile");
         Console.WriteLine(
             "The secret is ephemeral for this stress run and is not written to the JSON report.");
     }

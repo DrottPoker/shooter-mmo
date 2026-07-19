@@ -153,11 +153,12 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - Active simulation sessions and connection-to-entity bindings.
 - Server-assigned network entity ids and reliable spawn and despawn.
 - Fixed-rate authoritative movement and collision queries.
-- Input sequence processing and periodic snapshots.
+- Input sequence processing, fixed-rate owner snapshots, and budget-scheduled
+  remote snapshots.
 - Spatial interest management with enter and exit hysteresis.
-- Snapshot encoding reuse for peers with equal visibility.
-- Per-peer UDP quotas, fair aggregate snapshot backpressure, and
-  low-cardinality realtime metrics.
+- Snapshot encoding reuse for peers with equal visibility and MTU-safe chunks.
+- Per-peer UDP quotas, fair aggregate snapshot scheduling with reserved burst
+  headroom, and low-cardinality realtime metrics.
 - Server-side population gauges that distinguish real players, synthetic bots,
   and unauthenticated peers without extending the gameplay protocol.
 - Bounded session heartbeat fan-out.
@@ -190,15 +191,17 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
-Protocol version 11 includes:
+Protocol version 14 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
 - Server-assigned network entity ids.
 - Reliable ordered entity spawn and despawn.
 - Bounded, sequenced movement input batches.
-- Chunked simulation snapshots with server tick, snapshot sequence, and input
-  acknowledgement.
+- A dedicated fixed-rate owner snapshot with server tick, snapshot sequence,
+  input acknowledgement, and authoritative reconciliation state.
+- Chunked remote simulation snapshots whose visible entity updates rotate
+  fairly when the worker-wide byte budget cannot carry the full dense set.
 - Movement, simulation revision, and collision revision metadata.
 - Admission-fenced carry state in join acceptance and reliable ordered updates
   for newer committed item-state revisions.
@@ -211,8 +214,38 @@ Protocol version 11 includes:
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
-Snapshots use unchanneled unreliable delivery and application-level tick and
-chunk metadata.
+Owner and remote snapshots use unchanneled unreliable delivery. Remote packets
+retain application-level tick and chunk metadata, while the owner packet is
+small enough to remain prioritized at the configured snapshot rate.
+
+### Realtime Performance Contract
+
+Every new replicated or authoritative gameplay feature must define its load
+shape before it can be treated as complete:
+
+- State the worst-case producer count, recipient count, update cadence, encoded
+  bytes, and database operations per player action.
+- Keep owner feedback, input acknowledgement, session leases, and reliable
+  authority results independent from degradable remote presentation traffic.
+- Batch or reuse identical encoded state across recipients. Do not encode the
+  same immutable update once per viewer.
+- Put a bounded scheduler, queue, or aggregate coordinator in front of shared
+  resources. One hot aggregate must not consume one database connection per
+  waiting client.
+- Keep every unreliable packet within LiteNetLib's `1023` byte single-packet
+  limit. Do not depend on hidden transport fragmentation.
+- Define the overload behavior explicitly. Dense remote state may reduce its
+  fair update cadence, but owner reconciliation must remain fixed-rate and
+  measurable.
+- Add low-cardinality timing, backlog, allocation, byte, fan-out, and deferred
+  work telemetry for any new high-frequency path.
+- Extend `StackStressGenerator` with a stable workload before raising a
+  supported player tier. Compare the same mode, seed, bot count, ramp, and
+  duration before and after an optimization.
+
+Per-entity tasks, timers, database sessions, and HTTP polling remain prohibited
+for moving populations. A feature that introduces all-to-all work must either
+prove the bounded tier or add spatial, frequency, or byte-budget degradation.
 
 ### GameSimulation
 
@@ -454,9 +487,15 @@ AuthService serves complete three-section view snapshots and commits corpse loot
 through the existing transaction kernel. Targeted item and container revisions
 let unrelated corpse operations commit even when the global corpse revision has
 advanced. The corpse row still serializes final custody, and Bag roots are locked
-before either aggregate's contents. After commit, the worker broadcasts a
-targeted delta or complete replacement to every viewer and never holds a
-database transaction while waiting for a client.
+before either aggregate's contents. A worker-local per-corpse mutation
+coordinator sends at most one mutation for the same corpse to AuthService at a
+time, while different corpses remain parallel. This prevents one hotspot from
+occupying the database pool with clients waiting on the same row lock and keeps
+AuthService as the idempotent final transaction authority. Open and refresh
+send a complete snapshot only to the requesting viewer. A committed revision
+broadcasts one targeted delta or complete replacement to every viewer. The
+worker encodes each immutable update once, reuses those bytes across viewers,
+and never holds a database transaction while waiting for a client.
 Normal Mob corpses are worker-owned and disappear on restart. Content-selected
 bosses reuse the durable path. Live claims use a deterministic grant id through
 the exact-session item transaction boundary, while durable Mob corpses share the
@@ -858,13 +897,15 @@ combat producer pending
    and occupied Bag roots exchange their complete content aggregates atomically
    under the standard capacity and hard-cap rules. Corpse equipment slots carry
    their canonical equipment-slot id and reject incompatible definitions.
-9. The mutation transaction closes before AuthService loads the committed view.
-   SimulationWorker applies returned carry only for custody-changing transfers,
-   keeps the newest corpse revision when HTTP completions arrive out of order,
-   and reliably broadcasts a targeted delta to every viewer. Pure corpse
-   rearrangement advances corpse, container, and item revisions without
-   changing character carry or item-state revision. Unity refreshes stale bases
-   and never applies optimistic custody.
+9. A per-corpse worker coordinator serializes calls into the same durable
+   aggregate without serializing different corpses. The mutation transaction
+   closes before AuthService loads the committed view. SimulationWorker applies
+   returned carry only for custody-changing transfers, keeps the newest corpse
+   revision when HTTP completions arrive out of order, encodes one targeted
+   delta, and reuses it for every viewer. Open and refresh snapshots return only
+   to their requester. Pure corpse rearrangement advances corpse, container,
+   and item revisions without changing character carry or item-state revision.
+   Unity refreshes stale bases and never applies optimistic custody.
 10. Expiry, invalidation, and not-found results close every affected view with a
     stable code. Runtime or session fencing failures disconnect the affected
     peer. A worker restart restores the corpse at its persisted transform with

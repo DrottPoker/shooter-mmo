@@ -193,17 +193,22 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic AuthService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 11 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 14 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
   lifecycle, carry-state updates, and item-operation intent and result control
   messages.
 - Channel 1 uses sequenced delivery for redundant movement input batches.
-- Simulation snapshot chunks use LiteNetLib's unchanneled `Unreliable` delivery.
-  LiteNetLib reports these packets with receive channel 0. Server tick, snapshot
-  sequence, message type, and chunk metadata provide application-level ordering
-  without confusing snapshots with reliable control messages.
+- Dedicated owner snapshots and chunked remote simulation snapshots use
+  LiteNetLib's unchanneled `Unreliable` delivery. LiteNetLib reports these
+  packets with receive channel 0. Server tick, snapshot sequence, message type,
+  and remote chunk metadata provide application-level ordering without
+  confusing snapshots with reliable control messages.
+- The owner snapshot is the only source for local input acknowledgement,
+  prediction reconciliation, and collision-streaming anchors. Remote chunks
+  update admitted remote entities and may arrive at a lower fair cadence under
+  dense worker-wide byte pressure.
 - Correctly delivered snapshots that overtake join acceptance or remain in
   flight during and immediately after leave are ignored outside the `Joined`
   state. They are not protocol failures because LiteNetLib delivery methods do
@@ -282,7 +287,8 @@ frame timing, Unity memory, client prediction backlog, reconciliation counts,
 ping, snapshot health, observed payload rates, and client-known entities.
 
 `RealtimeSimulationClient` counts application-level realtime packets and bytes,
-unique snapshot sequences, snapshot chunks, and estimated missing sequences.
+owner snapshot sequences, remote snapshot chunks, and estimated missing owner
+sequences.
 `WorldDebugTelemetryTracker` derives rolling frame percentiles and half-second
 network rates from those local counters. The panel labels payload rates as
 application payload rather than total socket bandwidth.
@@ -552,8 +558,9 @@ bakes every mapped scene in one pass.
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
 immediately and up to four newest unacknowledged commands are sent in each batch.
-On an authoritative snapshot, `ClientMovementPrediction` removes acknowledged
-commands, starts from the server state, and replays the remaining commands.
+On an authoritative owner snapshot, `ClientMovementPrediction` removes
+acknowledged commands, starts from the server state, and replays the remaining
+commands.
 Prediction and reconciliation replay share one reusable collision-query
 workspace, avoiding per-step broadphase collection allocation without changing
 the deterministic movement result.
@@ -566,12 +573,13 @@ the shared simulation. The shared simulation source is installed as
 
 `UnityWorldCollisionLoader` loads the selected world's manifest from the local
 `com.shootermmo.world-data` package. `UnityWorldCollisionStream` then loads and
-checksum-validates chunks around the initial player, local prediction, and
-visible remote entities. It retains a larger chunk ring before unloading, which
-prevents boundary churn. The join response carries SimulationWorker's collision
-revision, and `NetworkMovementSession` does not start when the local revision
-differs. A missing, corrupt, or coordinate-mismatched streamed chunk closes the
-active session through the normal structured client failure path.
+checksum-validates chunks around the initial player and the authoritative local
+owner snapshot. Remote snapshot scheduling cannot move the prediction collision
+window. The stream retains a larger chunk ring before unloading, which prevents
+boundary churn. The join response carries SimulationWorker's collision revision,
+and `NetworkMovementSession` does not start when the local revision differs. A
+missing, corrupt, or coordinate-mismatched streamed chunk closes the active
+session through the normal structured client failure path.
 
 `ClientMovementPrediction`, reconciliation, grounded presentation, and remote
 presentation all query the same mutable `ChunkedStaticCollisionWorld`. Loading
@@ -649,9 +657,10 @@ Phase 12 adds permanent client state below replaceable presentation:
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
-The actor and interaction messages use protocol version `13`. The persistent
-realtime client decodes them through the shared GameProtocol source and keeps
-the existing explicit mismatch path for older or partially updated clients.
+The actor and interaction messages introduced through protocol version `13`
+remain part of current protocol version `14`. The persistent realtime client
+decodes them through the shared GameProtocol source and keeps the existing
+explicit mismatch path for older or partially updated clients.
 Phase 13 adds typed insurance apply or remove and quest accept or abandon
 payloads to the existing capability action instead of adding a second NPC or
 item interaction transport.

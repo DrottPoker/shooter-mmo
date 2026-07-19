@@ -232,7 +232,7 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
 
-Protocol version `13` carries Shard and World identity plus the initial carry
+Protocol version `14` carries Shard and World identity plus the initial carry
 tuple in join acceptance. Reliable ordered control messages carry later item
 state, corpse, world-actor presence, bounded actor state, and correlated world
 interaction contracts. Ordinary actor spawn packets contain presentation,
@@ -251,6 +251,14 @@ protocol rejection path.
   replacing the peer binding.
 - Entity spawn and despawn use reliable ordered control messages.
 - Unity receives a reliable baseline before relying on snapshots.
+- Each joined peer receives a dedicated fixed-rate owner snapshot for input
+  acknowledgement and reconciliation.
+- Remote visible entities use MTU-safe shared packet batches. Under dense
+  overload, a rotating fair subset reduces remote update cadence before the
+  worker-wide byte bucket begins dropping complete frames.
+- `SnapshotReplication:OverloadTargetUtilizationBasisPoints` reserves aggregate
+  burst headroom. Deferred remote entity updates remain visible through the
+  `simulation_worker.simulation.snapshot.entity_updates_deferred` counter.
 - Remote presentation lives under a separate Unity presentation root.
 
 ## Interest Management
@@ -268,6 +276,8 @@ set:
 - Ordered visibility remains cached until the set changes.
 - Equal ordered visibility sets share one encoded snapshot packet batch per
   broadcast.
+- The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
+  contains at most 24 current entity records.
 - Cell size and radii are worker-owned config values.
 
 This is process-local interest management for one complete shard. Cross-worker
@@ -311,6 +321,10 @@ instances for `development-world-1`, and seven prepared spawn instances for
   sight, disconnect, or assignment lifecycle changes.
 - Corpse views use the same target and lease registry while retaining the
   complete protocol-v11 corpse state and AuthService transaction authority.
+- Mutations for the same corpse pass through one worker-local coordinator
+  before AuthService, while different corpses remain parallel. Open and refresh
+  state targets only the requester. Committed deltas are encoded once and reuse
+  the same immutable packet bytes for every viewer.
 
 Capability summaries are returned only after a successful interaction open and
 are independently revisioned for each player. Multiple players may interact
@@ -329,8 +343,12 @@ corpse view.
 - Each authoritative entity owns one reusable collision-query workspace, so
   fixed ticks reuse broadphase list and stable-id set capacity instead of
   allocating them again for every movement step.
-- Snapshots are sent at 15 Hz by default with input acknowledgement.
-- Unity predicts with the same source and reconciles to authoritative snapshots.
+- Owner snapshots are sent at 15 Hz by default with input acknowledgement and
+  authoritative reconciliation state.
+- Remote snapshots use the remaining fair byte budget. Their cadence degrades
+  explicitly under dense overload instead of starving owner reconciliation.
+- Unity predicts with the same source, reconciles only from owner snapshots,
+  and interpolates remote state at its delivered cadence.
 
 ## Collision Data And Streaming
 
@@ -505,7 +523,7 @@ concurrent inspection, and authoritative looting:
   Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
-- Realtime protocol version `13` retains carry state on join, later committed
+- Realtime protocol version `14` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed

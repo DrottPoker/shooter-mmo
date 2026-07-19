@@ -271,7 +271,7 @@ public sealed class RealtimeSimulationServiceTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         var entitySpawn = new TaskCompletionSource<RealtimeEntitySpawn>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var movementSnapshot = new TaskCompletionSource<RealtimeEntitySnapshot>(
+        var movementSnapshot = new TaskCompletionSource<RealtimeOwnerSimulationSnapshot>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var carryStateChanged = new TaskCompletionSource<RealtimeCarryState>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -340,23 +340,20 @@ public sealed class RealtimeSimulationServiceTests
                     return;
                 }
 
-                if (messageType == RealtimeMessageType.SimulationSnapshot)
+                if (messageType == RealtimeMessageType.OwnerSimulationSnapshot)
                 {
                     Assert.Equal(RealtimeProtocol.UnreliableReceiveChannel, channel);
                     Assert.Equal(DeliveryMethod.Unreliable, deliveryMethod);
-                    Assert.True(RealtimeProtocol.TryDecodeSimulationSnapshot(
+                    Assert.True(RealtimeProtocol.TryDecodeOwnerSimulationSnapshot(
                         packet,
                         out var snapshot,
                         out var error), error);
                     var joined = joinAccepted.Task.GetAwaiter().GetResult();
-                    var entity = snapshot.Entities.SingleOrDefault(
-                        value => value.EntityId == joined.ControlledEntityId);
-                    if (entity is not null
-                        && entity.LastProcessedInputSequence == 1
-                        && entity.State.PositionZ > -1f
-                        && !entity.State.IsSprinting
+                    if (snapshot.LastProcessedInputSequence == 1
+                        && snapshot.State.PositionZ > -1f
+                        && !snapshot.State.IsSprinting
                         && carryStateChanged.Task.IsCompletedSuccessfully
-                        && movementSnapshot.TrySetResult(entity))
+                        && movementSnapshot.TrySetResult(snapshot))
                     {
                         if (invalidateAsReplaced)
                         {

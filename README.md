@@ -133,7 +133,7 @@ absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
 death producer, final corpse art, and final UI art remain later phases. The
 scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
-deterministic WorldData, protocol version `13`, bounded worker state, existing
+deterministic WorldData, protocol version `14`, bounded worker state, existing
 spatial interest, server-authoritative interaction sessions, shared corpse
 targeting, typed insurance and quest item-lifecycle handlers, and permanent
 Unity state below a temporary uGUI panel. Normal live Mob corpses and selected
