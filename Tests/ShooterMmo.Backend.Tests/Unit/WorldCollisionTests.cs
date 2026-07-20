@@ -74,6 +74,31 @@ public sealed class WorldCollisionTests
     }
 
     [Fact]
+    public void NearUnitQuaternionPreservesAuthoredBitsAcrossRuntimes()
+    {
+        var authored = new SimulationQuaternion(
+            0.005459484f,
+            0.15633918f,
+            0.034469824f,
+            0.9870867f);
+
+        var normalized = authored.Normalized();
+
+        Assert.Equal(
+            BitConverter.SingleToInt32Bits(authored.X),
+            BitConverter.SingleToInt32Bits(normalized.X));
+        Assert.Equal(
+            BitConverter.SingleToInt32Bits(authored.Y),
+            BitConverter.SingleToInt32Bits(normalized.Y));
+        Assert.Equal(
+            BitConverter.SingleToInt32Bits(authored.Z),
+            BitConverter.SingleToInt32Bits(normalized.Z));
+        Assert.Equal(
+            BitConverter.SingleToInt32Bits(authored.W),
+            BitConverter.SingleToInt32Bits(normalized.W));
+    }
+
+    [Fact]
     public void AuthoritativeCapsuleStopsAtWallWithoutTunneling()
     {
         var world = CompileWorld(

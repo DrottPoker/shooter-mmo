@@ -21,6 +21,7 @@ namespace ShooterMmo.Tests.EditMode
             "Assets/Scenes/DevelopmentWorld1.unity";
         private const string DevelopmentWorld2ScenePath =
             "Assets/Scenes/DevelopmentWorld2.unity";
+        private const int DevelopmentWorld2CollisionBoxCount = 86;
 
         [Test]
         public void PlayerControlsDefinesRequiredGameplayActions()
@@ -357,10 +358,28 @@ namespace ShooterMmo.Tests.EditMode
                 Assert.That(FindGameObject(scene, "NorthTraversal"), Is.Not.Null);
                 Assert.That(FindGameObject(scene, "EastSightline"), Is.Not.Null);
                 Assert.That(FindGameObject(scene, "SouthwestWilderness"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "SoutheastExpansion"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "NpcPlacementGuides"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "BankServiceMarker"), Is.Not.Null);
+                Assert.That(FindGameObject(scene, "WolfSpawnAreaGuide"), Is.Not.Null);
                 var colliders = environment.GetComponentsInChildren<Collider>(true);
-                Assert.That(colliders, Has.Length.EqualTo(13));
+                Assert.That(
+                    colliders,
+                    Has.Length.EqualTo(DevelopmentWorld2CollisionBoxCount));
                 Assert.That(colliders.All(collider => collider is BoxCollider), Is.True);
                 Assert.That(colliders.All(collider => !collider.isTrigger), Is.True);
+                Assert.That(environment.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
+                Assert.That(environment.GetComponentsInChildren<Transform>(true)
+                    .All(transform => transform.gameObject.isStatic), Is.True);
+
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(0f, 1f, -16f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-8f, 1f, 4f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(0f, 1f, 4f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(8f, 1f, 4f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-16f, 1f, 12f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-184f, 1f, -184f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-136f, 1f, -176f));
+                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-148f, 1f, -136f));
             }
             finally
             {
@@ -410,7 +429,29 @@ namespace ShooterMmo.Tests.EditMode
                     new SimulationVector3(256f, 8f, 256f)),
                 CollisionLayers.CharacterMovement,
                 buffer);
-            Assert.That(buffer.Boxes, Has.Count.EqualTo(13));
+            Assert.That(
+                buffer.Boxes,
+                Has.Count.EqualTo(DevelopmentWorld2CollisionBoxCount));
+        }
+
+        private static void AssertClearOfEnvironmentObstacles(
+            Collider[] colliders,
+            Vector3 point)
+        {
+            foreach (var collider in colliders)
+            {
+                if (collider.name == "Ground")
+                {
+                    continue;
+                }
+
+                var closestPoint = collider.ClosestPoint(point);
+                Assert.That(
+                    (closestPoint - point).sqrMagnitude,
+                    Is.GreaterThan(0.0001f),
+                    "Protected gameplay position " + point + " overlaps "
+                    + collider.name + ".");
+            }
         }
 
         private static void AssertTransform(

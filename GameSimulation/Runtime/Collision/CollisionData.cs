@@ -135,6 +135,8 @@ namespace ShooterMmo.GameSimulation
 
     public readonly struct SimulationQuaternion
     {
+        private const float UnitLengthSquaredTolerance = 0.00001f;
+
         public SimulationQuaternion(float x, float y, float z, float w)
         {
             X = x;
@@ -158,12 +160,18 @@ namespace ShooterMmo.GameSimulation
 
         public SimulationQuaternion Normalized()
         {
-            var length = (float)Math.Sqrt((X * X) + (Y * Y) + (Z * Z) + (W * W));
-            if (length <= 0.000001f)
+            var lengthSquared = (X * X) + (Y * Y) + (Z * Z) + (W * W);
+            if (lengthSquared <= 0.000000000001f)
             {
                 return Identity;
             }
 
+            if (Math.Abs(lengthSquared - 1f) <= UnitLengthSquaredTolerance)
+            {
+                return this;
+            }
+
+            var length = (float)Math.Sqrt(lengthSquared);
             return new SimulationQuaternion(X / length, Y / length, Z / length, W / length);
         }
 

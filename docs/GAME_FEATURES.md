@@ -63,8 +63,11 @@ LoginMenu.
 Status: Initial content on implemented network gameplay foundation
 
 DevelopmentWorld1 contains the original 30 by 30 meter scene-authored test map.
-DevelopmentWorld2 provides a 512 by 512 meter greybox map for broader traversal
-and content development. Each registered World scene owns a LocalPlayer prefab
+DevelopmentWorld2 provides a 512 by 512 meter greybox map with a central service
+settlement, a northern traversal course, an eastern sightline lane, southwest
+wilderness, and a reserved southeast expansion pad. It includes visual-only
+guides for canonical actor coordinates while actor content remains owned by
+WorldData. Each registered World scene owns a LocalPlayer prefab
 reference, an explicit spawn point, and a separate entity presentation root.
 After SimulationWorker accepts a character join, the mapped scene creates one
 runtime LocalPlayer instance whose prefab owns the configured third-person

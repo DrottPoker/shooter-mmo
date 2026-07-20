@@ -138,8 +138,11 @@ namespace ShooterMmo.Editor
                 ChunkSize = authoring.ChunkSize,
                 Boxes = boxes
             };
-            var result = CollisionWorldCompiler.Compile(document);
-            WriteBakeOutputs(document, result);
+            var authoringJson = JsonUtility.ToJson(document, true) + Environment.NewLine;
+            var persistedDocument = JsonUtility.FromJson<CollisionWorldAuthoringDocument>(
+                authoringJson);
+            var result = CollisionWorldCompiler.Compile(persistedDocument);
+            WriteBakeOutputs(authoringJson, result);
             AssetDatabase.Refresh();
             Debug.Log(
                 "[WORLD COLLISION] Baked world '" + result.Manifest.WorldId
@@ -234,7 +237,7 @@ namespace ShooterMmo.Editor
         }
 
         private static void WriteBakeOutputs(
-            CollisionWorldAuthoringDocument document,
+            string authoringJson,
             CollisionWorldBakeResult result)
         {
             var repositoryRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
@@ -257,7 +260,7 @@ namespace ShooterMmo.Editor
             var authoringPath = Path.Combine(
                 authoringDirectory,
                 "collision.json");
-            File.WriteAllText(authoringPath, JsonUtility.ToJson(document, true) + Environment.NewLine);
+            File.WriteAllText(authoringPath, authoringJson);
             File.WriteAllText(
                 Path.Combine(outputDirectory, "manifest.json"),
                 JsonUtility.ToJson(result.Manifest, true) + Environment.NewLine);

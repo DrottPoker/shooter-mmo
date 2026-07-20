@@ -1,6 +1,6 @@
 # Development Worlds
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 ## Purpose
 
@@ -14,7 +14,7 @@ the shard is fully offline and drained.
 | World ID | Unity scene | Status | Worker bounds | Authoritative spawn |
 | --- | --- | --- | --- | --- |
 | `development-world-1` | `DevelopmentWorld1` | Complete baseline | X/Z `-14` to `14` | `(0, 0, -1)` |
-| `development-world-2` | `DevelopmentWorld2` | Complete greybox baseline | X/Z `-254` to `254` | `(0, 0, -16)` |
+| `development-world-2` | `DevelopmentWorld2` | Expanded gameplay greybox | X/Z `-254` to `254` | `(0, 0, -16)` |
 
 The checked-in SimulationWorker configuration requests `development-world-2`
 for `local-shard-1` during broader gameplay testing. AuthService accepts and
@@ -37,11 +37,11 @@ authoritative playable area. Unity units are meters.
 | East boundary | center `(255, 3, 0)`, size `(2, 6, 512)` | Interior face aligns with X `254` |
 | West boundary | center `(-255, 3, 0)`, size `(2, 6, 512)` | Interior face aligns with X `-254` |
 | Player spawn | `(0, 0, -16)` | Yaw `0` |
-| Central service plaza | X `-32` to `32`, Z `-8` to `32` | Keep the three service points reachable |
-| North traversal course | X `-64` to `64`, Z `64` to `192` | Ramps, stairs, elevation, and cover |
-| East sightline lane | X `80` to `224`, Z `-32` to `32` | Long-range movement and interest testing |
-| Southwest wilderness | X/Z `-224` to `-80` | Initial wolf spawn and patrol region |
-| Southeast expansion pad | X `80` to `224`, Z `-224` to `-80` | Leave mostly empty for future systems |
+| Central service plaza | X `-32` to `32`, Z `-8` to `32` | Service halls, four watch structures, entry pillars, and low cover leave the service points reachable |
+| North traversal course | X `-64` to `64`, Z `64` to `192` | Two raised platforms, ramps, stairs, an observation deck, towers, and mixed cover |
+| East sightline lane | X `80` to `228`, Z `-32` to `32` | Long-range lane with alternating cover, side walls, an observation post, and a backstop |
+| Southwest wilderness | X/Z `-232` to `-98` | Sparse rock perimeter keeps the wolf spawn area and patrol points open |
+| Southeast expansion pad | X `80` to `224`, Z `-224` to `-80` | Mostly empty visual pad with corner beacons and one small cargo cluster |
 
 The canonical World manifest and actor content already reserve these coordinates:
 
@@ -57,43 +57,52 @@ The canonical World manifest and actor content already reserve these coordinates
 Do not move these authored landmarks without updating the matching `world.json`
 manifest and actor spawn content in the same change.
 
-## Manual Unity Authoring Workflow
+Development World 2 currently contains 86 enabled, non-trigger BoxColliders.
+The broad ground collider still guarantees all 256 collision chunks exist.
+Thin cyan service and spawn guides are visual only and have no Collider. They
+show the canonical bank, recovery, insurance, guard group, and wolf spawn
+coordinates without creating or changing actor content.
 
-Perform these steps only after the repository verification for the preparation
-change is green:
+## Environment Palette
+
+| Color | Meaning |
+| --- | --- |
+| Dark green | Ground |
+| Charcoal | Routes and plaza surfaces |
+| Blue grey | Buildings, platforms, walls, and towers |
+| Orange | Traversal elements, cover, and cargo |
+| Brown | Wilderness rock formations |
+| Teal | Reserved southeast expansion area |
+| Cyan | Visual-only actor placement guides |
+
+## Rebuild and Authoring Workflow
+
+The checked-in editor builder reproduces the complete environment without
+touching `Gameplay`, actor authoring, or actor runtime content.
 
 1. Open `shooter-mmorpg-unity-client` in Unity and allow asset import to finish.
-2. In the Project window, select `Assets/Scenes/DevelopmentWorld1.unity` and duplicate
-   it with `Ctrl+D`.
-3. Rename the duplicate to `DevelopmentWorld2.unity` and open it.
-4. Keep the existing gameplay, scene context, lighting, camera, UI bootstrap,
-   `PlayerSpawn`, `EntityPresentationRoot`, and collision-authoring objects.
-5. Replace the duplicated environment geometry with a root named `Environment`.
-   Organize it with `Ground`, `Boundaries`, and descriptive area roots such as
-   `CentralHub`, `NorthTraversal`, `EastSightline`, and
-   `SouthwestWilderness`.
-6. Build the ground and four boundaries with the exact transforms in the layout
-   table. Use enabled, non-trigger BoxColliders.
-7. Move `PlayerSpawn` to `(0, 0, -16)` with Y rotation `0`.
-8. Greybox the five layout areas. Keep all authoritative collision under
-   `Environment`. Use BoxColliders only. Decorative objects may omit colliders.
-9. Select the object with `WorldCollisionAuthoring`. Set World Id to
-   `development-world-2`, Chunk Size to `32`, and Collision Root to
-   `Environment`.
-10. Save the scene. Select `Shooter MMO > Tools > World Collision > Bake Open
-    Scene`.
-11. Confirm the Console reports a successful bake for
+2. Open `Assets/Scenes/DevelopmentWorld2.unity`.
+3. To restore the complete checked-in layout, select `Shooter MMO > Tools >
+   Development Worlds > Rebuild Development World 2 Environment` and confirm
+   `Rebuild`. This intentionally replaces every child under `Environment`.
+4. To customize the greybox, edit the generated children under `Environment`.
+   Keep authoritative geometry as enabled, non-trigger BoxColliders. Decorative
+   route surfaces and cyan guides must remain collider-free.
+5. Keep `PlayerSpawn`, all service markers, the guard marker, the wolf spawn
+   guide, and the documented wolf patrol points free of blocking geometry.
+6. Save the scene. Select `Shooter MMO > Tools > World Collision > Bake Open
+   Scene`.
+7. Confirm the Console reports a successful bake for
     `development-world-2`. The bake must create
     `WorldData/Worlds/development-world-2/Authoring/collision.json` and
     `WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2`.
-12. Open `File > Build Profiles`, add `DevelopmentWorld2` to the scene list,
-    and keep `LoginMenu` and `CharacterSelect` before the World scenes.
-13. Save the project and return to Codex for verification before changing any
-    shard binding.
+8. Keep `DevelopmentWorld2` enabled in `File > Build Profiles`, after
+   `LoginMenu` and `CharacterSelect`.
 
 Expected result: Development World 1 remains playable, Development World 2 has
-its own scene and collision content, and both scenes are selected exclusively
-through their authoritative World IDs.
+86 authoritative boxes in 256 chunks, and actor authoring files remain
+unchanged. Both scenes are selected exclusively through their authoritative
+World IDs.
 
 ## Post-Authoring Verification
 
@@ -109,10 +118,10 @@ dotnet run --project Tools/WorldCollisionCompiler `
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
 
-Expected result: the collision verifier reports `development-world-2` with 256
-chunks and a deterministic revision, and all Unity EditMode and PlayMode tests
-pass. `Bake Build World Scenes` also verifies every catalog-to-Build Profiles
-mapping before writing collision output.
+Expected result: the collision verifier reports `development-world-2` with 86
+boxes, 256 chunks, and a deterministic revision, and all Unity EditMode and
+PlayMode tests pass. `Bake Build World Scenes` also verifies every
+catalog-to-Build Profiles mapping before writing collision output.
 
 The authored baseline has passed review. The local worker configuration now
 requests Development World 2 for `local-shard-1`. Future changes between
