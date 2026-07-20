@@ -95,6 +95,8 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   monotonic deltas, stable closure handling, a generic replaceable capsule,
   `E` proximity interaction, and typed bidirectional drag-and-drop transfers.
 - Structured API errors, correlation ids, rate limits, no-store token responses,
+  Redis-backed distributed authentication throttling, and a bounded Redis
+  account-session cache with revocation tombstones.
   and split health checks.
 - External headless SimulationWorker stress generation with in-memory
   exact-runtime tickets, deterministic bot movement, process-resource sampling,

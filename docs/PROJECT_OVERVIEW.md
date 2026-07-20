@@ -69,8 +69,10 @@ scaling. They are not implemented and are not faked in the current runtime.
 - **PostgreSQL** is the durable authority for identity, topology, assignments,
   tickets, session leases, mirrored item definitions, and the item custody
   foundation.
-- **Redis** is currently an operational readiness dependency. It does not yet
-  own gameplay or authentication state.
+- **Redis** accelerates account-session validation, coordinates authentication
+  rate limits across AuthService replicas, and remains an operational readiness
+  dependency. PostgreSQL remains the durable authority and Redis owns no
+  gameplay, inventory, or economy state.
 - **GameProtocol** is the versioned binary contract shared by Unity and
   SimulationWorker.
 - **GameSimulation** is the fixed-step movement and collision implementation
@@ -114,6 +116,8 @@ The repository currently supports:
 - Split liveness and readiness checks with real PostgreSQL and Redis probes.
 - Structured HTTP errors, correlation ids, authentication rate limits, and
   no-store token responses.
+- Bounded cache-aside account-session validation with fail-open PostgreSQL reads,
+  revocation tombstones, and low-cardinality Redis acceleration metrics.
 - Unity API timeouts, serialized operations, duplicate-click protection, 401
   recovery, and persistent realtime state across scene changes.
 - Backend unit and isolated PostgreSQL integration tests plus Unity EditMode and

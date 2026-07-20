@@ -35,6 +35,7 @@ public sealed record StressGeneratorOptions(
     string RunId,
     TimeSpan HttpTimeout,
     int HttpConcurrency,
+    int SessionValidationRequestsPerBot,
     int BotCount,
     int BotStartIndex,
     int RampStep,
@@ -131,6 +132,18 @@ public sealed record StressGeneratorOptions(
         }
 
         var botCount = ParseInt(values, "bots", 100, 1, MaximumBotCount);
+        var sessionValidationRequestsPerBot = ParseInt(
+            values,
+            "session-validation-requests-per-bot",
+            0,
+            0,
+            1_000);
+        if (mode == StressRunMode.WorkerOnly && sessionValidationRequestsPerBot > 0)
+        {
+            throw new StressGeneratorOptionException(
+                "--session-validation-requests-per-bot requires --mode full-stack.");
+        }
+
         var botStartIndex = ParseInt(values, "bot-start-index", 1, 1, int.MaxValue - botCount);
         var rampStep = ParseInt(values, "ramp-step", Math.Min(25, botCount), 1, botCount);
         var output = Get(
@@ -161,6 +174,7 @@ public sealed record StressGeneratorOptions(
             runId,
             TimeSpan.FromSeconds(ParseInt(values, "http-timeout-seconds", 30, 1, 300)),
             ParseInt(values, "http-concurrency", 32, 1, 512),
+            sessionValidationRequestsPerBot,
             botCount,
             botStartIndex,
             rampStep,
@@ -216,6 +230,7 @@ public sealed record StressGeneratorOptions(
           --run-id <id>                     Short identifier used in durable stress identities.
           --http-timeout-seconds <seconds>  Full-stack HTTP timeout. Default: 30
           --http-concurrency <count>        Maximum concurrent full-stack lifecycles. Default: 32
+          --session-validation-requests-per-bot <count> Repeated authenticated session checks after login. Default: 0
           --worker-host <host>              UDP host used by bots. Default: 127.0.0.1
           --worker-udp-port <port>          UDP port used by bots. Default: 27015
           --worker-id <id>                  Expected worker id. Default: local-simulation-worker-1
@@ -282,6 +297,7 @@ public sealed record StressGeneratorOptions(
             "run-id",
             "http-timeout-seconds",
             "http-concurrency",
+            "session-validation-requests-per-bot",
             "worker-host",
             "worker-udp-port",
             "worker-id",

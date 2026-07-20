@@ -1,5 +1,6 @@
 using AuthService.Config;
 using AuthService.Items;
+using AuthService.Redis;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 using ShooterMmo.Shared.Worlds;
@@ -10,6 +11,36 @@ namespace ShooterMmo.Backend.Tests.Unit;
 
 public sealed class ConfigurationValidationTests
 {
+    [Fact]
+    public void RedisAccelerationDefaultsAreSafeAndBounded()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+
+        var options = RedisAccelerationOptions.FromConfiguration(configuration);
+
+        Assert.True(options.Enabled);
+        Assert.True(options.SessionCacheEnabled);
+        Assert.Equal(TimeSpan.FromSeconds(60), options.SessionCacheTtl);
+        Assert.True(options.SessionRevocationTombstoneLifetime >= options.SessionCacheTtl);
+    }
+
+    [Fact]
+    public void RedisAccelerationRejectsTombstonesShorterThanCacheEntries()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["RedisAcceleration:SessionCacheTtlSeconds"] = "60",
+                ["RedisAcceleration:SessionRevocationTombstoneSeconds"] = "30"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            RedisAccelerationOptions.FromConfiguration(configuration));
+
+        Assert.Contains("at least SessionCacheTtlSeconds", exception.Message);
+    }
+
     [Fact]
     public void AuthServiceRejectsMissingSecretsAndConnections()
     {

@@ -101,7 +101,9 @@ SimulationWorker --------------------------------------+
      |
      +--------------------------------------------> Redis readiness
 
-AuthService --------------------------------------> Redis readiness
+AuthService --------------------------------------> Redis session cache,
+                                                     auth rate limits,
+                                                     and readiness
 ```
 
 Unity uses AuthService for identity, characters, shard discovery, and placement.
@@ -130,6 +132,8 @@ relationship.
   and Recovery Storage reads, and offline-safe account item mutations.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
   ids, sensitive response caching rules, and health routes.
+- Bounded Redis cache-aside account-session validation and distributed
+  authentication rate limits. PostgreSQL remains the durable session authority.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
 
 Feature folders remain inside the service that owns them. Configuration lives
@@ -930,7 +934,12 @@ configuration fails before work is accepted.
 
 AuthService exposes `/health/live` and `/health/ready`. Readiness performs a real
 PostgreSQL query and Redis `PING` and returns HTTP 503 when an obligatory
-dependency fails.
+dependency fails. Protected account requests first check a bounded Redis token
+cache, then fall back to PostgreSQL on a miss or Redis failure. Successful
+application-controlled revocations write a Redis tombstone before the
+PostgreSQL commit so stale cached authorization cannot survive logout or session
+replacement. Redis never decides item custody, simulation authority, or durable
+session truth.
 
 SimulationWorker uses `--health-check-only` because it has no HTTP server. It
 checks AuthService readiness, Redis, and UDP port availability and returns exit

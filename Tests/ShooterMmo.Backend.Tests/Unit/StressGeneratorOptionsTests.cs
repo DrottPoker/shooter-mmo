@@ -88,7 +88,8 @@ public sealed class StressGeneratorOptionsTests
                 "--postgres-connection-string",
                 "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test",
                 "--confirm-disposable-database", "shooter_mmo_stack_stress_test",
-                "--run-id", "smoke01"
+                "--run-id", "smoke01",
+                "--session-validation-requests-per-bot", "20"
             ],
             Directory.GetCurrentDirectory());
 
@@ -96,6 +97,18 @@ public sealed class StressGeneratorOptionsTests
         Assert.Equal(new Uri("http://127.0.0.1:5000"), options.AuthorityUrl);
         Assert.Null(options.WorkerSecret);
         Assert.Equal("smoke01", options.RunId);
+        Assert.Equal(20, options.SessionValidationRequestsPerBot);
+    }
+
+    [Fact]
+    public void WorkerOnlyRejectsSessionValidationRequests()
+    {
+        var exception = Assert.Throws<StressGeneratorOptionException>(() =>
+            StressGeneratorOptions.Parse(
+                ["--session-validation-requests-per-bot", "1"],
+                Directory.GetCurrentDirectory()));
+
+        Assert.Contains("full-stack", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

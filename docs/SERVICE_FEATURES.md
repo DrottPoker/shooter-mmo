@@ -766,6 +766,30 @@ Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
 - Token-bearing responses use `Cache-Control: no-store` and `Pragma: no-cache`.
 - No debug HTTP endpoint is registered in the current service surface.
 
+### Redis Account-session Acceleration
+
+AuthService uses Redis as a bounded cache-aside accelerator for successful
+account-session validation. Token hashes, never bearer tokens, identify cache
+entries. Every entry expires no later than both the configured cache TTL and the
+durable PostgreSQL session expiry. A cache miss, corrupt value, tombstone, or
+Redis read failure falls back to PostgreSQL.
+
+Logout, manual revocation, and login replacement write a session-id tombstone
+before committing the PostgreSQL revocation, then delete the cached token key.
+The tombstone lives at least as long as any token cache entry. If AuthService
+cannot store the required tombstone, it returns
+`503 session_cache_invalidation_unavailable` and does not commit the durable
+revocation. This prevents a successfully revoked session from remaining usable
+through stale cache state.
+
+Login and registration also use a Redis fixed-window rate limit keyed by a hash
+of the remote address and policy name. The existing process-local ASP.NET rate
+limit remains active as a fallback if Redis is unavailable. Disconnected Redis
+commands fail fast instead of accumulating in a client backlog, and repeated
+warning logs are throttled per operation. Cumulative cache, fallback,
+invalidation, Redis-failure, and distributed-rate-limit counters are logged at
+the configured metrics interval.
+
 ## Health And Configuration
 
 AuthService liveness confirms the process loop. Readiness runs PostgreSQL

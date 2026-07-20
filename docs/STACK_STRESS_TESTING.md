@@ -59,6 +59,7 @@ for the lifetime of the generator process.
 StackStressGenerator ---- player HTTP APIs ----> AuthService ---- SQL ----> PostgreSQL
 SimulationWorker ------- service HTTP APIs ----> AuthService
 StackStressGenerator ---- LiteNetLib UDP ------> SimulationWorker
+AuthService -------- session cache and auth rate limits ------------> Redis
 AuthService and SimulationWorker health checks ---------------------> Redis
 ```
 
@@ -68,11 +69,13 @@ Each full-stack bot completes the normal public lifecycle:
 2. Create a character.
 3. Log out the registration session.
 4. Log in with the created account.
-5. List characters and shards.
-6. Request a normal join ticket through AuthService placement.
-7. Join SimulationWorker over UDP and run the same realtime workload as
+5. Optionally repeat authenticated session validation requests to isolate the
+   Redis cache and PostgreSQL fallback cost.
+6. List characters and shards.
+7. Request a normal join ticket through AuthService placement.
+8. Join SimulationWorker over UDP and run the same realtime workload as
    worker-only mode.
-8. Leave the simulation cleanly and log out the account session.
+9. Leave the simulation cleanly and log out the account session.
 
 All bots still use production account authentication, placement, join tickets,
 UDP item commands, worker authority checks, AuthService transactions, and
@@ -316,6 +319,7 @@ dotnet run --project Tools/StackStressGenerator `
   --confirm-disposable-database shooter_mmo_stack_stress_test `
   --bots 100 `
   --http-concurrency 32 `
+  --session-validation-requests-per-bot 20 `
   --ramp-step 25 `
   --ramp-interval-seconds 10 `
   --duration-seconds 300 `
@@ -326,6 +330,8 @@ Expected result:
 
 - All 100 accounts register and receive one character each.
 - Every account logs in and obtains a normal AuthService placement and ticket.
+- Every account performs the configured authenticated session checks, reported
+  separately as `account_session_validate`.
 - All 100 bots join, run the UDP workload, and leave cleanly.
 - Every active account session is logged out.
 - PostgreSQL reports no expired unreleased simulation sessions or deadlocks.
@@ -385,6 +391,7 @@ Remove-Item Env:SIMULATION_WORKER_SERVICE_SECRET -ErrorAction SilentlyContinue
 Remove-Item Env:DevelopmentSimulationBots__Enabled -ErrorAction SilentlyContinue
 Remove-Item Env:RateLimiting__Authentication__PermitLimit -ErrorAction SilentlyContinue
 Remove-Item Env:RateLimiting__Authentication__WindowSeconds -ErrorAction SilentlyContinue
+Remove-Item Env:RedisAcceleration__SessionCacheEnabled -ErrorAction SilentlyContinue
 Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue
 Remove-Item Env:AUTH_SERVICE_BASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
@@ -400,6 +407,53 @@ Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue
 ```
 
 No manual Unity Editor steps are required for either mode.
+
+## Redis Session-cache A/B Baseline
+
+The 2026-07-19 local A/B run used `development-world-2`, 100 full-stack
+lifecycle bots, HTTP concurrency 64, and 50 explicit session validation
+requests per bot. Both runs used the distributed Redis authentication rate
+limit. Only `RedisAcceleration:SessionCacheEnabled` changed. The disposable
+PostgreSQL and Redis stack was recreated between runs.
+
+| Metric | Cache off | Cache on | Change |
+| --- | ---: | ---: | ---: |
+| Session validation requests | 5,000 | 5,000 | Same |
+| Average validation latency | 26.9 ms | 13.1 ms | 51.2% lower |
+| Validation p50 | 15.7 ms | 4.5 ms | 71.1% lower |
+| Validation p95 | 66.2 ms | 46.6 ms | 29.6% lower |
+| Validation p99 | 282.5 ms | 76.0 ms | 73.1% lower |
+| PostgreSQL committed transactions | 13,259 | 2,633 | 80.1% lower |
+| Complete run duration | 32.9 s | 29.0 s | 11.9% lower |
+| Maximum PostgreSQL connections | 66 | 66 | Unchanged |
+| Maximum waiting PostgreSQL connections | 61 | 61 | Unchanged |
+
+Both runs admitted and cleanly logged out 100 of 100 clients with no HTTP
+failures, deadlocks, expired unreleased sessions, or item invariant violations.
+After the cache-on run completed, Redis contained 200 temporary revocation
+tombstones and zero token cache entries, matching the registration-session and
+final-session logout paths.
+
+This result validates the narrow optimization: repeated authentication no
+longer needs one PostgreSQL lookup per request. It does not remove the current
+admission-wave connection spike. Registration, BCrypt password work, character
+creation, login replacement, placement, join-ticket creation, and simulation
+session setup still reach PostgreSQL and should be profiled separately before
+changing pool limits or service boundaries.
+
+A cache-on `mixed-gameplay` regression then admitted and cleanly logged out 100
+of 100 clients on `development-world-2`. It completed 978 inventory relocations,
+431 corpse deposits, 198 partial corpse-loot attempts, 100 corpse opens, and 470
+corpse refreshes. Revision conflicts were classified as expected contention.
+There were no unexpected rejections, timeouts, incomplete operations, deadlocks,
+expired unreleased sessions, or item invariant violations.
+
+The live dependency-failure check stopped Redis after creating an active cached
+session. `GET /api/accounts/session` still returned 204 through PostgreSQL
+fallback. Logout returned 503 because its tombstone could not be stored. After
+Redis restarted, the same session still returned 204, proving the failed logout
+did not commit a durable revocation, and the next logout returned 204. This is
+the required safety contract for cache availability failures.
 
 ## Ramp And Soak Strategy
 
@@ -647,6 +701,8 @@ Important mode-specific options are:
 - `--auth-service-url` for full-stack AuthService
 - `--confirm-disposable-database` for the exact full-stack database name
 - `--http-concurrency` for concurrent full-stack account lifecycles
+- `--session-validation-requests-per-bot` for 0 to 1000 repeated authenticated
+  session checks after each login
 - `--run-id` for durable full-stack stress identity names
 
 Common load options include `--bots`, `--bot-start-index`, `--ramp-step`,

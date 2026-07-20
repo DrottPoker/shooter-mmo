@@ -51,11 +51,15 @@ public static class AccountEndpoints
         {
             var accountId = principal.GetAccountId();
             var sessionId = principal.GetSessionId();
-            await sessionService.RevokeAsync(
+            var result = await sessionService.RevokeAsync(
                 accountId,
                 sessionId,
                 AccountSessionRevocationReason.Logout,
                 cancellationToken);
+            if (!result.Succeeded)
+            {
+                return result.ToHttpResult();
+            }
 
             loggerFactory.CreateLogger("AuthService.Auth").LogInformation(
                 "[AUTH] Account {AccountId} logged out and revoked session {SessionId}.",
@@ -71,11 +75,16 @@ public static class AccountEndpoints
             SessionService sessionService,
             CancellationToken cancellationToken) =>
         {
-            await sessionService.RevokeAsync(
+            var result = await sessionService.RevokeAsync(
                 principal.GetAccountId(),
                 sessionId,
                 AccountSessionRevocationReason.ManualRevoke,
                 cancellationToken);
+
+            if (!result.Succeeded)
+            {
+                return result.ToHttpResult();
+            }
 
             return Results.NoContent();
         }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);

@@ -81,6 +81,31 @@ public sealed class FullStackStressClientTests
     }
 
     [Fact]
+    public async Task SessionValidationUsesAuthenticatedNoContentEndpoint()
+    {
+        string? requestPath = null;
+        string? authorization = null;
+        using var handler = new StubHttpMessageHandler(request =>
+        {
+            requestPath = request.RequestUri?.AbsolutePath;
+            authorization = request.Headers.Authorization?.ToString();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        });
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:5000")
+        };
+        var metrics = new FullStackStressMetrics(1337);
+        var client = new FullStackStressClient(httpClient, metrics);
+
+        await client.ValidateSessionAsync("session-token", CancellationToken.None);
+
+        Assert.Equal("/api/accounts/session", requestPath);
+        Assert.Equal("Bearer session-token", authorization);
+        Assert.Equal(1, metrics.Capture()["account_session_validate"].Successes);
+    }
+
+    [Fact]
     public async Task LootFixtureUsesGuardedDevelopmentEndpointAndAuthorityHeader()
     {
         string? requestPath = null;

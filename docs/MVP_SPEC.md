@@ -441,7 +441,9 @@ The intended architecture remains:
 - Headless .NET SimulationWorker for authoritative Shard simulation.
 - LiteNetLib UDP for gameplay networking.
 - PostgreSQL as the persistent source of truth.
-- Redis only for temporary or operational state where it has a clear benefit.
+- Redis only for temporary or operational state where it has a clear benefit,
+  including bounded account-session validation caching and distributed
+  authentication rate limits.
 
 Planned item service split:
 
@@ -529,7 +531,9 @@ Current implementation note:
 ## Persistence Principles
 
 - PostgreSQL is the source of truth for persistent gameplay data.
-- Redis is only for fast, temporary, or lease-based state.
+- Redis is only for fast, temporary, or lease-based state. PostgreSQL remains
+  authoritative for account sessions, and revocation tombstones prevent stale
+  cached authorization after a successful application-controlled revocation.
 - Inventory, bank, Secure Container, Recovery Storage, equipment, Bag, death,
   corpse, loot, vendor, insurance, trade, and auction mutations must prevent
   duplication and loss.

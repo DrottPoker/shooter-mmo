@@ -79,6 +79,19 @@ public sealed class FullStackStressClient(
             cancellationToken);
     }
 
+    public Task ValidateSessionAsync(
+        string sessionToken,
+        CancellationToken cancellationToken)
+    {
+        return SendNoContentAsync(
+            "account_session_validate",
+            HttpMethod.Get,
+            "/api/accounts/session",
+            null,
+            sessionToken,
+            cancellationToken);
+    }
+
     public Task<IReadOnlyList<FullStackShardResponse>> ListShardsAsync(
         CancellationToken cancellationToken)
     {

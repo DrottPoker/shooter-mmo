@@ -1270,6 +1270,30 @@ Invoke-RestMethod http://localhost:5000/health/ready
 Expected result: liveness reports `live`. Readiness reports `ready` only after a
 real PostgreSQL `select 1` query and Redis `PING` both succeed.
 
+AuthService also uses Redis for bounded account-session validation caching and
+distributed login and registration rate limits. Checked-in defaults are:
+
+```json
+"RedisAcceleration": {
+  "Enabled": true,
+  "KeyPrefix": "shooter-mmo",
+  "SessionCacheEnabled": true,
+  "SessionCacheTtlSeconds": 60,
+  "SessionRevocationTombstoneSeconds": 120,
+  "AuthenticationRateLimitingEnabled": true,
+  "MetricsIntervalSeconds": 30
+}
+```
+
+Set `RedisAcceleration__SessionCacheEnabled=false` before starting AuthService
+to measure the PostgreSQL validation path without disabling the distributed
+authentication rate limit. A Redis read failure falls back to PostgreSQL.
+Disconnected Redis operations fail fast and do not build an in-process command
+backlog.
+Logout, manual revocation, and session replacement instead return HTTP 503 if
+the required revocation tombstone cannot be stored, because committing while a
+stale cache entry can survive would be unsafe.
+
 Register a test account and keep the returned account session active:
 
 ```powershell

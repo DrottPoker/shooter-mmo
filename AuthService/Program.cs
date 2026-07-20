@@ -6,6 +6,7 @@ using AuthService.Database;
 using AuthService.Health;
 using AuthService.Http;
 using AuthService.Items;
+using AuthService.Redis;
 using AuthService.Simulation;
 using Microsoft.AspNetCore.Authentication;
 using Npgsql;
@@ -46,6 +47,7 @@ var stackStressFixtureOptions = StackStressFixtureOptions.FromConfiguration(
 var npcItemLifecycleOptions = NpcItemLifecycleOptions.FromConfiguration(
     builder.Configuration);
 var itemOperationsOptions = ItemOperationsOptions.FromConfiguration(builder.Configuration);
+var redisAccelerationOptions = RedisAccelerationOptions.FromConfiguration(builder.Configuration);
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = itemOperationsOptions.MaximumHttpRequestBodyBytes;
@@ -62,6 +64,11 @@ builder.Services.AddSingleton(developmentSimulationBotOptions);
 builder.Services.AddSingleton(stackStressFixtureOptions);
 builder.Services.AddSingleton(npcItemLifecycleOptions);
 builder.Services.AddSingleton(itemOperationsOptions);
+builder.Services.AddSingleton(redisAccelerationOptions);
+builder.Services.AddSingleton<RedisAccelerationMetrics>();
+builder.Services.AddSingleton<IRedisConnectionProvider, RedisConnectionProvider>();
+builder.Services.AddSingleton<IAccountSessionCache, RedisAccountSessionCache>();
+builder.Services.AddSingleton<RedisAuthenticationRateLimiter>();
 builder.Services.AddSingleton<ItemOperationsMetrics>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpContextAccessor();
@@ -95,6 +102,7 @@ builder.Services.AddScoped<DevelopmentSimulationBotPlacementService>();
 builder.Services.AddScoped<DevelopmentSimulationBotTicketService>();
 builder.Services.AddHostedService<CorpseExpiryHostedService>();
 builder.Services.AddHostedService<ItemOperationsMetricsReporterService>();
+builder.Services.AddHostedService<RedisAccelerationMetricsReporterService>();
 builder.Services.AddHostedService<ItemOperationsMaintenanceHostedService>();
 builder.Services.AddApiProblemDetails();
 builder.Services
@@ -145,6 +153,7 @@ builder.Services.AddRateLimiter(options =>
 var app = builder.Build();
 
 app.UseApiPipeline();
+app.UseMiddleware<RedisAuthenticationRateLimitMiddleware>();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

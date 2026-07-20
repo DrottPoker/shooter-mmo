@@ -312,8 +312,9 @@ The project currently uses / should continue toward:
 - Headless .NET SimulationWorker.
 - LiteNetLib UDP for gameplay networking.
 - PostgreSQL as source of truth.
-- Redis for readiness and future transient coordination where it has a clear
-  benefit, never as durable item or session authority.
+- Redis for readiness, bounded account-session validation caching, distributed
+  authentication rate limits, and future transient coordination where it has a
+  clear benefit, never as durable item or session authority.
 - Docker Compose for local/professional dev infrastructure.
 - Linux VPS for online testing/staging.
 
@@ -417,10 +418,9 @@ Important persistent data:
 Use Redis only for fast/temporary state:
 
 - Online presence
-- Cache and future transient coordination
+- Bounded account-session validation cache and future transient coordination
 - Short-lived operational observations
 - Rate limits
-- Cache
 - Short-lived locks/leases
 
 Do not use Redis as the only storage for important persistent inventory/economy data.

@@ -157,6 +157,13 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             activeToken = login.SessionToken;
             Interlocked.Increment(ref loggedInBots);
 
+            for (var requestIndex = 0;
+                 requestIndex < options.SessionValidationRequestsPerBot;
+                 requestIndex++)
+            {
+                await client.ValidateSessionAsync(login.SessionToken, cancellationToken);
+            }
+
             var characters = await client.ListCharactersAsync(
                 login.SessionToken,
                 cancellationToken);

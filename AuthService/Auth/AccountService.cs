@@ -89,6 +89,13 @@ public sealed class AccountService(
                 cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
+            await sessionService.TryCacheSessionAsync(
+                accountId,
+                username,
+                session.SessionId,
+                session.Token,
+                session.ExpiresAt,
+                cancellationToken);
 
             logger.LogInformation(
                 "[AUTH] Account {AccountId} with username {Username} registered and logged in.",
@@ -139,12 +146,31 @@ public sealed class AccountService(
         }
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var session = await sessionService.ReplaceSessionAsync(
-            connection,
-            transaction,
-            account.Id,
-            cancellationToken);
+        (Guid SessionId, string Token, DateTime ExpiresAt, int ReplacedSessionCount) session;
+        try
+        {
+            session = await sessionService.ReplaceSessionAsync(
+                connection,
+                transaction,
+                account.Id,
+                cancellationToken);
+        }
+        catch (SessionCacheInvalidationUnavailableException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<AuthResponse>.ServiceUnavailable(
+                "session_cache_invalidation_unavailable",
+                "Login could not replace the active session safely because the distributed session cache is unavailable.");
+        }
+
         await transaction.CommitAsync(cancellationToken);
+        await sessionService.TryCacheSessionAsync(
+            account.Id,
+            account.Username,
+            session.SessionId,
+            session.Token,
+            session.ExpiresAt,
+            cancellationToken);
 
         logger.LogInformation(
             "[AUTH] Account {AccountId} with username {Username} logged in and replaced {ReplacedSessionCount} previous active sessions.",
