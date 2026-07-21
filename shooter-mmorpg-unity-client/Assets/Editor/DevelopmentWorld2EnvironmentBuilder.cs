@@ -3,6 +3,7 @@ using ShooterMmo.Collision;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 namespace ShooterMmo.Editor
@@ -79,6 +80,15 @@ namespace ShooterMmo.Editor
                 + " authoritative collision boxes. Actor content was not changed.");
         }
 
+        public static void RefreshMaterialsForAutomation()
+        {
+            CreatePalette();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log(
+                "[DEVELOPMENT WORLD 2] Refreshed environment materials for the active render pipeline.");
+        }
+
         private static void ConfigureAuthoring(GameObject environment)
         {
             var authoring = environment.GetComponent<WorldCollisionAuthoring>();
@@ -148,20 +158,28 @@ namespace ShooterMmo.Editor
         {
             var path = MaterialDirectory + "/" + name + ".mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            var shaderName = GraphicsSettings.currentRenderPipeline == null
+                ? "Standard"
+                : "Universal Render Pipeline/Lit";
+            var shader = Shader.Find(shaderName);
+            if (shader == null)
+            {
+                throw new InvalidOperationException(
+                    "The shader required by the active render pipeline is unavailable: "
+                    + shaderName + ".");
+            }
+
             if (material == null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader == null)
-                {
-                    throw new InvalidOperationException(
-                        "The Universal Render Pipeline Lit shader is unavailable.");
-                }
-
                 material = new Material(shader)
                 {
                     name = name
                 };
                 AssetDatabase.CreateAsset(material, path);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
             }
 
             if (material.HasProperty("_BaseColor"))
@@ -177,6 +195,11 @@ namespace ShooterMmo.Editor
             if (material.HasProperty("_Smoothness"))
             {
                 material.SetFloat("_Smoothness", 0.18f);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", 0.18f);
             }
 
             EditorUtility.SetDirty(material);

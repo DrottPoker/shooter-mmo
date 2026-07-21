@@ -21,6 +21,8 @@ namespace ShooterMmo.Tests.EditMode
             "Assets/Scenes/DevelopmentWorld1.unity";
         private const string DevelopmentWorld2ScenePath =
             "Assets/Scenes/DevelopmentWorld2.unity";
+        private const string DevelopmentWorld2MaterialDirectory =
+            "Assets/Art/Materials/DevelopmentWorld2";
         private const int DevelopmentWorld2CollisionBoxCount = 86;
 
         [Test]
@@ -387,6 +389,24 @@ namespace ShooterMmo.Tests.EditMode
                 {
                     EditorSceneManager.CloseScene(scene, true);
                 }
+            }
+        }
+
+        [Test]
+        public void DevelopmentWorldTwoMaterialsUseTheSupportedStandardShader()
+        {
+            var materialGuids = AssetDatabase.FindAssets(
+                "t:Material",
+                new[] { DevelopmentWorld2MaterialDirectory });
+
+            Assert.That(materialGuids, Has.Length.EqualTo(8));
+            foreach (var materialGuid in materialGuids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(materialGuid);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                Assert.That(material, Is.Not.Null, path);
+                Assert.That(material.shader, Is.Not.Null, path);
+                Assert.That(material.shader.name, Is.EqualTo("Standard"), path);
             }
         }
 
