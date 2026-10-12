@@ -1,6 +1,6 @@
 # Combat And Setting Design
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
 Status: Agreed design direction. Nothing in this document is implemented yet.
 It replaces the earlier modern third-person shooter combat direction.
@@ -33,6 +33,8 @@ Numbers in this document are starting values for tuning, not final balance.
 | Movement | Click to move with smooth, continuous movement. |
 | Camera | Freely rotatable camera with zoom, as in RuneScape. |
 | Attacking | A character must stop moving before attacking. |
+| Abilities while moving | Auto attacks and most abilities require standing still. Movement cancels channeled and cast-time abilities. A small number of abilities are marked as usable while moving. |
+| Ability count | Deliberately few active abilities. Combat must not become a RuneScape 3 style rotation across many ability bars. The exact abilities and their number are decided later. |
 | Combat styles | Combat triangle: Melee beats Ranged, Ranged beats Magic, Magic beats Melee. |
 | Damage types | Normal, Fire, Cold, Nature, and Shadow. Normal is the default. Elements are situational. |
 | Element source | The weapon decides the damage type, not the ammunition. |
@@ -109,6 +111,13 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
 - Movement is smooth and continuous. There are no visible tiles.
 - The camera rotates freely around the character and supports zoom.
 - A character must stop moving before attacking.
+- Auto attacks and most abilities require standing still.
+- Starting to move cancels channeled and cast-time abilities.
+- A small number of abilities are explicitly marked as usable while moving,
+  for example a dash or blink, defensive abilities, and selected short instant
+  abilities. This creates a constant choice between dealing damage and staying
+  safe, gives telegraphed boss attacks real counterplay, and limits kiting so
+  the combat triangle holds.
 
 ### Proposed
 
@@ -124,13 +133,6 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
   connects directly to the existing carry-weight and encumbrance rules.
 - Buildings hide roofs or occluding walls when the camera would otherwise lose
   the character.
-
-### Open
-
-- Can some abilities be used while moving, or does every attack and ability
-  require standing still? A mixed rule, where auto attacks require standing
-  still but selected abilities work while moving, creates a constant choice
-  between dealing damage and staying safe.
 
 ## Combat Model
 
@@ -157,15 +159,21 @@ fits the situation.
 
 ### Attacks And Abilities
 
+#### Decided
+
+- The number of active abilities is deliberately small. Combat must not become
+  a RuneScape 3 style rotation across many ability bars. Decisions should come
+  from timing, positioning, and reacting to the encounter, not from managing a
+  large number of buttons.
+- The exact abilities and how many a character can use are decided later.
+
 #### Proposed
 
 - Selecting a Mob starts an auto attack with the equipped weapon. The character
   walks into range, stops, and keeps attacking until the target dies, the player
   moves, or the player selects another action.
-- An ability bar holds a small, fixed number of active abilities:
-  - 4-5 abilities come from the equipped weapon.
-  - 2-3 abilities come from gear and talents.
-  - The bar holds at most about 8 abilities.
+- Active abilities come from the equipped weapon and from gear and talents, and
+  share one small ability bar.
 - Auto attacks build a shared combat resource, similar to RuneScape 3
   adrenaline, that abilities spend. Strong abilities become available when the
   resource is full. This resource exists for all three styles and is separate
@@ -391,13 +399,13 @@ without migration.
 
 ## Open Questions
 
-- Can some abilities be used while moving?
+- Which abilities exist, how many fit on the ability bar, and which of them are
+  usable while moving?
 - Can used ammunition be recovered?
 - Are elemental weapons separate items or enchantments?
 - What are the name, lore, and exact rules of the defensive protection
   mechanic?
-- What are the names of the shared combat resource and the exact ability bar
-  size?
+- What is the name of the shared combat resource?
 - Which races, if any, are added later, and do they affect access to cultural
   technology?
 - What is the exact ammunition stack cap?
@@ -438,6 +446,9 @@ Expected additions:
   PrimaryWeapon, SecondaryWeapon, Tool, Ring1, Ring2, and Bag.
 - Item definition data for base damage, damage type, ammunition family,
   ammunition bonus, and elemental resistance.
+- Ability definitions with an explicit usable-while-moving flag. The server
+  rejects other abilities while the character moves and cancels channeled and
+  cast-time abilities when movement starts.
 - Mana, the shared combat resource, and consumable cooldown state.
 - Threat tables on Mobs.
 - Review of existing item content with modern naming, such as Training Rifle
