@@ -1,7 +1,10 @@
 # Shooter MMO
 
 Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
-modern third-person shooter direction. This repository contains the global
+World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
+combat. That direction is defined in
+[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md) and is not
+implemented yet. This repository contains the global
 identity, regional simulation topology, authoritative movement, shared collision,
 and Unity client foundation for the first playable MVP.
 
@@ -276,6 +279,10 @@ Unity runtime settings live under `Assets/Resources/Config` with definitions in
 
 Start with [Project Overview](docs/PROJECT_OVERVIEW.md), then use the complete
 [documentation index](docs/README.md).
+
+The agreed setting, movement, camera, combat triangle, damage type, weapon,
+ammunition, and magic direction is in
+[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md).
 
 The locked planned item, inventory, carry-weight, death-loot, corpse, insurance,
 and recovery rules are in

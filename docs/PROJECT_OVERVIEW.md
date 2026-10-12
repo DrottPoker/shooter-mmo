@@ -1,11 +1,14 @@
 # Project Overview
 
-Last updated: 2026-07-18
+Last updated: 2026-10-12
 
 ## What Shooter MMO Is
 
 Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
-modern third-person shooter direction. The project is currently focused on a
+World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
+combat, defined in [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
+That direction replaces the earlier modern third-person shooter direction and is
+not implemented yet. The project is currently focused on a
 stable technical foundation for identity, character access, regional compute,
 server-authoritative simulation, and a Unity client before larger gameplay
 systems are added.

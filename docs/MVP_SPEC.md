@@ -1,6 +1,6 @@
 # Shooter MMO MVP Spec
 
-Last updated: 2026-07-18
+Last updated: 2026-10-12
 
 ## Purpose
 
@@ -18,7 +18,9 @@ dependency-ordered delivery plan is
 [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 The implemented scalable world-actor, NPC, Mob, spawn-authoring, and interaction
 foundation and its remaining design contract are defined in
-[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). Setting, movement,
+camera, and combat decisions are defined in
+[Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
 
 ## Core MVP Goal
 
@@ -313,24 +315,29 @@ Category and policy are separate. Policies are server-owned item-instance state.
 
 ## Combat Direction
 
-- Combat is third-person and projectile based.
-- SimulationWorker is authoritative for combat outcomes.
-- The client sends fire intent.
-- The server validates weapon state, ammo, cooldown, position, direction, and
-  hit results.
-- MVP combat should avoid advanced realism.
+The complete setting and combat direction is defined in
+[Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md). It replaces the
+earlier third-person projectile shooter direction.
+
+- Combat is RuneScape-inspired and target based, with click-to-move movement
+  and a freely rotatable camera with zoom.
+- A character must stop moving before attacking.
+- SimulationWorker is authoritative for movement, pathfinding, and combat
+  outcomes.
+- The client sends move-to-destination and attack-target intent.
+- The server validates range, target, weapon state, ammunition, mana, cooldown,
+  and hit results.
 
 The first combat implementation should include:
 
-- One simple ranged weapon.
-- Projectile spawning and travel.
-- Basic hit detection.
-- Basic health and damage.
-- Reload or ammo consumption.
+- Click-to-move movement with server pathfinding.
+- One simple Ranged weapon with consumed ammunition.
+- Target selection and auto attack.
+- Basic health and Normal damage.
 - Authoritative death event generation.
 
-Advanced ballistics, limb damage, armor penetration, and complex recoil should
-wait until the basic combat loop works.
+Abilities, the combat triangle, elemental damage, magic and mana, threat, and
+boss mechanics should wait until the basic combat loop works.
 
 ## NPC And Mob Foundation
 
@@ -649,10 +656,12 @@ boundaries.
 - Gather into inventory through the item transaction service.
 - Sell a gathered resource to the vendor.
 
-### Phase 6: Projectile Combat And Simple Mob
+### Phase 6: Target-Based Combat And Simple Mob
 
-- Add one simple ranged weapon.
-- Add projectile simulation.
+- Replace directional movement input with click-to-move and server
+  pathfinding.
+- Add one simple Ranged weapon with consumed ammunition.
+- Add target selection and auto attack.
 - Add health and damage.
 - Add authoritative death event generation.
 - Add one simple Mob and live Mob loot.

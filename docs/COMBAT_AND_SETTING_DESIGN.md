@@ -1,0 +1,453 @@
+# Combat And Setting Design
+
+Last updated: 2026-10-12
+
+Status: Agreed design direction. Nothing in this document is implemented yet.
+It replaces the earlier modern third-person shooter combat direction.
+
+## Purpose
+
+This document is the product source of truth for the game setting, combat
+model, movement and camera direction, damage types, weapons, ammunition, magic,
+and the related consumable rules.
+
+Each section separates three kinds of content:
+
+- **Decided:** agreed product decisions.
+- **Proposed:** recommended baselines that fit the decisions but have not been
+  explicitly confirmed. They should be validated in prototypes and playtests
+  before they are treated as locked.
+- **Open:** questions that still need a decision.
+
+Numbers in this document are starting values for tuning, not final balance.
+
+## Summary Of Decisions
+
+| Area | Decision |
+| --- | --- |
+| Setting | World of Warcraft style high fantasy with magic. Technology exists as a cultural trait of specific peoples, not as a modern era. |
+| Weapons | Fantasy weapons only. Firearms are fantasy firearms, such as an improvised goblin pistol, never real-world models. |
+| Playable races | Humans only for now. More races may be added later. |
+| Progression | Classless. Gear, perks, and talents form a build, and the build decides whether a character plays as tank, damage, or healer. |
+| Combat feel | A blend of Old School RuneScape and RuneScape 3, without tiles and without clunky tick-based feel. |
+| Movement | Click to move with smooth, continuous movement. |
+| Camera | Freely rotatable camera with zoom, as in RuneScape. |
+| Attacking | A character must stop moving before attacking. |
+| Combat styles | Combat triangle: Melee beats Ranged, Ranged beats Magic, Magic beats Melee. |
+| Damage types | Normal, Fire, Cold, Nature, and Shadow. Normal is the default. Elements are situational. |
+| Element source | The weapon decides the damage type, not the ammunition. |
+| Resistances | Potions and gear can grant small elemental resistances. They make content easier but are never required. |
+| Weaknesses | Mobs can be weak to an element. |
+| Ammunition | Consumed, tiered, and adds a small damage bonus. Any ammunition of the correct family works with any weapon of that family. |
+| Ammunition slot | A dedicated equipment slot holds a large weightless stack. Ammunition carried in the inventory has weight. |
+| Magic cost | Magic auto attacks cost mana. Mana regenerates slowly and is restored with mana potions and drinking. |
+
+## Background
+
+The original direction was a Fortnite-like third-person shooter. The concern
+that drove this design was PvE: shooting a stationary boss through magazine
+after magazine, and shooting ordinary Mobs with no decisions involved, risks
+feeling boring and awkward. The goal is a RuneScape, World of Warcraft, and
+Final Fantasy feeling where the player is active, manages a rotation, and makes
+decisions, and where dungeons are deliberate encounters instead of a stream of
+enemies.
+
+A hybrid shooter with an ability bar was considered. The chosen direction is
+RuneScape-like combat and movement instead, with a smooth modern presentation.
+
+## Setting
+
+### Decided
+
+- The world is World of Warcraft style high fantasy with magic everywhere.
+- The base of the world is medieval fantasy: castles, forests, taverns, and
+  magic.
+- Technology is cultural. Specific peoples, such as goblins, dwarves, and
+  gnomes, build firearms and machines. The rest of the world does not. The
+  "modern" feeling exists in pockets tied to those cultures.
+- Magic and technology exist side by side without being treated as opposites.
+- Weapons are fantasy weapons. Real-world firearm models such as an M4A1 or an
+  AK-47 do not exist in this world.
+- Only humans are playable for now.
+
+### Proposed
+
+- The tone mixes epic threats with humor, for example goblin inventions that
+  occasionally misfire.
+- Each culture can own a city hub with its own style, professions, and weapon
+  craft. This matches the safe city hubs in the original brief.
+- Art direction is stylized low to mid poly with exaggerated proportions,
+  strong silhouettes, and clear colors, so characters stay readable from a
+  zoomed-out rotating camera.
+
+## Progression And Roles
+
+### Decided
+
+- There are no classes.
+- Everyone has access to the same kinds of actions. The build, made of gear,
+  perks, and talents, decides the play style.
+- Tank, damage, and healer roles come from the build, not from a class.
+- Combat style (Melee, Ranged, or Magic) and role (tank, damage, or healer) are
+  separate choices. A tank can be a melee or a ranged build.
+
+### Proposed
+
+- A threat (aggro) system is required for roles to work. Mobs attack the
+  character with the highest threat, tank builds generate extra threat, and
+  damage builds manage their threat. Without threat, Mobs pick targets at random
+  and group combat becomes chaotic.
+- Progression should mainly add options, such as new abilities, perks, and
+  tools, rather than only larger numbers. Scaling Mob health purely with level
+  creates long fights against damage sponges.
+
+## Movement And Camera
+
+### Decided
+
+- Movement is click to move.
+- Movement is smooth and continuous. There are no visible tiles.
+- The camera rotates freely around the character and supports zoom.
+- A character must stop moving before attacking.
+
+### Proposed
+
+- Left click performs the default action for what is under the cursor: walk on
+  the ground, attack a Mob, talk to an NPC, or loot a corpse.
+- Right click opens a context menu with every available action, as in
+  RuneScape.
+- The context menu includes **Examine**, which shows a short description and,
+  for Mobs, any elemental weakness.
+- Pathfinding may use a navigation mesh or a fine internal grid, but the player
+  never sees or feels tiles.
+- Running uses run energy that drains faster with higher carried weight, which
+  connects directly to the existing carry-weight and encumbrance rules.
+- Buildings hide roofs or occluding walls when the camera would otherwise lose
+  the character.
+
+### Open
+
+- Can some abilities be used while moving, or does every attack and ability
+  require standing still? A mixed rule, where auto attacks require standing
+  still but selected abilities work while moving, creates a constant choice
+  between dealing damage and staying safe.
+
+## Combat Model
+
+### Combat Styles
+
+#### Decided
+
+There are three combat styles that form a triangle:
+
+- **Melee beats Ranged.**
+- **Ranged beats Magic.**
+- **Magic beats Melee.**
+
+The triangle works through armor types, as in RuneScape:
+
+| Style | Armor | Strong against | Weak against |
+| --- | --- | --- | --- |
+| Melee | Heavy armor | Ranged | Magic |
+| Ranged | Light armor | Magic | Melee |
+| Magic | Cloth | Melee | Ranged |
+
+Every character can train and use every style. Players choose the style that
+fits the situation.
+
+### Attacks And Abilities
+
+#### Proposed
+
+- Selecting a Mob starts an auto attack with the equipped weapon. The character
+  walks into range, stops, and keeps attacking until the target dies, the player
+  moves, or the player selects another action.
+- An ability bar holds a small, fixed number of active abilities:
+  - 4-5 abilities come from the equipped weapon.
+  - 2-3 abilities come from gear and talents.
+  - The bar holds at most about 8 abilities.
+- Auto attacks build a shared combat resource, similar to RuneScape 3
+  adrenaline, that abilities spend. Strong abilities become available when the
+  resource is full. This resource exists for all three styles and is separate
+  from mana.
+- A global cooldown of about 1-1.5 seconds gives combat a deliberate rhythm
+  without tiles or ticks and tolerates network latency.
+- Ground-targeted abilities are aimed with the cursor, for example area damage,
+  a thrown bomb, or a directional shot. The cursor is free because movement is
+  click based.
+- Gear and talents can grant a short dash or blink for avoiding mechanics.
+- Two saved equipment loadouts can be swapped with one key. A swap includes the
+  matching ammunition. The existing primary and secondary weapon slots fit this
+  model.
+
+### Defensive Reactions
+
+#### Proposed
+
+- A defensive mechanic inspired by Old School RuneScape protection prayers lets
+  the player protect against one combat style at a time.
+- Bosses telegraph which style their next attack uses, and the player switches
+  protection in time. Some bosses switch styles during the fight.
+- Elements are handled through preparation before a fight (gear and potions).
+  Combat styles are handled through reaction during a fight (protection). The
+  two systems do not compete.
+- The name and lore of this mechanic must fit the setting. Open.
+
+### Damage Types
+
+#### Decided
+
+| Damage type | Role |
+| --- | --- |
+| Normal | Default damage type for most weapons |
+| Fire | Situational element |
+| Cold | Situational element |
+| Nature | Situational element |
+| Shadow | Situational element |
+
+- Normal damage is the standard. Elements are situational choices.
+- All three combat styles can deal elemental damage, because the element comes
+  from the weapon. A staff can be Fire or Cold. A sword, bow, or firearm can also
+  carry an element.
+
+#### Proposed
+
+Each element should have a recognizable effect and a consistent color used in
+damage numbers, visual effects, ground telegraphs, and UI:
+
+| Damage type | Color | Possible effect |
+| --- | --- | --- |
+| Normal | White | No extra effect |
+| Fire | Orange | Burning damage over time |
+| Cold | Light blue | Slow |
+| Nature | Green | Poison, possibly reduced healing |
+| Shadow | Purple | Life steal |
+
+### Resistances And Weaknesses
+
+#### Decided
+
+- Potions and gear can grant elemental resistance.
+- Resistance is a small advantage that makes content easier when the player
+  knows which element they will face. It is never required to complete content.
+- Mobs can be weak to an element.
+
+#### Proposed
+
+| Modifier | Starting value |
+| --- | --- |
+| Resistance potion | 10-15% less damage from one element |
+| Resistance from gear | Small bonus, at most about 20-25% total |
+| Mob weak to an element | 15-25% more damage from that element |
+| Mob with its own element | Takes reduced damage from that element |
+
+- Player resistance is capped well below immunity.
+- Elemental resistance on gear is a secondary bonus, not a reason to carry
+  complete extra gear sets.
+- Players learn weaknesses through visible design (a fire creature looks fire
+  based), the Examine action, and possibly a bestiary that fills in as Mobs are
+  defeated.
+
+### Damage Calculation Order
+
+#### Proposed
+
+1. The weapon provides base damage and the damage type.
+2. Ammunition adds its bonus for Ranged weapons.
+3. The combat triangle and target armor affect all damage, regardless of
+   element.
+4. A small elemental modifier is applied last: weakness increases damage,
+   resistance reduces it, and otherwise nothing changes.
+
+This keeps Normal damage a safe default and prevents elemental weapons from
+bypassing armor and becoming strictly better against armored targets.
+
+## Weapons And Ammunition
+
+### Decided
+
+- The weapon decides the damage type. Ammunition never changes the element.
+- Changing element means changing weapon.
+- Ranged includes bows, crossbows, and fantasy firearms.
+- Ammunition is consumed and comes in tiers, like RuneScape arrows.
+- Each Ranged weapon family uses its own ammunition family, such as arrows for
+  bows.
+- There is no tier restriction between weapon and ammunition. Any ammunition of
+  the correct family works with any weapon of that family.
+- The weapon provides the main damage. Ammunition gives a small bonus that is
+  large enough to make better ammunition worth using.
+- A dedicated equipment slot holds ammunition as a large stack with no weight.
+- Ammunition carried in the inventory has normal weight.
+
+### Proposed
+
+Weapon families and their feel:
+
+| Family | Ammunition | Feel |
+| --- | --- | --- |
+| Bow | Arrows | Fast, quiet, lower damage per shot |
+| Crossbow | Bolts | Slower, stronger, piercing |
+| Fantasy firearm | Shot and powder | Slow reload, high damage, loud |
+
+- The ammunition bonus is a percentage of weapon damage, for example 5-15%
+  depending on tier, instead of a flat value. A flat bonus would make expensive
+  ammunition a huge upgrade on a weak weapon. A percentage keeps the bonus
+  proportional, so top-tier ammunition only pays off with a good weapon.
+- The ammunition slot has a stack cap, for example a few hundred to about one
+  thousand. Without a cap, the weightless slot could be used to haul tradeable
+  ammunition and bypass the carry-weight system.
+- Ammunition in the slot follows the same death rules as other equipment in
+  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
+- Weapon tiers can be expressed through the culture and craftsmanship behind
+  them, for example:
+  1. Goblin scrap pistol: cheap and unreliable.
+  2. Human flintlock: stable and dependable.
+  3. Dwarven rifled gun: precise and heavy.
+  4. Rune-etched rifle: magic and powder combined at the highest tier.
+
+### Open
+
+- Can used ammunition be recovered? Options are full consumption (strongest
+  economy sink), partial recovery from the ground as in RuneScape, or recovery
+  that is common for cheap ammunition and rare for expensive ammunition.
+- Are elemental weapons separate dropped or crafted items, or can a profession
+  enchant an ordinary weapon with an element? Enchanting keeps the item count
+  down and gives a profession a role.
+- Exact ammunition stack cap.
+
+## Magic And Mana
+
+### Decided
+
+- Magic auto attacks cost mana instead of materials.
+- Mana regenerates slowly.
+- Mana potions restore mana.
+- The cost of magic is time and risk: a caster has to stop and drink, and deals
+  no damage while doing so.
+
+### Proposed
+
+| | During combat | Between fights |
+| --- | --- | --- |
+| Source | Mana potion | Drink while resting |
+| Effect | Fast, partial restore | Slow, large restore |
+| Limit | Shared potion cooldown | Interrupted by attacking or taking damage |
+| Cost | More expensive, crafted by alchemy | Cheap |
+
+- The shared potion cooldown prevents chaining potions to ignore mana.
+- Mana management becomes a skill for healer builds, as in classic World of
+  Warcraft.
+
+## Combat Cost By Style
+
+### Proposed
+
+| Style | Auto attack cost | Economic link |
+| --- | --- | --- |
+| Ranged | Ammunition | Arrows, bolts, shot |
+| Magic | Mana | Mana potions |
+| Melee | Nothing | Takes more damage and uses more food and healing |
+
+Eating food during combat delays the next attack, as in RuneScape. Together
+with drinking for mana, no style gets free recovery during a fight.
+
+## Encounter And Dungeon Principles
+
+### Proposed
+
+- Ordinary Mobs appear in small groups of about 3-5 that are a real threat,
+  instead of large crowds that die instantly.
+- Mobs have jobs: casters that must be interrupted, healers that must be
+  controlled or killed first, patrols that must be timed, and armored Mobs that
+  reward the right combat style.
+- Dungeons vary their pace with rests between pulls, exploration, and possibly
+  puzzles. Mana and food recovery naturally create the pull, fight, recover
+  rhythm of classic World of Warcraft dungeons.
+- Elite Mobs and bosses carry the long fights and the mechanics. Bosses have
+  phases, telegraphed attacks, and style switches.
+- Attacks the player is expected to avoid have a wind-up of at least about
+  300-500 ms, so players can react through network latency on a
+  server-authoritative simulation.
+
+## UI And UX Principles
+
+### Proposed
+
+RuneScape 3 shows what happens when interfaces accumulate over many years:
+legacy and new layouts mixed, too many windows, too many abilities, and small
+icons. This project should set rules from the start:
+
+- Cap the number of active abilities. New abilities replace old ones on the bar
+  instead of adding more bars.
+- Show danger in the world, not in the interface: ground markers and clear
+  animations instead of meters and popups.
+- Use a minimal HUD by default and show more only when it is needed.
+- Keep a fixed layout where each element always lives in the same place.
+- Put consumables on dedicated hotkeys instead of clicking them in the
+  inventory.
+
+The current UI is explicitly temporary, so the final UI can follow these rules
+without migration.
+
+## Open Questions
+
+- Can some abilities be used while moving?
+- Can used ammunition be recovered?
+- Are elemental weapons separate items or enchantments?
+- What are the name, lore, and exact rules of the defensive protection
+  mechanic?
+- What are the names of the shared combat resource and the exact ability bar
+  size?
+- Which races, if any, are added later, and do they affect access to cultural
+  technology?
+- What is the exact ammunition stack cap?
+
+## Implications For The Existing Codebase
+
+This section is a planning aid. None of it is implemented.
+
+Expected to carry over largely unchanged:
+
+- Accounts, characters, topology, placement, join tickets, and simulation
+  session leases in AuthService.
+- The item catalog, slot inventory, Bags, carry weight and encumbrance, death
+  partition, corpses, insurance, and Recovery Storage.
+- World actors, NPC and Mob definitions, and authoritative interaction sessions.
+- Interest management, the versioned protocol framework, and the stress and bot
+  tooling.
+
+Expected to change:
+
+- Movement input changes from per-tick directional input and camera yaw to
+  move-to-destination and attack-target commands.
+- SimulationWorker needs server-side pathfinding with navigation data generated
+  from World authoring data. A C# Recast and Detour port such as DotRecast is
+  one option.
+- Shared movement code can become shared path following, so the client starts
+  moving immediately on click while the server stays authoritative.
+- The third-person shooter camera is replaced by an orbit camera with zoom.
+- Crosshair interaction targeting is replaced by cursor picking with a left
+  click default action and a right click context menu.
+- The projectile and fire-intent combat direction in the
+  [MVP Specification](MVP_SPEC.md) is replaced by target-based combat where the
+  server resolves hits. Shooter-style lag compensation is not needed.
+
+Expected additions:
+
+- An ammunition equipment slot. The current slots are Head, BodyArmor,
+  PrimaryWeapon, SecondaryWeapon, Tool, Ring1, Ring2, and Bag.
+- Item definition data for base damage, damage type, ammunition family,
+  ammunition bonus, and elemental resistance.
+- Mana, the shared combat resource, and consumable cooldown state.
+- Threat tables on Mobs.
+- Review of existing item content with modern naming, such as Training Rifle
+  and Training 5.56 Ammunition, against the fantasy setting.
+
+## Superseded Direction
+
+This document supersedes the modern third-person shooter, modern weapon, and
+projectile combat direction in
+[MMO Codex Project Brief](MMO_Codex_Project_Brief.md) and the combat direction
+in [MVP Specification](MVP_SPEC.md). Architecture and feature documents still
+describe the implemented WASD movement, shooter camera, and crosshair
+interaction until the code changes.
