@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -31,7 +31,7 @@ operations, and future design do not drift into duplicate descriptions.
 - [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md) is the product
   source of truth for the fantasy setting, click-to-move movement and camera,
   the combat triangle, damage types and resistances, weapons, ammunition, magic,
-  and mana. It replaces the earlier modern third-person shooter direction and is
+  mana, and PvP combat. It replaces the earlier modern third-person shooter direction and is
   not implemented yet.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) is the canonical
   source of truth for the implemented scalable world-actor model, NPC and Mob

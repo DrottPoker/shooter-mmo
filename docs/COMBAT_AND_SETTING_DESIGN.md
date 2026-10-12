@@ -9,7 +9,7 @@ It replaces the earlier modern third-person shooter combat direction.
 
 This document is the product source of truth for the game setting, combat
 model, movement and camera direction, damage types, weapons, ammunition, magic,
-and the related consumable rules.
+PvP combat, and the related consumable rules.
 
 Each section separates three kinds of content:
 
@@ -35,14 +35,21 @@ Numbers in this document are starting values for tuning, not final balance.
 | Attacking | A character must stop moving before attacking. |
 | Abilities while moving | Auto attacks and most abilities require standing still. Movement cancels channeled and cast-time abilities. A small number of abilities are marked as usable while moving. |
 | Ability count | Deliberately few active abilities. Combat must not become a RuneScape 3 style rotation across many ability bars. The exact abilities and their number are decided later. |
+| Ability cost | Each ability has its own cooldown. There is no shared combat resource such as adrenaline. Mana and ammunition are the only combat resources. |
 | Combat styles | Combat triangle: Melee beats Ranged, Ranged beats Magic, Magic beats Melee. |
+| Defense | No active defensive mechanic for now, such as protection prayers or auras. Defense comes from gear stats such as armor. |
 | Damage types | Normal, Fire, Cold, Nature, and Shadow. Normal is the default. Elements are situational. |
 | Element source | The weapon decides the damage type, not the ammunition. |
+| Elemental weapons | Most weapons are Normal, especially early. Elemental weapons are special found, looted, or crafted items with a fixed built-in damage type that can never be changed or added. |
 | Resistances | Potions and gear can grant small elemental resistances. They make content easier but are never required. |
 | Weaknesses | Mobs can be weak to an element. |
-| Ammunition | Consumed, tiered, and adds a small damage bonus. Any ammunition of the correct family works with any weapon of that family. |
-| Ammunition slot | A dedicated equipment slot holds a large weightless stack. Ammunition carried in the inventory has weight. |
+| Ammunition | Consumed and never recovered, tiered, and adds a small damage bonus. Any ammunition of the correct family works with any weapon of that family. |
+| Ammunition slot | A dedicated equipment slot holds a weightless stack of at most 1000 units, tunable as content data. Ammunition carried in the inventory has weight. |
 | Magic cost | Magic auto attacks cost mana. Mana regenerates slowly and is restored with mana potions and drinking. |
+| PvP time to kill | Medium, about 10-20 seconds 1v1 with equal gear, extended by potions and healing. Skill decides both how fast a player kills and how long a player survives. |
+| Equipment changes | Individual items can be changed freely during combat. Each change blocks attacks, abilities, and spells for about 1 second, so switching is possible but high-APM switching gives no advantage. |
+| PvP balance | PvP and PvE use the same numbers. PvE is balanced through Mob health and defense. |
+| PvP movement control | Movement impairments such as slows and roots exist, and so do counters such as a potion that removes them. Both escaping and catching must feel possible. |
 
 ## Background
 
@@ -166,6 +173,12 @@ fits the situation.
   from timing, positioning, and reacting to the encounter, not from managing a
   large number of buttons.
 - The exact abilities and how many a character can use are decided later.
+- Each ability has its own cooldown. There is no shared combat resource such as
+  RuneScape 3 adrenaline, because a build-and-spend resource drives the
+  rotation feel this design avoids. Mana and ammunition are the only combat
+  resources.
+- A weapon special attack with its own energy, as in Old School RuneScape, may
+  be added later if weapons need more identity.
 
 #### Proposed
 
@@ -174,32 +187,31 @@ fits the situation.
   moves, or the player selects another action.
 - Active abilities come from the equipped weapon and from gear and talents, and
   share one small ability bar.
-- Auto attacks build a shared combat resource, similar to RuneScape 3
-  adrenaline, that abilities spend. Strong abilities become available when the
-  resource is full. This resource exists for all three styles and is separate
-  from mana.
 - A global cooldown of about 1-1.5 seconds gives combat a deliberate rhythm
   without tiles or ticks and tolerates network latency.
 - Ground-targeted abilities are aimed with the cursor, for example area damage,
   a thrown bomb, or a directional shot. The cursor is free because movement is
   click based.
 - Gear and talents can grant a short dash or blink for avoiding mechanics.
-- Two saved equipment loadouts can be swapped with one key. A swap includes the
-  matching ammunition. The existing primary and secondary weapon slots fit this
-  model.
+- Two saved equipment loadouts can be swapped with one key as a convenience. A
+  swap includes the matching ammunition. The existing primary and secondary
+  weapon slots fit this model. A loadout swap is one equipment change and has
+  the same short attack lockout as changing a single item.
 
-### Defensive Reactions
+### Defense
+
+#### Decided
+
+- There is no active defensive mechanic for now. No protection prayers and no
+  auras. This can be revisited later.
+- Defense comes from gear stats, such as armor.
 
 #### Proposed
 
-- A defensive mechanic inspired by Old School RuneScape protection prayers lets
-  the player protect against one combat style at a time.
-- Bosses telegraph which style their next attack uses, and the player switches
-  protection in time. Some bosses switch styles during the fight.
-- Elements are handled through preparation before a fight (gear and potions).
-  Combat styles are handled through reaction during a fight (protection). The
-  two systems do not compete.
-- The name and lore of this mechanic must fit the setting. Open.
+- Telegraphed attacks are countered through movement, positioning, and the few
+  abilities that are usable while moving, not through a defensive toggle.
+- Both elements and combat styles are handled through preparation before a
+  fight: gear, potions, and the choice of armor type.
 
 ### Damage Types
 
@@ -276,15 +288,30 @@ bypassing armor and becoming strictly better against armored targets.
 
 - The weapon decides the damage type. Ammunition never changes the element.
 - Changing element means changing weapon.
+- Most weapons deal Normal damage, especially early in progression.
+- Elemental weapons are special items with a built-in damage type that players
+  find, loot, or craft. Crafting creates a new weapon whose item definition
+  carries the element. It never modifies an existing weapon.
+- A weapon's damage type is fixed by its item definition. It can never be
+  changed, added, or removed. There is no enchanting or other element
+  modification.
 - Ranged includes bows, crossbows, and fantasy firearms.
 - Ammunition is consumed and comes in tiers, like RuneScape arrows.
+- Used ammunition is never recovered. Every shot consumes one unit, and no
+  ammunition is left on the ground. This makes ammunition a steady economy sink
+  and keeps demand for crafted ammunition.
 - Each Ranged weapon family uses its own ammunition family, such as arrows for
   bows.
 - There is no tier restriction between weapon and ammunition. Any ammunition of
   the correct family works with any weapon of that family.
 - The weapon provides the main damage. Ammunition gives a small bonus that is
   large enough to make better ammunition worth using.
-- A dedicated equipment slot holds ammunition as a large stack with no weight.
+- A dedicated equipment slot holds ammunition as a large stack with no weight,
+  like every other equipped item.
+- The ammunition slot holds at most 1000 units, the same cap for every
+  ammunition family and tier. The cap prevents the weightless slot from being
+  used to haul tradeable ammunition past the carry-weight system. It is content
+  data, not hard-coded, so it can be tuned after playtests.
 - Ammunition carried in the inventory has normal weight.
 
 ### Proposed
@@ -301,27 +328,18 @@ Weapon families and their feel:
   depending on tier, instead of a flat value. A flat bonus would make expensive
   ammunition a huge upgrade on a weak weapon. A percentage keeps the bonus
   proportional, so top-tier ammunition only pays off with a good weapon.
-- The ammunition slot has a stack cap, for example a few hundred to about one
-  thousand. Without a cap, the weightless slot could be used to haul tradeable
-  ammunition and bypass the carry-weight system.
 - Ammunition in the slot follows the same death rules as other equipment in
   [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
+- The lowest ammunition tier is very cheap. Ranged is the only style that
+  costs money per attack, and new players must not be priced out of it.
+- Gear or perks may later grant a chance to save ammunition on a shot. A saved
+  unit is simply not consumed. It never becomes a ground item.
 - Weapon tiers can be expressed through the culture and craftsmanship behind
   them, for example:
   1. Goblin scrap pistol: cheap and unreliable.
   2. Human flintlock: stable and dependable.
   3. Dwarven rifled gun: precise and heavy.
   4. Rune-etched rifle: magic and powder combined at the highest tier.
-
-### Open
-
-- Can used ammunition be recovered? Options are full consumption (strongest
-  economy sink), partial recovery from the ground as in RuneScape, or recovery
-  that is common for cheap ammunition and rare for expensive ammunition.
-- Are elemental weapons separate dropped or crafted items, or can a profession
-  enchant an ordinary weapon with an element? Enchanting keeps the item count
-  down and gives a profession a role.
-- Exact ammunition stack cap.
 
 ## Magic And Mana
 
@@ -372,10 +390,72 @@ with drinking for mana, no style gets free recovery during a fight.
   puzzles. Mana and food recovery naturally create the pull, fight, recover
   rhythm of classic World of Warcraft dungeons.
 - Elite Mobs and bosses carry the long fights and the mechanics. Bosses have
-  phases, telegraphed attacks, and style switches.
+  phases and telegraphed attacks that players avoid by moving and positioning.
 - Attacks the player is expected to avoid have a wind-up of at least about
   300-500 ms, so players can react through network latency on a
   server-authoritative simulation.
+
+## PvP Combat
+
+The social PvP rules, such as rule areas, the hostile flag, and criminal
+reputation, are defined in [MMO Codex Project Brief](MMO_Codex_Project_Brief.md).
+This section covers how combat itself works between players.
+
+### Decided
+
+- Time to kill is medium. A 1v1 fight between equally geared players lasts
+  about 10-20 seconds of sustained damage. Potions and healing can extend it.
+- PvP balances two feelings. The attacked player should feel able to escape or
+  fight back. The attacker should feel able to catch the target and stop it from
+  getting away.
+- Movement impairment abilities exist, such as slows and roots.
+- Counters to movement impairments exist, for example a potion that removes
+  them.
+- Skill decides the outcome in both directions. A skilled attacker can kill
+  quickly, and a skilled defender can survive for a long time.
+- Players can freely change individual equipment items during combat.
+- Every equipment change has a small cost: the character cannot attack, use
+  abilities, or cast spells for about 1 second. Switching stays possible and
+  meaningful, for example to counter an opponent's combat style, but rapid
+  high-APM switching as in Old School RuneScape gives no advantage.
+- PvP and PvE use the same numbers. Abilities, weapons, and effects have no
+  separate PvP values. PvE balance is adjusted on the Mob side, mainly through
+  Mob health and defense.
+- Logging out or disconnecting outside a safe city leaves the character in the
+  world for a risk timer that combat resets, as defined in
+  [MVP Specification](MVP_SPEC.md). Logout cannot be used to escape a fight.
+
+### Proposed
+
+- Player health and damage are tuned first for the PvP time-to-kill target.
+  Mob values are then set around the player values.
+- Mob definitions can resist or ignore movement impairments, for example bosses
+  that cannot be rooted, so impairments tuned for PvP do not trivialize PvE
+  encounters.
+
+- An equipment change refreshes the lockout instead of stacking it. Changing
+  several items in quick succession locks attacks until about 1 second after
+  the last change.
+- The lockout always applies, in and out of combat. The server then needs no
+  separate in-combat state for equipment rules.
+- Movement and consumables remain available during the lockout, so a player can
+  still reposition or drink a potion while switching.
+
+- Movement impairments are slows and roots. Long hard stuns that remove all
+  control are avoided, because losing all control while full loot is at stake
+  feels unfair.
+- Repeated impairments on the same target have diminishing returns, so a target
+  can never be kept rooted until it dies.
+- A cleanse potion removes movement impairments and shares the potion cooldown
+  with healing and mana potions. Every potion use becomes a choice between
+  health, mana, and freedom of movement.
+- A root does not stop attacks, because attacking already requires standing
+  still. Roots therefore mainly stop escapes and melee chasers, while slows also
+  punish players who reposition.
+- The Cold slow and the Nature reduced healing are natural PvP tools, which
+  gives elemental weapons a PvP role in addition to Mob weaknesses.
+- Run energy that drains faster with carried weight makes a heavily loaded
+  player easier to catch, which strengthens the Wilderness risk and reward.
 
 ## UI And UX Principles
 
@@ -401,14 +481,8 @@ without migration.
 
 - Which abilities exist, how many fit on the ability bar, and which of them are
   usable while moving?
-- Can used ammunition be recovered?
-- Are elemental weapons separate items or enchantments?
-- What are the name, lore, and exact rules of the defensive protection
-  mechanic?
-- What is the name of the shared combat resource?
 - Which races, if any, are added later, and do they affect access to cultural
   technology?
-- What is the exact ammunition stack cap?
 
 ## Implications For The Existing Codebase
 
@@ -445,12 +519,19 @@ Expected additions:
 - An ammunition equipment slot. The current slots are Head, BodyArmor,
   PrimaryWeapon, SecondaryWeapon, Tool, Ring1, Ring2, and Bag.
 - Item definition data for base damage, damage type, ammunition family,
-  ammunition bonus, and elemental resistance.
+  ammunition bonus, defensive stats such as armor, and elemental resistance.
 - Ability definitions with an explicit usable-while-moving flag. The server
   rejects other abilities while the character moves and cancels channeled and
   cast-time abilities when movement starts.
-- Mana, the shared combat resource, and consumable cooldown state.
+- Mana, per-ability cooldowns, the global cooldown, and consumable cooldown
+  state.
+- Status effects for movement impairments such as slows and roots, with
+  diminishing returns per target and removal by a cleanse effect.
+- A server-owned attack lockout timestamp that every equipment change
+  refreshes. Attack, ability, and spell intents are rejected until it expires.
 - Threat tables on Mobs.
+- Mob combat data for health, defense, elemental weaknesses, and movement
+  impairment resistance.
 - Review of existing item content with modern naming, such as Training Rifle
   and Training 5.56 Ammunition, against the fantasy setting.
 
