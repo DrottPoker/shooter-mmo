@@ -1,6 +1,6 @@
 # MMO Project Brief for Codex
 
-_Original brief: 2026-07-06. Current-design alignment: 2026-10-12._
+_Original brief: 2026-07-06. Current-design alignment: 2026-10-13._
 
 > This is the original broad vision document. Current terminology and
 > architecture are defined in `PROJECT_ARCHITECTURE.md`. Current item,
@@ -8,9 +8,10 @@ _Original brief: 2026-07-06. Current-design alignment: 2026-10-12._
 > defined in `INVENTORY_AND_DEATH_LOOT_DESIGN.md` and supersede conflicting
 > historical ideas below. Current World actor, NPC, Mob, spawn-authoring, and
 > interaction terminology is defined in `NPC_AND_MOB_SYSTEM_DESIGN.md`.
-> Current setting, combat, movement, camera, weapon, and damage-type decisions
-> are defined in `COMBAT_AND_SETTING_DESIGN.md`. They replace the modern
-> third-person shooter direction and modern weapon ideas below.
+> Current setting, progression, combat, movement, camera, weapon, damage-type,
+> and profession decisions are defined in `COMBAT_AND_SETTING_DESIGN.md`. They
+> replace the modern third-person shooter direction, the modern weapon ideas,
+> and the possible profession list below.
 
 ## Purpose
 

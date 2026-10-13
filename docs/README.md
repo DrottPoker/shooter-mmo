@@ -31,9 +31,9 @@ operations, and future design do not drift into duplicate descriptions.
 - [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md) is the product
   source of truth for the fantasy setting, character levels and talents,
   click-to-move movement and camera, the combat triangle, damage types and
-  resistances, weapons, ammunition, magic, mana, threat, healing, and PvP
-  combat. It replaces the earlier modern third-person shooter direction and is
-  not implemented yet.
+  resistances, weapons, ammunition, magic, mana, threat, healing, PvP combat,
+  and professions. It replaces the earlier modern third-person shooter
+  direction and is not implemented yet.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) is the canonical
   source of truth for the implemented scalable world-actor model, NPC and Mob
   distinction, composable NPC capabilities, visual spawn authoring, crosshair

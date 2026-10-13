@@ -9,8 +9,8 @@ It replaces the earlier modern third-person shooter combat direction.
 
 This document is the product source of truth for the game setting, character
 progression, combat model, movement and camera direction, damage types, weapons,
-ammunition, magic, threat, healing, PvP combat, and the related consumable
-rules.
+ammunition, magic, threat, healing, PvP combat, professions, and the related
+consumable rules.
 
 Each section separates three kinds of content:
 
@@ -30,9 +30,10 @@ Numbers in this document are starting values for tuning, not final balance.
 | Weapons | Fantasy weapons only. Firearms are fantasy firearms, such as an improvised goblin pistol, never real-world models. |
 | Playable races | Humans only for now. More races may be added later. |
 | Progression | Classless. Gear, perks, and talents form a build, and the build decides whether a character plays as tank, damage, or healer. |
-| Levels | One character level earned through combat experience from Mobs, quests, bosses, and dungeons. PvP kills give no experience, and death never costs experience. The level gives no stats, only unlocks and one talent point per level. Talent points go into a large open talent library of stats, perks, and other options. Talent ranks cost 1, 2, 3, and so on up to rank 10, and can be respecced for a fee. No intended long-term level cap, with a temporary cap of 200 at first. Power comes from gear and the build. Every profession has its own separate experience and level. |
+| Levels | One character level earned through combat experience from Mobs, quests, bosses, and dungeons. PvP kills give no experience, and death never costs experience. The level gives no stats, only unlocks and one talent point per level. Talent points go into a large open talent library of stats, perks, and other options. Talent ranks cost 1, 2, 3, and so on up to rank 10, and can be respecced for a fee. No intended long-term level cap, with a temporary cap of 200 at first. Power comes from gear and the build. Every profession has its own separate experience and level up to 100, and every character can level every profession. |
 | Healing | Every character can use every ability, including healing. Healing multipliers on gear and talents make healing effective, so a healer is a build commitment. |
 | Threat | Mobs attack the character with the highest threat in a per-Mob threat table. Damage and healing generate threat. Tank builds get a threat multiplier and a taunt. |
+| Professions | Gathering: Mining, Woodcutting, Herbalism, Hunting, Fishing. Crafting: Smithing, Leatherworking, Tailoring, Fletching, Tinkering, Artificing, Alchemy, Cooking. Trading is a playstyle, not a profession. No Salvaging for now. |
 | Combat feel | A blend of Old School RuneScape and RuneScape 3, without tiles and without clunky tick-based feel. |
 | Movement | Click to move with smooth, continuous movement. |
 | Camera | Freely rotatable camera with zoom, as in RuneScape. |
@@ -114,6 +115,9 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
   penalty.
 - Every profession has its own experience and level, independent of the
   character level and of other professions.
+- Every character can learn and level every profession. There is no limit on
+  how many professions a character can have.
+- The maximum profession level is 100.
 - The character level gives no stats by itself. It only unlocks things.
 - Power progression comes from gear and the build.
 - Each character level grants one talent point.
@@ -151,6 +155,10 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
   level differences from becoming large raw power gaps in PvP.
 - The escalating rank cost applies to every ranked talent, stats and perks
   alike. Some perks may have only one rank.
+- Because every profession is open to everyone, interdependence between
+  players comes from time and risk rather than restrictions. Reaching level 100
+  in a profession is a large time investment, and the best recipes need rare
+  materials from dangerous areas such as the Wilderness and bosses.
 
 ## Movement And Camera
 
@@ -554,6 +562,57 @@ This section covers how combat itself works between players.
 - Run energy that drains faster with carried weight makes a heavily loaded
   player easier to catch, which strengthens the Wilderness risk and reward.
 
+## Professions
+
+Profession levels and experience are defined in
+[Progression And Roles](#progression-and-roles). Every character can level
+every profession up to level 100.
+
+### Decided
+
+Gathering professions:
+
+| Profession | Produces |
+| --- | --- |
+| Mining | Ore, stone, and gems |
+| Woodcutting | Wood for bows, crossbows, and staffs |
+| Herbalism | Herbs for Alchemy |
+| Hunting | Hides, meat, and bones, including skinning |
+| Fishing | Fish for Cooking |
+
+Crafting professions:
+
+| Profession | Produces |
+| --- | --- |
+| Smithing | Metal weapons, heavy armor for Melee, and arrowheads |
+| Leatherworking | Light armor for Ranged |
+| Tailoring | Cloth armor for Magic |
+| Fletching | Bows, crossbows, arrows, and bolts |
+| Tinkering | Fantasy firearms, shot and powder, and gadgets such as bombs |
+| Artificing | Staffs, other magic weapons, and relics |
+| Alchemy | Healing, mana, resistance, and cleanse potions |
+| Cooking | Food |
+
+- Each armor type in the combat triangle has its own crafting profession:
+  Smithing for heavy armor, Leatherworking for light armor, and Tailoring for
+  cloth.
+- Elemental weapons are crafted in the normal weapon profession and require
+  rare elemental materials, for example fire essence from fire Mobs.
+- Tinkering replaces the Engineering idea from the original brief and belongs
+  to the technology cultures such as goblins, dwarves, and gnomes. Alchemy
+  replaces Medicine and Chemistry.
+- Trading is a playstyle, not a profession with experience.
+- There is no Salvaging for now. Breaking items down into materials can be
+  added later, either as its own profession or as part of the crafting
+  professions.
+
+### Proposed
+
+- Gathering requires a tool in the existing Tool equipment slot, as in the
+  first gathering loop in [MVP Specification](MVP_SPEC.md).
+- Healing gear is mainly made by Tailoring and Artificing.
+- Farming may be added later.
+
 ## UI And UX Principles
 
 ### Proposed
@@ -630,6 +689,8 @@ Expected additions:
   refreshes. Attack, ability, and spell intents are rejected until it expires.
 - Durable character level, combat experience, and talent point allocation, and
   separate durable experience and level per profession.
+- Profession definitions, recipes, crafting stations, and gathering resource
+  nodes for the profession list.
 - Threat tables on Mobs, with threat from damage and healing, tank threat
   multipliers, taunt, and a target switch margin.
 - Mob combat data for health, defense, elemental weaknesses, and movement
