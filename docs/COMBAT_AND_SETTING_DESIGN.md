@@ -7,9 +7,10 @@ It replaces the earlier modern third-person shooter combat direction.
 
 ## Purpose
 
-This document is the product source of truth for the game setting, combat
-model, movement and camera direction, damage types, weapons, ammunition, magic,
-PvP combat, and the related consumable rules.
+This document is the product source of truth for the game setting, character
+progression, combat model, movement and camera direction, damage types, weapons,
+ammunition, magic, threat, healing, PvP combat, and the related consumable
+rules.
 
 Each section separates three kinds of content:
 
@@ -29,12 +30,16 @@ Numbers in this document are starting values for tuning, not final balance.
 | Weapons | Fantasy weapons only. Firearms are fantasy firearms, such as an improvised goblin pistol, never real-world models. |
 | Playable races | Humans only for now. More races may be added later. |
 | Progression | Classless. Gear, perks, and talents form a build, and the build decides whether a character plays as tank, damage, or healer. |
+| Levels | One character level earned through combat experience from Mobs, quests, bosses, and dungeons. PvP kills give no experience, and death never costs experience. The level gives no stats, only unlocks and one talent point per level. Talent points go into a large open talent library of stats, perks, and other options. Talent ranks cost 1, 2, 3, and so on up to rank 10, and can be respecced for a fee. No intended long-term level cap, with a temporary cap of 200 at first. Power comes from gear and the build. Every profession has its own separate experience and level. |
+| Healing | Every character can use every ability, including healing. Healing multipliers on gear and talents make healing effective, so a healer is a build commitment. |
+| Threat | Mobs attack the character with the highest threat in a per-Mob threat table. Damage and healing generate threat. Tank builds get a threat multiplier and a taunt. |
 | Combat feel | A blend of Old School RuneScape and RuneScape 3, without tiles and without clunky tick-based feel. |
 | Movement | Click to move with smooth, continuous movement. |
 | Camera | Freely rotatable camera with zoom, as in RuneScape. |
 | Attacking | A character must stop moving before attacking. |
 | Abilities while moving | Auto attacks and most abilities require standing still. Movement cancels channeled and cast-time abilities. A small number of abilities are marked as usable while moving. |
 | Ability count | Deliberately few active abilities. Combat must not become a RuneScape 3 style rotation across many ability bars. The exact abilities and their number are decided later. |
+| Ability source | One shared ability pool for every character. Players choose freely which abilities go on the bar. Some abilities require a matching weapon, such as a staff or a melee weapon. |
 | Ability cost | Each ability has its own cooldown. There is no shared combat resource such as adrenaline. Mana and ammunition are the only combat resources. |
 | Combat styles | Combat triangle: Melee beats Ranged, Ranged beats Magic, Magic beats Melee. |
 | Defense | No active defensive mechanic for now, such as protection prayers or auras. Defense comes from gear stats such as armor. |
@@ -99,16 +104,53 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
 - Tank, damage, and healer roles come from the build, not from a class.
 - Combat style (Melee, Ranged, or Magic) and role (tank, damage, or healer) are
   separate choices. A tank can be a melee or a ranged build.
+- Roles work through the threat system described in [Threat](#threat).
+- Each character has one character level. Combat earns the experience that
+  raises it.
+- Combat experience comes from Mobs, quests, and completed bosses and dungeons.
+- PvP kills give no experience. The reward for PvP is loot. This prevents kill
+  trading between friends or between a player's own characters.
+- Dying never costs experience. Full loot and the corpse are already the death
+  penalty.
+- Every profession has its own experience and level, independent of the
+  character level and of other professions.
+- The character level gives no stats by itself. It only unlocks things.
+- Power progression comes from gear and the build.
+- Each character level grants one talent point.
+- Talents form a large open talent library. Talent points can be spent on
+  stats, perks, or other options, with no fixed path.
+- Builds can differ completely at similar levels. One character may put its
+  points into raw stats while another takes only perks and no stats from
+  talents.
+- Talents have ranks with escalating cost. The first rank costs 1 point, the
+  second 2 points, the third 3 points, and so on up to rank 10. A talent at
+  rank 10 costs 55 points in total, so every further investment in the same
+  talent gives less value per point.
+- Talents can be respecced for a fee at a city NPC. The fee grows with the
+  number of spent talent points, which makes respecs a currency sink while
+  still allowing mistakes to be corrected.
+- There is no intended long-term level cap. Players can keep leveling to unlock
+  more. Each level requires more experience than the previous one.
+- The first release uses a temporary level cap of 200, defined as content data,
+  to observe how progression plays out before the cap is raised or removed.
+- A higher level gives a slight advantage through more talent points, which is
+  intended as a reward for progress. Because a level gives no direct strength
+  and talent ranks get more expensive, a well-played lower-level character, for
+  example level 60, can still beat a level 90 character.
 
 ### Proposed
 
-- A threat (aggro) system is required for roles to work. Mobs attack the
-  character with the highest threat, tank builds generate extra threat, and
-  damage builds manage their threat. Without threat, Mobs pick targets at random
-  and group combat becomes chaotic.
 - Progression should mainly add options, such as new abilities, perks, and
   tools, rather than only larger numbers. Scaling Mob health purely with level
   creates long fights against damage sponges.
+- Character levels unlock gear requirements and abilities in the shared pool.
+  Gear level requirements stop a new character from equipping top-tier gear
+  immediately.
+- Stat talents and perk talents are balanced against each other so neither is
+  the obvious choice. A point in stats gives a modest bonus, which also keeps
+  level differences from becoming large raw power gaps in PvP.
+- The escalating rank cost applies to every ranked talent, stats and perks
+  alike. Some perks may have only one rank.
 
 ## Movement And Camera
 
@@ -173,6 +215,10 @@ fits the situation.
   from timing, positioning, and reacting to the encounter, not from managing a
   large number of buttons.
 - The exact abilities and how many a character can use are decided later.
+- Abilities come from one shared pool that every character can access. Players
+  choose freely which abilities go on their ability bar.
+- Some abilities require a matching equipped weapon, for example a staff or a
+  melee weapon.
 - Each ability has its own cooldown. There is no shared combat resource such as
   RuneScape 3 adrenaline, because a build-and-spend resource drives the
   rotation feel this design avoids. Mana and ammunition are the only combat
@@ -185,8 +231,14 @@ fits the situation.
 - Selecting a Mob starts an auto attack with the equipped weapon. The character
   walks into range, stops, and keeps attacking until the target dies, the player
   moves, or the player selects another action.
-- Active abilities come from the equipped weapon and from gear and talents, and
-  share one small ability bar.
+- Active abilities share one small ability bar.
+- Attack abilities generally require a weapon of their combat style: Melee
+  abilities need a melee weapon, Ranged abilities a ranged weapon, and Magic
+  abilities a staff or other magic weapon. Healing, defensive, movement, and
+  utility abilities usually have no weapon requirement. The requirement is set
+  per ability in content data.
+- Attack ability damage scales from the equipped weapon, so better weapons
+  improve abilities as well as auto attacks.
 - A global cooldown of about 1-1.5 seconds gives combat a deliberate rhythm
   without tiles or ticks and tolerates network latency.
 - Ground-targeted abilities are aimed with the cursor, for example area damage,
@@ -212,6 +264,51 @@ fits the situation.
   abilities that are usable while moving, not through a defensive toggle.
 - Both elements and combat styles are handled through preparation before a
   fight: gear, potions, and the choice of armor type.
+
+### Threat
+
+#### Decided
+
+- Mobs choose targets through a threat table, as in World of Warcraft. Each Mob
+  keeps a threat value for every character it is fighting.
+- Damage generates threat against the damaged Mob.
+- Healing generates threat, split across the Mobs that are fighting the healed
+  character.
+- A Mob attacks the character with the highest threat.
+- Tank builds get a threat multiplier from gear or talents and a taunt ability.
+  Damage builds manage their threat so they do not pull Mobs off the tank.
+- Threat only controls Mob targeting. Players always choose their own targets,
+  so threat has no role in PvP.
+
+#### Proposed
+
+- A Mob switches target only when another character reaches about 120% of the
+  current target's threat. The margin prevents targets from flickering between
+  characters with similar threat.
+- Taunt immediately gives the tank the highest threat on the taunted Mob. It is
+  one of the few active abilities and does not get a separate ability bar.
+- A threat table only contains characters that are in combat with that Mob, so
+  it stays small and fits the existing central Mob scheduling.
+
+### Healing
+
+#### Decided
+
+- Every character can use every ability, including healing abilities.
+- Healing effectiveness comes from healing multipliers on gear and talents. A
+  character without them can heal, but too weakly to fill the healer role.
+- A healer is therefore a build commitment, not an unlocked ability.
+
+#### Proposed
+
+- Healing multipliers use the same gear and talent budget as damage and
+  defense, so a dedicated healer gives up some damage or defense.
+- Swapping into healing gear during a fight works like any other equipment
+  change, at the cost of the attack lockout and the carried weight of the extra
+  gear.
+- Healing abilities cost mana, which makes mana management the core skill of
+  healer builds.
+- Allies are targeted by clicking them in the world or in party frames.
 
 ### Damage Types
 
@@ -519,8 +616,10 @@ Expected additions:
 - An ammunition equipment slot. The current slots are Head, BodyArmor,
   PrimaryWeapon, SecondaryWeapon, Tool, Ring1, Ring2, and Bag.
 - Item definition data for base damage, damage type, ammunition family,
-  ammunition bonus, defensive stats such as armor, and elemental resistance.
-- Ability definitions with an explicit usable-while-moving flag. The server
+  ammunition bonus, defensive stats such as armor, healing multipliers, and
+  elemental resistance.
+- Ability definitions with an optional equipped-weapon requirement and an
+  explicit usable-while-moving flag. The server
   rejects other abilities while the character moves and cancels channeled and
   cast-time abilities when movement starts.
 - Mana, per-ability cooldowns, the global cooldown, and consumable cooldown
@@ -529,7 +628,10 @@ Expected additions:
   diminishing returns per target and removal by a cleanse effect.
 - A server-owned attack lockout timestamp that every equipment change
   refreshes. Attack, ability, and spell intents are rejected until it expires.
-- Threat tables on Mobs.
+- Durable character level, combat experience, and talent point allocation, and
+  separate durable experience and level per profession.
+- Threat tables on Mobs, with threat from damage and healing, tank threat
+  multipliers, taunt, and a target switch margin.
 - Mob combat data for health, defense, elemental weaknesses, and movement
   impairment resistance.
 - Review of existing item content with modern naming, such as Training Rifle
