@@ -1,3 +1,4 @@
+using AuthService.Auth;
 using AuthService.Characters;
 using AuthService.Config;
 using AuthService.Http;
@@ -124,6 +125,57 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.False(heartbeatAfterRelease.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, heartbeatAfterRelease.StatusCode);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task RevokingAnotherAccountsSessionLeavesItsTicketsAndSimulationSessionsUntouched()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var attacker = await context.RegisterPlayerAsync(
+            "revoke-attacker@example.com",
+            "revoke_attacker",
+            "Revoke Attacker");
+        var victim = await context.RegisterPlayerAsync(
+            "revoke-victim@example.com",
+            "revoke_victim",
+            "Revoke Victim");
+
+        var join = await context.ShardService.CreateJoinTicketAsync(
+            victim.Account,
+            LocalShardId,
+            new JoinShardRequest(victim.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+
+        var revokeWithPendingTicket = await context.SessionService.RevokeAsync(
+            attacker.Registration.AccountId,
+            victim.Registration.SessionId,
+            AccountSessionRevocationReason.ManualRevoke,
+            CancellationToken.None);
+        Assert.True(revokeWithPendingTicket.Succeeded, revokeWithPendingTicket.Error?.Message);
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+
+        var revokeWithActiveSession = await context.SessionService.RevokeAsync(
+            attacker.Registration.AccountId,
+            victim.Registration.SessionId,
+            AccountSessionRevocationReason.ManualRevoke,
+            CancellationToken.None);
+        Assert.True(revokeWithActiveSession.Succeeded, revokeWithActiveSession.Error?.Message);
+        Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
+
+        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
+            consumed.Value!.SimulationSessionId,
+            LocalWorkerId,
+            Credential(consumed.Value.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        Assert.False(heartbeat.Value!.Released);
+        Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
+            victim.Registration.SessionToken,
+            CancellationToken.None));
     }
 
     [PostgresIntegrationFact]
