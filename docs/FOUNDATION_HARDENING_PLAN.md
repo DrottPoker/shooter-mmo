@@ -138,9 +138,9 @@ reproduction.
 | F63 | Unity API client | Web requests in coroutines are not disposed when the owning object is destroyed. | `Assets/Scripts/Api/ShooterMmoApiClient.cs` | Open |
 | F64 | Unity static state | Static session and scene catalog caches have no reset for disabled domain reload. Harmless while domain reload stays on. | `Assets/Scripts/ShooterMmoClientSession.cs` | Open |
 | F65 | Collision bake | The bake requires one World per scene although the scene catalog allows shared scenes. | `WorldCollisionBaker.cs` | Open |
-| F66 | Repository | A Unity crash-recovery scene is tracked in `Assets/_Recovery`. | `shooter-mmorpg-unity-client/Assets/_Recovery/` | Open |
-| F67 | Unity settings | The project-wide Input System actions setting points to a missing asset. | `ProjectSettings/EditorBuildSettings.asset` | Open |
-| F68 | Unity packages | Template packages without any use are installed: AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting. | `Packages/manifest.json` | Open |
+| F66 | Repository | A Unity crash-recovery scene is tracked in `Assets/_Recovery`. | `shooter-mmorpg-unity-client/Assets/_Recovery/` | Fixed |
+| F67 | Unity settings | The project-wide Input System actions setting points to a missing asset. | `ProjectSettings/EditorBuildSettings.asset` | Fixed |
+| F68 | Unity packages | Template packages without any use are installed: AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting. | `Packages/manifest.json` | Fixed |
 | F69 | Test build | AuthService and SimulationWorker copy conflicting `appsettings.json` files into the test output. | `Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj` | Open |
 | F70 | Build | The .NET GameProtocol adapter lists source files explicitly, so a new protocol file is silently missing from the server. | `Shared/DotNet/GameProtocol/ShooterMmo.GameProtocol.csproj` | Open |
 | F71 | Repository | `.gitattributes` does not mark collision chunk `.bytes` files as binary. | `.gitattributes` | Open |
@@ -153,9 +153,9 @@ Decided by the product owner on 2026-10-14.
 
 | Id | Question | Decision | Context |
 | --- | --- | --- | --- |
-| D1 | May offline account routes move items into and out of the bank and Recovery Storage from anywhere? | No. Bank and Recovery Storage stay city services as the inventory design says. Offline account routes must reject bank and Recovery sources and destinations. | AuthService currently allows offline moves from any location, so a player can log out in the field, take bank items, and log back in. |
+| D1 | May offline account routes move items into and out of the bank and Recovery Storage from anywhere? | No. Bank and Recovery Storage stay city services as the inventory design says. Offline account routes must reject bank and Recovery sources and destinations. Implemented: the offline Recovery claim route was removed. | AuthService currently allows offline moves from any location, so a player can log out in the field, take bank items, and log back in. |
 | D2 | Should the client use URP or the Built-in Render Pipeline? | URP. Commit URP pipeline assets and convert the materials. | Graphics and quality settings reference URP assets that were never committed, so the project silently renders with Built-in and all materials were switched to the Standard shader. Built-in is being phased out in Unity 6. |
-| D3 | May the unused template packages be removed? | Yes. See F68. | They can be added again when a feature needs them. |
+| D3 | May the unused template packages be removed? | Yes. See F68. Implemented. | They can be added again when a feature needs them. |
 
 ## Fix Order
 

@@ -26,6 +26,8 @@ shooter-mmorpg-unity-client/[Ll]ogs/
 shooter-mmorpg-unity-client/[Uu]ser[Ss]ettings/
 shooter-mmorpg-unity-client/[Mm]emoryCaptures/
 shooter-mmorpg-unity-client/[Rr]ecordings/
+shooter-mmorpg-unity-client/Assets/_Recovery/
+shooter-mmorpg-unity-client/Assets/_Recovery.meta
 shooter-mmorpg-unity-client/*.csproj
 shooter-mmorpg-unity-client/*.sln
 shooter-mmorpg-unity-client/*.slnx

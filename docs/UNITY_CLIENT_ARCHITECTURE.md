@@ -254,6 +254,12 @@ registry package is not signed by Unity. This warning does not indicate a
 compile or runtime failure, but every package upgrade still requires source and
 changelog review.
 
+The manifest lists only packages the client uses. The unused template packages
+AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting
+were removed and are added back only when a feature needs them. The project has
+no project-wide Input System actions asset; gameplay input uses the
+`PlayerControls` asset referenced by the local player.
+
 `com.unity.pipeline` is an exact-pinned experimental Editor automation
 dependency that the Unity CLI and coding agents use to drive the running Editor.
 Client code does not reference it. Its runtime assembly compiles only in the
