@@ -16,7 +16,7 @@ runtime claim.
 ## Project Boundary
 
 The Unity project lives in `shooter-mmorpg-unity-client` and targets Unity
-6000.5.2f1. Runtime code is compiled into `ShooterMmo.Runtime`. EditMode and
+6000.5.4f1. Runtime code is compiled into `ShooterMmo.Runtime`. EditMode and
 PlayMode tests use separate assemblies.
 
 The current runtime UI is intentionally temporary while the custom UI is being

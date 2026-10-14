@@ -82,7 +82,10 @@ Expected result:
   tier, and the deterministic checked-in revision.
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
-  configured.
+  configured. The Redis integration test is skipped unless
+  `SHOOTER_MMO_TEST_REDIS` points to a dedicated Redis test instance. See
+  [Standard Quality Checks](../README.md#standard-quality-checks) for the full
+  integration run with both test containers.
 
 NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 `development`. Unity Package Manager updates remain explicit because Dependabot
@@ -486,7 +489,7 @@ For a manual default-state and reconnect check:
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
    startup reports realtime protocol version `11` and simulation revision
    `movement-simulation-v3`.
-4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
+4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
    `0 / 200`, movement `100%`, sprint allowed, and its committed item-state
@@ -547,7 +550,7 @@ For a manual runtime smoke check:
    reports realtime protocol version `11` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
-4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
+4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
@@ -1764,7 +1767,7 @@ Open `Window > General > Test Runner` and run both suites before delivering Unit
 changes. You can run the same suites outside the Editor with:
 
 ```powershell
-$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe"
+$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.4f1\Editor\Unity.exe"
 & .\Tools\Run-UnityTests.ps1
 ```
 
@@ -1789,7 +1792,7 @@ these exact manual steps:
    icon.
 2. Start Unity Hub, sign in, and confirm that a valid Personal or organization
    license is active under `Preferences > Licenses`.
-3. Open this project with Unity `6000.5.2f1` once and wait for package import and
+3. Open this project with Unity `6000.5.4f1` once and wait for package import and
    script compilation to finish without a licensing error.
 4. Close the Editor, keep the signed-in Hub session available, and rerun
    `Tools/Run-UnityTests.ps1`.
@@ -1803,8 +1806,8 @@ installed and activated Editor. To enable it:
 
 1. In the GitHub repository, open `Settings > Actions > Runners` and register a
    Windows x64 self-hosted runner.
-2. Add the custom label `unity-6000.5.2f1` to that runner.
-3. Install and activate Unity `6000.5.2f1` for the Windows account that runs the
+2. Add the custom label `unity-6000.5.4f1` to that runner.
+3. Install and activate Unity `6000.5.4f1` for the Windows account that runs the
    runner service.
 4. Add repository variable `UNITY_CI_ENABLED` with value `true`.
 5. If Unity is not installed in the default Unity Hub path, add repository

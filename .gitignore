@@ -13,6 +13,7 @@ artifacts/
 # Local environment
 .env
 .env.local
+.claude/settings.local.json
 
 # Unity generated files
 shooter-mmorpg-unity-client/[Ll]ibrary/

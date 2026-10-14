@@ -19,6 +19,7 @@ jobs:
     env:
       CI: "true"
       SHOOTER_MMO_TEST_POSTGRES: Host=localhost;Port=5432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password
+      SHOOTER_MMO_TEST_REDIS: localhost:6379
 
     services:
       postgres:
@@ -31,6 +32,15 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U shooter_mmo_tests -d shooter_mmo_tests"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
@@ -129,7 +139,7 @@ jobs:
   unity:
     name: Unity quality gate
     if: vars.UNITY_CI_ENABLED == 'true'
-    runs-on: [self-hosted, Windows, X64, unity-6000.5.2f1]
+    runs-on: [self-hosted, Windows, X64, unity-6000.5.4f1]
     timeout-minutes: 30
 
     steps:

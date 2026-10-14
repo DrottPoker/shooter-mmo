@@ -24,6 +24,13 @@ operations, and future design do not drift into duplicate descriptions.
 8. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
    bot population that can share the real shard with a Unity player.
 
+## Foundation Hardening
+
+- [Foundation Hardening Plan](FOUNDATION_HARDENING_PLAN.md) records the verified
+  baseline, every finding from the October 2026 audit of the existing
+  foundation, open decisions, and the fix order. It is completed before new
+  gameplay work starts.
+
 ## Product Direction
 
 - [MVP Specification](MVP_SPEC.md) defines the working MVP scope and product

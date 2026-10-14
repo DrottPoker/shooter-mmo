@@ -152,7 +152,7 @@ layers, complex terrain meshes, and production orchestration remain deferred.
 
 - .NET SDK 10.0.301 or a compatible .NET 10 feature band.
 - Docker Desktop with Linux containers.
-- Unity Editor 6000.5.2f1.
+- Unity Editor 6000.5.4f1.
 - Optional: Unity CLI for Editor automation and coding-agent access, described
   in [Local Development](docs/LOCAL_DEVELOPMENT.md#unity-editor-automation-with-unity-cli).
 
@@ -240,19 +240,26 @@ dotnet run --project Tools/WorldActorCompiler `
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
 
-Start the isolated PostgreSQL test database before running integration tests:
+Start the isolated PostgreSQL and Redis test containers before running
+integration tests:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
 $env:SHOOTER_MMO_TEST_POSTGRES = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" }).Split("=", 2)[1]
+$env:SHOOTER_MMO_TEST_REDIS = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_REDIS=*" }).Split("=", 2)[1]
 dotnet test ShooterMmo.slnx --configuration Release
 docker compose -f docker-compose.test.yml down
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES, Env:SHOOTER_MMO_TEST_REDIS
 ```
+
+Expected result: every test passes and none is skipped. The full run takes about
+six to seven minutes.
 
 The integration suite resets the `public` schema. It refuses a database name
 that does not contain `test`, but the variable must still never target shared or
-production data.
+production data. The Redis test writes only keys below a unique random prefix
+and removes them afterwards. The test Redis container listens on
+`127.0.0.1:56380` and keeps no data on disk.
 
 Run Unity tests through `Window > General > Test Runner`, or use the licensed
 headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
@@ -297,4 +304,5 @@ interaction foundation plus its deferred contract is in
 
 Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,
 configuration, architecture, and user workflows must be documented and manually
-testable in the same change.
+testable in the same change. [CLAUDE.md](CLAUDE.md) imports the same rules for
+Claude Code and adds its verification and Unity CLI workflow notes.
