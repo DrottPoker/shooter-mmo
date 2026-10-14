@@ -1,12 +1,14 @@
 # Local Development
 
-Last updated: 2026-07-19
+Last updated: 2026-10-14
 
 ## Requirements
 
 - .NET SDK 10.0 or newer.
 - Docker Desktop.
 - Unity Editor for the client project.
+- Optional: Unity CLI for Editor automation and coding-agent access, described
+  in [Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli).
 
 ## Local Environment File
 
@@ -1458,6 +1460,92 @@ session handling, API layer, scene lifecycle, input, camera, and gameplay system
 are maintained as long-term foundations. The UI is created automatically when
 each scene starts. The local player and test map must be authored as Unity assets
 and are not generated at runtime.
+
+## Unity Editor Automation With Unity CLI
+
+The Unity project includes the Editor automation package `com.unity.pipeline`,
+pinned to the experimental version `0.8.0-exp.1`. Together with the Unity CLI it
+lets local tools and coding agents such as Claude Code drive a running Editor:
+read and change scenes, GameObjects, components, and assets, read the console
+and compiler state, evaluate C# in the Editor, enter Play Mode, and run tests.
+It replaces the deprecated MCP server in the Unity AI Assistant package and does
+not require a Unity AI subscription.
+
+Security rules:
+
+- The Editor server binds only to `127.0.0.1`. Every request needs the bearer
+  token from a per-user descriptor file in the ignored `Library/` folder, and
+  requests with an `Origin` header are refused, so browser pages cannot reach it.
+- `eval` runs arbitrary C# with full Editor access, and some Editor changes
+  cannot be undone. Commit or stash work before an agent makes larger Editor
+  changes.
+- The package runtime assembly compiles only in the Editor and in builds that
+  define `ENABLE_PROFILER` (development builds) or `ENABLE_RUNTIME_PIPELINE`.
+  Its Player server stays off because the Pipeline Runtime setting
+  `enableInBuilds` is `false`. Do not enable `enableInBuilds`,
+  `Allow Browser Clients`, or `ENABLE_RUNTIME_PIPELINE` without a reviewed
+  reason.
+
+One-time setup on a new machine:
+
+1. Install the Unity CLI with `winget install Unity.CLI` and open a new
+   terminal. Unity Hub may already have installed it in
+   `%LOCALAPPDATA%\Unity\bin`.
+2. Sign in with `unity auth login`.
+3. Open the project with `unity open shooter-mmorpg-unity-client`, or through
+   Unity Hub, and wait for package import and script compilation to finish. If
+   the Editor was already open when the manifest changed, focus the Editor window
+   so Package Manager resolves the change.
+
+No other manual Editor work is required. The package is already in the
+manifest, so `unity pipeline install` is only needed for a project that does not
+have it yet.
+
+Verify the connection from `shooter-mmorpg-unity-client`:
+
+```powershell
+unity status
+unity pipeline list
+unity command editor_status
+```
+
+Expected result:
+
+- `unity status` lists the project as `ready` on a loopback port such as `7800`.
+- `unity pipeline list` reports Pipeline `true`, version `0.8.0-exp.1`, and
+  Server Reachable `true`.
+- `editor_status` returns `"status":"ready"`.
+
+Useful commands, run from `shooter-mmorpg-unity-client` or with
+`--project-path`:
+
+- `unity list` lists every command the connected Editor exposes.
+- `unity command console_status` reports compiler failure state and console
+  counts. `unity command console --level warning` returns the entries.
+- `unity command run_tests --mode editor --timeout 580` runs the EditMode suite
+  synchronously and returns every result.
+- `unity command run_tests --mode playmode --async_tests` starts the PlayMode
+  suite. Entering Play Mode reloads the Editor domain and drops a synchronous
+  request, so poll `unity command test_status` until `status` is `completed`.
+
+Coding agents:
+
+- Unity's official Claude Code plugin, `unity@unity-agent-plugin`, adds Unity
+  skills that call the CLI. In the Claude desktop app, open `Plugins > Browse`
+  and search for Unity. In a Claude Code terminal, run
+  `/plugin marketplace add Unity-Technologies/unity-agent-plugin` and then
+  `/plugin install unity@unity-agent-plugin`.
+- Agents that can run shell commands should call `unity` directly. It is faster
+  and uses fewer tokens than MCP.
+- MCP clients that cannot run shell commands can use the CLI MCP server through
+  `unity mcp configure <client>`. `unity mcp configure --list` shows supported
+  clients. This repository does not configure an MCP client.
+
+Package updates follow the normal Unity package rule in
+[Repository Quality Checks](#repository-quality-checks). Because the package is
+experimental, review its changelog, update it in a focused branch with
+`unity pipeline install --package-version <version>`, let Unity rewrite
+`packages-lock.json`, and run both Unity suites and the backend quality gate.
 
 ## One-Time Unity World Scene Authoring
 

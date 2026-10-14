@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-19
+Last updated: 2026-10-14
 
 ## Purpose
 
@@ -242,6 +242,14 @@ lock. Unity displays a missing-signature warning because the scoped third-party
 registry package is not signed by Unity. This warning does not indicate a
 compile or runtime failure, but every package upgrade still requires source and
 changelog review.
+
+`com.unity.pipeline` is an exact-pinned experimental Editor automation
+dependency that the Unity CLI and coding agents use to drive the running Editor.
+Client code does not reference it. Its runtime assembly compiles only in the
+Editor and in builds that define `ENABLE_PROFILER` or `ENABLE_RUNTIME_PIPELINE`,
+and its Player server stays disabled because the Pipeline Runtime setting
+`enableInBuilds` is `false`. The workflow and security rules are in
+[Local Development](LOCAL_DEVELOPMENT.md#unity-editor-automation-with-unity-cli).
 
 ## Scene And UI Flow
 
