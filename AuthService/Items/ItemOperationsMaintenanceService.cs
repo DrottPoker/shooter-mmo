@@ -42,12 +42,15 @@ public sealed class ItemOperationsMaintenanceService(
         {
             deliveryIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
                 """
-                select id
-                from recovery_deliveries
-                where claimed_at is null
-                  and expires_at is not null
-                  and expires_at <= now()
-                order by expires_at, id
+                select delivery.id
+                from recovery_deliveries delivery
+                join characters character on character.id = delivery.character_id
+                where delivery.claimed_at is null
+                  and delivery.expires_at is not null
+                  and delivery.expires_at <= now()
+                  -- Expiry cannot lock a deleted character, so its rows must not hold the batch.
+                  and character.deleted_at is null
+                order by delivery.expires_at, delivery.id
                 limit @BatchSize;
                 """,
                 new { BatchSize = options.CleanupBatchSize },

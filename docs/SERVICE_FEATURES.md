@@ -473,6 +473,18 @@ concurrent inspection, and authoritative looting:
   policy, delivery, entitlement, carried-state, revision, or audit mutation can
   survive. Replaying the same operation id and canonical payload returns the
   stored result. A different payload returns `item_operation_conflict`.
+- Two kinds of rejection are returned without being stored, so the same id can
+  run again: `item_transaction_timeout`, which also covers lock timeouts,
+  statement timeouts, deadlocks, and serialization failures, and every
+  rejection of a retried system operation. The retried system operations are
+  player death, persistent Mob corpse creation, live Mob loot grants, corpse
+  expiry, and Recovery expiry. A live Mob loot grant therefore stays claimable
+  after a rejected attempt until one claim commits.
+- Player-chosen operation ids, from account routes and from SimulationWorker
+  requests other than the retried system operations, must be random version 4
+  UUIDs or the command returns `item_operation_id_invalid` without claiming the
+  id. Every derived system id is a version 5 UUID, so a player cannot claim an
+  id that a system operation needs.
 - Successful commands recompute unitless carried weight and equipped Bag
   capacity from authoritative custody, advance touched character, container,
   Bag, and item revisions, and append before and after audit rows. Voluntary

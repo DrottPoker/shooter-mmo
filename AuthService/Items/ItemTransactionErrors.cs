@@ -7,6 +7,7 @@ public static class ItemTransactionErrorCodes
     public const string ItemNotOwned = "item_not_owned";
     public const string ItemStateConflict = "item_state_conflict";
     public const string ItemOperationConflict = "item_operation_conflict";
+    public const string ItemOperationIdInvalid = "item_operation_id_invalid";
     public const string ItemTransactionTimeout = "item_transaction_timeout";
     public const string ItemCommandPayloadTooLarge = "item_command_payload_too_large";
     public const string OfflineAccessRequired = "item_offline_access_required";

@@ -74,6 +74,77 @@ public sealed class MobCorpseLifecycleIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task RejectedLiveMobLootClaimStaysClaimableUntilOneClaimCommits()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var first = await context.RegisterPlayerAsync(
+            "mob-loot-first@example.com",
+            "mob_loot_first",
+            "Mob Loot First");
+        var second = await context.RegisterPlayerAsync(
+            "mob-loot-second@example.com",
+            "mob_loot_second",
+            "Mob Loot Second");
+        var firstSession = await JoinAsync(context, first);
+        var secondSession = await JoinAsync(context, second);
+        var grantId = Guid.NewGuid();
+
+        // Occupy slot 0 so the first claim of the shared grant is rejected.
+        var blocker = await context.CorpseService.GrantLiveMobLootAsync(
+            WorkerId,
+            firstSession.SimulationSessionId,
+            CreateGrantRequest(firstSession, await GetSnapshotAsync(context, first), Guid.NewGuid(), 0),
+            CancellationToken.None);
+        Assert.True(blocker.Succeeded, blocker.Error?.Message);
+        var rejected = await context.CorpseService.GrantLiveMobLootAsync(
+            WorkerId,
+            firstSession.SimulationSessionId,
+            CreateGrantRequest(firstSession, await GetSnapshotAsync(context, first), grantId, 0),
+            CancellationToken.None);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemSlotOccupied, rejected.Error!.Code);
+
+        var committed = await context.CorpseService.GrantLiveMobLootAsync(
+            WorkerId,
+            secondSession.SimulationSessionId,
+            CreateGrantRequest(secondSession, await GetSnapshotAsync(context, second), grantId, 0),
+            CancellationToken.None);
+        Assert.True(committed.Succeeded, committed.Error?.Message);
+
+        var duplicate = await context.CorpseService.GrantLiveMobLootAsync(
+            WorkerId,
+            firstSession.SimulationSessionId,
+            CreateGrantRequest(firstSession, await GetSnapshotAsync(context, first), grantId, 1),
+            CancellationToken.None);
+        Assert.False(duplicate.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemOperationConflict, duplicate.Error!.Code);
+    }
+
+    private static SimulationMobLootGrantRequest CreateGrantRequest(
+        ConsumedSimulationJoinTicketResponse session,
+        CharacterInventorySnapshotResponse snapshot,
+        Guid grantId,
+        int slotIndex)
+    {
+        return new SimulationMobLootGrantRequest(
+            grantId,
+            session.AccountId,
+            session.CharacterId,
+            snapshot.ItemStateRevision,
+            session.WorkerId,
+            session.WorkerRuntimeId,
+            session.ShardId,
+            session.SimulationSessionToken,
+            Guid.NewGuid(),
+            "mob.feral_wolf",
+            "material.iron_ore",
+            3,
+            snapshot.PermanentInventory.ContainerId,
+            snapshot.PermanentInventory.Revision,
+            slotIndex);
+    }
+
+    [PostgresIntegrationFact]
     public async Task DurableBossCorpseSurvivesWorkerRestartWithSameExpiryAndCustody()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

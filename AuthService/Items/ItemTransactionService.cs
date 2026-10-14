@@ -1427,7 +1427,7 @@ public sealed partial class ItemTransactionService(
         {
             var currencyBefore = await context.Connection.QuerySingleAsync<long>(
                 new CommandDefinition(
-                    "select currency from characters where id = @CharacterId for update;",
+                    "select currency from characters where id = @CharacterId for no key update;",
                     new { command.CharacterId },
                     context.Transaction,
                     cancellationToken: cancellationToken));
@@ -2772,6 +2772,16 @@ public sealed partial class ItemTransactionService(
             throw new ArgumentException("An item operation id is required.", nameof(request));
         }
 
+        if (RequiresRandomClientOperationId(request.Actor, operationKind)
+            && !ItemOperationIds.IsRandomClientOperationId(request.OperationId))
+        {
+            return CreateRejectedResult(
+                request.OperationId,
+                operationKind,
+                ItemTransactionErrorCodes.ItemOperationIdInvalid,
+                "The item operation id must be a random version 4 UUID.");
+        }
+
         var requestPayload = JsonSerializer.Serialize(
             new CanonicalOperationRequest(
                 CanonicalizeActor(request.Actor),
@@ -2880,7 +2890,7 @@ public sealed partial class ItemTransactionService(
             }
             catch (ItemTransactionRejectedException exception)
             {
-                return await RollBackMutationAndRejectAsync(
+                return await RejectMutationAsync(
                     connection,
                     transaction,
                     request.OperationId,
@@ -2897,7 +2907,7 @@ public sealed partial class ItemTransactionService(
                     throw;
                 }
 
-                return await RollBackMutationAndRejectAsync(
+                return await RejectMutationAsync(
                     connection,
                     transaction,
                     request.OperationId,
@@ -3025,6 +3035,47 @@ public sealed partial class ItemTransactionService(
                 $"Stored result for item operation '{operationId}' is invalid.");
     }
 
+    private static bool RequiresRandomClientOperationId(
+        ItemTransactionActor actor,
+        string operationKind)
+    {
+        return actor.Authority == ItemTransactionAuthority.Account
+            || (actor.Authority == ItemTransactionAuthority.SimulationWorker
+                && !ItemOperationKinds.IsRetriedSystemOperation(operationKind));
+    }
+
+    private static async Task<ItemTransactionResult> RejectMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid operationId,
+        string operationKind,
+        string errorCode,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        // A transient database rejection is not an outcome of the request, and a retried
+        // system operation must stay claimable, so both release the operation claim.
+        if (errorCode == ItemTransactionErrorCodes.ItemTransactionTimeout
+            || ItemOperationKinds.IsRetriedSystemOperation(operationKind))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreateRejectedResult(
+                operationId,
+                operationKind,
+                errorCode,
+                errorMessage);
+        }
+
+        return await RollBackMutationAndRejectAsync(
+            connection,
+            transaction,
+            operationId,
+            operationKind,
+            errorCode,
+            errorMessage,
+            cancellationToken);
+    }
+
     private static async Task<ItemTransactionResult> RollBackMutationAndRejectAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -3105,6 +3156,13 @@ public sealed partial class ItemTransactionService(
             return new ItemTransactionError(
                 ItemTransactionErrorCodes.ItemTransactionTimeout,
                 "The item transaction exceeded its configured database time limit.");
+        }
+
+        if (exception.SqlState is "40P01" or "40001")
+        {
+            return new ItemTransactionError(
+                ItemTransactionErrorCodes.ItemTransactionTimeout,
+                "The item transaction was aborted by concurrent database work. Retry it.");
         }
 
         return exception.ConstraintName switch

@@ -83,7 +83,40 @@ public sealed class ItemOperationsHardeningIntegrationTests
             new { CharacterId = player.Character.Id },
             blockerTransaction);
 
-        var result = await service.ExecuteAsync(
+        var request = new ItemTransactionRequest<GrantItemCommand>(
+            Guid.NewGuid(),
+            ItemTransactionActor.ForSystem(),
+            new GrantItemCommand(
+                player.Character.Id,
+                snapshot.ItemStateRevision,
+                "material.iron_ore",
+                1,
+                snapshot.PermanentInventory.ContainerId,
+                snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex));
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemTransactionTimeout, result.Error!.Code);
+        var metricSnapshot = metrics.Capture();
+        Assert.Equal(1, metricSnapshot.Timeouts);
+        Assert.True(metricSnapshot.LockWaitSamples >= 2);
+        await blockerTransaction.RollbackAsync();
+
+        // A timeout is not an outcome of the request, so the same id must run again.
+        var retry = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(retry.Succeeded, retry.Error?.Message);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task PlayerChosenOperationIdsMustBeRandomVersionFourIds()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "operation-id-namespace@example.com",
+            "operation_id_namespace",
+            "Operation Id Namespace");
+        var snapshot = await GetSnapshotAsync(context, player);
+        var item = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
                 Guid.NewGuid(),
                 ItemTransactionActor.ForSystem(),
@@ -93,15 +126,37 @@ public sealed class ItemOperationsHardeningIntegrationTests
                     "material.iron_ore",
                     1,
                     snapshot.PermanentInventory.ContainerId,
-                    snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex)),
+                    0)),
+            CancellationToken.None);
+        Assert.True(item.Succeeded, item.Error?.Message);
+        var granted = await GetSnapshotAsync(context, player);
+        var itemId = granted.PermanentInventory.Slots[0].Item!.ItemInstanceId;
+
+        // A version 5 id is the shape of every derived system id, such as an expiry id.
+        var derivedLookingId = Guid.Parse("8f14e45f-ceea-567a-9a6f-b3f0a2c4d1e8");
+        Assert.False(ItemOperationIds.IsRandomClientOperationId(derivedLookingId));
+        var squat = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<RelocateItemCommand>(
+                derivedLookingId,
+                ItemTransactionActor.ForOfflineAccount(player.Registration.AccountId),
+                new RelocateItemCommand(
+                    player.Character.Id,
+                    granted.ItemStateRevision,
+                    itemId,
+                    granted.PermanentInventory.Slots[0].Item!.Revision,
+                    granted.PermanentInventory.ContainerId,
+                    1)),
             CancellationToken.None);
 
-        Assert.False(result.Succeeded);
-        Assert.Equal(ItemTransactionErrorCodes.ItemTransactionTimeout, result.Error!.Code);
-        var metricSnapshot = metrics.Capture();
-        Assert.Equal(1, metricSnapshot.Timeouts);
-        Assert.True(metricSnapshot.LockWaitSamples >= 2);
-        await blockerTransaction.RollbackAsync();
+        Assert.False(squat.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemOperationIdInvalid, squat.Error!.Code);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from item_operations where operation_id = @OperationId;",
+                new { OperationId = derivedLookingId }));
+        Assert.True(ItemOperationIds.IsRandomClientOperationId(Guid.NewGuid()));
     }
 
     [PostgresIntegrationFact]
