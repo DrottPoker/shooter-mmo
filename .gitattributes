@@ -16,5 +16,6 @@
 *.mp4 binary
 *.mov binary
 *.dll binary
+*.bytes binary
 *.so binary
 *.dylib binary

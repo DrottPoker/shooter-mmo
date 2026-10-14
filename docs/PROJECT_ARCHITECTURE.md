@@ -533,7 +533,7 @@ Unity presence and view state, temporary presentation, bidirectional item
 transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
 death generation remains a later gameplay boundary.
 
-Protocol version `11` retains the existing framing and adds corpse presence,
+Protocol version `11` (now `14`) retained the existing framing and added corpse presence,
 interaction, result, chunked view-state, and view-closure message types. Corpse
 chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
 The Phase 8 ordinary container-item swap continues to reuse its existing
@@ -557,7 +557,7 @@ topology layer:
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
   authoritative interaction, range and line-of-sight validation, NPC capability
   dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol uses version `13` for actor presence, interaction messages, and
+- GameProtocol uses version `14` for actor presence, interaction messages, and
   typed insurance or quest item-lifecycle actions
   compiled from the same source for .NET and Unity.
 - Unity owns advisory crosshair targeting, immutable replicated actor and

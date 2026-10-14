@@ -45,6 +45,14 @@ namespace ShooterMmo.Editor
                     "Development World 2 cannot be rebuilt while entering or running Play Mode.");
             }
 
+            // Opening the scene replaces every open scene, so unsaved edits must be
+            // saved or explicitly discarded by the user first.
+            if (!Application.isBatchMode
+                && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
+
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             var environment = FindGameObject(scene, "Environment");
             if (environment == null)

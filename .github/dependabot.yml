@@ -9,6 +9,10 @@ updates:
       time: "06:00"
       timezone: Europe/Stockholm
     open-pull-requests-limit: 5
+    ignore:
+      # LiteNetLib must match the Unity package com.revenantx.litenetlib, which
+      # Dependabot cannot update. Upgrade both together by hand.
+      - dependency-name: "LiteNetLib"
     groups:
       dotnet-runtime:
         patterns:

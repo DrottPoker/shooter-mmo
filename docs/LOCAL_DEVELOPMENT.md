@@ -4,7 +4,9 @@ Last updated: 2026-10-14
 
 ## Requirements
 
-- .NET SDK 10.0 or newer.
+- .NET SDK 10.0.301 or a newer 10.0.3xx feature band. `global.json` rolls
+  forward only within .NET 10, so .NET 10.0.1xx or 10.0.2xx and .NET 11 SDKs
+  are not selected.
 - Docker Desktop.
 - Unity Editor for the client project.
 - Optional: Unity CLI for Editor automation and coding-agent access, described
@@ -97,7 +99,15 @@ NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
 let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
 quality gate before merging. `LiteNetLib` must stay aligned between
-`SimulationWorker/SimulationWorker.csproj` and the Unity manifest.
+`SimulationWorker/SimulationWorker.csproj`,
+`Tools/SimulationBotClient/ShooterMmo.Tools.SimulationBotClient.csproj`, and the
+Unity manifest package `com.revenantx.litenetlib`. `Verify-DependencyPolicy.ps1`
+fails when the versions differ, and Dependabot ignores LiteNetLib so the three
+are always upgraded together by hand.
+
+`shooter-mmorpg-unity-client/Directory.Build.props` stops the repository build
+settings from applying to the project files Unity generates, and those files
+and their NuGet lock file are ignored by Git.
 
 ## Item Catalog Authoring And Verification
 
@@ -385,7 +395,9 @@ session authentication handler and item endpoints over loopback HTTP.
 To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and
 Redis with `docker compose up -d --wait`, run
 `dotnet run --project AuthService`, and use the Phase 4 registration commands to
-create `$headers` and `$character`. Then run:
+create `$headers` and `$character`. The `-SkipHttpErrorCheck` switch needs
+PowerShell 7 (`pwsh`), so run this snippet in `pwsh`, not Windows PowerShell 5.1.
+Then run:
 
 ```powershell
 $catalogResponse = Invoke-WebRequest `
@@ -492,7 +504,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `11` and simulation revision
+   startup reports realtime protocol version `14` and simulation revision
    `movement-simulation-v3`.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -552,7 +564,7 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `11` and loads the configured local bank,
+   reports realtime protocol version `14` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
 4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
@@ -1557,8 +1569,13 @@ experimental, review its changelog, update it in a focused branch with
 
 ## One-Time Unity World Scene Authoring
 
-The code foundation expects real scene and prefab assets. Complete these manual
-steps in Unity Editor after the scripts compile.
+The scenes, prefabs, and `PlayerControls` asset described here are already
+committed. Do not repeat these steps on an existing checkout, because recreating
+an asset replaces the committed version and its later additions. The steps
+record how the assets were first created; use them only to rebuild a missing
+asset from scratch. The committed `PlayerControls` asset has more actions than
+the original seven, including `ToggleInventory`, `ToggleCharacterInventory`,
+`ToggleEquipmentInventory`, and `Interact`.
 
 ### Create The Input Actions Asset
 
@@ -1708,6 +1725,12 @@ After both development scenes exist in Build Profiles, use `Shooter MMO >
 Tools > World Collision > Bake Build World Scenes` to validate each catalog
 mapping and bake every enabled World scene in one deterministic pass.
 
+The bake writes every file to a temporary `.tmp` sibling first and then swaps
+them in, chunks before the manifest, with a backup of each previous file. If any
+write or swap fails, the previous files are restored, so a failed bake never
+leaves a manifest whose checksums do not match its chunks. Unity ignores the
+`.tmp` files.
+
 Expected result: Unity Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
 updates:
@@ -1775,6 +1798,14 @@ changes. You can run the same suites outside the Editor with:
 $env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.4f1\Editor\Unity.exe"
 & .\Tools\Run-UnityTests.ps1
 ```
+
+An explicit `-UnityEditorPath` or `UNITY_EDITOR_PATH` always runs that Editor.
+The script uses the Unity CLI only when `-UnityCliPath` or `UNITY_CLI_PATH` is
+set, or when neither path is set and the CLI exists at
+`%LOCALAPPDATA%\Unity\bin\unity.exe`. The headless run cannot start while an
+Editor has the project open; use the live Editor commands in
+[Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
+instead.
 
 Expected result:
 

@@ -8,12 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeProtocol.cs"
-             Link="Runtime\RealtimeProtocol.cs" />
-    <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeCorpseProtocol.cs"
-             Link="Runtime\RealtimeCorpseProtocol.cs" />
-    <Compile Include="..\..\..\GameProtocol\Runtime\RealtimeWorldActorProtocol.cs"
-             Link="Runtime\RealtimeWorldActorProtocol.cs" />
+    <!-- A glob keeps every Unity protocol source in the .NET server build. -->
+    <Compile Include="..\..\..\GameProtocol\Runtime\**\*.cs"
+             Link="Runtime\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

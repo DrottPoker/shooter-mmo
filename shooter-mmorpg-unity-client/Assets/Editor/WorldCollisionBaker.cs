@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using ShooterMmo.Collision;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Worlds;
@@ -260,18 +261,27 @@ namespace ShooterMmo.Editor
             var authoringPath = Path.Combine(
                 authoringDirectory,
                 "collision.json");
-            File.WriteAllText(authoringPath, authoringJson);
-            File.WriteAllText(
-                Path.Combine(outputDirectory, "manifest.json"),
-                JsonUtility.ToJson(result.Manifest, true) + Environment.NewLine);
 
+            // Chunks first and the manifest after them, so a reader never sees a manifest
+            // whose checksums point at chunks that were not written.
+            var writes = new List<KeyValuePair<string, byte[]>>();
             var expectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var chunk in result.Chunks)
             {
                 var fileName = chunk.ManifestEntry.ResourceName + ".bytes";
                 expectedFiles.Add(fileName);
-                File.WriteAllBytes(Path.Combine(outputDirectory, fileName), chunk.Data);
+                writes.Add(new KeyValuePair<string, byte[]>(
+                    Path.Combine(outputDirectory, fileName),
+                    chunk.Data));
             }
+
+            writes.Add(new KeyValuePair<string, byte[]>(
+                Path.Combine(outputDirectory, "manifest.json"),
+                Encoding.UTF8.GetBytes(JsonUtility.ToJson(result.Manifest, true) + Environment.NewLine)));
+            writes.Add(new KeyValuePair<string, byte[]>(
+                authoringPath,
+                Encoding.UTF8.GetBytes(authoringJson)));
+            ReplaceFilesAtomically(writes);
 
             foreach (var stalePath in Directory.EnumerateFiles(outputDirectory, "chunk_*.bytes"))
             {
@@ -283,6 +293,76 @@ namespace ShooterMmo.Editor
                     {
                         File.Delete(metaPath);
                     }
+                }
+            }
+        }
+
+        // Writes every file to a temporary sibling first and then swaps them in with
+        // backups, restoring the previous files if any swap fails. Unity ignores .tmp
+        // files, so partial output is never imported.
+        private static void ReplaceFilesAtomically(IReadOnlyList<KeyValuePair<string, byte[]>> writes)
+        {
+            var temporaryPaths = new List<string>();
+            var committed = new List<KeyValuePair<string, string>>();
+            try
+            {
+                foreach (var write in writes)
+                {
+                    var temporaryPath = write.Key + ".bake.tmp";
+                    temporaryPaths.Add(temporaryPath);
+                    File.WriteAllBytes(temporaryPath, write.Value);
+                }
+
+                for (var index = 0; index < writes.Count; index++)
+                {
+                    var target = writes[index].Key;
+                    var backupPath = target + ".backup.tmp";
+                    if (File.Exists(target))
+                    {
+                        File.Replace(temporaryPaths[index], target, backupPath);
+                        committed.Add(new KeyValuePair<string, string>(target, backupPath));
+                    }
+                    else
+                    {
+                        File.Move(temporaryPaths[index], target);
+                        committed.Add(new KeyValuePair<string, string>(target, null));
+                    }
+                }
+            }
+            catch
+            {
+                for (var index = committed.Count - 1; index >= 0; index--)
+                {
+                    var target = committed[index].Key;
+                    var backupPath = committed[index].Value;
+                    if (backupPath == null)
+                    {
+                        File.Delete(target);
+                    }
+                    else
+                    {
+                        File.Replace(backupPath, target, null);
+                    }
+                }
+
+                throw;
+            }
+            finally
+            {
+                foreach (var temporaryPath in temporaryPaths)
+                {
+                    if (File.Exists(temporaryPath))
+                    {
+                        File.Delete(temporaryPath);
+                    }
+                }
+            }
+
+            foreach (var entry in committed)
+            {
+                if (entry.Value != null && File.Exists(entry.Value))
+                {
+                    File.Delete(entry.Value);
                 }
             }
         }

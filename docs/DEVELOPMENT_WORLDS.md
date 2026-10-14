@@ -89,7 +89,9 @@ touching `Gameplay`, actor authoring, or actor runtime content.
 2. Open `Assets/Scenes/DevelopmentWorld2.unity`.
 3. To restore the complete checked-in layout, select `Shooter MMO > Tools >
    Development Worlds > Rebuild Development World 2 Environment` and confirm
-   `Rebuild`. This intentionally replaces every child under `Environment`.
+   `Rebuild`. This intentionally replaces every child under `Environment`. If
+   an open scene has unsaved changes, Unity first asks whether to save them,
+   and cancelling stops the rebuild.
 4. To customize the greybox, edit the generated children under `Environment`.
    Keep authoritative geometry as enabled, non-trigger BoxColliders. Decorative
    route surfaces and cyan guides must remain collider-free.

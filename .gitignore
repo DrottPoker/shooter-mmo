@@ -31,6 +31,7 @@ shooter-mmorpg-unity-client/Assets/_Recovery.meta
 shooter-mmorpg-unity-client/*.csproj
 shooter-mmorpg-unity-client/*.sln
 shooter-mmorpg-unity-client/*.slnx
+shooter-mmorpg-unity-client/packages.lock.json
 shooter-mmorpg-unity-client/*.pidb
 shooter-mmorpg-unity-client/*.booproj
 shooter-mmorpg-unity-client/*.svd
