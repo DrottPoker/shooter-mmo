@@ -2836,7 +2836,14 @@ public sealed partial class ItemTransactionService(
             catch (ItemTransactionRejectedException exception)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return CreateRejectedResult(
+                // A lost response can make the worker retry after its session ended. A
+                // committed result must still replay instead of turning into a failure.
+                var committedReplay = await LoadCommittedReplayAsync(
+                    request.OperationId,
+                    operationKind,
+                    requestHash,
+                    cancellationToken);
+                return committedReplay ?? CreateRejectedResult(
                     request.OperationId,
                     operationKind,
                     exception.Code,
@@ -2937,6 +2944,34 @@ public sealed partial class ItemTransactionService(
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private async Task<ItemTransactionResult?> LoadCommittedReplayAsync(
+        Guid operationId,
+        string operationKind,
+        string requestHash,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var payload = await connection.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            """
+            select result_payload::text
+            from item_operations
+            where operation_id = @OperationId
+              and operation_kind = @OperationKind
+              and request_hash = @RequestHash
+              and status = 'committed';
+            """,
+            new
+            {
+                OperationId = operationId,
+                OperationKind = operationKind,
+                RequestHash = requestHash
+            },
+            cancellationToken: cancellationToken));
+        return payload is null
+            ? null
+            : JsonSerializer.Deserialize<ItemTransactionResult>(payload, OperationJsonOptions);
     }
 
     private static async Task<ItemTransactionResult?> ClaimOperationAsync(

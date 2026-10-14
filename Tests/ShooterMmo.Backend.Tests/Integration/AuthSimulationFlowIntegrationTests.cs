@@ -22,7 +22,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(16, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(17, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -467,7 +467,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(16, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(17, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             1,
             await context.ExecuteScalarIntAsync(

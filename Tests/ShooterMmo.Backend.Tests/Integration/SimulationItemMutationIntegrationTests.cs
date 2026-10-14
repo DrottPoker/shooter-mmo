@@ -182,6 +182,65 @@ public sealed class SimulationItemMutationIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CommittedOperationReplaysAfterTheSessionEnded()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "replay-after-release@example.com",
+            "replay_after_release",
+            "Replay After Release");
+        var snapshot = await GetSnapshotAsync(context, player);
+        var grant = await GrantAsync(
+            context,
+            player,
+            snapshot,
+            "material.iron_ore",
+            2,
+            snapshot.PermanentInventory.ContainerId,
+            0);
+        var item = Assert.Single(grant.ItemRevisions);
+        snapshot = await GetSnapshotAsync(context, player);
+        var session = await JoinAsync(context, player);
+        var request = new SimulationItemOperationRequest(
+            Guid.NewGuid(),
+            session.AccountId,
+            session.CharacterId,
+            session.WorkerId,
+            session.WorkerRuntimeId,
+            session.ShardId,
+            session.SimulationSessionToken,
+            new SimulationItemAccessRequest(false, false, false),
+            ItemOperationKinds.Destroy,
+            snapshot.ItemStateRevision,
+            item.ItemInstanceId,
+            item.Revision);
+        var committed = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            request,
+            CancellationToken.None);
+        Assert.True(committed.Succeeded, committed.Error?.Message);
+
+        // The response was lost and the session ended before the worker retried.
+        var released = await context.SimulationSessionService.ReleaseAsync(
+            session.SimulationSessionId,
+            WorkerId,
+            new SimulationSessionCredentialRequest(
+                session.WorkerRuntimeId,
+                session.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(released.Succeeded, released.Error?.Message);
+        var retry = await context.SimulationItemMutationService.ExecuteAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            request,
+            CancellationToken.None);
+
+        Assert.True(retry.Succeeded, retry.Error?.Message);
+        Assert.Equal(committed.Value!.OperationId, retry.Value!.OperationId);
+    }
+
+    [PostgresIntegrationFact]
     public async Task SecureMutationIsIdempotentUpdatesCarryAndRestoresOnReconnect()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

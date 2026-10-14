@@ -34,7 +34,8 @@ public sealed class DatabaseInitializer(
         new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql),
         new(
             ReleaseRetryableOperationClaimsMigration.Id,
-            ReleaseRetryableOperationClaimsMigration.Sql)
+            ReleaseRetryableOperationClaimsMigration.Sql),
+        new(EquippedItemLookupIndexMigration.Id, EquippedItemLookupIndexMigration.Sql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)

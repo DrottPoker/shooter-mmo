@@ -166,21 +166,31 @@ public sealed partial class ItemTransactionService
                         when item.container_id = @PermanentInventoryContainerId then 'permanent_inventory'
                         else 'bag_contents'
                     end as "SourceKind"
-                from item_instances item
-                left join item_containers source_container on source_container.id = item.container_id
-                left join item_instances source_bag
-                  on source_bag.id = source_container.bound_bag_item_instance_id
+                from (
+                    -- Each branch is an indexed lookup instead of one OR over joins.
+                    select inventory_item.id
+                    from item_instances inventory_item
+                    where inventory_item.container_id = @PermanentInventoryContainerId
+                    union
+                    select equipped_item.id
+                    from item_instances equipped_item
+                    where equipped_item.equipped_character_id = @CharacterId
+                    union
+                    select bag_item.id
+                    from item_instances equipped_bag
+                    join item_containers bag_contents
+                      on bag_contents.bound_bag_item_instance_id = equipped_bag.id
+                    join item_instances bag_item on bag_item.container_id = bag_contents.id
+                    where equipped_bag.equipped_character_id = @CharacterId
+                      and equipped_bag.equipment_slot_id = 'bag'
+                      and bag_contents.container_type = 'bag_contents'
+                      and bag_contents.lifecycle = 'active'
+                ) source_item
+                join item_instances item on item.id = source_item.id
                 left join item_containers bag_container
                   on bag_container.bound_bag_item_instance_id = item.id
                  and bag_container.container_type = 'bag_contents'
                 left join equipment_slots equipment on equipment.id = item.equipment_slot_id
-                where item.container_id = @PermanentInventoryContainerId
-                   or item.equipped_character_id = @CharacterId
-                   or (
-                        source_container.container_type = 'bag_contents'
-                        and source_container.lifecycle = 'active'
-                        and source_bag.equipped_character_id = @CharacterId
-                        and source_bag.equipment_slot_id = 'bag')
                 order by item.id;
                 """,
                 new

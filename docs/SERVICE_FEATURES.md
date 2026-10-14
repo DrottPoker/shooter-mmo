@@ -251,6 +251,15 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   validated.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
+- `SimulationWorker:Admission` limits remote peers that have not joined yet: at
+  most `MaxUnauthenticatedPeers` in total and `MaxUnauthenticatedPeersPerAddress`
+  per address, and new connections per address are rate limited by
+  `ConnectionAttemptsPerAddressPerSecond` with a `ConnectionAttemptBurstPerAddress`
+  burst. Loopback peers, such as local bots and stress tools, are exempt.
+- A peer with more than `MaxReliableQueuedPackets` unacknowledged reliable
+  control packets is disconnected, so a client that never acknowledges cannot
+  grow server memory without bound. Rejected connections are counted by the
+  `simulation_worker.realtime.connections.rejected` metric.
 
 Protocol version `14` carries Shard and World identity plus the initial carry
 tuple in join acceptance. Reliable ordered control messages carry later item
@@ -493,6 +502,18 @@ concurrent inspection, and authoritative looting:
   policy, delivery, entitlement, carried-state, revision, or audit mutation can
   survive. Replaying the same operation id and canonical payload returns the
   stored result. A different payload returns `item_operation_conflict`.
+- A retry of a committed SimulationWorker operation replays its stored result
+  even when the live session has ended since, so a lost response never turns a
+  committed change into a reported failure.
+- Committed operations recompute carried weight with indexed lookups of the
+  character's carried containers and equipped Bag, and the death partition
+  selects its source items the same way. A partial index on
+  `item_instances(equipped_character_id, equipment_slot_id)` supports both.
+- AuthService startup bootstraps only characters that have no item state, each
+  in its own short transaction, and then recomputes carry state in batches of
+  500 rows that it locks first, so a concurrent item transaction can never be
+  overwritten with a stale weight and startup scales with the number of
+  accounts.
 - Two kinds of rejection are returned without being stored, so the same id can
   run again: `item_transaction_timeout`, which also covers lock timeouts,
   statement timeouts, deadlocks, and serialization failures, and every
@@ -711,6 +732,11 @@ budget.
 Session heartbeats use bounded concurrency so one worker cannot create an
 unbounded AuthService request fan-out. HTTP calls map timeout, connection,
 invalid-response, authentication, and domain failures to structured results.
+`auth_service_timeout` and `auth_service_unavailable` are unknown outcomes,
+because AuthService may have committed the operation before the response was
+lost, so item, corpse, and live Mob loot results with those codes always ask the
+client to refresh. Live Mob loot claims send the current committed item-state
+revision from the carry store, not the revision from the time of the join.
 
 ## Metrics And Logs
 

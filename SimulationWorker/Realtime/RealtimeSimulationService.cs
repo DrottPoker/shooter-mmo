@@ -52,6 +52,7 @@ public sealed class RealtimeSimulationService(
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
     private readonly Dictionary<int, PeerContext> peers = [];
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
+    private PeerAdmissionGuard admissionGuard = null!;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
     private readonly HashSet<Task> activeOperations = [];
     private readonly object activeOperationsLock = new();
@@ -114,6 +115,7 @@ public sealed class RealtimeSimulationService(
                 workerIdentity.RuntimeId);
         }
 
+        admissionGuard = new PeerAdmissionGuard(config.Admission);
         var listener = new EventBasedNetListener();
         server = new NetManager(listener)
         {
@@ -126,6 +128,14 @@ public sealed class RealtimeSimulationService(
             if ((registrationLease is not null && !registrationLease.IsValid)
                 || server.ConnectedPeersCount >= config.MaxConnections)
             {
+                request.Reject();
+                return;
+            }
+
+            var admissionRejection = admissionGuard.TryAdmit(request.RemoteEndPoint.Address);
+            if (admissionRejection is not null)
+            {
+                networkMetrics.RecordConnectionRejected();
                 request.Reject();
                 return;
             }
@@ -224,6 +234,7 @@ public sealed class RealtimeSimulationService(
     private void HandlePeerConnected(NetPeer peer)
     {
         peers[peer.Id] = new PeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
+        admissionGuard.OnPeerConnected(peer.Id, peer.Address);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
         logger.LogDebug(
@@ -234,6 +245,7 @@ public sealed class RealtimeSimulationService(
 
     private void HandlePeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
+        admissionGuard.OnPeerDisconnected(peer.Id);
         if (!peers.Remove(peer.Id, out var context))
         {
             return;
@@ -1037,6 +1049,7 @@ public sealed class RealtimeSimulationService(
             completed.Context.PeerId,
             entity.NetworkEntityId);
         completed.Context.Session = session;
+        admissionGuard.OnPeerAuthenticated(completed.Context.PeerId);
         RefreshPeerPopulationMetrics();
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
@@ -2490,6 +2503,22 @@ public sealed class RealtimeSimulationService(
 
             if (context.DisconnectAfterUtc is not null && context.DisconnectAfterUtc <= now)
             {
+                server!.DisconnectPeer(peer);
+                continue;
+            }
+
+            // A client that never acknowledges reliable packets would grow this queue
+            // without bound, so it is disconnected without another reliable message.
+            var queuedReliablePackets = peer.GetPacketsCountInReliableQueue(
+                RealtimeProtocol.ControlChannel,
+                true);
+            if (queuedReliablePackets > config.Admission.MaxReliableQueuedPackets)
+            {
+                logger.LogWarning(
+                    "[SIMULATION] Disconnecting UDP peer {PeerId} with {QueuedPackets} unacknowledged reliable packets.",
+                    context.PeerId,
+                    queuedReliablePackets);
+                networkMetrics.RecordConnectionRejected();
                 server!.DisconnectPeer(peer);
                 continue;
             }

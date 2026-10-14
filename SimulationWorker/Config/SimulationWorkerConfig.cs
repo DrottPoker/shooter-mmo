@@ -38,6 +38,8 @@ public sealed record SimulationWorkerConfig(
 
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
 
+    public AdmissionConfig Admission { get; init; } = AdmissionConfig.Default;
+
     public InterestManagementConfig InterestManagement { get; init; } =
         InterestManagementConfig.Default;
 
@@ -276,6 +278,33 @@ public sealed record SimulationWorkerConfig(
         var aggregateSnapshotByteBurst = PositiveInt(
             udpQuotaSection["AggregateSnapshotByteBurst"],
             "SimulationWorker:UdpQuotas:AggregateSnapshotByteBurst",
+            errors);
+        var admissionSection = section.GetSection("Admission");
+        var admissionDefaults = AdmissionConfig.Default;
+        var maxUnauthenticatedPeers = PositiveInt(
+            admissionSection["MaxUnauthenticatedPeers"]
+                ?? admissionDefaults.MaxUnauthenticatedPeers.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:MaxUnauthenticatedPeers",
+            errors);
+        var maxUnauthenticatedPeersPerAddress = PositiveInt(
+            admissionSection["MaxUnauthenticatedPeersPerAddress"]
+                ?? admissionDefaults.MaxUnauthenticatedPeersPerAddress.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:MaxUnauthenticatedPeersPerAddress",
+            errors);
+        var connectionAttemptsPerAddressPerSecond = PositiveInt(
+            admissionSection["ConnectionAttemptsPerAddressPerSecond"]
+                ?? admissionDefaults.ConnectionAttemptsPerAddressPerSecond.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:ConnectionAttemptsPerAddressPerSecond",
+            errors);
+        var connectionAttemptBurstPerAddress = PositiveInt(
+            admissionSection["ConnectionAttemptBurstPerAddress"]
+                ?? admissionDefaults.ConnectionAttemptBurstPerAddress.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:ConnectionAttemptBurstPerAddress",
+            errors);
+        var maxReliableQueuedPackets = PositiveInt(
+            admissionSection["MaxReliableQueuedPackets"]
+                ?? admissionDefaults.MaxReliableQueuedPackets.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:MaxReliableQueuedPackets",
             errors);
         var interestSection = section.GetSection("InterestManagement");
         var interestCellSize = FiniteFloat(
@@ -535,6 +564,12 @@ public sealed record SimulationWorkerConfig(
                 snapshotByteBurst,
                 aggregateSnapshotBytesPerSecond,
                 aggregateSnapshotByteBurst),
+            Admission = new AdmissionConfig(
+                maxUnauthenticatedPeers,
+                maxUnauthenticatedPeersPerAddress,
+                connectionAttemptsPerAddressPerSecond,
+                connectionAttemptBurstPerAddress,
+                maxReliableQueuedPackets),
             InterestManagement = new InterestManagementConfig(
                 interestCellSize,
                 interestEnterRadius,
@@ -653,6 +688,16 @@ public sealed record UdpQuotaConfig(
         512 * 1024,
         38 * 1024 * 1024,
         4 * 1024 * 1024);
+}
+
+public sealed record AdmissionConfig(
+    int MaxUnauthenticatedPeers,
+    int MaxUnauthenticatedPeersPerAddress,
+    int ConnectionAttemptsPerAddressPerSecond,
+    int ConnectionAttemptBurstPerAddress,
+    int MaxReliableQueuedPackets)
+{
+    public static AdmissionConfig Default { get; } = new(256, 8, 5, 20, 1024);
 }
 
 public sealed record InterestManagementConfig(

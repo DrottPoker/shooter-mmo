@@ -1605,24 +1605,31 @@ internal sealed class ItemTransactionContext(
             cancellationToken: cancellationToken));
         var weights = await Connection.QueryAsync<CarriedItemWeightRow>(new CommandDefinition(
             """
+            -- Each branch is an indexed lookup; an OR across joined tables scans every item.
+            with carried_containers as (
+                select state.permanent_inventory_container_id as container_id
+                from character_item_states state
+                where state.character_id = @CharacterId
+                union
+                select state.secure_container_id
+                from character_item_states state
+                where state.character_id = @CharacterId
+                union
+                select container.id
+                from item_instances bag
+                join item_containers container
+                  on container.bound_bag_item_instance_id = bag.id
+                where bag.equipped_character_id = @CharacterId
+                  and bag.equipment_slot_id = 'bag'
+                  and container.container_type = 'bag_contents'
+                  and container.lifecycle = 'active'
+            )
             select
                 definition.unit_weight as "UnitWeight",
                 item.quantity as "Quantity"
-            from item_instances item
-            join item_definitions definition on definition.id = item.definition_id
-            left join item_containers container on container.id = item.container_id
-            left join item_instances bound_bag
-              on bound_bag.id = container.bound_bag_item_instance_id
-            left join character_item_states state on state.character_id = @CharacterId
-            where item.container_id in (
-                    state.permanent_inventory_container_id,
-                    state.secure_container_id)
-               or (
-                    container.container_type = 'bag_contents'
-                    and container.lifecycle = 'active'
-                    and bound_bag.equipped_character_id = @CharacterId
-                    and bound_bag.equipment_slot_id = 'bag')
-            order by item.id;
+            from carried_containers carried
+            join item_instances item on item.container_id = carried.container_id
+            join item_definitions definition on definition.id = item.definition_id;
             """,
             new { CharacterId = characterId },
             Transaction,
