@@ -851,6 +851,32 @@ public sealed class AuthServiceClientTests
             result.Error.Message);
     }
 
+    [Theory]
+    [InlineData("item_slot_occupied", "item_slot_occupied")]
+    [InlineData("", "auth_service_rejected")]
+    [InlineData("Not-A-Code", "auth_service_rejected")]
+    [InlineData("a_code_that_is_much_longer_than_the_sixty_four_character_protocol_limit", "auth_service_rejected")]
+    public void ForwardedErrorCodesAlwaysFitTheRealtimeProtocol(string code, string expected)
+    {
+        Assert.Equal(expected, AuthServiceClient.NormalizeForwardedErrorCode(code));
+    }
+
+    [Fact]
+    public void ForwardedErrorMessagesAlwaysFitTheRealtimeProtocol()
+    {
+        Assert.Equal(
+            "AuthService rejected the request.",
+            AuthServiceClient.NormalizeForwardedErrorMessage(""));
+        Assert.Equal(
+            "AuthService rejected the request.",
+            AuthServiceClient.NormalizeForwardedErrorMessage(null));
+        Assert.Equal("Slot ? is taken.", AuthServiceClient.NormalizeForwardedErrorMessage("Slot å is taken."));
+        Assert.Equal(256, AuthServiceClient.NormalizeForwardedErrorMessage(new string('x', 2_000)).Length);
+        RealtimeProtocol.EncodeServerDisconnect(
+            AuthServiceClient.NormalizeForwardedErrorCode("Bad Code"),
+            AuthServiceClient.NormalizeForwardedErrorMessage(new string('å', 2_000)));
+    }
+
     private static Task<AuthServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeAsync(
         AuthServiceClient client)
     {

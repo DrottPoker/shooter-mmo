@@ -7,8 +7,43 @@ namespace SimulationWorker.Sessions;
 public sealed class SimulationSessionReleaseService(
     AuthServiceClient authServiceClient,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore)
+    CarryStateStore carryStateStore,
+    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null)
 {
+    private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
+    [
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(3)
+    ];
+
+    private readonly IReadOnlyList<TimeSpan> retryDelays =
+        detachedReleaseRetryDelays ?? DefaultDetachedReleaseRetryDelays;
+
+    // Releases a session that no connected peer owns any more. The local lease is dropped
+    // first, so the heartbeat stops renewing it even when AuthService stays unavailable
+    // and the database lease then expires on its own.
+    public async Task<SimulationSessionReleaseResult> ReleaseDetachedAsync(
+        ActiveSimulationSession session,
+        CancellationToken cancellationToken)
+    {
+        if (sessionStore.Remove(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken))
+        {
+            carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+        }
+
+        var result = await ReleaseAsync(session, cancellationToken);
+        for (var attempt = 0; !result.Succeeded && attempt < retryDelays.Count; attempt++)
+        {
+            await Task.Delay(retryDelays[attempt], cancellationToken);
+            result = await ReleaseAsync(session, cancellationToken);
+        }
+
+        return result;
+    }
+
     public async Task<SimulationSessionReleaseResult> ReleaseAsync(
         ActiveSimulationSession session,
         CancellationToken cancellationToken)

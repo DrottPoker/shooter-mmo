@@ -809,7 +809,9 @@ revision, and collision revision.
 
 A reconnect is valid only for the exact active shard, worker, and runtime. It
 preserves session and entity state, rotates the secret simulation-session token,
-and disconnects the older peer generation.
+and disconnects the older peer generation. While the reconnect is still being
+finalized, the older peer only detaches its connection. It never removes the
+shared entity or carry state that the reconnecting client takes over.
 
 ### Leave, Disconnect, Expiry, And Failover
 
@@ -817,10 +819,18 @@ and disconnects the older peer generation.
 2. SimulationWorker releases the exact session token generation through
    AuthService.
 3. The worker removes the peer binding and entity and sends reliable despawn.
-4. Unexpected disconnect uses the same cleanup path.
-5. If release is unavailable, the database lease expires and local expiry
-   enforcement removes the session.
-6. Worker shutdown or authoritative failover releases its assignment, pending
+4. Unexpected disconnect uses the same cleanup path. The worker first drops the
+   local session, so its heartbeat stops renewing the lease, and then calls
+   release with two bounded retries.
+5. If release is unavailable, the database lease expires on its own because
+   nothing renews it. A join that is rejected during finalization releases its
+   session the same way. As a safety net, the worker releases any local session
+   that no peer has owned for twice the join handshake timeout.
+6. An unexpected failure while processing one packet or one completed
+   operation disconnects only that peer. The simulation loop and every other
+   player keep running. AuthService error codes and messages are normalized to
+   short printable text before they enter realtime protocol fields.
+7. Worker shutdown or authoritative failover releases its assignment, pending
    tickets, and bound sessions.
 
 ### Authoritative Movement

@@ -51,6 +51,8 @@ public sealed class RealtimeSimulationService(
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
     private readonly Dictionary<int, PeerContext> peers = [];
+    private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
+    private DateTime nextOrphanSweepUtc = DateTime.MinValue;
     private readonly HashSet<Task> activeOperations = [];
     private readonly object activeOperationsLock = new();
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
@@ -190,6 +192,7 @@ public sealed class RealtimeSimulationService(
                     simulationInterval,
                     ref nextSimulationTick);
                 EnforcePeerState();
+                ReleaseOrphanedSessions();
                 await Task.Delay(config.NetworkPollInterval, stoppingToken);
             }
         }
@@ -209,6 +212,7 @@ public sealed class RealtimeSimulationService(
             worldInteractionLeases?.Clear();
             worldActorStore?.Clear();
             corpseSnapshots.Clear();
+            unboundSessionsSinceUtc.Clear();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
             networkMetrics.SetPeerPopulation(0, 0, 0);
@@ -242,8 +246,15 @@ public sealed class RealtimeSimulationService(
 
         if (context.Session is not null)
         {
-            RemoveBoundEntity(context, context.Session, "connection_closed");
-            TrackOperation(ReleaseDisconnectedSessionAsync(context.Session));
+            if (sessionStore.IsSupersededByReconnect(context.Session))
+            {
+                DetachSupersededPeer(context);
+            }
+            else
+            {
+                RemoveBoundEntity(context, context.Session, "connection_closed");
+                TrackOperation(ReleaseDisconnectedSessionAsync(context.Session));
+            }
         }
 
         logger.LogDebug(
@@ -308,6 +319,22 @@ public sealed class RealtimeSimulationService(
                 packet,
                 channel,
                 deliveryMethod);
+        }
+        catch (Exception exception)
+        {
+            // A packet that fails unexpectedly disconnects only its own peer.
+            logger.LogError(
+                exception,
+                "[SIMULATION] Could not process a realtime packet from UDP peer {PeerId}.",
+                peer.Id);
+            if (peers.TryGetValue(peer.Id, out var failedContext))
+            {
+                RejectProtocol(
+                    peer,
+                    failedContext,
+                    "internal_error",
+                    "SimulationWorker could not process the request.");
+            }
         }
         finally
         {
@@ -818,11 +845,11 @@ public sealed class RealtimeSimulationService(
     {
         try
         {
-            var result = await releaseService.ReleaseAsync(session, CancellationToken.None);
+            var result = await releaseService.ReleaseDetachedAsync(session, CancellationToken.None);
             if (!result.Succeeded)
             {
                 logger.LogWarning(
-                    "[SIMULATION] Could not release disconnected simulation session {SimulationSessionId}: {Code}.",
+                    "[SIMULATION] Could not release disconnected simulation session {SimulationSessionId}: {Code}. Its database lease expires without renewal.",
                     session.SimulationSessionId,
                     result.Code);
             }
@@ -841,45 +868,83 @@ public sealed class RealtimeSimulationService(
         var started = Stopwatch.GetTimestamp();
         while (completedOperations.TryDequeue(out var operation))
         {
-            switch (operation)
+            try
             {
-                case JoinCompleted joinCompleted:
-                    {
-                        var joinStarted = Stopwatch.GetTimestamp();
-                        performanceMetrics.RecordJoinQueueDelay(
-                            Stopwatch.GetElapsedTime(
-                                joinCompleted.EnqueuedTimestamp,
-                                joinStarted));
-                        try
-                        {
-                            ProcessJoinCompleted(joinCompleted);
-                        }
-                        finally
-                        {
-                            performanceMetrics.RecordJoinFinalization(
-                                Stopwatch.GetElapsedTime(joinStarted));
-                        }
-
-                        break;
-                    }
-                case LeaveCompleted leaveCompleted:
-                    ProcessLeaveCompleted(leaveCompleted);
-                    break;
-                case ItemOperationCompleted itemCompleted:
-                    ProcessItemOperationCompleted(itemCompleted);
-                    break;
-                case CorpseOperationCompleted corpseCompleted:
-                    ProcessCorpseOperationCompleted(corpseCompleted);
-                    break;
-                case WorldInteractionOperationCompleted worldInteractionCompleted:
-                    ProcessWorldInteractionOperationCompleted(worldInteractionCompleted);
-                    break;
+                ProcessCompletedOperation(operation);
+            }
+            catch (Exception exception)
+            {
+                IsolateFailedOperation(operation, exception);
             }
 
             if (Stopwatch.GetElapsedTime(started) >= budget)
             {
                 break;
             }
+        }
+    }
+
+    private void ProcessCompletedOperation(RealtimeOperationResult operation)
+    {
+        switch (operation)
+        {
+            case JoinCompleted joinCompleted:
+                {
+                    var joinStarted = Stopwatch.GetTimestamp();
+                    performanceMetrics.RecordJoinQueueDelay(
+                        Stopwatch.GetElapsedTime(
+                            joinCompleted.EnqueuedTimestamp,
+                            joinStarted));
+                    try
+                    {
+                        ProcessJoinCompleted(joinCompleted);
+                    }
+                    finally
+                    {
+                        performanceMetrics.RecordJoinFinalization(
+                            Stopwatch.GetElapsedTime(joinStarted));
+                    }
+
+                    break;
+                }
+            case LeaveCompleted leaveCompleted:
+                ProcessLeaveCompleted(leaveCompleted);
+                break;
+            case ItemOperationCompleted itemCompleted:
+                ProcessItemOperationCompleted(itemCompleted);
+                break;
+            case CorpseOperationCompleted corpseCompleted:
+                ProcessCorpseOperationCompleted(corpseCompleted);
+                break;
+            case WorldInteractionOperationCompleted worldInteractionCompleted:
+                ProcessWorldInteractionOperationCompleted(worldInteractionCompleted);
+                break;
+        }
+    }
+
+    // One failing operation must not stop the loop and drop every player, so only the
+    // affected peer is disconnected. Its normal disconnect path releases the session.
+    private void IsolateFailedOperation(RealtimeOperationResult operation, Exception exception)
+    {
+        logger.LogError(
+            exception,
+            "[SIMULATION] Could not process a completed {OperationType} for UDP peer {PeerId}.",
+            operation.GetType().Name,
+            operation.Context.PeerId);
+        if (operation is JoinCompleted { Result.Succeeded: true } joinCompleted
+            && joinCompleted.Context.Session is null
+            && joinCompleted.Result.Value is not null)
+        {
+            TrackOperation(ReleaseDisconnectedSessionAsync(joinCompleted.Result.Value));
+        }
+
+        if (TryGetCurrentPeer(operation.Context, out var peer))
+        {
+            RejectProtocol(
+                peer,
+                operation.Context,
+                "internal_error",
+                "SimulationWorker could not process the request.");
         }
     }
 
@@ -916,6 +981,7 @@ public sealed class RealtimeSimulationService(
         var session = completed.Result.Value!;
         if (!IsCurrentSession(session))
         {
+            TrackOperation(ReleaseDisconnectedSessionAsync(session));
             RejectProtocol(peer, completed.Context, "session_missing", "The joined simulation session is no longer active.");
             return;
         }
@@ -925,6 +991,7 @@ public sealed class RealtimeSimulationService(
                 session.SimulationSessionId,
                 out var currentCarryState))
         {
+            TrackOperation(ReleaseDisconnectedSessionAsync(session));
             RejectProtocol(
                 peer,
                 completed.Context,
@@ -2441,6 +2508,19 @@ public sealed class RealtimeSimulationService(
             var isCurrentSession = IsCurrentSession(activeSession);
             if (ShouldEnforceSessionInvalidation(context.LeaveStarted, isCurrentSession))
             {
+                if (sessionStore.IsSupersededByReconnect(activeSession))
+                {
+                    // The reconnecting client owns the entity and carry state now.
+                    SendControl(
+                        peer,
+                        RealtimeProtocol.EncodeServerDisconnect(
+                            "session_reconnected",
+                            "This character connected from another client."));
+                    DetachSupersededPeer(context);
+                    context.DisconnectAfterUtc = now.AddMilliseconds(250);
+                    continue;
+                }
+
                 var reason = sessionStore.TryTakeInvalidation(
                     activeSession.SimulationSessionId,
                     out var invalidation)
@@ -2457,6 +2537,60 @@ public sealed class RealtimeSimulationService(
                 context.Session = null;
                 RefreshPeerPopulationMetrics();
                 context.DisconnectAfterUtc = now.AddMilliseconds(250);
+            }
+        }
+    }
+
+    // Safety net: a local session that no peer has owned for a while is released, so a
+    // missed cleanup path can never keep renewing a lease for a player who is gone.
+    private void ReleaseOrphanedSessions()
+    {
+        var now = DateTime.UtcNow;
+        if (now < nextOrphanSweepUtc)
+        {
+            return;
+        }
+
+        nextOrphanSweepUtc = now + TimeSpan.FromSeconds(1);
+        var boundSessionIds = peers.Values
+            .Select(context => context.Session?.SimulationSessionId)
+            .OfType<Guid>()
+            .ToHashSet();
+        var orphanThreshold = config.JoinHandshakeTimeout * 2;
+        var activeSessionIds = new HashSet<Guid>();
+        foreach (var session in sessionStore.ListActiveSessions())
+        {
+            activeSessionIds.Add(session.SimulationSessionId);
+            if (boundSessionIds.Contains(session.SimulationSessionId))
+            {
+                unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
+                continue;
+            }
+
+            if (!unboundSessionsSinceUtc.TryGetValue(session.SimulationSessionId, out var since))
+            {
+                unboundSessionsSinceUtc[session.SimulationSessionId] = now;
+                continue;
+            }
+
+            if (now - since < orphanThreshold)
+            {
+                continue;
+            }
+
+            unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
+            logger.LogWarning(
+                "[SIMULATION] Releasing simulation session {SimulationSessionId} because no peer has owned it for {Seconds:F0} seconds.",
+                session.SimulationSessionId,
+                (now - since).TotalSeconds);
+            TrackOperation(ReleaseDisconnectedSessionAsync(session));
+        }
+
+        foreach (var sessionId in unboundSessionsSinceUtc.Keys.ToArray())
+        {
+            if (!activeSessionIds.Contains(sessionId))
+            {
+                unboundSessionsSinceUtc.Remove(sessionId);
             }
         }
     }
@@ -2653,6 +2787,17 @@ public sealed class RealtimeSimulationService(
         interestManager.RemoveConnection(context.PeerId);
         BroadcastEntityDespawn(entityId, reason, context.PeerId);
         networkMetrics.SetActiveEntities(GetActiveEntityCount());
+    }
+
+    private void DetachSupersededPeer(PeerContext context)
+    {
+        corpseViewers.RemovePeer(context.PeerId);
+        worldInteractionLeases?.RemovePeer(context.PeerId);
+        context.AuthorityOperationQueue.Clear();
+        connectionBindings.UnbindConnection(context.PeerId, out _);
+        interestManager.RemoveConnection(context.PeerId);
+        context.Session = null;
+        RefreshPeerPopulationMetrics();
     }
 
     private void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)

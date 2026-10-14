@@ -74,6 +74,21 @@ public sealed class ActiveSimulationSessionStore
         }
     }
 
+    // True when a reconnect re-registered the same session with a newer token, so the
+    // older connection must detach without removing the shared entity or carry state.
+    public bool IsSupersededByReconnect(ActiveSimulationSession session)
+    {
+        lock (syncRoot)
+        {
+            return sessionsByCharacterId.TryGetValue(session.CharacterId, out var current)
+                && current.SimulationSessionId == session.SimulationSessionId
+                && !string.Equals(
+                    current.SimulationSessionToken,
+                    session.SimulationSessionToken,
+                    StringComparison.Ordinal);
+        }
+    }
+
     public bool Refresh(
         Guid characterId,
         Guid simulationSessionId,

@@ -11,6 +11,8 @@ public sealed class AuthServiceClient(HttpClient httpClient)
 {
     private const int MaximumRestoredCorpses = 4_096;
     private const int MaximumCorpseEquipmentSlotIdLength = 64;
+    private const int MaximumForwardedErrorCodeLength = 64;
+    private const int MaximumForwardedErrorMessageLength = 256;
 
     public async Task<DependencyHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
@@ -279,8 +281,8 @@ public sealed class AuthServiceClient(HttpClient httpClient)
 
             return AuthServiceResult<TResponse>.Failure(
                 (int)response.StatusCode,
-                problem.Code,
-                problem.Detail ?? problem.Message ?? "AuthService rejected the request.");
+                NormalizeForwardedErrorCode(problem.Code),
+                NormalizeForwardedErrorMessage(problem.Detail ?? problem.Message));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -349,8 +351,8 @@ public sealed class AuthServiceClient(HttpClient httpClient)
 
             return AuthServiceResult<TResponse>.Failure(
                 (int)response.StatusCode,
-                problem.Code,
-                problem.Detail ?? problem.Message ?? "AuthService rejected the request.");
+                NormalizeForwardedErrorCode(problem.Code),
+                NormalizeForwardedErrorMessage(problem.Detail ?? problem.Message));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -751,6 +753,35 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && Math.Abs(corpse.RotationY) <= 1d
             && Math.Abs(corpse.RotationZ) <= 1d
             && Math.Abs(corpse.RotationW) <= 1d;
+    }
+
+    // AuthService error text is forwarded into length-limited realtime protocol fields,
+    // so only short printable ASCII passes and anything else becomes a stable default.
+    internal static string NormalizeForwardedErrorCode(string code)
+    {
+        var trimmed = code.Trim();
+        return trimmed.Length is > 0 and <= MaximumForwardedErrorCodeLength
+            && trimmed.All(character => character is (>= 'a' and <= 'z')
+                or (>= '0' and <= '9')
+                or '_')
+            ? trimmed
+            : "auth_service_rejected";
+    }
+
+    internal static string NormalizeForwardedErrorMessage(string? message)
+    {
+        var printable = new string((message ?? string.Empty)
+            .Select(character => character is >= ' ' and <= '~' ? character : '?')
+            .ToArray())
+            .Trim();
+        if (printable.Length == 0)
+        {
+            return "AuthService rejected the request.";
+        }
+
+        return printable.Length <= MaximumForwardedErrorMessageLength
+            ? printable
+            : printable[..MaximumForwardedErrorMessageLength];
     }
 
     // Weight above the hard cap is valid: death can leave an involuntary overflow.
