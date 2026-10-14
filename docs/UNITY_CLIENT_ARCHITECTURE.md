@@ -254,6 +254,15 @@ registry package is not signed by Unity. This warning does not indicate a
 compile or runtime failure, but every package upgrade still requires source and
 changelog review.
 
+The client renders with the Universal Render Pipeline. `PC_RPAsset` and
+`Mobile_RPAsset` in `Assets/Settings/Rendering` each own one Universal Renderer
+that uses the package default post-processing data. Graphics settings and the
+`PC` quality level use `PC_RPAsset` (4x MSAA, HDR, 80 m shadow distance), and the
+`Mobile` quality level uses `Mobile_RPAsset` (no MSAA, no HDR, 40 m shadow
+distance). Every project material uses `Universal Render Pipeline/Lit`. Runtime
+fallback presentations set both `_BaseColor` and `_Color`, so they stay correct
+in any pipeline. There is no post-processing Volume and no baked lighting yet.
+
 The manifest lists only packages the client uses. The unused template packages
 AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting
 were removed and are added back only when a feature needs them. The project has

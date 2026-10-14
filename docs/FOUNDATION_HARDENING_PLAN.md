@@ -154,7 +154,7 @@ Decided by the product owner on 2026-10-14.
 | Id | Question | Decision | Context |
 | --- | --- | --- | --- |
 | D1 | May offline account routes move items into and out of the bank and Recovery Storage from anywhere? | No. Bank and Recovery Storage stay city services as the inventory design says. Offline account routes must reject bank and Recovery sources and destinations. Implemented: the offline Recovery claim route was removed. | AuthService currently allows offline moves from any location, so a player can log out in the field, take bank items, and log back in. |
-| D2 | Should the client use URP or the Built-in Render Pipeline? | URP. Commit URP pipeline assets and convert the materials. | Graphics and quality settings reference URP assets that were never committed, so the project silently renders with Built-in and all materials were switched to the Standard shader. Built-in is being phased out in Unity 6. |
+| D2 | Should the client use URP or the Built-in Render Pipeline? | URP. Commit URP pipeline assets and convert the materials. Implemented with PC and Mobile pipeline assets; all 14 materials use URP/Lit. | Graphics and quality settings reference URP assets that were never committed, so the project silently renders with Built-in and all materials were switched to the Standard shader. Built-in is being phased out in Unity 6. |
 | D3 | May the unused template packages be removed? | Yes. See F68. Implemented. | They can be added again when a feature needs them. |
 
 ## Fix Order

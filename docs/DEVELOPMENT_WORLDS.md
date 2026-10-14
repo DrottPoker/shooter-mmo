@@ -75,11 +75,10 @@ coordinates without creating or changing actor content.
 | Teal | Reserved southeast expansion area |
 | Cyan | Visual-only actor placement guides |
 
-The palette builder selects its shader from the active render pipeline. It uses
-Unity's Standard shader while the current checked-in render configuration falls
-back to the Built-in Render Pipeline, and switches to URP/Lit only when a valid
-URP Pipeline Asset is active. The installed URP package alone does not make URP
-active, and URP/Lit materials render magenta without an active pipeline asset.
+The client renders with the Universal Render Pipeline, so the palette builder
+creates `Universal Render Pipeline/Lit` materials. It still selects the shader
+from the active render pipeline and would fall back to the Standard shader only
+if no URP Pipeline Asset were active.
 
 ## Rebuild and Authoring Workflow
 
