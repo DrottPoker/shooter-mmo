@@ -5,7 +5,8 @@ public sealed record DevelopmentSimulationBotOptions(
     string AuthoritySecret,
     TimeSpan JoinTicketLifetime,
     TimeSpan SessionLeaseLifetime,
-    string CharacterNamePrefix)
+    string CharacterNamePrefix,
+    int ReservedPlayerConnections = 8)
 {
     public const string SectionName = "DevelopmentSimulationBots";
     public const string SecretEnvironmentVariable = "ACTIVE_SIMULATION_BOTS_SECRET";
@@ -24,6 +25,7 @@ public sealed record DevelopmentSimulationBotOptions(
         var sessionLeaseLifetimeSeconds = section.GetValue("SessionLeaseLifetimeSeconds", 30);
         var characterNamePrefix = section.GetValue("CharacterNamePrefix", "Active Bot")?.Trim()
             ?? string.Empty;
+        var reservedPlayerConnections = section.GetValue("ReservedPlayerConnections", 8);
 
         var errors = new List<string>();
         if (enabled && !isDevelopment)
@@ -48,6 +50,11 @@ public sealed record DevelopmentSimulationBotOptions(
             errors.Add($"{SectionName}:SessionLeaseLifetimeSeconds must be between 10 and 300.");
         }
 
+        if (reservedPlayerConnections is < 0 or > 1_000)
+        {
+            errors.Add($"{SectionName}:ReservedPlayerConnections must be between 0 and 1000.");
+        }
+
         if (characterNamePrefix.Length is < 1 or > 32)
         {
             errors.Add($"{SectionName}:CharacterNamePrefix must contain between 1 and 32 characters.");
@@ -66,6 +73,7 @@ public sealed record DevelopmentSimulationBotOptions(
             secret,
             TimeSpan.FromSeconds(joinTicketLifetimeSeconds),
             TimeSpan.FromSeconds(sessionLeaseLifetimeSeconds),
-            characterNamePrefix);
+            characterNamePrefix,
+            reservedPlayerConnections);
     }
 }

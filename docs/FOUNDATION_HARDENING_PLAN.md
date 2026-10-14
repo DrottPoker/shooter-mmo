@@ -122,12 +122,12 @@ reproduction.
 | F38 | Configuration | A malformed `.env` line is copied into the startup exception, `export` prefixes become part of the key, and inline comments become part of the value. | `DotEnvConfigurationExtensions.cs` | Fixed |
 | F39 | Auth | `Retry-After` is inaccurate in both rate limiters. | `RedisAuthenticationRateLimiter.cs`, `AuthService/Program.cs` | Fixed |
 | F40 | Auth | A client abort is logged as an unhandled error and mapped to 500. | `ApiPipelineExtensions.cs` | Fixed |
-| F41 | Placement | Capacity counts the account's own superseded ticket and double-counts reconnect tickets. | `AuthService/Simulation/ShardService.cs` | Open |
-| F42 | Placement | Ticket and lease expiry use the transaction start time instead of the time after placement locks, which contradicts the documentation. | `ShardService.cs`, `SimulationWorkerRegistryService.cs` | Open |
+| F41 | Placement | Capacity counts the account's own superseded ticket and double-counts reconnect tickets. | `AuthService/Simulation/ShardService.cs` | Fixed |
+| F42 | Placement | Ticket and lease expiry use the transaction start time instead of the time after placement locks, which contradicts the documentation. | `ShardService.cs`, `SimulationWorkerRegistryService.cs` | Fixed |
 | F43 | World rebind | A timed-out owner's tickets and sessions are released before the rebind blockers are counted, which contradicts the architecture document. The behavior is intended and is now documented. | `SimulationWorkerRegistryService.cs` | Fixed |
 | F44 | Worker auth | Worker secrets are looked up case-insensitively, so case variants of one worker id authenticate as separate workers. | `AuthService/Auth/SimulationWorkerAuthenticationHandler.cs` | Fixed |
-| F45 | Placement | Placement locks the worker row but not the assignment row, which can bind a ticket to a stale assignment during a worker restart. | `ShardService.cs` | Open |
-| F46 | Development bots | Player placement ignores in-memory bot reservations, so bots and players can over-reserve a worker. | `ShardService.cs`, `DevelopmentSimulationBotAuthority.cs` | Open |
+| F45 | Placement | Placement locks the worker row but not the assignment row, which can bind a ticket to a stale assignment during a worker restart. | `ShardService.cs` | Fixed |
+| F46 | Development bots | Player placement ignores in-memory bot reservations, so bots and players can over-reserve a worker. | `ShardService.cs`, `DevelopmentSimulationBotAuthority.cs` | Fixed |
 | F47 | Recovery | Recovery reads return every claimed delivery forever. | `AuthService/Items/ItemQueryService.cs` | Open |
 | F48 | Quest items | Abandoning quest items held in Recovery leaves an empty, unclaimable delivery. | `ItemTransactionService.cs` | Open |
 | F49 | Corpses | An internal corpse move can place the corpse Bag in a general slot, which breaks the Bag invariants. | `ItemTransactionService.CorpseLoot.cs` | Open |

@@ -29,8 +29,8 @@ public sealed class SimulationSessionService(
         const string sql = """
             with refreshed_session as (
                 update character_simulation_sessions
-                set last_heartbeat_at = now(),
-                    expires_at = now() + make_interval(secs => @LeaseLifetimeSeconds)
+                set last_heartbeat_at = clock_timestamp(),
+                    expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds)
                 where id = @SimulationSessionId
                   and simulation_worker_id = @WorkerId
                   and worker_runtime_id = @WorkerRuntimeId

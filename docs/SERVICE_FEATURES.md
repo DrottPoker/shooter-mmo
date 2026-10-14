@@ -192,14 +192,20 @@ Join placement:
 2. Locks the account and character.
 3. Releases expired account simulation sessions.
 4. Rejects another active character or cross-shard active session.
-5. Selects the assigned worker only when its heartbeat is fresh and it has room.
+5. Invalidates older pending tickets for the account, so a retried join is not
+   blocked by its own earlier ticket.
+6. Selects the assigned worker only when its heartbeat is fresh and it has room.
    Capacity uses the greater of worker-reported connections and authoritative
    unexpired simulation sessions, then adds pending tickets in PostgreSQL.
-6. Invalidates older pending tickets for the account.
-7. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
+   A reconnect ticket for an already counted session is not added again.
+7. Re-reads the assignment after locking the worker, so a worker that moved to
+   another Shard in the meantime is never placed.
+8. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
    account session.
-8. Computes expiry after placement locks are acquired.
-9. Returns the shard and exact endpoint metadata.
+9. Computes expiry with `clock_timestamp()` after placement locks are acquired.
+   Ticket consumption and session leases use the same clock, so time spent
+   waiting for a lock never shortens or extends a ticket or lease.
+10. Returns the shard and exact endpoint metadata.
 
 Selection serializes reservations on the target shard, then locks the selected
 worker. A waiting request recalculates session and ticket usage from a fresh

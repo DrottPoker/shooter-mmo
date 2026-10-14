@@ -53,7 +53,9 @@ public sealed class DevelopmentSimulationBotAuthority(
                     placement.ActiveDatabaseSessions + activeBotsForRuntime)
                 + placement.PendingDatabaseTickets
                 + pendingForRuntime;
-            if (occupiedOrReservedConnections >= placement.MaxConnections)
+            // Bots never take the last connections, so real local players can still join.
+            if (occupiedOrReservedConnections
+                >= placement.MaxConnections - options.ReservedPlayerConnections)
             {
                 return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
                     "development_bot_worker_capacity_reached",

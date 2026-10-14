@@ -65,6 +65,7 @@ Authority controls live in
 | `JoinTicketLifetimeSeconds` | `30` | Lifetime of an unconsumed one-time bot ticket |
 | `SessionLeaseLifetimeSeconds` | `30` | Worker-renewed in-memory bot session lease |
 | `CharacterNamePrefix` | `Active Bot` | Server-owned visible bot name prefix |
+| `ReservedPlayerConnections` | `8` | Worker connections bots never use, so real local players can still join |
 
 Population and behavior controls live in
 `Tools/ActiveSimulationBots/appsettings.json`:

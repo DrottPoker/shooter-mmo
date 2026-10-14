@@ -237,14 +237,38 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.Equal("development_bot_worker_capacity_reached", rejected.Error!.Code);
     }
 
-    private static DevelopmentSimulationBotOptions CreateOptions()
+    [Fact]
+    public void BotsLeaveTheReservedConnectionsForRealPlayers()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(reservedPlayerConnections: 2),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var placement = CreatePlacement() with { MaxConnections = 4 };
+
+        for (var index = 1; index <= 2; index++)
+        {
+            Assert.True(authority.IssueTicket(
+                new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), index, "local-shard-1"),
+                placement).Succeeded);
+        }
+
+        var rejected = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 3, "local-shard-1"),
+            placement);
+
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("development_bot_worker_capacity_reached", rejected.Error!.Code);
+    }
+
+    private static DevelopmentSimulationBotOptions CreateOptions(int reservedPlayerConnections = 0)
     {
         return new DevelopmentSimulationBotOptions(
             true,
             new string('s', 32),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(30),
-            "Active Bot");
+            "Active Bot",
+            reservedPlayerConnections);
     }
 
     private static DevelopmentSimulationBotPlacement CreatePlacement()

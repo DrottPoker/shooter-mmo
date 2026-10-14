@@ -305,6 +305,40 @@ public sealed class AuthSimulationFlowIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task RetriedJoinIsNotBlockedByTheAccountsOwnPendingTicket()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                MaxConnections = 1,
+                ActiveConnections = 0
+            },
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        var player = await context.RegisterPlayerAsync();
+
+        var firstAttempt = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(firstAttempt.Succeeded, firstAttempt.Error?.Message);
+
+        // The UDP join failed and the player clicks Join again on the full worker.
+        var retry = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+
+        Assert.True(retry.Succeeded, retry.Error?.Message);
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+    }
+
+    [PostgresIntegrationFact]
     public async Task PlacementUsesAuthoritativeSessionsWithoutWaitingForWorkerHeartbeat()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync(
