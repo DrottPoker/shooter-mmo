@@ -35,7 +35,7 @@ namespace ShooterMmo.Items
             simulationClient.CorpseInteractionCompleted += OnInteractionCompleted;
             simulationClient.CorpseViewStateChunkReceived += OnViewStateChunk;
             simulationClient.CorpseViewClosed += OnViewClosed;
-            simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
+            simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
         }
 
@@ -541,7 +541,7 @@ namespace ShooterMmo.Items
             State.CloseView(closed.Code, closed.Message);
         }
 
-        private void OnUnexpectedlyDisconnected(RealtimeClientError error)
+        private void OnSessionEnded(RealtimeClientError error)
         {
             refreshAfterPending = false;
             State.Reset();
@@ -558,7 +558,7 @@ namespace ShooterMmo.Items
             simulationClient.CorpseInteractionCompleted -= OnInteractionCompleted;
             simulationClient.CorpseViewStateChunkReceived -= OnViewStateChunk;
             simulationClient.CorpseViewClosed -= OnViewClosed;
-            simulationClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
+            simulationClient.SessionEnded -= OnSessionEnded;
             initialized = false;
         }
     }

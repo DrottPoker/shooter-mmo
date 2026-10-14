@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using ShooterMmo.Api;
 using ShooterMmo.Config;
+using ShooterMmo.GameProtocol;
 using ShooterMmo.Diagnostics;
 using ShooterMmo.Networking;
 using ShooterMmo.Ui;
@@ -66,6 +67,35 @@ namespace ShooterMmo.Tests.EditMode
                 Is.True);
             Assert.That(
                 RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Joined),
+                Is.False);
+        }
+
+        [Test]
+        public void InFlightSessionMessagesAreIgnoredWhileLeaving()
+        {
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.EntitySpawn),
+                Is.True);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.WorldActorState),
+                Is.True);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.ItemOperationResult),
+                Is.True);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.CorpseViewClosed),
+                Is.True);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.LeaveAccepted),
+                Is.False);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.ServerDisconnect),
+                Is.False);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.JoinAccepted),
+                Is.False);
+            Assert.That(
+                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.CarryStateChanged),
                 Is.False);
         }
 

@@ -71,6 +71,23 @@ public sealed class AuthoritativePlayerMovement(
         return true;
     }
 
+    // A reconnecting client starts a new input sequence, so the reused entity must accept
+    // it from the beginning instead of discarding it as older than the previous client.
+    public void ResetInputSequence()
+    {
+        LastReceivedInputSequence = 0;
+        LastProcessedInputSequence = 0;
+        latestInput = new PlayerMovementInput(
+            0,
+            0,
+            0f,
+            0f,
+            State.YawDegrees,
+            PlayerMovementButtons.None);
+        jumpPending = false;
+        ticksSinceLatestInput = inputSilenceTickLimit;
+    }
+
     public void AcceptInputs(RealtimeMovementInput[] inputs)
     {
         var acceptedInput = false;

@@ -811,7 +811,9 @@ A reconnect is valid only for the exact active shard, worker, and runtime. It
 preserves session and entity state, rotates the secret simulation-session token,
 and disconnects the older peer generation. While the reconnect is still being
 finalized, the older peer only detaches its connection. It never removes the
-shared entity or carry state that the reconnecting client takes over.
+shared entity or carry state that the reconnecting client takes over. The reused
+entity resets its movement input sequence, because the new client generation
+starts its input sequence from the beginning.
 
 ### Leave, Disconnect, Expiry, And Failover
 

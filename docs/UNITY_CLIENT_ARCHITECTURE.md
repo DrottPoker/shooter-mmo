@@ -183,7 +183,12 @@ simulation revision, and collision revision before non-secret metadata is copied
 into `ShooterMmoClientSession`.
 
 Unexpected disconnect clears the active shard view and returns an authenticated
-player to CharacterSelect. Join rejection stays in CharacterSelect and displays
+player to CharacterSelect. `RealtimeSimulationClient` also raises `SessionEnded`
+once whenever a joined session ends for any reason, including a graceful leave,
+`Abort`, or a failure while leaving. The inventory, corpse, world actor, and world
+interaction controllers reset their session-scoped state on that event, so a
+pending operation, open view, or corpse presence sequence never blocks the next
+join. Join rejection stays in CharacterSelect and displays
 the structured server code. Protocol decoding rejects wrong versions, invalid
 types, oversized values, and trailing data.
 
@@ -213,6 +218,12 @@ snapshot delivery:
   flight during and immediately after leave are ignored outside the `Joined`
   state. They are not protocol failures because LiteNetLib delivery methods do
   not provide ordering relative to each other.
+- While a leave is pending, SimulationWorker keeps sending reliable presence,
+  world actor, interaction, corpse, and item-operation messages until it has
+  released the session. The client ignores these in-flight messages in the
+  `Leaving` state, so a graceful leave never turns into a protocol disconnect.
+- After the session ended in one poll, later packets in the same poll are
+  ignored, so the first failure reason is the one shown to the player.
 
 Every accepted simulation session identifies the local player's server-assigned
 nonzero network entity id. `RealtimeSimulationClient` owns an in-memory registry of

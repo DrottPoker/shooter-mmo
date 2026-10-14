@@ -1027,6 +1027,11 @@ public sealed class RealtimeSimulationService(
         }
 
         var entity = registration.Entity;
+        if (!registration.IsNewEntity)
+        {
+            entity.Movement.ResetInputSequence();
+        }
+
         entity.Movement.ApplyCarryState(session.CarryState);
         var binding = connectionBindings.Bind(
             completed.Context.PeerId,

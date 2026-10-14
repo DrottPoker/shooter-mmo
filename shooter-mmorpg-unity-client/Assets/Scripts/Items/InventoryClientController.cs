@@ -156,7 +156,7 @@ namespace ShooterMmo.Items
             }
 
             simulationClient.ItemOperationCompleted += OnItemOperationCompleted;
-            simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
+            simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             observedRealtimeJoin = simulationClient.IsJoined;
             ObserveSessionIdentity();
@@ -185,7 +185,7 @@ namespace ShooterMmo.Items
             if (simulationClient != null)
             {
                 simulationClient.ItemOperationCompleted -= OnItemOperationCompleted;
-                simulationClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
+                simulationClient.SessionEnded -= OnSessionEnded;
             }
 
             if (refreshCoroutine != null)
@@ -571,7 +571,7 @@ namespace ShooterMmo.Items
                 result.CarryState.ItemStateRevision);
         }
 
-        private void OnUnexpectedlyDisconnected(RealtimeClientError error)
+        private void OnSessionEnded(RealtimeClientError error)
         {
             var pending = operationJournal.Pending != null;
             if (pending)
