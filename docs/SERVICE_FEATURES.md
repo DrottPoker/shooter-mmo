@@ -79,20 +79,33 @@ PostgreSQL services.
 
 ## Accounts And Authentication
 
-- Email and username are normalized and unique.
-- Passwords use ASP.NET Core `PasswordHasher`.
+- Email and username are normalized and unique. An email must be a plain
+  address; display-name forms such as `Name <a@b.c>` are rejected.
+- Passwords are hashed with BCrypt at work factor 12. A password must be 8 to
+  128 characters and at most 72 UTF-8 bytes, because BCrypt ignores later bytes.
+- Login releases its database connection before the password check, and an
+  unknown login is checked against a fixed hash, so response time does not show
+  whether an account exists. Registration still reports whether an email or
+  username is taken until an email verification flow exists; its rate limit
+  bounds enumeration.
 - Account tokens are opaque and only their SHA-256 hashes are stored.
 - PostgreSQL enforces one unrevoked account session per account.
-- A successful login locks the account, revokes the older session with
+- A successful login locks the account, revokes the older session with the
+  stored reason `session_replaced` and the client error code
   `account_session_replaced`, consumes its pending tickets, releases its active
   simulation sessions, and creates the replacement session transactionally.
 - Logout and manual revoke use explicit revocation reasons and dependent cleanup.
+  They lock the account first, like login and join, and clean up only sessions
+  that belong to the caller. Revoking another account's session id succeeds
+  without effect, so foreign session ids are not revealed.
 - The Unity client periodically validates its account token and handles
   replacement as a controlled disconnect.
 
 Login and registration use independent fixed-window limits keyed by remote IP.
-Rejected requests return HTTP 429 with structured Problem Details and
-`Retry-After`.
+Rejected requests return HTTP 429 with structured Problem Details and a
+`Retry-After` that counts down to the end of the current window. The policy is
+taken from the matched endpoint, so a different path casing such as
+`/api/accounts/LOGIN` cannot skip the distributed limit.
 
 ## Character Access
 
@@ -773,7 +786,9 @@ Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
   configured, it becomes an exact allowlist and shared fallback is disabled.
 - Secrets are compared in fixed time.
 - Central middleware converts unhandled failures into RFC Problem Details.
-- Responses carry `X-Correlation-ID`.
+- Responses carry `X-Correlation-ID`, including error responses produced by
+  the exception handler. A request the client aborted is logged at debug level
+  and is not reported as a server error.
 - Token-bearing responses use `Cache-Control: no-store` and `Pragma: no-cache`.
 - No debug HTTP endpoint is registered in the current service surface.
 

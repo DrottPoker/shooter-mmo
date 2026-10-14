@@ -20,8 +20,7 @@ public sealed class RedisAuthenticationRateLimiter(
     private const string FixedWindowScript =
         "local count = redis.call('INCR', KEYS[1]); "
         + "if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]); end; "
-        + "local ttl = redis.call('PTTL', KEYS[1]); "
-        + "return {count, ttl};";
+        + "return {count, 0};";
 
     public async ValueTask<RedisRateLimitDecision> AcquireAsync(
         string policyName,
@@ -38,7 +37,11 @@ public sealed class RedisAuthenticationRateLimiter(
         }
 
         var windowMilliseconds = checked((long)window.TotalMilliseconds);
-        var bucket = timeProvider.GetUtcNow().ToUnixTimeMilliseconds() / windowMilliseconds;
+        var nowMilliseconds = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        var bucket = nowMilliseconds / windowMilliseconds;
+        // The fixed window resets at the bucket end, not one window after its first hit.
+        var bucketRemaining = TimeSpan.FromMilliseconds(
+            ((bucket + 1) * windowMilliseconds) - nowMilliseconds);
         var addressHash = Convert.ToHexStringLower(
             SHA256.HashData(Encoding.UTF8.GetBytes(remoteAddress)));
         var key = (RedisKey)$"{options.KeyPrefix}:rate-limit:{policyName}:{addressHash}:{bucket}";
@@ -58,7 +61,6 @@ public sealed class RedisAuthenticationRateLimiter(
             }
 
             var count = (long)values[0];
-            var ttlMilliseconds = Math.Max(0L, (long)values[1]);
             if (count <= permitLimit)
             {
                 metrics.RecordDistributedRateLimitAllowed();
@@ -66,10 +68,7 @@ public sealed class RedisAuthenticationRateLimiter(
             }
 
             metrics.RecordDistributedRateLimitRejected();
-            return new RedisRateLimitDecision(
-                true,
-                false,
-                TimeSpan.FromMilliseconds(ttlMilliseconds));
+            return new RedisRateLimitDecision(true, false, bucketRemaining);
         }
         catch (Exception exception) when (IsRedisFailure(exception, cancellationToken))
         {

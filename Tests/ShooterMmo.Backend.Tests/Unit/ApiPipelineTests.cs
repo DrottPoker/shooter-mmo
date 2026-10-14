@@ -57,5 +57,41 @@ public sealed class ApiPipelineTests
         await application.StopAsync(cancellationToken);
     }
 
+    [Fact]
+    public async Task ExceptionResponsesKeepTheCorrelationIdHeader()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        builder.Services.AddApiProblemDetails();
+
+        await using var application = builder.Build();
+        application.UseApiPipeline();
+        application.MapGet(
+            "/unexpected-failure",
+            (Func<IResult>)(() => throw new InvalidOperationException("boom")));
+        await application.StartAsync(cancellationToken);
+        var address = application.Services
+            .GetRequiredService<IServer>()
+            .Features
+            .Get<IServerAddressesFeature>()!
+            .Addresses
+            .Single();
+        using var client = new HttpClient { BaseAddress = new Uri(address) };
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/unexpected-failure");
+        request.Headers.Add(ApiPipelineExtensions.CorrelationIdHeaderName, "trace-123");
+
+        using var response = await client.SendAsync(request, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.True(response.Headers.TryGetValues(
+            ApiPipelineExtensions.CorrelationIdHeaderName,
+            out var correlationIds));
+        Assert.Equal("trace-123", Assert.Single(correlationIds));
+
+        await application.StopAsync(cancellationToken);
+    }
+
     private sealed record DatabaseProblem(string Code);
 }

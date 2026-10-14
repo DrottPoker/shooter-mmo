@@ -21,14 +21,16 @@ builder.Configuration
     .AddJsonFile(
         Path.Combine("Config", "appsettings.json"),
         optional: false,
-        reloadOnChange: true)
+        reloadOnChange: false)
     .AddJsonFile(
         Path.Combine(
             "Config",
             $"appsettings.{builder.Environment.EnvironmentName}.json"),
         optional: true,
-        reloadOnChange: true);
-builder.Configuration.AddOptionalDotEnvFile(Directory.GetCurrentDirectory());
+        reloadOnChange: false);
+builder.Configuration.AddOptionalDotEnvFile(
+    Directory.GetCurrentDirectory(),
+    AppContext.BaseDirectory);
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 
@@ -131,9 +133,13 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, cancellationToken) =>
     {
-        context.HttpContext.Response.Headers.RetryAfter = builder.Configuration
-            .GetValue("RateLimiting:Authentication:WindowSeconds", 60)
-            .ToString();
+        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var remaining)
+            ? remaining
+            : config.AuthenticationRateLimitWindow;
+        context.HttpContext.Response.Headers.RetryAfter = Math.Max(
+                1,
+                (int)Math.Ceiling(retryAfter.TotalSeconds))
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         await Results.Problem(
                 statusCode: StatusCodes.Status429TooManyRequests,
@@ -146,8 +152,8 @@ builder.Services.AddRateLimiter(options =>
             .ExecuteAsync(context.HttpContext);
     };
 
-    AddAuthenticationRateLimitPolicy(options, "login", builder.Configuration);
-    AddAuthenticationRateLimitPolicy(options, "register", builder.Configuration);
+    AddAuthenticationRateLimitPolicy(options, "login", config);
+    AddAuthenticationRateLimitPolicy(options, "register", config);
 });
 
 var app = builder.Build();
@@ -261,7 +267,7 @@ app.Run();
 static void AddAuthenticationRateLimitPolicy(
     Microsoft.AspNetCore.RateLimiting.RateLimiterOptions options,
     string policyName,
-    IConfiguration configuration)
+    AuthServiceConfig config)
 {
     options.AddPolicy(policyName, httpContext =>
     {
@@ -270,9 +276,8 @@ static void AddAuthenticationRateLimitPolicy(
             $"{policyName}:{remoteAddress}",
             _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = configuration.GetValue("RateLimiting:Authentication:PermitLimit", 5),
-                Window = TimeSpan.FromSeconds(
-                    configuration.GetValue("RateLimiting:Authentication:WindowSeconds", 60)),
+                PermitLimit = config.AuthenticationPermitLimit,
+                Window = config.AuthenticationRateLimitWindow,
                 QueueLimit = 0,
                 AutoReplenishment = true
             });

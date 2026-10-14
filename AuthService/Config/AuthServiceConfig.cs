@@ -10,6 +10,10 @@ public sealed record AuthServiceConfig(
     TimeSpan SimulationWorkerHeartbeatTimeout,
     SimulationTopologyConfig SimulationTopology)
 {
+    public int AuthenticationPermitLimit { get; init; } = 5;
+
+    public TimeSpan AuthenticationRateLimitWindow { get; init; } = TimeSpan.FromSeconds(60);
+
     public const int MaximumPostgresPoolSizeLimit = 1_000;
 
     public static AuthServiceConfig FromConfiguration(IConfiguration configuration)
@@ -30,12 +34,22 @@ public sealed record AuthServiceConfig(
             errors.Add(
                 $"Database:MaximumPoolSize must not exceed {MaximumPostgresPoolSizeLimit}.");
         }
-        ValidatePositiveInt(configuration, "Auth:SessionLifetimeHours", errors);
+        ValidateIntRange(configuration, "Auth:SessionLifetimeHours", 1, 720, errors);
         ValidatePositiveInt(configuration, "Game:MaxCharactersPerAccount", errors);
         ValidatePositiveInt(configuration, "Simulation:JoinTicketLifetimeSeconds", errors);
         ValidatePositiveInt(configuration, "Simulation:SessionLeaseLifetimeSeconds", errors);
-        ValidatePositiveInt(configuration, "RateLimiting:Authentication:PermitLimit", errors);
-        ValidatePositiveInt(configuration, "RateLimiting:Authentication:WindowSeconds", errors);
+        var authenticationPermitLimit = ValidateIntRange(
+            configuration,
+            "RateLimiting:Authentication:PermitLimit",
+            1,
+            1_000,
+            errors);
+        var authenticationWindowSeconds = ValidateIntRange(
+            configuration,
+            "RateLimiting:Authentication:WindowSeconds",
+            1,
+            3_600,
+            errors);
 
         var healthTimeoutMilliseconds = ValidatePositiveInt(
             configuration,
@@ -61,6 +75,10 @@ public sealed record AuthServiceConfig(
             {
                 errors.Add("SIMULATION_WORKER_SERVICE_SECRET must be at least 32 characters.");
             }
+            else if (IsPlaceholderSecret(workerSecret))
+            {
+                errors.Add("SIMULATION_WORKER_SERVICE_SECRET still has the .env.example placeholder value.");
+            }
         }
 
         foreach (var simulationWorker in simulationWorkers)
@@ -77,6 +95,11 @@ public sealed record AuthServiceConfig(
                 errors.Add(
                     $"ServiceAuthentication:SimulationWorkers:{simulationWorker.Key} must be at least 32 characters.");
             }
+            else if (IsPlaceholderSecret(simulationWorker.Value))
+            {
+                errors.Add(
+                    $"ServiceAuthentication:SimulationWorkers:{simulationWorker.Key} still has a placeholder value.");
+            }
         }
 
         if (errors.Count > 0)
@@ -91,7 +114,11 @@ public sealed record AuthServiceConfig(
             redis!,
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds),
             TimeSpan.FromSeconds(workerHeartbeatTimeoutSeconds),
-            simulationTopology);
+            simulationTopology)
+        {
+            AuthenticationPermitLimit = authenticationPermitLimit,
+            AuthenticationRateLimitWindow = TimeSpan.FromSeconds(authenticationWindowSeconds)
+        };
     }
 
     private static string ConfigurePostgresConnectionString(
@@ -171,6 +198,30 @@ public sealed record AuthServiceConfig(
         {
             errors.Add($"{key} must be a positive integer.");
             return 1;
+        }
+
+        return parsed;
+    }
+
+    // Every secret placeholder in .env.example starts with this prefix.
+    public static bool IsPlaceholderSecret(string secret)
+    {
+        return secret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ValidateIntRange(
+        IConfiguration configuration,
+        string key,
+        int minimum,
+        int maximum,
+        ICollection<string> errors)
+    {
+        if (!int.TryParse(configuration[key], out var parsed)
+            || parsed < minimum
+            || parsed > maximum)
+        {
+            errors.Add($"{key} must be an integer from {minimum} to {maximum}.");
+            return minimum;
         }
 
         return parsed;

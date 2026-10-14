@@ -82,10 +82,10 @@ reproduction.
 | F12 | Worker sessions | Session lease expiry is an absolute database timestamp compared with the worker wall clock. Clock skew kicks every player or keeps an expired session simulated. | `SimulationWorker/Sessions/ActiveSimulationSessionStore.cs` | confirmed | Open |
 | F13 | Worker registry | Runtime supersession is ordered by the worker-reported `started_at`. A replacement host with a slower clock is fenced and stops itself on every restart. | `AuthService/Simulation/SimulationWorkerRegistryService.cs` | confirmed | Open |
 | F14 | Live Mob loot | Loot claims send the join-time item-state revision, so every claim after the first item change fails. Latent until Mob deaths are produced. | `SimulationWorker/Corpses/LiveMobCorpseInteractionService.cs` | confirmed | Open |
-| F15 | Auth rate limiting | The distributed limiter matches request paths case-sensitively while routing is case-insensitive, so `/api/accounts/LOGIN` bypasses it. | `AuthService/Redis/RedisAuthenticationRateLimitMiddleware.cs` | confirmed | Open |
-| F16 | Auth login | Unknown logins skip BCrypt and answer faster, and registration returns distinct email and username conflict codes, which allows account enumeration. | `AuthService/Auth/AccountService.cs` | confirmed | Open |
-| F17 | Auth registration | Email validation accepts display-name forms such as `x <victim@example.com>`, which bypasses email uniqueness. | `AuthService/Auth/AccountValidation.cs` | confirmed | Open |
-| F18 | Auth login | Login keeps a pooled database connection open during the BCrypt verify, so a login burst exhausts the pool for every other request. | `AccountService.cs` | confirmed | Open |
+| F15 | Auth rate limiting | The distributed limiter matches request paths case-sensitively while routing is case-insensitive, so `/api/accounts/LOGIN` bypasses it. | `AuthService/Redis/RedisAuthenticationRateLimitMiddleware.cs` | confirmed | Fixed |
+| F16 | Auth login | Unknown logins skip BCrypt and answer faster, and registration returns distinct email and username conflict codes, which allows account enumeration. Login timing is fixed. Registration conflicts stay explicit until an email verification flow exists, bounded by its rate limit. | `AuthService/Auth/AccountService.cs` | confirmed | Fixed |
+| F17 | Auth registration | Email validation accepts display-name forms such as `x <victim@example.com>`, which bypasses email uniqueness. | `AuthService/Auth/AccountValidation.cs` | confirmed | Fixed |
+| F18 | Auth login | Login keeps a pooled database connection open during the BCrypt verify, so a login burst exhausts the pool for every other request. | `AccountService.cs` | confirmed | Fixed |
 | F19 | Item bootstrap | Startup takes one advisory lock per account inside one transaction, which fails with "out of shared memory" at several thousand accounts. | `AuthService/Items/CharacterItemStateBootstrapper.cs` | confirmed | Open |
 | F20 | Item performance | The carried-weight recompute and the death source query filter with OR across joined tables and there is no index on `equipped_character_id`, so each commit likely scans all items. | `AuthService/Items/ItemTransactionContext.cs`, `ItemTransactionService.Death.cs` | plausible | Open |
 | F21 | Worker admission | Admission checks only the connection key and global peer count. One host can fill every slot with peers that never join, and reconnects reset per-peer quotas. | `RealtimeSimulationService.cs` | plausible | Open |
@@ -100,19 +100,19 @@ reproduction.
 | F30 | Build configuration | The root `Directory.Build.props` also applies to the Unity-generated project files, and their shared NuGet lock file is tracked. | `Directory.Build.props`, `shooter-mmorpg-unity-client/packages.lock.json` | confirmed | Open |
 | F31 | Dependencies | Dependabot can bump LiteNetLib for the server and bot tools while the Unity package stays, and nothing verifies that the versions match. | `.github/dependabot.yml`, `Tools/Verify-DependencyPolicy.ps1` | confirmed | Open |
 | F32 | Unity test script | `Run-UnityTests.ps1` always prefers the Unity CLI when it exists and ignores an explicit editor path or `UNITY_EDITOR_PATH`. | `Tools/Run-UnityTests.ps1` | confirmed | Open |
-| F33 | Configuration | `.env` is searched from the working directory and three parents, not from the content root as documented, so starting a service from its output folder fails. | `Shared/Configuration/DotEnvConfigurationExtensions.cs` | confirmed | Open |
-| F34 | Configuration | The `.env.example` placeholder worker secret passes validation, unlike the bot and fixture secrets. | `AuthService/Config/AuthServiceConfig.cs`, `SimulationWorker/Config/SimulationWorkerConfig.cs` | confirmed | Open |
-| F35 | Configuration | Configuration reloads at runtime bypass startup validation. A zero rate-limit window divides by zero, and a very large session lifetime overflows. | `AuthService/Program.cs`, `SessionService.cs`, `RedisAuthenticationRateLimiter.cs` | confirmed | Open |
+| F33 | Configuration | `.env` is searched from the working directory and three parents, not from the content root as documented, so starting a service from its output folder fails. | `Shared/Configuration/DotEnvConfigurationExtensions.cs` | confirmed | Fixed |
+| F34 | Configuration | The `.env.example` placeholder worker secret passes validation, unlike the bot and fixture secrets. | `AuthService/Config/AuthServiceConfig.cs`, `SimulationWorker/Config/SimulationWorkerConfig.cs` | confirmed | Fixed |
+| F35 | Configuration | Configuration reloads at runtime bypass startup validation. A zero rate-limit window divides by zero, and a very large session lifetime overflows. | `AuthService/Program.cs`, `SessionService.cs`, `RedisAuthenticationRateLimiter.cs` | confirmed | Fixed |
 
 ## P2 Findings
 
 | Id | Area | Defect | Location | Status |
 | --- | --- | --- | --- | --- |
-| F36 | Auth | Passwords longer than 72 UTF-8 bytes are accepted, but BCrypt ignores everything after 72 bytes. | `AccountValidation.cs` | Open |
-| F37 | Auth | `X-Correlation-ID` is removed from exception-mapped error responses. | `AuthService/Http/ApiPipelineExtensions.cs` | Open |
-| F38 | Configuration | A malformed `.env` line is copied into the startup exception, `export` prefixes become part of the key, and inline comments become part of the value. | `DotEnvConfigurationExtensions.cs` | Open |
-| F39 | Auth | `Retry-After` is inaccurate in both rate limiters. | `RedisAuthenticationRateLimiter.cs`, `AuthService/Program.cs` | Open |
-| F40 | Auth | A client abort is logged as an unhandled error and mapped to 500. | `ApiPipelineExtensions.cs` | Open |
+| F36 | Auth | Passwords longer than 72 UTF-8 bytes are accepted, but BCrypt ignores everything after 72 bytes. | `AccountValidation.cs` | Fixed |
+| F37 | Auth | `X-Correlation-ID` is removed from exception-mapped error responses. | `AuthService/Http/ApiPipelineExtensions.cs` | Fixed |
+| F38 | Configuration | A malformed `.env` line is copied into the startup exception, `export` prefixes become part of the key, and inline comments become part of the value. | `DotEnvConfigurationExtensions.cs` | Fixed |
+| F39 | Auth | `Retry-After` is inaccurate in both rate limiters. | `RedisAuthenticationRateLimiter.cs`, `AuthService/Program.cs` | Fixed |
+| F40 | Auth | A client abort is logged as an unhandled error and mapped to 500. | `ApiPipelineExtensions.cs` | Fixed |
 | F41 | Placement | Capacity counts the account's own superseded ticket and double-counts reconnect tickets. | `AuthService/Simulation/ShardService.cs` | Open |
 | F42 | Placement | Ticket and lease expiry use the transaction start time instead of the time after placement locks, which contradicts the documentation. | `ShardService.cs`, `SimulationWorkerRegistryService.cs` | Open |
 | F43 | World rebind | A timed-out owner's tickets and sessions are released before the rebind blockers are counted, which contradicts the architecture document. | `SimulationWorkerRegistryService.cs` | Open |

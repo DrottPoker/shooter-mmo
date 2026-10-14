@@ -24,9 +24,14 @@ credentials and connection strings, including the shared
 `SIMULATION_WORKER_SERVICE_SECRET`, but does not select worker, fleet, node,
 shard, or World identities. Those identities live together in
 `SimulationWorker/Config/appsettings.json`. AuthService owns only the available
-fleet, node, and shard topology. Both services search their content root and
-parent directories for `.env`. Explicit process environment variables and
-command-line values can still override service configuration for deployments.
+fleet, node, and shard topology. Both services search the working directory and
+their output directory, and the parents of each up to the repository root, for
+`.env`, so starting a service from its `bin` folder also finds the root file.
+Lines may start with `export`, unquoted values may end with a ` #` comment, and
+a malformed line is reported by line number without echoing its content.
+Explicit process environment variables and command-line values can still
+override service configuration for deployments. Configuration files are read
+once at startup; restart a service after changing them.
 
 SimulationWorker loads `WorldData/Worlds/<WorldId>/world.json` and derives actor
 and collision paths below the same World directory. The checked-in content for

@@ -473,6 +473,12 @@ public sealed record SimulationWorkerConfig(
         {
             errors.Add("SimulationWorker:AuthServiceSecret must be at least 32 characters.");
         }
+        else if (authServiceSecret is not null
+            && authServiceSecret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase))
+        {
+            // Every secret placeholder in .env.example starts with this prefix.
+            errors.Add("SimulationWorker:AuthServiceSecret still has the .env.example placeholder value.");
+        }
 
         if (redis is not null)
         {

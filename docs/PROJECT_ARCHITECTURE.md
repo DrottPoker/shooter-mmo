@@ -943,7 +943,9 @@ combat producer pending
 
 Both backend processes load owned JSON, optional root `.env`, real environment
 variables, and command-line values in increasing precedence. Invalid application
-configuration fails before work is accepted.
+configuration fails before work is accepted. Configuration files are not
+reloaded while a process runs, so every value in use has passed startup
+validation; change a value by restarting the process.
 
 ## Health And Operations
 

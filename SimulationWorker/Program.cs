@@ -24,14 +24,16 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 builder.Configuration.AddJsonFile(
     Path.Combine("Config", "appsettings.json"),
     optional: false,
-    reloadOnChange: true);
+    reloadOnChange: false);
 builder.Configuration.AddJsonFile(
     Path.Combine(
         "Config",
         $"appsettings.{builder.Environment.EnvironmentName}.json"),
     optional: true,
-    reloadOnChange: true);
-builder.Configuration.AddOptionalDotEnvFile(Directory.GetCurrentDirectory());
+    reloadOnChange: false);
+builder.Configuration.AddOptionalDotEnvFile(
+    Directory.GetCurrentDirectory(),
+    AppContext.BaseDirectory);
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 

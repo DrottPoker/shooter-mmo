@@ -4,6 +4,8 @@ namespace AuthService.Auth;
 
 public static class AccountValidation
 {
+    public const int MaximumPasswordBytes = 72;
+
     public static string? ValidateEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -20,8 +22,12 @@ public static class AccountValidation
 
         try
         {
-            _ = new MailAddress(trimmedEmail);
-            return null;
+            // Display-name forms such as "x <a@b.c>" would bypass email uniqueness.
+            var address = new MailAddress(trimmedEmail);
+            return address.DisplayName.Length == 0
+                && string.Equals(address.Address, trimmedEmail, StringComparison.Ordinal)
+                    ? null
+                    : "Email is invalid.";
         }
         catch (FormatException)
         {
@@ -61,6 +67,12 @@ public static class AccountValidation
         if (password.Length is < 8 or > 128)
         {
             return "Password must be between 8 and 128 characters.";
+        }
+
+        // BCrypt ignores everything after 72 UTF-8 bytes.
+        if (System.Text.Encoding.UTF8.GetByteCount(password) > MaximumPasswordBytes)
+        {
+            return "Password must be at most 72 bytes when encoded as UTF-8.";
         }
 
         return null;
