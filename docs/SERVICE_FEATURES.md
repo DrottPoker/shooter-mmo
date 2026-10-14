@@ -45,11 +45,10 @@ worker. Zone and layer partitioning are not implemented.
 | `GET /api/characters/{characterId}/item-state` and `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent no-store character item-state snapshot |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
 | `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store Recovery Storage deliveries |
-| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel |
+| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
 | `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
 | `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
-| `POST /api/characters/{characterId}/recovery/{deliveryId}/claim` | Owning offline account session | Claim a complete available delivery to inventory or bank |
 | `POST /api/items/secure-container-tier` | Offline account session | Apply an account Secure Container tier with every character revision |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
@@ -896,8 +895,8 @@ the test connection variable at development or production data.
   reduction without item loss.
 - Isolated policy and HTTP tests for insurance removal, exact quest-grant cleanup
   and reaccept, ETag `304`, no-store responses, owner scoping, stable Problem
-  Details, offline session fencing, Recovery deposit rejection, system delivery,
-  successful claims, and hard-cap claim rollback.
+  Details, offline session fencing, offline bank and Recovery rejection, system
+  delivery, successful kernel claims, and hard-cap claim rollback.
 - Shared carry and movement tests for exact custody contribution, base and Bag
   capacity, lower-capacity Bag rejection, sprint at and above 100 percent,
   fixed-point movement reference points, monotonic active-session propagation,

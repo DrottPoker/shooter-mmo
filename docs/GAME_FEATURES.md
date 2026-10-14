@@ -419,8 +419,10 @@ and authoritative interaction now exist. Phase 13 insurance and quest item
 lifecycle, Phase 14 Mob corpse variants, and Phase 15 operational hardening are
 also complete.
 AuthService supports owned
-item-state, bank, Secure Container, and Recovery access plus offline relocation,
-split, merge, allowed destruction, Recovery claim, and tier-change operations.
+item-state, bank, Secure Container, and Recovery reads plus offline relocation,
+split, merge, allowed destruction, and tier-change operations. Offline operations
+never reach the bank or Recovery Storage; those city services and Recovery claims
+work only in the world at a validated service point.
 Internal policy and quest services apply auditable lineage without adding a
 gameplay quest or insurance NPC operation. SimulationWorker now serializes
 reliable item intents, validates live service access, uses the exact-session

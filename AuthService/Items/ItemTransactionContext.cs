@@ -742,14 +742,28 @@ internal sealed class ItemTransactionContext(
         Guid characterId,
         CancellationToken cancellationToken)
     {
+        var container = await LoadKernelPlacementContainerAsync(
+            containerId,
+            characterId,
+            cancellationToken);
+        EnsureLiveContainerAccess(container.ContainerType);
+
+        return container;
+    }
+
+    // Loads a container that the kernel itself places items into, such as Recovery Storage
+    // for displaced items. It is not a player-chosen location, so no service access applies.
+    public async Task<LockedContainer> LoadKernelPlacementContainerAsync(
+        Guid containerId,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
         var container = await LoadContainerAsync(containerId, cancellationToken);
 
         if (container.OwningCharacterId != characterId)
         {
             Reject(ItemTransactionErrorCodes.ItemNotOwned, "The character does not own the item container.");
         }
-
-        EnsureLiveContainerAccess(container.ContainerType);
 
         return container;
     }
@@ -883,28 +897,35 @@ internal sealed class ItemTransactionContext(
         }
     }
 
+    // Bank and Recovery Storage are city services. Only a live character at a validated
+    // service point may change them, so offline account routes can never reach them.
     private void EnsureLiveContainerAccess(string? containerType)
     {
-        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
+        if (Actor.Authority == ItemTransactionAuthority.System
             || string.IsNullOrWhiteSpace(containerType))
         {
             return;
         }
 
+        var isLive = Actor.Authority == ItemTransactionAuthority.SimulationWorker;
         if (string.Equals(containerType, "bank", StringComparison.Ordinal)
-            && !Actor.Simulation!.LiveAccess.Bank)
+            && !(isLive && Actor.Simulation!.LiveAccess.Bank))
         {
             Reject(
                 ItemTransactionErrorCodes.BankAccessRequired,
-                "The character is outside validated bank access.");
+                isLive
+                    ? "The character is outside validated bank access."
+                    : "Bank access requires the character at a city bank in the world.");
         }
 
         if (string.Equals(containerType, "recovery_storage", StringComparison.Ordinal)
-            && !Actor.Simulation!.LiveAccess.RecoveryStorage)
+            && !(isLive && Actor.Simulation!.LiveAccess.RecoveryStorage))
         {
             Reject(
                 ItemTransactionErrorCodes.RecoveryAccessRequired,
-                "The character is outside validated Recovery Storage access.");
+                isLive
+                    ? "The character is outside validated Recovery Storage access."
+                    : "Recovery Storage access requires the character at a city service in the world.");
         }
     }
 

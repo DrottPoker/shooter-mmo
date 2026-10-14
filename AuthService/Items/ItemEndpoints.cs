@@ -128,27 +128,6 @@ public static class ItemEndpoints
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
-        app.MapPost(
-            "/api/characters/{characterId:guid}/recovery/{deliveryId:guid}/claim",
-            async (
-                Guid characterId,
-                Guid deliveryId,
-                ClaimAccountRecoveryDeliveryRequest request,
-                ClaimsPrincipal principal,
-                AccountItemMutationService mutationService,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mutationService.ClaimRecoveryAsync(
-                    principal.GetAccountId(),
-                    characterId,
-                    deliveryId,
-                    request,
-                    cancellationToken);
-                return result.ToHttpResult();
-            })
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
-            .WithMetadata(new SensitiveResponseAttribute());
-
         app.MapPost("/api/items/secure-container-tier", async (
             ChangeAccountSecureContainerTierRequest request,
             ClaimsPrincipal principal,

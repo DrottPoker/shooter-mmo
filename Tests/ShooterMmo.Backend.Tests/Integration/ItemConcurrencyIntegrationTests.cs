@@ -345,10 +345,11 @@ public sealed class ItemConcurrencyIntegrationTests
 
         state = await LoadStateAsync(context, player.Character.Id);
         var bag = await LoadItemAsync(context, bagId);
+        // The bank is a city service, so this kernel invariant runs as a trusted caller.
         var moveEmptyBag = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<RelocateItemCommand>(
                 Guid.NewGuid(),
-                actor,
+                ItemTransactionActor.ForSystem(),
                 new RelocateItemCommand(
                     player.Character.Id,
                     state.Revision,
@@ -560,7 +561,7 @@ public sealed class ItemConcurrencyIntegrationTests
         var claim = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<ClaimRecoveryDeliveryCommand>(
                 Guid.NewGuid(),
-                accountActor,
+                ItemTransactionActor.ForSystem(),
                 new ClaimRecoveryDeliveryCommand(
                     player.Character.Id,
                     state.Revision,
@@ -1616,7 +1617,7 @@ public sealed class ItemConcurrencyIntegrationTests
         var result = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
                 Guid.NewGuid(),
-                ItemTransactionActor.ForAccount(accountId),
+                ItemTransactionActor.ForSystem(),
                 new GrantItemCommand(
                     characterId,
                     state.Revision,

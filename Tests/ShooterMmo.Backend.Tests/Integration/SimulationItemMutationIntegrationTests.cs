@@ -753,7 +753,7 @@ public sealed class SimulationItemMutationIntegrationTests
         var result = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
                 Guid.NewGuid(),
-                ItemTransactionActor.ForOfflineAccount(player.Registration.AccountId),
+                ItemTransactionActor.ForSystem(),
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,

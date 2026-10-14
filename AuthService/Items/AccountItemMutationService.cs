@@ -108,40 +108,6 @@ public sealed class AccountItemMutationService(ItemTransactionService transactio
             cancellationToken));
     }
 
-    public Task<ServiceResult<ItemTransactionResult>> ClaimRecoveryAsync(
-        Guid accountId,
-        Guid characterId,
-        Guid deliveryId,
-        ClaimAccountRecoveryDeliveryRequest request,
-        CancellationToken cancellationToken)
-    {
-        var invalidOperation = ValidateOperationId(request.OperationId);
-        if (invalidOperation is not null)
-        {
-            return Task.FromResult(invalidOperation);
-        }
-
-        if (request.Items is null)
-        {
-            return Task.FromResult(ServiceResult<ItemTransactionResult>.BadRequest(
-                ItemApiErrorCodes.RecoveryClaimItemsRequired,
-                "Recovery claim items are required."));
-        }
-
-        return MapResultAsync(transactionService.ExecuteAsync(
-            new ItemTransactionRequest<ClaimRecoveryDeliveryCommand>(
-                request.OperationId,
-                ItemTransactionActor.ForOfflineAccount(accountId),
-                new ClaimRecoveryDeliveryCommand(
-                    characterId,
-                    request.ExpectedCharacterRevision,
-                    deliveryId,
-                    request.ExpectedRecoveryDeliveryRevision,
-                    request.DestinationContainerId,
-                    request.Items)),
-            cancellationToken));
-    }
-
     public Task<ServiceResult<ItemTransactionResult>> ChangeSecureContainerTierAsync(
         Guid accountId,
         ChangeAccountSecureContainerTierRequest request,

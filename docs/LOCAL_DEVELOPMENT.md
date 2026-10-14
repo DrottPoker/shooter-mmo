@@ -372,9 +372,9 @@ docker compose -f docker-compose.test.yml down
 Expected result: eight tests pass. They verify insurance application and
 removal, exact quest-grant cleanup and reaccept, catalog ETag and `304`, no-store
 headers, owner scoping, Secure Container tier access, stable Problem Details,
-offline session fencing, stable split, merge, and destroy validation, Recovery
-deposit rejection, system delivery, successful bank claim, and hard-cap claim
-rollback. The test host uses the real account
+offline session fencing, stable split, merge, and destroy validation, offline
+bank and Recovery rejection, system delivery, successful kernel bank claim, and
+hard-cap claim rollback. The test host uses the real account
 session authentication handler and item endpoints over loopback HTTP.
 
 To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and

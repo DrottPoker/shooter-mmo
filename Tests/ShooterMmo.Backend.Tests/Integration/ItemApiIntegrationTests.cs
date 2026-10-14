@@ -139,8 +139,8 @@ public sealed class ItemApiIntegrationTests
                 character.Revision,
                 item.ItemInstanceId,
                 item.Revision,
-                state.BankContainerId,
-                0));
+                state.PermanentInventoryContainerId,
+                1));
         Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
         Assert.True(moved.Headers.CacheControl?.NoStore);
         var moveResult = await moved.Content.ReadFromJsonAsync<ItemTransactionResult>();
@@ -227,7 +227,7 @@ public sealed class ItemApiIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task RecoveryApiRejectsDepositsAndClaimsSystemDeliveriesToBank()
+    public async Task OfflineRoutesCannotReachBankOrRecoveryStorage()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync();
@@ -266,6 +266,21 @@ public sealed class ItemApiIntegrationTests
             ItemTransactionErrorCodes.RecoveryAccessRequired,
             await ReadProblemCodeAsync(deposit));
 
+        // The bank is a city service, so an offline route cannot move items into it.
+        using var bankDeposit = await host.Client.PostAsJsonAsync(
+            $"/api/characters/{player.Character.Id}/item-operations/relocate",
+            new RelocateAccountItemRequest(
+                Guid.NewGuid(),
+                character.Revision,
+                item.ItemInstanceId,
+                item.Revision,
+                state.BankContainerId,
+                null));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bankDeposit.StatusCode);
+        Assert.Equal(
+            ItemTransactionErrorCodes.BankAccessRequired,
+            await ReadProblemCodeAsync(bankDeposit));
+
         var delivery = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<AddRecoveryDeliveryCommand>(
                 Guid.NewGuid(),
@@ -284,18 +299,41 @@ public sealed class ItemApiIntegrationTests
         item = Assert.Single(delivery.ItemRevisions);
         character = Assert.Single(delivery.CharacterRevisions);
 
-        using var claim = await host.Client.PostAsJsonAsync(
+        // Recovery is claimed in the world at a city service; the offline route is gone.
+        using var offlineClaim = await host.Client.PostAsJsonAsync(
             $"/api/characters/{player.Character.Id}/recovery/{deliveryId}/claim",
-            new ClaimAccountRecoveryDeliveryRequest(
+            new { operationId = Guid.NewGuid() });
+        Assert.Equal(HttpStatusCode.NotFound, offlineClaim.StatusCode);
+        var offlineKernelClaim = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<ClaimRecoveryDeliveryCommand>(
                 Guid.NewGuid(),
-                character.Revision,
-                0,
-                state.BankContainerId,
-                [new ItemRevisionExpectation(item.ItemInstanceId, item.Revision)]));
-        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
-        var claimResult = await claim.Content.ReadFromJsonAsync<ItemTransactionResult>();
-        Assert.NotNull(claimResult);
-        Assert.True(claimResult.Succeeded);
+                ItemTransactionActor.ForOfflineAccount(player.Registration.AccountId),
+                new ClaimRecoveryDeliveryCommand(
+                    player.Character.Id,
+                    character.Revision,
+                    deliveryId,
+                    0,
+                    state.PermanentInventoryContainerId,
+                    [new ItemRevisionExpectation(item.ItemInstanceId, item.Revision)])),
+            CancellationToken.None);
+        Assert.False(offlineKernelClaim.Succeeded);
+        Assert.Equal(
+            ItemTransactionErrorCodes.RecoveryAccessRequired,
+            offlineKernelClaim.Error!.Code);
+
+        var claimResult = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<ClaimRecoveryDeliveryCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new ClaimRecoveryDeliveryCommand(
+                    player.Character.Id,
+                    character.Revision,
+                    deliveryId,
+                    0,
+                    state.BankContainerId,
+                    [new ItemRevisionExpectation(item.ItemInstanceId, item.Revision)])),
+            CancellationToken.None);
+        Assert.True(claimResult.Succeeded, claimResult.Error?.Message);
 
         await using var connection = await context.DataSource.OpenConnectionAsync();
         Assert.Equal(
@@ -330,7 +368,7 @@ public sealed class ItemApiIntegrationTests
         var recoverable = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
                 Guid.NewGuid(),
-                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                ItemTransactionActor.ForSystem(),
                 new GrantItemCommand(
                     player.Character.Id,
                     character.Revision,
@@ -362,22 +400,20 @@ public sealed class ItemApiIntegrationTests
         item = Assert.Single(delivery.ItemRevisions);
         character = Assert.Single(delivery.CharacterRevisions);
 
-        await using var host = await ItemApiTestHost.StartAsync(context);
-        host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer",
-            player.Registration.SessionToken);
-        using var claim = await host.Client.PostAsJsonAsync(
-            $"/api/characters/{player.Character.Id}/recovery/{deliveryId}/claim",
-            new ClaimAccountRecoveryDeliveryRequest(
+        var claim = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<ClaimRecoveryDeliveryCommand>(
                 Guid.NewGuid(),
-                character.Revision,
-                0,
-                state.PermanentInventoryContainerId,
-                [new ItemRevisionExpectation(item.ItemInstanceId, item.Revision)]));
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, claim.StatusCode);
-        Assert.Equal(
-            ItemTransactionErrorCodes.CarryWeightLimitExceeded,
-            await ReadProblemCodeAsync(claim));
+                ItemTransactionActor.ForSystem(),
+                new ClaimRecoveryDeliveryCommand(
+                    player.Character.Id,
+                    character.Revision,
+                    deliveryId,
+                    0,
+                    state.PermanentInventoryContainerId,
+                    [new ItemRevisionExpectation(item.ItemInstanceId, item.Revision)])),
+            CancellationToken.None);
+        Assert.False(claim.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.CarryWeightLimitExceeded, claim.Error!.Code);
 
         await using var connection = await context.DataSource.OpenConnectionAsync();
         Assert.Equal(

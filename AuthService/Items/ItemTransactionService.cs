@@ -1843,7 +1843,7 @@ public sealed partial class ItemTransactionService(
             expectations.Keys,
             [state.RecoveryStorageContainerId],
             cancellationToken);
-        var recovery = await context.LoadOwnedContainerAsync(
+        var recovery = await context.LoadKernelPlacementContainerAsync(
             state.RecoveryStorageContainerId,
             command.CharacterId,
             cancellationToken);
@@ -2351,7 +2351,7 @@ public sealed partial class ItemTransactionService(
                 state.SecureContainerId,
                 state.CharacterId,
                 cancellationToken);
-            var recoveryContainer = await context.LoadOwnedContainerAsync(
+            var recoveryContainer = await context.LoadKernelPlacementContainerAsync(
                 state.RecoveryStorageContainerId,
                 state.CharacterId,
                 cancellationToken);

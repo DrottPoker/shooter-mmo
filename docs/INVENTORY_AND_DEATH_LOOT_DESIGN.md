@@ -697,7 +697,9 @@ AuthService validates the exact active simulation session, character, worker,
 runtime, and Shard before accepting an in-world command.
 
 Bank and Recovery Storage access additionally require a city-service validation
-from SimulationWorker. Secure Container operations are allowed in the world but
+from SimulationWorker. Offline account routes can never reach the bank or
+Recovery Storage, because both are city services that need a live character at
+a validated service point. Recovery is therefore claimed only in the world. Secure Container operations are allowed in the world but
 remain category, slot, policy, weight, and session validated.
 
 Phase 12 adds the generic NPC and world-interaction session that later service
