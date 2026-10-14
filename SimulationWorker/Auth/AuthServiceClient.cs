@@ -418,6 +418,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && string.Equals(response.WorkerRuntimeId, runtimeId, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(response.SimulationSessionToken)
             && response.SessionExpiresAt != default
+            && response.SessionLeaseDurationMilliseconds > 0
             && IsValidCarryState(
                 response.ItemStateRevision,
                 response.CarriedWeight,
@@ -433,6 +434,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && !string.IsNullOrWhiteSpace(response.WorkerId)
             && !string.IsNullOrWhiteSpace(response.WorkerRuntimeId)
             && response.ExpiresAt != default
+            && (response.Released || response.LeaseDurationMilliseconds > 0)
             && IsValidCarryState(
                 response.ItemStateRevision,
                 response.CarriedWeight,

@@ -23,6 +23,7 @@ public sealed class SimulationJoinService(
                 "Join ticket is required.");
         }
 
+        var requestedAt = DateTime.UtcNow;
         var consumedTicket = await authServiceClient.ConsumeJoinTicketAsync(
             joinTicket.Trim(),
             config.SimulationWorkerId,
@@ -54,7 +55,7 @@ public sealed class SimulationJoinService(
                 "Join ticket does not match this simulation worker assignment.");
         }
 
-        var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value);
+        var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value, requestedAt);
         var registration = sessionStore.Register(session);
 
         if (registration == ActiveSimulationSessionRegistration.Conflict)

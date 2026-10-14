@@ -25,14 +25,44 @@ public sealed class ActiveSimulationSessionStoreTests
             PlayerEncumbranceRules.BaseCharacterCapacity,
             false)
         {
-            IsSyntheticBot = true
+            IsSyntheticBot = true,
+            SessionLeaseDurationMilliseconds = 30_000
         };
 
-        var session = ActiveSimulationSession.FromJoinTicket(ticket);
+        var session = ActiveSimulationSession.FromJoinTicket(ticket, DateTime.UtcNow);
         var response = ActiveSimulationSessionResponse.FromSession(session);
 
         Assert.True(session.IsSyntheticBot);
         Assert.True(response.IsSyntheticBot);
+    }
+
+    [Fact]
+    public void SessionDeadlineUsesTheWorkerClockAndTheLeaseDuration()
+    {
+        // The database clock is far ahead of the worker clock.
+        var ticket = new ConsumedSimulationJoinTicketResponse(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Clock Skew Hero",
+            "local-shard-1",
+            "development-world-1",
+            "local-simulation-worker-1",
+            "worker-runtime-1",
+            Guid.NewGuid(),
+            "session-token",
+            DateTime.UtcNow.AddHours(5),
+            0,
+            0,
+            PlayerEncumbranceRules.BaseCharacterCapacity,
+            false)
+        {
+            SessionLeaseDurationMilliseconds = 30_000
+        };
+        var requestedAt = new DateTime(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
+
+        var session = ActiveSimulationSession.FromJoinTicket(ticket, requestedAt);
+
+        Assert.Equal(requestedAt.AddSeconds(30), session.SessionExpiresAt);
     }
 
     [Fact]

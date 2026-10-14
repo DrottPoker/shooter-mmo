@@ -76,7 +76,10 @@ heartbeat. AuthService locks the shard row and may persist the new binding only
 when there is no healthy assignment, pending unexpired join ticket, active
 unexpired simulation session, or open durable corpse. The same transaction
 creates the new assignment, so concurrent registration cannot bypass the
-check. A running shard cannot hot-swap Worlds.
+check. A running shard cannot hot-swap Worlds. A worker that stopped heartbeating is treated as gone once the heartbeat timeout
+passes. Its pending tickets and simulation sessions are released before the
+blockers are counted, so a crashed worker cannot block a rebind until its
+leases expire. Open durable corpses always block.
 
 A node also belongs to one fleet. AuthService permits an assignment only when
 the worker's node and target shard belong to the same fleet. After a successful
@@ -712,11 +715,19 @@ Heartbeat processing is transactional:
 4. A timed-out or explicitly offline owner is released atomically.
 5. Pending tickets and active sessions for every superseded runtime are
    invalidated, including when the logical worker moves to another shard.
-6. A newer runtime may replace an older runtime for the same worker id.
+6. A newer runtime may replace an older live runtime for the same worker id.
+   Any runtime may replace one that is offline or past the heartbeat timeout,
+   because start times reported by different hosts are not comparable. A start
+   time more than ten minutes in the future is rejected.
 7. The exact active SimulationAssignment is created or retained.
 
 SimulationWorker renews a local registration lease from successful heartbeat
-responses. UDP joins are rejected without a valid lease. If the lease expires,
+responses. The local lease runs from the moment the heartbeat request was sent,
+minus a safety margin of at most one second, so it always ends before the
+database lease. Simulation session leases work the same way: AuthService
+returns the lease duration, and the worker sets each session deadline on its own
+clock from the request send time. Clock differences between hosts therefore
+never extend or cut short a lease. UDP joins are rejected without a valid lease. If the lease expires,
 or AuthService reports that the runtime lost authority, the process stops. This
 limits split-brain behavior during network partitions and allows another worker
 to take over after the authoritative heartbeat timeout.

@@ -664,6 +664,7 @@ public sealed class RealtimeSimulationServiceTests
                     PlayerEncumbranceRules.BaseCharacterCapacity,
                     false)
                 {
+                    SessionLeaseDurationMilliseconds = 30_000,
                     IsSyntheticBot = isSyntheticBot
                 }));
             }
@@ -681,7 +682,10 @@ public sealed class RealtimeSimulationServiceTests
                     0,
                     0,
                     PlayerEncumbranceRules.BaseCharacterCapacity,
-                    true)));
+                    true)
+                {
+                    LeaseDurationMilliseconds = 30_000
+                }));
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -728,7 +732,10 @@ public sealed class RealtimeSimulationServiceTests
                         0,
                         0,
                         PlayerEncumbranceRules.BaseCharacterCapacity,
-                        false))
+                        false)
+                    {
+                        SessionLeaseDurationMilliseconds = 30_000
+                    })
                 });
             }
 
@@ -781,7 +788,10 @@ public sealed class RealtimeSimulationServiceTests
                     0,
                     60,
                     200,
-                    false));
+                    false)
+                {
+                    SessionLeaseDurationMilliseconds = 30_000
+                });
             }
 
             if (request.RequestUri.AbsolutePath.EndsWith(
@@ -829,7 +839,10 @@ public sealed class RealtimeSimulationServiceTests
                     1,
                     0,
                     200,
-                    true));
+                    true)
+                {
+                    LeaseDurationMilliseconds = 30_000
+                });
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);

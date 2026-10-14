@@ -134,13 +134,16 @@ migrations, `SimulationTopologySeeder` idempotently upserts configured records.
 It does not manufacture online workers. A seeded shard remains offline until a
 valid heartbeat and active assignment exist.
 
-An existing shard may be rebound to another configured World on AuthService
-startup. Reconciliation locks the shard row and refuses the change while any
-active assignment, pending unexpired join ticket, active unexpired simulation
-session, or open durable corpse still references the shard. The worker must be
-stopped cleanly and World-local state must be drained before retrying. The next
-worker runtime must report the rebound World identity, so stale content cannot
-silently simulate the shard. A migration placeholder assignment with no worker
+A shard is rebound to another World when a worker heartbeat proposes a different
+configured `WorldId`. AuthService locks the shard row and refuses the change while
+a healthy assignment, pending unexpired join ticket, active unexpired simulation
+session, or open durable corpse still references the shard. A worker that stopped heartbeating is treated as gone once the heartbeat timeout
+passes. Its pending tickets and simulation sessions are released before the
+blockers are counted, so a crashed worker cannot block a rebind until its
+leases expire. Open durable corpses always block. The
+worker must be stopped cleanly and World-local state must be drained before
+retrying. The next worker runtime must report the rebound World identity, so
+stale content cannot silently simulate the shard. A migration placeholder assignment with no worker
 runtime is not simulation authority and therefore does not block a rebind.
 
 ## Worker Registration And Assignment
@@ -163,12 +166,15 @@ target shard and applies these rules:
 - A timed-out or explicitly offline owner can be replaced.
 - Replacement invalidates old-runtime tickets and simulation sessions even when
   the logical worker moves to another shard.
-- A newer runtime can replace an older runtime for the same worker id.
+- A newer runtime can replace an older live runtime for the same worker id, and
+  any runtime can replace one that is offline or past the heartbeat timeout.
+- Worker secrets are matched to the exact, case-sensitive worker id.
 - The older runtime is fenced by `worker_runtime_changed`.
 - A stale process cannot mark a newer runtime offline.
 - Active assignment indexes prevent two worker or shard owners.
 
-SimulationWorker stores the database-issued lease duration locally. It rejects
+SimulationWorker stores the database-issued lease duration locally, measured
+from the moment the heartbeat request was sent. It rejects
 new UDP joins without a valid registration lease. A one-second monitor stops the
 process after lease expiry. Definitive topology, assignment, runtime, or service
 credential rejection also stops the process.
@@ -226,7 +232,9 @@ Simulation session properties:
   revoked sessions.
 
 The worker also enforces cached lease expiry locally so an AuthService outage
-cannot leave a connected player active forever.
+cannot leave a connected player active forever. The local deadline is the
+request send time plus the lease duration that AuthService returns, so it does
+not depend on the database clock.
 
 ## Realtime UDP Transport
 

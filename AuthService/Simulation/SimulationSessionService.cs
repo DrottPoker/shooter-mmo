@@ -82,7 +82,10 @@ public sealed class SimulationSessionService(
                 cancellationToken: cancellationToken));
         if (session is not null)
         {
-            return ServiceResult<SimulationSessionLeaseResponse>.Ok(session);
+            return ServiceResult<SimulationSessionLeaseResponse>.Ok(session with
+            {
+                LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
+            });
         }
 
         const string revocationReasonSql = """

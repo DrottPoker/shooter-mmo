@@ -14,13 +14,18 @@ public sealed class SimulationWorkerRegistrationLeaseTests
         Assert.False(lease.HasLease);
         Assert.False(lease.IsValid);
 
-        lease.Renew(TimeSpan.FromSeconds(30));
+        // The request was sent 3 seconds before the response arrived.
+        var renewalStart = lease.CaptureRenewalStart();
+        timeProvider.Advance(TimeSpan.FromSeconds(3));
+        lease.Renew(renewalStart, TimeSpan.FromSeconds(30));
 
         Assert.True(lease.HasLease);
         Assert.True(lease.IsValid);
-        Assert.Equal(timeProvider.GetUtcNow().AddSeconds(30), lease.ExpiresAtUtc);
+        // The lease runs from the send time, minus a one second safety margin, so it can
+        // never outlive the database lease that started after the request was sent.
+        Assert.Equal(renewalStart.AddSeconds(29), lease.ExpiresAtUtc);
 
-        timeProvider.Advance(TimeSpan.FromSeconds(30));
+        timeProvider.Advance(TimeSpan.FromSeconds(26));
 
         Assert.True(lease.HasLease);
         Assert.False(lease.IsValid);

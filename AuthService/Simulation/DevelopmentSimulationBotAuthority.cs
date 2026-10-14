@@ -220,7 +220,9 @@ public sealed class DevelopmentSimulationBotAuthority(
                     CarryWeightDefaults.BaseCharacterCapacity,
                     false)
                 {
-                    IsSyntheticBot = true
+                    IsSyntheticBot = true,
+                    SessionLeaseDurationMilliseconds =
+                        (long)options.SessionLeaseLifetime.TotalMilliseconds
                 });
             return true;
         }
@@ -323,7 +325,12 @@ public sealed class DevelopmentSimulationBotAuthority(
                     0,
                     0,
                     CarryWeightDefaults.BaseCharacterCapacity,
-                    release));
+                    release)
+                {
+                    LeaseDurationMilliseconds = release
+                        ? 0
+                        : (long)options.SessionLeaseLifetime.TotalMilliseconds
+                });
             return true;
         }
     }

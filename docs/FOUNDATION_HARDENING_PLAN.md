@@ -78,9 +78,9 @@ reproduction.
 
 | Id | Area | Defect | Location | Confidence | Status |
 | --- | --- | --- | --- | --- | --- |
-| F11 | Worker registry | The local registration lease starts when the heartbeat response arrives, so it outlives the database lease by the request latency and lock wait. This widens the split-brain window. | `SimulationWorker/Registry/SimulationWorkerHeartbeatService.cs`, `SimulationWorkerRegistrationLease.cs` | confirmed | Open |
-| F12 | Worker sessions | Session lease expiry is an absolute database timestamp compared with the worker wall clock. Clock skew kicks every player or keeps an expired session simulated. | `SimulationWorker/Sessions/ActiveSimulationSessionStore.cs` | confirmed | Open |
-| F13 | Worker registry | Runtime supersession is ordered by the worker-reported `started_at`. A replacement host with a slower clock is fenced and stops itself on every restart. | `AuthService/Simulation/SimulationWorkerRegistryService.cs` | confirmed | Open |
+| F11 | Worker registry | The local registration lease starts when the heartbeat response arrives, so it outlives the database lease by the request latency and lock wait. This widens the split-brain window. | `SimulationWorker/Registry/SimulationWorkerHeartbeatService.cs`, `SimulationWorkerRegistrationLease.cs` | confirmed | Fixed |
+| F12 | Worker sessions | Session lease expiry is an absolute database timestamp compared with the worker wall clock. Clock skew kicks every player or keeps an expired session simulated. | `SimulationWorker/Sessions/ActiveSimulationSessionStore.cs` | confirmed | Fixed |
+| F13 | Worker registry | Runtime supersession is ordered by the worker-reported `started_at`. A replacement host with a slower clock is fenced and stops itself on every restart. | `AuthService/Simulation/SimulationWorkerRegistryService.cs` | confirmed | Fixed |
 | F14 | Live Mob loot | Loot claims send the join-time item-state revision, so every claim after the first item change fails. Latent until Mob deaths are produced. | `SimulationWorker/Corpses/LiveMobCorpseInteractionService.cs` | confirmed | Open |
 | F15 | Auth rate limiting | The distributed limiter matches request paths case-sensitively while routing is case-insensitive, so `/api/accounts/LOGIN` bypasses it. | `AuthService/Redis/RedisAuthenticationRateLimitMiddleware.cs` | confirmed | Fixed |
 | F16 | Auth login | Unknown logins skip BCrypt and answer faster, and registration returns distinct email and username conflict codes, which allows account enumeration. Login timing is fixed. Registration conflicts stay explicit until an email verification flow exists, bounded by its rate limit. | `AuthService/Auth/AccountService.cs` | confirmed | Fixed |
@@ -115,8 +115,8 @@ reproduction.
 | F40 | Auth | A client abort is logged as an unhandled error and mapped to 500. | `ApiPipelineExtensions.cs` | Fixed |
 | F41 | Placement | Capacity counts the account's own superseded ticket and double-counts reconnect tickets. | `AuthService/Simulation/ShardService.cs` | Open |
 | F42 | Placement | Ticket and lease expiry use the transaction start time instead of the time after placement locks, which contradicts the documentation. | `ShardService.cs`, `SimulationWorkerRegistryService.cs` | Open |
-| F43 | World rebind | A timed-out owner's tickets and sessions are released before the rebind blockers are counted, which contradicts the architecture document. | `SimulationWorkerRegistryService.cs` | Open |
-| F44 | Worker auth | Worker secrets are looked up case-insensitively, so case variants of one worker id authenticate as separate workers. | `AuthService/Auth/SimulationWorkerAuthenticationHandler.cs` | Open |
+| F43 | World rebind | A timed-out owner's tickets and sessions are released before the rebind blockers are counted, which contradicts the architecture document. The behavior is intended and is now documented. | `SimulationWorkerRegistryService.cs` | Fixed |
+| F44 | Worker auth | Worker secrets are looked up case-insensitively, so case variants of one worker id authenticate as separate workers. | `AuthService/Auth/SimulationWorkerAuthenticationHandler.cs` | Fixed |
 | F45 | Placement | Placement locks the worker row but not the assignment row, which can bind a ticket to a stale assignment during a worker restart. | `ShardService.cs` | Open |
 | F46 | Development bots | Player placement ignores in-memory bot reservations, so bots and players can over-reserve a worker. | `ShardService.cs`, `DevelopmentSimulationBotAuthority.cs` | Open |
 | F47 | Recovery | Recovery reads return every claimed delivery forever. | `AuthService/Items/ItemQueryService.cs` | Open |

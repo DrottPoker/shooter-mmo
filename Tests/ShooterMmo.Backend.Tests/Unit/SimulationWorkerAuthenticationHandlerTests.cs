@@ -43,6 +43,22 @@ public sealed class SimulationWorkerAuthenticationHandlerTests
         Assert.Equal("Simulation worker credentials are invalid.", result.Failure!.Message);
     }
 
+    [Fact]
+    public async Task PerWorkerSecretAuthenticatesOnlyTheExactWorkerIdCasing()
+    {
+        const string workerSecret = "test-exact-simulation-worker-secret-at-least-32-characters";
+        var settings = new Dictionary<string, string?>
+        {
+            ["ServiceAuthentication:SimulationWorkers:worker-1"] = workerSecret
+        };
+
+        var exact = await AuthenticateAsync(settings, "worker-1", workerSecret);
+        var differentCasing = await AuthenticateAsync(settings, "WORKER-1", workerSecret);
+
+        Assert.True(exact.Succeeded);
+        Assert.False(differentCasing.Succeeded);
+    }
+
     private static async Task<AuthenticateResult> AuthenticateAsync(
         IReadOnlyDictionary<string, string?> settings,
         string workerId,

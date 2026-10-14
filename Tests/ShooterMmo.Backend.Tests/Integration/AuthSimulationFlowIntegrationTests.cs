@@ -593,6 +593,59 @@ public sealed class AuthSimulationFlowIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task ReplacementRuntimeWithASlowerClockTakesOverAnOfflineOrSilentRuntime()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var first = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-first-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddMinutes(-2)
+            },
+            CancellationToken.None);
+        Assert.True(first.Succeeded, first.Error?.Message);
+        var offline = await context.SimulationWorkerRegistryService.MarkOfflineAsync(
+            LocalWorkerId,
+            new SimulationWorkerOfflineRequest("clock-first-runtime"),
+            CancellationToken.None);
+        Assert.True(offline.Succeeded, offline.Error?.Message);
+
+        // The replacement host clock is an hour behind the previous host clock.
+        var replacement = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-replacement-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddHours(-1)
+            },
+            CancellationToken.None);
+        Assert.True(replacement.Succeeded, replacement.Error?.Message);
+        Assert.Equal("clock-replacement-runtime", replacement.Value!.RuntimeId);
+
+        // A runtime that stops heartbeating can be replaced the same way.
+        await context.ExecuteAsync(
+            "update simulation_workers set last_heartbeat_at = now() - interval '1 hour';");
+        var afterSilence = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-third-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddHours(-2)
+            },
+            CancellationToken.None);
+        Assert.True(afterSilence.Succeeded, afterSilence.Error?.Message);
+
+        var future = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-future-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddHours(1)
+            },
+            CancellationToken.None);
+        Assert.False(future.Succeeded);
+        Assert.Equal("invalid_worker_started_at", future.Error!.Code);
+    }
+
+    [PostgresIntegrationFact]
     public async Task SeedShardRequiresFreshWorkerHeartbeatAndRejectsStaleRuntime()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync(

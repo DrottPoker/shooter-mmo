@@ -374,7 +374,10 @@ public sealed class RealtimeEntityLifecycleTests
                     0,
                     0,
                     PlayerEncumbranceRules.BaseCharacterCapacity,
-                    false));
+                    false)
+                {
+                    SessionLeaseDurationMilliseconds = 30_000
+                });
             }
 
             if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal))
@@ -391,7 +394,10 @@ public sealed class RealtimeEntityLifecycleTests
                     0,
                     0,
                     PlayerEncumbranceRules.BaseCharacterCapacity,
-                    true));
+                    true)
+                {
+                    LeaseDurationMilliseconds = 30_000
+                });
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);

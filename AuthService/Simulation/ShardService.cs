@@ -444,7 +444,10 @@ public sealed class ShardService(
                 carryState.ItemStateRevision,
                 carryState.CarriedWeight,
                 carryState.CarryCapacity,
-                isReconnect));
+                isReconnect)
+            {
+                SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
+            });
     }
 
     private static Task<CharacterCarryStateRow> LockCarryStateAsync(

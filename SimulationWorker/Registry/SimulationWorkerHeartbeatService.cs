@@ -72,6 +72,7 @@ public sealed class SimulationWorkerHeartbeatService(
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
     {
         registrationAttempted = true;
+        var renewalStart = registrationLease?.CaptureRenewalStart();
         var result = await authServiceClient.HeartbeatSimulationWorkerAsync(
             config.SimulationWorkerId,
             new SimulationWorkerHeartbeatRequest(
@@ -118,7 +119,12 @@ public sealed class SimulationWorkerHeartbeatService(
             return;
         }
 
-        registrationLease?.Renew(result.Value.OnlineUntil - result.Value.LastHeartbeatAt);
+        if (renewalStart is not null)
+        {
+            registrationLease!.Renew(
+                renewalStart.Value,
+                result.Value.OnlineUntil - result.Value.LastHeartbeatAt);
+        }
     }
 
     private void StopForLostAuthority(string code)
