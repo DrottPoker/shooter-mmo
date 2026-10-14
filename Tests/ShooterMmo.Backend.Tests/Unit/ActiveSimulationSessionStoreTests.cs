@@ -196,6 +196,27 @@ public sealed class ActiveSimulationSessionStoreTests
         Assert.Equal("The simulation session lease expired.", invalidation.Message);
     }
 
+    [Fact]
+    public void InvalidationsOfDetachedSessionsArePrunedAfterTheRetention()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var detached = CreateSession();
+        store.Register(detached);
+        Assert.True(store.Invalidate(
+            detached.CharacterId,
+            detached.SimulationSessionId,
+            detached.SimulationSessionToken,
+            "session_revoked",
+            "No peer owns this session any more."));
+        Assert.Equal(1, store.PendingInvalidationCount);
+
+        Assert.Equal(0, store.PruneInvalidations(DateTime.UtcNow - ActiveSimulationSessionStore.InvalidationRetention));
+        Assert.Equal(1, store.PendingInvalidationCount);
+        Assert.Equal(1, store.PruneInvalidations(DateTime.UtcNow.AddSeconds(1)));
+        Assert.Equal(0, store.PendingInvalidationCount);
+        Assert.False(store.TryTakeInvalidation(detached.SimulationSessionId, out _));
+    }
+
     private static ActiveSimulationSession CreateSession(
         Guid? simulationSessionId = null,
         string sessionToken = "session-token",

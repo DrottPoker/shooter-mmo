@@ -582,7 +582,8 @@ buckets keyed by activity profile, tier, and tick interval. No actor owns a
 task, timer, thread, database session, or HTTP poller. Actor visibility reuses
 the shared network-entity id allocator and existing spatial interest
 management. Bounded assignment-local despawn tombstones retain only the runtime
-identity required to send reliable actor-specific interest exits, and clear on
+identity required to send reliable actor-specific interest exits. Each interest
+pass drops a tombstone once no connection still sees the actor, and all clear on
 assignment reconstruction or worker shutdown.
 
 The typed capability registry maps every supported capability kind to one
@@ -932,8 +933,9 @@ combat producer pending
    closes before AuthService loads the committed view. SimulationWorker applies
    returned carry only for custody-changing transfers, keeps the newest corpse
    revision when HTTP completions arrive out of order, encodes one targeted
-   delta, and reuses it for every viewer. Open and refresh snapshots return only
-   to their requester. Pure corpse rearrangement advances corpse, container,
+   delta, and reuses it for every other viewer. Open and refresh always return a
+   complete snapshot to their requester, even when a newer revision reaches the
+   existing viewers as a delta. Pure corpse rearrangement advances corpse, container,
    and item revisions without changing character carry or item-state revision.
    Unity refreshes stale bases and never applies optimistic custody.
 10. Expiry, invalidation, and not-found results close every affected view with a

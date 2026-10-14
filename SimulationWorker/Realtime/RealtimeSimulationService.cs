@@ -252,6 +252,7 @@ public sealed class RealtimeSimulationService(
         }
 
         interestManager.RemoveConnection(peer.Id);
+        corpseViewers.RemovePeer(peer.Id);
         worldInteractionLeases?.RemovePeer(peer.Id);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
@@ -1579,9 +1580,14 @@ public sealed class RealtimeSimulationService(
                 completed.Session.SimulationSessionToken,
                 StringComparison.Ordinal))
         {
-            if (completed.RemoveOpenReservationOnFailure)
+            // LiteNetLib reuses peer ids, so only a context that still owns its id may
+            // release this open reservation. Every path that disconnects or detaches a
+            // context has already released the reservations it held.
+            if (completed.RemoveOpenReservationOnFailure && OwnsPeerId(completed.Context))
             {
-                corpseViewers.RemovePeer(completed.Context.PeerId);
+                corpseViewers.Close(
+                    completed.Context.PeerId,
+                    completed.Result.Intent.CorpseId);
                 worldInteractionLeases?.ReleaseCorpse(
                     completed.Context.PeerId,
                     completed.Result.Intent.CorpseId);
@@ -1696,52 +1702,33 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        var hasCachedSnapshot = corpseSnapshots.TryGetValue(
-            resultSnapshot.CorpseId,
-            out var cachedSnapshot);
-        var hasMutation = completed.Result.Mutation is not null;
-        if (hasCachedSnapshot
-            && cachedSnapshot!.Revision >= resultSnapshot.Revision)
+        corpseSnapshots.TryGetValue(resultSnapshot.CorpseId, out var cachedSnapshot);
+        var distribution = CorpseStateDistribution.Plan(
+            cachedSnapshot,
+            resultSnapshot,
+            completed.Result.Mutation is not null);
+        if (distribution.CachesResult)
         {
-            if (!hasMutation)
+            if (liveMobCorpseStore is null
+                || !liveMobCorpseStore.TryGetActive(resultSnapshot.CorpseId, out _))
             {
-                SendCorpseState(
-                    peer,
-                    EncodeCorpseStatePackets(
-                        CorpseRealtimePacketBuilder.BuildSnapshot(cachedSnapshot)));
+                corpseStore.ApplySnapshot(resultSnapshot);
             }
 
-            StartNextAuthorityOperation(completed.Context);
-            return;
+            corpseSnapshots[resultSnapshot.CorpseId] = resultSnapshot;
         }
 
-        if (liveMobCorpseStore is null
-            || !liveMobCorpseStore.TryGetActive(resultSnapshot.CorpseId, out _))
+        if (distribution.RequesterChunks.Count > 0)
         {
-            corpseStore.ApplySnapshot(resultSnapshot);
+            SendCorpseState(peer, EncodeCorpseStatePackets(distribution.RequesterChunks));
         }
 
-        IReadOnlyList<RealtimeCorpseViewStateChunk> chunks;
-        if (hasCachedSnapshot)
+        if (distribution.ViewerChunks.Count > 0)
         {
-            chunks = CorpseRealtimePacketBuilder.BuildDelta(
-                cachedSnapshot!,
-                resultSnapshot);
-        }
-        else
-        {
-            chunks = CorpseRealtimePacketBuilder.BuildSnapshot(resultSnapshot);
-        }
-
-        corpseSnapshots[resultSnapshot.CorpseId] = resultSnapshot;
-        var packets = EncodeCorpseStatePackets(chunks);
-        if (hasMutation || hasCachedSnapshot)
-        {
-            BroadcastCorpseState(resultSnapshot.CorpseId, packets);
-        }
-        else
-        {
-            SendCorpseState(peer, packets);
+            BroadcastCorpseState(
+                resultSnapshot.CorpseId,
+                EncodeCorpseStatePackets(distribution.ViewerChunks),
+                distribution.RequesterReceivesViewerChunks ? null : completed.Context.PeerId);
         }
 
         StartNextAuthorityOperation(completed.Context);
@@ -1863,11 +1850,13 @@ public sealed class RealtimeSimulationService(
 
     private void BroadcastCorpseState(
         Guid corpseId,
-        IReadOnlyList<byte[]> packets)
+        IReadOnlyList<byte[]> packets,
+        int? excludedPeerId = null)
     {
         foreach (var viewerPeerId in corpseViewers.GetViewers(corpseId))
         {
-            if (!peers.TryGetValue(viewerPeerId, out var context)
+            if (viewerPeerId == excludedPeerId
+                || !peers.TryGetValue(viewerPeerId, out var context)
                 || context.Session is null
                 || !TryGetCurrentPeer(context, out var peer))
             {
@@ -2779,6 +2768,8 @@ public sealed class RealtimeSimulationService(
                 }
             }
         }
+
+        worldActorStore?.PruneDespawned(interestManager.IsVisibleToAnyConnection);
     }
 
     private void BroadcastEntityDespawn(
@@ -2901,12 +2892,16 @@ public sealed class RealtimeSimulationService(
         return entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
     }
 
+    private bool OwnsPeerId(PeerContext context)
+    {
+        return peers.TryGetValue(context.PeerId, out var currentContext)
+            && ReferenceEquals(context, currentContext);
+    }
+
     private bool TryGetCurrentPeer(PeerContext context, out NetPeer peer)
     {
         peer = null!;
-        if (server is null
-            || !peers.TryGetValue(context.PeerId, out var currentContext)
-            || !ReferenceEquals(context, currentContext))
+        if (server is null || !OwnsPeerId(context))
         {
             return false;
         }

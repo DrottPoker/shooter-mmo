@@ -182,6 +182,19 @@ public sealed class SimulationInterestManager
             : EmptyOrderedVisible;
     }
 
+    public bool IsVisibleToAnyConnection(ulong entityId)
+    {
+        foreach (var state in interestsByConnection.Values)
+        {
+            if (state.Visible.Contains(entityId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public bool RemoveConnection(int connectionId)
     {
         if (!interestsByConnection.Remove(connectionId, out var state))

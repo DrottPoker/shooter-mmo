@@ -339,9 +339,11 @@ instances for `development-world-1`, and seven prepared spawn instances for
   buckets selected by their shared activity profile. No actor owns a task,
   timer, thread, database session, or HTTP poller.
 - Actor presence reuses reliable interest enter and exit messages, while actor
-  state changes use bounded reliable updates. Assignment-local, bounded despawn
+  state changes use bounded reliable updates. Assignment-local despawn
   tombstones retain runtime identity until every interest exit can encode the
-  actor-specific despawn contract.
+  actor-specific despawn contract. Each interest pass drops a tombstone once no
+  connection still has the actor in its interest set, so they stay bounded by
+  current visibility.
 - One typed capability registry composes dialogue, vendor, quest, crafting,
   insurance, trainer, bank, and Recovery Storage descriptors. Each registered
   kind has an explicit Phase 12 deferred handler unless a later phase replaces
@@ -671,7 +673,12 @@ concurrent inspection, and authoritative looting:
   competing custody has one stable winner, and no PostgreSQL transaction remains
   open across a client network wait.
 - The worker broadcasts each committed targeted delta or replacement to every
-  current viewer. Its runtime store accepts only monotonic corpse revisions.
+  current viewer. An open or refresh always gives its requester a complete
+  snapshot, while the other viewers receive the delta from the newer revision.
+  Its runtime store accepts only monotonic corpse revisions. A completion that
+  arrives after its peer disconnected never releases the corpse reservation of
+  a new peer that reuses the LiteNetLib peer id; disconnect cleanup releases
+  every reservation of the old peer first.
   Expiry, invalidation, and missing-corpse results close affected views with
   stable codes, while stale item or quantity conflicts trigger refresh.
 - SimulationWorker updates its carry-state store only from committed AuthService

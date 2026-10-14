@@ -50,8 +50,8 @@ current tests do not exercise.
 ## Progress
 
 As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done, and
-the P2 pass is in progress, one verified group per commit. 58 findings are fixed
-and 15 P2 findings remain open. The full verification after the P1 pass passed:
+the P2 pass is in progress, one verified group per commit. 62 findings are fixed
+and 11 P2 findings remain open. The full verification after the P1 pass passed:
 503 of 503 backend tests including PostgreSQL and Redis integration, 106 Unity
 EditMode and 2 PlayMode tests, and an end-to-end login, join, graceful leave, and
 rejoin in Development World 2 on URP.
@@ -137,10 +137,10 @@ reproduction.
 | F53 | Movement | The motor derives substeps from the largest axis, which allows tunneling with configurations the validator accepts. The shipped configuration is safe. | `GameSimulation/Runtime/Collision/KinematicCharacterMotor.cs` | Open |
 | F54 | Content limits | Item catalog slot ids and tags allow 128 characters while the protocol allows 64, and there is no load-time compatibility check. | `WorldData/Runtime/ItemDomain/ItemCatalogCompiler.cs` | Open |
 | F55 | Collision | Very large chunk coordinates overflow differently in .NET and Unity, which can hang the compiler or server. | `GameSimulation/Runtime/Collision/CollisionWorld.cs` | Open |
-| F56 | Worker corpses | A stale completion cleans up by peer id, which LiteNetLib reuses, so it can close a new peer's corpse view. | `RealtimeSimulationService.cs` | Open |
-| F57 | Worker corpses | Opening a corpse can send a delta instead of a snapshot to the new viewer, which contradicts the documentation. | `RealtimeSimulationService.cs` | Open |
-| F58 | Worker sessions | Session invalidation entries for detached sessions are never removed. | `ActiveSimulationSessionStore.cs` | Open |
-| F59 | World actors | Despawn tombstones are never pruned although the documentation calls them bounded. | `SimulationWorker/WorldActors/WorldActorStore.cs` | Open |
+| F56 | Worker corpses | A stale completion cleans up by peer id, which LiteNetLib reuses, so it can close a new peer's corpse view. Disconnect now releases every reservation of the peer, and a stale completion only touches a context that still owns its id. No deterministic socket reproduction exists, because it depends on LiteNetLib id reuse timing. | `RealtimeSimulationService.cs` | Fixed |
+| F57 | Worker corpses | Opening a corpse can send a delta instead of a snapshot to the new viewer, which contradicts the documentation. | `RealtimeSimulationService.cs` | Fixed |
+| F58 | Worker sessions | Session invalidation entries for detached sessions are never removed. | `ActiveSimulationSessionStore.cs` | Fixed |
+| F59 | World actors | Despawn tombstones are never pruned although the documentation calls them bounded. | `SimulationWorker/WorldActors/WorldActorStore.cs` | Fixed |
 | F60 | Actor presentation | The fallback tint is also applied to authored prefabs. | `Assets/Scripts/WorldActors/WorldActorPresentationController.cs` | Open |
 | F61 | Actor presentation | The presentation registry asset has never been created, so every actor uses the fallback and the warning wrongly says the archetype is not mapped. | `WorldActorPresentationController.cs` | Open |
 | F62 | Item grant window | Cancelling a grant kills only the `dotnet run` host, not the AuthService child process. | `Assets/Editor/InventoryItemGrantWindow.cs` | Open |
