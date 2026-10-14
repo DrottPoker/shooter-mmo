@@ -386,7 +386,8 @@ character system changes collider dimensions.
 Authenticated prediction also consumes the exact carry tuple owned by
 `NetworkMovementSession`. The shared simulation allows sprint at exactly 100
 percent capacity, disables sprint above it, and linearly reduces movement to
-`0.20` at the 140 percent hard cap. A reliable newer revision is applied before
+`0.20` at the 140 percent hard cap. An involuntary death overflow above the hard
+cap is a valid carry tuple and stays at `0.20`. A reliable newer revision is applied before
 subsequent prediction and reconciliation replay. The temporary F2 panel exposes
 weight, capacity, item-state revision, movement percentage, and sprint
 eligibility for observation without becoming inventory state or authority.

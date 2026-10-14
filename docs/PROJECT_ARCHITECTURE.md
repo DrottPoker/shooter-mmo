@@ -260,8 +260,11 @@ for SimulationWorker.
 It owns movement integration, carry-state encumbrance, sprint restrictions,
 gravity, facing, capsule collision, steps, slopes, bounds, and collision-data
 codecs. Its carry wrapper delegates capacity, hard-cap, and multiplier arithmetic
-to the pure WorldData item rules. It has no Unity, transport, database, or
-presentation dependency.
+to the pure WorldData item rules. A carry tuple above the hard cap is valid,
+because death can leave an involuntary overflow. Only voluntary transitions are
+limited, through the shared `EncumbranceRules.IsAllowedVoluntaryTransition` rule
+that AuthService and the Unity target advisor both use. It has no Unity,
+transport, database, or presentation dependency.
 
 ### WorldData
 

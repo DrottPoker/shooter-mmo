@@ -677,7 +677,7 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && IsValidDurableCorpse(response.Corpse, request.ShardId, null)
             && response.CharacterRevision.CharacterId == request.CharacterId
             && response.CharacterRevision.Revision >= request.ExpectedCharacterRevision
-            && IsValidCarryValues(
+            && IsValidCarryState(
                 response.CharacterRevision.Revision,
                 response.CharacterRevision.CarriedWeight,
                 response.CharacterRevision.CarryCapacity)
@@ -753,16 +753,8 @@ public sealed class AuthServiceClient(HttpClient httpClient)
             && Math.Abs(corpse.RotationW) <= 1d;
     }
 
+    // Weight above the hard cap is valid: death can leave an involuntary overflow.
     private static bool IsValidCarryState(
-        long itemStateRevision,
-        long carriedWeight,
-        long carryCapacity)
-    {
-        return IsValidCarryValues(itemStateRevision, carriedWeight, carryCapacity)
-            && PlayerEncumbranceRules.IsWithinHardCap(carriedWeight, carryCapacity);
-    }
-
-    private static bool IsValidCarryValues(
         long itemStateRevision,
         long carriedWeight,
         long carryCapacity)

@@ -392,6 +392,25 @@ namespace ShooterMmo.WorldData.Items
             return carriedWeight <= capacity + extraCapacity;
         }
 
+        // A voluntary change must end within the hard cap. An involuntary overflow left by
+        // death may persist while a change neither adds weight nor worsens the load ratio.
+        public static bool IsAllowedVoluntaryTransition(
+            long previousWeight,
+            long previousCapacity,
+            long nextWeight,
+            long nextCapacity)
+        {
+            if (IsWithinHardCap(nextWeight, nextCapacity))
+            {
+                return true;
+            }
+
+            return !IsWithinHardCap(previousWeight, previousCapacity)
+                && nextWeight <= previousWeight
+                && ((BigInteger)nextWeight * previousCapacity)
+                    <= ((BigInteger)previousWeight * nextCapacity);
+        }
+
         public static int CalculateMovementMultiplierBasisPoints(
             long carriedWeight,
             long capacity)

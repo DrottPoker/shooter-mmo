@@ -2700,20 +2700,13 @@ namespace ShooterMmo.GameProtocol
                 && settings.MaximumPenetrationIterations <= 16;
         }
 
+        // Weight above the hard cap is valid: death can leave an involuntary overflow.
         private static bool IsValidCarryState(RealtimeCarryState carryState)
         {
-            if (carryState == null
-                || carryState.ItemStateRevision < 0
-                || carryState.CarriedWeight < 0
-                || carryState.CarryCapacity <= 0)
-            {
-                return false;
-            }
-
-            var extraCapacity = ((carryState.CarryCapacity / 5) * 2)
-                + (((carryState.CarryCapacity % 5) * 2) / 5);
-            return carryState.CarryCapacity > long.MaxValue - extraCapacity
-                || carryState.CarriedWeight <= carryState.CarryCapacity + extraCapacity;
+            return carryState != null
+                && carryState.ItemStateRevision >= 0
+                && carryState.CarriedWeight >= 0
+                && carryState.CarryCapacity > 0;
         }
 
         private static bool IsValidPlayerState(RealtimePlayerState state)

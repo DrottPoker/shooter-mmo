@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1412,9 +1411,12 @@ internal sealed class ItemTransactionContext(
                     new { CharacterId = characterId },
                     Transaction,
                     cancellationToken: cancellationToken));
-            if (!EncumbranceRules.IsWithinHardCap(carry.CarriedWeight, carry.CarryCapacity)
-                && !allowInvoluntaryHardCapOverflow
-                && !IsNonWorseningExistingOverflow(previousCarry, carry))
+            if (!allowInvoluntaryHardCapOverflow
+                && !EncumbranceRules.IsAllowedVoluntaryTransition(
+                    previousCarry.CarriedWeight,
+                    previousCarry.CarryCapacity,
+                    carry.CarriedWeight,
+                    carry.CarryCapacity))
             {
                 Reject(
                     ItemTransactionErrorCodes.CarryWeightLimitExceeded,
@@ -1508,18 +1510,6 @@ internal sealed class ItemTransactionContext(
             resultItems,
             recoveryDeliveryIds.Order().ToArray(),
             secureContainerEntitlementRevision);
-    }
-
-    private static bool IsNonWorseningExistingOverflow(
-        CharacterCarryResult previousCarry,
-        CalculatedCarryState nextCarry)
-    {
-        return !EncumbranceRules.IsWithinHardCap(
-                previousCarry.CarriedWeight,
-                previousCarry.CarryCapacity)
-            && nextCarry.CarriedWeight <= previousCarry.CarriedWeight
-            && ((BigInteger)nextCarry.CarriedWeight * previousCarry.CarryCapacity)
-                <= ((BigInteger)previousCarry.CarriedWeight * nextCarry.CarryCapacity);
     }
 
     [DoesNotReturn]

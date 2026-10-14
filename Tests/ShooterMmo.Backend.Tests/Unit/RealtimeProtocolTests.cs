@@ -95,9 +95,18 @@ public sealed class RealtimeProtocolTests
         Assert.Equal(42, actual.ItemStateRevision);
         Assert.Equal(280, actual.CarriedWeight);
         Assert.Equal(200, actual.CarryCapacity);
+
+        var overflow = new RealtimeCarryState(43, 348, 200);
+        var overflowDecoded = RealtimeProtocol.TryDecodeCarryStateChanged(
+            RealtimeProtocol.EncodeCarryStateChanged(overflow),
+            out var overflowActual,
+            out var overflowError);
+
+        Assert.True(overflowDecoded, overflowError);
+        Assert.Equal(348, overflowActual.CarriedWeight);
         Assert.Throws<ArgumentException>(() =>
             RealtimeProtocol.EncodeCarryStateChanged(
-                new RealtimeCarryState(43, 281, 200)));
+                new RealtimeCarryState(44, -1, 200)));
     }
 
     [Fact]

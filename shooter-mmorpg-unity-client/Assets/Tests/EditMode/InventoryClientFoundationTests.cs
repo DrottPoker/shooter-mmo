@@ -741,6 +741,49 @@ namespace ShooterMmo.Tests.EditMode
             };
         }
 
+        [Test]
+        public void TargetAdvisorAllowsShrinkingAnInvoluntaryDeathOverflow()
+        {
+            // Death left 300 weight against capacity 200, above the 280 hard cap.
+            var overflowState = CreateAdvisorStateWithoutBag(300, 200);
+            var external = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                overflowState.Bank.ContainerId,
+                "bank",
+                0,
+                string.Empty,
+                Guid.Empty);
+            var permanentLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                overflowState.FullSnapshot.PermanentInventory.ContainerId,
+                "permanent_inventory",
+                0,
+                string.Empty,
+                Guid.Empty);
+
+            Assert.That(
+                InventoryTargetAdvisor.CanPlaceInContainer(
+                    overflowState,
+                    CreateItem("ammunition.training_556", 1),
+                    external,
+                    overflowState.FullSnapshot.PermanentInventory,
+                    overflowState.FullSnapshot.PermanentInventory.Slots[0],
+                    out var addReason),
+                Is.False);
+            Assert.That(addReason, Does.Contain("140 percent"));
+
+            Assert.That(
+                InventoryTargetAdvisor.CanSwap(
+                    overflowState,
+                    CreateItem("ammunition.training_556", 1),
+                    external,
+                    CreateItem("weapon.training_rifle", 1),
+                    permanentLocation,
+                    out var shrinkReason),
+                Is.True,
+                shrinkReason);
+        }
+
         private InventoryClientState CreateAdvisorState(
             long carriedWeight,
             long carryCapacity,

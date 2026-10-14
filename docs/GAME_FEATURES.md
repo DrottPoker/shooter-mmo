@@ -322,7 +322,8 @@ Death cannot be rejected because removing the equipped Bag bonus leaves retained
 Secure Container weight above 140 percent. This involuntary state is durable,
 but subsequent item operations may neither increase weight nor worsen the exact
 load ratio until the character is within the hard cap. Any further weight
-increase or ratio degradation is rejected.
+increase or ratio degradation is rejected. The character can still join a Shard
+in this state and moves at the minimum `0.20` multiplier without sprint.
 
 Player corpses retain their Shard, transform, source name, generic presentation
 key, three item sections, snapshots, revisions, database creation time, and one

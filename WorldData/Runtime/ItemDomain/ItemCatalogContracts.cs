@@ -80,7 +80,9 @@ namespace ShooterMmo.WorldData.Items
         public long UnitWeight = -1;
         public int MaximumStackSize;
         public string[] EquipmentSlots;
+#pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
         public bool? PlayerDestroyable;
+#pragma warning restore UAC1001
         public ItemLocationEligibilityAuthoringEntry LocationEligibility;
         public string[] DefaultPolicies;
         public BagDefinitionAuthoringEntry Bag;
@@ -89,7 +91,9 @@ namespace ShooterMmo.WorldData.Items
     [Serializable]
     public sealed class ItemLocationEligibilityAuthoringEntry
     {
+#pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
         public bool? SecureContainer;
+#pragma warning restore UAC1001
     }
 
     [Serializable]
