@@ -170,6 +170,77 @@ public sealed class ItemPolicyLifecycleIntegrationTests
         Assert.Equal(1, await CountQuestItemsAsync(context, "quest-alpha"));
     }
 
+    [PostgresIntegrationFact]
+    public async Task QuestAbandonInRecoveryLeavesNoEmptyDeliveryOrSlot()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+        var state = await LoadStateAsync(context, player.Character.Id);
+        var grant = await GrantQuestItemAsync(
+            context,
+            player.Character.Id,
+            state.Revision,
+            state.PermanentInventoryContainerId,
+            0,
+            "quest-recovery");
+        AssertSucceeded(grant);
+        var death = await context.CorpseService.ProcessSystemDeathAsync(
+            Guid.NewGuid(),
+            new ProcessPlayerDeathCommand(
+                Guid.NewGuid(),
+                player.Character.Id,
+                Assert.Single(grant.CharacterRevisions).Revision,
+                "local-shard-1",
+                0d,
+                0d,
+                0d,
+                0d,
+                0d,
+                0d,
+                1d,
+                "corpse.generic_loot_crate"),
+            CancellationToken.None);
+        Assert.True(death.Succeeded, death.Error?.Message);
+
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        var recoveryContainerId = await connection.ExecuteScalarAsync<Guid>(
+            "select recovery_storage_container_id from character_item_states where character_id = @CharacterId;",
+            new { CharacterId = player.Character.Id });
+        Assert.Equal(1, await CountRecoveryRowsAsync(connection, player.Character.Id, recoveryContainerId));
+
+        var abandoned = await context.QuestItemService.AbandonAsync(
+            Guid.NewGuid(),
+            player.Character.Id,
+            (await LoadStateAsync(context, player.Character.Id)).Revision,
+            "quest-recovery",
+            CancellationToken.None);
+        AssertSucceeded(abandoned);
+
+        Assert.Equal(0, await CountQuestItemsAsync(context, "quest-recovery"));
+        Assert.Equal(0, await CountRecoveryRowsAsync(connection, player.Character.Id, recoveryContainerId));
+        var recovery = await context.ItemQueryService.GetCharacterRecoveryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None);
+        Assert.True(recovery.Succeeded, recovery.Error?.Message);
+        Assert.Empty(recovery.Value!.RecoveryStorage.Deliveries);
+    }
+
+    private static async Task<int> CountRecoveryRowsAsync(
+        Npgsql.NpgsqlConnection connection,
+        Guid characterId,
+        Guid recoveryContainerId)
+    {
+        var deliveries = await connection.ExecuteScalarAsync<int>(
+            "select count(*) from recovery_deliveries where character_id = @CharacterId and claimed_at is null;",
+            new { CharacterId = characterId });
+        var slots = await connection.ExecuteScalarAsync<int>(
+            "select count(*) from item_container_slots where container_id = @ContainerId;",
+            new { ContainerId = recoveryContainerId });
+        Assert.Equal(deliveries, slots);
+        return deliveries;
+    }
+
     private static Task<ItemTransactionResult> GrantQuestItemAsync(
         PostgresIntegrationTestContext context,
         Guid characterId,

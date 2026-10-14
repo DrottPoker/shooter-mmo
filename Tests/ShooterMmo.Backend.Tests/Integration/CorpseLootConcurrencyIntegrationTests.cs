@@ -807,6 +807,65 @@ public sealed class CorpseLootConcurrencyIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CorpseBagCannotLeaveItsEquipmentSlotThroughAnInternalMove()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "corpse-bag-slot-source@example.com",
+            "corpse_bag_slot_source",
+            "Corpse Bag Slot Source");
+        var viewer = await context.RegisterPlayerAsync(
+            "corpse-bag-slot-viewer@example.com",
+            "corpse_bag_slot_viewer",
+            "Corpse Bag Slot Viewer");
+        var corpseBag = await EquipNewBagAsync(context, source);
+        var looseBag = await GrantAsync(
+            context,
+            source,
+            "bag.field_pack",
+            1,
+            (await GetSnapshotAsync(context, source)).PermanentInventory.ContainerId,
+            0);
+        var death = await CreateCorpseAsync(context, source);
+        var corpseInventoryId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "general_inventory");
+        var corpseEquipmentId = await LoadCorpseSectionContainerAsync(
+            context,
+            death.Corpse.CorpseId,
+            "equipment");
+        var bagSlotIndex = await LoadEquipmentSlotIndexAsync(context, "bag");
+        await AssertLocationAsync(context, corpseBag, corpseEquipmentId, bagSlotIndex);
+        var looseBagSlotIndex = (await LoadItemAsync(context, looseBag)).ContainerSlotIndex!.Value;
+
+        // Even an empty corpse Bag owns the corpse Bag section, so it must stay equipped.
+        var moved = await MoveWithinCorpseAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, corpseBag),
+            corpseInventoryId,
+            looseBagSlotIndex + 1);
+        Assert.False(moved.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.BagStateChanged, moved.Error!.Code);
+        await AssertLocationAsync(context, corpseBag, corpseEquipmentId, bagSlotIndex);
+
+        var swapped = await MoveWithinCorpseWithTargetAsync(
+            context,
+            viewer.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, looseBag),
+            corpseEquipmentId,
+            bagSlotIndex,
+            await LoadItemAsync(context, corpseBag));
+        Assert.False(swapped.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.BagStateChanged, swapped.Error!.Code);
+        await AssertLocationAsync(context, corpseBag, corpseEquipmentId, bagSlotIndex);
+        await AssertLocationAsync(context, looseBag, corpseInventoryId, looseBagSlotIndex);
+    }
+
+    [PostgresIntegrationFact]
     public async Task CorpseDepositEnforcesPolicyAndSwapHardCapWithoutPartialMutation()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

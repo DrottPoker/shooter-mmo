@@ -44,12 +44,12 @@ worker. Zone and layer partitioning are not implemented.
 | `GET /api/item-catalog` and `GET /api/items/catalog` | Account session | Return the neutral current catalog with revision ETag validation |
 | `GET /api/characters/{characterId}/item-state` and `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent no-store character item-state snapshot |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
-| `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store Recovery Storage deliveries |
+| `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
 | `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
 | `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
 | `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
-| `POST /api/items/secure-container-tier` | Offline account session | Apply an account Secure Container tier with every character revision |
+| `POST /api/items/secure-container-tier` | Offline account session | Return the account to the base Secure Container tier with every character revision. A larger tier needs a trusted entitlement source, so this route returns `403` with `item_authority_required` for it |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew exact worker runtime |
@@ -549,7 +549,12 @@ concurrent inspection, and authoritative looting:
 - Recovery Storage remains system-write-only. Internal delivery creation and
   complete claims to permanent inventory or bank preserve item identity,
   quantity, and policy lineage. Recovery custody remains excluded from weight.
+  Player reads return only unclaimed deliveries. A claimed delivery is kept as
+  history for the audit retention period and then removed by maintenance.
 - Secure Container tier changes update every active character on the account.
+  An account actor may only select the catalog base tier. A larger tier is
+  granted only by a trusted entitlement or purchase source with system
+  authority.
   Removed slots are drained in descending order to deterministic
   `secure_capacity_reduction` Recovery deliveries before the slots are removed.
   Character bootstrap and tier changes share one account-entitlement advisory
@@ -561,6 +566,8 @@ concurrent inspection, and authoritative looting:
   same transaction kernel. Insurance removal changes policy lifecycle without
   replacing the item. Quest abandon removes only active protected items with the
   exact quest-grant source id, and reaccept suppresses duplicate active grants.
+  Abandoning an item held in Recovery Storage also removes its slot row and any
+  unclaimed delivery left without items, so no empty delivery remains.
 - Account mutation requests derive authority from the authenticated principal
   and use an offline-required actor. Character and item-state rows are locked
   before checking active simulation sessions, using the same character lock as
@@ -616,7 +623,11 @@ concurrent inspection, and authoritative looting:
   replay with the same authoritative character, Shard, transform, and
   presentation data returns the original corpse, absolute expiry, Recovery
   deliveries, and committed character revision without repartitioning. Reusing
-  the event id with different data returns `death_event_conflict`.
+  the event id with different data returns `death_event_conflict`. The event
+  row is removed together with its closed corpse after the closed-corpse
+  retention period. Every death request carries the expected character
+  revision and the partition always advances it, so a replay that outlives the
+  event row is rejected as a revision conflict instead of partitioning twice.
 - One death transaction leaves currency, bank, existing Recovery Storage, and
   Secure Container contents unchanged. Protected items and otherwise-lootable
   active insured items move to source-correlated Recovery deliveries. Insurance
@@ -652,9 +663,11 @@ concurrent inspection, and authoritative looting:
   internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
   swaps reuse `ItemTransactionService` with targeted item, container, and
   Bag-root revisions. Internal moves can split, merge, or swap across the three
-  corpse sections without advancing character item-state or carry. Corpse
-  equipment destinations carry canonical equipment-slot ids and validate
-  definition compatibility. Unrelated corpse changes may commit concurrently,
+  corpse sections without advancing character item-state or carry. The corpse
+  Bag owns the corpse Bag section, so it never leaves its equipment slot through
+  an internal move or swap, even when empty; only an atomic Bag aggregate swap
+  replaces it. Corpse equipment destinations carry canonical equipment-slot ids
+  and validate definition compatibility. Unrelated corpse changes may commit concurrently,
   competing custody has one stable winner, and no PostgreSQL transaction remains
   open across a client network wait.
 - The worker broadcasts each committed targeted delta or replacement to every
@@ -910,7 +923,8 @@ not a live World rebind.
 Phase 15 adds partial indexes for completed operation retention, closed-corpse
 retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
 uses deterministic system-authority operations to destroy expired Recovery
-items with durable audit, removes empty closed corpses only after retention, and
+items with durable audit, removes empty closed corpses only after retention,
+removes claimed Recovery deliveries after the audit retention period, and
 deletes old operation rows only when no destruction or death record references
 them. Every database unit uses statement and lock limits plus `skip locked`
 batch selection where concurrent maintenance is permitted.

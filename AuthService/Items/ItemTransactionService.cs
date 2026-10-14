@@ -1648,6 +1648,33 @@ public sealed partial class ItemTransactionService(
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
+            if (string.Equals(item.SourceContainerType, "recovery_storage", StringComparison.Ordinal))
+            {
+                // Recovery items own their slot row, and a delivery that loses its last
+                // item can never be claimed, so both are removed with the item.
+                await context.Connection.ExecuteAsync(new CommandDefinition(
+                    """
+                    delete from item_container_slots
+                    where container_id = @ContainerId
+                      and slot_index = @SlotIndex;
+
+                    delete from recovery_deliveries delivery
+                    where delivery.recovery_storage_container_id = @ContainerId
+                      and delivery.claimed_at is null
+                      and not exists (
+                          select 1
+                          from recovery_delivery_items link
+                          where link.recovery_delivery_id = delivery.id);
+                    """,
+                    new
+                    {
+                        item.ContainerId,
+                        SlotIndex = item.ContainerSlotIndex
+                    },
+                    context.Transaction,
+                    cancellationToken: cancellationToken));
+            }
+
             context.AddItemAudit("quest_item_removed", item.ItemInstanceId, beforeState, null);
             context.TouchContainer(item.ContainerId);
         }
@@ -2291,6 +2318,27 @@ public sealed partial class ItemTransactionService(
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemNotFound,
                 "The Secure Container tier was not found.");
+        }
+
+        // An account may always return to the free base tier. A larger tier is granted
+        // only by a trusted entitlement or purchase source running with system authority.
+        if (context.Actor.Authority != ItemTransactionAuthority.System)
+        {
+            var baseTierId = await context.Connection.ExecuteScalarAsync<string>(
+                new CommandDefinition(
+                    """
+                    select base_secure_container_tier_id
+                    from item_catalog_revisions
+                    where is_current;
+                    """,
+                    transaction: context.Transaction,
+                    cancellationToken: cancellationToken));
+            if (!string.Equals(tier.TierId, baseTierId, StringComparison.Ordinal))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.AuthorityRequired,
+                    "Only an entitlement source can grant a Secure Container tier above the base tier.");
+            }
         }
 
         if (string.Equals(entitlement.TierId, tier.TierId, StringComparison.Ordinal))

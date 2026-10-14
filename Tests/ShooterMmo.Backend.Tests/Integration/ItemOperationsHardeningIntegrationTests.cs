@@ -203,21 +203,22 @@ public sealed class ItemOperationsHardeningIntegrationTests
         var deliveryId = Assert.Single(delivery.RecoveryDeliveryIds);
         snapshot = await GetSnapshotAsync(context, player);
         var deathOperationId = Guid.NewGuid();
+        var deathCommand = new ProcessPlayerDeathCommand(
+            Guid.NewGuid(),
+            player.Character.Id,
+            snapshot.ItemStateRevision,
+            "local-shard-1",
+            0d,
+            0d,
+            0d,
+            0d,
+            0d,
+            0d,
+            1d,
+            SimulationWorker.Corpses.MobCorpseLifecycleService.DefaultPresentationKey);
         var death = await context.CorpseService.ProcessSystemDeathAsync(
             deathOperationId,
-            new ProcessPlayerDeathCommand(
-                Guid.NewGuid(),
-                player.Character.Id,
-                snapshot.ItemStateRevision,
-                "local-shard-1",
-                0d,
-                0d,
-                0d,
-                0d,
-                0d,
-                0d,
-                1d,
-                SimulationWorker.Corpses.MobCorpseLifecycleService.DefaultPresentationKey),
+            deathCommand,
             CancellationToken.None);
         Assert.True(death.Succeeded, death.Error?.Message);
         var corpseId = death.Value!.Corpse.CorpseId;
@@ -341,6 +342,145 @@ public sealed class ItemOperationsHardeningIntegrationTests
         Assert.Equal(1, metricSnapshot.ExpiredRecoveryDeliveries);
         Assert.Equal(1, metricSnapshot.RemovedClosedCorpses);
         Assert.True(metricSnapshot.RemovedAuditOperations >= 1);
+
+        // The death event row left with its corpse, but the advanced character revision
+        // still stops a late replay from partitioning the character a second time.
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from death_events where id = @DeathEventId;",
+                new { deathCommand.DeathEventId }));
+        var lateReplay = await context.CorpseService.ProcessSystemDeathAsync(
+            Guid.NewGuid(),
+            deathCommand,
+            CancellationToken.None);
+        Assert.False(lateReplay.Succeeded);
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from corpses where source_character_id = @CharacterId;",
+                new { CharacterId = player.Character.Id }));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task ClaimedRecoveryDeliveriesAreHiddenAndRemovedAfterRetention()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "claimed-recovery@example.com",
+            "claimed_recovery",
+            "Claimed Recovery");
+        var snapshot = await GetSnapshotAsync(context, player);
+        var grant = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new GrantItemCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    "material.iron_ore",
+                    2,
+                    snapshot.PermanentInventory.ContainerId,
+                    0)),
+            CancellationToken.None);
+        Assert.True(grant.Succeeded, grant.Error?.Message);
+        var item = Assert.Single(grant.ItemRevisions);
+        snapshot = await GetSnapshotAsync(context, player);
+        var delivery = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<AddRecoveryDeliveryCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new AddRecoveryDeliveryCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    "claimed_retention",
+                    Guid.NewGuid().ToString("N"),
+                    null,
+                    null,
+                    [new ItemRevisionExpectation(item.ItemInstanceId, item.Revision)])),
+            CancellationToken.None);
+        Assert.True(delivery.Succeeded, delivery.Error?.Message);
+        var deliveryId = Assert.Single(delivery.RecoveryDeliveryIds);
+
+        var recovery = await GetRecoveryAsync(context, player);
+        var pending = Assert.Single(recovery.RecoveryStorage.Deliveries);
+        var claim = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<ClaimRecoveryDeliveryCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new ClaimRecoveryDeliveryCommand(
+                    player.Character.Id,
+                    null,
+                    deliveryId,
+                    pending.Revision,
+                    snapshot.PermanentInventory.ContainerId,
+                    pending.Items
+                        .Select(entry => new ItemRevisionExpectation(
+                            entry.Item.ItemInstanceId,
+                            entry.Item.Revision))
+                        .ToArray())),
+            CancellationToken.None);
+        Assert.True(claim.Succeeded, claim.Error?.Message);
+
+        // A claimed delivery is history only and never returns from the player read.
+        Assert.Empty((await GetRecoveryAsync(context, player)).RecoveryStorage.Deliveries);
+
+        var options = ItemOperationsOptions.CreateDefaults() with
+        {
+            AuditRetention = TimeSpan.FromDays(1),
+            CleanupBatchSize = 64
+        };
+        using var metrics = new ItemOperationsMetrics();
+        var maintenance = new ItemOperationsMaintenanceService(
+            context.DataSource,
+            new ItemTransactionService(context.DataSource, metrics, options),
+            options,
+            metrics,
+            NullLogger<ItemOperationsMaintenanceService>.Instance);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+
+        Assert.Equal(0, (await maintenance.RunOnceAsync(CancellationToken.None)).RemovedClaimedRecoveryDeliveries);
+        Assert.Equal(
+            1,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from recovery_deliveries where id = @DeliveryId;",
+                new { DeliveryId = deliveryId }));
+
+        await connection.ExecuteAsync(
+            """
+            update recovery_deliveries
+            set created_at = now() - interval '3 days',
+                available_at = case when available_at is null then null else now() - interval '3 days' end,
+                claimed_at = now() - interval '2 days'
+            where id = @DeliveryId;
+            """,
+            new { DeliveryId = deliveryId });
+        var result = await maintenance.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.RemovedClaimedRecoveryDeliveries);
+        Assert.Equal(1, metrics.Capture().RemovedClaimedRecoveryDeliveries);
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from recovery_deliveries where id = @DeliveryId;",
+                new { DeliveryId = deliveryId }));
+        Assert.Equal(
+            2,
+            await connection.ExecuteScalarAsync<int>(
+                "select quantity from item_instances where id = @ItemId;",
+                new { ItemId = item.ItemInstanceId }));
+    }
+
+    private static async Task<CharacterRecoverySnapshotResponse> GetRecoveryAsync(
+        PostgresIntegrationTestContext context,
+        IntegrationPlayer player)
+    {
+        var result = await context.ItemQueryService.GetCharacterRecoveryAsync(
+            player.Registration.AccountId,
+            player.Character.Id,
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        return result.Value!;
     }
 
     private static async Task<CharacterInventorySnapshotResponse> GetSnapshotAsync(

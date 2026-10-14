@@ -49,9 +49,9 @@ current tests do not exercise.
 
 ## Progress
 
-As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done,
-together with the P2 findings that shared their code. 49 findings are fixed and
-24 P2 findings remain open. The full verification after the P1 pass passed:
+As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done, and
+the P2 pass is in progress, one verified group per commit. 58 findings are fixed
+and 15 P2 findings remain open. The full verification after the P1 pass passed:
 503 of 503 backend tests including PostgreSQL and Redis integration, 106 Unity
 EditMode and 2 PlayMode tests, and an end-to-end login, join, graceful leave, and
 rejoin in Development World 2 on URP.
@@ -128,12 +128,12 @@ reproduction.
 | F44 | Worker auth | Worker secrets are looked up case-insensitively, so case variants of one worker id authenticate as separate workers. | `AuthService/Auth/SimulationWorkerAuthenticationHandler.cs` | Fixed |
 | F45 | Placement | Placement locks the worker row but not the assignment row, which can bind a ticket to a stale assignment during a worker restart. | `ShardService.cs` | Fixed |
 | F46 | Development bots | Player placement ignores in-memory bot reservations, so bots and players can over-reserve a worker. | `ShardService.cs`, `DevelopmentSimulationBotAuthority.cs` | Fixed |
-| F47 | Recovery | Recovery reads return every claimed delivery forever. | `AuthService/Items/ItemQueryService.cs` | Open |
-| F48 | Quest items | Abandoning quest items held in Recovery leaves an empty, unclaimable delivery. | `ItemTransactionService.cs` | Open |
-| F49 | Corpses | An internal corpse move can place the corpse Bag in a general slot, which breaks the Bag invariants. | `ItemTransactionService.CorpseLoot.cs` | Open |
+| F47 | Recovery | Recovery reads return every claimed delivery forever. | `AuthService/Items/ItemQueryService.cs` | Fixed |
+| F48 | Quest items | Abandoning quest items held in Recovery leaves an empty, unclaimable delivery. | `ItemTransactionService.cs` | Fixed |
+| F49 | Corpses | An internal corpse move can place the corpse Bag in a general slot, which breaks the Bag invariants. | `ItemTransactionService.CorpseLoot.cs` | Fixed |
 | F50 | Item bootstrap | The startup weight recompute can write a stale weight during a rolling deploy. | `CharacterItemStateBootstrapper.cs` | Fixed |
-| F51 | Secure Container | Any account can set its own Secure Container tier. Latent until a second tier exists. | `AuthService/Items/ItemEndpoints.cs` | Open |
-| F52 | Death events | Death idempotency records are deleted with closed corpses after 30 days, which allows a late replay to partition items again. | `ItemOperationsMaintenanceService.cs` | Open |
+| F51 | Secure Container | Any account can set its own Secure Container tier. Latent until a second tier exists. Account actors may now only select the base tier. | `AuthService/Items/ItemEndpoints.cs`, `ItemTransactionService.cs` | Fixed |
+| F52 | Death events | Death idempotency records are deleted with closed corpses after 30 days, which allows a late replay to partition items again. Every death request now requires the expected character revision, which the partition always advances. | `ItemOperationsMaintenanceService.cs`, `ItemTransactionService.Death.cs` | Fixed |
 | F53 | Movement | The motor derives substeps from the largest axis, which allows tunneling with configurations the validator accepts. The shipped configuration is safe. | `GameSimulation/Runtime/Collision/KinematicCharacterMotor.cs` | Open |
 | F54 | Content limits | Item catalog slot ids and tags allow 128 characters while the protocol allows 64, and there is no load-time compatibility check. | `WorldData/Runtime/ItemDomain/ItemCatalogCompiler.cs` | Open |
 | F55 | Collision | Very large chunk coordinates overflow differently in .NET and Unity, which can hang the compiler or server. | `GameSimulation/Runtime/Collision/CollisionWorld.cs` | Open |

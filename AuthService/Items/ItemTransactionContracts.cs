@@ -220,7 +220,7 @@ public sealed record AbandonQuestItemsCommand(
 public sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
     Guid CharacterId,
-    long? ExpectedCharacterRevision,
+    long ExpectedCharacterRevision,
     string ShardId,
     double PositionX,
     double PositionY,

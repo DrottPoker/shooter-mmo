@@ -9,7 +9,8 @@ namespace AuthService.Items;
 public sealed record ItemOperationsMaintenanceResult(
     int ExpiredRecoveryDeliveries,
     int RemovedClosedCorpses,
-    int RemovedAuditOperations);
+    int RemovedAuditOperations,
+    int RemovedClaimedRecoveryDeliveries = 0);
 
 public sealed class ItemOperationsMaintenanceService(
     NpgsqlDataSource dataSource,
@@ -23,15 +24,17 @@ public sealed class ItemOperationsMaintenanceService(
     {
         var expiredRecoveryDeliveries = await ExpireRecoveryDeliveriesAsync(
             cancellationToken);
-        var (removedClosedCorpses, removedAuditOperations) =
+        var (removedClosedCorpses, removedAuditOperations, removedClaimedRecoveryDeliveries) =
             await RemoveRetainedRowsAsync(cancellationToken);
         metrics.RecordCleanup("recovery_delivery", expiredRecoveryDeliveries);
         metrics.RecordCleanup("closed_corpse", removedClosedCorpses);
         metrics.RecordCleanup("audit_operation", removedAuditOperations);
+        metrics.RecordCleanup("claimed_recovery_delivery", removedClaimedRecoveryDeliveries);
         return new ItemOperationsMaintenanceResult(
             expiredRecoveryDeliveries,
             removedClosedCorpses,
-            removedAuditOperations);
+            removedAuditOperations,
+            removedClaimedRecoveryDeliveries);
     }
 
     private async Task<int> ExpireRecoveryDeliveriesAsync(
@@ -87,7 +90,7 @@ public sealed class ItemOperationsMaintenanceService(
         return expiredCount;
     }
 
-    private async Task<(int RemovedClosedCorpses, int RemovedAuditOperations)>
+    private async Task<(int RemovedClosedCorpses, int RemovedAuditOperations, int RemovedClaimedRecoveryDeliveries)>
         RemoveRetainedRowsAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -203,8 +206,36 @@ public sealed class ItemOperationsMaintenanceService(
                     },
                     transaction,
                     cancellationToken: cancellationToken));
+            // A claimed delivery is history only; its items already left Recovery Storage.
+            var removedClaimedRecoveryDeliveries = await connection.ExecuteScalarAsync<int>(
+                new CommandDefinition(
+                    """
+                    with candidates as (
+                        select delivery.id
+                        from recovery_deliveries delivery
+                        where delivery.claimed_at is not null
+                          and delivery.claimed_at
+                              <= now() - make_interval(secs => @RetentionSeconds)
+                        order by delivery.claimed_at, delivery.id
+                        limit @BatchSize
+                        for update of delivery skip locked
+                    ), deleted as (
+                        delete from recovery_deliveries delivery
+                        using candidates
+                        where delivery.id = candidates.id
+                        returning delivery.id
+                    )
+                    select count(*)::integer from deleted;
+                    """,
+                    new
+                    {
+                        RetentionSeconds = options.AuditRetention.TotalSeconds,
+                        BatchSize = options.CleanupBatchSize
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken));
             await transaction.CommitAsync(cancellationToken);
-            return (corpseIds.Length, removedAuditOperations);
+            return (corpseIds.Length, removedAuditOperations, removedClaimedRecoveryDeliveries);
         }
         catch
         {
@@ -249,13 +280,15 @@ public sealed class ItemOperationsMaintenanceHostedService(
             var result = await service.RunOnceAsync(cancellationToken);
             if (result.ExpiredRecoveryDeliveries > 0
                 || result.RemovedClosedCorpses > 0
-                || result.RemovedAuditOperations > 0)
+                || result.RemovedAuditOperations > 0
+                || result.RemovedClaimedRecoveryDeliveries > 0)
             {
                 logger.LogInformation(
-                    "Item operations maintenance expired {ExpiredRecoveryDeliveries} Recovery deliveries, removed {RemovedClosedCorpses} retained closed corpses, and removed {RemovedAuditOperations} retained audit operations.",
+                    "Item operations maintenance expired {ExpiredRecoveryDeliveries} Recovery deliveries, removed {RemovedClosedCorpses} retained closed corpses, {RemovedAuditOperations} retained audit operations, and {RemovedClaimedRecoveryDeliveries} retained claimed Recovery deliveries.",
                     result.ExpiredRecoveryDeliveries,
                     result.RemovedClosedCorpses,
-                    result.RemovedAuditOperations);
+                    result.RemovedAuditOperations,
+                    result.RemovedClaimedRecoveryDeliveries);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

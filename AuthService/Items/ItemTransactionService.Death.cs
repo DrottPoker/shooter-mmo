@@ -80,16 +80,10 @@ public sealed partial class ItemTransactionService
             return;
         }
 
-        if (context.Actor.Authority != ItemTransactionAuthority.System
-            && command.ExpectedCharacterRevision is null)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemStateConflict,
-                "Simulation-authorized death processing requires an expected character revision.");
-        }
-
-        if (command.ExpectedCharacterRevision is not null
-            && characterState.Revision != command.ExpectedCharacterRevision.Value)
+        // The death event row is removed with its closed corpse after audit retention.
+        // The partition always advances the revision, so a replay that outlives the
+        // event row is still rejected here instead of partitioning a second time.
+        if (characterState.Revision != command.ExpectedCharacterRevision)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStateConflict,

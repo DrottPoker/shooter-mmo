@@ -608,11 +608,31 @@ public sealed class ItemConcurrencyIntegrationTests
 
         var firstInitialState = await LoadStateAsync(context, player.Character.Id);
         var secondInitialState = await LoadStateAsync(context, secondCharacter.Id);
+        // A player cannot grant itself a larger tier; only a trusted entitlement source can.
+        var selfGrant = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                new ChangeSecureContainerTierCommand(
+                    player.Registration.AccountId,
+                    0,
+                    "secure_container.test_six",
+                    [
+                        new CharacterRevisionExpectation(
+                            secondCharacter.Id,
+                            secondInitialState.Revision),
+                        new CharacterRevisionExpectation(
+                            player.Character.Id,
+                            firstInitialState.Revision)
+                    ])),
+            CancellationToken.None);
+        AssertRejected(selfGrant, ItemTransactionErrorCodes.AuthorityRequired);
+
         var expandOperationId = Guid.NewGuid();
         var expand = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
                 expandOperationId,
-                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                ItemTransactionActor.ForSystem(),
                 new ChangeSecureContainerTierCommand(
                     player.Registration.AccountId,
                     0,
@@ -632,7 +652,7 @@ public sealed class ItemConcurrencyIntegrationTests
         var replayedExpand = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
                 expandOperationId,
-                ItemTransactionActor.ForAccount(player.Registration.AccountId),
+                ItemTransactionActor.ForSystem(),
                 new ChangeSecureContainerTierCommand(
                     player.Registration.AccountId,
                     0,

@@ -733,6 +733,18 @@ public sealed partial class ItemTransactionService
                 "A non-empty corpse Bag cannot use an ordinary internal slot move.");
         }
 
+        if (source.IsBag
+            && await OwnsCorpseBagSectionAsync(
+                context,
+                command.CorpseId,
+                source.ItemInstanceId,
+                cancellationToken))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.BagStateChanged,
+                "The corpse Bag owns the corpse Bag section and cannot leave its equipment slot.");
+        }
+
         var definition = await context.LoadDefinitionAsync(
             source.DefinitionId,
             cancellationToken);
@@ -807,6 +819,18 @@ public sealed partial class ItemTransactionService
                 ItemTransactionContext.Reject(
                     ItemTransactionErrorCodes.BagStateChanged,
                     "A non-empty corpse Bag cannot use an ordinary internal slot swap.");
+            }
+
+            if (target.IsBag
+                && await OwnsCorpseBagSectionAsync(
+                    context,
+                    command.CorpseId,
+                    target.ItemInstanceId,
+                    cancellationToken))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.BagStateChanged,
+                    "The corpse Bag owns the corpse Bag section and cannot leave its equipment slot.");
             }
 
             await context.SelectDestinationSlotAsync(
@@ -1559,6 +1583,26 @@ public sealed partial class ItemTransactionService
         }
 
         return corpse;
+    }
+
+    private static Task<bool> OwnsCorpseBagSectionAsync(
+        ItemTransactionContext context,
+        Guid corpseId,
+        Guid bagItemInstanceId,
+        CancellationToken cancellationToken)
+    {
+        return context.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            """
+            select exists (
+                select 1
+                from item_containers contents
+                join corpse_sections section on section.container_id = contents.id
+                where contents.bound_bag_item_instance_id = @BagItemInstanceId
+                  and section.corpse_id = @CorpseId);
+            """,
+            new { CorpseId = corpseId, BagItemInstanceId = bagItemInstanceId },
+            context.Transaction,
+            cancellationToken: cancellationToken));
     }
 
     private static Task<bool> IsCorpseSectionContainerAsync(
