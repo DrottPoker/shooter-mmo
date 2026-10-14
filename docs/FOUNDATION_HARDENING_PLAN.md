@@ -1,6 +1,6 @@
 # Foundation Hardening Plan
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 Status: Active. This document tracks defects found in a full audit of the
 existing foundation before new gameplay work starts. It is a work plan, not a
@@ -46,6 +46,15 @@ Setup fixes made during the baseline:
 All tests passing does not mean the foundation is correct. Most findings below
 are race conditions, failure paths, and cross-component contracts that the
 current tests do not exercise.
+
+## Progress
+
+As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done,
+together with the P2 findings that shared their code. 49 findings are fixed and
+24 P2 findings remain open. The full verification after the P1 pass passed:
+503 of 503 backend tests including PostgreSQL and Redis integration, 106 Unity
+EditMode and 2 PlayMode tests, and an end-to-end login, join, graceful leave, and
+rejoin in Development World 2 on URP.
 
 ## Priority Levels
 
