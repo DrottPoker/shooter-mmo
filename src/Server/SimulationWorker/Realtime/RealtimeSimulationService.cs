@@ -68,6 +68,8 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly RealtimeSimulationClock clock = new();
     private readonly EntityPresenceReplicator presence;
     private readonly CarryStateSynchronizer carrySync;
+    private readonly SessionAuthorityOperations sessionOperations;
+    private readonly RealtimeSessionTeardown teardown;
     private NetManager? server;
     private uint snapshotSequence;
     private uint corpsePresenceSequence;
@@ -157,6 +159,21 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             connectionBindings,
             peerRegistry,
             sender);
+        sessionOperations = new SessionAuthorityOperations(
+            releaseService,
+            operationTracker,
+            logger);
+        teardown = new RealtimeSessionTeardown(
+            peerRegistry,
+            sender,
+            presence,
+            sessionStore,
+            carryStateStore,
+            corpseViewers,
+            worldInteractionLeases,
+            connectionBindings,
+            entityRegistry,
+            networkMetrics);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -346,12 +363,12 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         {
             if (sessionStore.IsSupersededByReconnect(context.Session))
             {
-                DetachSupersededPeer(context);
+                teardown.DetachSupersededPeer(context);
             }
             else
             {
-                RemoveBoundEntity(context, context.Session, "connection_closed");
-                operationTracker.Track(ReleaseDisconnectedSessionAsync(context.Session));
+                teardown.RemoveBoundEntity(context, context.Session, "connection_closed");
+                sessionOperations.ReleaseDetachedInBackground(context.Session);
             }
         }
 
@@ -820,28 +837,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 CancellationToken.None);
     }
 
-    private async Task ReleaseDisconnectedSessionAsync(ActiveSimulationSession session)
-    {
-        try
-        {
-            var result = await releaseService.ReleaseDetachedAsync(session, CancellationToken.None);
-            if (!result.Succeeded)
-            {
-                logger.LogWarning(
-                    "[SIMULATION] Could not release disconnected simulation session {SimulationSessionId}: {Code}. Its database lease expires without renewal.",
-                    session.SimulationSessionId,
-                    result.Code);
-            }
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "[SIMULATION] Could not release disconnected simulation session {SimulationSessionId}.",
-                session.SimulationSessionId);
-        }
-    }
-
     void IRealtimeCompletionHandler.Complete(RealtimeOperationResult operation)
     {
         switch (operation)
@@ -886,7 +881,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             && joinCompleted.Context.Session is null
             && joinCompleted.Result.Value is not null)
         {
-            operationTracker.Track(ReleaseDisconnectedSessionAsync(joinCompleted.Result.Value));
+            sessionOperations.ReleaseDetachedInBackground(joinCompleted.Result.Value);
         }
     }
 
@@ -897,7 +892,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             if (completed.Result.Succeeded
                 && completed.Result.Value is not null)
             {
-                operationTracker.Track(ReleaseDisconnectedSessionAsync(completed.Result.Value));
+                sessionOperations.ReleaseDetachedInBackground(completed.Result.Value);
             }
 
             return;
@@ -923,7 +918,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         var session = completed.Result.Value!;
         if (!IsCurrentSession(session))
         {
-            operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
+            sessionOperations.ReleaseDetachedInBackground(session);
             sender.RejectProtocol(peer, completed.Context, "session_missing", "The joined simulation session is no longer active.");
             return;
         }
@@ -933,7 +928,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 session.SimulationSessionId,
                 out var currentCarryState))
         {
-            operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
+            sessionOperations.ReleaseDetachedInBackground(session);
             sender.RejectProtocol(
                 peer,
                 completed.Context,
@@ -965,7 +960,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                         * config.MovementSimulation.TickRateHz))));
         if (registration.ReplacedEntity is not null)
         {
-            RemoveReplacedEntity(registration.ReplacedEntity);
+            teardown.RemoveReplacedEntity(registration.ReplacedEntity);
         }
 
         var entity = registration.Entity;
@@ -981,7 +976,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         completed.Context.Session = session;
         admissionGuard.OnPeerAuthenticated(completed.Context.PeerId);
         peerRegistry.RefreshPopulationMetrics();
-        DisconnectReplacedConnection(binding.ReplacedConnectionId);
+        teardown.DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
         var connectionsEnteringNewEntity = presence.TrackJoiningEntity(
             entity,
@@ -1087,7 +1082,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 completed.Session.SimulationSessionId,
                 completed.Context.PeerId);
         }
-        RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
+        teardown.RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
         completed.Context.Session = null;
         peerRegistry.RefreshPopulationMetrics();
         sender.SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
@@ -1114,7 +1109,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 completed.Session.SimulationSessionId,
                 out _))
         {
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 completed.Context,
                 completed.Session,
@@ -1130,7 +1125,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 completed.Session,
                 completed.Result,
                 requiresInventoryRefresh: true);
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 completed.Context,
                 completed.Session,
@@ -1155,7 +1150,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             if (carryResult is CarryStateApplyResult.Conflict
                 or CarryStateApplyResult.SessionMismatch)
             {
-                DisconnectForItemAuthorityFailure(
+                teardown.TerminateForAuthorityFailure(
                     peer,
                     completed.Context,
                     completed.Session,
@@ -1309,7 +1304,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         {
             SendWorldInteractionResult(peer, completed.Result);
             var error = completed.Result.Result!.Error!;
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 completed.Context,
                 completed.Session,
@@ -1521,7 +1516,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 completed.Session.SimulationSessionId,
                 out _))
         {
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 completed.Context,
                 completed.Session,
@@ -1533,7 +1528,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         if (completed.Result.ShouldDisconnect)
         {
             SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 completed.Context,
                 completed.Session,
@@ -1662,7 +1657,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     {
         if (transaction.CharacterRevisions.Count != 1)
         {
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 context,
                 session,
@@ -1684,7 +1679,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         if (carryResult is CarryStateApplyResult.Conflict
             or CarryStateApplyResult.SessionMismatch)
         {
-            DisconnectForItemAuthorityFailure(
+            teardown.TerminateForAuthorityFailure(
                 peer,
                 context,
                 session,
@@ -1908,30 +1903,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             session,
             SimulationItemInteractionResult.Rejected(intent, code, message),
             requiresInventoryRefresh: false);
-    }
-
-    private void DisconnectForItemAuthorityFailure(
-        IRealtimePeerConnection peer,
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
-        string code,
-        string message)
-    {
-        sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
-        sessionStore.Invalidate(
-            session.CharacterId,
-            session.SimulationSessionId,
-            session.SimulationSessionToken,
-            code,
-            message);
-        RemoveBoundEntity(context, session, code);
-        carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
-        context.AuthorityOperationQueue.Clear();
-        corpseViewers.RemovePeer(context.PeerId);
-        worldInteractionLeases?.RemovePeer(context.PeerId);
-        context.Session = null;
-        peerRegistry.RefreshPopulationMetrics();
-        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     private void ProcessSimulationTicks(
@@ -2289,32 +2260,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}"));
     }
 
-    private void DisconnectReplacedConnection(int? replacedConnectionId)
-    {
-        if (replacedConnectionId is null
-            || !peerRegistry.TryGetContext(replacedConnectionId.Value, out var previousContext))
-        {
-            return;
-        }
-
-        if (peerRegistry.TryGetCurrentPeer(previousContext, out var previousPeer))
-        {
-            sender.SendControl(
-                previousPeer,
-                RealtimeProtocol.EncodeServerDisconnect(
-                    "session_reconnected",
-                    "This character connected from another client."));
-            previousContext.Session = null;
-            previousContext.AuthorityOperationQueue.Clear();
-            corpseViewers.RemovePeer(previousContext.PeerId);
-            worldInteractionLeases?.RemovePeer(previousContext.PeerId);
-            peerRegistry.RefreshPopulationMetrics();
-            previousContext.ScheduleDisconnect(DateTime.UtcNow);
-        }
-
-        presence.ForgetConnection(replacedConnectionId.Value);
-    }
-
     private void EnforcePeerState()
     {
         var now = DateTime.UtcNow;
@@ -2374,7 +2319,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                         RealtimeProtocol.EncodeServerDisconnect(
                             "session_reconnected",
                             "This character connected from another client."));
-                    DetachSupersededPeer(context);
+                    teardown.DetachSupersededPeer(context);
                     context.ScheduleDisconnect(now);
                     continue;
                 }
@@ -2391,7 +2336,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                     RealtimeProtocol.EncodeServerDisconnect(
                         reason.Code,
                         reason.Message));
-                RemoveBoundEntity(context, activeSession, reason.Code);
+                teardown.RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
                 peerRegistry.RefreshPopulationMetrics();
                 context.ScheduleDisconnect(now);
@@ -2441,7 +2386,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 "[SIMULATION] Releasing simulation session {SimulationSessionId} because no peer has owned it for {Seconds:F0} seconds.",
                 session.SimulationSessionId,
                 (now - since).TotalSeconds);
-            operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
+            sessionOperations.ReleaseDetachedInBackground(session);
         }
 
         foreach (var sessionId in unboundSessionsSinceUtc.Keys.ToArray())
@@ -2464,61 +2409,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private bool IsCurrentSession(ActiveSimulationSession session)
     {
         return sessionStore.IsCurrent(session, DateTime.UtcNow);
-    }
-
-    private void RemoveBoundEntity(
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
-        string reason)
-    {
-        corpseViewers.RemovePeer(context.PeerId);
-        worldInteractionLeases?.RemovePeer(context.PeerId);
-        context.AuthorityOperationQueue.Clear();
-        if (!connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
-            || !entityRegistry.RemovePlayer(
-                entityId,
-                session.SimulationSessionId,
-                out _))
-        {
-            return;
-        }
-
-        carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
-        connectionBindings.UnbindConnection(context.PeerId, out _);
-        presence.ForgetConnection(context.PeerId);
-        presence.BroadcastEntityDespawn(entityId, reason, context.PeerId);
-        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
-    }
-
-    private void DetachSupersededPeer(RealtimePeerContext context)
-    {
-        corpseViewers.RemovePeer(context.PeerId);
-        worldInteractionLeases?.RemovePeer(context.PeerId);
-        context.AuthorityOperationQueue.Clear();
-        connectionBindings.UnbindConnection(context.PeerId, out _);
-        presence.ForgetConnection(context.PeerId);
-        context.Session = null;
-        peerRegistry.RefreshPopulationMetrics();
-    }
-
-    private void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
-    {
-        carryStateStore.Remove(
-            replacedEntity.Session.CharacterId,
-            replacedEntity.Session.SimulationSessionId);
-        int? replacedConnectionId = null;
-        if (connectionBindings.UnbindEntity(
-                replacedEntity.NetworkEntityId,
-                out var connectionId))
-        {
-            replacedConnectionId = connectionId;
-            DisconnectReplacedConnection(connectionId);
-        }
-
-        presence.BroadcastEntityDespawn(
-            replacedEntity.NetworkEntityId,
-            "entity_replaced",
-            replacedConnectionId);
     }
 
     private void RefreshCollisionStreaming()
