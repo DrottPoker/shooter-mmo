@@ -267,7 +267,7 @@ public sealed class RealtimeSimulationService : BackgroundService
             logger,
             RealtimeMessageRoutes.CreateUnauthenticated(sessions.HandleJoinRequest),
             RealtimeMessageRoutes.CreateAuthenticated(
-                HandleMovementInput,
+                new MovementInputHandler(peerRegistry, sender).HandleInput,
                 itemOperations.HandleIntent,
                 corpseInteractions.HandleIntent,
                 worldInteractions.HandleIntent,
@@ -481,34 +481,6 @@ public sealed class RealtimeSimulationService : BackgroundService
         {
             reader.Recycle();
         }
-    }
-
-    private void HandleMovementInput(in RealtimeInboundMessage message)
-    {
-        var peer = message.Peer;
-        var context = message.Context;
-        var packet = message.Packet;
-        if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "movement_unavailable",
-                "Movement simulation is not active for this peer.");
-            return;
-        }
-
-        if (!RealtimeProtocol.TryDecodeMovementInputBatch(packet, out var inputs, out var movementError))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "invalid_movement_input",
-                movementError);
-            return;
-        }
-
-        playerEntity.Movement.AcceptInputs(inputs);
     }
 
     private void ProcessSimulationTicks(
