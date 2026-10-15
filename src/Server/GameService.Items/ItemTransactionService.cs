@@ -28,6 +28,10 @@ internal sealed partial class ItemTransactionService(
     private readonly ItemOperationsOptions effectiveOperationsOptions =
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults();
     private readonly ItemOperationLedger ledger = new(dataSource);
+    private readonly ItemTransactionTelemetry telemetry = new(
+        operationsMetrics,
+        logger,
+        httpContextAccessor);
     private readonly ItemTransactionDependencies dependencies = new(
         characterLocks,
         characterWallet,
@@ -2740,7 +2744,7 @@ internal sealed partial class ItemTransactionService(
     {
         ArgumentNullException.ThrowIfNull(request);
         var started = Stopwatch.GetTimestamp();
-        var correlationId = ResolveCorrelationId(request.OperationId);
+        var correlationId = telemetry.ResolveCorrelationId(request.OperationId);
         try
         {
             var result = await ExecuteCoreAsync(
@@ -2750,56 +2754,18 @@ internal sealed partial class ItemTransactionService(
                 handler,
                 cancellationToken);
             var duration = Stopwatch.GetElapsedTime(started);
-            operationsMetrics?.RecordTransaction(operationKind, result, duration);
-            if (logger is not null)
-            {
-                if (!result.Succeeded && IsExpectedContention(result.Error?.Code))
-                {
-                    logger.LogDebug(
-                        "Item transaction {OperationKind} {OperationId} was rejected with {ErrorCode} after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
-                        operationKind,
-                        request.OperationId,
-                        result.Error?.Code ?? "item_transaction_rejected",
-                        duration.TotalMilliseconds,
-                        correlationId);
-                }
-                else if (!result.Succeeded)
-                {
-                    logger.LogWarning(
-                        "Item transaction {OperationKind} {OperationId} was rejected with {ErrorCode} after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
-                        operationKind,
-                        request.OperationId,
-                        result.Error?.Code ?? "item_transaction_rejected",
-                        duration.TotalMilliseconds,
-                        correlationId);
-                }
-                else if (IsOperationallySignificant(operationKind))
-                {
-                    logger.LogInformation(
-                        "Item transaction {OperationKind} {OperationId} committed after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
-                        operationKind,
-                        request.OperationId,
-                        duration.TotalMilliseconds,
-                        correlationId);
-                }
-                else
-                {
-                    logger.LogDebug(
-                        "Item transaction {OperationKind} {OperationId} committed after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
-                        operationKind,
-                        request.OperationId,
-                        duration.TotalMilliseconds,
-                        correlationId);
-                }
-            }
-
+            telemetry.RecordCompleted(
+                operationKind,
+                request.OperationId,
+                result,
+                duration,
+                correlationId);
             return result;
         }
         catch (Exception exception)
         {
-            logger?.LogError(
+            telemetry.RecordFailed(
                 exception,
-                "Item transaction {OperationKind} {OperationId} failed unexpectedly for correlation {CorrelationId}.",
                 operationKind,
                 request.OperationId,
                 correlationId);
@@ -3055,43 +3021,6 @@ internal sealed partial class ItemTransactionService(
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return result;
-    }
-
-    private static bool IsOperationallySignificant(string operationKind)
-    {
-        return operationKind is ItemOperationKinds.ProcessPlayerDeath
-            or ItemOperationKinds.CreatePersistentMobCorpse
-            or ItemOperationKinds.ExpireCorpse
-            or ItemOperationKinds.ApplyItemPolicy
-            or ItemOperationKinds.RemoveInsurancePolicy
-            or ItemOperationKinds.AbandonQuestItems;
-    }
-
-    private string ResolveCorrelationId(Guid operationId)
-    {
-        var header = httpContextAccessor?.HttpContext?
-            .Request.Headers["X-Correlation-ID"]
-            .FirstOrDefault();
-        if (Guid.TryParseExact(header, "N", out var correlationId))
-        {
-            return correlationId.ToString("N");
-        }
-
-        return Activity.Current?.TraceId.ToString()
-            ?? httpContextAccessor?.HttpContext?.TraceIdentifier
-            ?? operationId.ToString("N");
-    }
-
-    private static bool IsExpectedContention(string? errorCode)
-    {
-        return errorCode is ItemTransactionErrorCodes.ItemStateConflict
-            or ItemTransactionErrorCodes.ItemOperationConflict
-            or ItemTransactionErrorCodes.ItemSlotOccupied
-            or ItemTransactionErrorCodes.EquipmentSlotOccupied
-            or ItemTransactionErrorCodes.ItemQuantityChanged
-            or ItemTransactionErrorCodes.BagStateChanged
-            or ItemTransactionErrorCodes.CorpseStateChanged
-            or ItemTransactionErrorCodes.ItemAlreadyLooted;
     }
 
     private sealed class RecoveryDeliveryRow
