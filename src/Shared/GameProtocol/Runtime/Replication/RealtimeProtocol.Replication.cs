@@ -6,7 +6,6 @@ namespace Mmorpg.GameProtocol
     // Entity presence and the shared simulation snapshot of interest-visible entities.
     public static partial class RealtimeProtocol
     {
-        public const int MaximumSnapshotEntitiesPerChunk = 24;
         public const int SimulationSnapshotPacketHeaderSize = 20;
         public const int SimulationSnapshotEntitySize = 41;
 

@@ -6,7 +6,6 @@ namespace Mmorpg.GameProtocol
     // Movement input, movement settings, and the owner's authoritative snapshot.
     public static partial class RealtimeProtocol
     {
-        public const int MaximumInputBatchSize = 4;
         public const int OwnerSimulationSnapshotPacketSize = 48;
 
         public static byte[] EncodeMovementInputBatch(RealtimeMovementInput[] inputs)

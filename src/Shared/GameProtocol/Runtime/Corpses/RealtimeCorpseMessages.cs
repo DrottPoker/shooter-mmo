@@ -2,26 +2,6 @@ using System;
 
 namespace Mmorpg.GameProtocol
 {
-    public enum RealtimeCorpseInteractionKind : byte
-    {
-        Open = 1,
-        Close = 2,
-        Refresh = 3,
-        LootItem = 4,
-        LootPartialStack = 5,
-        SwapBag = 6,
-        DepositItem = 7,
-        DepositPartialStack = 8,
-        MoveItem = 9,
-        MovePartialStack = 10
-    }
-
-    public enum RealtimeCorpseViewUpdateKind : byte
-    {
-        Snapshot = 1,
-        Delta = 2
-    }
-
     public sealed class RealtimeCorpsePresence
     {
         public RealtimeCorpsePresence(

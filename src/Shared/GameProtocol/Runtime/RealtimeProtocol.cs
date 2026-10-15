@@ -4,37 +4,6 @@ using System.Text;
 
 namespace Mmorpg.GameProtocol
 {
-    public enum RealtimeMessageType : byte
-    {
-        JoinRequest = 1,
-        JoinAccepted = 2,
-        JoinRejected = 3,
-        LeaveRequest = 4,
-        LeaveAccepted = 5,
-        LeaveRejected = 6,
-        ServerDisconnect = 7,
-        MovementInputBatch = 8,
-        SimulationSnapshot = 9,
-        EntitySpawn = 10,
-        EntityDespawn = 11,
-        CarryStateChanged = 12,
-        ItemOperationIntent = 13,
-        ItemOperationResult = 14,
-        CorpsePresenceSnapshotChunk = 15,
-        CorpseInteractionIntent = 16,
-        CorpseInteractionResult = 17,
-        CorpseViewStateChunk = 18,
-        CorpseViewClosed = 19,
-        WorldActorSpawn = 20,
-        WorldActorState = 21,
-        WorldActorDespawn = 22,
-        WorldInteractionIntent = 23,
-        WorldInteractionOpened = 24,
-        WorldInteractionResult = 25,
-        WorldInteractionClosed = 26,
-        OwnerSimulationSnapshot = 27
-    }
-
     public sealed class RealtimeError
     {
         public RealtimeError(string code, string message)
@@ -48,38 +17,11 @@ namespace Mmorpg.GameProtocol
         public string Message { get; }
     }
 
-    // Wire limits that authored content must fit. Content compilers keep their own
-    // limits, and a compatibility test checks that they never exceed these.
-    public static class RealtimeProtocolLimits
-    {
-        public const int MaximumIdentifierLength = 128;
-        public const int MaximumNameLength = 128;
-        public const int MaximumEquipmentSlotIdLength = 64;
-        public const int MaximumSlotTagLength = 64;
-        public const int MaximumSlotTags = 16;
-        public const int MaximumDefinitionIdLength = 128;
-    }
-
-    // Framing, versioning, and the primitive readers and writers shared by every message
-    // family. Each family keeps its messages and its codec in its own folder.
+    // Framing and the primitive readers and writers shared by every message family. The
+    // version, limits, and message types are generated from the schema in Schema~, and
+    // each family keeps its messages and its codec in its own folder.
     public static partial class RealtimeProtocol
     {
-        private const uint Magic = 0x4F4D4D53;
-        private const int MaximumIdentifierLength = RealtimeProtocolLimits.MaximumIdentifierLength;
-        private const int MaximumNameLength = RealtimeProtocolLimits.MaximumNameLength;
-        private const int MaximumTimestampLength = 64;
-        private const int MaximumErrorCodeLength = 64;
-        private const int MaximumErrorMessageLength = 512;
-        private const int MaximumEquipmentSlotIdLength = RealtimeProtocolLimits.MaximumEquipmentSlotIdLength;
-        public const int MaximumUnreliablePacketSize = 1_023;
-        public const byte ControlChannel = 0;
-        public const byte MovementInputChannel = 1;
-        public const byte UnreliableReceiveChannel = 0;
-        public const byte ChannelCount = 2;
-        public const ushort Version = 14;
-        public const string ConnectionKey = "Mmorpg.Realtime.v8";
-        public const int MaximumPacketSize = 1200;
-
         public static bool TryReadMessageType(byte[] data, out RealtimeMessageType messageType)
         {
             messageType = default;

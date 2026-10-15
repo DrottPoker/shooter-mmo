@@ -7,11 +7,6 @@ namespace Mmorpg.GameProtocol
     // World actor presence and NPC interaction.
     public static partial class RealtimeProtocol
     {
-        private const int MaximumWorldActorCapabilities = 16;
-        private const int MaximumWorldActorCapabilityIdLength = 128;
-        private const int MaximumWorldActorCapabilityNameLength = 128;
-        private const int MaximumWorldInteractionMessageLength = 512;
-
         public static byte[] EncodeWorldActorSpawn(RealtimeWorldActorSpawn spawn)
         {
             if (!IsValidWorldActorSpawn(spawn))

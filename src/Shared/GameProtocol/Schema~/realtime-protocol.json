@@ -1,0 +1,611 @@
+{
+  "$schema": "./realtime-protocol.schema.json",
+  "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
+  "protocol": {
+    "namespace": "Mmorpg.GameProtocol",
+    "version": 14,
+    "magic": "0x4F4D4D53",
+    "connectionKey": "Mmorpg.Realtime.v8",
+    "maximumPacketSize": 1200,
+    "maximumUnreliablePacketSize": 1023,
+    "channelCount": 2,
+    "channels": [
+      {
+        "name": "ControlChannel",
+        "id": 0,
+        "description": "Reliable ordered control messages in both directions."
+      },
+      {
+        "name": "MovementInputChannel",
+        "id": 1,
+        "description": "Sequenced movement input from the client."
+      },
+      {
+        "name": "UnreliableReceiveChannel",
+        "id": 0,
+        "description": "The channel on which the client receives unreliable snapshots."
+      }
+    ]
+  },
+  "limits": [
+    {
+      "name": "MaximumIdentifierLength",
+      "value": 128,
+      "visibility": "public",
+      "description": "Characters in an identifier such as a session, account, World, or definition id."
+    },
+    {
+      "name": "MaximumNameLength",
+      "value": 128,
+      "visibility": "public",
+      "description": "Characters in a display name."
+    },
+    {
+      "name": "MaximumEquipmentSlotIdLength",
+      "value": 64,
+      "visibility": "public",
+      "description": "Characters in a canonical equipment slot id."
+    },
+    {
+      "name": "MaximumSlotTagLength",
+      "value": 64,
+      "visibility": "public",
+      "description": "Characters in one accepted slot tag."
+    },
+    {
+      "name": "MaximumSlotTags",
+      "value": 16,
+      "visibility": "public",
+      "description": "Accepted tags on one slot."
+    },
+    {
+      "name": "MaximumDefinitionIdLength",
+      "value": 128,
+      "visibility": "public",
+      "description": "Characters in an item definition id."
+    },
+    {
+      "name": "MaximumInputBatchSize",
+      "value": 4,
+      "visibility": "protocol",
+      "description": "Movement inputs in one batch."
+    },
+    {
+      "name": "MaximumSnapshotEntitiesPerChunk",
+      "value": 24,
+      "visibility": "protocol",
+      "description": "Entity records in one simulation snapshot chunk."
+    },
+    {
+      "name": "MaximumTimestampLength",
+      "value": 64,
+      "visibility": "private",
+      "description": "Characters in a round-trip timestamp."
+    },
+    {
+      "name": "MaximumErrorCodeLength",
+      "value": 64,
+      "visibility": "private",
+      "description": "Characters in an error, closure, or despawn reason code."
+    },
+    {
+      "name": "MaximumErrorMessageLength",
+      "value": 512,
+      "visibility": "private",
+      "description": "Characters in a human-readable error or closure message."
+    },
+    {
+      "name": "MaximumJoinTicketLength",
+      "value": 1024,
+      "visibility": "private",
+      "description": "Characters in a join ticket."
+    },
+    {
+      "name": "MaximumItemOperationItems",
+      "value": 24,
+      "visibility": "private",
+      "description": "Item expectations in one recovery claim."
+    },
+    {
+      "name": "MaximumItemResultItemRevisions",
+      "value": 32,
+      "visibility": "private",
+      "description": "Committed item revisions in one item operation result."
+    },
+    {
+      "name": "MaximumItemResultContainerRevisions",
+      "value": 8,
+      "visibility": "private",
+      "description": "Committed container revisions in one item operation result."
+    },
+    {
+      "name": "MaximumItemResultRecoveryDeliveries",
+      "value": 8,
+      "visibility": "private",
+      "description": "Recovery deliveries in one item operation result."
+    },
+    {
+      "name": "MaximumWorldActorCapabilities",
+      "value": 16,
+      "visibility": "private",
+      "description": "Capabilities in one opened world interaction."
+    },
+    {
+      "name": "MaximumWorldActorCapabilityIdLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in a world actor capability id."
+    },
+    {
+      "name": "MaximumWorldActorCapabilityNameLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in a world actor capability display name."
+    },
+    {
+      "name": "MaximumWorldInteractionMessageLength",
+      "value": 512,
+      "visibility": "private",
+      "description": "Characters in the optional message of a world interaction result."
+    },
+    {
+      "name": "MaximumCorpsePresencePerChunk",
+      "value": 6,
+      "visibility": "private",
+      "description": "Corpses in one presence snapshot chunk."
+    },
+    {
+      "name": "MaximumCorpseViewSlotsPerChunk",
+      "value": 4,
+      "visibility": "private",
+      "description": "Slots in one corpse view state chunk."
+    },
+    {
+      "name": "MaximumCorpseChunkCount",
+      "value": 256,
+      "visibility": "private",
+      "description": "Chunks in one corpse presence snapshot or corpse view update."
+    },
+    {
+      "name": "MaximumCorpseSourceNameLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in the display name of the corpse's source."
+    },
+    {
+      "name": "MaximumCorpsePresentationKeyLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in a corpse presentation key."
+    },
+    {
+      "name": "MaximumCorpseSectionKindLength",
+      "value": 32,
+      "visibility": "private",
+      "description": "Characters in a corpse view section kind."
+    },
+    {
+      "name": "MaximumCorpseSlotKindLength",
+      "value": 32,
+      "visibility": "private",
+      "description": "Characters in a corpse slot kind."
+    },
+    {
+      "name": "MaximumCorpseSectionSlotCapacity",
+      "value": 512,
+      "visibility": "private",
+      "description": "Slots in one corpse view section."
+    }
+  ],
+  "enums": [
+    {
+      "name": "MovementButtons",
+      "family": "Movement",
+      "flags": true,
+      "description": "Movement buttons held during one input tick.",
+      "values": [
+        { "name": "None", "value": 0 },
+        { "name": "Sprint", "value": 1 },
+        { "name": "Jump", "value": 2 },
+        { "name": "Aim", "value": 4 }
+      ]
+    },
+    {
+      "name": "EntityKind",
+      "family": "Replication",
+      "description": "The kind of a replicated simulation entity.",
+      "values": [
+        { "name": "Player", "value": 1 }
+      ]
+    },
+    {
+      "name": "ItemOperationKind",
+      "family": "Items",
+      "description": "An in-world item operation.",
+      "values": [
+        { "name": "Relocate", "value": 1 },
+        { "name": "Equip", "value": 2 },
+        { "name": "Unequip", "value": 3 },
+        { "name": "SplitStack", "value": 4 },
+        { "name": "MergeStacks", "value": 5 },
+        { "name": "Destroy", "value": 6 },
+        { "name": "ClaimRecoveryDelivery", "value": 7 },
+        { "name": "SwapContainerItems", "value": 8 }
+      ]
+    },
+    {
+      "name": "CorpseInteractionKind",
+      "family": "Corpses",
+      "description": "An operation on an open corpse.",
+      "values": [
+        { "name": "Open", "value": 1 },
+        { "name": "Close", "value": 2 },
+        { "name": "Refresh", "value": 3 },
+        { "name": "LootItem", "value": 4 },
+        { "name": "LootPartialStack", "value": 5 },
+        { "name": "SwapBag", "value": 6 },
+        { "name": "DepositItem", "value": 7 },
+        { "name": "DepositPartialStack", "value": 8 },
+        { "name": "MoveItem", "value": 9 },
+        { "name": "MovePartialStack", "value": 10 }
+      ]
+    },
+    {
+      "name": "CorpseViewUpdateKind",
+      "family": "Corpses",
+      "description": "Whether a corpse view chunk replaces the view or applies a delta.",
+      "values": [
+        { "name": "Snapshot", "value": 1 },
+        { "name": "Delta", "value": 2 }
+      ]
+    },
+    {
+      "name": "WorldActorKind",
+      "family": "WorldActors",
+      "description": "The kind of a world actor.",
+      "values": [
+        { "name": "Npc", "value": 1 },
+        { "name": "Mob", "value": 2 }
+      ]
+    },
+    {
+      "name": "WorldActorDisposition",
+      "family": "WorldActors",
+      "description": "How a world actor treats players.",
+      "values": [
+        { "name": "Friendly", "value": 1 },
+        { "name": "Neutral", "value": 2 },
+        { "name": "Hostile", "value": 3 }
+      ]
+    },
+    {
+      "name": "WorldActorActivityTier",
+      "family": "WorldActors",
+      "description": "How often the worker updates a world actor.",
+      "values": [
+        { "name": "EventDriven", "value": 1 },
+        { "name": "Dormant", "value": 2 },
+        { "name": "Active", "value": 3 }
+      ]
+    },
+    {
+      "name": "WorldInteractionTargetKind",
+      "family": "WorldActors",
+      "description": "What a world interaction targets.",
+      "values": [
+        { "name": "WorldActor", "value": 1 },
+        { "name": "Corpse", "value": 2 }
+      ]
+    },
+    {
+      "name": "WorldInteractionOperationKind",
+      "family": "WorldActors",
+      "description": "A world interaction operation.",
+      "values": [
+        { "name": "Open", "value": 1 },
+        { "name": "Close", "value": 2 },
+        { "name": "CapabilityAction", "value": 3 }
+      ]
+    },
+    {
+      "name": "WorldActorCapabilityKind",
+      "family": "WorldActors",
+      "description": "A service that a world actor offers.",
+      "values": [
+        { "name": "Dialogue", "value": 1 },
+        { "name": "Vendor", "value": 2 },
+        { "name": "QuestOffer", "value": 3 },
+        { "name": "QuestTurnIn", "value": 4 },
+        { "name": "Crafting", "value": 5 },
+        { "name": "Insurance", "value": 6 },
+        { "name": "Trainer", "value": 7 },
+        { "name": "Bank", "value": 8 },
+        { "name": "RecoveryStorage", "value": 9 }
+      ]
+    },
+    {
+      "name": "NpcLifecycleActionKind",
+      "family": "WorldActors",
+      "description": "An item lifecycle action that an NPC capability performs.",
+      "values": [
+        { "name": "None", "value": 0 },
+        { "name": "ApplyInsurance", "value": 1 },
+        { "name": "RemoveInsurance", "value": 2 },
+        { "name": "AcceptQuest", "value": 3 },
+        { "name": "AbandonQuest", "value": 4 }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "name": "JoinRequest",
+      "id": 1,
+      "family": "Session",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Asks to join a simulation session with a join ticket."
+    },
+    {
+      "name": "JoinAccepted",
+      "id": 2,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Accepts a join and carries the session, movement settings, and initial state."
+    },
+    {
+      "name": "JoinRejected",
+      "id": 3,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Rejects a join with a structured error."
+    },
+    {
+      "name": "LeaveRequest",
+      "id": 4,
+      "family": "Session",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Asks to leave the active simulation session."
+    },
+    {
+      "name": "LeaveAccepted",
+      "id": 5,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Confirms a leave."
+    },
+    {
+      "name": "LeaveRejected",
+      "id": 6,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Rejects a leave with a structured error."
+    },
+    {
+      "name": "ServerDisconnect",
+      "id": 7,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Tells the client why the worker ends the connection."
+    },
+    {
+      "name": "MovementInputBatch",
+      "id": 8,
+      "family": "Movement",
+      "direction": "clientToServer",
+      "channel": "MovementInputChannel",
+      "delivery": "sequenced",
+      "codec": "handWritten",
+      "description": "The newest movement inputs, oldest first."
+    },
+    {
+      "name": "SimulationSnapshot",
+      "id": 9,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "UnreliableReceiveChannel",
+      "delivery": "unreliable",
+      "codec": "handWritten",
+      "description": "One chunk of the remote entity states visible to the recipient."
+    },
+    {
+      "name": "EntitySpawn",
+      "id": 10,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "An entity entered the recipient's interest."
+    },
+    {
+      "name": "EntityDespawn",
+      "id": 11,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "An entity left the recipient's interest."
+    },
+    {
+      "name": "CarryStateChanged",
+      "id": 12,
+      "family": "Items",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "A newer committed carry state."
+    },
+    {
+      "name": "ItemOperationIntent",
+      "id": 13,
+      "family": "Items",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Asks for one in-world item operation."
+    },
+    {
+      "name": "ItemOperationResult",
+      "id": 14,
+      "family": "Items",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "The committed or rejected outcome of an item operation."
+    },
+    {
+      "name": "CorpsePresenceSnapshotChunk",
+      "id": 15,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "One chunk of the corpses near the recipient."
+    },
+    {
+      "name": "CorpseInteractionIntent",
+      "id": 16,
+      "family": "Corpses",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Asks for one operation on a corpse."
+    },
+    {
+      "name": "CorpseInteractionResult",
+      "id": 17,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "The committed or rejected outcome of a corpse operation."
+    },
+    {
+      "name": "CorpseViewStateChunk",
+      "id": 18,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "One chunk of the open corpse view."
+    },
+    {
+      "name": "CorpseViewClosed",
+      "id": 19,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "The worker closed the open corpse view."
+    },
+    {
+      "name": "WorldActorSpawn",
+      "id": 20,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "A world actor entered the recipient's interest."
+    },
+    {
+      "name": "WorldActorState",
+      "id": 21,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "A newer state of a visible world actor."
+    },
+    {
+      "name": "WorldActorDespawn",
+      "id": 22,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "A world actor left the recipient's interest."
+    },
+    {
+      "name": "WorldInteractionIntent",
+      "id": 23,
+      "family": "WorldActors",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "Asks to open, close, or act on a world interaction."
+    },
+    {
+      "name": "WorldInteractionOpened",
+      "id": 24,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "An opened world interaction and its capabilities."
+    },
+    {
+      "name": "WorldInteractionResult",
+      "id": 25,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "The outcome of a world interaction intent."
+    },
+    {
+      "name": "WorldInteractionClosed",
+      "id": 26,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "codec": "handWritten",
+      "description": "The worker closed a world interaction."
+    },
+    {
+      "name": "OwnerSimulationSnapshot",
+      "id": 27,
+      "family": "Movement",
+      "direction": "serverToClient",
+      "channel": "UnreliableReceiveChannel",
+      "delivery": "unreliable",
+      "codec": "handWritten",
+      "description": "The owner's authoritative state and input acknowledgement for reconciliation."
+    }
+  ]
+}

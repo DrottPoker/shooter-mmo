@@ -6,11 +6,6 @@ namespace Mmorpg.GameProtocol
     // In-world item operations and carry state.
     public static partial class RealtimeProtocol
     {
-        private const int MaximumItemOperationItems = 24;
-        private const int MaximumItemResultItemRevisions = 32;
-        private const int MaximumItemResultContainerRevisions = 8;
-        private const int MaximumItemResultRecoveryDeliveries = 8;
-
         public static byte[] EncodeCarryStateChanged(RealtimeCarryState carryState)
         {
             return Encode(RealtimeMessageType.CarryStateChanged, writer =>

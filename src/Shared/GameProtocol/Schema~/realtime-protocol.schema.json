@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "realtime-protocol.schema.json",
+  "title": "MMORPG realtime protocol schema",
+  "description": "Editor support for realtime-protocol.json. tools/ProtocolGenerator validates the same rules and more, such as unique message ids and sizes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["description", "protocol", "limits", "enums", "messages"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "description": { "$ref": "#/$defs/text" },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace",
+        "version",
+        "magic",
+        "connectionKey",
+        "maximumPacketSize",
+        "maximumUnreliablePacketSize",
+        "channelCount",
+        "channels"
+      ],
+      "properties": {
+        "namespace": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*(\\.[A-Z][A-Za-z0-9]*)*$" },
+        "version": {
+          "description": "Bump for every change to the wire or to what peers accept.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "magic": { "type": "string", "pattern": "^0x[0-9A-Fa-f]{1,8}$" },
+        "connectionKey": { "$ref": "#/$defs/text" },
+        "maximumPacketSize": { "type": "integer", "minimum": 8 },
+        "maximumUnreliablePacketSize": { "type": "integer", "minimum": 8 },
+        "channelCount": { "type": "integer", "minimum": 1, "maximum": 255 },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "id", "description"],
+            "properties": {
+              "name": { "$ref": "#/$defs/name" },
+              "id": { "type": "integer", "minimum": 0, "maximum": 254 },
+              "description": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value", "visibility", "description"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "value": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "visibility": {
+            "description": "public: a RealtimeProtocolLimits constant for content compilers. protocol: a public RealtimeProtocol constant. private: a private RealtimeProtocol constant.",
+            "enum": ["public", "protocol", "private"]
+          },
+          "description": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "enums": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "family", "description", "values"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "family": { "$ref": "#/$defs/name" },
+          "flags": { "type": "boolean" },
+          "description": { "$ref": "#/$defs/text" },
+          "values": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "value"],
+              "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "value": { "type": "integer", "minimum": 0, "maximum": 255 },
+                "description": { "$ref": "#/$defs/text" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "id", "family", "direction", "channel", "delivery", "codec", "description"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "id": {
+            "description": "The type byte. Never reuse the id of a removed message.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255
+          },
+          "family": { "$ref": "#/$defs/name" },
+          "direction": { "enum": ["clientToServer", "serverToClient"] },
+          "channel": { "$ref": "#/$defs/name" },
+          "delivery": { "enum": ["reliableOrdered", "sequenced", "unreliable"] },
+          "codec": {
+            "description": "handWritten: the family folder still encodes and decodes the message by hand.",
+            "enum": ["handWritten"]
+          },
+          "description": { "$ref": "#/$defs/text" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+    "text": { "type": "string", "minLength": 1 }
+  }
+}

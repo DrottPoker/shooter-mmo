@@ -5,8 +5,6 @@ namespace Mmorpg.GameProtocol
     // Join, leave, and disconnect messages of a realtime session.
     public static partial class RealtimeProtocol
     {
-        private const int MaximumJoinTicketLength = 1024;
-
         public static byte[] EncodeJoinRequest(string joinTicket)
         {
             return Encode(RealtimeMessageType.JoinRequest, writer =>

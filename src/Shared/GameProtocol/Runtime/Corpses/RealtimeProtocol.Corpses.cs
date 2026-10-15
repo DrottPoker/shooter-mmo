@@ -7,18 +7,6 @@ namespace Mmorpg.GameProtocol
     // Corpse presence, interaction, and corpse view state.
     public static partial class RealtimeProtocol
     {
-        private const int MaximumCorpsePresencePerChunk = 6;
-        private const int MaximumCorpseViewSlotsPerChunk = 4;
-        private const int MaximumCorpseChunkCount = 256;
-        private const int MaximumCorpseSourceNameLength = 128;
-        private const int MaximumCorpsePresentationKeyLength = 128;
-        private const int MaximumCorpseSectionKindLength = 32;
-        private const int MaximumCorpseSlotKindLength = 32;
-        private const int MaximumCorpseSlotTagLength = RealtimeProtocolLimits.MaximumSlotTagLength;
-        private const int MaximumCorpseSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
-        private const int MaximumCorpseEquipmentSlotIdLength = RealtimeProtocolLimits.MaximumEquipmentSlotIdLength;
-        private const int MaximumCorpseDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
-
         public static byte[] EncodeCorpsePresenceSnapshotChunk(
             RealtimeCorpsePresenceSnapshotChunk chunk)
         {
@@ -587,7 +575,7 @@ namespace Mmorpg.GameProtocol
                         WriteString(
                             writer,
                             tag,
-                            MaximumCorpseSlotTagLength,
+                            MaximumSlotTagLength,
                             nameof(slot.AcceptedTags));
                     }
                     var hasEquipmentSlotId = !string.IsNullOrWhiteSpace(
@@ -598,7 +586,7 @@ namespace Mmorpg.GameProtocol
                         WriteString(
                             writer,
                             slot.EquipmentSlotId,
-                            MaximumCorpseEquipmentSlotIdLength,
+                            MaximumEquipmentSlotIdLength,
                             nameof(slot.EquipmentSlotId));
                     }
                     writer.Write(slot.Item != null);
@@ -608,7 +596,7 @@ namespace Mmorpg.GameProtocol
                         WriteString(
                             writer,
                             slot.Item.DefinitionId,
-                            MaximumCorpseDefinitionIdLength,
+                            MaximumDefinitionIdLength,
                             nameof(slot.Item.DefinitionId));
                         writer.Write(slot.Item.Quantity);
                         writer.Write(slot.Item.Revision);
@@ -685,7 +673,7 @@ namespace Mmorpg.GameProtocol
                             out var slotKind,
                             out error)
                         || !TryReadByte(reader, out var tagCount, out error)
-                        || tagCount > MaximumCorpseSlotTags)
+                        || tagCount > MaximumSlotTags)
                     {
                         return false;
                     }
@@ -695,7 +683,7 @@ namespace Mmorpg.GameProtocol
                     {
                         if (!TryReadString(
                                 reader,
-                                MaximumCorpseSlotTagLength,
+                                MaximumSlotTagLength,
                                 out acceptedTags[tagIndex],
                                 out error))
                         {
@@ -712,7 +700,7 @@ namespace Mmorpg.GameProtocol
                     if (hasEquipmentSlotId
                         && !TryReadString(
                             reader,
-                            MaximumCorpseEquipmentSlotIdLength,
+                            MaximumEquipmentSlotIdLength,
                             out equipmentSlotId,
                             out error))
                     {
@@ -730,7 +718,7 @@ namespace Mmorpg.GameProtocol
                         if (!TryReadGuid(reader, out var itemId, out error)
                             || !TryReadString(
                                 reader,
-                                MaximumCorpseDefinitionIdLength,
+                                MaximumDefinitionIdLength,
                                 out var definitionId,
                                 out error)
                             || !TryReadInt32(reader, out var quantity, out error)
@@ -999,7 +987,7 @@ namespace Mmorpg.GameProtocol
                 || chunk.ContainerId == Guid.Empty
                 || chunk.ContainerRevision < 0
                 || chunk.SectionSlotCapacity <= 0
-                || chunk.SectionSlotCapacity > 512
+                || chunk.SectionSlotCapacity > MaximumCorpseSectionSlotCapacity
                 || chunk.SlotOffset < 0
                 || chunk.Slots == null
                 || chunk.Slots.Length > MaximumCorpseViewSlotsPerChunk)
@@ -1023,15 +1011,15 @@ namespace Mmorpg.GameProtocol
                     || string.IsNullOrWhiteSpace(slot.SlotKind)
                     || slot.SlotKind.Length > MaximumCorpseSlotKindLength
                     || slot.AcceptedTags == null
-                    || slot.AcceptedTags.Length > MaximumCorpseSlotTags
+                    || slot.AcceptedTags.Length > MaximumSlotTags
                     || slot.AcceptedTags.Any(tag =>
                         string.IsNullOrWhiteSpace(tag)
-                        || tag.Length > MaximumCorpseSlotTagLength)
+                        || tag.Length > MaximumSlotTagLength)
                     || slot.AcceptedTags.Distinct(StringComparer.Ordinal).Count()
                         != slot.AcceptedTags.Length
                     || (chunk.SectionKind == "equipment")
                         != !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
-                    || slot.EquipmentSlotId.Length > MaximumCorpseEquipmentSlotIdLength
+                    || slot.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
                     || !IsValidCorpseItem(slot.Item))
                 {
                     return false;
@@ -1053,7 +1041,7 @@ namespace Mmorpg.GameProtocol
                 : item.BagContentsRevision >= 0;
             return item.ItemInstanceId != Guid.Empty
                 && !string.IsNullOrWhiteSpace(item.DefinitionId)
-                && item.DefinitionId.Length <= MaximumCorpseDefinitionIdLength
+                && item.DefinitionId.Length <= MaximumDefinitionIdLength
                 && item.Quantity > 0
                 && item.Revision >= 0
                 && validBagReference;

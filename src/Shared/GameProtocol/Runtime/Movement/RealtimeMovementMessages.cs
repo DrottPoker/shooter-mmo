@@ -1,16 +1,5 @@
-using System;
-
 namespace Mmorpg.GameProtocol
 {
-    [Flags]
-    public enum RealtimeMovementButtons : byte
-    {
-        None = 0,
-        Sprint = 1,
-        Jump = 2,
-        Aim = 4
-    }
-
     public sealed class RealtimeMovementSettings
     {
         public RealtimeMovementSettings(

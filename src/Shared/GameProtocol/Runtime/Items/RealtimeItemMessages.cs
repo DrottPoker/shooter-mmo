@@ -2,18 +2,6 @@ using System;
 
 namespace Mmorpg.GameProtocol
 {
-    public enum RealtimeItemOperationKind : byte
-    {
-        Relocate = 1,
-        Equip = 2,
-        Unequip = 3,
-        SplitStack = 4,
-        MergeStacks = 5,
-        Destroy = 6,
-        ClaimRecoveryDelivery = 7,
-        SwapContainerItems = 8
-    }
-
     public sealed class RealtimeCarryState
     {
         public RealtimeCarryState(

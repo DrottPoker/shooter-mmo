@@ -1,10 +1,5 @@
 namespace Mmorpg.GameProtocol
 {
-    public enum RealtimeEntityKind : byte
-    {
-        Player = 1
-    }
-
     public sealed class RealtimeEntitySpawn
     {
         public RealtimeEntitySpawn(

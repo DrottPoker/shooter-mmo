@@ -2,61 +2,6 @@ using System;
 
 namespace Mmorpg.GameProtocol
 {
-    public enum RealtimeWorldActorKind : byte
-    {
-        Npc = 1,
-        Mob = 2
-    }
-
-    public enum RealtimeWorldActorDisposition : byte
-    {
-        Friendly = 1,
-        Neutral = 2,
-        Hostile = 3
-    }
-
-    public enum RealtimeWorldActorActivityTier : byte
-    {
-        EventDriven = 1,
-        Dormant = 2,
-        Active = 3
-    }
-
-    public enum RealtimeWorldInteractionTargetKind : byte
-    {
-        WorldActor = 1,
-        Corpse = 2
-    }
-
-    public enum RealtimeWorldInteractionOperationKind : byte
-    {
-        Open = 1,
-        Close = 2,
-        CapabilityAction = 3
-    }
-
-    public enum RealtimeWorldActorCapabilityKind : byte
-    {
-        Dialogue = 1,
-        Vendor = 2,
-        QuestOffer = 3,
-        QuestTurnIn = 4,
-        Crafting = 5,
-        Insurance = 6,
-        Trainer = 7,
-        Bank = 8,
-        RecoveryStorage = 9
-    }
-
-    public enum RealtimeNpcLifecycleActionKind : byte
-    {
-        None = 0,
-        ApplyInsurance = 1,
-        RemoveInsurance = 2,
-        AcceptQuest = 3,
-        AbandonQuest = 4
-    }
-
     public sealed class RealtimeWorldActorSpawn
     {
         public RealtimeWorldActorSpawn(
