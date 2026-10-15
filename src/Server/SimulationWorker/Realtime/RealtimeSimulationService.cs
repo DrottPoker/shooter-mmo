@@ -1055,7 +1055,7 @@ public sealed class RealtimeSimulationService(
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
         IReadOnlyList<int> connectionsEnteringNewEntity;
-        var interestEntity = ToInterestEntity(entity);
+        var interestEntity = RealtimeStateMapper.ToInterestEntity(entity);
         if (registration.IsNewEntity)
         {
             connectionsEnteringNewEntity = interestManager.AddEntity(interestEntity);
@@ -1085,9 +1085,9 @@ public sealed class RealtimeSimulationService(
                 response.JoinedAt.ToString("O"),
                 response.SessionExpiresAt.ToString("O"),
                 response.IsReconnect,
-                ToRealtimeCarryState(entity.Movement.CarryState),
-                ToRealtimeMovementSettings(),
-                ToRealtimePlayerState(entity.Movement.State))));
+                RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState),
+                RealtimeStateMapper.ToRealtimeMovementSettings(config),
+                RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State))));
         SendEntityBaseline(peer, joiningInterest.Visible);
         SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();
@@ -1816,7 +1816,7 @@ public sealed class RealtimeSimulationService(
                         : new RealtimeError(
                             result.Error!.Code,
                             result.Error.Message),
-                    ToRealtimeCarryState(carryState!))));
+                    RealtimeStateMapper.ToRealtimeCarryState(carryState!))));
     }
 
     private void SendCorpseOperationRejection(
@@ -1959,7 +1959,7 @@ public sealed class RealtimeSimulationService(
             result.Succeeded
                 ? null
                 : new RealtimeError(result.Error!.Code, result.Error.Message),
-            ToRealtimeCarryState(carryState!),
+            RealtimeStateMapper.ToRealtimeCarryState(carryState!),
             result.Succeeded
                 ? transaction!.ItemRevisions
                     .Select(revision => new RealtimeItemRevision(
@@ -2137,7 +2137,7 @@ public sealed class RealtimeSimulationService(
                 snapshotPacketCache.Add(new RealtimeEntitySnapshot(
                     entity.NetworkEntityId,
                     entity.Movement.LastProcessedInputSequence,
-                    ToRealtimePlayerState(entity.Movement.State)));
+                    RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State)));
             }
 
             if (snapshotPacketCache.EntitySnapshotCount == 0)
@@ -2283,56 +2283,6 @@ public sealed class RealtimeSimulationService(
         }
     }
 
-    private RealtimeMovementSettings ToRealtimeMovementSettings()
-    {
-        var settings = config.MovementSimulation;
-        var collision = settings.CharacterCollision;
-        return new RealtimeMovementSettings(
-            (ushort)settings.TickRateHz,
-            (ushort)config.SnapshotRateHz,
-            settings.WalkSpeed,
-            settings.SprintSpeed,
-            settings.RotationSpeedDegrees,
-            settings.Gravity,
-            settings.MaximumFallSpeed,
-            settings.JumpVelocity,
-            settings.GroundedVerticalVelocity,
-            settings.GroundHeight,
-            settings.MinimumX,
-            settings.MaximumX,
-            settings.MinimumZ,
-            settings.MaximumZ,
-            collision.Radius,
-            collision.Height,
-            collision.StepHeight,
-            collision.MaximumSlopeDegrees,
-            collision.GroundSnapDistance,
-            collision.MaximumSubstepDistance,
-            (byte)collision.MaximumPenetrationIterations);
-    }
-
-    private static RealtimePlayerState ToRealtimePlayerState(PlayerMovementState state)
-    {
-        return new RealtimePlayerState(
-            state.PositionX,
-            state.PositionY,
-            state.PositionZ,
-            state.VelocityX,
-            state.VelocityY,
-            state.VelocityZ,
-            state.YawDegrees,
-            state.IsGrounded,
-            state.IsSprinting);
-    }
-
-    private static RealtimeCarryState ToRealtimeCarryState(PlayerCarryState carryState)
-    {
-        return new RealtimeCarryState(
-            carryState.ItemStateRevision,
-            carryState.CarriedWeight,
-            carryState.CarryCapacity);
-    }
-
     private void ApplyLatestCarryState(PlayerSimulationEntity entity)
     {
         if (!carryStateStore.TryGet(
@@ -2357,7 +2307,7 @@ public sealed class RealtimeSimulationService(
         SendControl(
             peer,
             RealtimeProtocol.EncodeCarryStateChanged(
-                ToRealtimeCarryState(entity.Movement.CarryState)));
+                RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState)));
     }
 
     private void BroadcastCorpsePresence()
@@ -2854,28 +2804,7 @@ public sealed class RealtimeSimulationService(
             entity.Session.CharacterName,
             PlayerSimulationEntity.DefaultArchetypeId,
             serverTick,
-            ToRealtimePlayerState(entity.Movement.State));
-    }
-
-    private RealtimeWorldActorSpawn ToRealtimeWorldActorSpawn(
-        WorldActorRuntimeState actor)
-    {
-        return WorldActorProtocolMapper.ToSpawn(actor);
-    }
-
-    private static RealtimeWorldActorState ToRealtimeWorldActorState(
-        WorldActorRuntimeState actor)
-    {
-        return WorldActorProtocolMapper.ToState(actor);
-    }
-
-    private static SimulationInterestEntity ToInterestEntity(
-        PlayerSimulationEntity entity)
-    {
-        return new SimulationInterestEntity(
-            entity.NetworkEntityId,
-            entity.Movement.State.PositionX,
-            entity.Movement.State.PositionZ);
+            RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State));
     }
 
     private PlayerSimulationEntity? ResolvePlayerForInteraction(int peerId)
@@ -2996,7 +2925,7 @@ public sealed class RealtimeSimulationService(
         SendControl(
             peer,
             RealtimeProtocol.EncodeWorldActorSpawn(
-                ToRealtimeWorldActorSpawn(actor)));
+                WorldActorProtocolMapper.ToSpawn(actor)));
         networkMetrics.RecordSpawnPacket();
     }
 
@@ -3018,7 +2947,7 @@ public sealed class RealtimeSimulationService(
     private void BroadcastWorldActorState(WorldActorRuntimeState actor)
     {
         var packet = RealtimeProtocol.EncodeWorldActorState(
-            ToRealtimeWorldActorState(actor));
+            WorldActorProtocolMapper.ToState(actor));
         foreach (var context in peers.Values)
         {
             if (context.Session is null
