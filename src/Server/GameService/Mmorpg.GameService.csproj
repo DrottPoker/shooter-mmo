@@ -3,14 +3,13 @@
   <ItemGroup>
     <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
     <ProjectReference Include="..\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
-    <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
-    <ProjectReference Include="..\GameService.Characters\Mmorpg.GameService.Characters.csproj" />
     <ProjectReference Include="..\GameService.Accounts\Mmorpg.GameService.Accounts.csproj" />
-    <ProjectReference Include="..\..\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
+    <ProjectReference Include="..\GameService.Characters\Mmorpg.GameService.Characters.csproj" />
+    <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
+    <ProjectReference Include="..\GameService.Items\Mmorpg.GameService.Items.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.66" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
 

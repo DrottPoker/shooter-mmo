@@ -299,4 +299,8 @@ intended differences:
   every `IDatabaseSeeder`. Items seeds the catalog and back-fills item state
   through `ItemsDatabaseSeeder`, and the Development item commands moved from
   `Program.cs` into `ItemsCommandLine` with the same output and exit codes.
-- The Items extraction: in progress.
+- Items extracted: `src/Server/GameService.Items` builds
+  `Mmorpg.GameService.Items`, which references Platform, Accounts, Characters,
+  Placement, and `Mmorpg.WorldData`. The host keeps `Program.cs`, the
+  configuration loader, database startup, the baseline migrations, health, and
+  the shipped configuration and content files.
