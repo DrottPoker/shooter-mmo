@@ -18,6 +18,17 @@ namespace Mmorpg.GameService.Testing;
 // source, and the module background services are removed so tests control all work.
 internal static class GameServiceTestComposition
 {
+    // The default test configuration. Module test projects use this overload, because a
+    // kit member typed with a host configuration type is inaccessible to them.
+    public static IServiceCollection AddGameServiceForTests(
+        this IServiceCollection services,
+        NpgsqlDataSource dataSource)
+    {
+        return services.AddGameServiceForTests(
+            dataSource,
+            CreateConfiguration(dataSource.ConnectionString));
+    }
+
     public static IServiceCollection AddGameServiceForTests(
         this IServiceCollection services,
         NpgsqlDataSource dataSource,
