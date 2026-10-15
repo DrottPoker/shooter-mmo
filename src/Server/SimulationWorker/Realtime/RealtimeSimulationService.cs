@@ -71,6 +71,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly SessionAuthorityOperations sessionOperations;
     private readonly RealtimeSessionTeardown teardown;
     private readonly AuthorityOperationScheduler authorityScheduler;
+    private readonly ItemOperationHandler itemOperations;
     private NetManager? server;
     private uint snapshotSequence;
     private uint corpsePresenceSequence;
@@ -176,6 +177,17 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             entityRegistry,
             networkMetrics);
         authorityScheduler = new AuthorityOperationScheduler(peerRegistry);
+        itemOperations = new ItemOperationHandler(
+            peerRegistry,
+            sender,
+            sessionStore,
+            carryStateStore,
+            entityRegistry,
+            carrySync,
+            teardown,
+            authorityScheduler,
+            operationTracker,
+            new ItemAuthorityOperations(itemInteractionService, completions, logger));
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -184,7 +196,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             RealtimeMessageRoutes.CreateUnauthenticated(HandleJoinRequest),
             RealtimeMessageRoutes.CreateAuthenticated(
                 HandleMovementInput,
-                HandleItemOperationIntent,
+                itemOperations.HandleIntent,
                 HandleCorpseInteractionIntent,
                 HandleWorldInteractionIntent,
                 HandleLeaveRequest));
@@ -453,62 +465,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         playerEntity.Movement.AcceptInputs(inputs);
     }
 
-    private void HandleItemOperationIntent(in RealtimeInboundMessage message)
-    {
-        var peer = message.Peer;
-        var context = message.Context;
-        var packet = message.Packet;
-        if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "item_operation_unavailable",
-                "Item interaction is not active for this peer.");
-            return;
-        }
-
-        if (!carryStateStore.TryGet(
-                playerEntity.Session.CharacterId,
-                playerEntity.Session.SimulationSessionId,
-                out _))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "carry_state_missing",
-                "Authoritative carry state is unavailable for item interaction.");
-            return;
-        }
-
-        if (!RealtimeProtocol.TryDecodeItemOperationIntent(
-                packet,
-                out var intent,
-                out var itemError))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "invalid_item_operation",
-                itemError);
-            return;
-        }
-
-        if (context.AuthorityOperationQueue.Count
-            >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
-        {
-            SendItemOperationRejection(
-                peer,
-                playerEntity.Session,
-                intent,
-                "item_operation_queue_full",
-                "Too many item operations are waiting for authority.");
-            return;
-        }
-
-        authorityScheduler.Enqueue(context, new QueuedItemOperation(this, intent));
-    }
-
     private void HandleCorpseInteractionIntent(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -712,44 +668,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         }
     }
 
-    private async Task CompleteItemOperationAsync(
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
-        RealtimeItemOperationIntent intent,
-        float positionX,
-        float positionY,
-        float positionZ)
-    {
-        try
-        {
-            var result = await itemInteractionService.ExecuteAsync(
-                session,
-                intent,
-                positionX,
-                positionY,
-                positionZ,
-                CancellationToken.None);
-            completions.Post(this, new ItemOperationCompleted(
-                context,
-                session,
-                result));
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "[SIMULATION] Unhandled error while mutating items for simulation session {SimulationSessionId}.",
-                session.SimulationSessionId);
-            completions.Post(this, new ItemOperationCompleted(
-                context,
-                session,
-                SimulationItemInteractionResult.Rejected(
-                    intent,
-                    "item_operation_failed",
-                    "SimulationWorker could not complete the item operation.")));
-        }
-    }
-
     private async Task CompleteCorpseOperationAsync(
         RealtimePeerContext context,
         ActiveSimulationSession session,
@@ -862,9 +780,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 }
             case LeaveCompleted leaveCompleted:
                 ProcessLeaveCompleted(leaveCompleted);
-                break;
-            case ItemOperationCompleted itemCompleted:
-                ProcessItemOperationCompleted(itemCompleted);
                 break;
             case CorpseOperationCompleted corpseCompleted:
                 ProcessCorpseOperationCompleted(corpseCompleted);
@@ -1087,98 +1002,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         peerRegistry.RefreshPopulationMetrics();
         sender.SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
         completed.Context.ScheduleDisconnect(DateTime.UtcNow);
-    }
-
-    private void ProcessItemOperationCompleted(ItemOperationCompleted completed)
-    {
-        completed.Context.AuthorityOperationInFlight = false;
-        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId
-                != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (!carryStateStore.TryGet(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                out _))
-        {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                "carry_state_missing",
-                "Authoritative carry state disappeared during the item operation.");
-            return;
-        }
-
-        if (completed.Result.ShouldDisconnect)
-        {
-            SendItemOperationResult(
-                peer,
-                completed.Session,
-                completed.Result,
-                requiresInventoryRefresh: true);
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                completed.Result.Error!.Code,
-                completed.Result.Error.Message);
-            return;
-        }
-
-        var requiresRefresh = completed.Result.RequiresInventoryRefresh;
-        if (completed.Result.Succeeded)
-        {
-            var characterRevision = completed.Result.Transaction!.CharacterRevisions.Single();
-            var committedCarry = new PlayerCarryState(
-                characterRevision.Revision,
-                characterRevision.CarriedWeight,
-                characterRevision.CarryCapacity);
-            var carryResult = carryStateStore.ApplyCommitted(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                committedCarry,
-                out var currentCarry);
-            if (carryResult is CarryStateApplyResult.Conflict
-                or CarryStateApplyResult.SessionMismatch)
-            {
-                teardown.TerminateForAuthorityFailure(
-                    peer,
-                    completed.Context,
-                    completed.Session,
-                    "item_state_diverged",
-                    "Committed item and carry revisions diverged from the active simulation state.");
-                return;
-            }
-
-            requiresRefresh |= carryResult == CarryStateApplyResult.Stale;
-            sessionStore.RefreshCarryState(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                completed.Session.SimulationSessionToken,
-                currentCarry);
-            if (entityRegistry.TryGetPlayerByCharacterId(
-                    completed.Session.CharacterId,
-                    out var entity))
-            {
-                carrySync.ApplyLatest(entity!);
-            }
-        }
-
-        SendItemOperationResult(
-            peer,
-            completed.Session,
-            completed.Result,
-            requiresRefresh);
-        authorityScheduler.StartNext(completed.Context);
     }
 
     private void ProcessWorldInteractionOperation(
@@ -1802,64 +1625,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             <= radius * radius;
     }
 
-    private void SendItemOperationResult(
-        IRealtimePeerConnection peer,
-        ActiveSimulationSession session,
-        SimulationItemInteractionResult result,
-        bool requiresInventoryRefresh)
-    {
-        if (!carryStateStore.TryGet(
-                session.CharacterId,
-                session.SimulationSessionId,
-                out var carryState))
-        {
-            return;
-        }
-
-        var transaction = result.Transaction;
-        var packetResult = new RealtimeItemOperationResult(
-            result.Intent.OperationId,
-            result.Intent.OperationKind,
-            result.Succeeded,
-            requiresInventoryRefresh,
-            result.Succeeded
-                ? null
-                : new RealtimeError(result.Error!.Code, result.Error.Message),
-            RealtimeStateMapper.ToRealtimeCarryState(carryState!),
-            result.Succeeded
-                ? transaction!.ItemRevisions
-                    .Select(revision => new RealtimeItemRevision(
-                        revision.ItemInstanceId,
-                        revision.Revision))
-                    .ToArray()
-                : Array.Empty<RealtimeItemRevision>(),
-            result.Succeeded
-                ? transaction!.ContainerRevisions
-                    .Select(revision => new RealtimeContainerRevision(
-                        revision.ContainerId,
-                        revision.Revision))
-                    .ToArray()
-                : Array.Empty<RealtimeContainerRevision>(),
-            result.Succeeded
-                ? transaction!.RecoveryDeliveryIds.ToArray()
-                : Array.Empty<Guid>());
-        sender.SendControl(peer, RealtimeProtocol.EncodeItemOperationResult(packetResult));
-    }
-
-    private void SendItemOperationRejection(
-        IRealtimePeerConnection peer,
-        ActiveSimulationSession session,
-        RealtimeItemOperationIntent intent,
-        string code,
-        string message)
-    {
-        SendItemOperationResult(
-            peer,
-            session,
-            SimulationItemInteractionResult.Rejected(intent, code, message),
-            requiresInventoryRefresh: false);
-    }
-
     private void ProcessSimulationTicks(
         TimeSpan elapsed,
         TimeSpan simulationInterval,
@@ -2415,25 +2180,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         public void DisconnectPeer(IRealtimePeerConnection peer)
         {
             owner.server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
-        }
-    }
-
-    private sealed record QueuedItemOperation(
-        RealtimeSimulationService Owner,
-        RealtimeItemOperationIntent Intent) : IRealtimeAuthorityOperation
-    {
-        public void Start(
-            RealtimePeerContext context,
-            PlayerSimulationEntity entity,
-            PlayerMovementState state)
-        {
-            Owner.operationTracker.Track(Owner.CompleteItemOperationAsync(
-                context,
-                context.Session!,
-                Intent,
-                state.PositionX,
-                state.PositionY,
-                state.PositionZ));
         }
     }
 
