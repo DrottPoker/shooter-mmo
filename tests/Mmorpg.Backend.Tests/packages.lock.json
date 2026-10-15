@@ -220,7 +220,6 @@
           "Mmorpg.GameService.Placement": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
-          "Mmorpg.WorldData": "[1.0.0, )",
           "Npgsql": "[9.0.3, )"
         }
       },

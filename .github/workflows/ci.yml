@@ -93,13 +93,14 @@ jobs:
           --
           --verify
 
+      # Every test project writes TestResults/<Project>/test-results.trx and its own
+      # coverage folder, set by tests/Directory.Build.props.
       - name: Test
         run: >-
           dotnet test Mmorpg.slnx
           --configuration Release
           --no-build
-          --logger "trx;LogFileName=backend-tests.trx"
-          --results-directory TestResults
+          --logger "trx;LogFileName=test-results.trx"
           --collect "XPlat Code Coverage"
 
       - name: Upload test results

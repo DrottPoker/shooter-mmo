@@ -15,6 +15,7 @@
     <Project Path="src/Shared/DotNet/WorldData/Mmorpg.WorldData.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <File Path="tests/Directory.Build.props" />
     <Project Path="tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

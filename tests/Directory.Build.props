@@ -1,0 +1,55 @@
+<Project>
+
+  <!-- Shared settings for every project below tests. A project is a test project when its
+       name ends in .Tests; the other projects are test infrastructure libraries. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject Condition="'$(IsTestProject)' == '' and $(MSBuildProjectName.EndsWith('.Tests'))">true</IsTestProject>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <!-- GameService, SimulationWorker, and ActiveSimulationBots ship appsettings files at
+         the same output paths. Tests read configuration from repository paths, so every
+         test output owns empty placeholders and drops the conflicting copies instead of
+         keeping whichever project happened to copy last. -->
+    <CopyConflictingTransitiveContent>false</CopyConflictingTransitiveContent>
+    <!-- One results folder per project, so parallel projects never overwrite each other's
+         TRX file. An explicit results directory still wins. -->
+    <VSTestResultsDirectory Condition="'$(VSTestResultsDirectory)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\TestResults\$(MSBuildProjectName)'))</VSTestResultsDirectory>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <PackageReference Include="coverlet.collector" Version="6.0.4" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <None Include="$(MSBuildThisFileDirectory)TestOutput\appsettings.json"
+          Link="appsettings.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)TestOutput\Config\appsettings.json"
+          Link="Config\appsettings.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)TestOutput\Config\appsettings.Development.json"
+          Link="Config\appsettings.Development.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <!-- Lets test helpers such as golden files find their project folder without
+         compile-time paths, which ContinuousIntegrationBuild remaps. -->
+    <AssemblyMetadata Include="Mmorpg.TestProjectDirectory"
+                      Value="$([MSBuild]::MakeRelative('$(MSBuildThisFileDirectory)..\', '$(MSBuildProjectDirectory)').Replace('\', '/'))" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' != 'true'">
+    <PackageReference Include="xunit.v3.extensibility.core" Version="3.2.2" />
+    <PackageReference Include="xunit.v3.assert" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

@@ -1,42 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-    <!-- GameService, SimulationWorker, and ActiveSimulationBots ship appsettings files at
-         the same output paths. Tests read configuration from repository paths, so the
-         test output owns empty placeholders and drops the conflicting copies instead of
-         keeping whichever project happened to copy last. -->
-    <CopyConflictingTransitiveContent>false</CopyConflictingTransitiveContent>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <None Update="TestOutput\appsettings.json"
-          Link="appsettings.json"
-          CopyToOutputDirectory="PreserveNewest" />
-    <None Update="TestOutput\Config\appsettings.json"
-          Link="Config\appsettings.json"
-          CopyToOutputDirectory="PreserveNewest" />
-    <None Update="TestOutput\Config\appsettings.Development.json"
-          Link="Config\appsettings.Development.json"
-          CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\Server\GameService\Mmorpg.GameService.csproj" />
@@ -56,9 +18,5 @@
     <!-- Shared with the Unity EditMode tests so both runtimes run the same scenario. -->
     <Compile Include="..\..\src\Client\Assets\Tests\EditMode\Shared\*.cs"
              Link="Shared\%(Filename)%(Extension)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Using Include="Xunit" />
   </ItemGroup>
 </Project>
