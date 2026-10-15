@@ -102,7 +102,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
 
         await postgresSampler.InitializeAsync(cancellationToken);
-        gameServiceProcessSampler = StressProcessSampler.TryAttach("GameService");
+        gameServiceProcessSampler = StressProcessSampler.TryAttach("Mmorpg.GameService");
         gameServiceProcessSampler?.Sample();
 
         Console.WriteLine(

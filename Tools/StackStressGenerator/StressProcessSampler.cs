@@ -54,7 +54,7 @@ public sealed class StressProcessSampler : IDisposable
 
     public static StressProcessSampler? TryAttach(DateTime workerStartedAt)
     {
-        return TryAttach("SimulationWorker", workerStartedAt);
+        return TryAttach("Mmorpg.SimulationWorker", workerStartedAt);
     }
 
     public static StressProcessSampler? TryAttach(

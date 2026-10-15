@@ -567,7 +567,7 @@ namespace Mmorpg.Client.Editor
             var releaseDirectory = Path.Combine(repositoryRoot, "GameService", "bin", "Release");
             var assemblyPath = Directory.Exists(releaseDirectory)
                 ? Directory.GetDirectories(releaseDirectory)
-                    .Select(directory => Path.Combine(directory, "GameService.dll"))
+                    .Select(directory => Path.Combine(directory, "Mmorpg.GameService.dll"))
                     .Where(File.Exists)
                     .OrderByDescending(File.GetLastWriteTimeUtc)
                     .FirstOrDefault()

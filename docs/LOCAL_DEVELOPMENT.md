@@ -620,7 +620,7 @@ PlayMode verifies the persistent controller and runtime uGUI root.
 
 The Unity Editor window is the primary workflow. It never writes directly to
 PostgreSQL. It runs the Release build of GameService directly as
-`dotnet GameService/bin/Release/<framework>/GameService.dll`, so GameService runs
+`dotnet GameService/bin/Release/<framework>/Mmorpg.GameService.dll`, so GameService runs
 inside that one process and a cancel or the 60-second timeout ends it. It starts
 a guarded GameService command that uses
 `ItemTransactionService`, accepts only Development, requires a loopback

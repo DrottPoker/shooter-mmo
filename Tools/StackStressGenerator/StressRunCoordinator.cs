@@ -30,7 +30,7 @@ public sealed class StressRunCoordinator(
         await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         using var processSampler = target.Worker is not null
             ? StressProcessSampler.TryAttach(target.Worker.StartedAt)
-            : StressProcessSampler.TryAttach("SimulationWorker");
+            : StressProcessSampler.TryAttach("Mmorpg.SimulationWorker");
         using var generatorProcessSampler = StressProcessSampler.AttachCurrent();
         processSampler?.Sample();
         generatorProcessSampler.Sample();
