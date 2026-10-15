@@ -7,7 +7,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs world interaction authority for one queued intent and posts its completion.
 // Open, Close and every rejection complete synchronously on the calling loop thread;
-// only capability dispatch can continue off the loop.
+// only capability dispatch can continue off the loop, after which this class reads no
+// loop state.
 internal sealed class WorldInteractionAuthorityOperations(
     WorldInteractionAuthorityService? worldInteractionAuthority,
     RealtimeCompletionQueue completions,
@@ -19,6 +20,9 @@ internal sealed class WorldInteractionAuthorityOperations(
         PlayerSimulationEntity entity,
         RealtimeWorldInteractionIntent intent)
     {
+        // The loop may refresh the entity's session during capability dispatch, so the
+        // session is read here, on the loop, before the first await.
+        var session = entity.Session;
         WorldInteractionAuthorityResult result;
         try
         {
@@ -50,7 +54,7 @@ internal sealed class WorldInteractionAuthorityOperations(
 
         completions.Post(completionHandler, new WorldInteractionOperationCompleted(
             context,
-            entity.Session,
+            session,
             result));
     }
 }
