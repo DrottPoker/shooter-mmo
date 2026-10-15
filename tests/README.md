@@ -16,7 +16,7 @@ infrastructure. Unity tests live inside the Unity project under
 | `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-assembly test databases, golden files, trait names |
 | `Mmorpg.Testing.Content` | `Testing/Mmorpg.Testing.Content` | Library: item catalog, world actor, and collision world loaders that use the content tools |
 | `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition, the API test hosts, and the GameService source map and assembly list |
-| `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog and world actor compilers; links the Unity EditMode movement scenario |
+| `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog and world actor compilers; links the Unity EditMode movement scenario and realtime protocol golden cases |
 | `Mmorpg.Server.Common.Tests` | `Server/Mmorpg.Server.Common.Tests` | `Mmorpg.Server.Common` |
 | `Mmorpg.GameService.Platform.Tests` | `Server/Mmorpg.GameService.Platform.Tests` | GameService Platform |
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including one PostgreSQL and one Redis test |
@@ -138,6 +138,30 @@ needed. The item transaction traces live in
 `Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`. Run the tests
 with `MMORPG_UPDATE_GOLDENS=1` to rewrite the files after an intended change,
 and review every golden diff before committing it.
+
+### Realtime Protocol Goldens
+
+The realtime protocol golden cases live in
+`src/Client/Assets/Tests/EditMode/Shared/RealtimeProtocolGolden*.cs`. Like the
+movement scenario, they compile into both `Mmorpg.Shared.Tests` and the Unity
+EditMode tests, so .NET and Unity must produce and accept the same bytes. They
+cover four groups:
+
+- Vectors: every message type and variant encodes to the payload pinned in
+  `RealtimeProtocolGoldenVectors.cs`, and decoding then encoding it again gives
+  the same bytes. Payloads above 256 bytes are pinned by length and SHA-256.
+- Structural rejections: every vector is rejected when truncated at any byte,
+  extended by one byte, or given another magic, version, or message type.
+- Decode cases: packets built byte by byte, without the protocol code, that
+  probe every field rule. They are accepted canonically, accepted and
+  normalized to a pinned canonical form, accepted although they cannot be
+  encoded again, or rejected.
+- Encode rejections: invalid values throw `ArgumentException`, and packets
+  above 1,200 bytes throw `InvalidOperationException`.
+
+Error texts are not pinned, only the accept or reject outcome. The vectors
+change only together with an intended protocol change and a protocol version
+bump. Never update them to make a failing refactor pass.
 
 ## Test Output Placeholders
 
