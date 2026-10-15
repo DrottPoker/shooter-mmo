@@ -1,0 +1,20 @@
+scenario: kernel.live_authority_rejected_no_replay
+trace:
+  c1 begin ReadCommitted
+  c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
+  c1 sql select account_id from characters where id = $1 and deleted_at is null for no key update
+  c1 sql select simulation_session.account_id as "AccountId", simulation_session.character_id as "CharacterId", simulation_session.shard_id as "ShardId", simulation_session.simulation_worker_id as "WorkerId", simulation_session.worker_runtime_id as "WorkerRuntimeId", simulation_session.session_token_hash as "SessionTokenHash", simulation_session.released_at is null and simulation_session.expires_at > now() and (simulation_session.account_session_id is null or exists ( select 1 from account_sessions accounts_sql_session where accounts_sql_session.id = simulation_session.account_session_id and accounts_sql_session.revoked_at is null and accounts_sql_session.expires_at > now())) as "IsActive" from character_simulation_sessions simulation_session where simulation_session.id = $1 for update of simulation_session
+  c1 rollback
+  c2 sql select result_payload::text from item_operations where operation_id = $1 and operation_kind = $2 and request_hash = $3 and status = 'committed'
+result:
+  operation kind: relocate
+  operation id matches: yes
+  succeeded: no
+  error: simulation_session_invalid | The simulation session is invalid, released, or expired.
+  character revisions: none
+  container revisions: none
+  item revisions: none
+  recovery deliveries: 0
+  secure entitlement revision: none
+journal:
+  operation row: none

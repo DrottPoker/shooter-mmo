@@ -1,0 +1,36 @@
+scenario: grant.quest_already_satisfied
+trace:
+  c1 begin ReadCommitted
+  c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
+  c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
+  c1 sql savepoint item_mutation
+  c1 sql select id as "CharacterId", account_id as "AccountId" from characters where id = any($1) and deleted_at is null order by id for no key update
+  c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.secure_container_id as "SecureContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = any($1) order by state.character_id for update of state
+  c1 sql select bound_bag_item_instance_id from item_containers where id = any($1) and bound_bag_item_instance_id is not null order by bound_bag_item_instance_id
+  c1 sql select id from item_containers where id = any($1) order by id for update
+  c1 batch 4
+    > select definition.id as "Id", definition.display_name as "DisplayName", definition.category_id as "Category", definition.unit_weight as "UnitWeight", definition.maximum_stack_size as "MaximumStackSize", definition.player_destroyable as "PlayerDestroyable", definition.structural_fingerprint as "StructuralFingerprint", coalesce(location.is_allowed, false) as "SecureContainerEligible", bag.carry_capacity_bonus as "BagCarryCapacityBonus" from item_definitions definition left join item_definition_location_rules location on location.definition_id = definition.id and location.location_kind = 'secure_container' left join bag_definitions bag on bag.definition_id = definition.id where definition.id = $1 and definition.is_active
+    > select tag_id from item_definition_tags where definition_id = $1 order by tag_id
+    > select equipment_slot_id from item_definition_equipment_slots where definition_id = $1 order by equipment_slot_id
+    > select policy_kind from item_definition_default_policies where definition_id = $1 order by policy_kind
+  c1 sql select item.id from item_instances item left join item_containers container on container.id = item.container_id left join item_instances source_bag on source_bag.id = container.bound_bag_item_instance_id join item_instance_policies policy on policy.item_instance_id = item.id and policy.policy_kind = 'protected_on_death' and policy.status = 'active' where coalesce( item.equipped_character_id, container.owner_character_id, source_bag.equipped_character_id) = $1 and item.definition_id = $2 and policy.source_kind = $3 and policy.source_id = $4 order by item.id limit 1
+  c1 sql select id as "ItemInstanceId", revision as "Revision" from item_instances where id = any($1) order by id
+  c1 sql insert into item_operation_changes ( operation_id, change_index, item_instance_id, change_kind, before_state, after_state) values ( $1, $2, $3, $4, cast($5 as jsonb), cast($6 as jsonb))
+  c1 sql update item_operations set status = $1, result_payload = cast($2 as jsonb), revision = revision + 1, completed_at = now() where operation_id = $3
+  c1 commit
+result:
+  operation kind: grant
+  operation id matches: yes
+  succeeded: yes
+  error: none
+  character revisions: none
+  container revisions: none
+  item revisions:
+    revision=0
+  recovery deliveries: 0
+  secure entitlement revision: none
+journal:
+  operation row: grant committed
+  stored payload: equals returned result
+  changes:
+    0 quest_grant_already_satisfied item=none before=set after=set

@@ -1,0 +1,14 @@
+scenario: kernel.payload_too_large
+trace:
+result:
+  operation kind: add_recovery_delivery
+  operation id matches: yes
+  succeeded: no
+  error: item_command_payload_too_large | The item operation command payload exceeds the configured size limit.
+  character revisions: none
+  container revisions: none
+  item revisions: none
+  recovery deliveries: 0
+  secure entitlement revision: none
+journal:
+  operation row: none

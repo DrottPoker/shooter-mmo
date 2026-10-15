@@ -1,0 +1,14 @@
+scenario: kernel.operation_id_invalid
+trace:
+result:
+  operation kind: grant
+  operation id matches: yes
+  succeeded: no
+  error: item_operation_id_invalid | The item operation id must be a random version 4 UUID.
+  character revisions: none
+  container revisions: none
+  item revisions: none
+  recovery deliveries: 0
+  secure entitlement revision: none
+journal:
+  operation row: none
