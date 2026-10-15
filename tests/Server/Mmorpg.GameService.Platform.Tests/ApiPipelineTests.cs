@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Platform.Tests;
 
 public sealed class ApiPipelineTests
 {

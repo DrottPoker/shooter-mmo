@@ -1,6 +1,6 @@
 using Mmorpg.GameService.Platform.Security;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Platform.Tests;
 
 public sealed class TokenGeneratorTests
 {
