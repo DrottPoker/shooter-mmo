@@ -93,14 +93,37 @@ jobs:
           --
           --verify
 
+      # Every test project writes TestResults/<Project>/test-results.trx and its own
+      # coverage folder, set by tests/Directory.Build.props.
       - name: Test
         run: >-
           dotnet test Mmorpg.slnx
           --configuration Release
           --no-build
-          --logger "trx;LogFileName=backend-tests.trx"
-          --results-directory TestResults
+          --logger "trx;LogFileName=test-results.trx"
           --collect "XPlat Code Coverage"
+
+      # A skipped infrastructure test means a missing service or MMORPG_TEST_* variable,
+      # so CI treats any test that did not run as a failure.
+      - name: Verify every test ran
+        shell: pwsh
+        run: |
+          $results = @(Get-ChildItem -Path TestResults -Recurse -Filter test-results.trx)
+          if ($results.Count -eq 0) {
+              throw "No test results were written below TestResults."
+          }
+
+          $notRun = foreach ($result in $results) {
+              [xml]$trx = Get-Content -Raw -LiteralPath $result.FullName
+              $trx.TestRun.Results.UnitTestResult |
+                  Where-Object { $_.outcome -ne "Passed" } |
+                  ForEach-Object { "$($_.testName): $($_.outcome)" }
+          }
+          if ($notRun) {
+              throw "Tests did not run or pass:`n$($notRun -join "`n")"
+          }
+
+          Write-Output "All tests in $($results.Count) test result files passed."
 
       - name: Upload test results
         if: always()

@@ -80,8 +80,10 @@ dotnet test Mmorpg.slnx --configuration Release --no-build
 Expected result:
 
 - Restore accepts every committed `packages.lock.json` file.
-- Dependency policy verification confirms exact Unity and NuGet versions, local
-  package paths, Unity lock coverage, and the absence of tracked client builds.
+- Dependency policy verification confirms exact Unity and NuGet versions in
+  project, props, and targets files, one `xunit.v3` version across the test
+  projects, local package paths, Unity lock coverage, and the absence of tracked
+  client builds.
 - Format reports no files that need changes.
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports nine definitions, one base Secure Container
@@ -95,10 +97,11 @@ Expected result:
 
 Tests read configuration and content from repository paths, never from their
 output folder. GameService, SimulationWorker, and ActiveSimulationBots all ship
-appsettings files at the same output paths, so the test project sets
-`CopyConflictingTransitiveContent` to `false` and owns empty `{}` placeholders
-under `tests/Mmorpg.Backend.Tests/TestOutput` for those paths. A test fails
-if a service copy ever replaces a placeholder.
+appsettings files at the same output paths, so `tests/Directory.Build.props`
+sets `CopyConflictingTransitiveContent` to `false` for every test project and
+links the empty `{}` placeholders in `tests/TestOutput` to those paths.
+`TestBuildOutputTests` fails if a service copy ever replaces a placeholder. The
+test projects and their rules are described in [Backend Tests](../tests/README.md).
 
 NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 `development`. Unity Package Manager updates remain explicit because Dependabot
@@ -214,12 +217,12 @@ $env:MMORPG_TEST_POSTGRES = `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemPersistenceIntegrationTests"
 ```
 
-Expected result: ten tests pass. They reset only the dedicated database whose
+Expected result: eleven tests pass. They reset only the dedicated database whose
 name contains `test`, then verify the complete catalog mirror, legacy backfill,
 atomic new-character bootstrap, uniqueness and location constraints, planned
 custody shapes, explicit delete behavior, and structural catalog startup fence.
@@ -227,7 +230,7 @@ custody shapes, explicit delete behavior, and structural catalog startup fence.
 To exercise concurrent migration initialization as well, run:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Integration/Mmorpg.Integration.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ConcurrentMigrationInitializationAppliesEachMigrationOnce"
 ```
@@ -272,7 +275,7 @@ $env:MMORPG_TEST_POSTGRES = `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemReadModelIntegrationTests"
 docker compose -f docker-compose.test.yml down
@@ -342,14 +345,14 @@ $env:MMORPG_TEST_POSTGRES = `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemConcurrencyIntegrationTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
-Expected result: eleven tests pass. The suite executes every internal command
+Expected result: seventeen tests pass. The suite executes every internal command
 and verifies account authorization, effective policy lineage, specific and
 deterministic slots, equipment, empty and non-empty Bag rules, Recovery add and
 claim, account-wide Secure Container tier changes, unitless carried-state
@@ -378,14 +381,14 @@ $env:MMORPG_TEST_POSTGRES = `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemPolicyLifecycleIntegrationTests|FullyQualifiedName~ItemApiIntegrationTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
-Expected result: eight tests pass. They verify insurance application and
+Expected result: nine tests pass. They verify insurance application and
 removal, exact quest-grant cleanup and reaccept, catalog ETag and `304`, no-store
 headers, owner scoping, Secure Container tier access, stable Problem Details,
 offline session fencing, stable split, merge, and destroy validation, offline
@@ -476,7 +479,7 @@ $env:MMORPG_TEST_POSTGRES = `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~PlayerMovementSimulationTests|FullyQualifiedName~CarryStateStoreTests|FullyQualifiedName~SimulationSessionReleaseServiceTests|FullyQualifiedName~AuthoritativePlayerMovementTests|FullyQualifiedName~RealtimeProtocolTests|FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~CarryStateIsFencedIntoJoinHeartbeatAndReconnect|FullyQualifiedName~CarryStateCountsEveryCarriedCustodyExactlyOnceAndExcludesExternalCustody|FullyQualifiedName~SwappingToLowerCapacityBagRejectsTheCompleteAggregateAboveHardCap"
 Remove-Item Env:MMORPG_TEST_POSTGRES
@@ -536,9 +539,9 @@ $env:MMORPG_TEST_POSTGRES = `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
-  --filter "FullyQualifiedName~SimulationItemMutationIntegrationTests|FullyQualifiedName~DuplicateReliableItemIntentsReplayOneCommittedCarryRevision|FullyQualifiedName~ItemOperationIntentsRoundTripEveryPhaseEightMutationKind|FullyQualifiedName~ItemOperationResultRoundTripsCommittedRevisionsAndRefreshSignal|FullyQualifiedName~ItemOperationIntentRejectsUnboundedRecoveryClaims|FullyQualifiedName~SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry|FullyQualifiedName~SimulationWorkerRejectsInvalidItemServicePoints"
+  --filter "FullyQualifiedName~SimulationItemMutationIntegrationTests|FullyQualifiedName~DuplicateReliableItemIntentsReplayOneCommittedCarryRevision|FullyQualifiedName~ItemOperationIntentsRoundTripEveryPhaseEightMutationKind|FullyQualifiedName~ItemOperationResultRoundTripsCommittedRevisionsAndRefreshSignal|FullyQualifiedName~ItemOperationIntentRejectsUnboundedRecoveryClaims|FullyQualifiedName~SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry"
 Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
@@ -591,7 +594,7 @@ $env:MMORPG_TEST_POSTGRES = `
   (Get-Content .env | Where-Object {
     $_ -like "MMORPG_TEST_POSTGRES=*"
   }).Split("=", 2)[1]
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
@@ -797,7 +800,7 @@ $env:MMORPG_TEST_POSTGRES = `
   (Get-Content .env | Where-Object {
     $_ -like "MMORPG_TEST_POSTGRES=*"
   }).Split("=", 2)[1]
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~DeathLootIntegrationTests|FullyQualifiedName~DurableCorpseStoreTests|FullyQualifiedName~GameServiceClientTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
@@ -830,7 +833,7 @@ $env:MMORPG_TEST_POSTGRES = `
   (Get-Content .env | Where-Object {
     $_ -like "MMORPG_TEST_POSTGRES=*"
   }).Split("=", 2)[1]
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~CorpseLootConcurrencyIntegrationTests|FullyQualifiedName~CorpseInteractionEndpointsEnforceAuthorityCommitAndCloseTransactions|FullyQualifiedName~CorpseFixtureSeedsEmptyCharacterAndUsesDurableDeathPipeline|FullyQualifiedName~RealtimeCorpseProtocolTests|FullyQualifiedName~CorpseRealtimeStateTests|FullyQualifiedName~SimulationCorpseInteractionServiceTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
@@ -932,7 +935,7 @@ Run the focused backend actor and protocol coverage, then the complete Unity
 workflow:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~WorldActor|FullyQualifiedName~RealtimeWorldActor"
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
@@ -1020,7 +1023,7 @@ Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --configuration Release `
   --filter "Category=Load"
 ```
@@ -1121,7 +1124,7 @@ five runtime instances, and the checked-in actor runtime revision is
 Run the worker-memory lifecycle workflow:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~LiveMobCorpseStoreTests|FullyQualifiedName~MobCorpseLifecycleServiceTests"
@@ -1135,13 +1138,13 @@ grant id.
 With the isolated PostgreSQL test variable configured in the next section, run:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Integration/Mmorpg.Integration.Tests `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~MobCorpseLifecycleIntegrationTests"
 ```
 
-Expected result: both integration tests pass. Retrying one live Mob loot grant
+Expected result: all three integration tests pass. Retrying one live Mob loot grant
 creates one persistent player item. A durable alpha corpse restores into a new
 worker store with the same database deadline, three-section custody, and loot.
 
@@ -1174,7 +1177,7 @@ With the isolated PostgreSQL variable configured in the next section, run the
 operational tests:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~ItemOperationsHardeningTests|FullyQualifiedName~ItemOperationsHardeningIntegrationTests"
@@ -1185,12 +1188,13 @@ Expected result: all focused tests pass. A blocked character mutation returns
 `item_command_payload_too_large` before database access; expired Recovery items
 are destroyed exactly once with `recovery_expired`; and policy-eligible empty
 closed corpses plus unreferenced old operation rows are removed without deleting
-durable destruction evidence.
+durable destruction evidence. The worker corpse metrics are covered by
+`CorpseRuntimeMetricsTests` in `Mmorpg.SimulationWorker.Tests`.
 
 Run the actor and transaction hotspot scenarios:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~WorldActorRuntimeTests|FullyQualifiedName~CorpseLootConcurrencyIntegrationTests"
@@ -1220,9 +1224,10 @@ coverage and expect all EditMode and PlayMode tests to pass unchanged.
 
 ## Isolated PostgreSQL Integration Tests
 
-The integration test resets the target database's `public` schema. Always use the
-isolated test Compose file and never point the test variable at a development,
-staging, or production database.
+Every test project with PostgreSQL tests uses its own database next to the
+database named in `MMORPG_TEST_POSTGRES` and resets that database's `public`
+schema before each test. Always use the isolated test Compose file and never
+point the test variable at a development, staging, or production database.
 
 Start the test database:
 
@@ -1247,6 +1252,17 @@ Expected result:
   reconnect, heartbeat, cross-shard and cross-character exclusion, assignment
   failover, and idempotent release tests pass
   instead of being skipped.
+- The server holds one test database per project with PostgreSQL tests:
+  `<base>_gameservice`, `<base>_gameservice_accounts`,
+  `<base>_gameservice_items`, and `<base>_integration`, where `<base>` is the
+  database named in the variable. Each is created on first use and kept. The
+  test container keeps its data in memory, so `down` removes them.
+- A second run of the same test project against the same server, started while
+  the first still runs, fails at once with a message that names the database.
+
+Add `--filter "Category=Integration"` to run only the PostgreSQL and Redis
+tests, or `--filter "Category!=Integration"` to run everything else without
+containers.
 
 Clean up the isolated environment:
 
@@ -1455,7 +1471,7 @@ rejections, reconnects, item, corpse, and world interaction flows, replication
 order, and shutdown with:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --filter "FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests|FullyQualifiedName~RealtimeProtocolRejectionTests|FullyQualifiedName~RealtimeSessionLifecycleTests|FullyQualifiedName~RealtimeItemOperationTests|FullyQualifiedName~RealtimeCorpseInteractionTests|FullyQualifiedName~RealtimeWorldActorInteractionTests|FullyQualifiedName~RealtimeReplicationContractTests"
 ```
 
@@ -1469,14 +1485,16 @@ database.
 The realtime components also have in-memory tests that need no sockets:
 
 ```powershell
-dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --filter "FullyQualifiedName~RealtimeMessageDispatcherTests|FullyQualifiedName~RealtimeCompletionProcessorTests|FullyQualifiedName~RealtimeCorpsePeerIdReuseTests|FullyQualifiedName~RealtimeAuthorityQueueTests|FullyQualifiedName~RealtimeItemOperationHandlerTests|FullyQualifiedName~RealtimeWorldInteractionOperationsTests|FullyQualifiedName~RealtimeServiceDisposalTests|FullyQualifiedName~RealtimeMetricNamesTests"
 ```
 
 Expected result: every test passes within seconds. The dispatcher test compares
 every peer state, message type, channel, and delivery method with the original
-routing rules. Use `--filter "FullyQualifiedName~Realtime"` to run every
-realtime test at once.
+routing rules. Run `dotnet test Mmorpg.slnx --filter "FullyQualifiedName~Realtime"`
+to run every realtime test at once. That filter spans the protocol tests in
+`Mmorpg.Shared.Tests` and the worker tests in `Mmorpg.SimulationWorker.Tests`,
+so run it against the solution.
 
 Optional logout test after the join flow is complete:
 
@@ -1912,7 +1930,7 @@ determinism tests in both the backend suite and Unity EditMode. Bump
 `GameSimulationCompatibility.Revision`, then set `ExpectedSimulationRevision`
 and `ExpectedFingerprint` in
 `src/Client/Assets/Tests/EditMode/Shared/MovementDeterminismScenario.cs`
-to the new values. The backend test project compiles the same file, so both
+to the new values. `Mmorpg.Shared.Tests` compiles the same file, so both
 runtimes keep checking one pinned pair. If only Unity fails, a new float
 expression in `GameSimulation` is missing an explicit `(float)` cast around an
 intermediate result; `MovementDeterminismScenario.ComputeTrace()` returns the

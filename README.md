@@ -234,13 +234,27 @@ Remove-Item Env:MMORPG_TEST_POSTGRES, Env:MMORPG_TEST_REDIS
 ```
 
 Expected result: every test passes and none is skipped. The full run takes about
-six to seven minutes.
+eight minutes, most of it in `Mmorpg.GameService.Items.Tests`.
 
-The integration suite resets the `public` schema. It refuses a database name
-that does not contain `test`, but the variable must still never target shared or
-production data. The Redis test writes only keys below a unique random prefix
-and removes them afterwards. The test Redis container listens on
+Each test project uses its own PostgreSQL database, `<base>_<project>`, next to
+the database named in `MMORPG_TEST_POSTGRES`. It creates the database on first
+use and resets its `public` schema before every test. Both database names must
+contain `test`, and the test role needs `CREATEDB`, which the test container's
+role has. Run one test run per project and server at a time: a second
+concurrent run of the same project fails at once. The variable must still never
+target shared or production data. Redis tests write only keys below a unique
+random prefix and remove them afterwards. The test Redis container listens on
 `127.0.0.1:56380` and keeps no data on disk.
+
+For a fast loop that needs no containers, or to run one test project:
+
+```powershell
+dotnet test Mmorpg.slnx --configuration Release --filter "Category!=Integration"
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release
+```
+
+The test projects, where a new test goes, the traits, and the database rules are
+described in [Backend Tests](tests/README.md).
 
 Run Unity tests through `Window > General > Test Runner`, or use the licensed
 headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
@@ -264,7 +278,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
 | `src/Client` | Unity project and Unity tests |
 | `tools` | Verification, content compilers and their shared pipeline library, stress benchmark, shared headless bot client, and active bot population |
-| `tests` | Backend unit, realtime, and PostgreSQL integration tests |
+| `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |
 
 Repository-wide Compose, SDK, solution, build, and environment contracts remain

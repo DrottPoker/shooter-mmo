@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Flows that span GameService modules or the GameService and SimulationWorker
+       processes. Single-module tests belong in that module's test project. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\Server\SimulationWorker\Mmorpg.SimulationWorker.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.GameService.Testing\Mmorpg.GameService.Testing.csproj" />
+  </ItemGroup>
+</Project>

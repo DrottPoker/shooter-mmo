@@ -57,9 +57,13 @@ gives the host.
 
 A module publishes only its module class, its options with their nested option
 records, and its `Contracts` namespace. Items also publishes `ItemsCommandLine`
-for the Development item commands. Everything else is internal, and the backend
-tests reach internals through `InternalsVisibleTo`. A module never grants
-another module access to its internals.
+for the Development item commands. Everything else is internal. Test projects
+reach internals through `InternalsVisibleTo` along the dependency direction: a
+module grants its own test project, the test projects of the modules that build
+on it, the GameService test kit, `Mmorpg.GameService.Tests`, and
+`Mmorpg.Integration.Tests`, as listed in
+[Backend Tests](../tests/README.md#internal-access). A module never grants
+another module or any production assembly access to its internals.
 
 | Module | Public types outside `Contracts` |
 | --- | --- |
@@ -372,7 +376,9 @@ migrations.
 
 ## Guard Tests
 
-All guard tests live in `tests/Mmorpg.Backend.Tests/Architecture`.
+The guard tests live in `tests/Server/Mmorpg.GameService.Tests/Architecture`,
+except `ItemTransactionKernelBoundaryTests`, which lives with the kernel tests in
+`tests/Server/Mmorpg.GameService.Items.Tests/ItemTransactions`.
 
 | Test | What it protects |
 | --- | --- |
@@ -454,20 +460,25 @@ differences:
 
 ## Testing And Next Steps
 
-`GameServiceTestComposition` builds the production service graph for tests with
-a test-owned data source, Redis acceleration disabled, and no module background
-services. Integration tests, the API test hosts, and unit tests that need a real
-service instance use it, so constructor changes stay inside the modules.
+`GameServiceTestComposition` in the GameService test kit,
+`tests/Testing/Mmorpg.GameService.Testing`, builds the production service graph
+for tests with a test-owned data source, Redis acceleration disabled, and no
+module background services. Integration tests, the API test hosts, and unit
+tests that need a real service instance use it, so constructor changes stay
+inside the modules.
 
-All module tests still live in `tests/Mmorpg.Backend.Tests`. Before tests move
-into per-module test projects, the test database needs isolation: every test
-context resets the `public` schema, `dotnet test` runs test assemblies in
-parallel, and `bootstrap_character_item_state` pins `search_path` to `public`,
-so separate schemas do not work. Use one database per test project, or run the
-GameService test projects one after another.
+Each module has its own test project under `tests/Server`, the host and the
+guard tests live in `Mmorpg.GameService.Tests`, and flows that span modules or
+processes live in `tests/Integration/Mmorpg.Integration.Tests`. Every test
+project with PostgreSQL tests uses its own database, `<base>_<project>`, which
+`PostgresTestDatabase` creates on demand next to the configured base database.
+Separate schemas would not work, because every test context resets the `public`
+schema and `bootstrap_character_item_state` pins `search_path` to `public`.
+Separate databases also keep the migration and catalog advisory locks of test
+projects that run in parallel apart. See [Backend Tests](../tests/README.md).
 
 The item transaction kernel has golden tests in
-`tests/Mmorpg.Backend.Tests/Golden/ItemTransactions`. Each golden file holds the
+`tests/Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`. Each golden file holds the
 statements and transaction boundaries that Npgsql logs for one command or kernel
 path, the result, the stored operation, and its audit journal.
 `ItemTransactionTraceGoldenTests` compares them byte for byte, so any change to

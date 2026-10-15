@@ -14,7 +14,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Mmorpg.Backend.Tests" />
+    <!-- Test access follows the module dependency direction: the module's own tests, the
+         tests of modules that build on it, the GameService test kit, the host tests,
+         and the cross-module integration tests. Never a production assembly. -->
+    <InternalsVisibleTo Include="Mmorpg.GameService.Testing" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.Integration.Tests" />
   </ItemGroup>
 
   <ItemGroup>

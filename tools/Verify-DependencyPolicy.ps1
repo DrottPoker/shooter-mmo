@@ -35,9 +35,16 @@ foreach ($dependency in $manifest.dependencies.PSObject.Properties) {
 }
 
 $liteNetLibVersions = @{}
-$projectFiles = Get-ChildItem -Path $repositoryRoot -Recurse -Filter *.csproj |
-    Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
+$xunitV3Versions = @{}
+# Shared props and targets files carry package references too. Build output and the agent
+# worktrees below .claude are not repository sources.
+$projectFiles = Get-ChildItem -Path $repositoryRoot -Recurse -Include *.csproj, *.props, *.targets -File |
+    Where-Object {
+        $relativePath = $_.FullName.Substring($repositoryRoot.Length)
+        $relativePath -notmatch '[\\/](bin|obj)[\\/]' -and $relativePath -notmatch '^[\\/]\.claude[\\/]'
+    }
 foreach ($projectFile in $projectFiles) {
+    $projectPath = $projectFile.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
     [xml]$project = Get-Content -Raw -LiteralPath $projectFile.FullName
     foreach ($packageReference in $project.Project.ItemGroup.PackageReference) {
         if ($null -eq $packageReference) {
@@ -50,13 +57,25 @@ foreach ($projectFile in $projectFiles) {
         }
 
         if ($version -notmatch $exactVersionPattern) {
-            throw "NuGet dependency '$($packageReference.Include)' in '$($projectFile.Name)' must use an exact version."
+            throw "NuGet dependency '$($packageReference.Include)' in '$projectPath' must use an exact version."
         }
 
         if ($packageReference.Include -eq "LiteNetLib") {
-            $liteNetLibVersions["$($projectFile.Name)"] = $version
+            $liteNetLibVersions[$projectPath] = $version
+        }
+
+        if ($packageReference.Include -like "xunit.v3*") {
+            $xunitV3Versions["$projectPath $($packageReference.Include)"] = $version
         }
     }
+}
+
+# The xunit.v3 packages ship together, so test projects and test libraries must use one version.
+$distinctXunitV3Versions = @($xunitV3Versions.Values | Sort-Object -Unique)
+if ($distinctXunitV3Versions.Count -gt 1) {
+    $details = ($xunitV3Versions.GetEnumerator() | Sort-Object Name |
+        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ", "
+    throw "xunit.v3 package versions must match across the test projects: $details."
 }
 
 # The server, bot tools, and Unity client must speak the same LiteNetLib wire protocol.

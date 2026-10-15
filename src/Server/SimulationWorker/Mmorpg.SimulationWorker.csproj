@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Mmorpg.Backend.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.SimulationWorker.Tests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -481,9 +481,15 @@ and metrics.
 
 ### Tests And Tools
 
-`tests/Mmorpg.Backend.Tests` contains unit, socket-level, and isolated
-PostgreSQL integration tests, plus the GameService architecture guard tests
-under `Architecture`. Unity tests live inside the Unity project. `Tools`
+`tests` holds one test project per server module: Server.Common, the
+GameService host with the architecture guard tests under `Architecture`,
+Platform, Accounts, Characters, Placement, Items, and SimulationWorker. Unit,
+socket-level, and isolated PostgreSQL tests live with the module they test.
+`Mmorpg.Shared.Tests` covers the shared runtime and the content compilers,
+`Mmorpg.Tools.Tests` the tools, and `Mmorpg.Integration.Tests` the flows across
+modules and processes. Shared test infrastructure lives under `tests/Testing`;
+see [Backend Tests](../tests/README.md). Unity tests live inside the Unity
+project. `Tools`
 contains repository-wide verification, collision and item content builds, and
 external stress tools. `StackStressGenerator` has a worker-only mode with an
 in-memory loopback authority and a full-stack mode that uses normal GameService

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\Server\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
+  </ItemGroup>
+</Project>

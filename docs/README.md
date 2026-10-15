@@ -31,6 +31,9 @@ operations, and future design do not drift into duplicate descriptions.
 11. [Game Content](../content/README.md) for the authored content layout, its
     file and naming rules, the content compilers, and the generated data. The
     item authoring contract is in [Item Catalog Authoring](../content/items/README.md).
+12. [Backend Tests](../tests/README.md) for the backend test projects, where a new
+    test goes, test traits, per-project test databases, golden files, and test
+    access to internals.
 
 ## Foundation Hardening
 
