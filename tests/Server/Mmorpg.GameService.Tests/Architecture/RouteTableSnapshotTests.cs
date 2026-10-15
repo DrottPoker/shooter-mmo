@@ -10,7 +10,7 @@ using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // Clients, workers, and tools depend on these routes, methods, policies, rate limits,
 // and no-store rules. Moving endpoints between modules must not change any of them.

@@ -1,6 +1,6 @@
 using Mmorpg.GameService.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // The project references enforce Platform <- Accounts <- Characters <- Placement <- Items
 // <- host. This pins the compiled graph, so a new edge is a deliberate decision.

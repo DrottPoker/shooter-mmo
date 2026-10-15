@@ -2,7 +2,7 @@ using System.Diagnostics.Metrics;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Items;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // Dashboards and alerts read these meter and instrument names, so moving the metric
 // classes between modules must not rename them.

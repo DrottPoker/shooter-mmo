@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Mmorpg.GameService.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // Enforces the data access rules in docs/GAME_SERVICE_MODULES.md. A module reads,
 // writes, or locks another module's table only through the owner's contract or a

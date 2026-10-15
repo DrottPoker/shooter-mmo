@@ -11,7 +11,7 @@ using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // The migration runner stores only ids, so an edited historic migration would never
 // run again on existing databases. These hashes freeze the applied history.

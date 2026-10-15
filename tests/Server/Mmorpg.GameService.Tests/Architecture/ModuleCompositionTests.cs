@@ -5,7 +5,7 @@ using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // Every SPI runs inside the caller's transaction. A missing implementation would
 // silently skip required work, so the composition requires exactly one, from the

@@ -4,7 +4,7 @@ using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
 using Npgsql;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Tests;
 
 public sealed class GameServiceConfigurationValidationTests
 {

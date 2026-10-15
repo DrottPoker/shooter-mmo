@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Mmorpg.GameService.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // A module reaches another module only through that module's Contracts namespace and
 // only down the order Platform, Accounts, Characters, Placement, Items, host. The

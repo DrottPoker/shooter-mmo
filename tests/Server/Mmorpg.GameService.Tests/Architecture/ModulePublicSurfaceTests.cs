@@ -1,7 +1,7 @@
 using System.Reflection;
 using Mmorpg.GameService.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Tests.Architecture;
 
 // A module publishes only its module class, its options, and its Contracts namespace.
 // Everything else is internal, so other modules cannot reach past the contracts.
