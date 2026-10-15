@@ -7,13 +7,13 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed record ItemOperationsMaintenanceResult(
+internal sealed record ItemOperationsMaintenanceResult(
     int ExpiredRecoveryDeliveries,
     int RemovedClosedCorpses,
     int RemovedAuditOperations,
     int RemovedClaimedRecoveryDeliveries = 0);
 
-public sealed class ItemOperationsMaintenanceService(
+internal sealed class ItemOperationsMaintenanceService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     ItemOperationsOptions options,
@@ -255,7 +255,7 @@ public sealed class ItemOperationsMaintenanceService(
     }
 }
 
-public sealed class ItemOperationsMaintenanceHostedService(
+internal sealed class ItemOperationsMaintenanceHostedService(
     IServiceScopeFactory scopeFactory,
     ItemOperationsOptions options,
     ILogger<ItemOperationsMaintenanceHostedService> logger) : BackgroundService

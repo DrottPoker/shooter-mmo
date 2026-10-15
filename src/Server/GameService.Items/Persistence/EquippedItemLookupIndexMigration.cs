@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items.Persistence;
 
-public static class EquippedItemLookupIndexMigration
+internal static class EquippedItemLookupIndexMigration
 {
     public const string Id = "202610151000_equipped_item_lookup_index";
 

@@ -2,7 +2,7 @@ using Dapper;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed partial class ItemTransactionService
+internal sealed partial class ItemTransactionService
 {
     private static Task<CreatedCorpseTimes> CreateDurableCorpseRecordAsync(
         ItemTransactionContext context,

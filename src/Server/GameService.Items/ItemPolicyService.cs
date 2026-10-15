@@ -2,7 +2,7 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class ItemPolicyService(ItemTransactionService transactionService)
+internal sealed class ItemPolicyService(ItemTransactionService transactionService)
 {
     public Task<ItemTransactionResult> ApplyProtectedOnDeathAsync(
         Guid operationId,

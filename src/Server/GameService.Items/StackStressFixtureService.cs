@@ -3,13 +3,13 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed record StackStressInventoryFixtureRequest(string Workload, string RunId);
+internal sealed record StackStressInventoryFixtureRequest(string Workload, string RunId);
 
-public sealed record StackStressInventoryFixtureResponse(
+internal sealed record StackStressInventoryFixtureResponse(
     string Workload,
     CharacterInventorySnapshotResponse Inventory);
 
-public sealed record StackStressLootHotspotRequest(
+internal sealed record StackStressLootHotspotRequest(
     string RunId,
     string WorkerId,
     string WorkerRuntimeId,
@@ -19,13 +19,13 @@ public sealed record StackStressLootHotspotRequest(
     double PositionZ,
     double LifetimeSeconds);
 
-public sealed record StackStressLootHotspotResponse(
+internal sealed record StackStressLootHotspotResponse(
     Guid CorpseId,
     int LootStacks,
     int QuantityPerStack,
     DateTime ExpiresAt);
 
-public sealed class StackStressFixtureService(
+internal sealed class StackStressFixtureService(
     ItemQueryService itemQueryService,
     ItemTransactionService transactionService,
     SimulationWorkerLeasePolicy workerLeasePolicy)

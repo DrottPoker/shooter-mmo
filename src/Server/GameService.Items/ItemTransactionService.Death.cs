@@ -8,7 +8,7 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed partial class ItemTransactionService
+internal sealed partial class ItemTransactionService
 {
     private const string PlayerCorpsePresentationKey = "corpse.generic_loot_crate";
     private const string DeathProtectionRecoverySource = "death_protection";

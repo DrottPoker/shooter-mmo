@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items;
 
-public sealed record ItemCatalogResponse(
+internal sealed record ItemCatalogResponse(
     string CatalogId,
     string Revision,
     int FormatVersion,
@@ -11,16 +11,16 @@ public sealed record ItemCatalogResponse(
     IReadOnlyList<ItemCatalogDefinitionResponse> Definitions,
     IReadOnlyList<ItemCatalogSecureContainerTierResponse> SecureContainerTiers);
 
-public sealed record ItemCatalogIdentityResponse(
+internal sealed record ItemCatalogIdentityResponse(
     string Id,
     string DisplayName);
 
-public sealed record ItemCatalogEquipmentSlotResponse(
+internal sealed record ItemCatalogEquipmentSlotResponse(
     string Id,
     string DisplayName,
     int SortOrder);
 
-public sealed record ItemCatalogDefinitionResponse(
+internal sealed record ItemCatalogDefinitionResponse(
     string Id,
     string DisplayName,
     string CategoryId,
@@ -33,16 +33,16 @@ public sealed record ItemCatalogDefinitionResponse(
     IReadOnlyList<string> DefaultPolicies,
     ItemCatalogBagResponse? Bag);
 
-public sealed record ItemCatalogBagResponse(
+internal sealed record ItemCatalogBagResponse(
     long CarryCapacityBonus,
     IReadOnlyList<ItemCatalogBagSlotResponse> Slots);
 
-public sealed record ItemCatalogBagSlotResponse(
+internal sealed record ItemCatalogBagSlotResponse(
     int SlotIndex,
     string SlotKind,
     IReadOnlyList<string> AcceptedTags);
 
-public sealed record ItemCatalogSecureContainerTierResponse(
+internal sealed record ItemCatalogSecureContainerTierResponse(
     string Id,
     string DisplayName,
     int SlotCapacity);

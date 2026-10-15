@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
+internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
 {
     private const int RecomputeBatchSize = 500;
 

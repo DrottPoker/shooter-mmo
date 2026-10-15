@@ -1,13 +1,13 @@
 namespace Mmorpg.GameService.Items;
 
-public static class ItemApiErrorCodes
+internal static class ItemApiErrorCodes
 {
     public const string OperationIdRequired = "item_operation_id_required";
     public const string SimulationOperationInvalid = "item_simulation_operation_invalid";
     public const string SecureTierRequestInvalid = "item_secure_tier_request_invalid";
 }
 
-public sealed record RelocateAccountItemRequest(
+internal sealed record RelocateAccountItemRequest(
     Guid OperationId,
     long ExpectedCharacterRevision,
     Guid ItemInstanceId,
@@ -15,7 +15,7 @@ public sealed record RelocateAccountItemRequest(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
-public sealed record SplitAccountItemStackRequest(
+internal sealed record SplitAccountItemStackRequest(
     Guid OperationId,
     long ExpectedCharacterRevision,
     Guid ItemInstanceId,
@@ -24,7 +24,7 @@ public sealed record SplitAccountItemStackRequest(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
-public sealed record MergeAccountItemStacksRequest(
+internal sealed record MergeAccountItemStacksRequest(
     Guid OperationId,
     long ExpectedCharacterRevision,
     Guid SourceItemInstanceId,
@@ -32,13 +32,13 @@ public sealed record MergeAccountItemStacksRequest(
     Guid TargetItemInstanceId,
     long ExpectedTargetItemRevision);
 
-public sealed record DestroyAccountItemRequest(
+internal sealed record DestroyAccountItemRequest(
     Guid OperationId,
     long ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision);
 
-public sealed record ChangeAccountSecureContainerTierRequest(
+internal sealed record ChangeAccountSecureContainerTierRequest(
     Guid OperationId,
     long ExpectedEntitlementRevision,
     string? TierId,

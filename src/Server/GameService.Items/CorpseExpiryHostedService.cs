@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items;
 
-public sealed class CorpseExpiryHostedService(
+internal sealed class CorpseExpiryHostedService(
     IServiceScopeFactory scopeFactory,
     ILogger<CorpseExpiryHostedService> logger) : BackgroundService
 {

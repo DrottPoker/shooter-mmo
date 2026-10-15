@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items.Persistence;
 
-public static class ItemOperationsHardeningMigration
+internal static class ItemOperationsHardeningMigration
 {
     public const string Id = "202607181800_item_operations_hardening";
 

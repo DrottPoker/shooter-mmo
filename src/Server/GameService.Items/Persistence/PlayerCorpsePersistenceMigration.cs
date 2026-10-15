@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items.Persistence;
 
-public static class PlayerCorpsePersistenceMigration
+internal static class PlayerCorpsePersistenceMigration
 {
     public const string Id = "202607171200_player_corpse_persistence";
 

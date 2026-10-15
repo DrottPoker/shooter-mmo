@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items;
 
-public sealed record CharacterInventorySnapshotResponse(
+internal sealed record CharacterInventorySnapshotResponse(
     Guid CharacterId,
     string CatalogRevision,
     long ItemStateRevision,
@@ -16,63 +16,63 @@ public sealed record CharacterInventorySnapshotResponse(
     bool SprintEligible,
     int MovementMultiplierBasisPoints);
 
-public sealed record ItemContainerSnapshotResponse(
+internal sealed record ItemContainerSnapshotResponse(
     Guid ContainerId,
     string ContainerType,
     long Revision,
     int? SlotCapacity,
     IReadOnlyList<ItemSlotSnapshotResponse> Slots);
 
-public sealed record ItemSlotSnapshotResponse(
+internal sealed record ItemSlotSnapshotResponse(
     int SlotIndex,
     string SlotKind,
     IReadOnlyList<string> AcceptedTags,
     ItemInstanceSnapshotResponse? Item);
 
-public sealed record EquipmentSlotSnapshotResponse(
+internal sealed record EquipmentSlotSnapshotResponse(
     string EquipmentSlotId,
     int SortOrder,
     ItemInstanceSnapshotResponse? Item);
 
-public sealed record ItemInstanceSnapshotResponse(
+internal sealed record ItemInstanceSnapshotResponse(
     Guid ItemInstanceId,
     string DefinitionId,
     int Quantity,
     long Revision,
     IReadOnlyList<ItemPolicySummaryResponse> Policies);
 
-public sealed record ItemPolicySummaryResponse(
+internal sealed record ItemPolicySummaryResponse(
     string PolicyKind,
     string Status,
     string ProtectionSource);
 
-public sealed record EquippedBagSnapshotResponse(
+internal sealed record EquippedBagSnapshotResponse(
     ItemInstanceSnapshotResponse Item,
     ItemContainerSnapshotResponse Contents);
 
-public sealed record SecureContainerSnapshotResponse(
+internal sealed record SecureContainerSnapshotResponse(
     string TierId,
     long EntitlementRevision,
     ItemContainerSnapshotResponse Contents);
 
-public sealed record CharacterBankSnapshotResponse(
+internal sealed record CharacterBankSnapshotResponse(
     Guid CharacterId,
     string CatalogRevision,
     long ItemStateRevision,
     ItemContainerSnapshotResponse Bank);
 
-public sealed record CharacterRecoverySnapshotResponse(
+internal sealed record CharacterRecoverySnapshotResponse(
     Guid CharacterId,
     string CatalogRevision,
     long ItemStateRevision,
     RecoveryStorageSnapshotResponse RecoveryStorage);
 
-public sealed record RecoveryStorageSnapshotResponse(
+internal sealed record RecoveryStorageSnapshotResponse(
     Guid ContainerId,
     long Revision,
     IReadOnlyList<RecoveryDeliverySnapshotResponse> Deliveries);
 
-public sealed record RecoveryDeliverySnapshotResponse(
+internal sealed record RecoveryDeliverySnapshotResponse(
     Guid DeliveryId,
     long Revision,
     string SourceKind,
@@ -82,7 +82,7 @@ public sealed record RecoveryDeliverySnapshotResponse(
     DateTime? ClaimedAt,
     IReadOnlyList<RecoveryDeliveryItemSnapshotResponse> Items);
 
-public sealed record RecoveryDeliveryItemSnapshotResponse(
+internal sealed record RecoveryDeliveryItemSnapshotResponse(
     int ItemOrder,
     int ContainerSlotIndex,
     ItemInstanceSnapshotResponse Item);

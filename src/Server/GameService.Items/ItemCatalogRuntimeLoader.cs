@@ -4,7 +4,7 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
 
-public static class ItemCatalogRuntimeLoader
+internal static class ItemCatalogRuntimeLoader
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {

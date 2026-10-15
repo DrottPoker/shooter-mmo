@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;
 
-public static class CorpseEndpoints
+internal static class CorpseEndpoints
 {
     public static IEndpointRouteBuilder MapCorpseEndpoints(this IEndpointRouteBuilder app)
     {

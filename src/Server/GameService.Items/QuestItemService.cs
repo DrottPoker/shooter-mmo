@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items;
 
-public sealed class QuestItemService(ItemTransactionService transactionService)
+internal sealed class QuestItemService(ItemTransactionService transactionService)
 {
     public Task<ItemTransactionResult> GrantRequiredItemAsync(
         Guid operationId,

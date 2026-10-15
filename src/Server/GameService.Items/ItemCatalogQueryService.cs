@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
+internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
 {
     public async Task<ServiceResult<ItemCatalogResponse>> GetCurrentAsync(
         CancellationToken cancellationToken)

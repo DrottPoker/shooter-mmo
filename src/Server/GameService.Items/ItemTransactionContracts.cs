@@ -2,14 +2,14 @@ using System.Text.Json.Serialization;
 
 namespace Mmorpg.GameService.Items;
 
-public enum ItemTransactionAuthority
+internal enum ItemTransactionAuthority
 {
     Account = 1,
     System = 2,
     SimulationWorker = 3
 }
 
-public sealed record ItemTransactionActor(
+internal sealed record ItemTransactionActor(
     ItemTransactionAuthority Authority,
     Guid? AccountId,
     bool RequiresOfflineCharacter = false,
@@ -57,7 +57,7 @@ public sealed record ItemTransactionActor(
     }
 }
 
-public sealed record SimulationItemTransactionAuthority(
+internal sealed record SimulationItemTransactionAuthority(
     Guid SimulationSessionId,
     Guid CharacterId,
     string WorkerId,
@@ -66,7 +66,7 @@ public sealed record SimulationItemTransactionAuthority(
     [property: JsonIgnore] string SessionTokenHash,
     [property: JsonIgnore] ItemTransactionLiveAccess LiveAccess);
 
-public sealed record ItemTransactionLiveAccess(
+internal sealed record ItemTransactionLiveAccess(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
@@ -75,21 +75,21 @@ public sealed record ItemTransactionLiveAccess(
     public static ItemTransactionLiveAccess None { get; } = new(false, false, false, false);
 }
 
-public sealed record ItemTransactionRequest<TCommand>(
+internal sealed record ItemTransactionRequest<TCommand>(
     Guid OperationId,
     ItemTransactionActor Actor,
     TCommand Command)
     where TCommand : notnull;
 
-public sealed record ItemRevisionExpectation(
+internal sealed record ItemRevisionExpectation(
     Guid ItemInstanceId,
     long Revision);
 
-public sealed record CharacterRevisionExpectation(
+internal sealed record CharacterRevisionExpectation(
     Guid CharacterId,
     long Revision);
 
-public sealed record GrantItemCommand(
+internal sealed record GrantItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     string DefinitionId,
@@ -99,7 +99,7 @@ public sealed record GrantItemCommand(
     string? PolicySourceKind = null,
     string? PolicySourceId = null);
 
-public sealed record RelocateItemCommand(
+internal sealed record RelocateItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
@@ -107,14 +107,14 @@ public sealed record RelocateItemCommand(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
-public sealed record EquipItemCommand(
+internal sealed record EquipItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision,
     string EquipmentSlotId);
 
-public sealed record UnequipItemCommand(
+internal sealed record UnequipItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
@@ -122,7 +122,7 @@ public sealed record UnequipItemCommand(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
-public sealed record SplitItemStackCommand(
+internal sealed record SplitItemStackCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
@@ -131,7 +131,7 @@ public sealed record SplitItemStackCommand(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
-public sealed record MergeItemStacksCommand(
+internal sealed record MergeItemStacksCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid SourceItemInstanceId,
@@ -139,7 +139,7 @@ public sealed record MergeItemStacksCommand(
     Guid TargetItemInstanceId,
     long ExpectedTargetItemRevision);
 
-public sealed record SwapContainerItemsCommand(
+internal sealed record SwapContainerItemsCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid FirstItemInstanceId,
@@ -147,21 +147,21 @@ public sealed record SwapContainerItemsCommand(
     Guid SecondItemInstanceId,
     long ExpectedSecondItemRevision);
 
-public sealed record ConsumeItemQuantityCommand(
+internal sealed record ConsumeItemQuantityCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision,
     int Quantity);
 
-public sealed record DestroyItemCommand(
+internal sealed record DestroyItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision,
     string Reason);
 
-public sealed record SwapBagAggregatesCommand(
+internal sealed record SwapBagAggregatesCommand(
     Guid FirstCharacterId,
     long? ExpectedFirstCharacterRevision,
     Guid FirstBagItemInstanceId,
@@ -173,7 +173,7 @@ public sealed record SwapBagAggregatesCommand(
     long ExpectedSecondBagRevision,
     long ExpectedSecondBagContentsRevision);
 
-public sealed record AddRecoveryDeliveryCommand(
+internal sealed record AddRecoveryDeliveryCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     string SourceKind,
@@ -182,7 +182,7 @@ public sealed record AddRecoveryDeliveryCommand(
     DateTime? ExpiresAt,
     IReadOnlyList<ItemRevisionExpectation> Items);
 
-public sealed record ClaimRecoveryDeliveryCommand(
+internal sealed record ClaimRecoveryDeliveryCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid RecoveryDeliveryId,
@@ -190,13 +190,13 @@ public sealed record ClaimRecoveryDeliveryCommand(
     Guid DestinationContainerId,
     IReadOnlyList<ItemRevisionExpectation> Items);
 
-public sealed record ChangeSecureContainerTierCommand(
+internal sealed record ChangeSecureContainerTierCommand(
     Guid AccountId,
     long ExpectedEntitlementRevision,
     string TierId,
     IReadOnlyList<CharacterRevisionExpectation> CharacterRevisions);
 
-public sealed record ApplyItemPolicyCommand(
+internal sealed record ApplyItemPolicyCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
@@ -206,18 +206,18 @@ public sealed record ApplyItemPolicyCommand(
     string SourceId,
     long Price = 0);
 
-public sealed record RemoveInsurancePolicyCommand(
+internal sealed record RemoveInsurancePolicyCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision);
 
-public sealed record AbandonQuestItemsCommand(
+internal sealed record AbandonQuestItemsCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     string QuestGrantId);
 
-public sealed record ProcessPlayerDeathCommand(
+internal sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
     Guid CharacterId,
     long ExpectedCharacterRevision,
@@ -231,7 +231,7 @@ public sealed record ProcessPlayerDeathCommand(
     double RotationW,
     string PresentationKey);
 
-public sealed record CreatePersistentMobCorpseCommand(
+internal sealed record CreatePersistentMobCorpseCommand(
     Guid CorpseId,
     string WorkerId,
     string WorkerRuntimeId,
@@ -250,7 +250,7 @@ public sealed record CreatePersistentMobCorpseCommand(
     int WorkerHeartbeatTimeoutSeconds,
     IReadOnlyList<MobCorpseLootEntryRequest> Loot);
 
-public sealed record GrantMobLootCommand(
+internal sealed record GrantMobLootCommand(
     Guid CharacterId,
     long ExpectedCharacterRevision,
     Guid GrantId,
@@ -262,11 +262,11 @@ public sealed record GrantMobLootCommand(
     long ExpectedDestinationContainerRevision,
     int DestinationSlotIndex);
 
-public sealed record ExpireCorpseCommand(Guid CorpseId);
+internal sealed record ExpireCorpseCommand(Guid CorpseId);
 
-public sealed record ExpireRecoveryDeliveryCommand(Guid RecoveryDeliveryId);
+internal sealed record ExpireRecoveryDeliveryCommand(Guid RecoveryDeliveryId);
 
-public sealed record LootCorpseItemCommand(
+internal sealed record LootCorpseItemCommand(
     Guid CharacterId,
     Guid CorpseId,
     Guid ItemInstanceId,
@@ -277,30 +277,7 @@ public sealed record LootCorpseItemCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
-public sealed record LootCorpsePartialStackCommand(
-    Guid CharacterId,
-    Guid CorpseId,
-    Guid ItemInstanceId,
-    long ExpectedItemRevision,
-    int Quantity,
-    Guid DestinationContainerId,
-    long ExpectedDestinationContainerRevision,
-    int DestinationSlotIndex,
-    Guid? TargetItemInstanceId,
-    long? ExpectedTargetItemRevision);
-
-public sealed record DepositCorpseItemCommand(
-    Guid CharacterId,
-    Guid CorpseId,
-    Guid ItemInstanceId,
-    long ExpectedItemRevision,
-    Guid DestinationContainerId,
-    long ExpectedDestinationContainerRevision,
-    int DestinationSlotIndex,
-    Guid? TargetItemInstanceId,
-    long? ExpectedTargetItemRevision);
-
-public sealed record DepositCorpsePartialStackCommand(
+internal sealed record LootCorpsePartialStackCommand(
     Guid CharacterId,
     Guid CorpseId,
     Guid ItemInstanceId,
@@ -312,7 +289,7 @@ public sealed record DepositCorpsePartialStackCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
-public sealed record MoveCorpseItemCommand(
+internal sealed record DepositCorpseItemCommand(
     Guid CharacterId,
     Guid CorpseId,
     Guid ItemInstanceId,
@@ -323,7 +300,7 @@ public sealed record MoveCorpseItemCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
-public sealed record MoveCorpsePartialStackCommand(
+internal sealed record DepositCorpsePartialStackCommand(
     Guid CharacterId,
     Guid CorpseId,
     Guid ItemInstanceId,
@@ -335,7 +312,30 @@ public sealed record MoveCorpsePartialStackCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
-public sealed record SwapCorpseBagCommand(
+internal sealed record MoveCorpseItemCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
+internal sealed record MoveCorpsePartialStackCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
+internal sealed record SwapCorpseBagCommand(
     Guid CharacterId,
     Guid CorpseId,
     Guid CorpseBagItemInstanceId,
@@ -347,7 +347,7 @@ public sealed record SwapCorpseBagCommand(
     Guid PlayerBagContentsContainerId,
     long ExpectedPlayerBagContentsRevision);
 
-public sealed record ItemTransactionResult(
+internal sealed record ItemTransactionResult(
     Guid OperationId,
     string OperationKind,
     bool Succeeded,
@@ -358,25 +358,25 @@ public sealed record ItemTransactionResult(
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     long? SecureContainerEntitlementRevision);
 
-public sealed record ItemTransactionError(
+internal sealed record ItemTransactionError(
     string Code,
     string Message);
 
-public sealed record ItemTransactionCharacterRevision(
+internal sealed record ItemTransactionCharacterRevision(
     Guid CharacterId,
     long Revision,
     long CarriedWeight,
     long CarryCapacity);
 
-public sealed record ItemTransactionItemRevision(
+internal sealed record ItemTransactionItemRevision(
     Guid ItemInstanceId,
     long Revision);
 
-public sealed record ItemTransactionContainerRevision(
+internal sealed record ItemTransactionContainerRevision(
     Guid ContainerId,
     long Revision);
 
-public static class ItemOperationKinds
+internal static class ItemOperationKinds
 {
     public const string Grant = "grant";
     public const string Relocate = "relocate";
@@ -419,7 +419,7 @@ public static class ItemOperationKinds
     }
 }
 
-public static class ItemOperationIds
+internal static class ItemOperationIds
 {
     // Player-chosen ids must be random version 4 UUIDs. Every derived system id is a
     // version 5 UUID, so a player can never claim an id a system operation needs.

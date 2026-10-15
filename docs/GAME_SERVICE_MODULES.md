@@ -303,4 +303,5 @@ intended differences:
   `Mmorpg.GameService.Items`, which references Platform, Accounts, Characters,
   Placement, and `Mmorpg.WorldData`. The host keeps `Program.cs`, the
   configuration loader, database startup, the baseline migrations, health, and
-  the shipped configuration and content files.
+  the shipped configuration and content files. Only `ItemsModule`, its options,
+  and `ItemsCommandLine` are public.

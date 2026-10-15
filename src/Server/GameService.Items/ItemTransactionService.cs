@@ -14,7 +14,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed partial class ItemTransactionService(
+internal sealed partial class ItemTransactionService(
     NpgsqlDataSource dataSource,
     ICharacterLocks characterLocks,
     ICharacterWallet characterWallet,

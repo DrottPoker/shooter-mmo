@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed partial class CorpseService(
+internal sealed partial class CorpseService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     SimulationWorkerLeasePolicy workerLeasePolicy,

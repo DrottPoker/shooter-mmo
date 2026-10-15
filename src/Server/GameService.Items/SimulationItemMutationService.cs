@@ -4,7 +4,7 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class SimulationItemMutationService(
+internal sealed class SimulationItemMutationService(
     ItemTransactionService transactionService,
     NpcItemLifecycleOptions? configuredNpcOptions = null)
 {

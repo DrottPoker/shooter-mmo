@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public enum DevelopmentItemToolCommandKind
+internal enum DevelopmentItemToolCommandKind
 {
     List = 1,
     Grant = 2,
@@ -16,14 +16,14 @@ public enum DevelopmentItemToolCommandKind
     Corpse = 4
 }
 
-public enum DevelopmentItemDestination
+internal enum DevelopmentItemDestination
 {
     PermanentInventory = 1,
     Bank = 2,
     SecureContainer = 3
 }
 
-public sealed record DevelopmentItemToolCommand(
+internal sealed record DevelopmentItemToolCommand(
     DevelopmentItemToolCommandKind Kind,
     Guid CharacterId,
     string DefinitionId,
@@ -35,7 +35,7 @@ public sealed record DevelopmentItemToolCommand(
     double PositionY = 0d,
     double PositionZ = 0d);
 
-public static class DevelopmentItemToolCommandParser
+internal static class DevelopmentItemToolCommandParser
 {
     public const string ListArgument = "--dev-items-list";
     public const string GrantArgument = "--dev-items-grant";
@@ -233,17 +233,17 @@ public static class DevelopmentItemToolCommandParser
     }
 }
 
-public sealed record DevelopmentItemToolResponse(
+internal sealed record DevelopmentItemToolResponse(
     bool Success,
     string Message,
     DevelopmentItemToolData? Data);
 
-public sealed record DevelopmentItemToolData(
+internal sealed record DevelopmentItemToolData(
     IReadOnlyList<DevelopmentItemToolCharacter> Characters,
     IReadOnlyList<DevelopmentItemToolDefinition> Definitions,
     IReadOnlyList<DevelopmentItemToolPackage> Packages);
 
-public sealed record DevelopmentItemToolCharacter(
+internal sealed record DevelopmentItemToolCharacter(
     Guid CharacterId,
     string CharacterName,
     string AccountUsername,
@@ -254,7 +254,7 @@ public sealed record DevelopmentItemToolCharacter(
     long CarriedWeight,
     long CarryCapacity);
 
-public sealed record DevelopmentItemToolDefinition(
+internal sealed record DevelopmentItemToolDefinition(
     string DefinitionId,
     string DisplayName,
     string CategoryId,
@@ -262,13 +262,13 @@ public sealed record DevelopmentItemToolDefinition(
     long UnitWeight,
     bool SecureContainerEligible);
 
-public sealed record DevelopmentItemToolPackage(
+internal sealed record DevelopmentItemToolPackage(
     string PackageId,
     string DisplayName,
     string Description,
     bool RequiresEmptyCharacter);
 
-public static class DevelopmentItemToolProtocol
+internal static class DevelopmentItemToolProtocol
 {
     public const string ResponsePrefix = "MMORPG_DEV_ITEMS_JSON:";
 
@@ -281,7 +281,7 @@ public static class DevelopmentItemToolProtocol
     }
 }
 
-public sealed class DevelopmentItemToolService(
+internal sealed class DevelopmentItemToolService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     PhaseNineDevelopmentFixtureSeeder phaseNineFixtureSeeder,

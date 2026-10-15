@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;
 
-public static class SimulationItemEndpoints
+internal static class SimulationItemEndpoints
 {
     public static IEndpointRouteBuilder MapSimulationItemEndpoints(
         this IEndpointRouteBuilder app)

@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items.Persistence;
 
-public static class PlayerDeathCarryOverflowMigration
+internal static class PlayerDeathCarryOverflowMigration
 {
     public const string Id = "202607171210_player_death_carry_overflow";
 

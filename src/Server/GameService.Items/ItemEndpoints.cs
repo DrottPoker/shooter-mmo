@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;
 
-public static class ItemEndpoints
+internal static class ItemEndpoints
 {
     private const string CatalogCacheControl = "public, max-age=0, must-revalidate";
 

@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class ItemCatalogSeeder(
+internal sealed class ItemCatalogSeeder(
     NpgsqlDataSource dataSource,
     ItemCatalogSource catalogSource,
     ILogger<ItemCatalogSeeder> logger)

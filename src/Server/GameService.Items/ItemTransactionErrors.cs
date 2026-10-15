@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items;
 
-public static class ItemTransactionErrorCodes
+internal static class ItemTransactionErrorCodes
 {
     public const string AuthorityRequired = "item_authority_required";
     public const string ItemNotFound = "item_not_found";

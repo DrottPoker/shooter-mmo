@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class ItemOperationsMetricsReporterService(
+internal sealed class ItemOperationsMetricsReporterService(
     NpgsqlDataSource dataSource,
     ItemOperationsMetrics metrics,
     ItemOperationsOptions options,

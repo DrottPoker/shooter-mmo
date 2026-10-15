@@ -5,7 +5,7 @@ using Mmorpg.GameService.Platform.Database;
 namespace Mmorpg.GameService.Items.Integration;
 
 // Open durable corpses belong to their Shard's World, so they block a World rebind.
-public sealed class OpenCorpseShardStateProbe : IShardWorldLocalStateProbe
+internal sealed class OpenCorpseShardStateProbe : IShardWorldLocalStateProbe
 {
     public Task<long> CountOpenDurableCorpsesAsync(
         PostgresTransactionScope scope,

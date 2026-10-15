@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class ItemQueryService(NpgsqlDataSource dataSource)
+internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
 {
     private const int RatioBasisPoints = 10_000;
 

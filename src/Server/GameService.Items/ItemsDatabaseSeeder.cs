@@ -3,7 +3,7 @@ using Mmorpg.GameService.Platform.Database;
 namespace Mmorpg.GameService.Items;
 
 // The current item catalog is mirrored first, because the item state backfill needs it.
-public sealed class ItemsDatabaseSeeder(
+internal sealed class ItemsDatabaseSeeder(
     ItemCatalogSeeder itemCatalogSeeder,
     CharacterItemStateBootstrapper characterItemStateBootstrapper) : IDatabaseSeeder
 {

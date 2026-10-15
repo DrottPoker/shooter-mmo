@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items;
 
-public sealed record SimulationPlayerDeathRequest(
+internal sealed record SimulationPlayerDeathRequest(
     Guid OperationId,
     Guid DeathEventId,
     Guid AccountId,
@@ -19,19 +19,19 @@ public sealed record SimulationPlayerDeathRequest(
     double RotationW,
     string PresentationKey);
 
-public sealed record PlayerDeathPartitionResponse(
+internal sealed record PlayerDeathPartitionResponse(
     Guid OperationId,
     Guid DeathEventId,
     DurableCorpseResponse Corpse,
     ItemTransactionCharacterRevision CharacterRevision,
     IReadOnlyList<Guid> RecoveryDeliveryIds);
 
-public sealed record MobCorpseLootEntryRequest(
+internal sealed record MobCorpseLootEntryRequest(
     Guid GrantId,
     string DefinitionId,
     int Quantity);
 
-public sealed record CreatePersistentMobCorpseRequest(
+internal sealed record CreatePersistentMobCorpseRequest(
     Guid OperationId,
     Guid CorpseId,
     string WorkerId,
@@ -50,11 +50,11 @@ public sealed record CreatePersistentMobCorpseRequest(
     double LifetimeSeconds,
     IReadOnlyList<MobCorpseLootEntryRequest> Loot);
 
-public sealed record PersistentMobCorpseResponse(
+internal sealed record PersistentMobCorpseResponse(
     Guid OperationId,
     DurableCorpseResponse Corpse);
 
-public sealed record SimulationMobLootGrantRequest(
+internal sealed record SimulationMobLootGrantRequest(
     Guid GrantId,
     Guid AccountId,
     Guid CharacterId,
@@ -71,11 +71,11 @@ public sealed record SimulationMobLootGrantRequest(
     long ExpectedDestinationContainerRevision,
     int DestinationSlotIndex);
 
-public sealed record CorpseRestoreResponse(
+internal sealed record CorpseRestoreResponse(
     DateTime DatabaseTime,
     IReadOnlyList<DurableCorpseResponse> Corpses);
 
-public sealed record DurableCorpseResponse(
+internal sealed record DurableCorpseResponse(
     Guid CorpseId,
     Guid? SourceCharacterId,
     string SourceDisplayName,
@@ -94,7 +94,7 @@ public sealed record DurableCorpseResponse(
     bool IsEmpty,
     IReadOnlyList<CorpseSectionResponse> Sections);
 
-public sealed record CorpseSectionResponse(
+internal sealed record CorpseSectionResponse(
     string SectionKind,
     Guid ContainerId,
     long ContainerRevision,
@@ -108,7 +108,7 @@ internal sealed record CorpsePartitionRecord(
     ItemTransactionCharacterRevision CharacterRevision,
     IReadOnlyList<Guid> RecoveryDeliveryIds);
 
-public sealed record SimulationCorpseOpenRequest(
+internal sealed record SimulationCorpseOpenRequest(
     Guid AccountId,
     Guid CharacterId,
     string WorkerId,
@@ -116,7 +116,7 @@ public sealed record SimulationCorpseOpenRequest(
     string ShardId,
     string SessionToken);
 
-public sealed record SimulationCorpseMutationRequest(
+internal sealed record SimulationCorpseMutationRequest(
     Guid OperationId,
     Guid AccountId,
     Guid CharacterId,
@@ -141,11 +141,11 @@ public sealed record SimulationCorpseMutationRequest(
     Guid? PlayerBagContentsContainerId = null,
     long? ExpectedPlayerBagContentsRevision = null);
 
-public sealed record CorpseMutationResponse(
+internal sealed record CorpseMutationResponse(
     ItemTransactionResult Transaction,
     CorpseViewSnapshotResponse? Corpse);
 
-public sealed record CorpseViewSnapshotResponse(
+internal sealed record CorpseViewSnapshotResponse(
     Guid CorpseId,
     Guid? SourceCharacterId,
     string SourceDisplayName,
@@ -160,7 +160,7 @@ public sealed record CorpseViewSnapshotResponse(
     IReadOnlyList<CorpseViewSectionResponse> Sections,
     IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots);
 
-public sealed record CorpseViewSectionResponse(
+internal sealed record CorpseViewSectionResponse(
     string SectionKind,
     Guid ContainerId,
     string ContainerType,
@@ -168,14 +168,14 @@ public sealed record CorpseViewSectionResponse(
     int SlotCapacity,
     IReadOnlyList<CorpseViewSlotResponse> Slots);
 
-public sealed record CorpseViewSlotResponse(
+internal sealed record CorpseViewSlotResponse(
     int SlotIndex,
     string SlotKind,
     IReadOnlyList<string> AcceptedTags,
     CorpseViewItemResponse? Item,
     string EquipmentSlotId = "");
 
-public sealed record CorpseViewItemResponse(
+internal sealed record CorpseViewItemResponse(
     Guid ItemInstanceId,
     string DefinitionId,
     int Quantity,
@@ -183,7 +183,7 @@ public sealed record CorpseViewItemResponse(
     Guid? BagContentsContainerId,
     long? BagContentsRevision);
 
-public sealed record CorpsePresentationSnapshotResponse(
+internal sealed record CorpsePresentationSnapshotResponse(
     string SnapshotKind,
     int SortOrder,
     string? DefinitionId,
@@ -191,7 +191,7 @@ public sealed record CorpsePresentationSnapshotResponse(
     string? PolicyKind,
     string PresentationPayload);
 
-public static class CorpseInteractionOperationKinds
+internal static class CorpseInteractionOperationKinds
 {
     public const string LootItem = "loot_item";
     public const string LootPartialStack = "loot_partial_stack";

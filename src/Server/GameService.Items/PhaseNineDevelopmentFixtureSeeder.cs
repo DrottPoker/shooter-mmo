@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed record PhaseNineDevelopmentFixtureResult(
+internal sealed record PhaseNineDevelopmentFixtureResult(
     Guid CharacterId,
     long ItemStateRevision,
     long CarriedWeight,
@@ -13,7 +13,7 @@ public sealed record PhaseNineDevelopmentFixtureResult(
     int GrantedItemCount,
     int RecoveryDeliveryCount);
 
-public static class PhaseNineDevelopmentFixtureCommand
+internal static class PhaseNineDevelopmentFixtureCommand
 {
     public const string ArgumentName = "--seed-phase9-items";
 
@@ -61,7 +61,7 @@ public static class PhaseNineDevelopmentFixtureCommand
     }
 }
 
-public sealed class PhaseNineDevelopmentFixtureSeeder(
+internal sealed class PhaseNineDevelopmentFixtureSeeder(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     ItemQueryService queryService,

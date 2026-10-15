@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items.Integration;
 
-public sealed class SimulationCharacterStateProvider : ISimulationCharacterStateProvider
+internal sealed class SimulationCharacterStateProvider : ISimulationCharacterStateProvider
 {
     public Task<SimulationCharacterItemState> LockForSessionStartAsync(
         PostgresTransactionScope scope,

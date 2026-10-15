@@ -10,7 +10,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed partial class CorpseService
+internal sealed partial class CorpseService
 {
     public async Task<ServiceResult<CorpseViewSnapshotResponse>> OpenForSimulationAsync(
         string authenticatedWorkerId,

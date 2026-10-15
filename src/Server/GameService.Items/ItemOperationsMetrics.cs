@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed record ItemOperationsMetricsSnapshot(
+internal sealed record ItemOperationsMetricsSnapshot(
     long Transactions,
     long CommittedTransactions,
     long RejectedTransactions,
@@ -21,7 +21,7 @@ public sealed record ItemOperationsMetricsSnapshot(
     long RemovedAuditOperations,
     long RemovedClaimedRecoveryDeliveries = 0);
 
-public sealed class ItemOperationsMetrics : IDisposable
+internal sealed class ItemOperationsMetrics : IDisposable
 {
     public const string MeterName = "Mmorpg.GameService.Items";
 

@@ -1,12 +1,12 @@
 namespace Mmorpg.GameService.Items;
 
-public sealed record SimulationItemAccessRequest(
+internal sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
     bool QuestNpc = false);
 
-public sealed record SimulationItemOperationRequest(
+internal sealed record SimulationItemOperationRequest(
     Guid OperationId,
     Guid AccountId,
     Guid CharacterId,

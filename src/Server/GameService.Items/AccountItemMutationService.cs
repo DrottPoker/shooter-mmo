@@ -2,7 +2,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;
 
-public sealed class AccountItemMutationService(ItemTransactionService transactionService)
+internal sealed class AccountItemMutationService(ItemTransactionService transactionService)
 {
     public Task<ServiceResult<ItemTransactionResult>> RelocateAsync(
         Guid accountId,

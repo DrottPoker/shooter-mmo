@@ -7,7 +7,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;
 
-public static class StackStressFixtureEndpoints
+internal static class StackStressFixtureEndpoints
 {
     public static IEndpointRouteBuilder MapStackStressFixtureEndpoints(
         this IEndpointRouteBuilder app,

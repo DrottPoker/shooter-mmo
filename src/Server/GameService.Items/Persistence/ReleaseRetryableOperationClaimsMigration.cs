@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Items.Persistence;
 
-public static class ReleaseRetryableOperationClaimsMigration
+internal static class ReleaseRetryableOperationClaimsMigration
 {
     public const string Id = "202610141800_release_retryable_operation_claims";
 
