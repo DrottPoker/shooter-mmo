@@ -188,7 +188,8 @@ internal sealed class ItemTransactionKernel(
             try
             {
                 await handler.ExecuteAsync(context, request.Command, cancellationToken);
-                var result = await context.FinalizeSuccessAsync(cancellationToken);
+                var result = await new ItemTransactionFinalizer(session, context.Journal)
+                    .FinalizeAsync(cancellationToken);
                 await ledger.CompleteAsync(
                     connection,
                     transaction,
