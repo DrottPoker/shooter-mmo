@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Placement;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Placement.Tests;
 
 public sealed class DevelopmentSimulationBotAuthorityTests
 {

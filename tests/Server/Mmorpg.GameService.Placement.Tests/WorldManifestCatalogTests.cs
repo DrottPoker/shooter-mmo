@@ -1,6 +1,6 @@
 using Mmorpg.WorldData.Worlds;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Placement.Tests;
 
 public sealed class WorldManifestCatalogTests
 {
