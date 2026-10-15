@@ -179,7 +179,7 @@ namespace ShooterMmo.GameSimulation
 
         public float FixedDeltaTime
         {
-            get { return 1f / TickRateHz; }
+            get { return (float)(1f / TickRateHz); }
         }
 
         public float WalkSpeed { get; }
@@ -417,13 +417,13 @@ namespace ShooterMmo.GameSimulation
                 isSprinting = true;
             }
 
-            var speed = (isSprinting ? settings.SprintSpeed : settings.WalkSpeed)
-                * carryState.MovementMultiplier;
+            var speed = (float)((isSprinting ? settings.SprintSpeed : settings.WalkSpeed)
+                * carryState.MovementMultiplier);
             var velocity = acceptsPlanarControl
                 ? new SimulationVector3(
-                    directionX * speed,
+                    (float)(directionX * speed),
                     state.VelocityY,
-                    directionZ * speed)
+                    (float)(directionZ * speed))
                 : new SimulationVector3(
                     state.VelocityX,
                     state.VelocityY,
@@ -445,17 +445,19 @@ namespace ShooterMmo.GameSimulation
                 isGrounded = false;
             }
 
+            var gravityStep = (float)(settings.Gravity * settings.FixedDeltaTime);
             velocity = new SimulationVector3(
                 velocity.X,
                 Math.Max(
-                    velocity.Y + (settings.Gravity * settings.FixedDeltaTime),
+                    (float)(velocity.Y + gravityStep),
                     -settings.MaximumFallSpeed),
                 velocity.Z);
+            var displacement = velocity * settings.FixedDeltaTime;
             var movement = KinematicCharacterMotor.Move(
                 collisionWorld,
                 settings.CharacterCollision,
                 new SimulationVector3(state.PositionX, state.PositionY, state.PositionZ),
-                velocity * settings.FixedDeltaTime,
+                displacement,
                 velocity,
                 isGrounded,
                 queryBuffer);
@@ -479,7 +481,7 @@ namespace ShooterMmo.GameSimulation
             var yaw = MoveAngleTowards(
                 state.YawDegrees,
                 targetYaw,
-                settings.RotationSpeedDegrees * settings.FixedDeltaTime);
+                (float)(settings.RotationSpeedDegrees * settings.FixedDeltaTime));
             return new PlayerMovementState(
                 positionX,
                 movement.Position.Y,
@@ -502,29 +504,29 @@ namespace ShooterMmo.GameSimulation
         {
             var moveX = IsFinite(input.MoveX) ? Clamp(input.MoveX, -1f, 1f) : 0f;
             var moveY = IsFinite(input.MoveY) ? Clamp(input.MoveY, -1f, 1f) : 0f;
-            var moveLength = (float)Math.Sqrt((moveX * moveX) + (moveY * moveY));
+            var moveLength = (float)Math.Sqrt((float)((float)(moveX * moveX) + (float)(moveY * moveY)));
             if (moveLength > 1f)
             {
-                moveX /= moveLength;
-                moveY /= moveLength;
+                moveX = (float)(moveX / moveLength);
+                moveY = (float)(moveY / moveLength);
             }
 
             cameraYaw = IsFinite(input.CameraYawDegrees)
                 ? NormalizeAngle(input.CameraYawDegrees)
                 : state.YawDegrees;
-            var radians = cameraYaw * ((float)Math.PI / 180f);
+            var radians = (float)(cameraYaw * ((float)Math.PI / 180f));
             var forwardX = (float)Math.Sin(radians);
             var forwardZ = (float)Math.Cos(radians);
             var rightX = forwardZ;
             var rightZ = -forwardX;
-            directionX = (rightX * moveX) + (forwardX * moveY);
-            directionZ = (rightZ * moveX) + (forwardZ * moveY);
+            directionX = (float)((float)(rightX * moveX) + (float)(forwardX * moveY));
+            directionZ = (float)((float)(rightZ * moveX) + (float)(forwardZ * moveY));
             directionLength = (float)Math.Sqrt(
-                (directionX * directionX) + (directionZ * directionZ));
+                (float)((float)(directionX * directionX) + (float)(directionZ * directionZ)));
             if (directionLength > 1f)
             {
-                directionX /= directionLength;
-                directionZ /= directionLength;
+                directionX = (float)(directionX / directionLength);
+                directionZ = (float)(directionZ / directionLength);
                 directionLength = 1f;
             }
         }
@@ -537,19 +539,19 @@ namespace ShooterMmo.GameSimulation
                 return NormalizeAngle(target);
             }
 
-            return NormalizeAngle(current + (Math.Sign(delta) * maximumDelta));
+            return NormalizeAngle((float)(current + (float)(Math.Sign(delta) * maximumDelta)));
         }
 
         private static float DeltaAngle(float current, float target)
         {
-            var delta = NormalizeAngle(target) - NormalizeAngle(current);
+            var delta = (float)(NormalizeAngle(target) - NormalizeAngle(current));
             if (delta > 180f)
             {
-                delta -= 360f;
+                delta = (float)(delta - 360f);
             }
             else if (delta < -180f)
             {
-                delta += 360f;
+                delta = (float)(delta + 360f);
             }
 
             return delta;
@@ -557,8 +559,8 @@ namespace ShooterMmo.GameSimulation
 
         private static float NormalizeAngle(float angle)
         {
-            var normalized = angle % 360f;
-            return normalized < 0f ? normalized + 360f : normalized;
+            var normalized = (float)(angle % 360f);
+            return normalized < 0f ? (float)(normalized + 360f) : normalized;
         }
 
         private static float Clamp(float value, float minimum, float maximum)

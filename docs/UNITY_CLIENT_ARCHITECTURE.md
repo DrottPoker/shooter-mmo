@@ -817,6 +817,10 @@ Manual flows and expected results are documented in
   `RealtimeSimulationClient`, not scene panels.
 - Keep deterministic movement rules in `GameSimulation`, not in transport or
   presentation components.
+- Wrap every float intermediate in `GameSimulation` in an explicit `(float)`
+  cast. Mono keeps float intermediates in double precision, so an expression
+  such as `(a * b) + c` without casts predicts differently in Unity than on the
+  worker. The movement determinism tests catch a missing cast.
 - Keep authored collision in `WorldData`; never duplicate scene geometry as
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.

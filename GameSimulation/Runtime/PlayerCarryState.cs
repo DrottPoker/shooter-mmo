@@ -63,8 +63,8 @@ namespace ShooterMmo.GameSimulation
         {
             get
             {
-                return movementMultiplierBasisPoints
-                    / (float)PlayerEncumbranceRules.BaseMovementMultiplierBasisPoints;
+                return (float)(movementMultiplierBasisPoints
+                    / (float)PlayerEncumbranceRules.BaseMovementMultiplierBasisPoints);
             }
         }
 

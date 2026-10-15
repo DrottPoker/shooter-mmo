@@ -406,6 +406,14 @@ corpse view.
   loaded chunks instead of every cell in its range.
 - The character motor derives its substep count from the full displacement
   length, so no substep, diagonal or not, exceeds the configured limit.
+- Shared simulation math wraps every float intermediate in an explicit
+  `(float)` cast. Unity's Mono runtime keeps float intermediates in double
+  precision and rounds only stored values, while .NET rounds every operation,
+  so without the casts Unity prediction drifted from the worker. Movement is
+  now bit-identical in both runtimes. Sine, cosine, and arctangent come from the
+  platform C runtime in double precision and are rounded to float, so a libm
+  difference between platforms only matters in the rare case where it crosses
+  a float rounding boundary.
 - Static shapes are assigned to every intersected chunk and deduplicated by
   stable id during queries.
 - Position-driven load and larger unload radii provide streaming hysteresis.
@@ -968,10 +976,12 @@ the test connection variable at development or production data.
 - Catalog tags and equipment slot ids are limited to 64 characters and Bag
   slots to 16 accepted tags, the realtime protocol limits. A test keeps the
   `ItemCatalogFormat` limits within `RealtimeProtocolLimits`.
-- A movement determinism golden test pins `GameSimulationCompatibility.Revision`
-  together with the fingerprint of one shared movement scenario, so a movement
-  change without a revision bump fails. The scenario file also compiles into
-  the Unity EditMode tests for the cross-runtime check.
+- A movement determinism golden test runs one shared scenario in .NET and in
+  Unity EditMode and pins `GameSimulationCompatibility.Revision` together with
+  the same fingerprint in both, so a movement change without a revision bump,
+  or a runtime that diverges, fails. A coverage test keeps the scenario
+  blocking on a wall, climbing and dropping off a rotated ramp, stopping at a
+  rotated pillar, stepping up, and jumping.
 - Committed collision manifests are checked against their recomputed
   revision.
 - Isolated PostgreSQL item tests for concurrent migration initialization,

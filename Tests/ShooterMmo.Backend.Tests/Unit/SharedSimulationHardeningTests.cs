@@ -29,6 +29,24 @@ public sealed class SharedSimulationHardeningTests
     }
 
     [Fact]
+    public void DeterminismScenarioExercisesEveryCollisionCase()
+    {
+        var states = MovementDeterminismScenario.ComputeTrace().States;
+
+        // Blocked by the wall face at x = 6 minus the capsule radius.
+        Assert.True(states.Count(state =>
+            state.PositionX is > 5.6f and < 5.7f && Math.Abs(state.PositionZ) < 3.5f) >= 10);
+        // Climbed the rotated ramp to its high edge and dropped off it.
+        Assert.Contains(states, state => state.PositionY > 2f);
+        // Stopped against a face of the rotated pillar.
+        Assert.Contains(states, state => DistanceXz(state, 2f, -8f) < 0.9f);
+        // Stepped up onto the step and jumped from it.
+        Assert.True(states.Count(state =>
+            Math.Abs(state.PositionY - 0.3f) < 0.005f && state.PositionX is > -8f and < -4f) >= 10);
+        Assert.True(states.Count(state => !state.IsGrounded) >= 50);
+    }
+
+    [Fact]
     public void DiagonalSubstepCannotTunnelThroughAThinRotatedWall()
     {
         // The largest substep the settings allow equals the radius. A wall turned by 45
@@ -177,6 +195,13 @@ public sealed class SharedSimulationHardeningTests
 
         Assert.Contains("tags[", tagError.Message, StringComparison.Ordinal);
         Assert.Contains("equipmentSlots[", slotError.Message, StringComparison.Ordinal);
+    }
+
+    private static float DistanceXz(PlayerMovementState state, float x, float z)
+    {
+        var deltaX = state.PositionX - x;
+        var deltaZ = state.PositionZ - z;
+        return MathF.Sqrt((deltaX * deltaX) + (deltaZ * deltaZ));
     }
 
     private static CollisionWorldManifest LoadCommittedManifest(string worldId)

@@ -268,18 +268,21 @@ namespace ShooterMmo.GameSimulation
 
                 if (!grounded && currentVelocity.Y <= 0f)
                 {
-                    var maximumRise = Math.Max(0f, previous.Y - candidate.Y) + ContactEpsilon;
+                    var maximumRise = (float)(Math.Max(0f, (float)(previous.Y - candidate.Y))
+                        + ContactEpsilon);
+                    var maximumDrop = (float)((float)(settings.GroundSnapDistance + Math.Abs(substep.Y))
+                        + ContactEpsilon);
                     if (TryFindWalkableGround(
                             collisionWorld,
                             settings,
                             candidate,
                             maximumRise,
-                            settings.GroundSnapDistance + Math.Abs(substep.Y) + ContactEpsilon,
+                            maximumDrop,
                             queryBuffer,
                             out var landingHeight,
                             out var landingNormal)
-                        && candidate.Y <= landingHeight + ContactEpsilon
-                        && landingHeight <= previous.Y + ContactEpsilon)
+                        && candidate.Y <= (float)(landingHeight + ContactEpsilon)
+                        && landingHeight <= (float)(previous.Y + ContactEpsilon))
                     {
                         candidate = new SimulationVector3(candidate.X, landingHeight, candidate.Z);
                         currentVelocity = new SimulationVector3(
@@ -344,13 +347,15 @@ namespace ShooterMmo.GameSimulation
         {
             surfaceHeight = 0f;
             groundNormal = SimulationVector3.Zero;
+            var highestAccepted = (float)((float)(rootPosition.Y + maximumRise) + ContactEpsilon);
+            var lowestAccepted = (float)((float)(rootPosition.Y - maximumDrop) - ContactEpsilon);
             var origin = new SimulationVector3(
                 rootPosition.X,
-                rootPosition.Y + maximumRise + ContactEpsilon,
+                highestAccepted,
                 rootPosition.Z);
-            var distance = maximumRise + maximumDrop + (ContactEpsilon * 2f);
+            var distance = (float)((float)(maximumRise + maximumDrop) + (ContactEpsilon * 2f));
             var rayBounds = new CollisionAabb(
-                new SimulationVector3(origin.X, origin.Y - distance, origin.Z),
+                new SimulationVector3(origin.X, (float)(origin.Y - distance), origin.Z),
                 origin).Expanded(ContactEpsilon);
             queryBuffer.Clear();
             collisionWorld.QueryBoxes(rayBounds, CollisionLayers.CharacterMovement, queryBuffer);
@@ -367,8 +372,8 @@ namespace ShooterMmo.GameSimulation
                         queryBuffer.Boxes[index],
                         out var hit)
                     || hit.Normal.Y < settings.MinimumGroundNormalY
-                    || hit.Point.Y > rootPosition.Y + maximumRise + ContactEpsilon
-                    || hit.Point.Y < rootPosition.Y - maximumDrop - ContactEpsilon
+                    || hit.Point.Y > highestAccepted
+                    || hit.Point.Y < lowestAccepted
                     || hit.Point.Y <= highest)
                 {
                     continue;
@@ -403,8 +408,8 @@ namespace ShooterMmo.GameSimulation
                 throw new ArgumentOutOfRangeException(nameof(capsuleRadius));
             }
 
-            return surfaceHeight
-                + (capsuleRadius * ((1f / groundNormal.Y) - 1f));
+            var slopeFactor = (float)((float)(1f / groundNormal.Y) - 1f);
+            return (float)(surfaceHeight + (float)(capsuleRadius * slopeFactor));
         }
 
         private static bool TryStepUp(
@@ -434,7 +439,7 @@ namespace ShooterMmo.GameSimulation
             var direction = horizontal / horizontalLength;
             var elevated = new SimulationVector3(
                 desired.X,
-                previous.Y + settings.StepHeight + ContactEpsilon,
+                (float)((float)(previous.Y + settings.StepHeight) + ContactEpsilon),
                 desired.Z);
             var elevatedVelocity = velocity;
             ResolvePenetrations(
@@ -450,20 +455,22 @@ namespace ShooterMmo.GameSimulation
             }
 
             var leadingProbe = new SimulationVector3(
-                elevated.X + (direction.X * settings.Radius),
+                (float)(elevated.X + (float)(direction.X * settings.Radius)),
                 elevated.Y,
-                elevated.Z + (direction.Z * settings.Radius));
+                (float)(elevated.Z + (float)(direction.Z * settings.Radius)));
+            var stepDrop = (float)((float)(settings.StepHeight + settings.GroundSnapDistance)
+                + ContactEpsilon);
             if (!TryFindWalkableGround(
                     collisionWorld,
                     settings,
                     leadingProbe,
                     ContactEpsilon,
-                    settings.StepHeight + settings.GroundSnapDistance + ContactEpsilon,
+                    stepDrop,
                     queryBuffer,
                     out var supportHeight,
                     out var supportNormal)
-                || supportHeight < previous.Y - ContactEpsilon
-                || supportHeight > previous.Y + settings.StepHeight + ContactEpsilon)
+                || supportHeight < (float)(previous.Y - ContactEpsilon)
+                || supportHeight > (float)((float)(previous.Y + settings.StepHeight) + ContactEpsilon))
             {
                 return false;
             }
@@ -508,7 +515,8 @@ namespace ShooterMmo.GameSimulation
 
                     if (normal.Y >= settings.MinimumGroundNormalY)
                     {
-                        position += normal * depth;
+                        var push = normal * depth;
+                        position += push;
                         if (velocity.Y < 0f)
                         {
                             velocity = new SimulationVector3(velocity.X, 0f, velocity.Z);
@@ -519,7 +527,8 @@ namespace ShooterMmo.GameSimulation
                     }
                     else if (normal.Y <= -0.25f)
                     {
-                        position += normal * depth;
+                        var push = normal * depth;
+                        position += push;
                         if (velocity.Y > 0f)
                         {
                             velocity = new SimulationVector3(velocity.X, 0f, velocity.Z);
@@ -532,16 +541,19 @@ namespace ShooterMmo.GameSimulation
                         if (horizontalLength > ContactEpsilon)
                         {
                             var horizontalNormal = horizontal / horizontalLength;
-                            position += horizontalNormal * (depth / horizontalLength);
+                            var push = horizontalNormal * (float)(depth / horizontalLength);
+                            position += push;
                             var inwardVelocity = SimulationVector3.Dot(velocity, horizontalNormal);
                             if (inwardVelocity < 0f)
                             {
-                                velocity -= horizontalNormal * inwardVelocity;
+                                var removed = horizontalNormal * inwardVelocity;
+                                velocity -= removed;
                             }
                         }
                         else
                         {
-                            position += normal * depth;
+                            var push = normal * depth;
+                            position += push;
                         }
                     }
 
@@ -563,22 +575,22 @@ namespace ShooterMmo.GameSimulation
         {
             return new CollisionAabb(
                 new SimulationVector3(
-                    rootPosition.X - settings.Radius,
+                    (float)(rootPosition.X - settings.Radius),
                     rootPosition.Y,
-                    rootPosition.Z - settings.Radius),
+                    (float)(rootPosition.Z - settings.Radius)),
                 new SimulationVector3(
-                    rootPosition.X + settings.Radius,
-                    rootPosition.Y + settings.Height,
-                    rootPosition.Z + settings.Radius));
+                    (float)(rootPosition.X + settings.Radius),
+                    (float)(rootPosition.Y + settings.Height),
+                    (float)(rootPosition.Z + settings.Radius)));
         }
 
         private static float HorizontalDistanceSquared(
             SimulationVector3 left,
             SimulationVector3 right)
         {
-            var x = left.X - right.X;
-            var z = left.Z - right.Z;
-            return (x * x) + (z * z);
+            var x = (float)(left.X - right.X);
+            var z = (float)(left.Z - right.Z);
+            return (float)((float)(x * x) + (float)(z * z));
         }
 
         private static bool IsFinite(float value)

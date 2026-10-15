@@ -47,7 +47,8 @@ namespace ShooterMmo.GameSimulation
             }
 
             var normalizedDirection = direction / directionLength;
-            var localOrigin = box.Rotation.InverseRotate(origin - box.Center);
+            var offset = origin - box.Center;
+            var localOrigin = box.Rotation.InverseRotate(offset);
             var localDirection = box.Rotation.InverseRotate(normalizedDirection);
             var minimum = -box.HalfExtents;
             var maximum = box.HalfExtents;
@@ -89,9 +90,10 @@ namespace ShooterMmo.GameSimulation
             }
 
             var worldNormal = box.Rotation.Rotate(entryNormal).Normalized();
+            var travelled = normalizedDirection * entryDistance;
             hit = new CollisionRayHit(
                 entryDistance,
-                origin + (normalizedDirection * entryDistance),
+                origin + travelled,
                 worldNormal);
             return true;
         }
@@ -106,15 +108,17 @@ namespace ShooterMmo.GameSimulation
         {
             normal = SimulationVector3.Zero;
             depth = 0f;
-            if (box == null || radius <= 0f || height < radius * 2f)
+            if (box == null || radius <= 0f || height < (float)(radius * 2f))
             {
                 return false;
             }
 
             var bottom = rootPosition + new SimulationVector3(0f, radius, 0f);
-            var top = rootPosition + new SimulationVector3(0f, height - radius, 0f);
-            var localBottom = box.Rotation.InverseRotate(bottom - box.Center);
-            var localTop = box.Rotation.InverseRotate(top - box.Center);
+            var top = rootPosition + new SimulationVector3(0f, (float)(height - radius), 0f);
+            var bottomOffset = bottom - box.Center;
+            var topOffset = top - box.Center;
+            var localBottom = box.Rotation.InverseRotate(bottomOffset);
+            var localTop = box.Rotation.InverseRotate(topOffset);
             var segmentDirection = localTop - localBottom;
             var minimum = -box.HalfExtents;
             var maximum = box.HalfExtents;
@@ -123,14 +127,17 @@ namespace ShooterMmo.GameSimulation
             var upper = 1f;
             for (var iteration = 0; iteration < SegmentSearchIterations; iteration++)
             {
-                var first = lower + ((upper - lower) / 3f);
-                var second = upper - ((upper - lower) / 3f);
+                var third = (float)((float)(upper - lower) / 3f);
+                var first = (float)(lower + third);
+                var second = (float)(upper - third);
+                var firstOffset = segmentDirection * first;
+                var secondOffset = segmentDirection * second;
                 var firstDistance = SquaredDistanceToAabb(
-                    localBottom + (segmentDirection * first),
+                    localBottom + firstOffset,
                     minimum,
                     maximum);
                 var secondDistance = SquaredDistanceToAabb(
-                    localBottom + (segmentDirection * second),
+                    localBottom + secondOffset,
                     minimum,
                     maximum);
                 if (firstDistance <= secondDistance)
@@ -143,12 +150,13 @@ namespace ShooterMmo.GameSimulation
                 }
             }
 
-            var parameter = (lower + upper) * 0.5f;
-            var segmentPoint = localBottom + (segmentDirection * parameter);
+            var parameter = (float)((float)(lower + upper) * 0.5f);
+            var segmentOffset = segmentDirection * parameter;
+            var segmentPoint = localBottom + segmentOffset;
             var boxPoint = Clamp(segmentPoint, minimum, maximum);
             var delta = segmentPoint - boxPoint;
             var distanceSquared = delta.LengthSquared;
-            if (distanceSquared >= radius * radius)
+            if (distanceSquared >= (float)(radius * radius))
             {
                 return false;
             }
@@ -158,12 +166,12 @@ namespace ShooterMmo.GameSimulation
             {
                 var distance = (float)Math.Sqrt(distanceSquared);
                 localNormal = delta / distance;
-                depth = radius - distance;
+                depth = (float)(radius - distance);
             }
             else
             {
                 localNormal = FindNearestExitNormal(segmentPoint, minimum, maximum, out var exitDistance);
-                depth = radius + exitDistance;
+                depth = (float)(radius + exitDistance);
             }
 
             if (depth <= 0.00001f)
@@ -191,9 +199,9 @@ namespace ShooterMmo.GameSimulation
                 return origin >= minimum && origin <= maximum;
             }
 
-            var inverse = 1f / direction;
-            var first = (minimum - origin) * inverse;
-            var second = (maximum - origin) * inverse;
+            var inverse = (float)(1f / direction);
+            var first = (float)((float)(minimum - origin) * inverse);
+            var second = (float)((float)(maximum - origin) * inverse);
             var firstNormal = -positiveAxis;
             if (first > second)
             {
@@ -239,14 +247,14 @@ namespace ShooterMmo.GameSimulation
             SimulationVector3 maximum,
             out float exitDistance)
         {
-            exitDistance = point.X - minimum.X;
+            exitDistance = (float)(point.X - minimum.X);
             var normal = -SimulationVector3.UnitX;
 
-            SelectCloserExit(maximum.X - point.X, SimulationVector3.UnitX, ref exitDistance, ref normal);
-            SelectCloserExit(point.Y - minimum.Y, -SimulationVector3.UnitY, ref exitDistance, ref normal);
-            SelectCloserExit(maximum.Y - point.Y, SimulationVector3.UnitY, ref exitDistance, ref normal);
-            SelectCloserExit(point.Z - minimum.Z, -SimulationVector3.UnitZ, ref exitDistance, ref normal);
-            SelectCloserExit(maximum.Z - point.Z, SimulationVector3.UnitZ, ref exitDistance, ref normal);
+            SelectCloserExit((float)(maximum.X - point.X), SimulationVector3.UnitX, ref exitDistance, ref normal);
+            SelectCloserExit((float)(point.Y - minimum.Y), -SimulationVector3.UnitY, ref exitDistance, ref normal);
+            SelectCloserExit((float)(maximum.Y - point.Y), SimulationVector3.UnitY, ref exitDistance, ref normal);
+            SelectCloserExit((float)(point.Z - minimum.Z), -SimulationVector3.UnitZ, ref exitDistance, ref normal);
+            SelectCloserExit((float)(maximum.Z - point.Z), SimulationVector3.UnitZ, ref exitDistance, ref normal);
             return normal;
         }
 

@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ShooterMmo.GameSimulation;
@@ -14,11 +15,32 @@ namespace ShooterMmo.SharedTests
         // or collision behavior: bump GameSimulationCompatibility.Revision and pin the new
         // fingerprint. Clients and workers with different revisions must not interoperate.
         public const string ExpectedSimulationRevision = "movement-simulation-v4";
-        public const string ExpectedFingerprint = "6ea4008adcad6388";
+        public const string ExpectedFingerprint = "d8eddca55aba6de1";
 
-        private const int TickCount = 600;
+        private const int TickCount = 900;
+
+        // The route steers through every collision case: blocked by a wall, sliding
+        // along it, climbing a rotated ramp and dropping off its high edge, stopping
+        // at a rotated pillar, stepping up and jumping on a step, and walking off it.
+        private static readonly Waypoint[] Route =
+        {
+            new Waypoint(10f, 0f, PlayerMovementButtons.None, 0, 60),
+            new Waypoint(6f, 6f, PlayerMovementButtons.Sprint, 0, 50),
+            new Waypoint(0f, 16f, PlayerMovementButtons.None, 0, 90),
+            new Waypoint(0f, 3f, PlayerMovementButtons.Sprint, 0, 90),
+            new Waypoint(2f, -8f, PlayerMovementButtons.None, 0, 90),
+            new Waypoint(-6f, 0f, PlayerMovementButtons.None, 0, 90),
+            new Waypoint(-6f, 0.5f, PlayerMovementButtons.None, 15, 45),
+            new Waypoint(-12f, 0f, PlayerMovementButtons.Sprint, 0, 45)
+        };
 
         public static string ComputeFingerprint()
+        {
+            return ComputeTrace().Fingerprint;
+        }
+
+        // The per-tick states let a failing runtime be compared tick by tick.
+        public static MovementDeterminismTrace ComputeTrace()
         {
             var collisionWorld = CreateCollisionWorld();
             var settings = new MovementSimulationSettings(
@@ -43,61 +65,71 @@ namespace ShooterMmo.SharedTests
                 0f,
                 0f,
                 0f);
+            var states = new List<PlayerMovementState>(TickCount);
+            var routeIndex = 0;
+            var routeTick = 0;
             var hash = 14695981039346656037UL;
             for (uint tick = 1; tick <= TickCount; tick++)
             {
+                var input = CreateInput(tick, state, ref routeIndex, ref routeTick);
                 state = PlayerMovementSimulation.Step(
                     state,
-                    CreateInput(tick),
+                    input,
                     settings,
                     carryState,
                     collisionWorld,
                     queryBuffer);
+                states.Add(state);
                 hash = Mix(hash, state);
             }
 
-            return hash.ToString("x16", CultureInfo.InvariantCulture);
+            return new MovementDeterminismTrace(
+                hash.ToString("x16", CultureInfo.InvariantCulture),
+                states);
         }
 
-        // Walks, sprints diagonally into a wall, jumps, aims, climbs a ramp and a step,
-        // and turns continuously, so every movement and collision branch contributes.
-        private static PlayerMovementInput CreateInput(uint tick)
+        private static PlayerMovementInput CreateInput(
+            uint tick,
+            PlayerMovementState state,
+            ref int routeIndex,
+            ref int routeTick)
         {
-            if (tick <= 60)
+            while (routeIndex < Route.Length)
             {
-                return Input(tick, 0f, 1f, 0f, PlayerMovementButtons.None);
+                var waypoint = Route[routeIndex];
+                var deltaX = (double)waypoint.X - state.PositionX;
+                var deltaZ = (double)waypoint.Z - state.PositionZ;
+                var reached = waypoint.JumpEveryTicks == 0
+                    && ((deltaX * deltaX) + (deltaZ * deltaZ)) < 0.04d;
+                if (reached || routeTick >= waypoint.TickBudget)
+                {
+                    routeIndex++;
+                    routeTick = 0;
+                    continue;
+                }
+
+                routeTick++;
+                var yaw = (float)(Math.Atan2(deltaX, deltaZ) * (180d / Math.PI));
+                var buttons = waypoint.Buttons;
+                if (waypoint.JumpEveryTicks > 0 && routeTick % waypoint.JumpEveryTicks == 0)
+                {
+                    buttons |= PlayerMovementButtons.Jump;
+                }
+
+                return Input(tick, 0f, 1f, yaw, buttons);
             }
 
-            if (tick <= 120)
+            // After the route: aim and strafe, then turn continuously with jumps.
+            if (tick <= 760)
             {
-                return Input(tick, 0.7071068f, 0.7071068f, 30f, PlayerMovementButtons.Sprint);
+                return Input(tick, 1f, 0.25f, 0f, PlayerMovementButtons.Aim);
             }
 
-            if (tick <= 150)
-            {
-                return Input(
-                    tick,
-                    0f,
-                    1f,
-                    90f,
-                    tick % 15 == 0 ? PlayerMovementButtons.Jump : PlayerMovementButtons.Sprint);
-            }
-
-            if (tick <= 240)
-            {
-                return Input(tick, -1f, 0f, 90f, PlayerMovementButtons.Aim);
-            }
-
-            if (tick <= 360)
-            {
-                return Input(tick, 0f, 1f, 180f, PlayerMovementButtons.Sprint);
-            }
-
-            var yaw = (tick * 3) % 360;
-            var buttons = tick % 50 == 0
+            var turningYaw = (tick * 4) % 360;
+            var turningButtons = tick % 40 == 0
                 ? PlayerMovementButtons.Jump
-                : PlayerMovementButtons.None;
-            return Input(tick, 0.25f, 1f, yaw, buttons);
+                : PlayerMovementButtons.Sprint;
+            return Input(tick, 0.3f, 1f, turningYaw, turningButtons);
         }
 
         private static PlayerMovementInput Input(
@@ -150,11 +182,13 @@ namespace ShooterMmo.SharedTests
                 Boxes = new[]
                 {
                     Box("Ground", 0f, -0.25f, 0f, 30f, 0.25f, 30f, 0f, 0f, 0f, 1f),
-                    Box("Wall", 6.5f, 1.5f, 3f, 0.5f, 1.5f, 5f, 0f, 0f, 0f, 1f),
-                    // A ramp rotated by 20 degrees around X, written as exact literals.
-                    Box("Ramp", -4f, 0.5f, -8f, 2f, 0.25f, 4f, 0.17364818f, 0f, 0f, 0.98480775f),
-                    Box("Step", -4f, 0.15f, 4f, 2f, 0.15f, 2f, 0f, 0f, 0f, 1f),
-                    Box("Pillar", 2f, 1f, 9f, 0.5f, 1f, 0.5f, 0f, 0.38268343f, 0f, 0.9238795f)
+                    Box("Wall", 6.5f, 1.5f, 0f, 0.5f, 1.5f, 4f, 0f, 0f, 0f, 1f),
+                    // A ramp rotated by 20 degrees around X that rises toward -Z,
+                    // written as exact literals.
+                    Box("Ramp", 0f, 0.5f, 10f, 2f, 0.25f, 4f, 0.17364818f, 0f, 0f, 0.98480775f),
+                    // A pillar rotated by 45 degrees around Y.
+                    Box("Pillar", 2f, 1f, -8f, 0.5f, 1f, 0.5f, 0f, 0.38268343f, 0f, 0.9238795f),
+                    Box("Step", -6f, 0.15f, 0f, 2f, 0.15f, 2f, 0f, 0f, 0f, 1f)
                 }
             });
             return new ChunkedStaticCollisionWorld(
@@ -193,5 +227,47 @@ namespace ShooterMmo.SharedTests
                 RotationW = rotationW
             };
         }
+
+        private readonly struct Waypoint
+        {
+            public Waypoint(
+                float x,
+                float z,
+                PlayerMovementButtons buttons,
+                int jumpEveryTicks,
+                int tickBudget)
+            {
+                X = x;
+                Z = z;
+                Buttons = buttons;
+                JumpEveryTicks = jumpEveryTicks;
+                TickBudget = tickBudget;
+            }
+
+            public float X { get; }
+
+            public float Z { get; }
+
+            public PlayerMovementButtons Buttons { get; }
+
+            public int JumpEveryTicks { get; }
+
+            public int TickBudget { get; }
+        }
+    }
+
+    public sealed class MovementDeterminismTrace
+    {
+        public MovementDeterminismTrace(
+            string fingerprint,
+            IReadOnlyList<PlayerMovementState> states)
+        {
+            Fingerprint = fingerprint;
+            States = states;
+        }
+
+        public string Fingerprint { get; }
+
+        public IReadOnlyList<PlayerMovementState> States { get; }
     }
 }

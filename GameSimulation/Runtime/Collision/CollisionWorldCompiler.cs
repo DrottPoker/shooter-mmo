@@ -152,13 +152,13 @@ namespace ShooterMmo.GameSimulation
                     box.Bounds.Minimum.X,
                     authoring.ChunkSize);
                 var maximumX = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    box.Bounds.Maximum.X - ChunkMaximumEpsilon,
+                    (float)(box.Bounds.Maximum.X - ChunkMaximumEpsilon),
                     authoring.ChunkSize);
                 var minimumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
                     box.Bounds.Minimum.Z,
                     authoring.ChunkSize);
                 var maximumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    box.Bounds.Maximum.Z - ChunkMaximumEpsilon,
+                    (float)(box.Bounds.Maximum.Z - ChunkMaximumEpsilon),
                     authoring.ChunkSize);
                 if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
                     > CollisionDataFormat.MaximumChunksPerBox)
@@ -187,8 +187,8 @@ namespace ShooterMmo.GameSimulation
             foreach (var pair in boxesByChunk.OrderBy(value => value.Key))
             {
                 DecodeChunkKey(pair.Key, out var x, out var z);
-                var minimumX = x * authoring.ChunkSize;
-                var minimumZ = z * authoring.ChunkSize;
+                var minimumX = (float)(x * authoring.ChunkSize);
+                var minimumZ = (float)(z * authoring.ChunkSize);
                 var bounds = new CollisionAabb(
                     new SimulationVector3(minimumX, float.MinValue, minimumZ),
                     new SimulationVector3(

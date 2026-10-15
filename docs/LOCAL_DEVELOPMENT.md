@@ -1890,12 +1890,15 @@ operation intents and results, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
 
 An intended change to shared movement or collision behavior fails the movement
-determinism test in the backend suite. Bump
+determinism tests in both the backend suite and Unity EditMode. Bump
 `GameSimulationCompatibility.Revision`, then set `ExpectedSimulationRevision`
 and `ExpectedFingerprint` in
 `shooter-mmorpg-unity-client/Assets/Tests/EditMode/Shared/MovementDeterminismScenario.cs`
-to the new values. The backend test project compiles the same file as the Unity
-EditMode tests, so both runtimes run one scenario.
+to the new values. The backend test project compiles the same file, so both
+runtimes keep checking one pinned pair. If only Unity fails, a new float
+expression in `GameSimulation` is missing an explicit `(float)` cast around an
+intermediate result; `MovementDeterminismScenario.ComputeTrace()` returns the
+per-tick states for comparing the runtimes.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
 directories and must never be committed.
 

@@ -196,12 +196,14 @@ namespace ShooterMmo.GameSimulation
             }
 
             const float epsilon = 0.001f;
-            var expectedMinimumX = chunk.X * ChunkSize;
-            var expectedMinimumZ = chunk.Z * ChunkSize;
-            if (Math.Abs(chunk.Bounds.Minimum.X - expectedMinimumX) > epsilon
-                || Math.Abs(chunk.Bounds.Minimum.Z - expectedMinimumZ) > epsilon
-                || Math.Abs(chunk.Bounds.Maximum.X - (expectedMinimumX + ChunkSize)) > epsilon
-                || Math.Abs(chunk.Bounds.Maximum.Z - (expectedMinimumZ + ChunkSize)) > epsilon)
+            var expectedMinimumX = (float)(chunk.X * ChunkSize);
+            var expectedMinimumZ = (float)(chunk.Z * ChunkSize);
+            var expectedMaximumX = (float)(expectedMinimumX + ChunkSize);
+            var expectedMaximumZ = (float)(expectedMinimumZ + ChunkSize);
+            if (Math.Abs((float)(chunk.Bounds.Minimum.X - expectedMinimumX)) > epsilon
+                || Math.Abs((float)(chunk.Bounds.Minimum.Z - expectedMinimumZ)) > epsilon
+                || Math.Abs((float)(chunk.Bounds.Maximum.X - expectedMaximumX)) > epsilon
+                || Math.Abs((float)(chunk.Bounds.Maximum.Z - expectedMaximumZ)) > epsilon)
             {
                 throw new ArgumentException(
                     "Collision chunk bounds do not match its coordinates.",
@@ -213,7 +215,7 @@ namespace ShooterMmo.GameSimulation
         // int cast outside the int range differs between .NET and Unity.
         internal static int ToChunkCoordinate(float position, float chunkSize)
         {
-            var coordinate = Math.Floor(position / chunkSize);
+            var coordinate = Math.Floor((float)(position / chunkSize));
             if (double.IsNaN(coordinate))
             {
                 throw new ArgumentOutOfRangeException(nameof(position));

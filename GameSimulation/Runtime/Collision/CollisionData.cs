@@ -3,6 +3,11 @@ using System.Collections.Generic;
 
 namespace ShooterMmo.GameSimulation
 {
+    // Shared simulation math rounds every float intermediate with an explicit (float)
+    // cast. Mono evaluates float expressions in double precision and rounds only
+    // when a value is stored, while .NET rounds every operation, so without the casts
+    // Unity prediction and the authoritative worker drift apart. A cast is a no-op on
+    // .NET. See the movement determinism golden test.
     public static class CollisionDataFormat
     {
         public const ushort Version = 1;
@@ -58,7 +63,7 @@ namespace ShooterMmo.GameSimulation
 
         public float LengthSquared
         {
-            get { return (X * X) + (Y * Y) + (Z * Z); }
+            get { return (float)((float)((float)(X * X) + (float)(Y * Y)) + (float)(Z * Z)); }
         }
 
         public float Length
@@ -88,12 +93,18 @@ namespace ShooterMmo.GameSimulation
 
         public static SimulationVector3 operator +(SimulationVector3 left, SimulationVector3 right)
         {
-            return new SimulationVector3(left.X + right.X, left.Y + right.Y, left.Z + right.Z);
+            return new SimulationVector3(
+                (float)(left.X + right.X),
+                (float)(left.Y + right.Y),
+                (float)(left.Z + right.Z));
         }
 
         public static SimulationVector3 operator -(SimulationVector3 left, SimulationVector3 right)
         {
-            return new SimulationVector3(left.X - right.X, left.Y - right.Y, left.Z - right.Z);
+            return new SimulationVector3(
+                (float)(left.X - right.X),
+                (float)(left.Y - right.Y),
+                (float)(left.Z - right.Z));
         }
 
         public static SimulationVector3 operator -(SimulationVector3 value)
@@ -103,17 +114,24 @@ namespace ShooterMmo.GameSimulation
 
         public static SimulationVector3 operator *(SimulationVector3 value, float scale)
         {
-            return new SimulationVector3(value.X * scale, value.Y * scale, value.Z * scale);
+            return new SimulationVector3(
+                (float)(value.X * scale),
+                (float)(value.Y * scale),
+                (float)(value.Z * scale));
         }
 
         public static SimulationVector3 operator /(SimulationVector3 value, float scale)
         {
-            return new SimulationVector3(value.X / scale, value.Y / scale, value.Z / scale);
+            return new SimulationVector3(
+                (float)(value.X / scale),
+                (float)(value.Y / scale),
+                (float)(value.Z / scale));
         }
 
         public static float Dot(SimulationVector3 left, SimulationVector3 right)
         {
-            return (left.X * right.X) + (left.Y * right.Y) + (left.Z * right.Z);
+            return (float)((float)((float)(left.X * right.X) + (float)(left.Y * right.Y))
+                + (float)(left.Z * right.Z));
         }
 
         public SimulationVector3 Normalized()
@@ -184,19 +202,25 @@ namespace ShooterMmo.GameSimulation
 
         public SimulationQuaternion Normalized()
         {
-            var lengthSquared = (X * X) + (Y * Y) + (Z * Z) + (W * W);
+            var lengthSquared = (float)((float)((float)((float)(X * X) + (float)(Y * Y))
+                    + (float)(Z * Z))
+                + (float)(W * W));
             if (lengthSquared <= 0.000000000001f)
             {
                 return Identity;
             }
 
-            if (Math.Abs(lengthSquared - 1f) <= UnitLengthSquaredTolerance)
+            if (Math.Abs((float)(lengthSquared - 1f)) <= UnitLengthSquaredTolerance)
             {
                 return this;
             }
 
             var length = (float)Math.Sqrt(lengthSquared);
-            return new SimulationQuaternion(X / length, Y / length, Z / length, W / length);
+            return new SimulationQuaternion(
+                (float)(X / length),
+                (float)(Y / length),
+                (float)(Z / length),
+                (float)(W / length));
         }
 
         public SimulationVector3 Rotate(SimulationVector3 value)
@@ -204,7 +228,9 @@ namespace ShooterMmo.GameSimulation
             var quaternion = Normalized();
             var vector = new SimulationVector3(quaternion.X, quaternion.Y, quaternion.Z);
             var twiceCross = Cross(vector, value) * 2f;
-            return value + (twiceCross * quaternion.W) + Cross(vector, twiceCross);
+            var scaled = twiceCross * quaternion.W;
+            var rotated = value + scaled;
+            return rotated + Cross(vector, twiceCross);
         }
 
         public SimulationVector3 InverseRotate(SimulationVector3 value)
@@ -229,9 +255,9 @@ namespace ShooterMmo.GameSimulation
         private static SimulationVector3 Cross(SimulationVector3 left, SimulationVector3 right)
         {
             return new SimulationVector3(
-                (left.Y * right.Z) - (left.Z * right.Y),
-                (left.Z * right.X) - (left.X * right.Z),
-                (left.X * right.Y) - (left.Y * right.X));
+                (float)((float)(left.Y * right.Z) - (float)(left.Z * right.Y)),
+                (float)((float)(left.Z * right.X) - (float)(left.X * right.Z)),
+                (float)((float)(left.X * right.Y) - (float)(left.Y * right.X)));
         }
 
         private static bool IsFinite(float value)
@@ -344,10 +370,22 @@ namespace ShooterMmo.GameSimulation
             var axisY = SimulationVector3.Abs(rotation.Rotate(SimulationVector3.UnitY));
             var axisZ = SimulationVector3.Abs(rotation.Rotate(SimulationVector3.UnitZ));
             var worldExtents = new SimulationVector3(
-                (axisX.X * halfExtents.X) + (axisY.X * halfExtents.Y) + (axisZ.X * halfExtents.Z),
-                (axisX.Y * halfExtents.X) + (axisY.Y * halfExtents.Y) + (axisZ.Y * halfExtents.Z),
-                (axisX.Z * halfExtents.X) + (axisY.Z * halfExtents.Y) + (axisZ.Z * halfExtents.Z));
+                SumOfProducts(axisX.X, halfExtents.X, axisY.X, halfExtents.Y, axisZ.X, halfExtents.Z),
+                SumOfProducts(axisX.Y, halfExtents.X, axisY.Y, halfExtents.Y, axisZ.Y, halfExtents.Z),
+                SumOfProducts(axisX.Z, halfExtents.X, axisY.Z, halfExtents.Y, axisZ.Z, halfExtents.Z));
             return new CollisionAabb(center - worldExtents, center + worldExtents);
+        }
+
+        private static float SumOfProducts(
+            float firstLeft,
+            float firstRight,
+            float secondLeft,
+            float secondRight,
+            float thirdLeft,
+            float thirdRight)
+        {
+            return (float)((float)((float)(firstLeft * firstRight) + (float)(secondLeft * secondRight))
+                + (float)(thirdLeft * thirdRight));
         }
     }
 
