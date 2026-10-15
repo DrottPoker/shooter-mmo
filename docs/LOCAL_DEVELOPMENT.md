@@ -1554,7 +1554,11 @@ One-time setup on a new machine:
 3. Open the project with `unity open src/Client`, or through
    Unity Hub, and wait for package import and script compilation to finish. If
    the Editor was already open when the manifest changed, focus the Editor window
-   so Package Manager resolves the change.
+   so Package Manager resolves the change. The Unity project moved from
+   `shooter-mmorpg-unity-client` to `src/Client` in October 2026. If Unity Hub
+   still lists the old folder, remove that entry with `Remove from list` and add
+   the new folder with `Add > Add project from disk`, or run
+   `unity projects add src/Client` from the repository root.
 
 No other manual Editor work is required. The package is already in the
 manifest, so `unity pipeline install` is only needed for a project that does not
