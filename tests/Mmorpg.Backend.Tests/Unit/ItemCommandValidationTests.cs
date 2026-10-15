@@ -39,6 +39,74 @@ public sealed class ItemCommandValidationTests
         });
     }
 
+    [Fact]
+    public void PlayerDeathCommandValidationRejectsWithStableCodes()
+    {
+        PlayerDeathCommandHandler.ValidatePlayerDeathCommand(Death());
+        AssertDeathRejected(
+            Death() with { DeathEventId = Guid.Empty },
+            ItemTransactionErrorCodes.DeathEventConflict,
+            "A death event and character id are required.");
+        AssertDeathRejected(
+            Death() with { ShardId = "shard one" },
+            ItemTransactionErrorCodes.SimulationSessionInvalid,
+            "The death event Shard id is invalid.");
+        AssertDeathRejected(
+            Death() with { PresentationKey = "corpse.other_crate" },
+            ItemTransactionErrorCodes.DeathEventConflict,
+            "Player death must use the authoritative generic corpse presentation key.");
+        AssertDeathRejected(
+            Death() with { PositionZ = 2_000_000d },
+            ItemTransactionErrorCodes.DeathEventConflict,
+            "The death transform position is invalid.");
+        AssertDeathRejected(
+            Death() with { RotationW = 0.9d },
+            ItemTransactionErrorCodes.DeathEventConflict,
+            "The death transform rotation must be a normalized quaternion.");
+    }
+
+    [Fact]
+    public void DeathEventRequestHashIsTheStoredFingerprint()
+    {
+        var command = Death() with
+        {
+            DeathEventId = Guid.Parse("d0000000-0000-4000-8000-000000000001"),
+            CharacterId = Guid.Parse("d0000000-0000-4000-8000-000000000002")
+        };
+        const string fingerprint =
+            """{"deathEventId":"d0000000-0000-4000-8000-000000000001","characterId":"d0000000-0000-4000-8000-000000000002","shardId":"shard-1","positionX":1.5,"positionY":0,"positionZ":-2.25,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.generic_loot_crate"}""";
+
+        Assert.Equal(
+            Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(fingerprint))),
+            PlayerDeathCommandHandler.CalculateDeathEventRequestHash(command));
+    }
+
+    private static ProcessPlayerDeathCommand Death()
+    {
+        return new ProcessPlayerDeathCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            3,
+            "shard-1",
+            1.5d,
+            0d,
+            -2.25d,
+            0d,
+            0d,
+            0d,
+            1d,
+            "corpse.generic_loot_crate");
+    }
+
+    private static void AssertDeathRejected(ProcessPlayerDeathCommand command, string code, string message)
+    {
+        var exception = Assert.Throws<ItemTransactionRejectedException>(
+            () => PlayerDeathCommandHandler.ValidatePlayerDeathCommand(command));
+        Assert.Equal(code, exception.Code);
+        Assert.Equal(message, exception.Message);
+    }
+
     private static CreatePersistentMobCorpseCommand MobCorpse()
     {
         return new CreatePersistentMobCorpseCommand(
