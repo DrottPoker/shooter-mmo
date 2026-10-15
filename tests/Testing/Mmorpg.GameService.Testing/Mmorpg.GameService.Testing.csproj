@@ -10,7 +10,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Mmorpg.Backend.Tests" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Platform.Tests" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Accounts.Tests" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Characters.Tests" />
