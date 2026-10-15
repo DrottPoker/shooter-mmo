@@ -74,30 +74,19 @@ public sealed partial class TableOwnershipTests
     // entry must still exist, so the list can only shrink.
     private static readonly IReadOnlySet<string> PendingForeignAccess = new HashSet<string>(StringComparer.Ordinal)
     {
-        "GameService/Simulation/ShardService.cs -> characters (S8, S9, S10)",
         "GameService/Simulation/ShardService.cs -> character_item_states (S11)",
         "GameService/Simulation/SimulationSessionService.cs -> character_item_states (S12, S14)",
         "GameService/Simulation/SimulationWorkerRegistryService.cs -> corpses (S15)",
-        "GameService/Items/CharacterItemStateBootstrapper.cs -> characters (S16, S17, S18)",
         "GameService/Items/CorpseService.cs -> simulation_assignments (S20)",
         "GameService/Items/CorpseService.cs -> simulation_workers (S20)",
         "GameService/Items/CorpseService.Interactions.cs -> character_simulation_sessions (S21)",
         "GameService/Items/CorpseService.Interactions.cs -> simulation_assignments (S21)",
         "GameService/Items/CorpseService.Interactions.cs -> simulation_workers (S21)",
-        "GameService/Items/ItemTransactionContext.cs -> characters (S22, S26, S28)",
         "GameService/Items/ItemTransactionContext.cs -> character_simulation_sessions (S23, S27)",
         "GameService/Items/ItemTransactionContext.cs -> simulation_workers (S24, S29)",
         "GameService/Items/ItemTransactionContext.cs -> simulation_assignments (S25, S29)",
-        "GameService/Items/ItemTransactionService.cs -> characters (S30, S31, S32)",
-        "GameService/Items/ItemTransactionService.cs -> accounts (S32)",
-        "GameService/Items/ItemTransactionService.Death.cs -> characters (S33, S34)",
         "GameService/Items/ItemTransactionService.Death.cs -> shards (S33)",
-        "GameService/Items/ItemOperationsMaintenanceService.cs -> characters (S35)",
-        "GameService/Items/ItemQueryService.cs -> characters (S36)",
-        "GameService/Items/DevelopmentItemTool.cs -> characters (S37, S38)",
-        "GameService/Items/DevelopmentItemTool.cs -> accounts (S37)",
         "GameService/Items/DevelopmentItemTool.cs -> character_simulation_sessions (S37, S38)",
-        "GameService/Items/PhaseNineDevelopmentFixtureSeeder.cs -> characters (S39)",
         "GameService/Items/PhaseNineDevelopmentFixtureSeeder.cs -> character_simulation_sessions (S39)"
     };
 

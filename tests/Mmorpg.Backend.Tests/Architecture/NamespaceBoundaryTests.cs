@@ -24,8 +24,6 @@ public sealed partial class NamespaceBoundaryTests
     // shrink.
     private static readonly IReadOnlySet<string> PendingUpwardReferences = new HashSet<string>(StringComparer.Ordinal)
     {
-        // C2: character creation bootstraps item state directly.
-        "GameService/Characters/CharacterService.cs -> Mmorpg.GameService.Items"
     };
 
     [Fact]

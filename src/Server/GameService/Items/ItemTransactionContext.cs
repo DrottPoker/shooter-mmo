@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 
@@ -16,6 +18,7 @@ internal sealed class ItemTransactionContext(
     Guid operationId,
     string operationKind,
     ItemTransactionActor actor,
+    ItemTransactionDependencies dependencies,
     ItemOperationsMetrics? operationsMetrics = null)
 {
     private static readonly JsonSerializerOptions AuditJsonOptions = new(JsonSerializerDefaults.Web);
@@ -30,6 +33,11 @@ internal sealed class ItemTransactionContext(
     public NpgsqlConnection Connection { get; } = connection;
 
     public NpgsqlTransaction Transaction { get; } = transaction;
+
+    // The transaction handed to other modules' contracts.
+    public PostgresTransactionScope Scope { get; } = new(connection, transaction);
+
+    public ICharacterWallet CharacterWallet => dependencies.CharacterWallet;
 
     public Guid OperationId { get; } = operationId;
 
@@ -119,18 +127,10 @@ internal sealed class ItemTransactionContext(
                 "The item operation character does not match the simulation session.");
         }
 
-        var characterAccountId = await Connection.QuerySingleOrDefaultAsync<Guid?>(
-            new CommandDefinition(
-                """
-                select account_id
-                from characters
-                where id = @CharacterId
-                  and deleted_at is null
-                for no key update;
-                """,
-                new { CharacterId = simulation.CharacterId },
-                Transaction,
-                cancellationToken: cancellationToken));
+        var characterAccountId = await dependencies.CharacterLocks.LockActiveForItemMutationAsync(
+            Scope,
+            simulation.CharacterId,
+            cancellationToken);
         if (characterAccountId is null || characterAccountId != Actor.AccountId)
         {
             Reject(
@@ -312,11 +312,16 @@ internal sealed class ItemTransactionContext(
         LockedCharacterState[] rows;
         try
         {
+            // Characters are locked first and item states second, each in ascending
+            // character order, so every multi-character mutation locks in one order.
+            var accountIds = await dependencies.CharacterLocks.LockActiveForItemMutationAsync(
+                Scope,
+                requested.Select(request => request.CharacterId).ToArray(),
+                cancellationToken);
             rows = (await Connection.QueryAsync<LockedCharacterState>(new CommandDefinition(
                 """
                 select
                     state.character_id as "CharacterId",
-                    character.account_id as "AccountId",
                     state.revision as "Revision",
                     state.carried_weight as "CarriedWeight",
                     state.base_carry_capacity as "BaseCarryCapacity",
@@ -326,16 +331,23 @@ internal sealed class ItemTransactionContext(
                     state.secure_container_id as "SecureContainerId",
                     state.recovery_storage_container_id as "RecoveryStorageContainerId"
                 from character_item_states state
-                join characters character on character.id = state.character_id
                 where state.character_id = any(@CharacterIds)
-                  and character.deleted_at is null
                 order by state.character_id
-                for no key update of character
                 for update of state;
                 """,
-                new { CharacterIds = requested.Select(request => request.CharacterId).ToArray() },
+                new
+                {
+                    CharacterIds = requested
+                        .Select(request => request.CharacterId)
+                        .Where(accountIds.ContainsKey)
+                        .ToArray()
+                },
                 Transaction,
                 cancellationToken: cancellationToken))).ToArray();
+            foreach (var row in rows)
+            {
+                row.AccountId = accountIds[row.CharacterId];
+            }
         }
         finally
         {
@@ -416,33 +428,41 @@ internal sealed class ItemTransactionContext(
         }
 
         var lockStarted = Stopwatch.GetTimestamp();
-        LockedCharacterState? row;
+        LockedCharacterState? row = null;
         try
         {
-            row = await Connection.QuerySingleOrDefaultAsync<LockedCharacterState>(
-                new CommandDefinition(
-                """
-                select
-                    state.character_id as "CharacterId",
-                    character.account_id as "AccountId",
-                    state.revision as "Revision",
-                    state.carried_weight as "CarriedWeight",
-                    state.base_carry_capacity as "BaseCarryCapacity",
-                    state.carry_capacity as "CarryCapacity",
-                    state.permanent_inventory_container_id as "PermanentInventoryContainerId",
-                    state.bank_container_id as "BankContainerId",
-                    state.secure_container_id as "SecureContainerId",
-                    state.recovery_storage_container_id as "RecoveryStorageContainerId"
-                from character_item_states state
-                join characters character on character.id = state.character_id
-                where state.character_id = @CharacterId
-                  and character.deleted_at is null
-                for no key update of character
-                for update of state;
-                """,
-                new { CharacterId = characterId },
-                Transaction,
-                    cancellationToken: cancellationToken));
+            // The character is locked before its item state, as in every item mutation.
+            var accountId = await dependencies.CharacterLocks.LockActiveForItemMutationAsync(
+                Scope,
+                characterId,
+                cancellationToken);
+            if (accountId is not null)
+            {
+                row = await Connection.QuerySingleOrDefaultAsync<LockedCharacterState>(
+                    new CommandDefinition(
+                        """
+                        select
+                            state.character_id as "CharacterId",
+                            state.revision as "Revision",
+                            state.carried_weight as "CarriedWeight",
+                            state.base_carry_capacity as "BaseCarryCapacity",
+                            state.carry_capacity as "CarryCapacity",
+                            state.permanent_inventory_container_id as "PermanentInventoryContainerId",
+                            state.bank_container_id as "BankContainerId",
+                            state.secure_container_id as "SecureContainerId",
+                            state.recovery_storage_container_id as "RecoveryStorageContainerId"
+                        from character_item_states state
+                        where state.character_id = @CharacterId
+                        for update of state;
+                        """,
+                        new { CharacterId = characterId },
+                        Transaction,
+                        cancellationToken: cancellationToken));
+                if (row is not null)
+                {
+                    row.AccountId = accountId.Value;
+                }
+            }
         }
         finally
         {

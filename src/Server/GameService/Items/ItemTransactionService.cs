@@ -6,6 +6,8 @@ using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 
@@ -13,6 +15,8 @@ namespace Mmorpg.GameService.Items;
 
 public sealed partial class ItemTransactionService(
     NpgsqlDataSource dataSource,
+    ICharacterLocks characterLocks,
+    ICharacterWallet characterWallet,
     ItemOperationsMetrics? operationsMetrics = null,
     ItemOperationsOptions? itemOperationsOptions = null,
     ILogger<ItemTransactionService>? logger = null,
@@ -23,6 +27,9 @@ public sealed partial class ItemTransactionService(
     private static readonly JsonSerializerOptions OperationJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ItemOperationsOptions effectiveOperationsOptions =
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults();
+    private readonly ItemTransactionDependencies dependencies = new(
+        characterLocks,
+        characterWallet);
 
     public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<GrantItemCommand> request,
@@ -1425,29 +1432,22 @@ public sealed partial class ItemTransactionService(
 
         if (command.Price > 0)
         {
-            var currencyBefore = await context.Connection.QuerySingleAsync<long>(
-                new CommandDefinition(
-                    "select currency from characters where id = @CharacterId for no key update;",
-                    new { command.CharacterId },
-                    context.Transaction,
-                    cancellationToken: cancellationToken));
-            if (currencyBefore < command.Price)
+            var debit = await context.CharacterWallet.DebitAsync(
+                context.Scope,
+                command.CharacterId,
+                command.Price,
+                cancellationToken);
+            if (!debit.Succeeded)
             {
                 ItemTransactionContext.Reject(
                     ItemTransactionErrorCodes.CurrencyInsufficient,
                     "The character does not have enough currency for this insurance policy.");
             }
 
-            var currencyAfter = currencyBefore - command.Price;
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                "update characters set currency = @Currency where id = @CharacterId;",
-                new { command.CharacterId, Currency = currencyAfter },
-                context.Transaction,
-                cancellationToken: cancellationToken));
             context.AddMetadataAudit(
                 "item_insurance_currency_charged",
-                new { command.CharacterId, Currency = currencyBefore },
-                new { command.CharacterId, Currency = currencyAfter, command.Price });
+                new { command.CharacterId, Currency = debit.Before },
+                new { command.CharacterId, Currency = debit.After, command.Price });
         }
 
         var beforeState = await context.CaptureItemStateJsonAsync(
@@ -2226,14 +2226,13 @@ public sealed partial class ItemTransactionService(
 
         var candidates = (await context.Connection.QueryAsync<CharacterLockCandidate>(
             new CommandDefinition(
-                """
+                $"""
                 select
                     state.character_id as "CharacterId",
                     state.revision as "Revision"
                 from character_item_states state
-                join characters character on character.id = state.character_id
+                join {CharactersSql.ActiveCharacters} character on character.id = state.character_id
                 where character.account_id = @AccountId
-                  and character.deleted_at is null
                 order by state.character_id;
                 """,
                 new { command.AccountId },
@@ -2873,6 +2872,7 @@ public sealed partial class ItemTransactionService(
                 request.OperationId,
                 operationKind,
                 request.Actor,
+                dependencies,
                 operationsMetrics);
             try
             {
@@ -3034,7 +3034,7 @@ public sealed partial class ItemTransactionService(
         CancellationToken cancellationToken)
     {
         var claimed = await connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
-            """
+            $"""
             insert into item_operations (
                 operation_id,
                 actor_account_id,
@@ -3044,16 +3044,8 @@ public sealed partial class ItemTransactionService(
                 request_payload)
             values (
                 @OperationId,
-                (
-                    select id
-                    from accounts
-                    where id = cast(@ActorAccountId as uuid)
-                ),
-                (
-                    select id
-                    from characters
-                    where id = cast(@ActorCharacterId as uuid)
-                ),
+                {AccountsSql.ExistingIdOrNull("cast(@ActorAccountId as uuid)")},
+                {CharactersSql.ExistingIdOrNull("cast(@ActorCharacterId as uuid)")},
                 @OperationKind,
                 @RequestHash,
                 cast(@RequestPayload as jsonb))

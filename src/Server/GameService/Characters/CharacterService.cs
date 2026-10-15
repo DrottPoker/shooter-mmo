@@ -1,6 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
-using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Npgsql;
@@ -11,7 +11,7 @@ public sealed class CharacterService(
     NpgsqlDataSource dataSource,
     CharactersModuleOptions options,
     IAccountLocks accountLocks,
-    CharacterItemStateBootstrapper itemStateBootstrapper)
+    ICharacterLifecycleHandler characterLifecycleHandler)
 {
     public async Task<ServiceResult<IReadOnlyCollection<CharacterResponse>>> ListAsync(
         Guid accountId,
@@ -99,10 +99,9 @@ public sealed class CharacterService(
                     transaction,
                     cancellationToken: cancellationToken));
 
-            await itemStateBootstrapper.BootstrapAsync(
-                connection,
-                transaction,
-                characterId,
+            await characterLifecycleHandler.OnCharacterCreatedAsync(
+                scope,
+                new CharacterCreated(characterId, accountId),
                 cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);

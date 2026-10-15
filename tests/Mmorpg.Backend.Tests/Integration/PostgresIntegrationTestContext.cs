@@ -135,36 +135,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 })
                 .Build();
 
-            var topology = new SimulationTopologyConfig(
-                [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
-                [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
-                [new ShardBootstrapConfig(
-                    "local-shard-1",
-                    "local-fleet",
-                    "Local Shard 1",
-                    "mvp-open-risk")]);
-            // Redis acceleration stays disabled, so tests never reach Redis.
-            var gameServiceConfiguration = new GameServiceConfiguration(
-                new PlatformOptions(
-                    connectionString,
-                    "localhost:6379",
-                    TimeSpan.FromSeconds(1),
-                    RunMigrationsOnStartup: true),
-                new AccountsModuleOptions(
-                    TimeSpan.FromHours(24),
-                    5,
-                    TimeSpan.FromSeconds(60),
-                    new SimulationWorkerCredentials([], null)),
-                new CharactersModuleOptions(5),
-                new PlacementModuleOptions(30, 60, TimeSpan.FromSeconds(30), topology)
-                {
-                    Worlds = LoadWorldManifestCatalog()
-                },
-                new ItemsModuleOptions(
-                    ItemCatalogSource.FromConfiguration(configuration),
-                    ItemOperationsOptions.CreateDefaults(),
-                    NpcItemLifecycleOptions.Default,
-                    new StackStressFixtureOptions(false, string.Empty)));
+            var gameServiceConfiguration = GameServiceTestComposition.CreateConfiguration(
+                connectionString);
             var context = new PostgresIntegrationTestContext(
                 dataSource,
                 configuration,
@@ -217,12 +189,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
             "integration-collision-revision");
-    }
-
-    private static WorldManifestCatalog LoadWorldManifestCatalog()
-    {
-        return WorldManifestCatalog.FromManifests(
-            WorldManifestFileStore.LoadAll(RepositoryPaths.Worlds));
     }
 
     public async Task<IntegrationPlayer> RegisterPlayerAsync(

@@ -1,6 +1,7 @@
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Health;
@@ -20,7 +21,8 @@ internal static class GameServiceComposition
     // implementation, because a missing one would silently skip required work.
     private static readonly Type[] SingleImplementationSpis =
     [
-        typeof(IAccountSessionLifecycleHandler)
+        typeof(IAccountSessionLifecycleHandler),
+        typeof(ICharacterLifecycleHandler)
     ];
 
     // Modules in dependency order. Services register and routes map in this order.

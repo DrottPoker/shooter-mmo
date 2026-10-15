@@ -1,4 +1,6 @@
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -13,20 +15,26 @@ public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
     {
         await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
         {
-            var missingCharacterIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
-                """
-                select character.id
-                from characters character
-                left join character_item_states state on state.character_id = character.id
-                where character.deleted_at is null
-                  and state.character_id is null
-                order by character.id;
-                """,
-                cancellationToken: cancellationToken))).ToArray();
-            foreach (var characterId in missingCharacterIds)
+            var missingCharacters = (await connection.QueryAsync<MissingCharacterRow>(
+                new CommandDefinition(
+                    $"""
+                    select
+                        character.id as "CharacterId",
+                        character.account_id as "AccountId"
+                    from {CharactersSql.ActiveCharacters} character
+                    left join character_item_states state on state.character_id = character.id
+                    where state.character_id is null
+                    order by character.id;
+                    """,
+                    cancellationToken: cancellationToken))).ToArray();
+            foreach (var missing in missingCharacters)
             {
                 await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-                await BootstrapAsync(connection, transaction, characterId, cancellationToken);
+                await BootstrapAsync(
+                    new PostgresTransactionScope(connection, transaction),
+                    missing.CharacterId,
+                    missing.AccountId,
+                    cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
             }
         }
@@ -39,12 +47,11 @@ public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
             // Locking the rows first makes a concurrent item transaction wait, so the
             // recompute can never overwrite a newer weight with a stale one.
             var batch = (await connection.QueryAsync<Guid>(new CommandDefinition(
-                """
+                $"""
                 select state.character_id
                 from character_item_states state
-                join characters character on character.id = state.character_id
-                where character.deleted_at is null
-                  and state.character_id > @AfterCharacterId
+                join {CharactersSql.ActiveCharacters} character on character.id = state.character_id
+                where state.character_id > @AfterCharacterId
                 order by state.character_id
                 limit @BatchSize
                 for update of state;
@@ -64,25 +71,27 @@ public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
         }
     }
 
+    // The account's Secure Container entitlement lock is taken first, in the same order
+    // as every other entitlement change. The caller supplies the character's account.
     public Task BootstrapAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+        PostgresTransactionScope scope,
         Guid characterId,
+        Guid accountId,
         CancellationToken cancellationToken)
     {
-        return connection.ExecuteAsync(new CommandDefinition(
+        ArgumentNullException.ThrowIfNull(scope);
+
+        return scope.Connection.ExecuteAsync(new CommandDefinition(
             """
             select pg_advisory_xact_lock(
                 hashtextextended(
-                    'item-secure-entitlement:' || cast(account_id as text),
-                    0))
-            from characters
-            where id = @CharacterId;
+                    'item-secure-entitlement:' || cast(@AccountId as text),
+                    0));
 
             select bootstrap_character_item_state(@CharacterId);
             """,
-            new { CharacterId = characterId },
-            transaction,
+            new { CharacterId = characterId, AccountId = accountId },
+            scope.Transaction,
             cancellationToken: cancellationToken));
     }
 
@@ -147,4 +156,6 @@ public sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource)
             transaction,
             cancellationToken: cancellationToken));
     }
+
+    private sealed record MissingCharacterRow(Guid CharacterId, Guid AccountId);
 }

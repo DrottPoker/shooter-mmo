@@ -265,4 +265,10 @@ intended differences:
 - Accounts extracted: `src/Server/GameService.Accounts` builds
   `Mmorpg.GameService.Accounts`, which references only Platform. Only
   `AccountsModule`, its options, and `Accounts.Contracts` are public.
+- Characters untangled: done. Items implements `ICharacterLifecycleHandler`
+  (S6, S18), Placement and Items lock characters through `ICharacterLocks` (S8,
+  S9, S22, S26, S28), insurance debits currency through `ICharacterWallet`
+  (S30), foreign character and account reads use `CharactersSql` and
+  `AccountsSql` (S10, S16, S17, S31 to S33, S35 to S39), and corpse snapshots
+  read the entitlement through the locked account (S34).
 - The Characters, Placement, and Items extractions: in progress.

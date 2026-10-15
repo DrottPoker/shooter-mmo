@@ -1,6 +1,7 @@
 using System.Data;
 using System.Numerics;
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.WorldData.Items;
 using Npgsql;
@@ -30,7 +31,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
 
             var state = await connection.QuerySingleOrDefaultAsync<CharacterStateRow>(
                 new CommandDefinition(
-                    """
+                    $"""
                     select
                         character.id as "CharacterId",
                         revision.revision as "CatalogRevision",
@@ -43,7 +44,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
                         state.recovery_storage_container_id as "RecoveryStorageContainerId",
                         entitlement.tier_id as "SecureContainerTierId",
                         entitlement.revision as "SecureContainerEntitlementRevision"
-                    from characters character
+                    from {CharactersSql.ActiveCharacters} character
                     join character_item_states state on state.character_id = character.id
                     join item_system_settings settings on settings.id = 'character_default'
                     join item_catalog_revisions revision
@@ -52,8 +53,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
                     left join account_secure_container_entitlements entitlement
                       on entitlement.account_id = character.account_id
                     where character.id = @CharacterId
-                      and character.account_id = @AccountId
-                      and character.deleted_at is null;
+                      and character.account_id = @AccountId;
                     """,
                     new { AccountId = accountId, CharacterId = characterId },
                     transaction,
@@ -261,7 +261,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
         CancellationToken cancellationToken)
     {
         return connection.QuerySingleOrDefaultAsync<CharacterStateRow>(new CommandDefinition(
-            """
+            $"""
             select
                 character.id as "CharacterId",
                 revision.revision as "CatalogRevision",
@@ -274,7 +274,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 state.recovery_storage_container_id as "RecoveryStorageContainerId",
                 entitlement.tier_id as "SecureContainerTierId",
                 entitlement.revision as "SecureContainerEntitlementRevision"
-            from characters character
+            from {CharactersSql.ActiveCharacters} character
             join character_item_states state on state.character_id = character.id
             join item_system_settings settings on settings.id = 'character_default'
             join item_catalog_revisions revision
@@ -283,8 +283,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             left join account_secure_container_entitlements entitlement
               on entitlement.account_id = character.account_id
             where character.id = @CharacterId
-              and character.account_id = @AccountId
-              and character.deleted_at is null;
+              and character.account_id = @AccountId;
             """,
             new { AccountId = accountId, CharacterId = characterId },
             transaction,

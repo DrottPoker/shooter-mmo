@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -44,15 +45,14 @@ public sealed class ItemOperationsMaintenanceService(
         await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
         {
             deliveryIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
-                """
+                $"""
                 select delivery.id
                 from recovery_deliveries delivery
-                join characters character on character.id = delivery.character_id
+                -- Expiry cannot lock a deleted character, so its rows must not hold the batch.
+                join {CharactersSql.ActiveCharacters} character on character.id = delivery.character_id
                 where delivery.claimed_at is null
                   and delivery.expires_at is not null
                   and delivery.expires_at <= now()
-                  -- Expiry cannot lock a deleted character, so its rows must not hold the batch.
-                  and character.deleted_at is null
                 order by delivery.expires_at, delivery.id
                 limit @BatchSize;
                 """,

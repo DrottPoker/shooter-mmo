@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
@@ -94,16 +95,15 @@ public sealed partial class ItemTransactionService
 
         var character = await context.Connection.QuerySingleOrDefaultAsync<CharacterDeathSourceRow>(
             new CommandDefinition(
-                """
+                $"""
                 select
                     character.name as "DisplayName",
                     exists (
                         select 1
                         from shards shard
                         where shard.id = @ShardId) as "ShardExists"
-                from characters character
-                where character.id = @CharacterId
-                  and character.deleted_at is null;
+                from {CharactersSql.ActiveCharacters} character
+                where character.id = @CharacterId;
                 """,
                 new { command.CharacterId, command.ShardId },
                 context.Transaction,
@@ -733,6 +733,8 @@ public sealed partial class ItemTransactionService
         DeathPartitionItem? equippedBag,
         CancellationToken cancellationToken)
     {
+        // The character row is locked and its account never changes, so the locked
+        // item state's account is the character's account.
         var secureTier = await context.Connection.QuerySingleAsync<SecureTierSnapshotRow>(
             new CommandDefinition(
                 """
@@ -740,13 +742,11 @@ public sealed partial class ItemTransactionService
                     tier.id as "TierId",
                     tier.display_name as "DisplayName",
                     tier.slot_capacity as "SlotCapacity"
-                from characters character
-                join account_secure_container_entitlements entitlement
-                  on entitlement.account_id = character.account_id
+                from account_secure_container_entitlements entitlement
                 join secure_container_tiers tier on tier.id = entitlement.tier_id
-                where character.id = @CharacterId;
+                where entitlement.account_id = @AccountId;
                 """,
-                new { characterState.CharacterId },
+                new { characterState.AccountId },
                 context.Transaction,
                 cancellationToken: cancellationToken));
         var sortOrder = 0;

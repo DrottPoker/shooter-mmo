@@ -2,7 +2,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Mmorpg.GameService;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Simulation;
+using Mmorpg.Server.Common.Worlds;
 using Npgsql;
 
 namespace Mmorpg.Backend.Tests.Integration;
@@ -32,5 +38,57 @@ internal static class GameServiceTestComposition
         }
 
         return services;
+    }
+
+    // A standalone service provider for tests that need services without a web host.
+    public static ServiceProvider BuildServiceProvider(
+        NpgsqlDataSource dataSource,
+        GameServiceConfiguration? configuration = null)
+    {
+        var services = new ServiceCollection();
+        services.AddGameServiceForTests(
+            dataSource,
+            configuration ?? CreateConfiguration(dataSource.ConnectionString));
+        return services.BuildServiceProvider(validateScopes: true);
+    }
+
+    // The settings every integration test runs with. Redis acceleration stays disabled,
+    // so tests never reach Redis.
+    public static GameServiceConfiguration CreateConfiguration(string postgresConnectionString)
+    {
+        var topology = new SimulationTopologyConfig(
+            [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
+            [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
+            [new ShardBootstrapConfig(
+                "local-shard-1",
+                "local-fleet",
+                "Local Shard 1",
+                "mvp-open-risk")]);
+        return new GameServiceConfiguration(
+            new PlatformOptions(
+                postgresConnectionString,
+                "localhost:6379",
+                TimeSpan.FromSeconds(1),
+                RunMigrationsOnStartup: true),
+            new AccountsModuleOptions(
+                TimeSpan.FromHours(24),
+                5,
+                TimeSpan.FromSeconds(60),
+                new SimulationWorkerCredentials([], null)),
+            new CharactersModuleOptions(5),
+            new PlacementModuleOptions(30, 60, TimeSpan.FromSeconds(30), topology)
+            {
+                Worlds = WorldManifestCatalog.FromManifests(
+                    WorldManifestFileStore.LoadAll(RepositoryPaths.Worlds))
+            },
+            new ItemsModuleOptions(
+                new ItemCatalogSource(Path.GetFullPath(Path.Combine(
+                    AppContext.BaseDirectory,
+                    "WorldData",
+                    "Items",
+                    "core.item-catalog.json"))),
+                ItemOperationsOptions.CreateDefaults(),
+                NpcItemLifecycleOptions.Default,
+                new StackStressFixtureOptions(false, string.Empty)));
     }
 }

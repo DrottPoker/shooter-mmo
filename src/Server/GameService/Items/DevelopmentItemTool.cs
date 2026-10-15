@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using Dapper;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Characters.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -546,11 +548,11 @@ public sealed class DevelopmentItemToolService(
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         var characters = (await connection.QueryAsync<CharacterRow>(new CommandDefinition(
-            """
+            $"""
             select
                 character.id as "CharacterId",
                 character.name as "CharacterName",
-                account.username as "AccountUsername",
+                {AccountsSql.UsernameOf("character.account_id")} as "AccountUsername",
                 exists (
                     select 1
                     from character_simulation_sessions session
@@ -577,10 +579,8 @@ public sealed class DevelopmentItemToolService(
                 state.revision as "ItemStateRevision",
                 state.carried_weight as "CarriedWeight",
                 state.carry_capacity as "CarryCapacity"
-            from characters character
-            join accounts account on account.id = character.account_id
+            from {CharactersSql.ActiveCharacters} character
             join character_item_states state on state.character_id = character.id
-            where character.deleted_at is null
             order by lower(character.name), character.id;
             """,
             cancellationToken: cancellationToken))).ToArray();
@@ -634,7 +634,7 @@ public sealed class DevelopmentItemToolService(
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         return await connection.QuerySingleOrDefaultAsync<TargetRow>(new CommandDefinition(
-            """
+            $"""
             select
                 character.id as "CharacterId",
                 character.name as "CharacterName",
@@ -666,10 +666,9 @@ public sealed class DevelopmentItemToolService(
                     from recovery_deliveries delivery
                     where delivery.character_id = character.id
                 ) as "RecoveryDeliveryCount"
-            from characters character
+            from {CharactersSql.ActiveCharacters} character
             join character_item_states state on state.character_id = character.id
-            where character.id = @CharacterId
-              and character.deleted_at is null;
+            where character.id = @CharacterId;
             """,
             new { CharacterId = characterId },
             cancellationToken: cancellationToken))

@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
@@ -23,6 +25,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<ItemOperationsMetrics>();
         services.AddSingleton<ItemCatalogSeeder>();
         services.AddSingleton<CharacterItemStateBootstrapper>();
+        services.AddSingleton<ICharacterLifecycleHandler, CharacterItemStateLifecycleHandler>();
         services.AddScoped<ItemCatalogQueryService>();
         services.AddScoped<ItemQueryService>();
         services.AddScoped<ItemTransactionService>();

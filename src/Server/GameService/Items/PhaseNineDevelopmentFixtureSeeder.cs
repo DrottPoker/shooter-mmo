@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -311,17 +312,16 @@ public sealed class PhaseNineDevelopmentFixtureSeeder(
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         return await connection.QuerySingleOrDefaultAsync<FixtureTarget>(new CommandDefinition(
-            """
+            $"""
             select
                 character.id as "CharacterId",
                 character.account_id as "AccountId",
                 state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                 state.bank_container_id as "BankContainerId",
                 state.secure_container_id as "SecureContainerId"
-            from characters character
+            from {CharactersSql.ActiveCharacters} character
             join character_item_states state on state.character_id = character.id
-            where character.id = @CharacterId
-              and character.deleted_at is null;
+            where character.id = @CharacterId;
             """,
             new { CharacterId = characterId },
             cancellationToken: cancellationToken))

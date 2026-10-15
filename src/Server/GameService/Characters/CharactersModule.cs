@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
@@ -15,6 +16,8 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton(options);
+        services.AddSingleton<ICharacterLocks, CharacterLocks>();
+        services.AddSingleton<ICharacterWallet, CharacterWallet>();
         services.AddScoped<CharacterService>();
     }
 
