@@ -3,7 +3,6 @@
 // Change the schema and run the generator instead of editing this file.
 // </auto-generated>
 using System;
-using System.IO;
 
 namespace Mmorpg.GameProtocol
 {
@@ -197,73 +196,75 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Simulation snapshot is invalid.", nameof(snapshot));
             }
 
-            return Encode(RealtimeMessageType.SimulationSnapshot, writer => WriteSimulationSnapshot(writer, snapshot));
+            var writer = StartPacket(RealtimeMessageType.SimulationSnapshot, SizeOfSimulationSnapshot(snapshot));
+            WriteSimulationSnapshot(ref writer, snapshot);
+            return writer.Finish();
         }
 
         public static bool TryDecodeSimulationSnapshot(byte[] data, out RealtimeSimulationSnapshot snapshot, out string error)
         {
             snapshot = null;
-            if (!TryCreateReader(data, RealtimeMessageType.SimulationSnapshot, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.SimulationSnapshot, out var reader, out error)
+                || !TryReadSimulationSnapshot(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidSimulationSnapshot(decoded))
             {
-                if (!TryReadSimulationSnapshot(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidSimulationSnapshot(decoded))
-                {
-                    error = "Simulation snapshot is invalid.";
-                    return false;
-                }
-
-                snapshot = decoded;
-                return true;
+                error = "Simulation snapshot is invalid.";
+                return false;
             }
+
+            snapshot = decoded;
+            return true;
         }
 
-        private static void WriteSimulationSnapshot(BinaryWriter writer, RealtimeSimulationSnapshot value)
+        private static void WriteSimulationSnapshot(ref PacketWriter writer, RealtimeSimulationSnapshot value)
         {
-            writer.Write(value.SnapshotSequence);
-            writer.Write(value.ServerTick);
-            writer.Write(value.ChunkIndex);
-            writer.Write(value.ChunkCount);
-            writer.Write((byte)value.Entities.Length);
+            writer.WriteUInt32(value.SnapshotSequence);
+            writer.WriteUInt32(value.ServerTick);
+            writer.WriteUInt16(value.ChunkIndex);
+            writer.WriteUInt16(value.ChunkCount);
+            writer.WriteByte((byte)value.Entities.Length);
             foreach (var item in value.Entities)
             {
-                WriteEntitySnapshot(writer, item);
+                WriteEntitySnapshot(ref writer, item);
             }
         }
 
-        private static bool TryReadSimulationSnapshot(BinaryReader reader, out RealtimeSimulationSnapshot value, out string error)
+        private static int SizeOfSimulationSnapshot(RealtimeSimulationSnapshot value)
+        {
+            var size = 12;
+            size += 1 + (value.Entities.Length * 41);
+            return size;
+        }
+
+        private static bool TryReadSimulationSnapshot(ref PacketReader reader, out RealtimeSimulationSnapshot value, out string error)
         {
             value = null;
-            if (!TryReadUInt32(reader, out var snapshotSequence, out error))
+            if (!reader.TryReadUInt32(out var snapshotSequence, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt32(reader, out var serverTick, out error))
+            if (!reader.TryReadUInt32(out var serverTick, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var chunkIndex, out error))
+            if (!reader.TryReadUInt16(out var chunkIndex, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var chunkCount, out error))
+            if (!reader.TryReadUInt16(out var chunkCount, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var entitiesCount, out error))
+            if (!reader.TryReadByte(out var entitiesCount, out error))
             {
                 return false;
             }
@@ -277,7 +278,7 @@ namespace Mmorpg.GameProtocol
             var entities = new RealtimeEntitySnapshot[entitiesCount];
             for (var index = 0; index < entities.Length; index++)
             {
-                if (!TryReadEntitySnapshot(reader, out var element, out error))
+                if (!TryReadEntitySnapshot(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -322,83 +323,87 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Entity spawn is invalid.", nameof(spawn));
             }
 
-            return Encode(RealtimeMessageType.EntitySpawn, writer => WriteEntitySpawn(writer, spawn));
+            var writer = StartPacket(RealtimeMessageType.EntitySpawn, SizeOfEntitySpawn(spawn));
+            WriteEntitySpawn(ref writer, spawn);
+            return writer.Finish();
         }
 
         public static bool TryDecodeEntitySpawn(byte[] data, out RealtimeEntitySpawn spawn, out string error)
         {
             spawn = null;
-            if (!TryCreateReader(data, RealtimeMessageType.EntitySpawn, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.EntitySpawn, out var reader, out error)
+                || !TryReadEntitySpawn(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidEntitySpawn(decoded))
             {
-                if (!TryReadEntitySpawn(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidEntitySpawn(decoded))
-                {
-                    error = "Entity spawn is invalid.";
-                    return false;
-                }
-
-                spawn = decoded;
-                return true;
+                error = "Entity spawn is invalid.";
+                return false;
             }
+
+            spawn = decoded;
+            return true;
         }
 
-        private static void WriteEntitySpawn(BinaryWriter writer, RealtimeEntitySpawn value)
+        private static void WriteEntitySpawn(ref PacketWriter writer, RealtimeEntitySpawn value)
         {
-            writer.Write(value.EntityId);
-            writer.Write((byte)value.Kind);
-            WriteString(writer, value.PersistentId, MaximumIdentifierLength, "value.PersistentId");
-            WriteString(writer, value.DisplayName, MaximumNameLength, "value.DisplayName");
-            WriteString(writer, value.ArchetypeId, MaximumIdentifierLength, "value.ArchetypeId");
-            writer.Write(value.ServerTick);
-            WritePlayerState(writer, value.InitialState);
+            writer.WriteUInt64(value.EntityId);
+            writer.WriteByte((byte)value.Kind);
+            writer.WriteString(value.PersistentId);
+            writer.WriteString(value.DisplayName);
+            writer.WriteString(value.ArchetypeId);
+            writer.WriteUInt32(value.ServerTick);
+            WritePlayerState(ref writer, value.InitialState);
         }
 
-        private static bool TryReadEntitySpawn(BinaryReader reader, out RealtimeEntitySpawn value, out string error)
+        private static int SizeOfEntitySpawn(RealtimeEntitySpawn value)
+        {
+            var size = 42;
+            size += StringSize(value.PersistentId);
+            size += StringSize(value.DisplayName);
+            size += StringSize(value.ArchetypeId);
+            return size;
+        }
+
+        private static bool TryReadEntitySpawn(ref PacketReader reader, out RealtimeEntitySpawn value, out string error)
         {
             value = null;
-            if (!TryReadUInt64(reader, out var entityId, out error))
+            if (!reader.TryReadUInt64(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var kindByte, out error))
+            if (!reader.TryReadByte(out var kindByte, out error))
             {
                 return false;
             }
 
             var kind = (RealtimeEntityKind)kindByte;
 
-            if (!TryReadString(reader, MaximumIdentifierLength, out var persistentId, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var persistentId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumNameLength, out var displayName, out error))
+            if (!reader.TryReadString(MaximumNameLength, out var displayName, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumIdentifierLength, out var archetypeId, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var archetypeId, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt32(reader, out var serverTick, out error))
+            if (!reader.TryReadUInt32(out var serverTick, out error))
             {
                 return false;
             }
 
-            if (!TryReadPlayerState(reader, out var initialState, out error))
+            if (!TryReadPlayerState(ref reader, out var initialState, out error))
             {
                 return false;
             }
@@ -437,51 +442,53 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Entity despawn is invalid.", nameof(despawn));
             }
 
-            return Encode(RealtimeMessageType.EntityDespawn, writer => WriteEntityDespawn(writer, despawn));
+            var writer = StartPacket(RealtimeMessageType.EntityDespawn, SizeOfEntityDespawn(despawn));
+            WriteEntityDespawn(ref writer, despawn);
+            return writer.Finish();
         }
 
         public static bool TryDecodeEntityDespawn(byte[] data, out RealtimeEntityDespawn despawn, out string error)
         {
             despawn = null;
-            if (!TryCreateReader(data, RealtimeMessageType.EntityDespawn, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.EntityDespawn, out var reader, out error)
+                || !TryReadEntityDespawn(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidEntityDespawn(decoded))
             {
-                if (!TryReadEntityDespawn(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidEntityDespawn(decoded))
-                {
-                    error = "Entity despawn is invalid.";
-                    return false;
-                }
-
-                despawn = decoded;
-                return true;
+                error = "Entity despawn is invalid.";
+                return false;
             }
+
+            despawn = decoded;
+            return true;
         }
 
-        private static void WriteEntityDespawn(BinaryWriter writer, RealtimeEntityDespawn value)
+        private static void WriteEntityDespawn(ref PacketWriter writer, RealtimeEntityDespawn value)
         {
-            writer.Write(value.EntityId);
-            WriteString(writer, value.Reason, MaximumErrorCodeLength, "value.Reason");
+            writer.WriteUInt64(value.EntityId);
+            writer.WriteString(value.Reason);
         }
 
-        private static bool TryReadEntityDespawn(BinaryReader reader, out RealtimeEntityDespawn value, out string error)
+        private static int SizeOfEntityDespawn(RealtimeEntityDespawn value)
+        {
+            var size = 8;
+            size += StringSize(value.Reason);
+            return size;
+        }
+
+        private static bool TryReadEntityDespawn(ref PacketReader reader, out RealtimeEntityDespawn value, out string error)
         {
             value = null;
-            if (!TryReadUInt64(reader, out var entityId, out error))
+            if (!reader.TryReadUInt64(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumErrorCodeLength, out var reason, out error))
+            if (!reader.TryReadString(MaximumErrorCodeLength, out var reason, out error))
             {
                 return false;
             }
@@ -503,44 +510,32 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteEntitySnapshot(BinaryWriter writer, RealtimeEntitySnapshot value)
+        private static void WriteEntitySnapshot(ref PacketWriter writer, RealtimeEntitySnapshot value)
         {
-            if (!IsValidEntitySnapshot(value))
-            {
-                throw new ArgumentException("Entity snapshot is invalid.", nameof(value));
-            }
-
-            writer.Write(value.EntityId);
-            writer.Write(value.LastProcessedInputSequence);
-            WritePlayerState(writer, value.State);
+            writer.WriteUInt64(value.EntityId);
+            writer.WriteUInt32(value.LastProcessedInputSequence);
+            WritePlayerState(ref writer, value.State);
         }
 
-        private static bool TryReadEntitySnapshot(BinaryReader reader, out RealtimeEntitySnapshot value, out string error)
+        private static bool TryReadEntitySnapshot(ref PacketReader reader, out RealtimeEntitySnapshot value, out string error)
         {
             value = null;
-            if (!TryReadUInt64(reader, out var entityId, out error))
+            if (!reader.TryReadUInt64(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt32(reader, out var lastProcessedInputSequence, out error))
+            if (!reader.TryReadUInt32(out var lastProcessedInputSequence, out error))
             {
                 return false;
             }
 
-            if (!TryReadPlayerState(reader, out var state, out error))
+            if (!TryReadPlayerState(ref reader, out var state, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeEntitySnapshot(entityId, lastProcessedInputSequence, state);
-            if (!IsValidEntitySnapshot(decoded))
-            {
-                error = "Entity snapshot is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeEntitySnapshot(entityId, lastProcessedInputSequence, state);
             return true;
         }
 

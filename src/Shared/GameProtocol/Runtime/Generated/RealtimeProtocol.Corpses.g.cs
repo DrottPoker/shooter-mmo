@@ -3,7 +3,6 @@
 // Change the schema and run the generator instead of editing this file.
 // </auto-generated>
 using System;
-using System.IO;
 
 namespace Mmorpg.GameProtocol
 {
@@ -921,67 +920,74 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Corpse presence snapshot chunk is invalid.", nameof(chunk));
             }
 
-            return Encode(RealtimeMessageType.CorpsePresenceSnapshotChunk, writer => WriteCorpsePresenceSnapshotChunk(writer, chunk));
+            var writer = StartPacket(RealtimeMessageType.CorpsePresenceSnapshotChunk, SizeOfCorpsePresenceSnapshotChunk(chunk));
+            WriteCorpsePresenceSnapshotChunk(ref writer, chunk);
+            return writer.Finish();
         }
 
         public static bool TryDecodeCorpsePresenceSnapshotChunk(byte[] data, out RealtimeCorpsePresenceSnapshotChunk chunk, out string error)
         {
             chunk = null;
-            if (!TryCreateReader(data, RealtimeMessageType.CorpsePresenceSnapshotChunk, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.CorpsePresenceSnapshotChunk, out var reader, out error)
+                || !TryReadCorpsePresenceSnapshotChunk(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidCorpsePresenceSnapshotChunk(decoded))
             {
-                if (!TryReadCorpsePresenceSnapshotChunk(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidCorpsePresenceSnapshotChunk(decoded))
-                {
-                    error = "Corpse presence snapshot chunk is invalid.";
-                    return false;
-                }
-
-                chunk = decoded;
-                return true;
+                error = "Corpse presence snapshot chunk is invalid.";
+                return false;
             }
+
+            chunk = decoded;
+            return true;
         }
 
-        private static void WriteCorpsePresenceSnapshotChunk(BinaryWriter writer, RealtimeCorpsePresenceSnapshotChunk value)
+        private static void WriteCorpsePresenceSnapshotChunk(ref PacketWriter writer, RealtimeCorpsePresenceSnapshotChunk value)
         {
-            writer.Write(value.SnapshotSequence);
-            writer.Write(value.ChunkIndex);
-            writer.Write(value.ChunkCount);
-            writer.Write((byte)value.Corpses.Length);
+            writer.WriteUInt32(value.SnapshotSequence);
+            writer.WriteUInt16(value.ChunkIndex);
+            writer.WriteUInt16(value.ChunkCount);
+            writer.WriteByte((byte)value.Corpses.Length);
             foreach (var item in value.Corpses)
             {
-                WriteCorpsePresence(writer, item);
+                WriteCorpsePresence(ref writer, item);
             }
         }
 
-        private static bool TryReadCorpsePresenceSnapshotChunk(BinaryReader reader, out RealtimeCorpsePresenceSnapshotChunk value, out string error)
+        private static int SizeOfCorpsePresenceSnapshotChunk(RealtimeCorpsePresenceSnapshotChunk value)
+        {
+            var size = 8;
+            size += 1;
+            foreach (var item in value.Corpses)
+            {
+                size += SizeOfCorpsePresence(item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCorpsePresenceSnapshotChunk(ref PacketReader reader, out RealtimeCorpsePresenceSnapshotChunk value, out string error)
         {
             value = null;
-            if (!TryReadUInt32(reader, out var snapshotSequence, out error))
+            if (!reader.TryReadUInt32(out var snapshotSequence, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var chunkIndex, out error))
+            if (!reader.TryReadUInt16(out var chunkIndex, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var chunkCount, out error))
+            if (!reader.TryReadUInt16(out var chunkCount, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var corpsesCount, out error))
+            if (!reader.TryReadByte(out var corpsesCount, out error))
             {
                 return false;
             }
@@ -995,7 +1001,7 @@ namespace Mmorpg.GameProtocol
             var corpses = new RealtimeCorpsePresence[corpsesCount];
             for (var index = 0; index < corpses.Length; index++)
             {
-                if (!TryReadCorpsePresence(reader, out var element, out error))
+                if (!TryReadCorpsePresence(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -1051,42 +1057,37 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Corpse interaction intent is invalid.", nameof(intent));
             }
 
-            return Encode(RealtimeMessageType.CorpseInteractionIntent, writer => WriteCorpseInteractionIntent(writer, intent));
+            var writer = StartPacket(RealtimeMessageType.CorpseInteractionIntent, SizeOfCorpseInteractionIntent(intent));
+            WriteCorpseInteractionIntent(ref writer, intent);
+            return writer.Finish();
         }
 
         public static bool TryDecodeCorpseInteractionIntent(byte[] data, out RealtimeCorpseInteractionIntent intent, out string error)
         {
             intent = null;
-            if (!TryCreateReader(data, RealtimeMessageType.CorpseInteractionIntent, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.CorpseInteractionIntent, out var reader, out error)
+                || !TryReadCorpseInteractionIntent(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidCorpseInteractionIntent(decoded))
             {
-                if (!TryReadCorpseInteractionIntent(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidCorpseInteractionIntent(decoded))
-                {
-                    error = "Corpse interaction intent is invalid.";
-                    return false;
-                }
-
-                intent = decoded;
-                return true;
+                error = "Corpse interaction intent is invalid.";
+                return false;
             }
+
+            intent = decoded;
+            return true;
         }
 
-        private static void WriteCorpseInteractionIntent(BinaryWriter writer, RealtimeCorpseInteractionIntent value)
+        private static void WriteCorpseInteractionIntent(ref PacketWriter writer, RealtimeCorpseInteractionIntent value)
         {
-            WriteGuid(writer, value.OperationId);
-            writer.Write((byte)value.OperationKind);
-            WriteGuid(writer, value.CorpseId);
-            writer.Write(value.ExpectedCorpseRevision);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteByte((byte)value.OperationKind);
+            writer.WriteGuid(value.CorpseId);
+            writer.WriteInt64(value.ExpectedCorpseRevision);
 
             switch (value.OperationKind)
             {
@@ -1103,18 +1104,18 @@ namespace Mmorpg.GameProtocol
                 case RealtimeCorpseInteractionKind.DepositItem:
                 case RealtimeCorpseInteractionKind.MoveItem:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    writer.Write(value.Quantity);
-                    WriteGuid(writer, value.DestinationContainerId);
-                    writer.Write(value.ExpectedDestinationContainerRevision);
-                    writer.Write(value.DestinationSlotIndex);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteInt32(value.Quantity);
+                    writer.WriteGuid(value.DestinationContainerId);
+                    writer.WriteInt64(value.ExpectedDestinationContainerRevision);
+                    writer.WriteInt32(value.DestinationSlotIndex);
                     var hasTargetItemInstanceId = value.TargetItemInstanceId != Guid.Empty;
-                    writer.Write(hasTargetItemInstanceId);
+                    writer.WriteBoolean(hasTargetItemInstanceId);
                     if (hasTargetItemInstanceId)
                     {
-                        WriteGuid(writer, value.TargetItemInstanceId);
-                        writer.Write(value.ExpectedTargetItemRevision);
+                        writer.WriteGuid(value.TargetItemInstanceId);
+                        writer.WriteInt64(value.ExpectedTargetItemRevision);
                     }
                     break;
                 }
@@ -1122,31 +1123,31 @@ namespace Mmorpg.GameProtocol
                 case RealtimeCorpseInteractionKind.DepositPartialStack:
                 case RealtimeCorpseInteractionKind.MovePartialStack:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    writer.Write(value.Quantity);
-                    WriteGuid(writer, value.DestinationContainerId);
-                    writer.Write(value.ExpectedDestinationContainerRevision);
-                    writer.Write(value.DestinationSlotIndex);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteInt32(value.Quantity);
+                    writer.WriteGuid(value.DestinationContainerId);
+                    writer.WriteInt64(value.ExpectedDestinationContainerRevision);
+                    writer.WriteInt32(value.DestinationSlotIndex);
                     var hasTargetItemInstanceId = value.TargetItemInstanceId != Guid.Empty;
-                    writer.Write(hasTargetItemInstanceId);
+                    writer.WriteBoolean(hasTargetItemInstanceId);
                     if (hasTargetItemInstanceId)
                     {
-                        WriteGuid(writer, value.TargetItemInstanceId);
-                        writer.Write(value.ExpectedTargetItemRevision);
+                        writer.WriteGuid(value.TargetItemInstanceId);
+                        writer.WriteInt64(value.ExpectedTargetItemRevision);
                     }
                     break;
                 }
                 case RealtimeCorpseInteractionKind.SwapBag:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    WriteGuid(writer, value.CorpseBagContentsContainerId);
-                    writer.Write(value.ExpectedCorpseBagContentsRevision);
-                    WriteGuid(writer, value.PlayerBagItemInstanceId);
-                    writer.Write(value.ExpectedPlayerBagRevision);
-                    WriteGuid(writer, value.PlayerBagContentsContainerId);
-                    writer.Write(value.ExpectedPlayerBagContentsRevision);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteGuid(value.CorpseBagContentsContainerId);
+                    writer.WriteInt64(value.ExpectedCorpseBagContentsRevision);
+                    writer.WriteGuid(value.PlayerBagItemInstanceId);
+                    writer.WriteInt64(value.ExpectedPlayerBagRevision);
+                    writer.WriteGuid(value.PlayerBagContentsContainerId);
+                    writer.WriteInt64(value.ExpectedPlayerBagContentsRevision);
                     break;
                 }
                 default:
@@ -1156,27 +1157,79 @@ namespace Mmorpg.GameProtocol
             }
         }
 
-        private static bool TryReadCorpseInteractionIntent(BinaryReader reader, out RealtimeCorpseInteractionIntent value, out string error)
+        private static int SizeOfCorpseInteractionIntent(RealtimeCorpseInteractionIntent value)
+        {
+            var size = 41;
+            switch (value.OperationKind)
+            {
+                case RealtimeCorpseInteractionKind.Open:
+                {
+                    break;
+                }
+                case RealtimeCorpseInteractionKind.Close:
+                case RealtimeCorpseInteractionKind.Refresh:
+                {
+                    break;
+                }
+                case RealtimeCorpseInteractionKind.LootItem:
+                case RealtimeCorpseInteractionKind.DepositItem:
+                case RealtimeCorpseInteractionKind.MoveItem:
+                {
+                    size += 57;
+                    if (value.TargetItemInstanceId != Guid.Empty)
+                    {
+                        size += 24;
+                    }
+
+                    break;
+                }
+                case RealtimeCorpseInteractionKind.LootPartialStack:
+                case RealtimeCorpseInteractionKind.DepositPartialStack:
+                case RealtimeCorpseInteractionKind.MovePartialStack:
+                {
+                    size += 57;
+                    if (value.TargetItemInstanceId != Guid.Empty)
+                    {
+                        size += 24;
+                    }
+
+                    break;
+                }
+                case RealtimeCorpseInteractionKind.SwapBag:
+                {
+                    size += 96;
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Corpse interaction intent is invalid.", nameof(value));
+                }
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCorpseInteractionIntent(ref PacketReader reader, out RealtimeCorpseInteractionIntent value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var operationKindByte, out error))
+            if (!reader.TryReadByte(out var operationKindByte, out error))
             {
                 return false;
             }
 
             var operationKind = (RealtimeCorpseInteractionKind)operationKindByte;
 
-            if (!TryReadGuid(reader, out var corpseId, out error))
+            if (!reader.TryReadGuid(out var corpseId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var expectedCorpseRevision, out error))
+            if (!reader.TryReadInt64(out var expectedCorpseRevision, out error))
             {
                 return false;
             }
@@ -1212,51 +1265,51 @@ namespace Mmorpg.GameProtocol
                 case RealtimeCorpseInteractionKind.DepositItem:
                 case RealtimeCorpseInteractionKind.MoveItem:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out _, out error))
+                    if (!reader.TryReadInt32(out _, out error))
                     {
                         return false;
                     }
 
                     quantity = 0;
 
-                    if (!TryReadGuid(reader, out destinationContainerId, out error))
+                    if (!reader.TryReadGuid(out destinationContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedDestinationContainerRevision, out error))
+                    if (!reader.TryReadInt64(out expectedDestinationContainerRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out destinationSlotIndex, out error))
+                    if (!reader.TryReadInt32(out destinationSlotIndex, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadBoolean(reader, out var hasTargetItemInstanceId, out error))
+                    if (!reader.TryReadBoolean(out var hasTargetItemInstanceId, out error))
                     {
                         return false;
                     }
 
                     if (hasTargetItemInstanceId)
                     {
-                        if (!TryReadGuid(reader, out targetItemInstanceId, out error))
+                        if (!reader.TryReadGuid(out targetItemInstanceId, out error))
                         {
                             return false;
                         }
 
-                        if (!TryReadInt64(reader, out expectedTargetItemRevision, out error))
+                        if (!reader.TryReadInt64(out expectedTargetItemRevision, out error))
                         {
                             return false;
                         }
@@ -1268,49 +1321,49 @@ namespace Mmorpg.GameProtocol
                 case RealtimeCorpseInteractionKind.DepositPartialStack:
                 case RealtimeCorpseInteractionKind.MovePartialStack:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out quantity, out error))
+                    if (!reader.TryReadInt32(out quantity, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out destinationContainerId, out error))
+                    if (!reader.TryReadGuid(out destinationContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedDestinationContainerRevision, out error))
+                    if (!reader.TryReadInt64(out expectedDestinationContainerRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out destinationSlotIndex, out error))
+                    if (!reader.TryReadInt32(out destinationSlotIndex, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadBoolean(reader, out var hasTargetItemInstanceId, out error))
+                    if (!reader.TryReadBoolean(out var hasTargetItemInstanceId, out error))
                     {
                         return false;
                     }
 
                     if (hasTargetItemInstanceId)
                     {
-                        if (!TryReadGuid(reader, out targetItemInstanceId, out error))
+                        if (!reader.TryReadGuid(out targetItemInstanceId, out error))
                         {
                             return false;
                         }
 
-                        if (!TryReadInt64(reader, out expectedTargetItemRevision, out error))
+                        if (!reader.TryReadInt64(out expectedTargetItemRevision, out error))
                         {
                             return false;
                         }
@@ -1320,42 +1373,42 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeCorpseInteractionKind.SwapBag:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out corpseBagContentsContainerId, out error))
+                    if (!reader.TryReadGuid(out corpseBagContentsContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedCorpseBagContentsRevision, out error))
+                    if (!reader.TryReadInt64(out expectedCorpseBagContentsRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out playerBagItemInstanceId, out error))
+                    if (!reader.TryReadGuid(out playerBagItemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedPlayerBagRevision, out error))
+                    if (!reader.TryReadInt64(out expectedPlayerBagRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out playerBagContentsContainerId, out error))
+                    if (!reader.TryReadGuid(out playerBagContentsContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedPlayerBagContentsRevision, out error))
+                    if (!reader.TryReadInt64(out expectedPlayerBagContentsRevision, out error))
                     {
                         return false;
                     }
@@ -1478,87 +1531,93 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Corpse interaction result is invalid.", nameof(result));
             }
 
-            return Encode(RealtimeMessageType.CorpseInteractionResult, writer => WriteCorpseInteractionResult(writer, result));
+            var writer = StartPacket(RealtimeMessageType.CorpseInteractionResult, SizeOfCorpseInteractionResult(result));
+            WriteCorpseInteractionResult(ref writer, result);
+            return writer.Finish();
         }
 
         public static bool TryDecodeCorpseInteractionResult(byte[] data, out RealtimeCorpseInteractionResult result, out string error)
         {
             result = null;
-            if (!TryCreateReader(data, RealtimeMessageType.CorpseInteractionResult, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.CorpseInteractionResult, out var reader, out error)
+                || !TryReadCorpseInteractionResult(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidCorpseInteractionResult(decoded))
             {
-                if (!TryReadCorpseInteractionResult(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidCorpseInteractionResult(decoded))
-                {
-                    error = "Corpse interaction result is invalid.";
-                    return false;
-                }
-
-                result = decoded;
-                return true;
+                error = "Corpse interaction result is invalid.";
+                return false;
             }
+
+            result = decoded;
+            return true;
         }
 
-        private static void WriteCorpseInteractionResult(BinaryWriter writer, RealtimeCorpseInteractionResult value)
+        private static void WriteCorpseInteractionResult(ref PacketWriter writer, RealtimeCorpseInteractionResult value)
         {
-            WriteGuid(writer, value.OperationId);
-            writer.Write((byte)value.OperationKind);
-            WriteGuid(writer, value.CorpseId);
-            writer.Write(value.Succeeded);
-            writer.Write(value.RequiresCorpseRefresh);
-            writer.Write(value.RequiresInventoryRefresh);
-            WriteCarryState(writer, value.CarryState);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteByte((byte)value.OperationKind);
+            writer.WriteGuid(value.CorpseId);
+            writer.WriteBoolean(value.Succeeded);
+            writer.WriteBoolean(value.RequiresCorpseRefresh);
+            writer.WriteBoolean(value.RequiresInventoryRefresh);
+            WriteCarryState(ref writer, value.CarryState);
             if (!value.Succeeded)
             {
-                WriteError(writer, value.Error);
+                WriteError(ref writer, value.Error);
             }
         }
 
-        private static bool TryReadCorpseInteractionResult(BinaryReader reader, out RealtimeCorpseInteractionResult value, out string error)
+        private static int SizeOfCorpseInteractionResult(RealtimeCorpseInteractionResult value)
+        {
+            var size = 60;
+            if (!value.Succeeded)
+            {
+                size += SizeOfError(value.Error);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCorpseInteractionResult(ref PacketReader reader, out RealtimeCorpseInteractionResult value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var operationKindByte, out error))
+            if (!reader.TryReadByte(out var operationKindByte, out error))
             {
                 return false;
             }
 
             var operationKind = (RealtimeCorpseInteractionKind)operationKindByte;
 
-            if (!TryReadGuid(reader, out var corpseId, out error))
+            if (!reader.TryReadGuid(out var corpseId, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var succeeded, out error))
+            if (!reader.TryReadBoolean(out var succeeded, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var requiresCorpseRefresh, out error))
+            if (!reader.TryReadBoolean(out var requiresCorpseRefresh, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var requiresInventoryRefresh, out error))
+            if (!reader.TryReadBoolean(out var requiresInventoryRefresh, out error))
             {
                 return false;
             }
 
-            if (!TryReadCarryState(reader, out var carryState, out error))
+            if (!TryReadCarryState(ref reader, out var carryState, out error))
             {
                 return false;
             }
@@ -1566,7 +1625,7 @@ namespace Mmorpg.GameProtocol
             RealtimeError errorValue = null;
             if (!succeeded)
             {
-                if (!TryReadError(reader, out errorValue, out error))
+                if (!TryReadError(ref reader, out errorValue, out error))
                 {
                     return false;
                 }
@@ -1602,147 +1661,157 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Corpse view state chunk is invalid.", nameof(chunk));
             }
 
-            return Encode(RealtimeMessageType.CorpseViewStateChunk, writer => WriteCorpseViewStateChunk(writer, chunk));
+            var writer = StartPacket(RealtimeMessageType.CorpseViewStateChunk, SizeOfCorpseViewStateChunk(chunk));
+            WriteCorpseViewStateChunk(ref writer, chunk);
+            return writer.Finish();
         }
 
         public static bool TryDecodeCorpseViewStateChunk(byte[] data, out RealtimeCorpseViewStateChunk chunk, out string error)
         {
             chunk = null;
-            if (!TryCreateReader(data, RealtimeMessageType.CorpseViewStateChunk, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.CorpseViewStateChunk, out var reader, out error)
+                || !TryReadCorpseViewStateChunk(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidCorpseViewStateChunk(decoded))
             {
-                if (!TryReadCorpseViewStateChunk(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidCorpseViewStateChunk(decoded))
-                {
-                    error = "Corpse view state chunk is invalid.";
-                    return false;
-                }
-
-                chunk = decoded;
-                return true;
+                error = "Corpse view state chunk is invalid.";
+                return false;
             }
+
+            chunk = decoded;
+            return true;
         }
 
-        private static void WriteCorpseViewStateChunk(BinaryWriter writer, RealtimeCorpseViewStateChunk value)
+        private static void WriteCorpseViewStateChunk(ref PacketWriter writer, RealtimeCorpseViewStateChunk value)
         {
-            WriteGuid(writer, value.UpdateId);
-            writer.Write((byte)value.UpdateKind);
-            WriteGuid(writer, value.CorpseId);
-            writer.Write(value.BaseRevision);
-            writer.Write(value.Revision);
-            writer.Write(value.ExpiresAtUnixMilliseconds);
-            WriteString(writer, value.SourceDisplayName, MaximumCorpseSourceNameLength, "value.SourceDisplayName");
-            WriteString(writer, value.PresentationKey, MaximumCorpsePresentationKeyLength, "value.PresentationKey");
-            writer.Write(value.ChunkIndex);
-            writer.Write(value.ChunkCount);
-            WriteString(writer, value.SectionKind, MaximumCorpseSectionKindLength, "value.SectionKind");
-            WriteGuid(writer, value.ContainerId);
-            writer.Write(value.ContainerRevision);
-            writer.Write(value.ReplaceSection);
-            writer.Write(value.SectionSlotCapacity);
-            writer.Write(value.SlotOffset);
-            writer.Write((byte)value.Slots.Length);
+            writer.WriteGuid(value.UpdateId);
+            writer.WriteByte((byte)value.UpdateKind);
+            writer.WriteGuid(value.CorpseId);
+            writer.WriteInt64(value.BaseRevision);
+            writer.WriteInt64(value.Revision);
+            writer.WriteInt64(value.ExpiresAtUnixMilliseconds);
+            writer.WriteString(value.SourceDisplayName);
+            writer.WriteString(value.PresentationKey);
+            writer.WriteUInt16(value.ChunkIndex);
+            writer.WriteUInt16(value.ChunkCount);
+            writer.WriteString(value.SectionKind);
+            writer.WriteGuid(value.ContainerId);
+            writer.WriteInt64(value.ContainerRevision);
+            writer.WriteBoolean(value.ReplaceSection);
+            writer.WriteInt32(value.SectionSlotCapacity);
+            writer.WriteInt32(value.SlotOffset);
+            writer.WriteByte((byte)value.Slots.Length);
             foreach (var item in value.Slots)
             {
-                WriteCorpseSlot(writer, item);
+                WriteCorpseSlot(ref writer, item);
             }
         }
 
-        private static bool TryReadCorpseViewStateChunk(BinaryReader reader, out RealtimeCorpseViewStateChunk value, out string error)
+        private static int SizeOfCorpseViewStateChunk(RealtimeCorpseViewStateChunk value)
+        {
+            var size = 94;
+            size += StringSize(value.SourceDisplayName);
+            size += StringSize(value.PresentationKey);
+            size += StringSize(value.SectionKind);
+            size += 1;
+            foreach (var item in value.Slots)
+            {
+                size += SizeOfCorpseSlot(item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCorpseViewStateChunk(ref PacketReader reader, out RealtimeCorpseViewStateChunk value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var updateId, out error))
+            if (!reader.TryReadGuid(out var updateId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var updateKindByte, out error))
+            if (!reader.TryReadByte(out var updateKindByte, out error))
             {
                 return false;
             }
 
             var updateKind = (RealtimeCorpseViewUpdateKind)updateKindByte;
 
-            if (!TryReadGuid(reader, out var corpseId, out error))
+            if (!reader.TryReadGuid(out var corpseId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var baseRevision, out error))
+            if (!reader.TryReadInt64(out var baseRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var revision, out error))
+            if (!reader.TryReadInt64(out var revision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var expiresAtUnixMilliseconds, out error))
+            if (!reader.TryReadInt64(out var expiresAtUnixMilliseconds, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
+            if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumCorpsePresentationKeyLength, out var presentationKey, out error))
+            if (!reader.TryReadString(MaximumCorpsePresentationKeyLength, out var presentationKey, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var chunkIndex, out error))
+            if (!reader.TryReadUInt16(out var chunkIndex, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var chunkCount, out error))
+            if (!reader.TryReadUInt16(out var chunkCount, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumCorpseSectionKindLength, out var sectionKind, out error))
+            if (!reader.TryReadString(MaximumCorpseSectionKindLength, out var sectionKind, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var containerId, out error))
+            if (!reader.TryReadGuid(out var containerId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var containerRevision, out error))
+            if (!reader.TryReadInt64(out var containerRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var replaceSection, out error))
+            if (!reader.TryReadBoolean(out var replaceSection, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt32(reader, out var sectionSlotCapacity, out error))
+            if (!reader.TryReadInt32(out var sectionSlotCapacity, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt32(reader, out var slotOffset, out error))
+            if (!reader.TryReadInt32(out var slotOffset, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var slotsCount, out error))
+            if (!reader.TryReadByte(out var slotsCount, out error))
             {
                 return false;
             }
@@ -1756,7 +1825,7 @@ namespace Mmorpg.GameProtocol
             var slots = new RealtimeCorpseSlot[slotsCount];
             for (var index = 0; index < slots.Length; index++)
             {
-                if (!TryReadCorpseSlot(reader, out var element, out error))
+                if (!TryReadCorpseSlot(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -1830,57 +1899,60 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Corpse view closed is invalid.", nameof(closed));
             }
 
-            return Encode(RealtimeMessageType.CorpseViewClosed, writer => WriteCorpseViewClosed(writer, closed));
+            var writer = StartPacket(RealtimeMessageType.CorpseViewClosed, SizeOfCorpseViewClosed(closed));
+            WriteCorpseViewClosed(ref writer, closed);
+            return writer.Finish();
         }
 
         public static bool TryDecodeCorpseViewClosed(byte[] data, out RealtimeCorpseViewClosed closed, out string error)
         {
             closed = null;
-            if (!TryCreateReader(data, RealtimeMessageType.CorpseViewClosed, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.CorpseViewClosed, out var reader, out error)
+                || !TryReadCorpseViewClosed(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidCorpseViewClosed(decoded, decoding: true))
             {
-                if (!TryReadCorpseViewClosed(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidCorpseViewClosed(decoded, decoding: true))
-                {
-                    error = "Corpse view closed is invalid.";
-                    return false;
-                }
-
-                closed = decoded;
-                return true;
+                error = "Corpse view closed is invalid.";
+                return false;
             }
+
+            closed = decoded;
+            return true;
         }
 
-        private static void WriteCorpseViewClosed(BinaryWriter writer, RealtimeCorpseViewClosed value)
+        private static void WriteCorpseViewClosed(ref PacketWriter writer, RealtimeCorpseViewClosed value)
         {
-            WriteGuid(writer, value.CorpseId);
-            WriteString(writer, value.Code, MaximumErrorCodeLength, "value.Code");
-            WriteString(writer, value.Message, MaximumErrorMessageLength, "value.Message");
+            writer.WriteGuid(value.CorpseId);
+            writer.WriteString(value.Code);
+            writer.WriteString(value.Message);
         }
 
-        private static bool TryReadCorpseViewClosed(BinaryReader reader, out RealtimeCorpseViewClosed value, out string error)
+        private static int SizeOfCorpseViewClosed(RealtimeCorpseViewClosed value)
+        {
+            var size = 16;
+            size += StringSize(value.Code);
+            size += StringSize(value.Message);
+            return size;
+        }
+
+        private static bool TryReadCorpseViewClosed(ref PacketReader reader, out RealtimeCorpseViewClosed value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var corpseId, out error))
+            if (!reader.TryReadGuid(out var corpseId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumErrorCodeLength, out var code, out error))
+            if (!reader.TryReadString(MaximumErrorCodeLength, out var code, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumErrorMessageLength, out var message, out error))
+            if (!reader.TryReadString(MaximumErrorMessageLength, out var message, out error))
             {
                 return false;
             }
@@ -1906,74 +1978,70 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteCorpsePresence(BinaryWriter writer, RealtimeCorpsePresence value)
+        private static void WriteCorpsePresence(ref PacketWriter writer, RealtimeCorpsePresence value)
         {
-            if (!IsValidCorpsePresence(value))
-            {
-                throw new ArgumentException("Corpse presence is invalid.", nameof(value));
-            }
-
-            WriteGuid(writer, value.CorpseId);
-            writer.Write(value.PositionX);
-            writer.Write(value.PositionY);
-            writer.Write(value.PositionZ);
-            writer.Write(value.ExpiresAtUnixMilliseconds);
-            writer.Write(value.IsEmpty);
-            WriteString(writer, value.SourceDisplayName, MaximumCorpseSourceNameLength, "value.SourceDisplayName");
-            WriteString(writer, value.PresentationKey, MaximumCorpsePresentationKeyLength, "value.PresentationKey");
+            writer.WriteGuid(value.CorpseId);
+            writer.WriteSingle(value.PositionX);
+            writer.WriteSingle(value.PositionY);
+            writer.WriteSingle(value.PositionZ);
+            writer.WriteInt64(value.ExpiresAtUnixMilliseconds);
+            writer.WriteBoolean(value.IsEmpty);
+            writer.WriteString(value.SourceDisplayName);
+            writer.WriteString(value.PresentationKey);
         }
 
-        private static bool TryReadCorpsePresence(BinaryReader reader, out RealtimeCorpsePresence value, out string error)
+        private static int SizeOfCorpsePresence(RealtimeCorpsePresence value)
+        {
+            var size = 37;
+            size += StringSize(value.SourceDisplayName);
+            size += StringSize(value.PresentationKey);
+            return size;
+        }
+
+        private static bool TryReadCorpsePresence(ref PacketReader reader, out RealtimeCorpsePresence value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var corpseId, out error))
+            if (!reader.TryReadGuid(out var corpseId, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionX, out error))
+            if (!reader.TryReadSingle(out var positionX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionY, out error))
+            if (!reader.TryReadSingle(out var positionY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionZ, out error))
+            if (!reader.TryReadSingle(out var positionZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var expiresAtUnixMilliseconds, out error))
+            if (!reader.TryReadInt64(out var expiresAtUnixMilliseconds, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var isEmpty, out error))
+            if (!reader.TryReadBoolean(out var isEmpty, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
+            if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumCorpsePresentationKeyLength, out var presentationKey, out error))
+            if (!reader.TryReadString(MaximumCorpsePresentationKeyLength, out var presentationKey, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey);
-            if (!IsValidCorpsePresence(decoded))
-            {
-                error = "Corpse presence is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey);
             return true;
         }
 
@@ -1996,62 +2064,57 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteCorpseItem(BinaryWriter writer, RealtimeCorpseItem value)
+        private static void WriteCorpseItem(ref PacketWriter writer, RealtimeCorpseItem value)
         {
-            if (!IsValidCorpseItem(value))
-            {
-                throw new ArgumentException("Corpse item is invalid.", nameof(value));
-            }
-
-            WriteGuid(writer, value.ItemInstanceId);
-            WriteString(writer, value.DefinitionId, MaximumDefinitionIdLength, "value.DefinitionId");
-            writer.Write(value.Quantity);
-            writer.Write(value.Revision);
-            WriteGuid(writer, value.BagContentsContainerId);
-            writer.Write(value.BagContentsRevision);
+            writer.WriteGuid(value.ItemInstanceId);
+            writer.WriteString(value.DefinitionId);
+            writer.WriteInt32(value.Quantity);
+            writer.WriteInt64(value.Revision);
+            writer.WriteGuid(value.BagContentsContainerId);
+            writer.WriteInt64(value.BagContentsRevision);
         }
 
-        private static bool TryReadCorpseItem(BinaryReader reader, out RealtimeCorpseItem value, out string error)
+        private static int SizeOfCorpseItem(RealtimeCorpseItem value)
+        {
+            var size = 52;
+            size += StringSize(value.DefinitionId);
+            return size;
+        }
+
+        private static bool TryReadCorpseItem(ref PacketReader reader, out RealtimeCorpseItem value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var itemInstanceId, out error))
+            if (!reader.TryReadGuid(out var itemInstanceId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumDefinitionIdLength, out var definitionId, out error))
+            if (!reader.TryReadString(MaximumDefinitionIdLength, out var definitionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt32(reader, out var quantity, out error))
+            if (!reader.TryReadInt32(out var quantity, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var revision, out error))
+            if (!reader.TryReadInt64(out var revision, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var bagContentsContainerId, out error))
+            if (!reader.TryReadGuid(out var bagContentsContainerId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var bagContentsRevision, out error))
+            if (!reader.TryReadInt64(out var bagContentsRevision, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeCorpseItem(itemInstanceId, definitionId, quantity, revision, bagContentsContainerId, bagContentsRevision);
-            if (!IsValidCorpseItem(decoded))
-            {
-                error = "Corpse item is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeCorpseItem(itemInstanceId, definitionId, quantity, revision, bagContentsContainerId, bagContentsRevision);
             return true;
         }
 
@@ -2071,48 +2134,66 @@ namespace Mmorpg.GameProtocol
             return SatisfiesRules(value);
         }
 
-        private static void WriteCorpseSlot(BinaryWriter writer, RealtimeCorpseSlot value)
+        private static void WriteCorpseSlot(ref PacketWriter writer, RealtimeCorpseSlot value)
         {
-            if (!IsValidCorpseSlot(value))
-            {
-                throw new ArgumentException("Corpse slot is invalid.", nameof(value));
-            }
-
-            writer.Write(value.SlotIndex);
-            WriteString(writer, value.SlotKind, MaximumCorpseSlotKindLength, "value.SlotKind");
-            writer.Write((byte)value.AcceptedTags.Length);
+            writer.WriteInt32(value.SlotIndex);
+            writer.WriteString(value.SlotKind);
+            writer.WriteByte((byte)value.AcceptedTags.Length);
             foreach (var item in value.AcceptedTags)
             {
-                WriteString(writer, item, MaximumSlotTagLength, "item");
+                writer.WriteString(item);
             }
             var hasEquipmentSlotId = !string.IsNullOrWhiteSpace(value.EquipmentSlotId);
-            writer.Write(hasEquipmentSlotId);
+            writer.WriteBoolean(hasEquipmentSlotId);
             if (hasEquipmentSlotId)
             {
-                WriteString(writer, value.EquipmentSlotId, MaximumEquipmentSlotIdLength, "value.EquipmentSlotId");
+                writer.WriteString(value.EquipmentSlotId);
             }
             var hasItem = value.Item != null;
-            writer.Write(hasItem);
+            writer.WriteBoolean(hasItem);
             if (hasItem)
             {
-                WriteCorpseItem(writer, value.Item);
+                WriteCorpseItem(ref writer, value.Item);
             }
         }
 
-        private static bool TryReadCorpseSlot(BinaryReader reader, out RealtimeCorpseSlot value, out string error)
+        private static int SizeOfCorpseSlot(RealtimeCorpseSlot value)
+        {
+            var size = 6;
+            size += StringSize(value.SlotKind);
+            size += 1;
+            foreach (var item in value.AcceptedTags)
+            {
+                size += StringSize(item);
+            }
+
+            if (!string.IsNullOrWhiteSpace(value.EquipmentSlotId))
+            {
+                size += StringSize(value.EquipmentSlotId);
+            }
+
+            if (value.Item != null)
+            {
+                size += SizeOfCorpseItem(value.Item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCorpseSlot(ref PacketReader reader, out RealtimeCorpseSlot value, out string error)
         {
             value = null;
-            if (!TryReadInt32(reader, out var slotIndex, out error))
+            if (!reader.TryReadInt32(out var slotIndex, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumCorpseSlotKindLength, out var slotKind, out error))
+            if (!reader.TryReadString(MaximumCorpseSlotKindLength, out var slotKind, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var acceptedTagsCount, out error))
+            if (!reader.TryReadByte(out var acceptedTagsCount, out error))
             {
                 return false;
             }
@@ -2126,7 +2207,7 @@ namespace Mmorpg.GameProtocol
             var acceptedTags = new string[acceptedTagsCount];
             for (var index = 0; index < acceptedTags.Length; index++)
             {
-                if (!TryReadString(reader, MaximumSlotTagLength, out var element, out error))
+                if (!reader.TryReadString(MaximumSlotTagLength, out var element, out error))
                 {
                     return false;
                 }
@@ -2134,7 +2215,7 @@ namespace Mmorpg.GameProtocol
                 acceptedTags[index] = element;
             }
 
-            if (!TryReadBoolean(reader, out var hasEquipmentSlotId, out error))
+            if (!reader.TryReadBoolean(out var hasEquipmentSlotId, out error))
             {
                 return false;
             }
@@ -2142,13 +2223,13 @@ namespace Mmorpg.GameProtocol
             string equipmentSlotId = string.Empty;
             if (hasEquipmentSlotId)
             {
-                if (!TryReadString(reader, MaximumEquipmentSlotIdLength, out equipmentSlotId, out error))
+                if (!reader.TryReadString(MaximumEquipmentSlotIdLength, out equipmentSlotId, out error))
                 {
                     return false;
                 }
             }
 
-            if (!TryReadBoolean(reader, out var hasItem, out error))
+            if (!reader.TryReadBoolean(out var hasItem, out error))
             {
                 return false;
             }
@@ -2156,20 +2237,13 @@ namespace Mmorpg.GameProtocol
             RealtimeCorpseItem itemValue = null;
             if (hasItem)
             {
-                if (!TryReadCorpseItem(reader, out itemValue, out error))
+                if (!TryReadCorpseItem(ref reader, out itemValue, out error))
                 {
                     return false;
                 }
             }
 
-            var decoded = new RealtimeCorpseSlot(slotIndex, slotKind, acceptedTags, equipmentSlotId, itemValue);
-            if (!IsValidCorpseSlot(decoded))
-            {
-                error = "Corpse slot is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeCorpseSlot(slotIndex, slotKind, acceptedTags, equipmentSlotId, itemValue);
             return true;
         }
 

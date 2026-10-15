@@ -3,7 +3,6 @@
 // Change the schema and run the generator instead of editing this file.
 // </auto-generated>
 using System;
-using System.IO;
 
 namespace Mmorpg.GameProtocol
 {
@@ -831,183 +830,189 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World actor spawn is invalid.", nameof(spawn));
             }
 
-            return Encode(RealtimeMessageType.WorldActorSpawn, writer => WriteWorldActorSpawn(writer, spawn));
+            var writer = StartPacket(RealtimeMessageType.WorldActorSpawn, SizeOfWorldActorSpawn(spawn));
+            WriteWorldActorSpawn(ref writer, spawn);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldActorSpawn(byte[] data, out RealtimeWorldActorSpawn spawn, out string error)
         {
             spawn = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldActorSpawn, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldActorSpawn, out var reader, out error)
+                || !TryReadWorldActorSpawn(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldActorSpawn(decoded))
             {
-                if (!TryReadWorldActorSpawn(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldActorSpawn(decoded))
-                {
-                    error = "World actor spawn is invalid.";
-                    return false;
-                }
-
-                spawn = decoded;
-                return true;
+                error = "World actor spawn is invalid.";
+                return false;
             }
+
+            spawn = decoded;
+            return true;
         }
 
-        private static void WriteWorldActorSpawn(BinaryWriter writer, RealtimeWorldActorSpawn value)
+        private static void WriteWorldActorSpawn(ref PacketWriter writer, RealtimeWorldActorSpawn value)
         {
-            writer.Write(value.EntityId);
-            WriteGuid(writer, value.RuntimeActorId);
-            WriteString(writer, value.ActorDefinitionId, MaximumIdentifierLength, "value.ActorDefinitionId");
-            WriteString(writer, value.SpawnDefinitionId, MaximumIdentifierLength, "value.SpawnDefinitionId");
-            WriteString(writer, value.DisplayName, MaximumNameLength, "value.DisplayName");
-            writer.Write((byte)value.Kind);
-            WriteString(writer, value.FactionId, MaximumIdentifierLength, "value.FactionId");
-            writer.Write((byte)value.Disposition);
-            WriteString(writer, value.PresentationArchetypeId, MaximumIdentifierLength, "value.PresentationArchetypeId");
-            writer.Write(value.StateRevision);
-            writer.Write(value.InteractionRevision);
-            writer.Write(value.IsActive);
-            writer.Write(value.PositionX);
-            writer.Write(value.PositionY);
-            writer.Write(value.PositionZ);
-            writer.Write(value.YawDegrees);
-            writer.Write((byte)value.ActivityTier);
-            writer.Write(value.BoundsCenterX);
-            writer.Write(value.BoundsCenterY);
-            writer.Write(value.BoundsCenterZ);
-            writer.Write(value.BoundsSizeX);
-            writer.Write(value.BoundsSizeY);
-            writer.Write(value.BoundsSizeZ);
+            writer.WriteUInt64(value.EntityId);
+            writer.WriteGuid(value.RuntimeActorId);
+            writer.WriteString(value.ActorDefinitionId);
+            writer.WriteString(value.SpawnDefinitionId);
+            writer.WriteString(value.DisplayName);
+            writer.WriteByte((byte)value.Kind);
+            writer.WriteString(value.FactionId);
+            writer.WriteByte((byte)value.Disposition);
+            writer.WriteString(value.PresentationArchetypeId);
+            writer.WriteInt64(value.StateRevision);
+            writer.WriteInt64(value.InteractionRevision);
+            writer.WriteBoolean(value.IsActive);
+            writer.WriteSingle(value.PositionX);
+            writer.WriteSingle(value.PositionY);
+            writer.WriteSingle(value.PositionZ);
+            writer.WriteSingle(value.YawDegrees);
+            writer.WriteByte((byte)value.ActivityTier);
+            writer.WriteSingle(value.BoundsCenterX);
+            writer.WriteSingle(value.BoundsCenterY);
+            writer.WriteSingle(value.BoundsCenterZ);
+            writer.WriteSingle(value.BoundsSizeX);
+            writer.WriteSingle(value.BoundsSizeY);
+            writer.WriteSingle(value.BoundsSizeZ);
         }
 
-        private static bool TryReadWorldActorSpawn(BinaryReader reader, out RealtimeWorldActorSpawn value, out string error)
+        private static int SizeOfWorldActorSpawn(RealtimeWorldActorSpawn value)
+        {
+            var size = 84;
+            size += StringSize(value.ActorDefinitionId);
+            size += StringSize(value.SpawnDefinitionId);
+            size += StringSize(value.DisplayName);
+            size += StringSize(value.FactionId);
+            size += StringSize(value.PresentationArchetypeId);
+            return size;
+        }
+
+        private static bool TryReadWorldActorSpawn(ref PacketReader reader, out RealtimeWorldActorSpawn value, out string error)
         {
             value = null;
-            if (!TryReadUInt64(reader, out var entityId, out error))
+            if (!reader.TryReadUInt64(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var runtimeActorId, out error))
+            if (!reader.TryReadGuid(out var runtimeActorId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumIdentifierLength, out var actorDefinitionId, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var actorDefinitionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumIdentifierLength, out var spawnDefinitionId, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var spawnDefinitionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumNameLength, out var displayName, out error))
+            if (!reader.TryReadString(MaximumNameLength, out var displayName, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var kindByte, out error))
+            if (!reader.TryReadByte(out var kindByte, out error))
             {
                 return false;
             }
 
             var kind = (RealtimeWorldActorKind)kindByte;
 
-            if (!TryReadString(reader, MaximumIdentifierLength, out var factionId, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var factionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var dispositionByte, out error))
+            if (!reader.TryReadByte(out var dispositionByte, out error))
             {
                 return false;
             }
 
             var disposition = (RealtimeWorldActorDisposition)dispositionByte;
 
-            if (!TryReadString(reader, MaximumIdentifierLength, out var presentationArchetypeId, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var presentationArchetypeId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var stateRevision, out error))
+            if (!reader.TryReadInt64(out var stateRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var interactionRevision, out error))
+            if (!reader.TryReadInt64(out var interactionRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var isActive, out error))
+            if (!reader.TryReadBoolean(out var isActive, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionX, out error))
+            if (!reader.TryReadSingle(out var positionX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionY, out error))
+            if (!reader.TryReadSingle(out var positionY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionZ, out error))
+            if (!reader.TryReadSingle(out var positionZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var yawDegrees, out error))
+            if (!reader.TryReadSingle(out var yawDegrees, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var activityTierByte, out error))
+            if (!reader.TryReadByte(out var activityTierByte, out error))
             {
                 return false;
             }
 
             var activityTier = (RealtimeWorldActorActivityTier)activityTierByte;
 
-            if (!TryReadSingle(reader, out var boundsCenterX, out error))
+            if (!reader.TryReadSingle(out var boundsCenterX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var boundsCenterY, out error))
+            if (!reader.TryReadSingle(out var boundsCenterY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var boundsCenterZ, out error))
+            if (!reader.TryReadSingle(out var boundsCenterZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var boundsSizeX, out error))
+            if (!reader.TryReadSingle(out var boundsSizeX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var boundsSizeY, out error))
+            if (!reader.TryReadSingle(out var boundsSizeY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var boundsSizeZ, out error))
+            if (!reader.TryReadSingle(out var boundsSizeZ, out error))
             {
                 return false;
             }
@@ -1066,93 +1071,88 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World actor state is invalid.", nameof(state));
             }
 
-            return Encode(RealtimeMessageType.WorldActorState, writer => WriteWorldActorState(writer, state));
+            var writer = StartPacket(RealtimeMessageType.WorldActorState, 42);
+            WriteWorldActorState(ref writer, state);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldActorState(byte[] data, out RealtimeWorldActorState state, out string error)
         {
             state = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldActorState, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldActorState, out var reader, out error)
+                || !TryReadWorldActorState(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldActorState(decoded))
             {
-                if (!TryReadWorldActorState(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldActorState(decoded))
-                {
-                    error = "World actor state is invalid.";
-                    return false;
-                }
-
-                state = decoded;
-                return true;
+                error = "World actor state is invalid.";
+                return false;
             }
+
+            state = decoded;
+            return true;
         }
 
-        private static void WriteWorldActorState(BinaryWriter writer, RealtimeWorldActorState value)
+        private static void WriteWorldActorState(ref PacketWriter writer, RealtimeWorldActorState value)
         {
-            writer.Write(value.EntityId);
-            writer.Write(value.StateRevision);
-            writer.Write(value.InteractionRevision);
-            writer.Write(value.IsActive);
-            writer.Write(value.PositionX);
-            writer.Write(value.PositionY);
-            writer.Write(value.PositionZ);
-            writer.Write(value.YawDegrees);
-            writer.Write((byte)value.ActivityTier);
+            writer.WriteUInt64(value.EntityId);
+            writer.WriteInt64(value.StateRevision);
+            writer.WriteInt64(value.InteractionRevision);
+            writer.WriteBoolean(value.IsActive);
+            writer.WriteSingle(value.PositionX);
+            writer.WriteSingle(value.PositionY);
+            writer.WriteSingle(value.PositionZ);
+            writer.WriteSingle(value.YawDegrees);
+            writer.WriteByte((byte)value.ActivityTier);
         }
 
-        private static bool TryReadWorldActorState(BinaryReader reader, out RealtimeWorldActorState value, out string error)
+        private static bool TryReadWorldActorState(ref PacketReader reader, out RealtimeWorldActorState value, out string error)
         {
             value = null;
-            if (!TryReadUInt64(reader, out var entityId, out error))
+            if (!reader.TryReadUInt64(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var stateRevision, out error))
+            if (!reader.TryReadInt64(out var stateRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var interactionRevision, out error))
+            if (!reader.TryReadInt64(out var interactionRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var isActive, out error))
+            if (!reader.TryReadBoolean(out var isActive, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionX, out error))
+            if (!reader.TryReadSingle(out var positionX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionY, out error))
+            if (!reader.TryReadSingle(out var positionY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionZ, out error))
+            if (!reader.TryReadSingle(out var positionZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var yawDegrees, out error))
+            if (!reader.TryReadSingle(out var yawDegrees, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var activityTierByte, out error))
+            if (!reader.TryReadByte(out var activityTierByte, out error))
             {
                 return false;
             }
@@ -1191,57 +1191,59 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World actor despawn is invalid.", nameof(despawn));
             }
 
-            return Encode(RealtimeMessageType.WorldActorDespawn, writer => WriteWorldActorDespawn(writer, despawn));
+            var writer = StartPacket(RealtimeMessageType.WorldActorDespawn, SizeOfWorldActorDespawn(despawn));
+            WriteWorldActorDespawn(ref writer, despawn);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldActorDespawn(byte[] data, out RealtimeWorldActorDespawn despawn, out string error)
         {
             despawn = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldActorDespawn, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldActorDespawn, out var reader, out error)
+                || !TryReadWorldActorDespawn(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldActorDespawn(decoded))
             {
-                if (!TryReadWorldActorDespawn(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldActorDespawn(decoded))
-                {
-                    error = "World actor despawn is invalid.";
-                    return false;
-                }
-
-                despawn = decoded;
-                return true;
+                error = "World actor despawn is invalid.";
+                return false;
             }
+
+            despawn = decoded;
+            return true;
         }
 
-        private static void WriteWorldActorDespawn(BinaryWriter writer, RealtimeWorldActorDespawn value)
+        private static void WriteWorldActorDespawn(ref PacketWriter writer, RealtimeWorldActorDespawn value)
         {
-            writer.Write(value.EntityId);
-            WriteGuid(writer, value.RuntimeActorId);
-            WriteString(writer, value.Reason, MaximumErrorCodeLength, "value.Reason");
+            writer.WriteUInt64(value.EntityId);
+            writer.WriteGuid(value.RuntimeActorId);
+            writer.WriteString(value.Reason);
         }
 
-        private static bool TryReadWorldActorDespawn(BinaryReader reader, out RealtimeWorldActorDespawn value, out string error)
+        private static int SizeOfWorldActorDespawn(RealtimeWorldActorDespawn value)
+        {
+            var size = 24;
+            size += StringSize(value.Reason);
+            return size;
+        }
+
+        private static bool TryReadWorldActorDespawn(ref PacketReader reader, out RealtimeWorldActorDespawn value, out string error)
         {
             value = null;
-            if (!TryReadUInt64(reader, out var entityId, out error))
+            if (!reader.TryReadUInt64(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var runtimeActorId, out error))
+            if (!reader.TryReadGuid(out var runtimeActorId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumErrorCodeLength, out var reason, out error))
+            if (!reader.TryReadString(MaximumErrorCodeLength, out var reason, out error))
             {
                 return false;
             }
@@ -1274,46 +1276,41 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World interaction intent is invalid.", nameof(intent));
             }
 
-            return Encode(RealtimeMessageType.WorldInteractionIntent, writer => WriteWorldInteractionIntent(writer, intent));
+            var writer = StartPacket(RealtimeMessageType.WorldInteractionIntent, SizeOfWorldInteractionIntent(intent));
+            WriteWorldInteractionIntent(ref writer, intent);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldInteractionIntent(byte[] data, out RealtimeWorldInteractionIntent intent, out string error)
         {
             intent = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldInteractionIntent, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldInteractionIntent, out var reader, out error)
+                || !TryReadWorldInteractionIntent(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldInteractionIntent(decoded))
             {
-                if (!TryReadWorldInteractionIntent(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldInteractionIntent(decoded))
-                {
-                    error = "World interaction intent is invalid.";
-                    return false;
-                }
-
-                intent = decoded;
-                return true;
+                error = "World interaction intent is invalid.";
+                return false;
             }
+
+            intent = decoded;
+            return true;
         }
 
-        private static void WriteWorldInteractionIntent(BinaryWriter writer, RealtimeWorldInteractionIntent value)
+        private static void WriteWorldInteractionIntent(ref PacketWriter writer, RealtimeWorldInteractionIntent value)
         {
-            WriteGuid(writer, value.OperationId);
-            WriteGuid(writer, value.SimulationSessionId);
-            WriteGuid(writer, value.InteractionSessionId);
-            writer.Write((byte)value.OperationKind);
-            writer.Write((byte)value.TargetKind);
-            writer.Write(value.TargetEntityId);
-            WriteGuid(writer, value.TargetRuntimeId);
-            writer.Write(value.ExpectedTargetRevision);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteGuid(value.SimulationSessionId);
+            writer.WriteGuid(value.InteractionSessionId);
+            writer.WriteByte((byte)value.OperationKind);
+            writer.WriteByte((byte)value.TargetKind);
+            writer.WriteUInt64(value.TargetEntityId);
+            writer.WriteGuid(value.TargetRuntimeId);
+            writer.WriteInt64(value.ExpectedTargetRevision);
 
             switch (value.OperationKind)
             {
@@ -1327,15 +1324,15 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeWorldInteractionOperationKind.CapabilityAction:
                 {
-                    WriteString(writer, value.CapabilityId, MaximumWorldActorCapabilityIdLength, "value.CapabilityId");
-                    writer.Write((byte)value.CapabilityKind);
-                    writer.Write(value.ExpectedCapabilityRevision);
-                    writer.Write((byte)value.LifecycleAction);
-                    writer.Write(value.ExpectedCharacterRevision);
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    WriteGuid(writer, value.DestinationContainerId);
-                    writer.Write(value.DestinationSlotIndex);
+                    writer.WriteString(value.CapabilityId);
+                    writer.WriteByte((byte)value.CapabilityKind);
+                    writer.WriteInt64(value.ExpectedCapabilityRevision);
+                    writer.WriteByte((byte)value.LifecycleAction);
+                    writer.WriteInt64(value.ExpectedCharacterRevision);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteGuid(value.DestinationContainerId);
+                    writer.WriteInt32(value.DestinationSlotIndex);
                     break;
                 }
                 default:
@@ -1345,49 +1342,77 @@ namespace Mmorpg.GameProtocol
             }
         }
 
-        private static bool TryReadWorldInteractionIntent(BinaryReader reader, out RealtimeWorldInteractionIntent value, out string error)
+        private static int SizeOfWorldInteractionIntent(RealtimeWorldInteractionIntent value)
+        {
+            var size = 82;
+            switch (value.OperationKind)
+            {
+                case RealtimeWorldInteractionOperationKind.Open:
+                {
+                    break;
+                }
+                case RealtimeWorldInteractionOperationKind.Close:
+                {
+                    break;
+                }
+                case RealtimeWorldInteractionOperationKind.CapabilityAction:
+                {
+                    size += 62;
+                    size += StringSize(value.CapabilityId);
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("World interaction intent is invalid.", nameof(value));
+                }
+            }
+
+            return size;
+        }
+
+        private static bool TryReadWorldInteractionIntent(ref PacketReader reader, out RealtimeWorldInteractionIntent value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var simulationSessionId, out error))
+            if (!reader.TryReadGuid(out var simulationSessionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var interactionSessionId, out error))
+            if (!reader.TryReadGuid(out var interactionSessionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var operationKindByte, out error))
+            if (!reader.TryReadByte(out var operationKindByte, out error))
             {
                 return false;
             }
 
             var operationKind = (RealtimeWorldInteractionOperationKind)operationKindByte;
 
-            if (!TryReadByte(reader, out var targetKindByte, out error))
+            if (!reader.TryReadByte(out var targetKindByte, out error))
             {
                 return false;
             }
 
             var targetKind = (RealtimeWorldInteractionTargetKind)targetKindByte;
 
-            if (!TryReadUInt64(reader, out var targetEntityId, out error))
+            if (!reader.TryReadUInt64(out var targetEntityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var targetRuntimeId, out error))
+            if (!reader.TryReadGuid(out var targetRuntimeId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var expectedTargetRevision, out error))
+            if (!reader.TryReadInt64(out var expectedTargetRevision, out error))
             {
                 return false;
             }
@@ -1415,51 +1440,51 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeWorldInteractionOperationKind.CapabilityAction:
                 {
-                    if (!TryReadString(reader, MaximumWorldActorCapabilityIdLength, out capabilityId, out error))
+                    if (!reader.TryReadString(MaximumWorldActorCapabilityIdLength, out capabilityId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadByte(reader, out var capabilityKindByte, out error))
+                    if (!reader.TryReadByte(out var capabilityKindByte, out error))
                     {
                         return false;
                     }
 
                     capabilityKind = (RealtimeWorldActorCapabilityKind)capabilityKindByte;
 
-                    if (!TryReadInt64(reader, out expectedCapabilityRevision, out error))
+                    if (!reader.TryReadInt64(out expectedCapabilityRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadByte(reader, out var lifecycleActionByte, out error))
+                    if (!reader.TryReadByte(out var lifecycleActionByte, out error))
                     {
                         return false;
                     }
 
                     lifecycleAction = (RealtimeNpcLifecycleActionKind)lifecycleActionByte;
 
-                    if (!TryReadInt64(reader, out expectedCharacterRevision, out error))
+                    if (!reader.TryReadInt64(out expectedCharacterRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out destinationContainerId, out error))
+                    if (!reader.TryReadGuid(out destinationContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out destinationSlotIndex, out error))
+                    if (!reader.TryReadInt32(out destinationSlotIndex, out error))
                     {
                         return false;
                     }
@@ -1544,99 +1569,107 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World interaction opened is invalid.", nameof(opened));
             }
 
-            return Encode(RealtimeMessageType.WorldInteractionOpened, writer => WriteWorldInteractionOpened(writer, opened));
+            var writer = StartPacket(RealtimeMessageType.WorldInteractionOpened, SizeOfWorldInteractionOpened(opened));
+            WriteWorldInteractionOpened(ref writer, opened);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldInteractionOpened(byte[] data, out RealtimeWorldInteractionOpened opened, out string error)
         {
             opened = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldInteractionOpened, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldInteractionOpened, out var reader, out error)
+                || !TryReadWorldInteractionOpened(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldInteractionOpened(decoded))
             {
-                if (!TryReadWorldInteractionOpened(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldInteractionOpened(decoded))
-                {
-                    error = "World interaction opened is invalid.";
-                    return false;
-                }
-
-                opened = decoded;
-                return true;
+                error = "World interaction opened is invalid.";
+                return false;
             }
+
+            opened = decoded;
+            return true;
         }
 
-        private static void WriteWorldInteractionOpened(BinaryWriter writer, RealtimeWorldInteractionOpened value)
+        private static void WriteWorldInteractionOpened(ref PacketWriter writer, RealtimeWorldInteractionOpened value)
         {
-            WriteGuid(writer, value.OperationId);
-            WriteGuid(writer, value.InteractionSessionId);
-            writer.Write((byte)value.TargetKind);
-            writer.Write(value.TargetEntityId);
-            WriteGuid(writer, value.TargetRuntimeId);
-            writer.Write(value.TargetRevision);
-            writer.Write(value.CapabilitySummaryRevision);
-            WriteString(writer, value.DisplayName, MaximumNameLength, "value.DisplayName");
-            writer.Write((byte)value.Capabilities.Length);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteGuid(value.InteractionSessionId);
+            writer.WriteByte((byte)value.TargetKind);
+            writer.WriteUInt64(value.TargetEntityId);
+            writer.WriteGuid(value.TargetRuntimeId);
+            writer.WriteInt64(value.TargetRevision);
+            writer.WriteInt64(value.CapabilitySummaryRevision);
+            writer.WriteString(value.DisplayName);
+            writer.WriteByte((byte)value.Capabilities.Length);
             foreach (var item in value.Capabilities)
             {
-                WriteWorldActorCapability(writer, item);
+                WriteWorldActorCapability(ref writer, item);
             }
         }
 
-        private static bool TryReadWorldInteractionOpened(BinaryReader reader, out RealtimeWorldInteractionOpened value, out string error)
+        private static int SizeOfWorldInteractionOpened(RealtimeWorldInteractionOpened value)
+        {
+            var size = 73;
+            size += StringSize(value.DisplayName);
+            size += 1;
+            foreach (var item in value.Capabilities)
+            {
+                size += SizeOfWorldActorCapability(item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadWorldInteractionOpened(ref PacketReader reader, out RealtimeWorldInteractionOpened value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var interactionSessionId, out error))
+            if (!reader.TryReadGuid(out var interactionSessionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var targetKindByte, out error))
+            if (!reader.TryReadByte(out var targetKindByte, out error))
             {
                 return false;
             }
 
             var targetKind = (RealtimeWorldInteractionTargetKind)targetKindByte;
 
-            if (!TryReadUInt64(reader, out var targetEntityId, out error))
+            if (!reader.TryReadUInt64(out var targetEntityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var targetRuntimeId, out error))
+            if (!reader.TryReadGuid(out var targetRuntimeId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var targetRevision, out error))
+            if (!reader.TryReadInt64(out var targetRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var capabilitySummaryRevision, out error))
+            if (!reader.TryReadInt64(out var capabilitySummaryRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumNameLength, out var displayName, out error))
+            if (!reader.TryReadString(MaximumNameLength, out var displayName, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var capabilitiesCount, out error))
+            if (!reader.TryReadByte(out var capabilitiesCount, out error))
             {
                 return false;
             }
@@ -1650,7 +1683,7 @@ namespace Mmorpg.GameProtocol
             var capabilities = new RealtimeWorldActorCapability[capabilitiesCount];
             for (var index = 0; index < capabilities.Length; index++)
             {
-                if (!TryReadWorldActorCapability(reader, out var element, out error))
+                if (!TryReadWorldActorCapability(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -1701,87 +1734,94 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World interaction result is invalid.", nameof(result));
             }
 
-            return Encode(RealtimeMessageType.WorldInteractionResult, writer => WriteWorldInteractionResult(writer, result));
+            var writer = StartPacket(RealtimeMessageType.WorldInteractionResult, SizeOfWorldInteractionResult(result));
+            WriteWorldInteractionResult(ref writer, result);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldInteractionResult(byte[] data, out RealtimeWorldInteractionResult result, out string error)
         {
             result = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldInteractionResult, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldInteractionResult, out var reader, out error)
+                || !TryReadWorldInteractionResult(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldInteractionResult(decoded))
             {
-                if (!TryReadWorldInteractionResult(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldInteractionResult(decoded))
-                {
-                    error = "World interaction result is invalid.";
-                    return false;
-                }
-
-                result = decoded;
-                return true;
+                error = "World interaction result is invalid.";
+                return false;
             }
+
+            result = decoded;
+            return true;
         }
 
-        private static void WriteWorldInteractionResult(BinaryWriter writer, RealtimeWorldInteractionResult value)
+        private static void WriteWorldInteractionResult(ref PacketWriter writer, RealtimeWorldInteractionResult value)
         {
-            WriteGuid(writer, value.OperationId);
-            WriteGuid(writer, value.InteractionSessionId);
-            writer.Write((byte)value.OperationKind);
-            writer.Write(value.Succeeded);
-            writer.Write(value.TargetRevision);
-            writer.Write(value.ItemStateRevision);
-            WriteString(writer, value.Message, MaximumWorldInteractionMessageLength, "value.Message", allowBlank: true);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteGuid(value.InteractionSessionId);
+            writer.WriteByte((byte)value.OperationKind);
+            writer.WriteBoolean(value.Succeeded);
+            writer.WriteInt64(value.TargetRevision);
+            writer.WriteInt64(value.ItemStateRevision);
+            writer.WriteString(value.Message);
             if (!value.Succeeded)
             {
-                WriteError(writer, value.Error);
+                WriteError(ref writer, value.Error);
             }
         }
 
-        private static bool TryReadWorldInteractionResult(BinaryReader reader, out RealtimeWorldInteractionResult value, out string error)
+        private static int SizeOfWorldInteractionResult(RealtimeWorldInteractionResult value)
+        {
+            var size = 50;
+            size += StringSize(value.Message);
+            if (!value.Succeeded)
+            {
+                size += SizeOfError(value.Error);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadWorldInteractionResult(ref PacketReader reader, out RealtimeWorldInteractionResult value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var interactionSessionId, out error))
+            if (!reader.TryReadGuid(out var interactionSessionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var operationKindByte, out error))
+            if (!reader.TryReadByte(out var operationKindByte, out error))
             {
                 return false;
             }
 
             var operationKind = (RealtimeWorldInteractionOperationKind)operationKindByte;
 
-            if (!TryReadBoolean(reader, out var succeeded, out error))
+            if (!reader.TryReadBoolean(out var succeeded, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var targetRevision, out error))
+            if (!reader.TryReadInt64(out var targetRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var itemStateRevision, out error))
+            if (!reader.TryReadInt64(out var itemStateRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumWorldInteractionMessageLength, out var message, out error, allowBlank: true))
+            if (!reader.TryReadString(MaximumWorldInteractionMessageLength, out var message, out error, allowBlank: true))
             {
                 return false;
             }
@@ -1789,7 +1829,7 @@ namespace Mmorpg.GameProtocol
             RealtimeError errorValue = null;
             if (!succeeded)
             {
-                if (!TryReadError(reader, out errorValue, out error))
+                if (!TryReadError(ref reader, out errorValue, out error))
                 {
                     return false;
                 }
@@ -1827,77 +1867,80 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("World interaction closed is invalid.", nameof(closed));
             }
 
-            return Encode(RealtimeMessageType.WorldInteractionClosed, writer => WriteWorldInteractionClosed(writer, closed));
+            var writer = StartPacket(RealtimeMessageType.WorldInteractionClosed, SizeOfWorldInteractionClosed(closed));
+            WriteWorldInteractionClosed(ref writer, closed);
+            return writer.Finish();
         }
 
         public static bool TryDecodeWorldInteractionClosed(byte[] data, out RealtimeWorldInteractionClosed closed, out string error)
         {
             closed = null;
-            if (!TryCreateReader(data, RealtimeMessageType.WorldInteractionClosed, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.WorldInteractionClosed, out var reader, out error)
+                || !TryReadWorldInteractionClosed(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidWorldInteractionClosed(decoded))
             {
-                if (!TryReadWorldInteractionClosed(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidWorldInteractionClosed(decoded))
-                {
-                    error = "World interaction closed is invalid.";
-                    return false;
-                }
-
-                closed = decoded;
-                return true;
+                error = "World interaction closed is invalid.";
+                return false;
             }
+
+            closed = decoded;
+            return true;
         }
 
-        private static void WriteWorldInteractionClosed(BinaryWriter writer, RealtimeWorldInteractionClosed value)
+        private static void WriteWorldInteractionClosed(ref PacketWriter writer, RealtimeWorldInteractionClosed value)
         {
-            WriteGuid(writer, value.InteractionSessionId);
-            writer.Write((byte)value.TargetKind);
-            writer.Write(value.TargetEntityId);
-            WriteGuid(writer, value.TargetRuntimeId);
-            WriteString(writer, value.Code, MaximumErrorCodeLength, "value.Code");
-            WriteString(writer, value.Message, MaximumErrorMessageLength, "value.Message");
+            writer.WriteGuid(value.InteractionSessionId);
+            writer.WriteByte((byte)value.TargetKind);
+            writer.WriteUInt64(value.TargetEntityId);
+            writer.WriteGuid(value.TargetRuntimeId);
+            writer.WriteString(value.Code);
+            writer.WriteString(value.Message);
         }
 
-        private static bool TryReadWorldInteractionClosed(BinaryReader reader, out RealtimeWorldInteractionClosed value, out string error)
+        private static int SizeOfWorldInteractionClosed(RealtimeWorldInteractionClosed value)
+        {
+            var size = 41;
+            size += StringSize(value.Code);
+            size += StringSize(value.Message);
+            return size;
+        }
+
+        private static bool TryReadWorldInteractionClosed(ref PacketReader reader, out RealtimeWorldInteractionClosed value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var interactionSessionId, out error))
+            if (!reader.TryReadGuid(out var interactionSessionId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var targetKindByte, out error))
+            if (!reader.TryReadByte(out var targetKindByte, out error))
             {
                 return false;
             }
 
             var targetKind = (RealtimeWorldInteractionTargetKind)targetKindByte;
 
-            if (!TryReadUInt64(reader, out var targetEntityId, out error))
+            if (!reader.TryReadUInt64(out var targetEntityId, out error))
             {
                 return false;
             }
 
-            if (!TryReadGuid(reader, out var targetRuntimeId, out error))
+            if (!reader.TryReadGuid(out var targetRuntimeId, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumErrorCodeLength, out var code, out error))
+            if (!reader.TryReadString(MaximumErrorCodeLength, out var code, out error))
             {
                 return false;
             }
 
-            if (!TryReadString(reader, MaximumErrorMessageLength, out var message, out error))
+            if (!reader.TryReadString(MaximumErrorMessageLength, out var message, out error))
             {
                 return false;
             }
@@ -1924,58 +1967,54 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteWorldActorCapability(BinaryWriter writer, RealtimeWorldActorCapability value)
+        private static void WriteWorldActorCapability(ref PacketWriter writer, RealtimeWorldActorCapability value)
         {
-            if (!IsValidWorldActorCapability(value))
-            {
-                throw new ArgumentException("World actor capability is invalid.", nameof(value));
-            }
-
-            WriteString(writer, value.Id, MaximumWorldActorCapabilityIdLength, "value.Id");
-            writer.Write((byte)value.Kind);
-            WriteString(writer, value.DisplayName, MaximumWorldActorCapabilityNameLength, "value.DisplayName");
-            writer.Write(value.IsAvailable);
-            writer.Write(value.Revision);
+            writer.WriteString(value.Id);
+            writer.WriteByte((byte)value.Kind);
+            writer.WriteString(value.DisplayName);
+            writer.WriteBoolean(value.IsAvailable);
+            writer.WriteInt64(value.Revision);
         }
 
-        private static bool TryReadWorldActorCapability(BinaryReader reader, out RealtimeWorldActorCapability value, out string error)
+        private static int SizeOfWorldActorCapability(RealtimeWorldActorCapability value)
+        {
+            var size = 10;
+            size += StringSize(value.Id);
+            size += StringSize(value.DisplayName);
+            return size;
+        }
+
+        private static bool TryReadWorldActorCapability(ref PacketReader reader, out RealtimeWorldActorCapability value, out string error)
         {
             value = null;
-            if (!TryReadString(reader, MaximumWorldActorCapabilityIdLength, out var id, out error))
+            if (!reader.TryReadString(MaximumWorldActorCapabilityIdLength, out var id, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var kindByte, out error))
+            if (!reader.TryReadByte(out var kindByte, out error))
             {
                 return false;
             }
 
             var kind = (RealtimeWorldActorCapabilityKind)kindByte;
 
-            if (!TryReadString(reader, MaximumWorldActorCapabilityNameLength, out var displayName, out error))
+            if (!reader.TryReadString(MaximumWorldActorCapabilityNameLength, out var displayName, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var isAvailable, out error))
+            if (!reader.TryReadBoolean(out var isAvailable, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var revision, out error))
+            if (!reader.TryReadInt64(out var revision, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeWorldActorCapability(id, kind, displayName, isAvailable, revision);
-            if (!IsValidWorldActorCapability(decoded))
-            {
-                error = "World actor capability is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeWorldActorCapability(id, kind, displayName, isAvailable, revision);
             return true;
         }
 

@@ -2,8 +2,9 @@ using System.Globalization;
 
 namespace Mmorpg.Tools.ProtocolGenerator;
 
-// Emits model classes, codecs, and validation for structs and messages. The codecs use the
-// BinaryWriter and BinaryReader helpers of the hand-written RealtimeProtocol core.
+// Emits model classes, codecs, and validation for structs and messages. Writers and readers
+// only move bytes through the PacketWriter and PacketReader of the hand-written core:
+// encoding validates the whole message first, and decoding validates it once at the end.
 internal static class CodecEmitter
 {
     public static string TypeName(WireType type)
@@ -69,21 +70,23 @@ internal static class CodecEmitter
         writer.Close();
     }
 
-    // A lenient struct is decoded somewhere with blank acceptOnDecode, so its reader and validation
-    // take acceptBlankText, which lets its text fields be empty or whitespace.
+    // A lenient struct is decoded somewhere with blank acceptOnDecode, so its validation takes
+    // acceptBlankText, which lets its text fields be empty or whitespace.
     public static void EmitStructCodec(CSharpWriter writer, StructDefinition definition, bool lenient)
     {
         var display = CSharpNames.Display(definition.Name);
         var leniency = lenient ? new Leniency(StructParameter, NestedStructs: false, AllText: true) : null;
-        writer.Open($"private static void Write{definition.Name}(BinaryWriter writer, {definition.ClassName} value)");
-        writer.Open($"if (!IsValid{definition.Name}(value))");
-        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")}, nameof(value));");
-        writer.Close();
-        writer.BlankLine();
+        writer.Open($"private static void Write{definition.Name}(ref PacketWriter writer, {definition.ClassName} value)");
         EmitWrites(writer, definition.Fields, unwrap: false, union: null, display);
         writer.Close();
         writer.BlankLine();
-        EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, validate: true, union: null, leniency);
+        if (!WireSizes.OfFields(definition.Fields).IsFixed)
+        {
+            EmitSizeOf(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, union: null, display);
+            writer.BlankLine();
+        }
+
+        EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, union: null);
         writer.BlankLine();
         EmitIsValid(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, definition.Rules, union: null, leniency);
     }
@@ -122,18 +125,22 @@ internal static class CodecEmitter
         writer.Line($"throw new ArgumentException({invalid}, nameof({parameter}));");
         writer.Close();
         writer.BlankLine();
-        writer.Line($"return Encode(RealtimeMessageType.{message.Name}, writer => Write{message.Name}(writer, {parameter}));");
+        var payload = WireSizes.OfMessage(message);
+        var size = payload.IsFixed
+            ? (payload.Maximum - WireSizes.FrameHeaderSize).ToString(CultureInfo.InvariantCulture)
+            : $"SizeOf{message.Name}({parameter})";
+        writer.Line($"var writer = StartPacket(RealtimeMessageType.{message.Name}, {size});");
+        writer.Line($"Write{message.Name}(ref writer, {parameter});");
+        writer.Line("return writer.Finish();");
         writer.Close();
         writer.BlankLine();
         writer.Open($"public static bool TryDecode{message.Name}(byte[] data, out {modelType} {parameter}, out string error)");
         writer.Line($"{parameter} = {DefaultValue(modelType)};");
-        writer.Open($"if (!TryCreateReader(data, RealtimeMessageType.{message.Name}, out var stream, out var reader, out error))");
-        writer.Line("return false;");
-        writer.Close();
-        writer.BlankLine();
-        writer.Line("using (stream)");
-        writer.Open("using (reader)");
-        writer.Open($"if (!TryRead{message.Name}(reader, out var decoded, out error) || !TryFinish(stream, out error))");
+        OpenCondition(writer, [
+            $"!TryStartPacket(data, RealtimeMessageType.{message.Name}, out var reader, out error)",
+            $"!TryRead{message.Name}(ref reader, out var decoded, out error)",
+            "!reader.TryFinish(out error)"
+        ]);
         writer.Line("return false;");
         writer.Close();
         writer.BlankLine();
@@ -145,13 +152,18 @@ internal static class CodecEmitter
         writer.Line($"{parameter} = decoded;");
         writer.Line("return true;");
         writer.Close();
-        writer.Close();
         writer.BlankLine();
-        writer.Open($"private static void Write{message.Name}(BinaryWriter writer, {modelType} value)");
+        writer.Open($"private static void Write{message.Name}(ref PacketWriter writer, {modelType} value)");
         EmitWrites(writer, message.Fields, unwrap, message.Union, display);
         writer.Close();
         writer.BlankLine();
-        EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, validate: false, message.Union, leniency);
+        if (!payload.IsFixed)
+        {
+            EmitSizeOf(writer, message.Name, modelType, message.Fields, unwrap, message.Union, display);
+            writer.BlankLine();
+        }
+
+        EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, message.Union);
         writer.BlankLine();
         EmitIsValid(writer, message.Name, modelType, message.Fields, unwrap, message.Rules, message.Union, leniency);
     }
@@ -160,18 +172,13 @@ internal static class CodecEmitter
     {
         writer.Summary(message.Description);
         writer.Open($"public static byte[] Encode{message.Name}()");
-        writer.Line($"return Encode(RealtimeMessageType.{message.Name}, _ => {{ }});");
+        writer.Line($"var writer = StartPacket(RealtimeMessageType.{message.Name}, 0);");
+        writer.Line("return writer.Finish();");
         writer.Close();
         writer.BlankLine();
         writer.Open($"public static bool TryDecode{message.Name}(byte[] data, out string error)");
-        writer.Open($"if (!TryCreateReader(data, RealtimeMessageType.{message.Name}, out var stream, out var reader, out error))");
-        writer.Line("return false;");
-        writer.Close();
-        writer.BlankLine();
-        writer.Line("using (stream)");
-        writer.Open("using (reader)");
-        writer.Line("return TryFinish(stream, out error);");
-        writer.Close();
+        writer.Line($"return TryStartPacket(data, RealtimeMessageType.{message.Name}, out var reader, out error)");
+        writer.Line("    && reader.TryFinish(out error);");
         writer.Close();
     }
 
@@ -439,7 +446,7 @@ internal static class CodecEmitter
             if (field.Type is BitsWireType bits)
             {
                 var parts = bits.Bits.Select((bit, index) => $"(value.{bit.Name} ? {1 << index} : 0)");
-                writer.Line($"writer.Write((byte)({string.Join(" | ", parts)}));");
+                writer.Line($"writer.WriteByte((byte)({string.Join(" | ", parts)}));");
                 continue;
             }
 
@@ -455,7 +462,7 @@ internal static class CodecEmitter
             {
                 var flag = "has" + field.Name;
                 writer.Line($"var {flag} = {Presence(field.Type, "value." + field.Name)};");
-                writer.Line($"writer.Write({flag});");
+                writer.Line($"writer.WriteBoolean({flag});");
                 writer.Open($"if ({flag})");
                 EmitWrite(writer, field.Type, "value." + field.Name);
                 writer.Close();
@@ -483,7 +490,7 @@ internal static class CodecEmitter
                     var presenceType = group.Fields.Single(member => member.Field.Name == group.PresenceField).Field.Type;
                     var flag = "has" + group.PresenceField;
                     writer.Line($"var {flag} = {Presence(presenceType, "value." + group.PresenceField)};");
-                    writer.Line($"writer.Write({flag});");
+                    writer.Line($"writer.WriteBoolean({flag});");
                     writer.Open($"if ({flag})");
                     foreach (var member in group.Fields)
                     {
@@ -512,23 +519,20 @@ internal static class CodecEmitter
     {
         switch (type)
         {
-            case PrimitiveType { Kind: PrimitiveKind.Guid }:
-                writer.Line($"WriteGuid(writer, {expression});");
-                break;
-            case PrimitiveType:
-                writer.Line($"writer.Write({expression});");
+            case PrimitiveType primitive:
+                writer.Line($"writer.Write{ReaderSuffix(primitive.Kind)}({expression});");
                 break;
             case EnumWireType:
-                writer.Line($"writer.Write((byte){expression});");
+                writer.Line($"writer.WriteByte((byte){expression});");
                 break;
-            case StringWireType text:
-                writer.Line($"WriteString(writer, {expression}, {text.MaximumLength.Expression}, {CSharpWriter.Literal(expression)}{AllowBlankArgument(text)});");
+            case StringWireType:
+                writer.Line($"writer.WriteString({expression});");
                 break;
             case StructWireType structType:
-                writer.Line($"Write{structType.Definition.Name}(writer, {expression});");
+                writer.Line($"Write{structType.Definition.Name}(ref writer, {expression});");
                 break;
             case ArrayWireType array:
-                writer.Line($"writer.Write((byte){expression}.Length);");
+                writer.Line($"writer.WriteByte((byte){expression}.Length);");
                 writer.Open($"foreach (var item in {expression})");
                 EmitWrite(writer, array.Element.Type, "item");
                 writer.Close();
@@ -538,20 +542,169 @@ internal static class CodecEmitter
         }
     }
 
+    // The exact payload size of a value, so encoding allocates one array of that size.
+    // Fixed-size parts add up to one constant.
+    private static void EmitSizeOf(
+        CSharpWriter writer,
+        string name,
+        string modelType,
+        IReadOnlyList<FieldDefinition> fields,
+        bool unwrap,
+        UnionDefinition? union,
+        string display)
+    {
+        writer.Open($"private static int SizeOf{name}({modelType} value)");
+        var constant = 0L;
+        var statements = new List<Action>();
+        foreach (var field in fields)
+        {
+            var expression = unwrap ? "value" : "value." + field.Name;
+            if (field.Presence == FieldPresence.Conditional)
+            {
+                statements.Add(() =>
+                {
+                    writer.Open($"if ({Condition(field, "value.")})");
+                    EmitSizeAdd(writer, [(field.Type, expression)]);
+                    writer.Close();
+                    writer.BlankLine();
+                });
+                continue;
+            }
+
+            if (field.Presence == FieldPresence.Optional)
+            {
+                constant += 1;
+                statements.Add(() =>
+                {
+                    writer.Open($"if ({Presence(field.Type, expression)})");
+                    EmitSizeAdd(writer, [(field.Type, expression)]);
+                    writer.Close();
+                    writer.BlankLine();
+                });
+                continue;
+            }
+
+            var size = WireSizes.Of(field.Type);
+            if (size.IsFixed)
+            {
+                constant += size.Maximum;
+                continue;
+            }
+
+            statements.Add(() => EmitSizeAdd(writer, [(field.Type, expression)]));
+        }
+
+        if (union is not null)
+        {
+            statements.Add(() => EmitUnionSize(writer, fields, union, display));
+        }
+
+        if (statements.Count == 0)
+        {
+            writer.Line($"return {constant.ToString(CultureInfo.InvariantCulture)};");
+            writer.Close();
+            return;
+        }
+
+        writer.Line($"var size = {constant.ToString(CultureInfo.InvariantCulture)};");
+        foreach (var statement in statements)
+        {
+            statement();
+        }
+
+        writer.Line("return size;");
+        writer.Close();
+    }
+
+    private static void EmitUnionSize(CSharpWriter writer, IReadOnlyList<FieldDefinition> fields, UnionDefinition union, string display)
+    {
+        var enumClass = TypeName(fields.Single(field => field.Name == union.Discriminator).Type);
+        writer.Open($"switch (value.{union.Discriminator})");
+        foreach (var unionCase in union.Cases)
+        {
+            OpenCaseLabels(writer, unionCase, enumClass);
+            var values = new List<(WireType Type, string Expression)>();
+            var groups = new List<UnionGroupEntry>();
+            foreach (var entry in unionCase.Entries)
+            {
+                if (entry is UnionGroupEntry group)
+                {
+                    values.Add((new PrimitiveType(PrimitiveKind.Bool), string.Empty));
+                    groups.Add(group);
+                    continue;
+                }
+
+                var field = (UnionFieldEntry)entry;
+                values.Add((field.Field.Type, "value." + field.Field.Name));
+            }
+
+            EmitSizeAdd(writer, values);
+            foreach (var group in groups)
+            {
+                var presenceType = group.Fields.Single(member => member.Field.Name == group.PresenceField).Field.Type;
+                writer.Open($"if ({Presence(presenceType, "value." + group.PresenceField)})");
+                EmitSizeAdd(writer, group.Fields.Select(member => (member.Field.Type, "value." + member.Field.Name)).ToArray());
+                writer.Close();
+                writer.BlankLine();
+            }
+
+            writer.Line("break;");
+            writer.Close();
+        }
+
+        writer.Open("default:");
+        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")}, nameof(value));");
+        writer.Close();
+        writer.Close();
+        writer.BlankLine();
+    }
+
+    // Adds the sizes of present values: one line for the fixed-size ones, then one per value
+    // whose size depends on its content.
+    private static void EmitSizeAdd(CSharpWriter writer, IReadOnlyList<(WireType Type, string Expression)> values)
+    {
+        var constant = values.Select(value => WireSizes.Of(value.Type)).Where(size => size.IsFixed).Sum(size => size.Maximum);
+        if (constant > 0)
+        {
+            writer.Line($"size += {constant.ToString(CultureInfo.InvariantCulture)};");
+        }
+
+        foreach (var (type, expression) in values.Where(value => !WireSizes.Of(value.Type).IsFixed))
+        {
+            switch (type)
+            {
+                case StringWireType:
+                    writer.Line($"size += StringSize({expression});");
+                    break;
+                case StructWireType structType:
+                    writer.Line($"size += SizeOf{structType.Definition.Name}({expression});");
+                    break;
+                case ArrayWireType array when WireSizes.Of(array.Element.Type).IsFixed:
+                    var elementSize = WireSizes.Of(array.Element.Type).Maximum.ToString(CultureInfo.InvariantCulture);
+                    writer.Line($"size += 1 + ({expression}.Length * {elementSize});");
+                    break;
+                case ArrayWireType array:
+                    writer.Line("size += 1;");
+                    writer.Open($"foreach (var item in {expression})");
+                    EmitSizeAdd(writer, [(array.Element.Type, "item")]);
+                    writer.Close();
+                    writer.BlankLine();
+                    break;
+                default:
+                    throw new InvalidOperationException($"Type {type} has no size.");
+            }
+        }
+    }
+
     private static void EmitTryRead(
         CSharpWriter writer,
         string name,
         string modelType,
         IReadOnlyList<FieldDefinition> fields,
         bool unwrap,
-        bool validate,
-        UnionDefinition? union,
-        Leniency? leniency)
+        UnionDefinition? union)
     {
-        // A lenient struct reader takes the flag that its validation needs.
-        var structLeniency = validate && leniency is not null;
-        writer.Open($"private static bool TryRead{name}(BinaryReader reader, out {modelType} value, out string error"
-            + (structLeniency ? $", bool {leniency!.Parameter} = false)" : ")"));
+        writer.Open($"private static bool TryRead{name}(ref PacketReader reader, out {modelType} value, out string error)");
         writer.Line($"value = {DefaultValue(modelType)};");
         var arguments = new List<string>();
         foreach (var field in fields)
@@ -597,7 +750,7 @@ internal static class CodecEmitter
                 continue;
             }
 
-            arguments.Add(EmitRead(writer, field.Type, local, fieldDisplay, lenient: field.AcceptBlankOnDecode));
+            arguments.Add(EmitRead(writer, field.Type, local, fieldDisplay));
         }
 
         if (union is not null)
@@ -619,22 +772,7 @@ internal static class CodecEmitter
             return;
         }
 
-        var construction = $"new {modelType}({string.Join(", ", arguments)})";
-        if (!validate)
-        {
-            writer.Line($"value = {construction};");
-            writer.Line("return true;");
-            writer.Close();
-            return;
-        }
-
-        writer.Line($"var decoded = {construction};");
-        writer.Open($"if (!IsValid{name}(decoded{(structLeniency ? ", " + leniency!.Parameter : string.Empty)}))");
-        writer.Line($"error = {CSharpWriter.Literal(CSharpNames.Display(name) + " is invalid.")};");
-        writer.Line("return false;");
-        writer.Close();
-        writer.BlankLine();
-        writer.Line("value = decoded;");
+        writer.Line($"value = new {modelType}({string.Join(", ", arguments)});");
         writer.Line("return true;");
         writer.Close();
     }
@@ -710,7 +848,7 @@ internal static class CodecEmitter
     }
 
     // Reads one value into a new local and returns the expression that holds it.
-    private static string EmitRead(CSharpWriter writer, WireType type, string local, string display, bool lenient = false)
+    private static string EmitRead(CSharpWriter writer, WireType type, string local, string display)
     {
         switch (type)
         {
@@ -718,7 +856,7 @@ internal static class CodecEmitter
                 EmitPrimitiveRead(writer, ReaderSuffix(primitive.Kind), local);
                 return local;
             case StringWireType text:
-                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out var {local}, out error{AllowBlankArgument(text)}))");
+                writer.Open($"if (!reader.TryReadString({text.MaximumLength.Expression}, out var {local}, out error{AllowBlankArgument(text)}))");
                 writer.Line("return false;");
                 writer.Close();
                 writer.BlankLine();
@@ -729,7 +867,7 @@ internal static class CodecEmitter
                 writer.BlankLine();
                 return local;
             case StructWireType structType:
-                writer.Open($"if (!TryRead{structType.Definition.Name}(reader, out var {local}, out error{(lenient ? ", " + StructParameter + ": true" : string.Empty)}))");
+                writer.Open($"if (!TryRead{structType.Definition.Name}(ref reader, out var {local}, out error))");
                 writer.Line("return false;");
                 writer.Close();
                 writer.BlankLine();
@@ -750,10 +888,10 @@ internal static class CodecEmitter
         switch (type)
         {
             case PrimitiveType primitive:
-                writer.Open($"if (!TryRead{ReaderSuffix(primitive.Kind)}(reader, out {target}, out error))");
+                writer.Open($"if (!reader.TryRead{ReaderSuffix(primitive.Kind)}(out {target}, out error))");
                 break;
             case StringWireType text:
-                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out {target}, out error{AllowBlankArgument(text)}))");
+                writer.Open($"if (!reader.TryReadString({text.MaximumLength.Expression}, out {target}, out error{AllowBlankArgument(text)}))");
                 break;
             case EnumWireType enumType:
                 EmitPrimitiveRead(writer, "Byte", target + "Byte");
@@ -761,7 +899,7 @@ internal static class CodecEmitter
                 writer.BlankLine();
                 return;
             case StructWireType structType:
-                writer.Open($"if (!TryRead{structType.Definition.Name}(reader, out {target}, out error))");
+                writer.Open($"if (!TryRead{structType.Definition.Name}(ref reader, out {target}, out error))");
                 break;
             case ArrayWireType array:
                 EmitArrayCount(writer, array, target, display);
@@ -782,7 +920,7 @@ internal static class CodecEmitter
     {
         var call = type switch
         {
-            PrimitiveType primitive => $"TryRead{ReaderSuffix(primitive.Kind)}(reader, out _, out error)",
+            PrimitiveType primitive => $"reader.TryRead{ReaderSuffix(primitive.Kind)}(out _, out error)",
             _ => throw new InvalidOperationException($"Fixed fields of type {type} are not supported.")
         };
         writer.Open($"if (!{call})");
@@ -825,7 +963,7 @@ internal static class CodecEmitter
 
     private static void EmitPrimitiveRead(CSharpWriter writer, string suffix, string local)
     {
-        writer.Open($"if (!TryRead{suffix}(reader, out var {local}, out error))");
+        writer.Open($"if (!reader.TryRead{suffix}(out var {local}, out error))");
         writer.Line("return false;");
         writer.Close();
         writer.BlankLine();

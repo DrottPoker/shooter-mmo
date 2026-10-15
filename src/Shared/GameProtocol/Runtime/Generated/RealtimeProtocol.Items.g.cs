@@ -3,7 +3,6 @@
 // Change the schema and run the generator instead of editing this file.
 // </auto-generated>
 using System;
-using System.IO;
 
 namespace Mmorpg.GameProtocol
 {
@@ -517,45 +516,40 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Carry state changed is invalid.", nameof(carryState));
             }
 
-            return Encode(RealtimeMessageType.CarryStateChanged, writer => WriteCarryStateChanged(writer, carryState));
+            var writer = StartPacket(RealtimeMessageType.CarryStateChanged, 24);
+            WriteCarryStateChanged(ref writer, carryState);
+            return writer.Finish();
         }
 
         public static bool TryDecodeCarryStateChanged(byte[] data, out RealtimeCarryState carryState, out string error)
         {
             carryState = null;
-            if (!TryCreateReader(data, RealtimeMessageType.CarryStateChanged, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.CarryStateChanged, out var reader, out error)
+                || !TryReadCarryStateChanged(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidCarryStateChanged(decoded))
             {
-                if (!TryReadCarryStateChanged(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidCarryStateChanged(decoded))
-                {
-                    error = "Carry state changed is invalid.";
-                    return false;
-                }
-
-                carryState = decoded;
-                return true;
+                error = "Carry state changed is invalid.";
+                return false;
             }
+
+            carryState = decoded;
+            return true;
         }
 
-        private static void WriteCarryStateChanged(BinaryWriter writer, RealtimeCarryState value)
+        private static void WriteCarryStateChanged(ref PacketWriter writer, RealtimeCarryState value)
         {
-            WriteCarryState(writer, value);
+            WriteCarryState(ref writer, value);
         }
 
-        private static bool TryReadCarryStateChanged(BinaryReader reader, out RealtimeCarryState value, out string error)
+        private static bool TryReadCarryStateChanged(ref PacketReader reader, out RealtimeCarryState value, out string error)
         {
             value = null;
-            if (!TryReadCarryState(reader, out var carryState, out error))
+            if (!TryReadCarryState(ref reader, out var carryState, out error))
             {
                 return false;
             }
@@ -584,100 +578,95 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Item operation intent is invalid.", nameof(intent));
             }
 
-            return Encode(RealtimeMessageType.ItemOperationIntent, writer => WriteItemOperationIntent(writer, intent));
+            var writer = StartPacket(RealtimeMessageType.ItemOperationIntent, SizeOfItemOperationIntent(intent));
+            WriteItemOperationIntent(ref writer, intent);
+            return writer.Finish();
         }
 
         public static bool TryDecodeItemOperationIntent(byte[] data, out RealtimeItemOperationIntent intent, out string error)
         {
             intent = null;
-            if (!TryCreateReader(data, RealtimeMessageType.ItemOperationIntent, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.ItemOperationIntent, out var reader, out error)
+                || !TryReadItemOperationIntent(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidItemOperationIntent(decoded))
             {
-                if (!TryReadItemOperationIntent(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidItemOperationIntent(decoded))
-                {
-                    error = "Item operation intent is invalid.";
-                    return false;
-                }
-
-                intent = decoded;
-                return true;
+                error = "Item operation intent is invalid.";
+                return false;
             }
+
+            intent = decoded;
+            return true;
         }
 
-        private static void WriteItemOperationIntent(BinaryWriter writer, RealtimeItemOperationIntent value)
+        private static void WriteItemOperationIntent(ref PacketWriter writer, RealtimeItemOperationIntent value)
         {
-            WriteGuid(writer, value.OperationId);
-            writer.Write((byte)value.OperationKind);
-            writer.Write(value.ExpectedCharacterRevision);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteByte((byte)value.OperationKind);
+            writer.WriteInt64(value.ExpectedCharacterRevision);
 
             switch (value.OperationKind)
             {
                 case RealtimeItemOperationKind.Relocate:
                 case RealtimeItemOperationKind.Unequip:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    WriteGuid(writer, value.DestinationContainerId);
-                    writer.Write(value.DestinationSlotIndex);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteGuid(value.DestinationContainerId);
+                    writer.WriteInt32(value.DestinationSlotIndex);
                     break;
                 }
                 case RealtimeItemOperationKind.Equip:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    WriteString(writer, value.EquipmentSlotId, MaximumEquipmentSlotIdLength, "value.EquipmentSlotId");
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteString(value.EquipmentSlotId);
                     break;
                 }
                 case RealtimeItemOperationKind.SplitStack:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    writer.Write(value.Quantity);
-                    WriteGuid(writer, value.DestinationContainerId);
-                    writer.Write(value.DestinationSlotIndex);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteInt32(value.Quantity);
+                    writer.WriteGuid(value.DestinationContainerId);
+                    writer.WriteInt32(value.DestinationSlotIndex);
                     break;
                 }
                 case RealtimeItemOperationKind.MergeStacks:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    WriteGuid(writer, value.TargetItemInstanceId);
-                    writer.Write(value.ExpectedTargetItemRevision);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteGuid(value.TargetItemInstanceId);
+                    writer.WriteInt64(value.ExpectedTargetItemRevision);
                     break;
                 }
                 case RealtimeItemOperationKind.SwapContainerItems:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
-                    WriteGuid(writer, value.TargetItemInstanceId);
-                    writer.Write(value.ExpectedTargetItemRevision);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteGuid(value.TargetItemInstanceId);
+                    writer.WriteInt64(value.ExpectedTargetItemRevision);
                     break;
                 }
                 case RealtimeItemOperationKind.Destroy:
                 {
-                    WriteGuid(writer, value.ItemInstanceId);
-                    writer.Write(value.ExpectedItemRevision);
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
                     break;
                 }
                 case RealtimeItemOperationKind.ClaimRecoveryDelivery:
                 {
-                    WriteGuid(writer, value.RecoveryDeliveryId);
-                    writer.Write(value.ExpectedRecoveryDeliveryRevision);
-                    WriteGuid(writer, value.DestinationContainerId);
-                    writer.Write((byte)value.Items.Length);
+                    writer.WriteGuid(value.RecoveryDeliveryId);
+                    writer.WriteInt64(value.ExpectedRecoveryDeliveryRevision);
+                    writer.WriteGuid(value.DestinationContainerId);
+                    writer.WriteByte((byte)value.Items.Length);
                     foreach (var item in value.Items)
                     {
-                        WriteItemRevisionExpectation(writer, item);
+                        WriteItemRevisionExpectation(ref writer, item);
                     }
                     break;
                 }
@@ -688,22 +677,74 @@ namespace Mmorpg.GameProtocol
             }
         }
 
-        private static bool TryReadItemOperationIntent(BinaryReader reader, out RealtimeItemOperationIntent value, out string error)
+        private static int SizeOfItemOperationIntent(RealtimeItemOperationIntent value)
+        {
+            var size = 25;
+            switch (value.OperationKind)
+            {
+                case RealtimeItemOperationKind.Relocate:
+                case RealtimeItemOperationKind.Unequip:
+                {
+                    size += 44;
+                    break;
+                }
+                case RealtimeItemOperationKind.Equip:
+                {
+                    size += 24;
+                    size += StringSize(value.EquipmentSlotId);
+                    break;
+                }
+                case RealtimeItemOperationKind.SplitStack:
+                {
+                    size += 48;
+                    break;
+                }
+                case RealtimeItemOperationKind.MergeStacks:
+                {
+                    size += 48;
+                    break;
+                }
+                case RealtimeItemOperationKind.SwapContainerItems:
+                {
+                    size += 48;
+                    break;
+                }
+                case RealtimeItemOperationKind.Destroy:
+                {
+                    size += 24;
+                    break;
+                }
+                case RealtimeItemOperationKind.ClaimRecoveryDelivery:
+                {
+                    size += 40;
+                    size += 1 + (value.Items.Length * 24);
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Item operation intent is invalid.", nameof(value));
+                }
+            }
+
+            return size;
+        }
+
+        private static bool TryReadItemOperationIntent(ref PacketReader reader, out RealtimeItemOperationIntent value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var operationKindByte, out error))
+            if (!reader.TryReadByte(out var operationKindByte, out error))
             {
                 return false;
             }
 
             var operationKind = (RealtimeItemOperationKind)operationKindByte;
 
-            if (!TryReadInt64(reader, out var expectedCharacterRevision, out error))
+            if (!reader.TryReadInt64(out var expectedCharacterRevision, out error))
             {
                 return false;
             }
@@ -725,22 +766,22 @@ namespace Mmorpg.GameProtocol
                 case RealtimeItemOperationKind.Relocate:
                 case RealtimeItemOperationKind.Unequip:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out destinationContainerId, out error))
+                    if (!reader.TryReadGuid(out destinationContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out destinationSlotIndex, out error))
+                    if (!reader.TryReadInt32(out destinationSlotIndex, out error))
                     {
                         return false;
                     }
@@ -749,17 +790,17 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.Equip:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadString(reader, MaximumEquipmentSlotIdLength, out equipmentSlotId, out error))
+                    if (!reader.TryReadString(MaximumEquipmentSlotIdLength, out equipmentSlotId, out error))
                     {
                         return false;
                     }
@@ -768,27 +809,27 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.SplitStack:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out quantity, out error))
+                    if (!reader.TryReadInt32(out quantity, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out destinationContainerId, out error))
+                    if (!reader.TryReadGuid(out destinationContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt32(reader, out destinationSlotIndex, out error))
+                    if (!reader.TryReadInt32(out destinationSlotIndex, out error))
                     {
                         return false;
                     }
@@ -797,22 +838,22 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.MergeStacks:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out targetItemInstanceId, out error))
+                    if (!reader.TryReadGuid(out targetItemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedTargetItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedTargetItemRevision, out error))
                     {
                         return false;
                     }
@@ -821,22 +862,22 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.SwapContainerItems:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out targetItemInstanceId, out error))
+                    if (!reader.TryReadGuid(out targetItemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedTargetItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedTargetItemRevision, out error))
                     {
                         return false;
                     }
@@ -845,12 +886,12 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.Destroy:
                 {
-                    if (!TryReadGuid(reader, out itemInstanceId, out error))
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedItemRevision, out error))
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
                     {
                         return false;
                     }
@@ -859,22 +900,22 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.ClaimRecoveryDelivery:
                 {
-                    if (!TryReadGuid(reader, out recoveryDeliveryId, out error))
+                    if (!reader.TryReadGuid(out recoveryDeliveryId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadInt64(reader, out expectedRecoveryDeliveryRevision, out error))
+                    if (!reader.TryReadInt64(out expectedRecoveryDeliveryRevision, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadGuid(reader, out destinationContainerId, out error))
+                    if (!reader.TryReadGuid(out destinationContainerId, out error))
                     {
                         return false;
                     }
 
-                    if (!TryReadByte(reader, out var itemsCount, out error))
+                    if (!reader.TryReadByte(out var itemsCount, out error))
                     {
                         return false;
                     }
@@ -888,7 +929,7 @@ namespace Mmorpg.GameProtocol
                     items = new RealtimeItemRevisionExpectation[itemsCount];
                     for (var index = 0; index < items.Length; index++)
                     {
-                        if (!TryReadItemRevisionExpectation(reader, out var element, out error))
+                        if (!TryReadItemRevisionExpectation(ref reader, out var element, out error))
                         {
                             return false;
                         }
@@ -1034,90 +1075,99 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Item operation result is invalid.", nameof(result));
             }
 
-            return Encode(RealtimeMessageType.ItemOperationResult, writer => WriteItemOperationResult(writer, result));
+            var writer = StartPacket(RealtimeMessageType.ItemOperationResult, SizeOfItemOperationResult(result));
+            WriteItemOperationResult(ref writer, result);
+            return writer.Finish();
         }
 
         public static bool TryDecodeItemOperationResult(byte[] data, out RealtimeItemOperationResult result, out string error)
         {
             result = null;
-            if (!TryCreateReader(data, RealtimeMessageType.ItemOperationResult, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.ItemOperationResult, out var reader, out error)
+                || !TryReadItemOperationResult(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidItemOperationResult(decoded))
             {
-                if (!TryReadItemOperationResult(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidItemOperationResult(decoded))
-                {
-                    error = "Item operation result is invalid.";
-                    return false;
-                }
-
-                result = decoded;
-                return true;
+                error = "Item operation result is invalid.";
+                return false;
             }
+
+            result = decoded;
+            return true;
         }
 
-        private static void WriteItemOperationResult(BinaryWriter writer, RealtimeItemOperationResult value)
+        private static void WriteItemOperationResult(ref PacketWriter writer, RealtimeItemOperationResult value)
         {
-            WriteGuid(writer, value.OperationId);
-            writer.Write((byte)value.OperationKind);
-            writer.Write(value.Succeeded);
-            writer.Write(value.RequiresInventoryRefresh);
-            WriteCarryState(writer, value.CarryState);
+            writer.WriteGuid(value.OperationId);
+            writer.WriteByte((byte)value.OperationKind);
+            writer.WriteBoolean(value.Succeeded);
+            writer.WriteBoolean(value.RequiresInventoryRefresh);
+            WriteCarryState(ref writer, value.CarryState);
             if (!value.Succeeded)
             {
-                WriteError(writer, value.Error);
+                WriteError(ref writer, value.Error);
             }
-            writer.Write((byte)value.ItemRevisions.Length);
+            writer.WriteByte((byte)value.ItemRevisions.Length);
             foreach (var item in value.ItemRevisions)
             {
-                WriteItemRevision(writer, item);
+                WriteItemRevision(ref writer, item);
             }
-            writer.Write((byte)value.ContainerRevisions.Length);
+            writer.WriteByte((byte)value.ContainerRevisions.Length);
             foreach (var item in value.ContainerRevisions)
             {
-                WriteContainerRevision(writer, item);
+                WriteContainerRevision(ref writer, item);
             }
-            writer.Write((byte)value.RecoveryDeliveryIds.Length);
+            writer.WriteByte((byte)value.RecoveryDeliveryIds.Length);
             foreach (var item in value.RecoveryDeliveryIds)
             {
-                WriteGuid(writer, item);
+                writer.WriteGuid(item);
             }
         }
 
-        private static bool TryReadItemOperationResult(BinaryReader reader, out RealtimeItemOperationResult value, out string error)
+        private static int SizeOfItemOperationResult(RealtimeItemOperationResult value)
+        {
+            var size = 43;
+            if (!value.Succeeded)
+            {
+                size += SizeOfError(value.Error);
+            }
+
+            size += 1 + (value.ItemRevisions.Length * 24);
+            size += 1 + (value.ContainerRevisions.Length * 24);
+            size += 1 + (value.RecoveryDeliveryIds.Length * 16);
+            return size;
+        }
+
+        private static bool TryReadItemOperationResult(ref PacketReader reader, out RealtimeItemOperationResult value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var operationId, out error))
+            if (!reader.TryReadGuid(out var operationId, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var operationKindByte, out error))
+            if (!reader.TryReadByte(out var operationKindByte, out error))
             {
                 return false;
             }
 
             var operationKind = (RealtimeItemOperationKind)operationKindByte;
 
-            if (!TryReadBoolean(reader, out var succeeded, out error))
+            if (!reader.TryReadBoolean(out var succeeded, out error))
             {
                 return false;
             }
 
-            if (!TryReadBoolean(reader, out var requiresInventoryRefresh, out error))
+            if (!reader.TryReadBoolean(out var requiresInventoryRefresh, out error))
             {
                 return false;
             }
 
-            if (!TryReadCarryState(reader, out var carryState, out error))
+            if (!TryReadCarryState(ref reader, out var carryState, out error))
             {
                 return false;
             }
@@ -1125,13 +1175,13 @@ namespace Mmorpg.GameProtocol
             RealtimeError errorValue = null;
             if (!succeeded)
             {
-                if (!TryReadError(reader, out errorValue, out error))
+                if (!TryReadError(ref reader, out errorValue, out error))
                 {
                     return false;
                 }
             }
 
-            if (!TryReadByte(reader, out var itemRevisionsCount, out error))
+            if (!reader.TryReadByte(out var itemRevisionsCount, out error))
             {
                 return false;
             }
@@ -1145,7 +1195,7 @@ namespace Mmorpg.GameProtocol
             var itemRevisions = new RealtimeItemRevision[itemRevisionsCount];
             for (var index = 0; index < itemRevisions.Length; index++)
             {
-                if (!TryReadItemRevision(reader, out var element, out error))
+                if (!TryReadItemRevision(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -1153,7 +1203,7 @@ namespace Mmorpg.GameProtocol
                 itemRevisions[index] = element;
             }
 
-            if (!TryReadByte(reader, out var containerRevisionsCount, out error))
+            if (!reader.TryReadByte(out var containerRevisionsCount, out error))
             {
                 return false;
             }
@@ -1167,7 +1217,7 @@ namespace Mmorpg.GameProtocol
             var containerRevisions = new RealtimeContainerRevision[containerRevisionsCount];
             for (var index = 0; index < containerRevisions.Length; index++)
             {
-                if (!TryReadContainerRevision(reader, out var element, out error))
+                if (!TryReadContainerRevision(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -1175,7 +1225,7 @@ namespace Mmorpg.GameProtocol
                 containerRevisions[index] = element;
             }
 
-            if (!TryReadByte(reader, out var recoveryDeliveryIdsCount, out error))
+            if (!reader.TryReadByte(out var recoveryDeliveryIdsCount, out error))
             {
                 return false;
             }
@@ -1189,7 +1239,7 @@ namespace Mmorpg.GameProtocol
             var recoveryDeliveryIds = new Guid[recoveryDeliveryIdsCount];
             for (var index = 0; index < recoveryDeliveryIds.Length; index++)
             {
-                if (!TryReadGuid(reader, out var element, out error))
+                if (!reader.TryReadGuid(out var element, out error))
                 {
                     return false;
                 }
@@ -1246,44 +1296,32 @@ namespace Mmorpg.GameProtocol
             return SatisfiesRules(value);
         }
 
-        private static void WriteCarryState(BinaryWriter writer, RealtimeCarryState value)
+        private static void WriteCarryState(ref PacketWriter writer, RealtimeCarryState value)
         {
-            if (!IsValidCarryState(value))
-            {
-                throw new ArgumentException("Carry state is invalid.", nameof(value));
-            }
-
-            writer.Write(value.ItemStateRevision);
-            writer.Write(value.CarriedWeight);
-            writer.Write(value.CarryCapacity);
+            writer.WriteInt64(value.ItemStateRevision);
+            writer.WriteInt64(value.CarriedWeight);
+            writer.WriteInt64(value.CarryCapacity);
         }
 
-        private static bool TryReadCarryState(BinaryReader reader, out RealtimeCarryState value, out string error)
+        private static bool TryReadCarryState(ref PacketReader reader, out RealtimeCarryState value, out string error)
         {
             value = null;
-            if (!TryReadInt64(reader, out var itemStateRevision, out error))
+            if (!reader.TryReadInt64(out var itemStateRevision, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var carriedWeight, out error))
+            if (!reader.TryReadInt64(out var carriedWeight, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var carryCapacity, out error))
+            if (!reader.TryReadInt64(out var carryCapacity, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeCarryState(itemStateRevision, carriedWeight, carryCapacity);
-            if (!IsValidCarryState(decoded))
-            {
-                error = "Carry state is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeCarryState(itemStateRevision, carriedWeight, carryCapacity);
             return true;
         }
 
@@ -1300,38 +1338,26 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteItemRevisionExpectation(BinaryWriter writer, RealtimeItemRevisionExpectation value)
+        private static void WriteItemRevisionExpectation(ref PacketWriter writer, RealtimeItemRevisionExpectation value)
         {
-            if (!IsValidItemRevisionExpectation(value))
-            {
-                throw new ArgumentException("Item revision expectation is invalid.", nameof(value));
-            }
-
-            WriteGuid(writer, value.ItemInstanceId);
-            writer.Write(value.Revision);
+            writer.WriteGuid(value.ItemInstanceId);
+            writer.WriteInt64(value.Revision);
         }
 
-        private static bool TryReadItemRevisionExpectation(BinaryReader reader, out RealtimeItemRevisionExpectation value, out string error)
+        private static bool TryReadItemRevisionExpectation(ref PacketReader reader, out RealtimeItemRevisionExpectation value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var itemInstanceId, out error))
+            if (!reader.TryReadGuid(out var itemInstanceId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var revision, out error))
+            if (!reader.TryReadInt64(out var revision, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeItemRevisionExpectation(itemInstanceId, revision);
-            if (!IsValidItemRevisionExpectation(decoded))
-            {
-                error = "Item revision expectation is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeItemRevisionExpectation(itemInstanceId, revision);
             return true;
         }
 
@@ -1347,38 +1373,26 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteItemRevision(BinaryWriter writer, RealtimeItemRevision value)
+        private static void WriteItemRevision(ref PacketWriter writer, RealtimeItemRevision value)
         {
-            if (!IsValidItemRevision(value))
-            {
-                throw new ArgumentException("Item revision is invalid.", nameof(value));
-            }
-
-            WriteGuid(writer, value.ItemInstanceId);
-            writer.Write(value.Revision);
+            writer.WriteGuid(value.ItemInstanceId);
+            writer.WriteInt64(value.Revision);
         }
 
-        private static bool TryReadItemRevision(BinaryReader reader, out RealtimeItemRevision value, out string error)
+        private static bool TryReadItemRevision(ref PacketReader reader, out RealtimeItemRevision value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var itemInstanceId, out error))
+            if (!reader.TryReadGuid(out var itemInstanceId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var revision, out error))
+            if (!reader.TryReadInt64(out var revision, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeItemRevision(itemInstanceId, revision);
-            if (!IsValidItemRevision(decoded))
-            {
-                error = "Item revision is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeItemRevision(itemInstanceId, revision);
             return true;
         }
 
@@ -1394,38 +1408,26 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteContainerRevision(BinaryWriter writer, RealtimeContainerRevision value)
+        private static void WriteContainerRevision(ref PacketWriter writer, RealtimeContainerRevision value)
         {
-            if (!IsValidContainerRevision(value))
-            {
-                throw new ArgumentException("Container revision is invalid.", nameof(value));
-            }
-
-            WriteGuid(writer, value.ContainerId);
-            writer.Write(value.Revision);
+            writer.WriteGuid(value.ContainerId);
+            writer.WriteInt64(value.Revision);
         }
 
-        private static bool TryReadContainerRevision(BinaryReader reader, out RealtimeContainerRevision value, out string error)
+        private static bool TryReadContainerRevision(ref PacketReader reader, out RealtimeContainerRevision value, out string error)
         {
             value = null;
-            if (!TryReadGuid(reader, out var containerId, out error))
+            if (!reader.TryReadGuid(out var containerId, out error))
             {
                 return false;
             }
 
-            if (!TryReadInt64(reader, out var revision, out error))
+            if (!reader.TryReadInt64(out var revision, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeContainerRevision(containerId, revision);
-            if (!IsValidContainerRevision(decoded))
-            {
-                error = "Container revision is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeContainerRevision(containerId, revision);
             return true;
         }
 

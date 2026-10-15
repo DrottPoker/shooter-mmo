@@ -67,6 +67,13 @@ from the package path, so no Unity Editor step is needed and every machine gets
 the same GUID. Generated C# stays within C# 8 and .NET Standard 2.1, because the
 .NET project compiles it with C# 8, which Unity's C# 9 compiler also accepts.
 
+Encoding validates the value, computes the exact packet size with generated
+`SizeOf` methods, allocates one array of that size, and writes it through the
+`PacketWriter` in `RealtimeProtocol.cs`. Decoding reads through `PacketReader`, a
+view over the packet bytes, so it allocates only the decoded values. Both use
+`BinaryPrimitives` for explicit little-endian access, so the bytes do not depend
+on the platform.
+
 Every family is generated from the schema. A family folder holds only what the
 schema cannot say:
 

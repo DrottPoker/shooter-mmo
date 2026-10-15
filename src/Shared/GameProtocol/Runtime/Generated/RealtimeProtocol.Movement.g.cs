@@ -3,7 +3,6 @@
 // Change the schema and run the generator instead of editing this file.
 // </auto-generated>
 using System;
-using System.IO;
 
 namespace Mmorpg.GameProtocol
 {
@@ -357,49 +356,51 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Movement input batch is invalid.", nameof(inputs));
             }
 
-            return Encode(RealtimeMessageType.MovementInputBatch, writer => WriteMovementInputBatch(writer, inputs));
+            var writer = StartPacket(RealtimeMessageType.MovementInputBatch, SizeOfMovementInputBatch(inputs));
+            WriteMovementInputBatch(ref writer, inputs);
+            return writer.Finish();
         }
 
         public static bool TryDecodeMovementInputBatch(byte[] data, out RealtimeMovementInput[] inputs, out string error)
         {
             inputs = null;
-            if (!TryCreateReader(data, RealtimeMessageType.MovementInputBatch, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.MovementInputBatch, out var reader, out error)
+                || !TryReadMovementInputBatch(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidMovementInputBatch(decoded))
             {
-                if (!TryReadMovementInputBatch(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidMovementInputBatch(decoded))
-                {
-                    error = "Movement input batch is invalid.";
-                    return false;
-                }
-
-                inputs = decoded;
-                return true;
+                error = "Movement input batch is invalid.";
+                return false;
             }
+
+            inputs = decoded;
+            return true;
         }
 
-        private static void WriteMovementInputBatch(BinaryWriter writer, RealtimeMovementInput[] value)
+        private static void WriteMovementInputBatch(ref PacketWriter writer, RealtimeMovementInput[] value)
         {
-            writer.Write((byte)value.Length);
+            writer.WriteByte((byte)value.Length);
             foreach (var item in value)
             {
-                WriteMovementInput(writer, item);
+                WriteMovementInput(ref writer, item);
             }
         }
 
-        private static bool TryReadMovementInputBatch(BinaryReader reader, out RealtimeMovementInput[] value, out string error)
+        private static int SizeOfMovementInputBatch(RealtimeMovementInput[] value)
+        {
+            var size = 0;
+            size += 1 + (value.Length * 21);
+            return size;
+        }
+
+        private static bool TryReadMovementInputBatch(ref PacketReader reader, out RealtimeMovementInput[] value, out string error)
         {
             value = null;
-            if (!TryReadByte(reader, out var inputsCount, out error))
+            if (!reader.TryReadByte(out var inputsCount, out error))
             {
                 return false;
             }
@@ -413,7 +414,7 @@ namespace Mmorpg.GameProtocol
             var inputs = new RealtimeMovementInput[inputsCount];
             for (var index = 0; index < inputs.Length; index++)
             {
-                if (!TryReadMovementInput(reader, out var element, out error))
+                if (!TryReadMovementInput(ref reader, out var element, out error))
                 {
                     return false;
                 }
@@ -455,63 +456,58 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Owner simulation snapshot is invalid.", nameof(snapshot));
             }
 
-            return Encode(RealtimeMessageType.OwnerSimulationSnapshot, writer => WriteOwnerSimulationSnapshot(writer, snapshot));
+            var writer = StartPacket(RealtimeMessageType.OwnerSimulationSnapshot, 41);
+            WriteOwnerSimulationSnapshot(ref writer, snapshot);
+            return writer.Finish();
         }
 
         public static bool TryDecodeOwnerSimulationSnapshot(byte[] data, out RealtimeOwnerSimulationSnapshot snapshot, out string error)
         {
             snapshot = null;
-            if (!TryCreateReader(data, RealtimeMessageType.OwnerSimulationSnapshot, out var stream, out var reader, out error))
+            if (!TryStartPacket(data, RealtimeMessageType.OwnerSimulationSnapshot, out var reader, out error)
+                || !TryReadOwnerSimulationSnapshot(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
+            if (!IsValidOwnerSimulationSnapshot(decoded))
             {
-                if (!TryReadOwnerSimulationSnapshot(reader, out var decoded, out error) || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                if (!IsValidOwnerSimulationSnapshot(decoded))
-                {
-                    error = "Owner simulation snapshot is invalid.";
-                    return false;
-                }
-
-                snapshot = decoded;
-                return true;
+                error = "Owner simulation snapshot is invalid.";
+                return false;
             }
+
+            snapshot = decoded;
+            return true;
         }
 
-        private static void WriteOwnerSimulationSnapshot(BinaryWriter writer, RealtimeOwnerSimulationSnapshot value)
+        private static void WriteOwnerSimulationSnapshot(ref PacketWriter writer, RealtimeOwnerSimulationSnapshot value)
         {
-            writer.Write(value.SnapshotSequence);
-            writer.Write(value.ServerTick);
-            writer.Write(value.LastProcessedInputSequence);
-            WritePlayerState(writer, value.State);
+            writer.WriteUInt32(value.SnapshotSequence);
+            writer.WriteUInt32(value.ServerTick);
+            writer.WriteUInt32(value.LastProcessedInputSequence);
+            WritePlayerState(ref writer, value.State);
         }
 
-        private static bool TryReadOwnerSimulationSnapshot(BinaryReader reader, out RealtimeOwnerSimulationSnapshot value, out string error)
+        private static bool TryReadOwnerSimulationSnapshot(ref PacketReader reader, out RealtimeOwnerSimulationSnapshot value, out string error)
         {
             value = null;
-            if (!TryReadUInt32(reader, out var snapshotSequence, out error))
+            if (!reader.TryReadUInt32(out var snapshotSequence, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt32(reader, out var serverTick, out error))
+            if (!reader.TryReadUInt32(out var serverTick, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt32(reader, out var lastProcessedInputSequence, out error))
+            if (!reader.TryReadUInt32(out var lastProcessedInputSequence, out error))
             {
                 return false;
             }
 
-            if (!TryReadPlayerState(reader, out var state, out error))
+            if (!TryReadPlayerState(ref reader, out var state, out error))
             {
                 return false;
             }
@@ -531,62 +527,57 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WritePlayerState(BinaryWriter writer, RealtimePlayerState value)
+        private static void WritePlayerState(ref PacketWriter writer, RealtimePlayerState value)
         {
-            if (!IsValidPlayerState(value))
-            {
-                throw new ArgumentException("Player state is invalid.", nameof(value));
-            }
-
-            writer.Write(value.PositionX);
-            writer.Write(value.PositionY);
-            writer.Write(value.PositionZ);
-            writer.Write(value.VelocityX);
-            writer.Write(value.VelocityY);
-            writer.Write(value.VelocityZ);
-            writer.Write(value.YawDegrees);
-            writer.Write((byte)((value.IsGrounded ? 1 : 0) | (value.IsSprinting ? 2 : 0)));
+            writer.WriteSingle(value.PositionX);
+            writer.WriteSingle(value.PositionY);
+            writer.WriteSingle(value.PositionZ);
+            writer.WriteSingle(value.VelocityX);
+            writer.WriteSingle(value.VelocityY);
+            writer.WriteSingle(value.VelocityZ);
+            writer.WriteSingle(value.YawDegrees);
+            writer.WriteByte((byte)((value.IsGrounded ? 1 : 0) | (value.IsSprinting ? 2 : 0)));
         }
 
-        private static bool TryReadPlayerState(BinaryReader reader, out RealtimePlayerState value, out string error)
+        private static bool TryReadPlayerState(ref PacketReader reader, out RealtimePlayerState value, out string error)
         {
             value = null;
-            if (!TryReadSingle(reader, out var positionX, out error))
+            if (!reader.TryReadSingle(out var positionX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionY, out error))
+            if (!reader.TryReadSingle(out var positionY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var positionZ, out error))
+            if (!reader.TryReadSingle(out var positionZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var velocityX, out error))
+            if (!reader.TryReadSingle(out var velocityX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var velocityY, out error))
+            if (!reader.TryReadSingle(out var velocityY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var velocityZ, out error))
+            if (!reader.TryReadSingle(out var velocityZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var yawDegrees, out error))
+            if (!reader.TryReadSingle(out var yawDegrees, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var flags, out error))
+            if (!reader.TryReadByte(out var flags, out error))
             {
                 return false;
             }
@@ -597,14 +588,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            var decoded = new RealtimePlayerState(positionX, positionY, positionZ, velocityX, velocityY, velocityZ, yawDegrees, (flags & 0x01) != 0, (flags & 0x02) != 0);
-            if (!IsValidPlayerState(decoded))
-            {
-                error = "Player state is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimePlayerState(positionX, positionY, positionZ, velocityX, velocityY, velocityZ, yawDegrees, (flags & 0x01) != 0, (flags & 0x02) != 0);
             return true;
         }
 
@@ -625,152 +609,140 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static void WriteMovementSettings(BinaryWriter writer, RealtimeMovementSettings value)
+        private static void WriteMovementSettings(ref PacketWriter writer, RealtimeMovementSettings value)
         {
-            if (!IsValidMovementSettings(value))
-            {
-                throw new ArgumentException("Movement settings is invalid.", nameof(value));
-            }
-
-            writer.Write(value.TickRateHz);
-            writer.Write(value.SnapshotRateHz);
-            writer.Write(value.WalkSpeed);
-            writer.Write(value.SprintSpeed);
-            writer.Write(value.RotationSpeedDegrees);
-            writer.Write(value.Gravity);
-            writer.Write(value.MaximumFallSpeed);
-            writer.Write(value.JumpVelocity);
-            writer.Write(value.GroundedVerticalVelocity);
-            writer.Write(value.GroundHeight);
-            writer.Write(value.MinimumX);
-            writer.Write(value.MaximumX);
-            writer.Write(value.MinimumZ);
-            writer.Write(value.MaximumZ);
-            writer.Write(value.CharacterRadius);
-            writer.Write(value.CharacterHeight);
-            writer.Write(value.StepHeight);
-            writer.Write(value.MaximumSlopeDegrees);
-            writer.Write(value.GroundSnapDistance);
-            writer.Write(value.MaximumSubstepDistance);
-            writer.Write(value.MaximumPenetrationIterations);
+            writer.WriteUInt16(value.TickRateHz);
+            writer.WriteUInt16(value.SnapshotRateHz);
+            writer.WriteSingle(value.WalkSpeed);
+            writer.WriteSingle(value.SprintSpeed);
+            writer.WriteSingle(value.RotationSpeedDegrees);
+            writer.WriteSingle(value.Gravity);
+            writer.WriteSingle(value.MaximumFallSpeed);
+            writer.WriteSingle(value.JumpVelocity);
+            writer.WriteSingle(value.GroundedVerticalVelocity);
+            writer.WriteSingle(value.GroundHeight);
+            writer.WriteSingle(value.MinimumX);
+            writer.WriteSingle(value.MaximumX);
+            writer.WriteSingle(value.MinimumZ);
+            writer.WriteSingle(value.MaximumZ);
+            writer.WriteSingle(value.CharacterRadius);
+            writer.WriteSingle(value.CharacterHeight);
+            writer.WriteSingle(value.StepHeight);
+            writer.WriteSingle(value.MaximumSlopeDegrees);
+            writer.WriteSingle(value.GroundSnapDistance);
+            writer.WriteSingle(value.MaximumSubstepDistance);
+            writer.WriteByte(value.MaximumPenetrationIterations);
         }
 
-        private static bool TryReadMovementSettings(BinaryReader reader, out RealtimeMovementSettings value, out string error)
+        private static bool TryReadMovementSettings(ref PacketReader reader, out RealtimeMovementSettings value, out string error)
         {
             value = null;
-            if (!TryReadUInt16(reader, out var tickRateHz, out error))
+            if (!reader.TryReadUInt16(out var tickRateHz, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt16(reader, out var snapshotRateHz, out error))
+            if (!reader.TryReadUInt16(out var snapshotRateHz, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var walkSpeed, out error))
+            if (!reader.TryReadSingle(out var walkSpeed, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var sprintSpeed, out error))
+            if (!reader.TryReadSingle(out var sprintSpeed, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var rotationSpeedDegrees, out error))
+            if (!reader.TryReadSingle(out var rotationSpeedDegrees, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var gravity, out error))
+            if (!reader.TryReadSingle(out var gravity, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var maximumFallSpeed, out error))
+            if (!reader.TryReadSingle(out var maximumFallSpeed, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var jumpVelocity, out error))
+            if (!reader.TryReadSingle(out var jumpVelocity, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var groundedVerticalVelocity, out error))
+            if (!reader.TryReadSingle(out var groundedVerticalVelocity, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var groundHeight, out error))
+            if (!reader.TryReadSingle(out var groundHeight, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var minimumX, out error))
+            if (!reader.TryReadSingle(out var minimumX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var maximumX, out error))
+            if (!reader.TryReadSingle(out var maximumX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var minimumZ, out error))
+            if (!reader.TryReadSingle(out var minimumZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var maximumZ, out error))
+            if (!reader.TryReadSingle(out var maximumZ, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var characterRadius, out error))
+            if (!reader.TryReadSingle(out var characterRadius, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var characterHeight, out error))
+            if (!reader.TryReadSingle(out var characterHeight, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var stepHeight, out error))
+            if (!reader.TryReadSingle(out var stepHeight, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var maximumSlopeDegrees, out error))
+            if (!reader.TryReadSingle(out var maximumSlopeDegrees, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var groundSnapDistance, out error))
+            if (!reader.TryReadSingle(out var groundSnapDistance, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var maximumSubstepDistance, out error))
+            if (!reader.TryReadSingle(out var maximumSubstepDistance, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var maximumPenetrationIterations, out error))
+            if (!reader.TryReadByte(out var maximumPenetrationIterations, out error))
             {
                 return false;
             }
 
-            var decoded = new RealtimeMovementSettings(tickRateHz, snapshotRateHz, walkSpeed, sprintSpeed, rotationSpeedDegrees, gravity, maximumFallSpeed, jumpVelocity, groundedVerticalVelocity, groundHeight, minimumX, maximumX, minimumZ, maximumZ, characterRadius, characterHeight, stepHeight, maximumSlopeDegrees, groundSnapDistance, maximumSubstepDistance, maximumPenetrationIterations);
-            if (!IsValidMovementSettings(decoded))
-            {
-                error = "Movement settings is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeMovementSettings(tickRateHz, snapshotRateHz, walkSpeed, sprintSpeed, rotationSpeedDegrees, gravity, maximumFallSpeed, jumpVelocity, groundedVerticalVelocity, groundHeight, minimumX, maximumX, minimumZ, maximumZ, characterRadius, characterHeight, stepHeight, maximumSlopeDegrees, groundSnapDistance, maximumSubstepDistance, maximumPenetrationIterations);
             return true;
         }
 
@@ -819,64 +791,52 @@ namespace Mmorpg.GameProtocol
             return SatisfiesRules(value);
         }
 
-        private static void WriteMovementInput(BinaryWriter writer, RealtimeMovementInput value)
+        private static void WriteMovementInput(ref PacketWriter writer, RealtimeMovementInput value)
         {
-            if (!IsValidMovementInput(value))
-            {
-                throw new ArgumentException("Movement input is invalid.", nameof(value));
-            }
-
-            writer.Write(value.InputSequence);
-            writer.Write(value.ClientTick);
-            writer.Write(value.MoveX);
-            writer.Write(value.MoveY);
-            writer.Write(value.CameraYawDegrees);
-            writer.Write((byte)value.Buttons);
+            writer.WriteUInt32(value.InputSequence);
+            writer.WriteUInt32(value.ClientTick);
+            writer.WriteSingle(value.MoveX);
+            writer.WriteSingle(value.MoveY);
+            writer.WriteSingle(value.CameraYawDegrees);
+            writer.WriteByte((byte)value.Buttons);
         }
 
-        private static bool TryReadMovementInput(BinaryReader reader, out RealtimeMovementInput value, out string error)
+        private static bool TryReadMovementInput(ref PacketReader reader, out RealtimeMovementInput value, out string error)
         {
             value = null;
-            if (!TryReadUInt32(reader, out var inputSequence, out error))
+            if (!reader.TryReadUInt32(out var inputSequence, out error))
             {
                 return false;
             }
 
-            if (!TryReadUInt32(reader, out var clientTick, out error))
+            if (!reader.TryReadUInt32(out var clientTick, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var moveX, out error))
+            if (!reader.TryReadSingle(out var moveX, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var moveY, out error))
+            if (!reader.TryReadSingle(out var moveY, out error))
             {
                 return false;
             }
 
-            if (!TryReadSingle(reader, out var cameraYawDegrees, out error))
+            if (!reader.TryReadSingle(out var cameraYawDegrees, out error))
             {
                 return false;
             }
 
-            if (!TryReadByte(reader, out var buttonsByte, out error))
+            if (!reader.TryReadByte(out var buttonsByte, out error))
             {
                 return false;
             }
 
             var buttons = (RealtimeMovementButtons)buttonsByte;
 
-            var decoded = new RealtimeMovementInput(inputSequence, clientTick, moveX, moveY, cameraYawDegrees, buttons);
-            if (!IsValidMovementInput(decoded))
-            {
-                error = "Movement input is invalid.";
-                return false;
-            }
-
-            value = decoded;
+            value = new RealtimeMovementInput(inputSequence, clientTick, moveX, moveY, cameraYawDegrees, buttons);
             return true;
         }
 

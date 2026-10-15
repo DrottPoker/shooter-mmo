@@ -321,13 +321,13 @@ families. [Realtime Protocol](REALTIME_PROTOCOL.md) describes the wire
 format, the schema, the descriptors, and the versioning rules.
 
 The static `RealtimeProtocol` facade is one partial class. `RealtimeProtocol.cs`
-holds the framing, error messages, and the primitive readers and writers. The
-message families are `Session` (join, leave, disconnect), `Movement` (input,
-settings, owner snapshot), `Replication` (entity presence and simulation
-snapshots), `Items`, `Corpses`, and `WorldActors`. The generator writes the
-models and codecs of every family. A family keeps a folder only for its
-hand-written cross-field rules, as `Movement`, `Items`, `Corpses`, and
-`WorldActors` do; `Session` and `Replication` need none. The list is in
+holds the framing and the span-based packet reader and writer that every
+generated codec uses. The message families are `Session` (join, leave,
+disconnect), `Movement` (input, settings, owner snapshot), `Replication` (entity
+presence and simulation snapshots), `Items`, `Corpses`, and `WorldActors`. The
+generator writes the models and codecs of every family. A family keeps a folder
+only for its hand-written cross-field rules, as `Movement`, `Items`, `Corpses`,
+and `WorldActors` do; `Session` and `Replication` need none. The list is in
 [Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
 
 Protocol version 14 includes:

@@ -276,6 +276,11 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("public const int PointSize = 9;", family, StringComparison.Ordinal);
         Assert.Contains("public const int EmptySnapshotSize = 13;", family, StringComparison.Ordinal);
         Assert.Contains("public static byte[] EncodeSnapshot(RealtimeSnapshot snapshot)", family, StringComparison.Ordinal);
+        Assert.Contains("var writer = StartPacket(RealtimeMessageType.Snapshot, SizeOfSnapshot(snapshot));", family, StringComparison.Ordinal);
+        Assert.Contains("size += 1 + (value.Points.Length * 9);", family, StringComparison.Ordinal);
+        Assert.DoesNotContain("SizeOfPoint", family, StringComparison.Ordinal);
+        Assert.Contains("!TryStartPacket(data, RealtimeMessageType.Snapshot, out var reader, out error)", family, StringComparison.Ordinal);
+        Assert.DoesNotContain("System.IO", family, StringComparison.Ordinal);
         Assert.Contains("|| value.Sequence < 1", family, StringComparison.Ordinal);
         Assert.Contains("|| value.Points.Length > MaximumThings", family, StringComparison.Ordinal);
         Assert.Contains("return SatisfiesRules(value);", family, StringComparison.Ordinal);
@@ -297,8 +302,9 @@ public sealed class ProtocolGeneratorTests
         Assert.Equal(
             new SizeRange(7 + 4 + 1 + 9 + 1 + 3 + 3, 7 + 4 + 1 + (4 * 9) + 1 + 2 + (3 * 4) + 2 + (3 * 8)),
             WireSizes.OfMessage(model.Messages.Single()));
-        Assert.Contains("TryReadString(reader, MaximumThings, out var owner, out error)", family, StringComparison.Ordinal);
-        Assert.Contains("WriteString(writer, value.Owner, MaximumThings, \"value.Owner\");", family, StringComparison.Ordinal);
+        Assert.Contains("reader.TryReadString(MaximumThings, out var owner, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteString(value.Owner);", family, StringComparison.Ordinal);
+        Assert.Contains("size += StringSize(value.Owner);", family, StringComparison.Ordinal);
         Assert.Contains("|| string.IsNullOrWhiteSpace(value.Owner)", family, StringComparison.Ordinal);
         Assert.Contains("|| !Guid.TryParse(value.Owner, out _)", family, StringComparison.Ordinal);
         Assert.Contains("|| (value.Section != \"bag\" && value.Section != \"equipment\")", family, StringComparison.Ordinal);
@@ -319,11 +325,11 @@ public sealed class ProtocolGeneratorTests
             WireSizes.OfMessage(model.Messages.Single()));
         Assert.Contains("Label = label ?? string.Empty;", family, StringComparison.Ordinal);
         Assert.Contains("var hasLabel = !string.IsNullOrWhiteSpace(value.Label);", family, StringComparison.Ordinal);
-        Assert.Contains("writer.Write(hasLabel);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteBoolean(hasLabel);", family, StringComparison.Ordinal);
         Assert.Contains("var hasOrigin = value.Origin != null;", family, StringComparison.Ordinal);
         Assert.Contains("string label = string.Empty;", family, StringComparison.Ordinal);
         Assert.Contains("RealtimePoint origin = null;", family, StringComparison.Ordinal);
-        Assert.Contains("TryReadString(reader, 8, out label, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("reader.TryReadString(8, out label, out error)", family, StringComparison.Ordinal);
         Assert.Contains("|| value.Label == null", family, StringComparison.Ordinal);
         Assert.DoesNotContain("|| string.IsNullOrWhiteSpace(value.Label)", family, StringComparison.Ordinal);
         Assert.Contains("|| (value.Origin != null && !IsValidPoint(value.Origin))", family, StringComparison.Ordinal);
@@ -405,11 +411,9 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("if (!IsValidSnapshot(decoded, decoding: true))", family, StringComparison.Ordinal);
         Assert.Contains("|| (!decoding && string.IsNullOrWhiteSpace(value.Note))", family, StringComparison.Ordinal);
         Assert.Contains("|| !IsValidLabel(value.Reason, acceptBlankText: decoding)", family, StringComparison.Ordinal);
-        Assert.Contains("TryReadLabel(reader, out var reason, out error, acceptBlankText: true)", family, StringComparison.Ordinal);
-        Assert.Contains(
-            "private static bool TryReadLabel(BinaryReader reader, out RealtimeLabel value, out string error, bool acceptBlankText = false)",
-            family,
-            StringComparison.Ordinal);
+        Assert.Contains("TryReadLabel(ref reader, out var reason, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("private static bool IsValidLabel(RealtimeLabel value, bool acceptBlankText = false)", family, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsValidLabel(decoded", family, StringComparison.Ordinal);
         Assert.Contains("|| (!acceptBlankText && string.IsNullOrWhiteSpace(value.Text))", family, StringComparison.Ordinal);
         Assert.Contains("private static bool IsValidPoint(RealtimePoint value)", family, StringComparison.Ordinal);
     }
@@ -429,8 +433,8 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("Note = note ?? string.Empty;", family, StringComparison.Ordinal);
         Assert.Contains("Pressed = pressed ?? Array.Empty<RealtimeButtons>();", family, StringComparison.Ordinal);
         Assert.Contains("Points = points;", family, StringComparison.Ordinal);
-        Assert.Contains("WriteString(writer, value.Note, 8, \"value.Note\", allowBlank: true);", family, StringComparison.Ordinal);
-        Assert.Contains("TryReadString(reader, 8, out var note, out error, allowBlank: true)", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteString(value.Note);", family, StringComparison.Ordinal);
+        Assert.Contains("reader.TryReadString(8, out var note, out error, allowBlank: true)", family, StringComparison.Ordinal);
         Assert.Contains("|| value.Note == null", family, StringComparison.Ordinal);
         Assert.DoesNotContain("string.IsNullOrWhiteSpace(value.Note)", family, StringComparison.Ordinal);
     }
@@ -476,6 +480,7 @@ public sealed class ProtocolGeneratorTests
 
         Assert.Equal(SizeRange.Fixed(7), WireSizes.OfMessage(model.Messages[0]));
         Assert.Contains("public static byte[] EncodeSnapshot()", family, StringComparison.Ordinal);
+        Assert.Contains("var writer = StartPacket(RealtimeMessageType.Snapshot, 0);", family, StringComparison.Ordinal);
         Assert.Contains("public static bool TryDecodeSnapshot(byte[] data, out string error)", family, StringComparison.Ordinal);
         Assert.DoesNotContain("class RealtimeSnapshot", family, StringComparison.Ordinal);
         Assert.Contains("public static byte[] EncodeRejected(string code, string text)", family, StringComparison.Ordinal);
