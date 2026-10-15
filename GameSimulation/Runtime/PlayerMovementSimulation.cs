@@ -145,11 +145,14 @@ namespace ShooterMmo.GameSimulation
 
             CharacterCollision = characterCollision
                 ?? throw new ArgumentNullException(nameof(characterCollision));
-            var maximumPerTickDisplacement = Math.Max(
-                sprintSpeed,
-                Math.Max(maximumFallSpeed, jumpVelocity)) / tickRateHz;
+            // The motor counts substeps from the full displacement length, so the budget
+            // covers horizontal sprint and the fastest vertical speed at the same time.
+            var maximumVerticalSpeed = (double)Math.Max(maximumFallSpeed, jumpVelocity);
+            var maximumPerTickDisplacement = Math.Sqrt(
+                ((double)sprintSpeed * sprintSpeed)
+                + (maximumVerticalSpeed * maximumVerticalSpeed)) / tickRateHz;
             var requiredSubsteps = Math.Ceiling(
-                (double)maximumPerTickDisplacement
+                maximumPerTickDisplacement
                 / CharacterCollision.MaximumSubstepDistance);
             if (requiredSubsteps > KinematicCharacterMotor.MaximumSubstepsPerMove)
             {

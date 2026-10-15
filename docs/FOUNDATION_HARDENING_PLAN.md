@@ -50,11 +50,12 @@ current tests do not exercise.
 ## Progress
 
 As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done, and
-the P2 pass is in progress, one verified group per commit. 62 findings are fixed
-and 11 P2 findings remain open. The full verification after the P1 pass passed:
-503 of 503 backend tests including PostgreSQL and Redis integration, 106 Unity
-EditMode and 2 PlayMode tests, and an end-to-end login, join, graceful leave, and
-rejoin in Development World 2 on URP.
+the P2 pass is in progress, one verified group per commit. 65 findings are fixed
+and 9 P2 findings remain open, including F74, which the F73 golden test found.
+The full verification after the P1 pass passed: 503 of 503 backend tests
+including PostgreSQL and Redis integration, 106 Unity EditMode and 2 PlayMode
+tests, and an end-to-end login, join, graceful leave, and rejoin in Development
+World 2 on URP.
 
 ## Priority Levels
 
@@ -134,9 +135,9 @@ reproduction.
 | F50 | Item bootstrap | The startup weight recompute can write a stale weight during a rolling deploy. | `CharacterItemStateBootstrapper.cs` | Fixed |
 | F51 | Secure Container | Any account can set its own Secure Container tier. Latent until a second tier exists. Account actors may now only select the base tier. | `AuthService/Items/ItemEndpoints.cs`, `ItemTransactionService.cs` | Fixed |
 | F52 | Death events | Death idempotency records are deleted with closed corpses after 30 days, which allows a late replay to partition items again. Every death request now requires the expected character revision, which the partition always advances. | `ItemOperationsMaintenanceService.cs`, `ItemTransactionService.Death.cs` | Fixed |
-| F53 | Movement | The motor derives substeps from the largest axis, which allows tunneling with configurations the validator accepts. The shipped configuration is safe. | `GameSimulation/Runtime/Collision/KinematicCharacterMotor.cs` | Open |
-| F54 | Content limits | Item catalog slot ids and tags allow 128 characters while the protocol allows 64, and there is no load-time compatibility check. | `WorldData/Runtime/ItemDomain/ItemCatalogCompiler.cs` | Open |
-| F55 | Collision | Very large chunk coordinates overflow differently in .NET and Unity, which can hang the compiler or server. | `GameSimulation/Runtime/Collision/CollisionWorld.cs` | Open |
+| F53 | Movement | The motor derives substeps from the largest axis, which allows tunneling with configurations the validator accepts. The shipped configuration is safe. | `GameSimulation/Runtime/Collision/KinematicCharacterMotor.cs` | Fixed |
+| F54 | Content limits | Item catalog slot ids and tags allow 128 characters while the protocol allows 64, and there is no load-time compatibility check. | `WorldData/Runtime/ItemDomain/ItemCatalogCompiler.cs` | Fixed |
+| F55 | Collision | Very large chunk coordinates overflow differently in .NET and Unity, which can hang the compiler or server. | `GameSimulation/Runtime/Collision/CollisionWorld.cs` | Fixed |
 | F56 | Worker corpses | A stale completion cleans up by peer id, which LiteNetLib reuses, so it can close a new peer's corpse view. Disconnect now releases every reservation of the peer, and a stale completion only touches a context that still owns its id. No deterministic socket reproduction exists, because it depends on LiteNetLib id reuse timing. | `RealtimeSimulationService.cs` | Fixed |
 | F57 | Worker corpses | Opening a corpse can send a delta instead of a snapshot to the new viewer, which contradicts the documentation. | `RealtimeSimulationService.cs` | Fixed |
 | F58 | Worker sessions | Session invalidation entries for detached sessions are never removed. | `ActiveSimulationSessionStore.cs` | Fixed |
@@ -154,7 +155,8 @@ reproduction.
 | F70 | Build | The .NET GameProtocol adapter lists source files explicitly, so a new protocol file is silently missing from the server. | `Shared/DotNet/GameProtocol/ShooterMmo.GameProtocol.csproj` | Fixed |
 | F71 | Repository | `.gitattributes` does not mark collision chunk `.bytes` files as binary. | `.gitattributes` | Fixed |
 | F72 | Documentation | Drift: protocol version `11` and `13` instead of `14`, the .NET SDK requirement, the missing Development Worlds index entry, the outdated one-time scene authoring steps, the PowerShell 7 requirement, the password hasher and revocation reason, the topology and rebind description, and the release fallback description. | `docs/` | Fixed |
-| F73 | Test coverage | Missing cross-runtime movement determinism test, hand-maintained simulation revision, collision revision not recomputed on load, and no check that catalog content fits protocol limits. | `GameSimulation/`, `WorldData/` | Open |
+| F73 | Test coverage | Missing cross-runtime movement determinism test, hand-maintained simulation revision, collision revision not recomputed on load, and no check that catalog content fits protocol limits. A golden test now pins the revision with a movement fingerprint, loaders recompute the collision revision, and a test keeps catalog limits within protocol limits. The Unity half of the cross-runtime test found F74 and lands with its fix. | `GameSimulation/`, `WorldData/` | Open |
+| F74 | Movement determinism | Unity's Mono runtime evaluates compound float expressions in double precision, while the worker on .NET rounds every operation to float. The shared movement scenario diverges by one ULP at its first diagonal input, so Unity prediction, including Mono Standalone builds, drifts from the authoritative worker and relies on reconciliation. Found by the F73 golden test. | `GameSimulation/Runtime/` | Open |
 
 ## Decisions
 

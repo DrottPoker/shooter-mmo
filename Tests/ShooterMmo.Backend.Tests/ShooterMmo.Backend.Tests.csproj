@@ -36,6 +36,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shared with the Unity EditMode tests so both runtimes run the same scenario. -->
+    <Compile Include="..\..\shooter-mmorpg-unity-client\Assets\Tests\EditMode\Shared\*.cs"
+             Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

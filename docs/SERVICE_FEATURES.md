@@ -395,8 +395,17 @@ corpse view.
 - Each chunk has a SHA-256 checksum.
 - The manifest has a deterministic complete collision revision.
 - SimulationWorker validates format, World id, checksums, coordinates, and
-  revision before binding UDP.
-- Unity validates and loads the same data before prediction.
+  revision before binding UDP. It recomputes the revision from the manifest
+  chunk list and rejects a manifest whose stored revision differs.
+- Unity validates and loads the same data, with the same revision check, before
+  prediction.
+- Collision data stays within plus or minus 1,000,000 world units, chunk sizes
+  stay between 1 and 4096, and one box may span at most 65,536 chunks. Chunk
+  coordinates are clamped to plus or minus 2^24, so .NET and Unity map every
+  position to the same chunk, and a query wider than the loaded set scans the
+  loaded chunks instead of every cell in its range.
+- The character motor derives its substep count from the full displacement
+  length, so no substep, diagonal or not, exceeds the configured limit.
 - Static shapes are assigned to every intersected chunk and deduplicated by
   stable id during queries.
 - Position-driven load and larger unload radii provide streaming hysteresis.
@@ -586,9 +595,9 @@ concurrent inspection, and authoritative looting:
   applies only increasing item-state revisions. Same-revision conflicts
   invalidate the local lease instead of accepting contradictory weight or
   capacity.
-- GameSimulation revision `movement-simulation-v3` owns the immutable carry
-  state and deterministic encumbrance calculation used by worker movement and
-  Unity prediction. Sprint is allowed through exactly 100 percent load, then
+- GameSimulation, at revision `movement-simulation-v4` and with carry state
+  since `v3`, owns the immutable carry state and deterministic encumbrance
+  calculation used by worker movement and Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
 - Realtime protocol version `14` retains carry state on join, later committed
@@ -956,6 +965,15 @@ the test connection variable at development or production data.
 - Item catalog determinism, malformed and duplicate content rejection,
   structural fingerprint detection, pure rule behavior, and exact integer
   encumbrance boundaries.
+- Catalog tags and equipment slot ids are limited to 64 characters and Bag
+  slots to 16 accepted tags, the realtime protocol limits. A test keeps the
+  `ItemCatalogFormat` limits within `RealtimeProtocolLimits`.
+- A movement determinism golden test pins `GameSimulationCompatibility.Revision`
+  together with the fingerprint of one shared movement scenario, so a movement
+  change without a revision bump fails. The scenario file also compiles into
+  the Unity EditMode tests for the cross-runtime check.
+- Committed collision manifests are checked against their recomputed
+  revision.
 - Isolated PostgreSQL item tests for concurrent migration initialization,
   complete and idempotent character backfill, catalog reconciliation and
   compatibility fencing, exact custody constraints, delete behavior, and

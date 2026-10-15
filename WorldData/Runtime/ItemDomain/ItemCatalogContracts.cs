@@ -5,6 +5,13 @@ namespace ShooterMmo.WorldData.Items
     public static class ItemCatalogFormat
     {
         public const int Version = 2;
+
+        // Tags and equipment slot ids travel in realtime item and corpse messages, so
+        // they must fit the protocol limits that RealtimeProtocolLimits defines.
+        public const int MaximumIdentifierLength = 128;
+        public const int MaximumTagLength = 64;
+        public const int MaximumEquipmentSlotIdLength = 64;
+        public const int MaximumAcceptedTagsPerSlot = 16;
     }
 
     public static class ItemCategoryIds

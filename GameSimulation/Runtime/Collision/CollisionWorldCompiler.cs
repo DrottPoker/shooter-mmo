@@ -129,9 +129,7 @@ namespace ShooterMmo.GameSimulation
                 throw new InvalidDataException("Collision authoring world id is required.");
             }
 
-            if (float.IsNaN(authoring.ChunkSize)
-                || float.IsInfinity(authoring.ChunkSize)
-                || authoring.ChunkSize <= 0f)
+            if (!CollisionDataFormat.IsValidChunkSize(authoring.ChunkSize))
             {
                 throw new InvalidDataException("Collision authoring chunk size is invalid.");
             }
@@ -162,6 +160,12 @@ namespace ShooterMmo.GameSimulation
                 var maximumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
                     box.Bounds.Maximum.Z - ChunkMaximumEpsilon,
                     authoring.ChunkSize);
+                if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
+                    > CollisionDataFormat.MaximumChunksPerBox)
+                {
+                    throw new InvalidDataException(
+                        "Collision box '" + box.StableId + "' spans too many chunks.");
+                }
 
                 for (var z = minimumZ; z <= maximumZ; z++)
                 {
@@ -256,6 +260,23 @@ namespace ShooterMmo.GameSimulation
             }
 
             return result == 0 ? 1UL : result;
+        }
+
+        // The revision is derived from the manifest content, so a loader can detect a
+        // manifest whose revision was edited or left stale after a partial bake.
+        public static string ComputeManifestRevision(CollisionWorldManifest manifest)
+        {
+            if (manifest == null)
+            {
+                throw new ArgumentNullException(nameof(manifest));
+            }
+
+            if (manifest.Chunks == null || string.IsNullOrWhiteSpace(manifest.WorldId))
+            {
+                throw new InvalidDataException("Collision manifest content is incomplete.");
+            }
+
+            return ComputeRevision(manifest.WorldId.Trim(), manifest.ChunkSize, manifest.Chunks);
         }
 
         private static string ComputeRevision(

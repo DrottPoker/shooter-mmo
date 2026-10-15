@@ -8,6 +8,30 @@ namespace ShooterMmo.GameSimulation
         public const ushort Version = 1;
         public const uint ChunkMagic = 0x4C434D53;
         public const int MaximumBoxesPerChunk = 1_000_000;
+
+        // Every runtime must map a position to the same chunk coordinate. Worlds stay
+        // inside a range where the float to int conversion is exact in .NET and Unity
+        // and where chunk loops can never overflow.
+        public const float MaximumWorldCoordinate = 1_000_000f;
+        public const float MinimumChunkSize = 1f;
+        public const float MaximumChunkSize = 4096f;
+        public const int MaximumChunkCoordinate = 1 << 24;
+        public const int MaximumChunksPerBox = 65_536;
+
+        public static bool IsValidChunkSize(float chunkSize)
+        {
+            return chunkSize >= MinimumChunkSize && chunkSize <= MaximumChunkSize;
+        }
+
+        public static bool IsWithinWorldLimits(CollisionAabb bounds)
+        {
+            return Math.Abs(bounds.Minimum.X) <= MaximumWorldCoordinate
+                && Math.Abs(bounds.Minimum.Y) <= MaximumWorldCoordinate
+                && Math.Abs(bounds.Minimum.Z) <= MaximumWorldCoordinate
+                && Math.Abs(bounds.Maximum.X) <= MaximumWorldCoordinate
+                && Math.Abs(bounds.Maximum.Y) <= MaximumWorldCoordinate
+                && Math.Abs(bounds.Maximum.Z) <= MaximumWorldCoordinate;
+        }
     }
 
     public static class CollisionLayers
@@ -293,6 +317,10 @@ namespace ShooterMmo.GameSimulation
             HalfExtents = halfExtents;
             Rotation = rotation.Normalized();
             Bounds = CalculateBounds(center, halfExtents, Rotation);
+            if (!CollisionDataFormat.IsWithinWorldLimits(Bounds))
+            {
+                throw new ArgumentException("Collision box lies outside the supported world limits.");
+            }
         }
 
         public ulong StableId { get; }

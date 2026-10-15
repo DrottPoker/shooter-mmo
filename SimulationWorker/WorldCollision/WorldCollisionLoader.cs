@@ -94,9 +94,7 @@ public static class WorldCollisionLoader
         }
 
         if (string.IsNullOrWhiteSpace(manifest.Revision)
-            || float.IsNaN(manifest.ChunkSize)
-            || float.IsInfinity(manifest.ChunkSize)
-            || manifest.ChunkSize <= 0f
+            || !CollisionDataFormat.IsValidChunkSize(manifest.ChunkSize)
             || manifest.Chunks is null
             || manifest.Chunks.Length == 0)
         {
@@ -117,6 +115,15 @@ public static class WorldCollisionLoader
             {
                 throw new InvalidOperationException("Collision manifest contains an invalid chunk entry.");
             }
+        }
+
+        if (!string.Equals(
+                CollisionWorldCompiler.ComputeManifestRevision(manifest),
+                manifest.Revision,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Collision manifest revision does not match its chunk content.");
         }
     }
 }

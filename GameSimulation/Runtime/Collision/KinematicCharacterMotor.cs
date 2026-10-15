@@ -176,12 +176,15 @@ namespace ShooterMmo.GameSimulation
                 throw new ArgumentException("Character movement vectors must be finite.");
             }
 
-            var maximumComponent = Math.Max(
-                Math.Abs(displacement.X),
-                Math.Max(Math.Abs(displacement.Y), Math.Abs(displacement.Z)));
+            // The substep count follows the full displacement length, so a diagonal
+            // substep is never longer than the configured limit and cannot tunnel.
+            var displacementLength = Math.Sqrt(
+                ((double)displacement.X * displacement.X)
+                + ((double)displacement.Y * displacement.Y)
+                + ((double)displacement.Z * displacement.Z));
             var requiredSubsteps = Math.Max(
                 1d,
-                Math.Ceiling((double)maximumComponent / settings.MaximumSubstepDistance));
+                Math.Ceiling(displacementLength / settings.MaximumSubstepDistance));
             if (requiredSubsteps > MaximumSubstepsPerMove)
             {
                 throw new ArgumentOutOfRangeException(

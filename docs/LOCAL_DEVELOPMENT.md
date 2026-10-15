@@ -1888,6 +1888,14 @@ the compiled movement-simulation revision, the initial carry tuple,
 server-assigned network entity ids, reliable carry-state updates, reliable item
 operation intents and results, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
+
+An intended change to shared movement or collision behavior fails the movement
+determinism test in the backend suite. Bump
+`GameSimulationCompatibility.Revision`, then set `ExpectedSimulationRevision`
+and `ExpectedFingerprint` in
+`shooter-mmorpg-unity-client/Assets/Tests/EditMode/Shared/MovementDeterminismScenario.cs`
+to the new values. The backend test project compiles the same file as the Unity
+EditMode tests, so both runtimes run one scenario.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
 directories and must never be committed.
 
