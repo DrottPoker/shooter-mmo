@@ -10,6 +10,8 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
     : IItemCommandHandler<ApplyItemPolicyCommand>,
     IItemCommandHandler<RemoveInsurancePolicyCommand>
 {
+    private readonly ICharacterWallet characterWallet = characterWallet;
+
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         ApplyItemPolicyCommand command,

@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Characters.Contracts;
@@ -6,12 +5,14 @@ using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
-using Mmorpg.WorldData.Items;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-internal sealed partial class ItemTransactionService(
+// The item transaction facade: one ExecuteAsync overload per item command. Each overload
+// routes its command to the kernel with its persisted operation kind, its actor character,
+// and its handler. The constructor composes the kernel and the stateless handlers.
+internal sealed class ItemTransactionService(
     NpgsqlDataSource dataSource,
     ICharacterLocks characterLocks,
     ICharacterWallet characterWallet,
@@ -23,25 +24,25 @@ internal sealed partial class ItemTransactionService(
     ILogger<ItemTransactionService>? logger = null,
     IHttpContextAccessor? httpContextAccessor = null)
 {
-    private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
-    private readonly ItemDestructionCommandHandler itemDestruction = new();
-    private readonly ItemEquipmentCommandHandler itemEquipment = new();
-    private readonly ItemRelocationCommandHandler itemRelocation = new();
-    private readonly ItemStackCommandHandler itemStack = new();
     private readonly ItemGrantCommandHandler itemGrant = new();
-    private readonly QuestItemCommandHandler questItem = new();
-    private readonly ItemPolicyCommandHandler itemPolicy = new(characterWallet);
+    private readonly ItemRelocationCommandHandler itemRelocation = new();
+    private readonly ItemEquipmentCommandHandler itemEquipment = new();
+    private readonly ItemStackCommandHandler itemStack = new();
+    private readonly ItemDestructionCommandHandler itemDestruction = new();
     private readonly BagAggregateCommandHandler bagAggregate = new();
     private readonly RecoveryDeliveryCommandHandler recoveryDelivery = new();
     private readonly SecureContainerTierCommandHandler secureContainerTier = new();
-    private readonly MobCorpseCommandHandler mobCorpse = new();
-    private readonly MobLootGrantCommandHandler mobLootGrant = new();
-    private readonly CorpseExpiryCommandHandler corpseExpiry = new();
+    private readonly ItemPolicyCommandHandler itemPolicy = new(characterWallet);
+    private readonly QuestItemCommandHandler questItem = new();
     private readonly PlayerDeathCommandHandler playerDeath = new();
+    private readonly CorpseExpiryCommandHandler corpseExpiry = new();
     private readonly CorpseLootCommandHandler corpseLoot = new();
     private readonly CorpseDepositCommandHandler corpseDeposit = new();
     private readonly CorpseInternalMoveCommandHandler corpseInternalMove = new();
     private readonly CorpseBagSwapCommandHandler corpseBagSwap = new();
+    private readonly MobCorpseCommandHandler mobCorpse = new();
+    private readonly MobLootGrantCommandHandler mobLootGrant = new();
+    private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
     private readonly ItemTransactionKernel kernel = new(
         dataSource,
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
@@ -245,4 +246,152 @@ internal sealed partial class ItemTransactionService(
             questItem,
             cancellationToken);
     }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<ProcessPlayerDeathCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.ProcessPlayerDeath,
+            request.Command.CharacterId,
+            playerDeath,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<ExpireCorpseCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.ExpireCorpse,
+            null,
+            corpseExpiry,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<LootCorpseItemCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.LootCorpseItem,
+            request.Command.CharacterId,
+            corpseLoot,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<LootCorpsePartialStackCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.LootCorpsePartialStack,
+            request.Command.CharacterId,
+            corpseLoot,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<DepositCorpseItemCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.DepositCorpseItem,
+            request.Command.CharacterId,
+            corpseDeposit,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<DepositCorpsePartialStackCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.DepositCorpsePartialStack,
+            request.Command.CharacterId,
+            corpseDeposit,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<MoveCorpseItemCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.MoveCorpseItem,
+            request.Command.CharacterId,
+            corpseInternalMove,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<MoveCorpsePartialStackCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.MoveCorpsePartialStack,
+            request.Command.CharacterId,
+            corpseInternalMove,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<SwapCorpseBagCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.SwapCorpseBag,
+            request.Command.CharacterId,
+            corpseBagSwap,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<CreatePersistentMobCorpseCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.CreatePersistentMobCorpse,
+            null,
+            mobCorpse,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<GrantMobLootCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.GrantMobLoot,
+            request.Command.CharacterId,
+            mobLootGrant,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<ExpireRecoveryDeliveryCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.ExpireRecoveryDelivery,
+            null,
+            recoveryExpiry,
+            cancellationToken);
+    }
+
+    // The presentation key of every player corpse, also used by corpse tooling and fixtures.
+    internal static string DefaultPlayerCorpsePresentationKey =>
+        CorpseTransformRules.PlayerCorpsePresentationKey;
 }
