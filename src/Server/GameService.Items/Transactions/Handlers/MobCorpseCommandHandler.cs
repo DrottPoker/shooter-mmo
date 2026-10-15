@@ -6,9 +6,11 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Creates a durable Mob corpse with its loot for a simulation worker that holds a
 // fresh lease on the corpse's Shard.
-internal sealed class MobCorpseCommandHandler
+internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulationAuthority)
     : IItemCommandHandler<CreatePersistentMobCorpseCommand>
 {
+    private readonly ItemSimulationAuthority simulationAuthority = simulationAuthority;
+
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         CreatePersistentMobCorpseCommand command,
@@ -16,7 +18,8 @@ internal sealed class MobCorpseCommandHandler
     {
         ValidatePersistentMobCorpseCommand(command);
         context.Authority.EnsureSystemAuthority();
-        await context.ValidateSimulationWorkerServiceAuthorityAsync(
+        await simulationAuthority.ValidateWorkerServiceLeaseAsync(
+            context.Session,
             command.WorkerId,
             command.WorkerRuntimeId,
             command.ShardId,

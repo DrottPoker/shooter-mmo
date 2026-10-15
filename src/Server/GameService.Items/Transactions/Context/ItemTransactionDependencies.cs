@@ -6,6 +6,4 @@ namespace Mmorpg.GameService.Items.Transactions;
 // Other modules' contracts that an item transaction uses inside its own transaction.
 internal sealed record ItemTransactionDependencies(
     ICharacterLocks CharacterLocks,
-    ISimulationSessionAuthority SimulationSessions,
-    ISimulationWorkerAuthority SimulationWorkers,
     ISimulationPresence SimulationPresence);

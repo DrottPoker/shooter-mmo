@@ -12,17 +12,7 @@ namespace Mmorpg.GameService.Items;
 // The item transaction facade: one ExecuteAsync overload per item command. Each overload
 // routes its command to the kernel with its persisted operation kind, its actor character,
 // and its handler. The constructor composes the kernel and the stateless handlers.
-internal sealed class ItemTransactionService(
-    NpgsqlDataSource dataSource,
-    ICharacterLocks characterLocks,
-    ICharacterWallet characterWallet,
-    ISimulationSessionAuthority simulationSessionAuthority,
-    ISimulationWorkerAuthority simulationWorkerAuthority,
-    ISimulationPresence simulationPresence,
-    ItemOperationsMetrics? operationsMetrics = null,
-    ItemOperationsOptions? itemOperationsOptions = null,
-    ILogger<ItemTransactionService>? logger = null,
-    IHttpContextAccessor? httpContextAccessor = null)
+internal sealed class ItemTransactionService
 {
     private readonly ItemGrantCommandHandler itemGrant = new();
     private readonly ItemRelocationCommandHandler itemRelocation = new();
@@ -32,7 +22,7 @@ internal sealed class ItemTransactionService(
     private readonly BagAggregateCommandHandler bagAggregate = new();
     private readonly RecoveryDeliveryCommandHandler recoveryDelivery = new();
     private readonly SecureContainerTierCommandHandler secureContainerTier = new();
-    private readonly ItemPolicyCommandHandler itemPolicy = new(characterWallet);
+    private readonly ItemPolicyCommandHandler itemPolicy;
     private readonly QuestItemCommandHandler questItem = new();
     private readonly PlayerDeathCommandHandler playerDeath = new();
     private readonly CorpseExpiryCommandHandler corpseExpiry = new();
@@ -40,20 +30,38 @@ internal sealed class ItemTransactionService(
     private readonly CorpseDepositCommandHandler corpseDeposit = new();
     private readonly CorpseInternalMoveCommandHandler corpseInternalMove = new();
     private readonly CorpseBagSwapCommandHandler corpseBagSwap = new();
-    private readonly MobCorpseCommandHandler mobCorpse = new();
+    private readonly MobCorpseCommandHandler mobCorpse;
     private readonly MobLootGrantCommandHandler mobLootGrant = new();
     private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
-    private readonly ItemTransactionKernel kernel = new(
-        dataSource,
-        itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
-        operationsMetrics,
-        new ItemTransactionTelemetry(operationsMetrics, logger, httpContextAccessor),
-        new ItemOperationLedger(dataSource),
-        new ItemTransactionDependencies(
+    private readonly ItemTransactionKernel kernel;
+
+    public ItemTransactionService(
+        NpgsqlDataSource dataSource,
+        ICharacterLocks characterLocks,
+        ICharacterWallet characterWallet,
+        ISimulationSessionAuthority simulationSessionAuthority,
+        ISimulationWorkerAuthority simulationWorkerAuthority,
+        ISimulationPresence simulationPresence,
+        ItemOperationsMetrics? operationsMetrics = null,
+        ItemOperationsOptions? itemOperationsOptions = null,
+        ILogger<ItemTransactionService>? logger = null,
+        IHttpContextAccessor? httpContextAccessor = null)
+    {
+        var simulationAuthority = new ItemSimulationAuthority(
             characterLocks,
             simulationSessionAuthority,
-            simulationWorkerAuthority,
-            simulationPresence));
+            simulationWorkerAuthority);
+        itemPolicy = new ItemPolicyCommandHandler(characterWallet);
+        mobCorpse = new MobCorpseCommandHandler(simulationAuthority);
+        kernel = new ItemTransactionKernel(
+            dataSource,
+            itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
+            operationsMetrics,
+            new ItemTransactionTelemetry(operationsMetrics, logger, httpContextAccessor),
+            new ItemOperationLedger(dataSource),
+            simulationAuthority,
+            new ItemTransactionDependencies(characterLocks, simulationPresence));
+    }
 
     public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<GrantItemCommand> request,

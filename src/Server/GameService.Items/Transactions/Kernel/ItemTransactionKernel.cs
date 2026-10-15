@@ -14,6 +14,7 @@ internal sealed class ItemTransactionKernel(
     ItemOperationsMetrics? operationsMetrics,
     ItemTransactionTelemetry telemetry,
     ItemOperationLedger ledger,
+    ItemSimulationAuthority simulationAuthority,
     ItemTransactionDependencies dependencies)
 {
     private const string MutationSavepoint = "item_mutation";
@@ -132,7 +133,8 @@ internal sealed class ItemTransactionKernel(
             try
             {
                 ItemActorAuthority.EnsureValid(session.Actor);
-                await context.ValidateLiveAuthorityAsync(
+                await simulationAuthority.ValidateLiveSessionAsync(
+                    session,
                     actorCharacterId,
                     cancellationToken);
             }

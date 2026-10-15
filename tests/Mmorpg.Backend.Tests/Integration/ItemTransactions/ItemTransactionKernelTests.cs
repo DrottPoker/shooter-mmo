@@ -135,10 +135,12 @@ public sealed class ItemTransactionKernelTests
             null,
             new ItemTransactionTelemetry(null, logger, null),
             new ItemOperationLedger(source),
-            new ItemTransactionDependencies(
+            new ItemSimulationAuthority(
                 services.GetRequiredService<ICharacterLocks>(),
                 services.GetRequiredService<ISimulationSessionAuthority>(),
-                services.GetRequiredService<ISimulationWorkerAuthority>(),
+                services.GetRequiredService<ISimulationWorkerAuthority>()),
+            new ItemTransactionDependencies(
+                services.GetRequiredService<ICharacterLocks>(),
                 services.GetRequiredService<ISimulationPresence>()));
     }
 
