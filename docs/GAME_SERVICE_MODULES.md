@@ -263,5 +263,6 @@ intended differences:
   (S10, S12, S13, S21, S23). The composition requires exactly one
   implementation of every SPI.
 - Accounts extracted: `src/Server/GameService.Accounts` builds
-  `Mmorpg.GameService.Accounts`, which references only Platform.
+  `Mmorpg.GameService.Accounts`, which references only Platform. Only
+  `AccountsModule`, its options, and `Accounts.Contracts` are public.
 - The Characters, Placement, and Items extractions: in progress.

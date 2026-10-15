@@ -6,12 +6,12 @@ using StackExchange.Redis;
 
 namespace Mmorpg.GameService.Accounts.Redis;
 
-public sealed record RedisRateLimitDecision(
+internal sealed record RedisRateLimitDecision(
     bool Available,
     bool Allowed,
     TimeSpan RetryAfter);
 
-public sealed class RedisAuthenticationRateLimiter(
+internal sealed class RedisAuthenticationRateLimiter(
     IRedisConnectionProvider connectionProvider,
     RedisAccelerationOptions options,
     RedisAccelerationMetrics metrics,

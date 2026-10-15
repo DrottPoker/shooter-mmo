@@ -6,7 +6,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 
 namespace Mmorpg.GameService.Accounts;
 
-public sealed class AccountSessionAuthenticationHandler(
+internal sealed class AccountSessionAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,

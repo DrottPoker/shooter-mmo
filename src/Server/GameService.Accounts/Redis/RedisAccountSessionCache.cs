@@ -4,7 +4,7 @@ using StackExchange.Redis;
 
 namespace Mmorpg.GameService.Accounts.Redis;
 
-public sealed class RedisAccountSessionCache(
+internal sealed class RedisAccountSessionCache(
     IRedisConnectionProvider connectionProvider,
     RedisAccelerationOptions options,
     RedisAccelerationMetrics metrics,

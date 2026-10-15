@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Accounts;
 
-public sealed class SessionService(
+internal sealed class SessionService(
     NpgsqlDataSource dataSource,
     AccountsModuleOptions options,
     IAccountSessionLifecycleHandler lifecycleHandler,
@@ -352,7 +352,7 @@ public sealed class SessionService(
     private sealed record ActiveAccountSessionRow(Guid SessionId, string TokenHash);
 }
 
-public sealed class SessionCacheInvalidationUnavailableException : Exception
+internal sealed class SessionCacheInvalidationUnavailableException : Exception
 {
     public SessionCacheInvalidationUnavailableException()
         : base("Redis session revocation tombstones could not be stored.")
@@ -360,7 +360,7 @@ public sealed class SessionCacheInvalidationUnavailableException : Exception
     }
 }
 
-public sealed record AccountSessionAuthenticationResult(
+internal sealed record AccountSessionAuthenticationResult(
     AuthenticatedAccount? Account,
     string? ErrorCode,
     string? ErrorMessage)

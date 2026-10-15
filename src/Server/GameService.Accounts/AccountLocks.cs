@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Accounts;
 
-public sealed class AccountLocks : IAccountLocks
+internal sealed class AccountLocks : IAccountLocks
 {
     public async Task<bool> LockForUpdateAsync(
         PostgresTransactionScope scope,

@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Accounts;
 
-public enum AccountSessionCacheLookupStatus
+internal enum AccountSessionCacheLookupStatus
 {
     Hit,
     Miss,
@@ -8,22 +8,22 @@ public enum AccountSessionCacheLookupStatus
     Unavailable
 }
 
-public sealed record AccountSessionCacheEntry(
+internal sealed record AccountSessionCacheEntry(
     Guid AccountId,
     string Username,
     Guid SessionId,
     DateTime ExpiresAt);
 
-public sealed record AccountSessionCacheLookup(
+internal sealed record AccountSessionCacheLookup(
     AccountSessionCacheLookupStatus Status,
     AccountSessionCacheEntry? Entry = null);
 
-public sealed record AccountSessionCacheRevocation(
+internal sealed record AccountSessionCacheRevocation(
     Guid SessionId,
     string TokenHash,
     string Reason);
 
-public interface IAccountSessionCache
+internal interface IAccountSessionCache
 {
     ValueTask<AccountSessionCacheLookup> GetAsync(
         string tokenHash,
@@ -39,7 +39,7 @@ public interface IAccountSessionCache
         CancellationToken cancellationToken);
 }
 
-public sealed class NullAccountSessionCache : IAccountSessionCache
+internal sealed class NullAccountSessionCache : IAccountSessionCache
 {
     public static NullAccountSessionCache Instance { get; } = new();
 

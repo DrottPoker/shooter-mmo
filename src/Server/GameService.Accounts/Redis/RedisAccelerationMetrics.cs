@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace Mmorpg.GameService.Accounts.Redis;
 
-public sealed record RedisAccelerationMetricsSnapshot(
+internal sealed record RedisAccelerationMetricsSnapshot(
     long SessionCacheHits,
     long SessionCacheMisses,
     long SessionCacheTombstoneBypasses,
@@ -15,7 +15,7 @@ public sealed record RedisAccelerationMetricsSnapshot(
     long DistributedRateLimitRejected,
     long DistributedRateLimitFallbacks);
 
-public sealed class RedisAccelerationMetrics : IDisposable
+internal sealed class RedisAccelerationMetrics : IDisposable
 {
     private const long FailureLogIntervalMilliseconds = 30_000;
     private readonly ConcurrentDictionary<string, long> lastFailureLogAt =

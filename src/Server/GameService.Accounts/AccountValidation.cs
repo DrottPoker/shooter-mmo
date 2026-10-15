@@ -2,7 +2,7 @@ using System.Net.Mail;
 
 namespace Mmorpg.GameService.Accounts;
 
-public static class AccountValidation
+internal static class AccountValidation
 {
     public const int MaximumPasswordBytes = 72;
 

@@ -8,7 +8,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 
 namespace Mmorpg.GameService.Accounts;
 
-public sealed class SimulationWorkerAuthenticationHandler(
+internal sealed class SimulationWorkerAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,

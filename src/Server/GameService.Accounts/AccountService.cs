@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Accounts;
 
-public sealed class AccountService(
+internal sealed class AccountService(
     NpgsqlDataSource dataSource,
     SessionService sessionService,
     ILogger<AccountService> logger)

@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Accounts.Redis;
 
-public sealed class RedisAccelerationMetricsReporterService(
+internal sealed class RedisAccelerationMetricsReporterService(
     RedisAccelerationMetrics metrics,
     RedisAccelerationOptions options,
     ILogger<RedisAccelerationMetricsReporterService> logger) : BackgroundService
