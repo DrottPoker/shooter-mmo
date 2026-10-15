@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Database.Migrations;
+namespace Mmorpg.GameService.Items.Persistence;
 
 internal static class ItemPersistenceFoundationMigration
 {

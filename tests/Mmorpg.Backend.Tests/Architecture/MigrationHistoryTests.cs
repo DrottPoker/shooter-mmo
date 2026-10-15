@@ -6,6 +6,7 @@ using Mmorpg.Backend.Tests.Integration;
 using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
+using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
@@ -87,11 +88,11 @@ public sealed class MigrationHistoryTests
 
         var duplicateError = Assert.Throws<InvalidOperationException>(
             () => GameServiceSchema.Create(
-                DatabaseInitializer.HostMigrations,
+                LegacyBaselineMigrations.All,
                 [.. ProductionModules(), duplicate]));
         var insertedError = Assert.Throws<InvalidOperationException>(
             () => GameServiceSchema.Create(
-                DatabaseInitializer.HostMigrations,
+                LegacyBaselineMigrations.All,
                 [.. ProductionModules(), beforeLastShipped]));
 
         Assert.Contains("defined more than once", duplicateError.Message, StringComparison.Ordinal);
@@ -105,7 +106,7 @@ public sealed class MigrationHistoryTests
             [new DatabaseMigration("202610160000_newer_than_history", "select 1;")]);
 
         var schema = GameServiceSchema.Create(
-            DatabaseInitializer.HostMigrations,
+            LegacyBaselineMigrations.All,
             [.. ProductionModules(), newer]);
 
         Assert.Equal("202610160000_newer_than_history", schema.Migrations[^1].Id);

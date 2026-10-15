@@ -58,15 +58,15 @@ public sealed partial class TableOwnershipTests
     // MigrationHistoryTests instead.
     private static readonly IReadOnlySet<string> FrozenFiles = new HashSet<string>(StringComparer.Ordinal)
     {
-        "GameService/Database/DatabaseInitializer.cs",
-        "GameService/Database/Migrations/ItemPersistenceFoundationMigration.cs",
-        "GameService/Database/Migrations/PlayerCorpsePersistenceMigration.cs",
-        "GameService/Database/Migrations/PlayerDeathCarryOverflowMigration.cs",
-        "GameService/Database/Migrations/ItemOperationsHardeningMigration.cs",
+        "GameService/Database/Migrations/LegacyBaselineMigrations.cs",
+        "GameService/Items/Persistence/ItemPersistenceFoundationMigration.cs",
+        "GameService/Items/Persistence/PlayerCorpsePersistenceMigration.cs",
+        "GameService/Items/Persistence/PlayerDeathCarryOverflowMigration.cs",
+        "GameService/Items/Persistence/ItemOperationsHardeningMigration.cs",
         "GameService.Placement/Persistence/DevelopmentWorldIdentityMigration.cs",
         "GameService.Placement/Persistence/WorkerSelectedWorldBindingMigration.cs",
-        "GameService/Database/Migrations/ReleaseRetryableOperationClaimsMigration.cs",
-        "GameService/Database/Migrations/EquippedItemLookupIndexMigration.cs"
+        "GameService/Items/Persistence/ReleaseRetryableOperationClaimsMigration.cs",
+        "GameService/Items/Persistence/EquippedItemLookupIndexMigration.cs"
     };
 
     // Foreign table access that still has to move behind an owner contract. The ids

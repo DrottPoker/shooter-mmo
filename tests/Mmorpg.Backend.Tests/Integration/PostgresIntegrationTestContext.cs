@@ -47,7 +47,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         CorpseService = Services.GetRequiredService<CorpseService>();
         ItemPolicyService = Services.GetRequiredService<ItemPolicyService>();
         QuestItemService = Services.GetRequiredService<QuestItemService>();
-        DatabaseInitializer = Services.GetRequiredService<DatabaseInitializer>();
+        DatabaseInitializer = Services.GetRequiredService<GameServiceDatabaseInitializer>();
         SessionService = Services.GetRequiredService<SessionService>();
         AccountService = Services.GetRequiredService<AccountService>();
         CharacterService = Services.GetRequiredService<CharacterService>();
@@ -62,7 +62,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     // The production service graph, built by GameServiceTestComposition.
     public IServiceProvider Services { get; }
 
-    public DatabaseInitializer DatabaseInitializer { get; }
+    public GameServiceDatabaseInitializer DatabaseInitializer { get; }
 
     public ItemCatalogSource CatalogSource { get; }
 

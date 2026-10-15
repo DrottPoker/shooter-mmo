@@ -293,4 +293,10 @@ intended differences:
   `PlacementModule`, its options with the topology, World catalog, and
   Development bot options, and `Placement.Contracts` are public. The host
   seeds the topology through `PlacementModule.SeedTopologyAsync`.
+- Items finished: `ItemsModule.Migrations` owns #10 to #13, #16, and #17, the
+  host keeps the nine baseline migrations in `LegacyBaselineMigrations`, and
+  `GameServiceDatabaseInitializer` applies the merged history and then runs
+  every `IDatabaseSeeder`. Items seeds the catalog and back-fills item state
+  through `ItemsDatabaseSeeder`, and the Development item commands moved from
+  `Program.cs` into `ItemsCommandLine` with the same output and exit codes.
 - The Items extraction: in progress.

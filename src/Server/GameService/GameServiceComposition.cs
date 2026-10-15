@@ -4,6 +4,7 @@ using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
+using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Health;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
@@ -45,7 +46,7 @@ internal static class GameServiceComposition
     public static GameServiceSchema CreateSchema(GameServiceConfiguration configuration)
     {
         return GameServiceSchema.Create(
-            DatabaseInitializer.HostMigrations,
+            LegacyBaselineMigrations.All,
             CreateModules(configuration));
     }
 
@@ -57,7 +58,7 @@ internal static class GameServiceComposition
 
         services.AddGameServicePlatform(configuration.Platform);
         services.AddSingleton(CreateSchema(configuration));
-        services.AddSingleton<DatabaseInitializer>();
+        services.AddSingleton<GameServiceDatabaseInitializer>();
         services.AddSingleton<PostgresHealthProbe>();
         services.AddSingleton<GameServiceHealthService>();
         foreach (var module in CreateModules(configuration))

@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Integration;
+using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
@@ -12,7 +13,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 {
     public string Name => "Items";
 
-    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+    public IReadOnlyList<DatabaseMigration> Migrations => ItemsSchemaMigrations.All;
 
     public void AddServices(IServiceCollection services)
     {
@@ -26,6 +27,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<ItemOperationsMetrics>();
         services.AddSingleton<ItemCatalogSeeder>();
         services.AddSingleton<CharacterItemStateBootstrapper>();
+        services.AddSingleton<IDatabaseSeeder, ItemsDatabaseSeeder>();
         services.AddSingleton<ICharacterLifecycleHandler, CharacterItemStateLifecycleHandler>();
         services.AddSingleton<ISimulationCharacterStateProvider, SimulationCharacterStateProvider>();
         services.AddSingleton<IShardWorldLocalStateProbe, OpenCorpseShardStateProbe>();

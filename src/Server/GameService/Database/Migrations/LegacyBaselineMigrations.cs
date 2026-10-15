@@ -1,18 +1,12 @@
-using Mmorpg.GameService.Database.Migrations;
-using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Database;
 
-namespace Mmorpg.GameService.Database;
+namespace Mmorpg.GameService.Database.Migrations;
 
-public sealed class DatabaseInitializer(
-    GameServiceSchema schema,
-    DatabaseMigrationRunner migrationRunner,
-    ItemCatalogSeeder itemCatalogSeeder,
-    CharacterItemStateBootstrapper characterItemStateBootstrapper)
+// The nine migrations that shipped before the module split. Migrations #1 and #6
+// touch several modules' tables, so the host keeps all nine together, frozen.
+internal static class LegacyBaselineMigrations
 {
-    // Migrations the host still owns. GameServiceSchema merges them with the module
-    // migrations, and MigrationHistoryTests freezes ids, order, and SQL hashes.
-    internal static readonly IReadOnlyList<DatabaseMigration> HostMigrations =
+    public static IReadOnlyList<DatabaseMigration> All { get; } =
     [
         new("202607071600_auth_character_world_join", LegacyInitialAuthSchemaMigrationSql),
         new("202607101200_character_world_sessions", LegacySimulationSessionLeaseMigrationSql),
@@ -24,23 +18,8 @@ public sealed class DatabaseInitializer(
         new("202607141200_simulation_topology", SimulationTopologyMigrationSql),
         new(
             "202607141300_single_active_account_simulation_session",
-            SingleActiveAccountSimulationSessionMigrationSql),
-        new(ItemPersistenceFoundationMigration.Id, ItemPersistenceFoundationMigration.Sql),
-        new(PlayerCorpsePersistenceMigration.Id, PlayerCorpsePersistenceMigration.Sql),
-        new(PlayerDeathCarryOverflowMigration.Id, PlayerDeathCarryOverflowMigration.Sql),
-        new(ItemOperationsHardeningMigration.Id, ItemOperationsHardeningMigration.Sql),
-        new(
-            ReleaseRetryableOperationClaimsMigration.Id,
-            ReleaseRetryableOperationClaimsMigration.Sql),
-        new(EquippedItemLookupIndexMigration.Id, EquippedItemLookupIndexMigration.Sql)
+            SingleActiveAccountSimulationSessionMigrationSql)
     ];
-
-    public async Task InitializeAsync(CancellationToken cancellationToken)
-    {
-        await migrationRunner.ApplyAsync(schema.Migrations, cancellationToken);
-        await itemCatalogSeeder.SeedAsync(cancellationToken);
-        await characterItemStateBootstrapper.BackfillActiveCharactersAsync(cancellationToken);
-    }
 
     private const string LegacyInitialAuthSchemaMigrationSql = """
         create table accounts (
