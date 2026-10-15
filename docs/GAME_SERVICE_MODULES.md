@@ -273,4 +273,5 @@ intended differences:
   read the entitlement through the locked account (S34).
 - Characters extracted: `src/Server/GameService.Characters` builds
   `Mmorpg.GameService.Characters`, which references Platform and Accounts.
+  Only `CharactersModule`, its options, and `Characters.Contracts` are public.
 - The Placement and Items extractions: in progress.

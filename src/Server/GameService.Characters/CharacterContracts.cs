@@ -1,8 +1,8 @@
 namespace Mmorpg.GameService.Characters;
 
-public sealed record CreateCharacterRequest(string? Name);
+internal sealed record CreateCharacterRequest(string? Name);
 
-public sealed record CharacterResponse(
+internal sealed record CharacterResponse(
     Guid Id,
     string Name,
     long Currency,

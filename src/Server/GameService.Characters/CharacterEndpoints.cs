@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Characters;
 
-public static class CharacterEndpoints
+internal static class CharacterEndpoints
 {
     public static IEndpointRouteBuilder MapCharacterEndpoints(this IEndpointRouteBuilder app)
     {

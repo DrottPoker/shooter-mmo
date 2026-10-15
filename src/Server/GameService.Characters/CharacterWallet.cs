@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Characters;
 
-public sealed class CharacterWallet : ICharacterWallet
+internal sealed class CharacterWallet : ICharacterWallet
 {
     public async Task<CurrencyDebit> DebitAsync(
         PostgresTransactionScope scope,

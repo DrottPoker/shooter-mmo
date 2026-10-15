@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Characters;
 
-public static class CharacterValidation
+internal static class CharacterValidation
 {
     public static string? ValidateName(string? name)
     {

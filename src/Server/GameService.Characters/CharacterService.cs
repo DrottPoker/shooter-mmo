@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Characters;
 
-public sealed class CharacterService(
+internal sealed class CharacterService(
     NpgsqlDataSource dataSource,
     CharactersModuleOptions options,
     IAccountLocks accountLocks,

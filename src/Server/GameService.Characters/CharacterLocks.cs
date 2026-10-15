@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Characters;
 
-public sealed class CharacterLocks : ICharacterLocks
+internal sealed class CharacterLocks : ICharacterLocks
 {
     public async Task<bool> LockOwnedActiveForUpdateAsync(
         PostgresTransactionScope scope,
