@@ -201,6 +201,80 @@ runtime content into one output World directory, and selecting
 physics, networking, quotas, interest, collision streaming, and corpse radii
 remain process policy rather than map content.
 
+#### Realtime Server Structure And Threading Contract
+
+`RealtimeSimulationService` is a thin hosted service. Its public constructor
+passes the injected services to `RealtimeServerComposition`, the only place that
+creates realtime components, and `ExecuteAsync` runs `RealtimeServer.RunAsync`.
+The components are not registered in dependency injection, so other hosted
+services cannot reach loop-confined state. All of them live below
+`src/Server/SimulationWorker/Realtime` in the `Mmorpg.SimulationWorker.Realtime`
+namespace, in folders that mirror the protocol families:
+
+| Folder | Responsibility |
+| --- | --- |
+| `Transport` | `LiteNetLibRealtimeTransport` owns the `NetManager` and resolves peers by id, `RealtimeConnectionAdmission` decides connection requests, `RealtimePeerSender` sends packets and protocol rejections. |
+| `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation and the orphan sweep. |
+| `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table in `RealtimeMessageRoutes`. |
+| `Operations` | `RealtimeCompletionQueue`, `RealtimeCompletionProcessor`, `RealtimeOperationTracker`, `AuthorityOperationScheduler`, and the completion records. |
+| `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors` | One loop-side handler per feature plus, where GameService or capability calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks, `EntityPresenceReplicator` owns the interest manager, and `SnapshotReplicator` owns snapshot budgets and fairness. |
+
+One sequential loop strand owns the realtime state. Each iteration polls the
+transport, drains completed operations within a budget, runs due simulation
+ticks, supervises peers, sweeps orphaned sessions, and then waits for the poll
+interval. The loop may resume on any thread-pool thread; the await gives each
+iteration a happens-before edge to the next. Every change to these types must
+keep the following contract:
+
+- Loop confinement. Every component except `RealtimeCompletionQueue` and
+  `RealtimeOperationTracker` is confined to the loop and uses no lock. Off-loop
+  code may only call synchronized services, post completions, and log, and it
+  may read only the immutable `PeerId` of a peer context.
+- The thread boundary is a type boundary. A feature's off-loop part is a
+  `*AuthorityOperations` class whose constructor receives only synchronized
+  services, the completion queue, and a logger.
+- LiteNetLib callbacks run inside `PollEvents` because `UnsyncedEvents` stays
+  false. A freed peer id can only be reused after its disconnect event, which is
+  what makes resolving peers by id safe. Never enable `UnsyncedEvents`.
+- Async work starts inline on the loop and is tracked; it is never wrapped in
+  `Task.Run` or `Task.Yield`. The synchronous prefix matters: a detached release
+  removes the local session before its first await, world interaction open,
+  close, and rejections complete synchronously, and an uncontended corpse
+  mutation acquires its gate synchronously.
+- All completions use one FIFO queue across peers and features, and each
+  completion names the handler that finalizes it. A pass processes at least one
+  completion and stops when the budget of one eighth of a tick is used.
+- Every finalizer first checks that the peer context still owns its id and is
+  connected, then that the session id and token still match. A stale corpse
+  completion releases a view reservation only for a context that still owns its
+  id.
+- A peer runs at most one item, corpse, or world interaction authority operation
+  at a time and queues at most eight more.
+- Peers are iterated in registry insertion order. Snapshot fairness and
+  broadcast order depend on it, so the table stays a plain dictionary.
+- A tick runs collision streaming, carry state and movement per player in
+  entity id order, world actor activity, interaction revalidation every fifth of
+  a second, snapshots at the snapshot rate, and corpse presence twice per
+  second. At most five ticks catch up before the clock resynchronizes.
+- Shutdown stops the transport, waits for in-flight operations, clears peers,
+  interest, bindings, entities, carry state, corpse viewers, interaction leases,
+  world actors, cached corpse views, and the orphan sweep state, zeroes the
+  population gauges, and logs `Realtime transport stopped.` last. Completions
+  produced during shutdown are not finalized.
+- A failing packet or completion disconnects only its own peer with
+  `internal_error`. An exception in a tick, peer supervision, or the orphan
+  sweep still stops the host.
+- Components log through the service's `ILogger<RealtimeSimulationService>`, so
+  the log category and templates stay stable. Completion record names appear in
+  the failure log and must not change.
+- Corpse range checks keep their exact float arithmetic, and the realtime code
+  never changes `src/Shared`.
+
+`IRealtimePeerConnection` and `IRealtimePeerDirectory` are the transport seam.
+Tests drive single components in memory with recording peers, and
+`RealtimeServerHarness` drives the whole service over real UDP with a scripted
+GameService.
+
 ### Shared
 
 `Shared` contains backend helpers that have more than one backend consumer:

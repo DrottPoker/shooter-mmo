@@ -1450,16 +1450,33 @@ public shard list did not contain that endpoint.
 
 The ticket is intentionally short-lived and is consumed by the Unity UDP
 handshake. Do not attempt to send it to an HTTP SimulationWorker endpoint. The backend
-socket tests verify join, leave, and the reliable entity lifecycle with:
+socket tests verify join, leave, the reliable entity lifecycle, protocol
+rejections, reconnects, item, corpse, and world interaction flows, replication
+order, and shutdown with:
 
 ```powershell
 dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
-  --filter "FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests"
+  --filter "FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests|FullyQualifiedName~RealtimeProtocolRejectionTests|FullyQualifiedName~RealtimeSessionLifecycleTests|FullyQualifiedName~RealtimeItemOperationTests|FullyQualifiedName~RealtimeCorpseInteractionTests|FullyQualifiedName~RealtimeWorldActorInteractionTests|FullyQualifiedName~RealtimeReplicationContractTests"
 ```
 
-Expected result: the authenticated client joins, moves, and leaves with exact
-session cleanup. The two-client lifecycle test also proves that an existing peer
-receives reliable ordered spawn and despawn for the other player.
+Expected result: every test passes in about half a minute. The authenticated
+client joins, moves, and leaves with exact session cleanup, an existing peer
+receives reliable ordered spawn and despawn for another player, and every
+protocol rejection arrives with its documented code before the delayed
+disconnect. The tests start real UDP servers on free loopback ports and need no
+database.
+
+The realtime components also have in-memory tests that need no sockets:
+
+```powershell
+dotnet test tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj `
+  --filter "FullyQualifiedName~RealtimeMessageDispatcherTests|FullyQualifiedName~RealtimeCompletionProcessorTests|FullyQualifiedName~RealtimeCorpsePeerIdReuseTests|FullyQualifiedName~RealtimeAuthorityQueueTests|FullyQualifiedName~RealtimeItemOperationHandlerTests|FullyQualifiedName~RealtimeWorldInteractionOperationsTests|FullyQualifiedName~RealtimeServiceDisposalTests|FullyQualifiedName~RealtimeMetricNamesTests"
+```
+
+Expected result: every test passes within seconds. The dispatcher test compares
+every peer state, message type, channel, and delivery method with the original
+routing rules. Use `--filter "FullyQualifiedName~Realtime"` to run every
+realtime test at once.
 
 Optional logout test after the join flow is complete:
 
