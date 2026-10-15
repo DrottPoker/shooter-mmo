@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using LiteNetLib;
 using Microsoft.Extensions.Hosting;
@@ -49,13 +48,12 @@ public sealed class RealtimeSimulationService(
     CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
     : BackgroundService
 {
-    private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
+    private readonly RealtimeCompletionQueue completions = new();
+    private readonly RealtimeOperationTracker operationTracker = new();
     private readonly Dictionary<int, RealtimePeerContext> peers = [];
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
     private PeerAdmissionGuard admissionGuard = null!;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
-    private readonly HashSet<Task> activeOperations = [];
-    private readonly object activeOperationsLock = new();
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
     private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
@@ -185,13 +183,13 @@ public sealed class RealtimeSimulationService(
 
                 phaseStarted = Stopwatch.GetTimestamp();
                 performanceMetrics.ObserveCompletedOperationBacklog(
-                    completedOperations.Count);
+                    completions.Count);
                 performanceMetrics.ObserveCorpseMutationCoordinator(
                     corpseMutationCoordinator.WaitingMutationCount,
                     corpseMutationCoordinator.ActiveCorpseCount);
                 ProcessCompletedOperations(completedOperationBudget);
                 performanceMetrics.ObserveCompletedOperationBacklog(
-                    completedOperations.Count);
+                    completions.Count);
                 performanceMetrics.ObserveCorpseMutationCoordinator(
                     corpseMutationCoordinator.WaitingMutationCount,
                     corpseMutationCoordinator.ActiveCorpseCount);
@@ -226,7 +224,7 @@ public sealed class RealtimeSimulationService(
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
             networkMetrics.SetPeerPopulation(0, 0, 0);
-            await AwaitActiveOperationsAsync();
+            await operationTracker.WaitForAllAsync();
             logger.LogInformation("[SIMULATION] Realtime transport stopped.");
         }
     }
@@ -266,7 +264,7 @@ public sealed class RealtimeSimulationService(
             else
             {
                 RemoveBoundEntity(context, context.Session, "connection_closed");
-                TrackOperation(ReleaseDisconnectedSessionAsync(context.Session));
+                operationTracker.Track(ReleaseDisconnectedSessionAsync(context.Session));
             }
         }
 
@@ -389,7 +387,7 @@ public sealed class RealtimeSimulationService(
         }
 
         context.JoinStarted = true;
-        TrackOperation(CompleteJoinAsync(context, joinTicket));
+        operationTracker.Track(CompleteJoinAsync(context, joinTicket));
     }
 
     private void HandleAuthenticatedMessage(
@@ -678,7 +676,7 @@ public sealed class RealtimeSimulationService(
         }
 
         context.LeaveStarted = true;
-        TrackOperation(CompleteLeaveAsync(context, context.Session));
+        operationTracker.Track(CompleteLeaveAsync(context, context.Session));
     }
 
     private async Task CompleteJoinAsync(RealtimePeerContext context, string joinTicket)
@@ -686,7 +684,7 @@ public sealed class RealtimeSimulationService(
         try
         {
             var result = await joinService.JoinAsync(joinTicket, CancellationToken.None);
-            completedOperations.Enqueue(new JoinCompleted(
+            completions.Post(new JoinCompleted(
                 context,
                 result,
                 Stopwatch.GetTimestamp()));
@@ -697,7 +695,7 @@ public sealed class RealtimeSimulationService(
                 exception,
                 "[SIMULATION] Unhandled error while authenticating UDP peer {PeerId}.",
                 context.PeerId);
-            completedOperations.Enqueue(new JoinCompleted(
+            completions.Post(new JoinCompleted(
                 context,
                 SimulationJoinResult<ActiveSimulationSession>.Failure(
                     500,
@@ -712,7 +710,7 @@ public sealed class RealtimeSimulationService(
         try
         {
             var result = await releaseService.ReleaseAsync(session, CancellationToken.None);
-            completedOperations.Enqueue(new LeaveCompleted(context, session, result));
+            completions.Post(new LeaveCompleted(context, session, result));
         }
         catch (Exception exception)
         {
@@ -720,7 +718,7 @@ public sealed class RealtimeSimulationService(
                 exception,
                 "[SIMULATION] Unhandled error while releasing UDP peer {PeerId}.",
                 context.PeerId);
-            completedOperations.Enqueue(new LeaveCompleted(
+            completions.Post(new LeaveCompleted(
                 context,
                 session,
                 SimulationSessionReleaseResult.Failure(
@@ -746,7 +744,7 @@ public sealed class RealtimeSimulationService(
                 positionY,
                 positionZ,
                 CancellationToken.None);
-            completedOperations.Enqueue(new ItemOperationCompleted(
+            completions.Post(new ItemOperationCompleted(
                 context,
                 session,
                 result));
@@ -757,7 +755,7 @@ public sealed class RealtimeSimulationService(
                 exception,
                 "[SIMULATION] Unhandled error while mutating items for simulation session {SimulationSessionId}.",
                 session.SimulationSessionId);
-            completedOperations.Enqueue(new ItemOperationCompleted(
+            completions.Post(new ItemOperationCompleted(
                 context,
                 session,
                 SimulationItemInteractionResult.Rejected(
@@ -809,7 +807,7 @@ public sealed class RealtimeSimulationService(
                 _ => throw new InvalidOperationException(
                     "The queued corpse operation is not supported by GameService.")
             };
-            completedOperations.Enqueue(new CorpseOperationCompleted(
+            completions.Post(new CorpseOperationCompleted(
                 context,
                 session,
                 result,
@@ -822,7 +820,7 @@ public sealed class RealtimeSimulationService(
                 "[SIMULATION] Unhandled error while interacting with corpse {CorpseId} for simulation session {SimulationSessionId}.",
                 intent.CorpseId,
                 session.SimulationSessionId);
-            completedOperations.Enqueue(new CorpseOperationCompleted(
+            completions.Post(new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -879,7 +877,7 @@ public sealed class RealtimeSimulationService(
     private void ProcessCompletedOperations(TimeSpan budget)
     {
         var started = Stopwatch.GetTimestamp();
-        while (completedOperations.TryDequeue(out var operation))
+        while (completions.TryDequeue(out var operation))
         {
             try
             {
@@ -948,7 +946,7 @@ public sealed class RealtimeSimulationService(
             && joinCompleted.Context.Session is null
             && joinCompleted.Result.Value is not null)
         {
-            TrackOperation(ReleaseDisconnectedSessionAsync(joinCompleted.Result.Value));
+            operationTracker.Track(ReleaseDisconnectedSessionAsync(joinCompleted.Result.Value));
         }
 
         if (TryGetCurrentPeer(operation.Context, out var peer))
@@ -968,7 +966,7 @@ public sealed class RealtimeSimulationService(
             if (completed.Result.Succeeded
                 && completed.Result.Value is not null)
             {
-                TrackOperation(ReleaseDisconnectedSessionAsync(completed.Result.Value));
+                operationTracker.Track(ReleaseDisconnectedSessionAsync(completed.Result.Value));
             }
 
             return;
@@ -994,7 +992,7 @@ public sealed class RealtimeSimulationService(
         var session = completed.Result.Value!;
         if (!IsCurrentSession(session))
         {
-            TrackOperation(ReleaseDisconnectedSessionAsync(session));
+            operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
             RejectProtocol(peer, completed.Context, "session_missing", "The joined simulation session is no longer active.");
             return;
         }
@@ -1004,7 +1002,7 @@ public sealed class RealtimeSimulationService(
                 session.SimulationSessionId,
                 out var currentCarryState))
         {
-            TrackOperation(ReleaseDisconnectedSessionAsync(session));
+            operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
             RejectProtocol(
                 peer,
                 completed.Context,
@@ -1282,7 +1280,7 @@ public sealed class RealtimeSimulationService(
         switch (operation)
         {
             case QueuedItemOperation itemOperation:
-                TrackOperation(CompleteItemOperationAsync(
+                operationTracker.Track(CompleteItemOperationAsync(
                     context,
                     context.Session,
                     itemOperation.Intent,
@@ -1323,7 +1321,7 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        TrackOperation(CompleteWorldInteractionOperationAsync(
+        operationTracker.Track(CompleteWorldInteractionOperationAsync(
             context,
             entity,
             intent));
@@ -1363,7 +1361,7 @@ public sealed class RealtimeSimulationService(
                 null);
         }
 
-        completedOperations.Enqueue(new WorldInteractionOperationCompleted(
+        completions.Post(new WorldInteractionOperationCompleted(
             context,
             entity.Session,
             result));
@@ -1445,7 +1443,7 @@ public sealed class RealtimeSimulationService(
     {
         if (intent.OperationKind == RealtimeCorpseInteractionKind.Close)
         {
-            completedOperations.Enqueue(new CorpseOperationCompleted(
+            completions.Post(new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Closed(intent),
@@ -1463,7 +1461,7 @@ public sealed class RealtimeSimulationService(
                 : null;
         if (corpse is null)
         {
-            completedOperations.Enqueue(new CorpseOperationCompleted(
+            completions.Post(new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -1481,7 +1479,7 @@ public sealed class RealtimeSimulationService(
                 positionY,
                 positionZ))
         {
-            completedOperations.Enqueue(new CorpseOperationCompleted(
+            completions.Post(new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -1503,7 +1501,7 @@ public sealed class RealtimeSimulationService(
                     out var leaseCode,
                     out var leaseMessage))
             {
-                completedOperations.Enqueue(new CorpseOperationCompleted(
+                completions.Post(new CorpseOperationCompleted(
                     context,
                     session,
                     SimulationCorpseInteractionResult.Rejected(
@@ -1530,7 +1528,7 @@ public sealed class RealtimeSimulationService(
                         intent.CorpseId);
                 }
 
-                completedOperations.Enqueue(new CorpseOperationCompleted(
+                completions.Post(new CorpseOperationCompleted(
                     context,
                     session,
                     SimulationCorpseInteractionResult.Rejected(intent, code, message),
@@ -1538,7 +1536,7 @@ public sealed class RealtimeSimulationService(
                 return;
             }
 
-            TrackOperation(CompleteCorpseOperationAsync(
+            operationTracker.Track(CompleteCorpseOperationAsync(
                 context,
                 session,
                 intent,
@@ -1549,7 +1547,7 @@ public sealed class RealtimeSimulationService(
 
         if (!corpseViewers.IsViewing(context.PeerId, intent.CorpseId))
         {
-            completedOperations.Enqueue(new CorpseOperationCompleted(
+            completions.Post(new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -1560,7 +1558,7 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        TrackOperation(CompleteCorpseOperationAsync(
+        operationTracker.Track(CompleteCorpseOperationAsync(
             context,
             session,
             intent,
@@ -2556,7 +2554,7 @@ public sealed class RealtimeSimulationService(
                 "[SIMULATION] Releasing simulation session {SimulationSessionId} because no peer has owned it for {Seconds:F0} seconds.",
                 session.SimulationSessionId,
                 (now - since).TotalSeconds);
-            TrackOperation(ReleaseDisconnectedSessionAsync(session));
+            operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
         }
 
         foreach (var sessionId in unboundSessionsSinceUtc.Keys.ToArray())
@@ -2974,39 +2972,5 @@ public sealed class RealtimeSimulationService(
     {
         peer.Send(packet, DeliveryMethod.ReliableOrdered);
         networkMetrics.RecordSent(packet.Length);
-    }
-
-    private void TrackOperation(Task operation)
-    {
-        lock (activeOperationsLock)
-        {
-            activeOperations.Add(operation);
-        }
-
-        _ = operation.ContinueWith(
-            completedOperation =>
-            {
-                lock (activeOperationsLock)
-                {
-                    activeOperations.Remove(completedOperation);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
-
-    private async Task AwaitActiveOperationsAsync()
-    {
-        Task[] pendingOperations;
-        lock (activeOperationsLock)
-        {
-            pendingOperations = activeOperations.ToArray();
-        }
-
-        if (pendingOperations.Length > 0)
-        {
-            await Task.WhenAll(pendingOperations);
-        }
     }
 }
