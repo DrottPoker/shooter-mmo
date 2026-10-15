@@ -34,6 +34,8 @@ internal sealed partial class ItemTransactionService(
     private readonly BagAggregateCommandHandler bagAggregate = new();
     private readonly RecoveryDeliveryCommandHandler recoveryDelivery = new();
     private readonly SecureContainerTierCommandHandler secureContainerTier = new();
+    private readonly MobCorpseCommandHandler mobCorpse = new();
+    private readonly MobLootGrantCommandHandler mobLootGrant = new();
     private readonly ItemTransactionKernel kernel = new(
         dataSource,
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
