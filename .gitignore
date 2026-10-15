@@ -43,3 +43,6 @@ src/Client/*.VC.db
 # OS files
 .DS_Store
 Thumbs.db
+
+# Claude Code agent worktrees
+.claude/worktrees/
