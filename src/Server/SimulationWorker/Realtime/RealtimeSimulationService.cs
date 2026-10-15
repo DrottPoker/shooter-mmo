@@ -83,4 +83,10 @@ public sealed class RealtimeSimulationService(
     {
         return server.RunAsync(stoppingToken);
     }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        server.Dispose();
+    }
 }

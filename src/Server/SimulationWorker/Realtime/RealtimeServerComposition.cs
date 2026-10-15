@@ -65,9 +65,12 @@ internal static class RealtimeServerComposition
         var clock = new RealtimeSimulationClock();
         var interestManager = dependencies.InterestManager
             ?? new SimulationInterestManager(config.InterestManagement);
-        var networkMetrics = dependencies.NetworkMetrics ?? new RealtimeNetworkMetrics();
+        // Metrics the host did not provide are created here and owned by the server.
+        var ownedResources = new List<IDisposable>();
+        var networkMetrics = dependencies.NetworkMetrics
+            ?? Own(new RealtimeNetworkMetrics(), ownedResources);
         var performanceMetrics = dependencies.PerformanceMetrics
-            ?? new RealtimePerformanceMetrics();
+            ?? Own(new RealtimePerformanceMetrics(), ownedResources);
         var sender = new RealtimePeerSender(networkMetrics, logger);
         var admissionGuard = new PeerAdmissionGuard(config.Admission);
         var transport = new LiteNetLibRealtimeTransport(
@@ -303,6 +306,14 @@ internal static class RealtimeServerComposition
             corpseViews,
             networkMetrics,
             performanceMetrics,
+            ownedResources,
             logger);
+    }
+
+    private static T Own<T>(T resource, List<IDisposable> ownedResources)
+        where T : IDisposable
+    {
+        ownedResources.Add(resource);
+        return resource;
     }
 }

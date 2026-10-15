@@ -37,8 +37,11 @@ internal sealed class RealtimeServer(
     CorpseViewDistributor corpseViews,
     RealtimeNetworkMetrics networkMetrics,
     RealtimePerformanceMetrics performanceMetrics,
-    ILogger logger)
+    IReadOnlyList<IDisposable> ownedResources,
+    ILogger logger) : IDisposable
 {
+    private bool disposed;
+
     public async Task RunAsync(CancellationToken stoppingToken)
     {
         worldActors.Activate();
@@ -136,5 +139,20 @@ internal sealed class RealtimeServer(
         networkMetrics.SetActiveEntities(0);
         networkMetrics.SetPeerPopulation(0, 0, 0);
         logger.LogInformation("[SIMULATION] Realtime transport stopped.");
+    }
+
+    // Disposes only what the composition created; provided services stay with the host.
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        foreach (var resource in ownedResources)
+        {
+            resource.Dispose();
+        }
     }
 }
