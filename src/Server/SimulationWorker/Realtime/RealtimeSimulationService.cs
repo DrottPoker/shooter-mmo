@@ -43,8 +43,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private PeerAdmissionGuard admissionGuard = null!;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
-    private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
-    private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
     private readonly List<SimulationVector3> collisionAnchorBuffer = [];
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
@@ -52,7 +50,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly Dictionary<Guid, CorpseViewSnapshotResponse> corpseSnapshots = [];
     private readonly CorpseMutationCoordinator corpseMutationCoordinator = new();
     private readonly TokenBucket aggregateSnapshotBytes;
-    private readonly SimulationInterestManager interestManager;
     private readonly RealtimeNetworkMetrics networkMetrics;
     private readonly RealtimePerformanceMetrics performanceMetrics;
     private readonly WorldActorStore? worldActorStore;
@@ -68,8 +65,9 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly RealtimePeerRegistry peerRegistry;
     private readonly RealtimeMessageDispatcher dispatcher;
     private readonly RealtimeCompletionProcessor completionProcessor;
+    private readonly RealtimeSimulationClock clock = new();
+    private readonly EntityPresenceReplicator presence;
     private NetManager? server;
-    private uint serverTick;
     private uint snapshotSequence;
     private uint corpsePresenceSequence;
 
@@ -125,7 +123,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         aggregateSnapshotBytes = new(
             config.UdpQuotas.AggregateSnapshotBytesPerSecond,
             config.UdpQuotas.AggregateSnapshotByteBurst);
-        interestManager =
+        var interestManager =
             providedInterestManager ?? new SimulationInterestManager(config.InterestManagement);
         networkMetrics = providedNetworkMetrics ?? new RealtimeNetworkMetrics();
         performanceMetrics = providedPerformanceMetrics ?? new RealtimePerformanceMetrics();
@@ -144,6 +142,15 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             connectionBindings,
             entityRegistry,
             networkMetrics);
+        presence = new EntityPresenceReplicator(
+            peerRegistry,
+            sender,
+            entityRegistry,
+            connectionBindings,
+            worldActorStore,
+            interestManager,
+            networkMetrics,
+            clock);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -178,8 +185,8 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 config.ShardId,
                 workerIdentity.RuntimeId);
             worldActorMetrics?.ObservePopulation(actors);
-            RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
-            networkMetrics.SetActiveEntities(GetActiveEntityCount());
+            presence.RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
+            networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
             logger.LogInformation(
                 "[SIMULATION] Activated {ActorCount} world actors from revision {WorldActorRevision} for worker runtime {RuntimeId}.",
                 actors.Count,
@@ -286,7 +293,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             server.Stop();
             server = null;
             peerRegistry.Clear();
-            interestManager.Clear();
+            presence.Clear();
             connectionBindings.Clear();
             entityRegistry.Clear();
             carryStateStore.Clear();
@@ -323,7 +330,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             return;
         }
 
-        interestManager.RemoveConnection(netPeer.Id);
+        presence.ForgetConnection(netPeer.Id);
         corpseViewers.RemovePeer(netPeer.Id);
         worldInteractionLeases?.RemovePeer(netPeer.Id);
         networkMetrics.SetActivePeers(peerRegistry.Count);
@@ -970,19 +977,10 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         peerRegistry.RefreshPopulationMetrics();
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
-        IReadOnlyList<int> connectionsEnteringNewEntity;
-        var interestEntity = RealtimeStateMapper.ToInterestEntity(entity);
-        if (registration.IsNewEntity)
-        {
-            connectionsEnteringNewEntity = interestManager.AddEntity(interestEntity);
-        }
-        else
-        {
-            interestManager.UpdateEntity(interestEntity);
-            connectionsEnteringNewEntity = Array.Empty<int>();
-        }
-
-        var joiningInterest = interestManager.Refresh(
+        var connectionsEnteringNewEntity = presence.TrackJoiningEntity(
+            entity,
+            registration.IsNewEntity);
+        var joiningInterest = presence.RefreshConnection(
             completed.Context.PeerId,
             entity.NetworkEntityId);
 
@@ -1004,10 +1002,10 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState),
                 RealtimeStateMapper.ToRealtimeMovementSettings(config),
                 RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State))));
-        SendEntityBaseline(peer, joiningInterest.Visible);
-        SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
+        presence.SendEntityBaseline(peer, joiningInterest.Visible);
+        presence.SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();
-        networkMetrics.SetActiveEntities(GetActiveEntityCount());
+        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
 
         if (session.IsSyntheticBot)
         {
@@ -1942,10 +1940,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         {
             var tickStarted = Stopwatch.GetTimestamp();
             performanceMetrics.RecordSimulationTickLag(elapsed - nextSimulationTick);
-            unchecked
-            {
-                serverTick++;
-            }
+            clock.Advance();
 
             var phaseStarted = Stopwatch.GetTimestamp();
             RefreshCollisionStreaming();
@@ -1966,10 +1961,10 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             {
                 foreach (var changedActor in worldActorActivityScheduler.Evaluate(
                              playerBuffer,
-                             serverTick,
+                             clock.ServerTick,
                              config.MovementSimulation.TickRateHz))
                 {
-                    BroadcastWorldActorState(changedActor);
+                    presence.BroadcastWorldActorState(changedActor);
                 }
 
                 if (worldActorStore is not null)
@@ -1982,7 +1977,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 1,
                 config.MovementSimulation.TickRateHz / 5);
             if (worldInteractionAuthority is not null
-                && serverTick % interactionValidationIntervalTicks == 0)
+                && clock.ServerTick % interactionValidationIntervalTicks == 0)
             {
                 foreach (var closure in worldInteractionAuthority.Revalidate(
                              peerRegistry.ResolvePlayerForInteraction))
@@ -2001,7 +1996,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             }
 
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
-            if (serverTick % snapshotIntervalTicks == 0)
+            if (clock.ServerTick % snapshotIntervalTicks == 0)
             {
                 BroadcastSimulationSnapshots();
             }
@@ -2009,7 +2004,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             var corpsePresenceIntervalTicks = Math.Max(
                 1,
                 config.MovementSimulation.TickRateHz / 2);
-            if (serverTick % corpsePresenceIntervalTicks == 0)
+            if (clock.ServerTick % corpsePresenceIntervalTicks == 0)
             {
                 BroadcastCorpsePresence();
             }
@@ -2024,7 +2019,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         {
             logger.LogWarning(
                 "[SIMULATION] Movement simulation exceeded its catch-up budget at server tick {ServerTick}. Resynchronizing the fixed-tick clock.",
-                serverTick);
+                clock.ServerTick);
             performanceMetrics.RecordTickResynchronization();
             nextSimulationTick = elapsed + simulationInterval;
         }
@@ -2059,8 +2054,8 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             }
 
             var interestStarted = Stopwatch.GetTimestamp();
-            RebuildInterestIndex(playerBuffer);
-            RefreshInterests(null);
+            presence.RebuildInterestIndex(playerBuffer);
+            presence.RefreshInterests(null);
             performanceMetrics.RecordInterestRefresh(
                 Stopwatch.GetElapsedTime(interestStarted));
 
@@ -2110,7 +2105,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 var ownerPacket = RealtimeProtocol.EncodeOwnerSimulationSnapshot(
                     new RealtimeOwnerSimulationSnapshot(
                         snapshotSequence,
-                        serverTick,
+                        clock.ServerTick,
                         controlledSnapshot!.LastProcessedInputSequence,
                         controlledSnapshot.State));
                 encodedOwnerPacketCount++;
@@ -2141,9 +2136,9 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 var recipient = snapshotRecipientBuffer[
                     (recipientStart + recipientIndex) % snapshotRecipientBuffer.Count];
                 var packetBatch = snapshotPacketCache.GetOrCreate(
-                    interestManager.GetVisibleOrdered(recipient.Context.PeerId),
+                    presence.GetVisibleOrdered(recipient.Context.PeerId),
                     snapshotSequence,
-                    serverTick,
+                    clock.ServerTick,
                     bytesPerRecipient,
                     config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
                 deferredEntityUpdateCount += packetBatch.DeferredEntityCount;
@@ -2338,7 +2333,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             previousContext.ScheduleDisconnect(DateTime.UtcNow);
         }
 
-        interestManager.RemoveConnection(replacedConnectionId.Value);
+        presence.ForgetConnection(replacedConnectionId.Value);
     }
 
     private void EnforcePeerState()
@@ -2492,121 +2487,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         return sessionStore.IsCurrent(session, DateTime.UtcNow);
     }
 
-    private void SendEntityBaseline(IRealtimePeerConnection peer, IReadOnlySet<ulong> visibleEntityIds)
-    {
-        entityRegistry.CopyPlayersTo(playerBuffer);
-        foreach (var entity in playerBuffer)
-        {
-            if (visibleEntityIds.Contains(entity.NetworkEntityId))
-            {
-                SendSpawn(peer, entity);
-            }
-        }
-
-        if (worldActorStore is null)
-        {
-            return;
-        }
-
-        worldActorStore.CopyActorsTo(worldActorBuffer);
-        foreach (var actor in worldActorBuffer)
-        {
-            if (visibleEntityIds.Contains(actor.NetworkEntityId))
-            {
-                SendWorldActorSpawn(peer, actor);
-            }
-        }
-    }
-
-    private void SendEntitySpawnToConnections(
-        PlayerSimulationEntity entity,
-        IReadOnlyList<int> connectionIds)
-    {
-        foreach (var connectionId in connectionIds)
-        {
-            if (peerRegistry.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
-            {
-                SendSpawn(peer, entity);
-            }
-        }
-    }
-
-    private void RefreshInterests(int? excludedConnectionId)
-    {
-        foreach (var context in peerRegistry.Contexts)
-        {
-            if (context.PeerId == excludedConnectionId
-                || context.Session is null
-                || !connectionBindings.TryGetEntityId(context.PeerId, out var controlledEntityId)
-                || !peerRegistry.TryGetCurrentPeer(context, out var peer))
-            {
-                continue;
-            }
-
-            var update = interestManager.Refresh(context.PeerId, controlledEntityId);
-            foreach (var enteredEntityId in update.Entered)
-            {
-                if (entityRegistry.TryGetPlayer(enteredEntityId, out var enteredEntity))
-                {
-                    SendSpawn(peer, enteredEntity!);
-                }
-                else if (worldActorStore is not null
-                    && worldActorStore.TryGetByEntityId(
-                        enteredEntityId,
-                        out var enteredActor))
-                {
-                    SendWorldActorSpawn(peer, enteredActor!);
-                }
-            }
-
-            foreach (var exitedEntityId in update.Exited)
-            {
-                if (worldActorStore is not null
-                    && worldActorStore.TryGetByEntityId(
-                        exitedEntityId,
-                        out var exitedActor))
-                {
-                    SendWorldActorDespawn(
-                        peer,
-                        exitedActor!,
-                        "out_of_interest");
-                }
-                else if (worldActorStore is not null
-                    && worldActorStore.TryGetDespawnedByEntityId(
-                        exitedEntityId,
-                        out var despawnedActor))
-                {
-                    SendWorldActorDespawn(
-                        peer,
-                        despawnedActor!,
-                        "despawned");
-                }
-                else
-                {
-                    SendDespawn(peer, exitedEntityId, "out_of_interest");
-                }
-            }
-        }
-
-        worldActorStore?.PruneDespawned(interestManager.IsVisibleToAnyConnection);
-    }
-
-    private void BroadcastEntityDespawn(
-        ulong entityId,
-        string reason,
-        int? excludedConnectionId)
-    {
-        var affectedConnections = interestManager.ForgetEntity(entityId);
-        foreach (var connectionId in affectedConnections)
-        {
-            if (connectionId != excludedConnectionId
-                && peerRegistry.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
-            {
-                SendDespawn(peer, entityId, reason);
-            }
-        }
-    }
-
     private void RemoveBoundEntity(
         RealtimePeerContext context,
         ActiveSimulationSession session,
@@ -2626,9 +2506,9 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
 
         carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
         connectionBindings.UnbindConnection(context.PeerId, out _);
-        interestManager.RemoveConnection(context.PeerId);
-        BroadcastEntityDespawn(entityId, reason, context.PeerId);
-        networkMetrics.SetActiveEntities(GetActiveEntityCount());
+        presence.ForgetConnection(context.PeerId);
+        presence.BroadcastEntityDespawn(entityId, reason, context.PeerId);
+        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
     }
 
     private void DetachSupersededPeer(RealtimePeerContext context)
@@ -2637,7 +2517,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.AuthorityOperationQueue.Clear();
         connectionBindings.UnbindConnection(context.PeerId, out _);
-        interestManager.RemoveConnection(context.PeerId);
+        presence.ForgetConnection(context.PeerId);
         context.Session = null;
         peerRegistry.RefreshPopulationMetrics();
     }
@@ -2656,27 +2536,10 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             DisconnectReplacedConnection(connectionId);
         }
 
-        BroadcastEntityDespawn(
+        presence.BroadcastEntityDespawn(
             replacedEntity.NetworkEntityId,
             "entity_replaced",
             replacedConnectionId);
-    }
-
-    private RealtimeEntitySpawn ToRealtimeEntitySpawn(PlayerSimulationEntity entity)
-    {
-        return new RealtimeEntitySpawn(
-            entity.NetworkEntityId,
-            RealtimeEntityKind.Player,
-            entity.Session.CharacterId.ToString("D"),
-            entity.Session.CharacterName,
-            PlayerSimulationEntity.DefaultArchetypeId,
-            serverTick,
-            RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State));
-    }
-
-    private int GetActiveEntityCount()
-    {
-        return entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
     }
 
     private void RefreshCollisionStreaming()
@@ -2701,92 +2564,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             config.MovementSpawn.Y,
             config.MovementSpawn.Z));
         collisionStreamingStore.Refresh(collisionAnchorBuffer);
-    }
-
-    private void RebuildInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)
-    {
-        interestEntityBuffer.Clear();
-        for (var index = 0; index < players.Count; index++)
-        {
-            var entity = players[index];
-            interestEntityBuffer.Add(new SimulationInterestEntity(
-                entity.NetworkEntityId,
-                entity.Movement.State.PositionX,
-                entity.Movement.State.PositionZ));
-        }
-
-        if (worldActorStore is not null)
-        {
-            worldActorStore.CopyActorsTo(worldActorBuffer);
-            for (var index = 0; index < worldActorBuffer.Count; index++)
-            {
-                var actor = worldActorBuffer[index];
-                interestEntityBuffer.Add(new SimulationInterestEntity(
-                    actor.NetworkEntityId,
-                    actor.PositionX,
-                    actor.PositionZ));
-            }
-        }
-
-        interestManager.Rebuild(interestEntityBuffer);
-    }
-
-    private void SendSpawn(IRealtimePeerConnection peer, PlayerSimulationEntity entity)
-    {
-        sender.SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
-        networkMetrics.RecordSpawnPacket();
-    }
-
-    private void SendWorldActorSpawn(
-        IRealtimePeerConnection peer,
-        WorldActorRuntimeState actor)
-    {
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeWorldActorSpawn(
-                WorldActorProtocolMapper.ToSpawn(actor)));
-        networkMetrics.RecordSpawnPacket();
-    }
-
-    private void SendWorldActorDespawn(
-        IRealtimePeerConnection peer,
-        WorldActorRuntimeState actor,
-        string reason)
-    {
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeWorldActorDespawn(
-                new RealtimeWorldActorDespawn(
-                    actor.NetworkEntityId,
-                    actor.RuntimeActorId,
-                    reason)));
-        networkMetrics.RecordDespawnPacket();
-    }
-
-    private void BroadcastWorldActorState(WorldActorRuntimeState actor)
-    {
-        var packet = RealtimeProtocol.EncodeWorldActorState(
-            WorldActorProtocolMapper.ToState(actor));
-        foreach (var context in peerRegistry.Contexts)
-        {
-            if (context.Session is null
-                || !interestManager.GetVisible(context.PeerId)
-                    .Contains(actor.NetworkEntityId)
-                || !peerRegistry.TryGetCurrentPeer(context, out var peer))
-            {
-                continue;
-            }
-
-            sender.SendControl(peer, packet);
-        }
-    }
-
-    private void SendDespawn(IRealtimePeerConnection peer, ulong entityId, string reason)
-    {
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeEntityDespawn(new RealtimeEntityDespawn(entityId, reason)));
-        networkMetrics.RecordDespawnPacket();
     }
 
     private sealed class PeerDirectory(RealtimeSimulationService owner) : IRealtimePeerDirectory
