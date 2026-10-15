@@ -38,6 +38,9 @@ internal sealed partial class ItemTransactionService(
     private readonly MobLootGrantCommandHandler mobLootGrant = new();
     private readonly CorpseExpiryCommandHandler corpseExpiry = new();
     private readonly PlayerDeathCommandHandler playerDeath = new();
+    private readonly CorpseLootCommandHandler corpseLoot = new();
+    private readonly CorpseDepositCommandHandler corpseDeposit = new();
+    private readonly CorpseInternalMoveCommandHandler corpseInternalMove = new();
     private readonly ItemTransactionKernel kernel = new(
         dataSource,
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
