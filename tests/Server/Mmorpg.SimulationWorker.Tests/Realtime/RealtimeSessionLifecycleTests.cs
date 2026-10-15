@@ -31,16 +31,20 @@ public sealed class RealtimeSessionLifecycleTests
         Assert.Equal("The join ticket was already used.", rejection.Message);
         var reliable = client.ReliablePackets;
         Assert.Equal(RealtimeMessageType.JoinRejected, Assert.Single(reliable).Type);
-        Assert.True(
-            client.DisconnectedAtUtc!.Value - reliable[0].ReceivedAtUtc
-                >= TimeSpan.FromMilliseconds(150));
         var metrics = harness.NetworkMetrics!.Capture();
         Assert.Equal(1, metrics.RejectedJoins);
         Assert.Equal(0, metrics.AcceptedJoins);
-        Assert.Contains(
+        var denial = Assert.Single(
             harness.Logger.Entries,
             entry => entry.Level == LogLevel.Warning
                 && entry.Template == "[SIMULATION] UDP peer {PeerId} was denied shard access with code {Code}: {Message}");
+
+        // The worker logs the denial before it sends JoinRejected and schedules the delayed
+        // disconnect, and a late client poll only records the disconnect later, so this
+        // bound holds under any machine load.
+        Assert.True(
+            client.DisconnectedAtUtc!.Value - denial.LoggedAtUtc >= TimeSpan.FromMilliseconds(150),
+            "The server must keep the peer for the graceful disconnect delay.");
     }
 
     [Fact]
