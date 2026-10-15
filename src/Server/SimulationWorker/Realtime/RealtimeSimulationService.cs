@@ -47,7 +47,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
-    private readonly Dictionary<Guid, CorpseViewSnapshotResponse> corpseSnapshots = [];
     private readonly CorpseMutationCoordinator corpseMutationCoordinator = new();
     private readonly TokenBucket aggregateSnapshotBytes;
     private readonly RealtimeNetworkMetrics networkMetrics;
@@ -72,9 +71,10 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly RealtimeSessionTeardown teardown;
     private readonly AuthorityOperationScheduler authorityScheduler;
     private readonly ItemOperationHandler itemOperations;
+    private readonly CorpseViewDistributor corpseViews;
+    private readonly CorpsePresenceReplicator corpsePresence;
     private NetManager? server;
     private uint snapshotSequence;
-    private uint corpsePresenceSequence;
 
     public RealtimeSimulationService(
         SimulationWorkerConfig config,
@@ -188,6 +188,21 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             authorityScheduler,
             operationTracker,
             new ItemAuthorityOperations(itemInteractionService, completions, logger));
+        corpseViews = new CorpseViewDistributor(
+            corpseViewers,
+            worldInteractionLeases,
+            peerRegistry,
+            sender,
+            corpseStore,
+            liveMobCorpseStore);
+        corpsePresence = new CorpsePresenceReplicator(
+            config,
+            corpseStore,
+            liveMobCorpseStore,
+            corpseRuntimeMetrics,
+            corpseViews,
+            peerRegistry,
+            sender);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -337,7 +352,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             corpseViewers.Clear();
             worldInteractionLeases?.Clear();
             worldActorStore?.Clear();
-            corpseSnapshots.Clear();
+            corpseViews.ClearSnapshots();
             unboundSessionsSinceUtc.Clear();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
@@ -1328,9 +1343,9 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             SendCorpseOperationResult(peer, completed.Session, completed.Result);
             if (completed.Result.ShouldCloseView)
             {
-                if (ShouldCloseCorpseForAll(completed.Result.Error!.Code))
+                if (CorpseViewDistributor.ShouldCloseCorpseForAll(completed.Result.Error!.Code))
                 {
-                    CloseCorpseForAll(
+                    corpseViews.CloseCorpseForAll(
                         completed.Result.Intent.CorpseId,
                         completed.Result.Error.Code,
                         completed.Result.Error.Message,
@@ -1338,7 +1353,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 }
                 else
                 {
-                    CloseCorpseForPeer(
+                    corpseViews.CloseCorpseForPeer(
                         completed.Context,
                         peer,
                         completed.Result.Intent.CorpseId,
@@ -1386,7 +1401,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         var resultSnapshot = completed.Result.Snapshot;
         if (resultSnapshot is null)
         {
-            CloseCorpseForAll(
+            corpseViews.CloseCorpseForAll(
                 completed.Result.Intent.CorpseId,
                 "corpse_invalidated",
                 "The corpse is no longer available.",
@@ -1395,7 +1410,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             return;
         }
 
-        corpseSnapshots.TryGetValue(resultSnapshot.CorpseId, out var cachedSnapshot);
+        corpseViews.TryGetCachedSnapshot(resultSnapshot.CorpseId, out var cachedSnapshot);
         var distribution = CorpseStateDistribution.Plan(
             cachedSnapshot,
             resultSnapshot,
@@ -1408,19 +1423,19 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 corpseStore.ApplySnapshot(resultSnapshot);
             }
 
-            corpseSnapshots[resultSnapshot.CorpseId] = resultSnapshot;
+            corpseViews.CacheSnapshot(resultSnapshot);
         }
 
         if (distribution.RequesterChunks.Count > 0)
         {
-            SendCorpseState(peer, EncodeCorpseStatePackets(distribution.RequesterChunks));
+            corpseViews.SendCorpseState(peer, CorpseViewDistributor.EncodeCorpseStatePackets(distribution.RequesterChunks));
         }
 
         if (distribution.ViewerChunks.Count > 0)
         {
-            BroadcastCorpseState(
+            corpseViews.BroadcastCorpseState(
                 resultSnapshot.CorpseId,
-                EncodeCorpseStatePackets(distribution.ViewerChunks),
+                CorpseViewDistributor.EncodeCorpseStatePackets(distribution.ViewerChunks),
                 distribution.RequesterReceivesViewerChunks ? null : completed.Context.PeerId);
         }
 
@@ -1525,92 +1540,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             SimulationCorpseInteractionResult.Rejected(intent, code, message));
     }
 
-    private static IReadOnlyList<byte[]> EncodeCorpseStatePackets(
-        IReadOnlyList<RealtimeCorpseViewStateChunk> chunks)
-    {
-        return chunks
-            .Select(RealtimeProtocol.EncodeCorpseViewStateChunk)
-            .ToArray();
-    }
-
-    private void SendCorpseState(IRealtimePeerConnection peer, IReadOnlyList<byte[]> packets)
-    {
-        foreach (var packet in packets)
-        {
-            sender.SendControl(peer, packet);
-        }
-    }
-
-    private void BroadcastCorpseState(
-        Guid corpseId,
-        IReadOnlyList<byte[]> packets,
-        int? excludedPeerId = null)
-    {
-        foreach (var viewerPeerId in corpseViewers.GetViewers(corpseId))
-        {
-            if (viewerPeerId == excludedPeerId
-                || !peerRegistry.TryGetAuthenticatedPeer(viewerPeerId, out _, out var peer))
-            {
-                continue;
-            }
-
-            SendCorpseState(peer, packets);
-        }
-    }
-
-    private void CloseCorpseForPeer(
-        RealtimePeerContext context,
-        IRealtimePeerConnection peer,
-        Guid corpseId,
-        string code,
-        string message)
-    {
-        var closed = corpseViewers.Close(context.PeerId, corpseId);
-        worldInteractionLeases?.ReleaseCorpse(context.PeerId, corpseId);
-        if (!closed)
-        {
-            return;
-        }
-
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeCorpseViewClosed(
-                new RealtimeCorpseViewClosed(corpseId, code, message)));
-    }
-
-    private void CloseCorpseForAll(
-        Guid corpseId,
-        string code,
-        string message,
-        bool removeFromStore)
-    {
-        foreach (var viewerPeerId in corpseViewers.CloseCorpse(corpseId))
-        {
-            worldInteractionLeases?.ReleaseCorpse(viewerPeerId, corpseId);
-            if (peerRegistry.TryGetAuthenticatedPeer(viewerPeerId, out _, out var peer))
-            {
-                sender.SendControl(
-                    peer,
-                    RealtimeProtocol.EncodeCorpseViewClosed(
-                        new RealtimeCorpseViewClosed(corpseId, code, message)));
-            }
-        }
-
-        corpseSnapshots.Remove(corpseId);
-        if (removeFromStore)
-        {
-            corpseStore.Remove(corpseId);
-            liveMobCorpseStore?.Remove(corpseId);
-        }
-    }
-
-    private static bool ShouldCloseCorpseForAll(string code)
-    {
-        return code is "corpse_expired"
-            or "corpse_invalidated"
-            or "corpse_not_found";
-    }
-
     private bool IsWithinCorpseInteractionRange(
         ICorpseRuntimePresence corpse,
         float playerX,
@@ -1703,7 +1632,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 config.MovementSimulation.TickRateHz / 2);
             if (clock.ServerTick % corpsePresenceIntervalTicks == 0)
             {
-                BroadcastCorpsePresence();
+                corpsePresence.Broadcast();
             }
 
             performanceMetrics.RecordSimulationTick(
@@ -1884,100 +1813,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             performanceMetrics.RecordSnapshotBroadcast(
                 Stopwatch.GetElapsedTime(broadcastStarted));
         }
-    }
-
-    private void BroadcastCorpsePresence()
-    {
-        var durableCorpses = corpseStore.ListActive();
-        var liveCorpses = liveMobCorpseStore?.ListActive()
-            ?? Array.Empty<LiveMobCorpseState>();
-        corpseRuntimeMetrics?.Observe(durableCorpses.Count, liveCorpses.Count);
-        var activeCorpses = durableCorpses
-            .Cast<ICorpseRuntimePresence>()
-            .Concat(liveCorpses)
-            .OrderBy(corpse => corpse.CreatedAt)
-            .ThenBy(corpse => corpse.CorpseId)
-            .ToArray();
-        var activeCorpseIds = activeCorpses
-            .Select(corpse => corpse.CorpseId)
-            .ToHashSet();
-        foreach (var viewedCorpseId in corpseSnapshots.Keys.ToArray())
-        {
-            if (!activeCorpseIds.Contains(viewedCorpseId))
-            {
-                CloseCorpseForAll(
-                    viewedCorpseId,
-                    "corpse_expired",
-                    "The corpse expired and is no longer available.",
-                    removeFromStore: true);
-            }
-        }
-
-        unchecked
-        {
-            corpsePresenceSequence++;
-        }
-
-        foreach (var context in peerRegistry.Contexts)
-        {
-            if (context.Session is null
-                || !peerRegistry.TryGetBoundPlayer(context, out var entity)
-                || !peerRegistry.TryGetCurrentPeer(context, out var peer))
-            {
-                continue;
-            }
-
-            var state = entity.Movement.State;
-            var nearbyCorpses = activeCorpses
-                .Where(corpse => IsWithinCorpseDiscoveryRange(
-                    corpse,
-                    state.PositionX,
-                    state.PositionY,
-                    state.PositionZ))
-                .OrderBy(corpse => corpse.CorpseId)
-                .ToArray();
-            var signature = CreateCorpsePresenceSignature(nearbyCorpses);
-            if (string.Equals(
-                    context.CorpsePresenceSignature,
-                    signature,
-                    StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            context.CorpsePresenceSignature = signature;
-            foreach (var chunk in CorpseRealtimePacketBuilder.BuildPresence(
-                         corpsePresenceSequence,
-                         nearbyCorpses))
-            {
-                sender.SendControl(
-                    peer,
-                    RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(chunk));
-            }
-        }
-    }
-
-    private bool IsWithinCorpseDiscoveryRange(
-        ICorpseRuntimePresence corpse,
-        float playerX,
-        float playerY,
-        float playerZ)
-    {
-        var deltaX = corpse.PositionX - playerX;
-        var deltaY = corpse.PositionY - playerY;
-        var deltaZ = corpse.PositionZ - playerZ;
-        var radius = config.ItemInteraction.CorpseDiscoveryRadius;
-        return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)
-            <= radius * radius;
-    }
-
-    private static string CreateCorpsePresenceSignature(
-        IReadOnlyList<ICorpseRuntimePresence> corpses)
-    {
-        return string.Join(
-            '|',
-            corpses.Select(corpse =>
-                $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}"));
     }
 
     private void EnforcePeerState()
