@@ -2,7 +2,7 @@ using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Worlds;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Server.Common.Tests;
 
 public sealed class WorldManifestTests
 {

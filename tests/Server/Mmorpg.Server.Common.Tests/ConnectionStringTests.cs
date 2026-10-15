@@ -1,6 +1,6 @@
 using Mmorpg.Server.Common.Networking;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Server.Common.Tests;
 
 public sealed class ConnectionStringTests
 {

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Mmorpg.Server.Common.Configuration;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Server.Common.Tests;
 
 public sealed class DotEnvConfigurationTests
 {
