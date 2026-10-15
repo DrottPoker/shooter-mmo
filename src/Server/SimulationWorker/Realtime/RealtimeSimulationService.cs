@@ -17,22 +17,15 @@ using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-public sealed class RealtimeSimulationService : BackgroundService, IRealtimeCompletionHandler
+public sealed class RealtimeSimulationService : BackgroundService
 {
     private readonly SimulationWorkerConfig config;
-    private readonly SimulationJoinService joinService;
-    private readonly SimulationSessionReleaseService releaseService;
     private readonly ActiveSimulationSessionStore sessionStore;
     private readonly CarryStateStore carryStateStore;
-    private readonly SimulationItemInteractionService itemInteractionService;
-    private readonly SimulationCorpseInteractionService corpseInteractionService;
-    private readonly DurableCorpseStore corpseStore;
     private readonly CorpseViewerRegistry corpseViewers;
     private readonly SimulationEntityRegistry entityRegistry;
     private readonly ConnectionEntityBindingRegistry connectionBindings;
     private readonly RealtimeTransportReadiness transportReadiness;
-    private readonly ChunkedStaticCollisionWorld staticCollisionWorld;
-    private readonly ICollisionWorld collisionWorld;
     private readonly ILogger<RealtimeSimulationService> logger;
     private readonly WorldCollisionStreamingStore? collisionStreamingStore;
     private readonly SimulationWorkerRegistrationLease? registrationLease;
@@ -40,7 +33,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly RealtimeCompletionQueue completions = new();
     private readonly RealtimeOperationTracker operationTracker = new();
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
-    private PeerAdmissionGuard admissionGuard = null!;
+    private readonly PeerAdmissionGuard admissionGuard;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<SimulationVector3> collisionAnchorBuffer = [];
@@ -75,6 +68,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly CorpseAuthorityOperations corpseAuthority;
     private readonly CorpseInteractionHandler corpseInteractions;
     private readonly WorldInteractionHandler worldInteractions;
+    private readonly RealtimeSessionHandler sessions;
     private NetManager? server;
     private uint snapshotSequence;
 
@@ -110,19 +104,12 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
     {
         this.config = config;
-        this.joinService = joinService;
-        this.releaseService = releaseService;
         this.sessionStore = sessionStore;
         this.carryStateStore = carryStateStore;
-        this.itemInteractionService = itemInteractionService;
-        this.corpseInteractionService = corpseInteractionService;
-        this.corpseStore = corpseStore;
         this.corpseViewers = corpseViewers;
         this.entityRegistry = entityRegistry;
         this.connectionBindings = connectionBindings;
         this.transportReadiness = transportReadiness;
-        this.staticCollisionWorld = staticCollisionWorld;
-        this.collisionWorld = collisionWorld;
         this.logger = logger;
         this.collisionStreamingStore = collisionStreamingStore;
         this.registrationLease = registrationLease;
@@ -143,6 +130,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         corpseRuntimeMetrics = providedCorpseRuntimeMetrics;
         worldActorMetrics = providedWorldActorMetrics;
         sender = new RealtimePeerSender(networkMetrics, logger);
+        admissionGuard = new PeerAdmissionGuard(config.Admission);
         peerDirectory = new PeerDirectory(this);
         peerRegistry = new RealtimePeerRegistry(
             peerDirectory,
@@ -164,7 +152,9 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             peerRegistry,
             sender);
         sessionOperations = new SessionAuthorityOperations(
+            joinService,
             releaseService,
+            completions,
             operationTracker,
             logger);
         teardown = new RealtimeSessionTeardown(
@@ -251,18 +241,37 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 worldInteractionAuthority,
                 completions,
                 logger));
+        sessions = new RealtimeSessionHandler(
+            config,
+            peerRegistry,
+            sender,
+            sessionStore,
+            carryStateStore,
+            entityRegistry,
+            connectionBindings,
+            staticCollisionWorld,
+            collisionWorld,
+            admissionGuard,
+            presence,
+            teardown,
+            sessionOperations,
+            operationTracker,
+            registrationLease,
+            networkMetrics,
+            performanceMetrics,
+            logger);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
             networkMetrics,
             logger,
-            RealtimeMessageRoutes.CreateUnauthenticated(HandleJoinRequest),
+            RealtimeMessageRoutes.CreateUnauthenticated(sessions.HandleJoinRequest),
             RealtimeMessageRoutes.CreateAuthenticated(
                 HandleMovementInput,
                 itemOperations.HandleIntent,
                 corpseInteractions.HandleIntent,
                 worldInteractions.HandleIntent,
-                HandleLeaveRequest));
+                sessions.HandleLeaveRequest));
         completionProcessor = new RealtimeCompletionProcessor(
             completions,
             peerRegistry,
@@ -294,7 +303,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 workerIdentity.RuntimeId);
         }
 
-        admissionGuard = new PeerAdmissionGuard(config.Admission);
         var listener = new EventBasedNetListener();
         server = new NetManager(listener)
         {
@@ -475,31 +483,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         }
     }
 
-    private void HandleJoinRequest(in RealtimeInboundMessage message)
-    {
-        var peer = message.Peer;
-        var context = message.Context;
-        var packet = message.Packet;
-        if (registrationLease is not null && !registrationLease.IsValid)
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "worker_registry_lease_unavailable",
-                "SimulationWorker does not currently hold a valid shard registration lease.");
-            return;
-        }
-
-        if (!RealtimeProtocol.TryDecodeJoinRequest(packet, out var joinTicket, out var error))
-        {
-            sender.RejectProtocol(peer, context, "invalid_join_request", error);
-            return;
-        }
-
-        context.JoinStarted = true;
-        operationTracker.Track(CompleteJoinAsync(context, joinTicket));
-    }
-
     private void HandleMovementInput(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -526,323 +509,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         }
 
         playerEntity.Movement.AcceptInputs(inputs);
-    }
-
-    private void HandleLeaveRequest(in RealtimeInboundMessage message)
-    {
-        var peer = message.Peer;
-        var context = message.Context;
-        var packet = message.Packet;
-        if (!RealtimeProtocol.TryDecodeLeaveRequest(packet, out var simulationSessionId, out var error)
-            || !Guid.TryParse(simulationSessionId, out var parsedSessionId))
-        {
-            sender.SendControl(peer, RealtimeProtocol.EncodeLeaveRejected("invalid_leave_request", error));
-            return;
-        }
-
-        if (context.Session!.SimulationSessionId != parsedSessionId)
-        {
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeLeaveRejected(
-                    "simulation_session_changed",
-                    "The active simulation session no longer matches the leave request."));
-            return;
-        }
-
-        context.LeaveStarted = true;
-        operationTracker.Track(CompleteLeaveAsync(context, context.Session));
-    }
-
-    private async Task CompleteJoinAsync(RealtimePeerContext context, string joinTicket)
-    {
-        try
-        {
-            var result = await joinService.JoinAsync(joinTicket, CancellationToken.None);
-            completions.Post(this, new JoinCompleted(
-                context,
-                result,
-                Stopwatch.GetTimestamp()));
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "[SIMULATION] Unhandled error while authenticating UDP peer {PeerId}.",
-                context.PeerId);
-            completions.Post(this, new JoinCompleted(
-                context,
-                SimulationJoinResult<ActiveSimulationSession>.Failure(
-                    500,
-                    "join_failed",
-                    "SimulationWorker could not complete the join request."),
-                Stopwatch.GetTimestamp()));
-        }
-    }
-
-    private async Task CompleteLeaveAsync(RealtimePeerContext context, ActiveSimulationSession session)
-    {
-        try
-        {
-            var result = await releaseService.ReleaseAsync(session, CancellationToken.None);
-            completions.Post(this, new LeaveCompleted(context, session, result));
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "[SIMULATION] Unhandled error while releasing UDP peer {PeerId}.",
-                context.PeerId);
-            completions.Post(this, new LeaveCompleted(
-                context,
-                session,
-                SimulationSessionReleaseResult.Failure(
-                    "leave_failed",
-                    "SimulationWorker could not complete the leave request.")));
-        }
-    }
-
-    void IRealtimeCompletionHandler.Complete(RealtimeOperationResult operation)
-    {
-        switch (operation)
-        {
-            case JoinCompleted joinCompleted:
-                {
-                    var joinStarted = Stopwatch.GetTimestamp();
-                    performanceMetrics.RecordJoinQueueDelay(
-                        Stopwatch.GetElapsedTime(
-                            joinCompleted.EnqueuedTimestamp,
-                            joinStarted));
-                    try
-                    {
-                        ProcessJoinCompleted(joinCompleted);
-                    }
-                    finally
-                    {
-                        performanceMetrics.RecordJoinFinalization(
-                            Stopwatch.GetElapsedTime(joinStarted));
-                    }
-
-                    break;
-                }
-            case LeaveCompleted leaveCompleted:
-                ProcessLeaveCompleted(leaveCompleted);
-                break;
-        }
-    }
-
-    void IRealtimeCompletionHandler.OnCompletionFailed(RealtimeOperationResult operation)
-    {
-        if (operation is JoinCompleted { Result.Succeeded: true } joinCompleted
-            && joinCompleted.Context.Session is null
-            && joinCompleted.Result.Value is not null)
-        {
-            sessionOperations.ReleaseDetachedInBackground(joinCompleted.Result.Value);
-        }
-    }
-
-    private void ProcessJoinCompleted(JoinCompleted completed)
-    {
-        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer))
-        {
-            if (completed.Result.Succeeded
-                && completed.Result.Value is not null)
-            {
-                sessionOperations.ReleaseDetachedInBackground(completed.Result.Value);
-            }
-
-            return;
-        }
-
-        if (!completed.Result.Succeeded)
-        {
-            logger.LogWarning(
-                "[SIMULATION] UDP peer {PeerId} was denied shard access with code {Code}: {Message}",
-                completed.Context.PeerId,
-                completed.Result.Error!.Code,
-                completed.Result.Error.Message);
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeJoinRejected(
-                    completed.Result.Error!.Code,
-                    completed.Result.Error.Message));
-            networkMetrics.RecordJoinRejected();
-            completed.Context.ScheduleDisconnect(DateTime.UtcNow);
-            return;
-        }
-
-        var session = completed.Result.Value!;
-        if (!IsCurrentSession(session))
-        {
-            sessionOperations.ReleaseDetachedInBackground(session);
-            sender.RejectProtocol(peer, completed.Context, "session_missing", "The joined simulation session is no longer active.");
-            return;
-        }
-
-        if (!carryStateStore.TryGet(
-                session.CharacterId,
-                session.SimulationSessionId,
-                out var currentCarryState))
-        {
-            sessionOperations.ReleaseDetachedInBackground(session);
-            sender.RejectProtocol(
-                peer,
-                completed.Context,
-                "carry_state_missing",
-                "The authoritative carry state is no longer active.");
-            return;
-        }
-
-        session = session with { CarryState = currentCarryState! };
-
-        var initialMovementState = PlayerMovementSimulation.CreateInitialState(
-                config.MovementSimulation,
-                collisionWorld,
-                config.MovementSpawn.X,
-                config.MovementSpawn.Y,
-                config.MovementSpawn.Z,
-                config.MovementSpawn.YawDegrees);
-        var registration = entityRegistry.RegisterPlayer(
-            session,
-            () => new AuthoritativePlayerMovement(
-                initialMovementState,
-                config.MovementSimulation,
-                session.CarryState,
-                collisionWorld,
-                Math.Max(
-                    1,
-                    (int)Math.Ceiling(
-                        config.MovementInputSilenceTimeout.TotalSeconds
-                        * config.MovementSimulation.TickRateHz))));
-        if (registration.ReplacedEntity is not null)
-        {
-            teardown.RemoveReplacedEntity(registration.ReplacedEntity);
-        }
-
-        var entity = registration.Entity;
-        if (!registration.IsNewEntity)
-        {
-            entity.Movement.ResetInputSequence();
-        }
-
-        entity.Movement.ApplyCarryState(session.CarryState);
-        var binding = connectionBindings.Bind(
-            completed.Context.PeerId,
-            entity.NetworkEntityId);
-        completed.Context.Session = session;
-        admissionGuard.OnPeerAuthenticated(completed.Context.PeerId);
-        peerRegistry.RefreshPopulationMetrics();
-        teardown.DisconnectReplacedConnection(binding.ReplacedConnectionId);
-        var response = ActiveSimulationSessionResponse.FromSession(session);
-        var connectionsEnteringNewEntity = presence.TrackJoiningEntity(
-            entity,
-            registration.IsNewEntity);
-        var joiningInterest = presence.RefreshConnection(
-            completed.Context.PeerId,
-            entity.NetworkEntityId);
-
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeJoinAccepted(new RealtimeJoinAccepted(
-                response.SimulationSessionId.ToString("D"),
-                response.AccountId.ToString("D"),
-                response.CharacterId.ToString("D"),
-                response.CharacterName,
-                response.ShardId,
-                response.WorldId,
-                entity.NetworkEntityId,
-                GameSimulationCompatibility.Revision,
-                staticCollisionWorld.Revision,
-                response.JoinedAt.ToString("O"),
-                response.SessionExpiresAt.ToString("O"),
-                response.IsReconnect,
-                RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState),
-                RealtimeStateMapper.ToRealtimeMovementSettings(config),
-                RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State))));
-        presence.SendEntityBaseline(peer, joiningInterest.Visible);
-        presence.SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
-        networkMetrics.RecordJoinAccepted();
-        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
-
-        if (session.IsSyntheticBot)
-        {
-            logger.LogDebug(
-                "[SIMULATION] Synthetic bot {CharacterName} joined shard {ShardId}. Simulation session {SimulationSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
-                response.CharacterName,
-                response.ShardId,
-                response.SimulationSessionId,
-                entity.NetworkEntityId,
-                completed.Context.PeerId);
-        }
-        else
-        {
-            logger.LogInformation(
-                "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) connected to shard {ShardId} for world {WorldId}. Simulation session {SimulationSessionId}, network entity {EntityId}, UDP peer {PeerId}.",
-                response.AccountId,
-                response.CharacterName,
-                response.CharacterId,
-                response.ShardId,
-                response.WorldId,
-                response.SimulationSessionId,
-                entity.NetworkEntityId,
-                completed.Context.PeerId);
-        }
-    }
-
-    private void ProcessLeaveCompleted(LeaveCompleted completed)
-    {
-        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer))
-        {
-            return;
-        }
-
-        if (completed.Context.Session != completed.Session)
-        {
-            return;
-        }
-
-        if (!completed.Result.Succeeded)
-        {
-            logger.LogWarning(
-                "[SIMULATION] Leave failed for character {CharacterId} in simulation session {SimulationSessionId} with code {Code}: {Message}",
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                completed.Result.Code,
-                completed.Result.Message);
-            completed.Context.LeaveStarted = false;
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeLeaveRejected(
-                    completed.Result.Code!,
-                    completed.Result.Message!));
-            return;
-        }
-
-        if (completed.Session.IsSyntheticBot)
-        {
-            logger.LogDebug(
-                "[SIMULATION] Synthetic bot {CharacterName} left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
-                completed.Session.CharacterName,
-                completed.Session.ShardId,
-                completed.Session.SimulationSessionId,
-                completed.Context.PeerId);
-        }
-        else
-        {
-            logger.LogInformation(
-                "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
-                completed.Session.AccountId,
-                completed.Session.CharacterName,
-                completed.Session.CharacterId,
-                completed.Session.ShardId,
-                completed.Session.SimulationSessionId,
-                completed.Context.PeerId);
-        }
-        teardown.RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
-        completed.Context.Session = null;
-        peerRegistry.RefreshPopulationMetrics();
-        sender.SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
-        completed.Context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     private void ProcessSimulationTicks(
