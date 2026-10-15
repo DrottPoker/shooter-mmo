@@ -15,6 +15,10 @@ namespace Mmorpg.Backend.Tests.Integration.ItemTransactions;
 internal sealed partial class TracedItemTransactions : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions ResultJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly GoldenFiles Goldens = GoldenFiles.ForProject(
+        typeof(TracedItemTransactions).Assembly,
+        "Golden",
+        "ItemTransactions");
 
     private readonly PostgresIntegrationTestContext context;
     private readonly ILoggerFactory loggerFactory;
@@ -69,7 +73,7 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
         }
 
         var rendered = await RenderAsync(scenario, operationId, trace, result);
-        GoldenFile.AssertMatches(scenario, rendered);
+        Goldens.AssertMatches(scenario, rendered);
         return result;
     }
 

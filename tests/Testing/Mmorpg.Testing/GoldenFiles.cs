@@ -1,22 +1,30 @@
+using System.Reflection;
 using System.Text;
-using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Integration.ItemTransactions;
+namespace Mmorpg.Testing;
 
-// Compares text with a checked-in golden file. Set MMORPG_UPDATE_GOLDENS=1 to write the
-// actual text instead; review every golden diff before committing it.
-internal static class GoldenFile
+// Compares text with checked-in golden files in a folder of the test project. Set
+// MMORPG_UPDATE_GOLDENS=1 to write the actual text instead; review every golden diff
+// before committing it.
+public sealed class GoldenFiles
 {
     public const string UpdateVariable = "MMORPG_UPDATE_GOLDENS";
 
-    public static string FolderPath { get; } = Path.Combine(
-        RepositoryPaths.Root,
-        "tests",
-        "Mmorpg.Backend.Tests",
-        "Golden",
-        "ItemTransactions");
+    private GoldenFiles(string folderPath)
+    {
+        FolderPath = folderPath;
+    }
 
-    public static void AssertMatches(string name, string actual)
+    public string FolderPath { get; }
+
+    // A folder below the project directory of the given test assembly.
+    public static GoldenFiles ForProject(Assembly testAssembly, params string[] folderSegments)
+    {
+        return new GoldenFiles(Path.Combine(
+            [RepositoryPaths.ProjectDirectory(testAssembly), .. folderSegments]));
+    }
+
+    public void AssertMatches(string name, string actual)
     {
         var path = Path.Combine(FolderPath, name + ".txt");
         var normalized = actual.ReplaceLineEndings("\n").TrimEnd('\n') + "\n";
