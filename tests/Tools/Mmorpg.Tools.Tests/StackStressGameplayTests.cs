@@ -5,6 +5,22 @@ namespace Mmorpg.Tools.Tests;
 
 public sealed class StackStressGameplayTests
 {
+    [Theory]
+    [InlineData(StressWorkloadProfile.LootHotspot, "item_state_conflict", true)]
+    [InlineData(StressWorkloadProfile.MixedGameplay, "item_state_conflict", true)]
+    [InlineData(StressWorkloadProfile.LootHotspot, "corpse_view_not_open", true)]
+    [InlineData(StressWorkloadProfile.MixedGameplay, "corpse_out_of_range", true)]
+    [InlineData(StressWorkloadProfile.LootHotspot, "corpse_out_of_range", false)]
+    [InlineData(StressWorkloadProfile.MixedGameplay, "corpse_not_found", false)]
+    [InlineData(StressWorkloadProfile.MixedGameplay, null, false)]
+    public void CorpseRejectionsAreExpectedOnlyWhereTheWorkloadCausesThem(
+        StressWorkloadProfile workload,
+        string? code,
+        bool expected)
+    {
+        Assert.Equal(expected, StressCorpseOutcomes.IsExpectedRejection(workload, code));
+    }
+
     [Fact]
     public void InventoryStateAppliesAuthoritativeRelocateResult()
     {

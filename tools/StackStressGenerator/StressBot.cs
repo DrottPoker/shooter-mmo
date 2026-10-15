@@ -21,17 +21,6 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
     private const string InventoryDefinitionId = "medical.field_dressing";
     private const string LootDefinitionId = "material.iron_ore";
 
-    private static readonly HashSet<string> ExpectedLootConflictCodes = new(
-        StringComparer.Ordinal)
-    {
-        "item_already_looted",
-        "item_quantity_changed",
-        "item_state_conflict",
-        "item_slot_occupied",
-        "item_stack_limit_exceeded",
-        "corpse_view_not_open"
-    };
-
     private readonly StressGeneratorOptions options;
     private readonly StressBotAdmission admission;
     private readonly StressGameplayMetrics gameplayMetrics;
@@ -288,7 +277,7 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
             Stopwatch.GetElapsedTime(pending.StartedTimestamp).TotalMilliseconds,
             result.Succeeded,
             code,
-            !result.Succeeded && ExpectedLootConflictCodes.Contains(code!));
+            !result.Succeeded && StressCorpseOutcomes.IsExpectedRejection(options.Workload, code));
 
         if (result.OperationKind == RealtimeCorpseInteractionKind.Open)
         {

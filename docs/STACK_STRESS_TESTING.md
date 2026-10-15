@@ -379,6 +379,12 @@ Expected result:
   boundary.
 - Concurrent revision conflicts are reported as expected conflicts, not hidden
   as successes or counted as infrastructure failures.
+- In `mixed-gameplay`, `corpse_out_of_range` also counts as an expected
+  conflict. All bots start crowded on the corpse at the World spawn and keep
+  moving, so the worker correctly rejects a request from a bot that drifted past
+  the 3 m interaction radius. Repeated runs showed it in both the old and the new
+  code, from zero to about one percent of corpse requests. The stationary
+  `loot-hotspot` bots never leave the radius, so there it stays unexpected.
 - The run exits zero only when lifecycle checks, gameplay operations, and final
   PostgreSQL item invariants pass.
 
