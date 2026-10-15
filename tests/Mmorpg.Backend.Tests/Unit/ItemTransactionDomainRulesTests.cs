@@ -39,6 +39,45 @@ public sealed class ItemTransactionDomainRulesTests
         Assert.Equal("npc", state.SourceId);
     }
 
+    [Fact]
+    public void RecoveryValidatorsRejectWithStableCodes()
+    {
+        var item = Guid.NewGuid();
+        Assert.Equal(
+            new Dictionary<Guid, long> { [item] = 3 },
+            RecoveryDeliveries.ValidateDistinctItemExpectations([new ItemRevisionExpectation(item, 3)]));
+        AssertRejected(
+            () => RecoveryDeliveries.ValidateDistinctItemExpectations([]),
+            ItemTransactionErrorCodes.ItemNotFound,
+            "At least one item revision expectation is required.");
+        AssertRejected(
+            () => RecoveryDeliveries.ValidateDistinctItemExpectations(
+                [new ItemRevisionExpectation(item, 1), new ItemRevisionExpectation(item, 1)]),
+            ItemTransactionErrorCodes.ItemStateConflict,
+            "Item revision expectations must contain unique valid item ids and revisions.");
+        AssertRejected(
+            () => RecoveryDeliveries.ValidateRecoverySource("source", " "),
+            ItemTransactionErrorCodes.ItemOperationConflict,
+            "A Recovery Storage source kind and source event id are required.");
+        AssertRejected(
+            () => RecoveryDeliveries.ValidateRecoveryTimeline(DateTime.Now, null),
+            ItemTransactionErrorCodes.ItemOperationConflict,
+            "Recovery Storage availability time must use UTC.");
+        AssertRejected(
+            () => RecoveryDeliveries.ValidateRecoveryTimeline(
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMinutes(-1)),
+            ItemTransactionErrorCodes.ItemOperationConflict,
+            "Recovery Storage expiry cannot precede availability.");
+    }
+
+    private static void AssertRejected(Action action, string code, string message)
+    {
+        var exception = Assert.Throws<ItemTransactionRejectedException>(action);
+        Assert.Equal(code, exception.Code);
+        Assert.Equal(message, exception.Message);
+    }
+
     private static LockedItemPolicy Policy(string kind, string sourceKind, string sourceId, long revision)
     {
         return new LockedItemPolicy

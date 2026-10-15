@@ -4,6 +4,7 @@ using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 
@@ -992,7 +993,7 @@ internal sealed partial class ItemTransactionService
             return;
         }
 
-        var nextSlotIndex = await GetNextRecoverySlotIndexAsync(
+        var nextSlotIndex = await RecoveryDeliveries.GetNextRecoverySlotIndexAsync(
             context,
             recoveryStorageContainerId,
             cancellationToken);
@@ -1000,7 +1001,7 @@ internal sealed partial class ItemTransactionService
         var assignments = new List<DeathRecoveryAssignment>();
         foreach (var group in groups)
         {
-            ValidateRecoverySource(group.SourceKind, sourceEventId);
+            RecoveryDeliveries.ValidateRecoverySource(group.SourceKind, sourceEventId);
             var deliveryId = Guid.NewGuid();
             await context.Connection.ExecuteAsync(new CommandDefinition(
                 """

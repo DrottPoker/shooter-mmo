@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 
 namespace Mmorpg.GameService.Items;
 
@@ -30,7 +31,7 @@ internal sealed partial class ItemTransactionService
                 "A Recovery delivery id is required for expiry cleanup.");
         }
 
-        var preview = await LoadRecoveryDeliveryAsync(
+        var preview = await RecoveryDeliveries.LoadRecoveryDeliveryAsync(
             context,
             command.RecoveryDeliveryId,
             false,
@@ -49,7 +50,7 @@ internal sealed partial class ItemTransactionService
             preview.Items.Select(item => item.ItemInstanceId),
             [preview.RecoveryStorageContainerId],
             cancellationToken);
-        var delivery = await LoadRecoveryDeliveryAsync(
+        var delivery = await RecoveryDeliveries.LoadRecoveryDeliveryAsync(
             context,
             command.RecoveryDeliveryId,
             true,

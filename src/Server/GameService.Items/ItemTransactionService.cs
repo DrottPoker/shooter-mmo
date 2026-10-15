@@ -1853,9 +1853,9 @@ internal sealed partial class ItemTransactionService(
         CancellationToken cancellationToken)
     {
         context.EnsureSystemAuthority();
-        ValidateRecoverySource(command.SourceKind, command.SourceEventId);
-        ValidateRecoveryTimeline(command.AvailableAt, command.ExpiresAt);
-        var expectations = ValidateDistinctItemExpectations(command.Items);
+        RecoveryDeliveries.ValidateRecoverySource(command.SourceKind, command.SourceEventId);
+        RecoveryDeliveries.ValidateRecoveryTimeline(command.AvailableAt, command.ExpiresAt);
+        var expectations = RecoveryDeliveries.ValidateDistinctItemExpectations(command.Items);
         var states = await context.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
@@ -1961,7 +1961,7 @@ internal sealed partial class ItemTransactionService(
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var nextSlotIndex = await GetNextRecoverySlotIndexAsync(
+        var nextSlotIndex = await RecoveryDeliveries.GetNextRecoverySlotIndexAsync(
             context,
             recovery.ContainerId,
             cancellationToken);
@@ -2043,12 +2043,12 @@ internal sealed partial class ItemTransactionService(
         ClaimRecoveryDeliveryCommand command,
         CancellationToken cancellationToken)
     {
-        var expectedItems = ValidateDistinctItemExpectations(command.Items);
+        var expectedItems = RecoveryDeliveries.ValidateDistinctItemExpectations(command.Items);
         var states = await context.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
         var state = states[command.CharacterId];
-        var preview = await LoadRecoveryDeliveryAsync(
+        var preview = await RecoveryDeliveries.LoadRecoveryDeliveryAsync(
             context,
             command.RecoveryDeliveryId,
             false,
@@ -2064,7 +2064,7 @@ internal sealed partial class ItemTransactionService(
             preview.Items.Select(item => item.ItemInstanceId),
             [state.RecoveryStorageContainerId, command.DestinationContainerId],
             cancellationToken);
-        var delivery = await LoadRecoveryDeliveryAsync(
+        var delivery = await RecoveryDeliveries.LoadRecoveryDeliveryAsync(
             context,
             command.RecoveryDeliveryId,
             true,
@@ -2438,7 +2438,7 @@ internal sealed partial class ItemTransactionService(
                     },
                     context.Transaction,
                     cancellationToken: cancellationToken));
-                var nextRecoverySlotIndex = await GetNextRecoverySlotIndexAsync(
+                var nextRecoverySlotIndex = await RecoveryDeliveries.GetNextRecoverySlotIndexAsync(
                     context,
                     recoveryContainer.ContainerId,
                     cancellationToken);
@@ -2559,134 +2559,6 @@ internal sealed partial class ItemTransactionService(
         }
     }
 
-    private static IReadOnlyDictionary<Guid, long> ValidateDistinctItemExpectations(
-        IReadOnlyList<ItemRevisionExpectation> expectations)
-    {
-        if (expectations is null || expectations.Count == 0)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemNotFound,
-                "At least one item revision expectation is required.");
-        }
-
-        var grouped = expectations
-            .GroupBy(expectation => expectation.ItemInstanceId)
-            .ToArray();
-        if (grouped.Any(group =>
-                group.Key == Guid.Empty
-                || group.Count() != 1
-                || group.Single().Revision < 0))
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemStateConflict,
-                "Item revision expectations must contain unique valid item ids and revisions.");
-        }
-
-        return grouped.ToDictionary(group => group.Key, group => group.Single().Revision);
-    }
-
-    private static void ValidateRecoverySource(string sourceKind, string sourceEventId)
-    {
-        if (string.IsNullOrWhiteSpace(sourceKind) || string.IsNullOrWhiteSpace(sourceEventId))
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemOperationConflict,
-                "A Recovery Storage source kind and source event id are required.");
-        }
-    }
-
-    private static void ValidateRecoveryTimeline(DateTime? availableAt, DateTime? expiresAt)
-    {
-        if (availableAt is not null && availableAt.Value.Kind != DateTimeKind.Utc)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemOperationConflict,
-                "Recovery Storage availability time must use UTC.");
-        }
-
-        if (expiresAt is not null && expiresAt.Value.Kind != DateTimeKind.Utc)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemOperationConflict,
-                "Recovery Storage expiry time must use UTC.");
-        }
-
-        if (availableAt is not null
-            && expiresAt is not null
-            && expiresAt.Value < availableAt.Value)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemOperationConflict,
-                "Recovery Storage expiry cannot precede availability.");
-        }
-    }
-
-    private static Task<int> GetNextRecoverySlotIndexAsync(
-        ItemTransactionContext context,
-        Guid recoveryContainerId,
-        CancellationToken cancellationToken)
-    {
-        return context.Connection.QuerySingleAsync<int>(new CommandDefinition(
-            """
-            select coalesce(max(slot_index) + 1, 0)
-            from item_container_slots
-            where container_id = @ContainerId;
-            """,
-            new { ContainerId = recoveryContainerId },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-    }
-
-    private static async Task<RecoveryDeliveryState?> LoadRecoveryDeliveryAsync(
-        ItemTransactionContext context,
-        Guid deliveryId,
-        bool forUpdate,
-        CancellationToken cancellationToken)
-    {
-        var deliveryLock = forUpdate ? "for update" : string.Empty;
-        var linkLock = forUpdate ? "for update of link" : string.Empty;
-        using var grid = await context.Connection.QueryMultipleAsync(new CommandDefinition(
-            $"""
-            select
-                id as "DeliveryId",
-                character_id as "CharacterId",
-                recovery_storage_container_id as "RecoveryStorageContainerId",
-                revision as "Revision",
-                claimed_at as "ClaimedAt",
-                (available_at is null or available_at <= now()) as "IsAvailable",
-                (expires_at is not null and expires_at <= now()) as "IsExpired"
-            from recovery_deliveries
-            where id = @DeliveryId
-            {deliveryLock};
-
-            select
-                link.item_instance_id as "ItemInstanceId",
-                link.item_order as "ItemOrder",
-                item.container_slot_index as "ContainerSlotIndex"
-            from recovery_delivery_items link
-            join item_instances item on item.id = link.item_instance_id
-            where link.recovery_delivery_id = @DeliveryId
-            order by link.item_order, link.item_instance_id
-            {linkLock};
-            """,
-            new { DeliveryId = deliveryId },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        var row = await grid.ReadSingleOrDefaultAsync<RecoveryDeliveryRow>();
-        var items = (await grid.ReadAsync<RecoveryDeliveryItemRow>()).ToArray();
-        return row is null
-            ? null
-            : new RecoveryDeliveryState(
-                row.DeliveryId,
-                row.CharacterId,
-                row.RecoveryStorageContainerId,
-                row.Revision,
-                row.ClaimedAt,
-                row.IsAvailable,
-                row.IsExpired,
-                items);
-    }
-
     private static async Task<SecureOverflowItem[]> LoadSecureOverflowItemsAsync(
         ItemTransactionContext context,
         IEnumerable<Guid> secureContainerIds,
@@ -2719,42 +2591,6 @@ internal sealed partial class ItemTransactionService(
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
     }
-
-    private sealed class RecoveryDeliveryRow
-    {
-        public Guid DeliveryId { get; set; }
-
-        public Guid CharacterId { get; set; }
-
-        public Guid RecoveryStorageContainerId { get; set; }
-
-        public long Revision { get; set; }
-
-        public DateTime? ClaimedAt { get; set; }
-
-        public bool IsAvailable { get; set; }
-
-        public bool IsExpired { get; set; }
-    }
-
-    private sealed class RecoveryDeliveryItemRow
-    {
-        public Guid ItemInstanceId { get; set; }
-
-        public int ItemOrder { get; set; }
-
-        public int ContainerSlotIndex { get; set; }
-    }
-
-    private sealed record RecoveryDeliveryState(
-        Guid DeliveryId,
-        Guid CharacterId,
-        Guid RecoveryStorageContainerId,
-        long Revision,
-        DateTime? ClaimedAt,
-        bool IsAvailable,
-        bool IsExpired,
-        IReadOnlyList<RecoveryDeliveryItemRow> Items);
 
     private sealed class CharacterLockCandidate
     {
