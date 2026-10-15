@@ -1,6 +1,7 @@
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Configuration;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed record PlacementModuleOptions(
     int JoinTicketLifetimeSeconds,

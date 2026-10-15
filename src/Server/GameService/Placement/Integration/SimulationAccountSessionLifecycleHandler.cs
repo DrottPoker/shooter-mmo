@@ -2,7 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Database;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement.Integration;
 
 // Ends simulation access in the same transaction that ends the account session, so a
 // replaced or revoked session can never keep a simulation lease or a join ticket.

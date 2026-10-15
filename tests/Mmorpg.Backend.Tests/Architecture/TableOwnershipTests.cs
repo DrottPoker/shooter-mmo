@@ -74,9 +74,6 @@ public sealed partial class TableOwnershipTests
     // entry must still exist, so the list can only shrink.
     private static readonly IReadOnlySet<string> PendingForeignAccess = new HashSet<string>(StringComparer.Ordinal)
     {
-        "GameService/Simulation/ShardService.cs -> character_item_states (S11)",
-        "GameService/Simulation/SimulationSessionService.cs -> character_item_states (S12, S14)",
-        "GameService/Simulation/SimulationWorkerRegistryService.cs -> corpses (S15)",
         "GameService/Items/CorpseService.cs -> simulation_assignments (S20)",
         "GameService/Items/CorpseService.cs -> simulation_workers (S20)",
         "GameService/Items/CorpseService.Interactions.cs -> character_simulation_sessions (S21)",
@@ -85,9 +82,6 @@ public sealed partial class TableOwnershipTests
         "GameService/Items/ItemTransactionContext.cs -> character_simulation_sessions (S23, S27)",
         "GameService/Items/ItemTransactionContext.cs -> simulation_workers (S24, S29)",
         "GameService/Items/ItemTransactionContext.cs -> simulation_assignments (S25, S29)",
-        "GameService/Items/ItemTransactionService.Death.cs -> shards (S33)",
-        "GameService/Items/DevelopmentItemTool.cs -> character_simulation_sessions (S37, S38)",
-        "GameService/Items/PhaseNineDevelopmentFixtureSeeder.cs -> character_simulation_sessions (S39)"
     };
 
     [Fact]

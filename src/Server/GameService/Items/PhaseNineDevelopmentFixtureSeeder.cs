@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -335,12 +336,8 @@ public sealed class PhaseNineDevelopmentFixtureSeeder(
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         using var grid = await connection.QueryMultipleAsync(new CommandDefinition(
-            """
-            select count(*)
-            from character_simulation_sessions
-            where character_id = @CharacterId
-              and released_at is null
-              and expires_at > now();
+            $"""
+            select case when {PlacementSql.HasActiveSimulationSession("@CharacterId")} then 1 else 0 end;
 
             select count(*)
             from item_instances item

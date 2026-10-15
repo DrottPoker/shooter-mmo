@@ -274,4 +274,9 @@ intended differences:
 - Characters extracted: `src/Server/GameService.Characters` builds
   `Mmorpg.GameService.Characters`, which references Platform and Accounts.
   Only `CharactersModule`, its options, and `Characters.Contracts` are public.
-- The Placement and Items extractions: in progress.
+- Placement SPIs: done. The Simulation folder became the Placement namespace.
+  Items implements `ISimulationCharacterStateProvider` (S11, S12, S14) and
+  `IShardWorldLocalStateProbe` (S15), and reads Placement state through
+  `PlacementSql` (S33, S37 to S39).
+- Placement authority contracts, Placement migrations, and the Placement and
+  Items extractions: in progress.

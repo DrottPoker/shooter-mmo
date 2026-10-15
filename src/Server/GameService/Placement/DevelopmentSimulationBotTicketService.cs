@@ -1,6 +1,6 @@
 using Mmorpg.GameService.Platform.Http;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class DevelopmentSimulationBotTicketService(
     DevelopmentSimulationBotPlacementService placementService,

@@ -2,7 +2,7 @@ using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class DevelopmentSimulationBotAuthority(
     DevelopmentSimulationBotOptions options,

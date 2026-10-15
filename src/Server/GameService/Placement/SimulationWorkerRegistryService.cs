@@ -1,12 +1,15 @@
 using Dapper;
+using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class SimulationWorkerRegistryService(
     NpgsqlDataSource dataSource,
-    PlacementModuleOptions options)
+    PlacementModuleOptions options,
+    IShardWorldLocalStateProbe shardWorldLocalStateProbe)
 {
     private static readonly TimeSpan MaximumStartedAtClockSkew = TimeSpan.FromMinutes(10);
 
@@ -413,13 +416,14 @@ public sealed class SimulationWorkerRegistryService(
             cancellationToken: cancellationToken));
     }
 
-    private static Task<ShardWorldRebindBlockers> LoadWorldRebindBlockersAsync(
+    private async Task<ShardWorldRebindBlockers> LoadWorldRebindBlockersAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string shardId,
         CancellationToken cancellationToken)
     {
-        return connection.QuerySingleAsync<ShardWorldRebindBlockers>(new CommandDefinition(
+        var placementBlockers = await connection.QuerySingleAsync<PlacementRebindBlockers>(
+            new CommandDefinition(
             """
             select
                 (
@@ -441,17 +445,23 @@ public sealed class SimulationWorkerRegistryService(
                     where shard_id = @ShardId
                       and released_at is null
                       and expires_at > now()
-                ) as "ActiveSimulationSessions",
-                (
-                    select count(*)
-                    from corpses
-                    where shard_id = @ShardId
-                      and closed_at is null
-                ) as "OpenCorpses";
+                ) as "ActiveSimulationSessions";
             """,
             new { ShardId = shardId },
             transaction,
             cancellationToken: cancellationToken));
+
+        // The caller holds the Shard row lock, which blocks new corpses for the Shard, so
+        // the separate count stays exact.
+        var openCorpses = await shardWorldLocalStateProbe.CountOpenDurableCorpsesAsync(
+            new PostgresTransactionScope(connection, transaction),
+            shardId,
+            cancellationToken);
+        return new ShardWorldRebindBlockers(
+            placementBlockers.ActiveAssignments,
+            placementBlockers.PendingJoinTickets,
+            placementBlockers.ActiveSimulationSessions,
+            openCorpses);
     }
 
     private static Task UpdateShardWorldAsync(
@@ -702,6 +712,11 @@ public sealed class SimulationWorkerRegistryService(
         bool WorldExists);
 
     private sealed record AssignedWorkerRow(string WorkerId, string? RuntimeId, bool IsHealthy);
+
+    private sealed record PlacementRebindBlockers(
+        long ActiveAssignments,
+        long PendingJoinTickets,
+        long ActiveSimulationSessions);
 
     private sealed record ShardWorldRebindBlockers(
         long ActiveAssignments,

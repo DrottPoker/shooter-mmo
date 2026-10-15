@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Placement;
 
 namespace Mmorpg.Backend.Tests.Integration;
 

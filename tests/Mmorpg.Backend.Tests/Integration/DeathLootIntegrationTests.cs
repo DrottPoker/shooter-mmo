@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Placement;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 

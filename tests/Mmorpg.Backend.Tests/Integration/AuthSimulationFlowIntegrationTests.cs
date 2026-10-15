@@ -5,8 +5,8 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Http;
-using Mmorpg.GameService.Simulation;
 
 namespace Mmorpg.Backend.Tests.Integration;
 

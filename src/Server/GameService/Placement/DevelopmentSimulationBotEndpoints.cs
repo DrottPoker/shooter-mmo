@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Mmorpg.GameService.Platform.Http;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public static class DevelopmentSimulationBotEndpoints
 {

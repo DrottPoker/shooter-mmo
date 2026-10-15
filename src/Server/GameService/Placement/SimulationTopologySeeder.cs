@@ -1,7 +1,7 @@
 using Dapper;
 using Npgsql;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class SimulationTopologySeeder(
     NpgsqlDataSource dataSource,

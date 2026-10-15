@@ -3,6 +3,7 @@ using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -553,13 +554,7 @@ public sealed class DevelopmentItemToolService(
                 character.id as "CharacterId",
                 character.name as "CharacterName",
                 {AccountsSql.UsernameOf("character.account_id")} as "AccountUsername",
-                exists (
-                    select 1
-                    from character_simulation_sessions session
-                    where session.character_id = character.id
-                      and session.released_at is null
-                      and session.expires_at > now()
-                ) as "IsOnline",
+                {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
                 (
                     select count(*)::integer
                     from item_instances item
@@ -643,13 +638,7 @@ public sealed class DevelopmentItemToolService(
                 state.bank_container_id as "BankContainerId",
                 state.secure_container_id as "SecureContainerId",
                 state.revision as "ItemStateRevision",
-                exists (
-                    select 1
-                    from character_simulation_sessions session
-                    where session.character_id = character.id
-                      and session.released_at is null
-                      and session.expires_at > now()
-                ) as "IsOnline",
+                {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
                 (
                     select count(*)::integer
                     from item_instances item

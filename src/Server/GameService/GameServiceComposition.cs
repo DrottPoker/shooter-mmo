@@ -6,10 +6,11 @@ using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Health;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Modules;
-using Mmorpg.GameService.Simulation;
 
 namespace Mmorpg.GameService;
 
@@ -22,7 +23,9 @@ internal static class GameServiceComposition
     private static readonly Type[] SingleImplementationSpis =
     [
         typeof(IAccountSessionLifecycleHandler),
-        typeof(ICharacterLifecycleHandler)
+        typeof(ICharacterLifecycleHandler),
+        typeof(ISimulationCharacterStateProvider),
+        typeof(IShardWorldLocalStateProbe)
     ];
 
     // Modules in dependency order. Services register and routes map in this order.

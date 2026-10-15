@@ -2,8 +2,8 @@ using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
-using Mmorpg.GameService.Simulation;
 
 namespace Mmorpg.GameService.Config;
 

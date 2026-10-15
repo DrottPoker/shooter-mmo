@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
@@ -98,10 +99,7 @@ public sealed partial class ItemTransactionService
                 $"""
                 select
                     character.name as "DisplayName",
-                    exists (
-                        select 1
-                        from shards shard
-                        where shard.id = @ShardId) as "ShardExists"
+                    {PlacementSql.ShardExists("@ShardId")} as "ShardExists"
                 from {CharactersSql.ActiveCharacters} character
                 where character.id = @CharacterId;
                 """,

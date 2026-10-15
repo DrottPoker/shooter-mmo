@@ -1,5 +1,5 @@
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Http;
-using Mmorpg.GameService.Simulation;
 
 namespace Mmorpg.GameService.Items;
 

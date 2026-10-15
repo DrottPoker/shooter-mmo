@@ -1,7 +1,7 @@
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.WorldData.Worlds;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class WorldManifestCatalog
 {

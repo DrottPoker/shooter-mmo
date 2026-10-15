@@ -6,8 +6,8 @@ using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
-using Mmorpg.GameService.Simulation;
 using Mmorpg.Server.Common.Worlds;
 using Npgsql;
 

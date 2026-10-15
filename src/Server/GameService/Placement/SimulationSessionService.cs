@@ -1,14 +1,16 @@
 using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class SimulationSessionService(
     NpgsqlDataSource dataSource,
-    PlacementModuleOptions options)
+    PlacementModuleOptions options,
+    ISimulationCharacterStateProvider characterStateProvider)
 {
     public async Task<ServiceResult<SimulationSessionLeaseResponse>> HeartbeatAsync(
         Guid simulationSessionId,
@@ -49,18 +51,12 @@ public sealed class SimulationSessionService(
                    refreshed.shard_id as "ShardId",
                    refreshed.simulation_worker_id as "WorkerId",
                    refreshed.worker_runtime_id as "WorkerRuntimeId",
-                   refreshed.expires_at as "ExpiresAt",
-                   item_state.revision as "ItemStateRevision",
-                   item_state.carried_weight as "CarriedWeight",
-                   item_state.carry_capacity as "CarryCapacity",
-                   false as "Released"
-            from refreshed_session refreshed
-            join character_item_states item_state
-              on item_state.character_id = refreshed.character_id;
+                   refreshed.expires_at as "ExpiresAt"
+            from refreshed_session refreshed;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var session = await connection.QuerySingleOrDefaultAsync<SimulationSessionLeaseResponse>(
+        var refreshed = await connection.QuerySingleOrDefaultAsync<SessionLeaseRow>(
             new CommandDefinition(
                 sql,
                 new
@@ -72,12 +68,21 @@ public sealed class SimulationSessionService(
                     LeaseLifetimeSeconds = leaseLifetimeSeconds
                 },
                 cancellationToken: cancellationToken));
-        if (session is not null)
+        // The refreshed lease commits on its own, so the carry state read afterwards is
+        // at least as new as the lease.
+        var carryState = refreshed is null
+            ? null
+            : await characterStateProvider.GetAsync(
+                connection,
+                refreshed.CharacterId,
+                cancellationToken);
+        if (refreshed is not null && carryState is not null)
         {
-            return ServiceResult<SimulationSessionLeaseResponse>.Ok(session with
-            {
-                LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
-            });
+            return ServiceResult<SimulationSessionLeaseResponse>.Ok(
+                refreshed.ToResponse(carryState, released: false) with
+                {
+                    LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
+                });
         }
 
         var revocationReasonSql = $"""
@@ -147,18 +152,12 @@ public sealed class SimulationSessionService(
                    released.shard_id as "ShardId",
                    released.simulation_worker_id as "WorkerId",
                    released.worker_runtime_id as "WorkerRuntimeId",
-                   released.expires_at as "ExpiresAt",
-                   item_state.revision as "ItemStateRevision",
-                   item_state.carried_weight as "CarriedWeight",
-                   item_state.carry_capacity as "CarryCapacity",
-                   true as "Released"
-            from released_session released
-            join character_item_states item_state
-              on item_state.character_id = released.character_id;
+                   released.expires_at as "ExpiresAt"
+            from released_session released;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var session = await connection.QuerySingleOrDefaultAsync<SimulationSessionLeaseResponse>(
+        var released = await connection.QuerySingleOrDefaultAsync<SessionLeaseRow>(
             new CommandDefinition(
                 sql,
                 new
@@ -169,12 +168,19 @@ public sealed class SimulationSessionService(
                     SessionTokenHash = sessionTokenHash
                 },
                 cancellationToken: cancellationToken));
+        var carryState = released is null
+            ? null
+            : await characterStateProvider.GetAsync(
+                connection,
+                released.CharacterId,
+                cancellationToken);
 
-        return session is null
+        return released is null || carryState is null
             ? ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
                 "invalid_simulation_session",
                 "Simulation session credentials are invalid.")
-            : ServiceResult<SimulationSessionLeaseResponse>.Ok(session);
+            : ServiceResult<SimulationSessionLeaseResponse>.Ok(
+                released.ToResponse(carryState, released: true));
     }
 
     private static ServiceResult<SimulationSessionLeaseResponse>? ValidateRequest(
@@ -211,5 +217,31 @@ public sealed class SimulationSessionService(
         return !string.IsNullOrWhiteSpace(value)
             && value.Length <= 128
             && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+    }
+
+    private sealed record SessionLeaseRow(
+        Guid SimulationSessionId,
+        Guid CharacterId,
+        string ShardId,
+        string WorkerId,
+        string WorkerRuntimeId,
+        DateTime ExpiresAt)
+    {
+        public SimulationSessionLeaseResponse ToResponse(
+            SimulationCharacterItemState carryState,
+            bool released)
+        {
+            return new SimulationSessionLeaseResponse(
+                SimulationSessionId,
+                CharacterId,
+                ShardId,
+                WorkerId,
+                WorkerRuntimeId,
+                ExpiresAt,
+                carryState.ItemStateRevision,
+                carryState.CarriedWeight,
+                carryState.CarryCapacity,
+                released);
+        }
     }
 }

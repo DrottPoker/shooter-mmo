@@ -2,7 +2,7 @@ using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Placement;
 using Mmorpg.Server.Common.Configuration;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions

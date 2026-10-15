@@ -1,18 +1,20 @@
 using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 public sealed class ShardService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
     IAccountLocks accountLocks,
     ICharacterLocks characterLocks,
+    ISimulationCharacterStateProvider characterStateProvider,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
@@ -337,9 +339,8 @@ public sealed class ShardService(
                 "Join ticket is bound to another shard or simulation worker runtime.");
         }
 
-        var carryState = await LockCarryStateAsync(
-            connection,
-            transaction,
+        var carryState = await characterStateProvider.LockForSessionStartAsync(
+            new PostgresTransactionScope(connection, transaction),
             joinTicket.CharacterId,
             cancellationToken);
 
@@ -448,26 +449,6 @@ public sealed class ShardService(
             {
                 SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
             });
-    }
-
-    private static Task<CharacterCarryStateRow> LockCarryStateAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid characterId,
-        CancellationToken cancellationToken)
-    {
-        return connection.QuerySingleAsync<CharacterCarryStateRow>(new CommandDefinition(
-            """
-            select revision as "ItemStateRevision",
-                   carried_weight as "CarriedWeight",
-                   carry_capacity as "CarryCapacity"
-            from character_item_states
-            where character_id = @CharacterId
-            for update;
-            """,
-            new { CharacterId = characterId },
-            transaction,
-            cancellationToken: cancellationToken));
     }
 
     // Development bot reservations exist only in GameService memory, so they are joined
@@ -925,11 +906,6 @@ public sealed class ShardService(
         string SimulationWorkerId,
         string WorkerRuntimeId,
         DateTime ExpiresAt);
-
-    private sealed record CharacterCarryStateRow(
-        long ItemStateRevision,
-        long CarriedWeight,
-        long CarryCapacity);
 
     private sealed record PlacementRow(
         string ShardId,

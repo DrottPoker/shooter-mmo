@@ -1,8 +1,9 @@
 using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Placement.Integration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
-namespace Mmorpg.GameService.Simulation;
+namespace Mmorpg.GameService.Placement;
 
 // Placement: topology, the worker registry, Shard placement, join tickets, simulation
 // session leases, and Development simulation bots.
