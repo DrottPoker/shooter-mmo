@@ -275,6 +275,17 @@
           "StackExchange.Redis": "[3.0.17, )"
         }
       },
+      "mmorpg.gameservice.testing": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.GameService": "[1.0.0, )",
+          "Mmorpg.GameSimulation": "[1.0.0, )",
+          "Mmorpg.Testing": "[1.0.0, )",
+          "xunit.v3.assert": "[3.2.2, )",
+          "xunit.v3.extensibility.core": "[3.2.2, )"
+        }
+      },
       "mmorpg.gamesimulation": {
         "type": "Project",
         "dependencies": {

@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\tools\SimulationBotClient\Mmorpg.Tools.SimulationBotClient.csproj" />
     <ProjectReference Include="..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
     <ProjectReference Include="..\Testing\Mmorpg.Testing.Content\Mmorpg.Testing.Content.csproj" />
+    <ProjectReference Include="..\Testing\Mmorpg.GameService.Testing\Mmorpg.GameService.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

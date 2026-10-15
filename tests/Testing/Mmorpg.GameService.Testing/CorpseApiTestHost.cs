@@ -11,13 +11,13 @@ using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Http;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.GameService.Testing;
 
-internal sealed class SimulationItemApiTestHost : IAsyncDisposable
+internal sealed class CorpseApiTestHost : IAsyncDisposable
 {
     private readonly WebApplication application;
 
-    private SimulationItemApiTestHost(WebApplication application, HttpClient client)
+    private CorpseApiTestHost(WebApplication application, HttpClient client)
     {
         this.application = application;
         Client = client;
@@ -25,7 +25,7 @@ internal sealed class SimulationItemApiTestHost : IAsyncDisposable
 
     public HttpClient Client { get; }
 
-    public static async Task<SimulationItemApiTestHost> StartAsync(
+    public static async Task<CorpseApiTestHost> StartAsync(
         PostgresIntegrationTestContext context,
         string workerId,
         string workerSecret)
@@ -52,7 +52,7 @@ internal sealed class SimulationItemApiTestHost : IAsyncDisposable
         application.UseApiPipeline();
         application.UseAuthentication();
         application.UseAuthorization();
-        application.MapSimulationItemEndpoints();
+        application.MapCorpseEndpoints();
         await application.StartAsync();
 
         var addresses = application.Services
@@ -60,9 +60,8 @@ internal sealed class SimulationItemApiTestHost : IAsyncDisposable
             .Features
             .Get<IServerAddressesFeature>()
             ?.Addresses
-            ?? throw new InvalidOperationException(
-                "The simulation item API test server has no address feature.");
-        return new SimulationItemApiTestHost(
+            ?? throw new InvalidOperationException("The corpse API test server has no address feature.");
+        return new CorpseApiTestHost(
             application,
             new HttpClient
             {

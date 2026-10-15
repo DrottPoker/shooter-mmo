@@ -21,6 +21,7 @@
   <Folder Name="/tests/Testing/">
     <Project Path="tests/Testing/Mmorpg.Testing/Mmorpg.Testing.csproj" />
     <Project Path="tests/Testing/Mmorpg.Testing.Content/Mmorpg.Testing.Content.csproj" />
+    <Project Path="tests/Testing/Mmorpg.GameService.Testing/Mmorpg.GameService.Testing.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />

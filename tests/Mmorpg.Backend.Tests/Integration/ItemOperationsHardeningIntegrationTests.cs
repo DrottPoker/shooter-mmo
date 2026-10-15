@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration;

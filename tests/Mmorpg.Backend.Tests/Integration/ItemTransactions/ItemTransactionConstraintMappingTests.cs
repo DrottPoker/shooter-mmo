@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using static Mmorpg.Backend.Tests.Integration.ItemTransactions.ItemTransactionKernelTests;
 

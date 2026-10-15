@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.Backend.Tests.Integration;
 using Mmorpg.GameService;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 

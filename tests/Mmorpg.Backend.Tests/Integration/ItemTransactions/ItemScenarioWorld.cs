@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration.ItemTransactions;
 

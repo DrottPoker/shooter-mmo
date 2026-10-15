@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Testing;
+
 namespace Mmorpg.Backend.Tests.Architecture;
 
 // The project references enforce Platform <- Accounts <- Characters <- Placement <- Items

@@ -1,6 +1,6 @@
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Testing;
 
 // Maps every GameService source file to the module that owns it, so the architecture
 // tests can check table and namespace boundaries before and after module extraction.

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 

@@ -2,13 +2,13 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.Backend.Tests.Integration;
 using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Architecture;

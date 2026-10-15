@@ -6,6 +6,7 @@ using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Npgsql;
 

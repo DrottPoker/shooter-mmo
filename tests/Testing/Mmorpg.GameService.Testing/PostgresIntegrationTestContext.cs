@@ -14,7 +14,7 @@ using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
 using Npgsql;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.GameService.Testing;
 
 internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 {

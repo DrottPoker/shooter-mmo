@@ -12,7 +12,7 @@ using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
 using Npgsql;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.GameService.Testing;
 
 // Builds the production GameService service graph for tests. The test owns the data
 // source, and the module background services are removed so tests control all work.
@@ -42,14 +42,18 @@ internal static class GameServiceTestComposition
     }
 
     // A standalone service provider for tests that need services without a web host.
+    // Module test projects use this overload, so they never name host configuration types.
+    public static ServiceProvider BuildServiceProvider(NpgsqlDataSource dataSource)
+    {
+        return BuildServiceProvider(dataSource, CreateConfiguration(dataSource.ConnectionString));
+    }
+
     public static ServiceProvider BuildServiceProvider(
         NpgsqlDataSource dataSource,
-        GameServiceConfiguration? configuration = null)
+        GameServiceConfiguration configuration)
     {
         var services = new ServiceCollection();
-        services.AddGameServiceForTests(
-            dataSource,
-            configuration ?? CreateConfiguration(dataSource.ConnectionString));
+        services.AddGameServiceForTests(dataSource, configuration);
         return services.BuildServiceProvider(validateScopes: true);
     }
 

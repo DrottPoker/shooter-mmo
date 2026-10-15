@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
 using Npgsql;

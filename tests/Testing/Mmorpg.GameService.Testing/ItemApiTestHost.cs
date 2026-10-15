@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Http;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.GameService.Testing;
 
 internal sealed class ItemApiTestHost : IAsyncDisposable
 {

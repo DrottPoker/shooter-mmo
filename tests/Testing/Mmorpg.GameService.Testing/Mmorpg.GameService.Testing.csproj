@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The GameService test kit: the only test library that composes the full GameService
+       graph. Its types stay internal and reach the test projects listed below. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Mmorpg.Testing\Mmorpg.Testing.csproj" />
+    <ProjectReference Include="..\..\..\src\Server\GameService\Mmorpg.GameService.csproj" />
+    <ProjectReference Include="..\..\..\src\Shared\DotNet\GameProtocol\Mmorpg.GameProtocol.csproj" />
+    <ProjectReference Include="..\..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mmorpg.Backend.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Platform.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Accounts.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Characters.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Placement.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Items.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.Integration.Tests" />
+  </ItemGroup>
+</Project>

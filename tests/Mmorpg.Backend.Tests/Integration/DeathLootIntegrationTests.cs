@@ -7,6 +7,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
 using Npgsql;

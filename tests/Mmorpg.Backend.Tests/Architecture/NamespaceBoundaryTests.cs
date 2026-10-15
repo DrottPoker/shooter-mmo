@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration;

@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Testing;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.Testing;
 

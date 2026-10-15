@@ -7,6 +7,7 @@ using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration;

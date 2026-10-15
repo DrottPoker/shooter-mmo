@@ -1,7 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.Backend.Tests.Integration;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Testing;
 using Npgsql;
 
 namespace Mmorpg.Backend.Tests.Unit;

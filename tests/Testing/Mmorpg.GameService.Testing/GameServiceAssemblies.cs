@@ -5,7 +5,7 @@ using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Modules;
 
-namespace Mmorpg.Backend.Tests.Architecture;
+namespace Mmorpg.GameService.Testing;
 
 // The GameService host and module assemblies, in dependency order.
 internal static class GameServiceAssemblies
