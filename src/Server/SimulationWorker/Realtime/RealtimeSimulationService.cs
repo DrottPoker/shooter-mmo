@@ -50,7 +50,7 @@ public sealed class RealtimeSimulationService(
     : BackgroundService
 {
     private readonly ConcurrentQueue<RealtimeOperationResult> completedOperations = new();
-    private readonly Dictionary<int, PeerContext> peers = [];
+    private readonly Dictionary<int, RealtimePeerContext> peers = [];
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
     private PeerAdmissionGuard admissionGuard = null!;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
@@ -233,7 +233,7 @@ public sealed class RealtimeSimulationService(
 
     private void HandlePeerConnected(NetPeer peer)
     {
-        peers[peer.Id] = new PeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
+        peers[peer.Id] = new RealtimePeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
         admissionGuard.OnPeerConnected(peer.Id, peer.Address);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
@@ -357,7 +357,7 @@ public sealed class RealtimeSimulationService(
 
     private void HandleUnauthenticatedMessage(
         NetPeer peer,
-        PeerContext context,
+        RealtimePeerContext context,
         RealtimeMessageType messageType,
         byte[] packet,
         byte channel,
@@ -394,7 +394,7 @@ public sealed class RealtimeSimulationService(
 
     private void HandleAuthenticatedMessage(
         NetPeer peer,
-        PeerContext context,
+        RealtimePeerContext context,
         RealtimeMessageType messageType,
         byte[] packet,
         byte channel,
@@ -487,7 +487,7 @@ public sealed class RealtimeSimulationService(
             }
 
             if (context.AuthorityOperationQueue.Count
-                >= PeerContext.MaximumQueuedAuthorityOperations)
+                >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
             {
                 SendItemOperationRejection(
                     peer,
@@ -553,7 +553,7 @@ public sealed class RealtimeSimulationService(
             }
 
             if (context.AuthorityOperationQueue.Count
-                >= PeerContext.MaximumQueuedAuthorityOperations)
+                >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
             {
                 SendCorpseOperationRejection(
                     peer,
@@ -626,7 +626,7 @@ public sealed class RealtimeSimulationService(
             }
 
             if (context.AuthorityOperationQueue.Count
-                >= PeerContext.MaximumQueuedAuthorityOperations)
+                >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
             {
                 SendWorldInteractionResult(
                     peer,
@@ -681,7 +681,7 @@ public sealed class RealtimeSimulationService(
         TrackOperation(CompleteLeaveAsync(context, context.Session));
     }
 
-    private async Task CompleteJoinAsync(PeerContext context, string joinTicket)
+    private async Task CompleteJoinAsync(RealtimePeerContext context, string joinTicket)
     {
         try
         {
@@ -707,7 +707,7 @@ public sealed class RealtimeSimulationService(
         }
     }
 
-    private async Task CompleteLeaveAsync(PeerContext context, ActiveSimulationSession session)
+    private async Task CompleteLeaveAsync(RealtimePeerContext context, ActiveSimulationSession session)
     {
         try
         {
@@ -730,7 +730,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private async Task CompleteItemOperationAsync(
-        PeerContext context,
+        RealtimePeerContext context,
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent,
         float positionX,
@@ -768,7 +768,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private async Task CompleteCorpseOperationAsync(
-        PeerContext context,
+        RealtimePeerContext context,
         ActiveSimulationSession session,
         RealtimeCorpseInteractionIntent intent,
         bool removeOpenReservationOnFailure,
@@ -987,7 +987,7 @@ public sealed class RealtimeSimulationService(
                     completed.Result.Error!.Code,
                     completed.Result.Error.Message));
             networkMetrics.RecordJoinRejected();
-            completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+            completed.Context.ScheduleDisconnect(DateTime.UtcNow);
             return;
         }
 
@@ -1171,7 +1171,7 @@ public sealed class RealtimeSimulationService(
         completed.Context.Session = null;
         RefreshPeerPopulationMetrics();
         SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
-        completed.Context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+        completed.Context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     private void ProcessItemOperationCompleted(ItemOperationCompleted completed)
@@ -1266,7 +1266,7 @@ public sealed class RealtimeSimulationService(
         StartNextAuthorityOperation(completed.Context);
     }
 
-    private void StartNextAuthorityOperation(PeerContext context)
+    private void StartNextAuthorityOperation(RealtimePeerContext context)
     {
         if (context.AuthorityOperationInFlight
             || context.AuthorityOperationQueue.Count == 0
@@ -1312,7 +1312,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void ProcessWorldInteractionOperation(
-        PeerContext context,
+        RealtimePeerContext context,
         PlayerSimulationEntity entity,
         RealtimeWorldInteractionIntent intent)
     {
@@ -1330,7 +1330,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private async Task CompleteWorldInteractionOperationAsync(
-        PeerContext context,
+        RealtimePeerContext context,
         PlayerSimulationEntity entity,
         RealtimeWorldInteractionIntent intent)
     {
@@ -1436,7 +1436,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void StartCorpseOperation(
-        PeerContext context,
+        RealtimePeerContext context,
         ActiveSimulationSession session,
         RealtimeCorpseInteractionIntent intent,
         float positionX,
@@ -1736,7 +1736,7 @@ public sealed class RealtimeSimulationService(
 
     private bool TryApplyCorpseCarryState(
         NetPeer peer,
-        PeerContext context,
+        RealtimePeerContext context,
         ActiveSimulationSession session,
         SimulationItemTransactionResponse transaction)
     {
@@ -1868,7 +1868,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void CloseCorpseForPeer(
-        PeerContext context,
+        RealtimePeerContext context,
         NetPeer peer,
         Guid corpseId,
         string code,
@@ -1996,7 +1996,7 @@ public sealed class RealtimeSimulationService(
 
     private void DisconnectForItemAuthorityFailure(
         NetPeer peer,
-        PeerContext context,
+        RealtimePeerContext context,
         ActiveSimulationSession session,
         string code,
         string message)
@@ -2015,7 +2015,7 @@ public sealed class RealtimeSimulationService(
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.Session = null;
         RefreshPeerPopulationMetrics();
-        context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     private void ProcessSimulationTicks(
@@ -2424,7 +2424,7 @@ public sealed class RealtimeSimulationService(
             corpseViewers.RemovePeer(previousContext.PeerId);
             worldInteractionLeases?.RemovePeer(previousContext.PeerId);
             RefreshPeerPopulationMetrics();
-            previousContext.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+            previousContext.ScheduleDisconnect(DateTime.UtcNow);
         }
 
         interestManager.RemoveConnection(replacedConnectionId.Value);
@@ -2490,7 +2490,7 @@ public sealed class RealtimeSimulationService(
                             "session_reconnected",
                             "This character connected from another client."));
                     DetachSupersededPeer(context);
-                    context.DisconnectAfterUtc = now.AddMilliseconds(250);
+                    context.ScheduleDisconnect(now);
                     continue;
                 }
 
@@ -2509,7 +2509,7 @@ public sealed class RealtimeSimulationService(
                 RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
                 RefreshPeerPopulationMetrics();
-                context.DisconnectAfterUtc = now.AddMilliseconds(250);
+                context.ScheduleDisconnect(now);
             }
         }
     }
@@ -2608,7 +2608,7 @@ public sealed class RealtimeSimulationService(
             unauthenticatedPeers);
     }
 
-    private bool TryGetBoundPlayer(PeerContext context, out PlayerSimulationEntity entity)
+    private bool TryGetBoundPlayer(RealtimePeerContext context, out PlayerSimulationEntity entity)
     {
         if (connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
             && entityRegistry.TryGetPlayer(entityId, out var player))
@@ -2741,7 +2741,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void RemoveBoundEntity(
-        PeerContext context,
+        RealtimePeerContext context,
         ActiveSimulationSession session,
         string reason)
     {
@@ -2764,7 +2764,7 @@ public sealed class RealtimeSimulationService(
         networkMetrics.SetActiveEntities(GetActiveEntityCount());
     }
 
-    private void DetachSupersededPeer(PeerContext context)
+    private void DetachSupersededPeer(RealtimePeerContext context)
     {
         corpseViewers.RemovePeer(context.PeerId);
         worldInteractionLeases?.RemovePeer(context.PeerId);
@@ -2821,13 +2821,13 @@ public sealed class RealtimeSimulationService(
         return entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
     }
 
-    private bool OwnsPeerId(PeerContext context)
+    private bool OwnsPeerId(RealtimePeerContext context)
     {
         return peers.TryGetValue(context.PeerId, out var currentContext)
             && ReferenceEquals(context, currentContext);
     }
 
-    private bool TryGetCurrentPeer(PeerContext context, out NetPeer peer)
+    private bool TryGetCurrentPeer(RealtimePeerContext context, out NetPeer peer)
     {
         peer = null!;
         if (server is null || !OwnsPeerId(context))
@@ -2847,7 +2847,7 @@ public sealed class RealtimeSimulationService(
 
     private void RejectProtocol(
         NetPeer peer,
-        PeerContext context,
+        RealtimePeerContext context,
         string code,
         string message)
     {
@@ -2857,7 +2857,7 @@ public sealed class RealtimeSimulationService(
             code,
             message);
         SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
-        context.DisconnectAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     private void RefreshCollisionStreaming()
@@ -3009,84 +3009,4 @@ public sealed class RealtimeSimulationService(
             await Task.WhenAll(pendingOperations);
         }
     }
-
-    private sealed class PeerContext(
-        int peerId,
-        DateTime connectedAtUtc,
-        UdpQuotaConfig quotaConfig)
-    {
-        public const int MaximumQueuedAuthorityOperations = 8;
-
-        public int PeerId { get; } = peerId;
-
-        public DateTime ConnectedAtUtc { get; } = connectedAtUtc;
-
-        public UdpPeerQuota Quota { get; } = new(quotaConfig);
-
-        public WorldInteractionIntentLimiter WorldInteractionIntentQuota { get; } = new();
-
-        public bool JoinStarted { get; set; }
-
-        public bool LeaveStarted { get; set; }
-
-        public ActiveSimulationSession? Session { get; set; }
-
-        public Queue<QueuedAuthorityOperation> AuthorityOperationQueue { get; } = new();
-
-        public bool AuthorityOperationInFlight { get; set; }
-
-        public string? CorpsePresenceSignature { get; set; }
-
-        public DateTime? DisconnectAfterUtc { get; set; }
-    }
-
-    private readonly record struct SnapshotRecipient(
-        PeerContext Context,
-        NetPeer Peer,
-        ulong ControlledEntityId);
-
-    private abstract record RealtimeOperationResult(PeerContext Context);
-
-    private sealed record JoinCompleted(
-        PeerContext PeerContext,
-        SimulationJoinResult<ActiveSimulationSession> Result,
-        long EnqueuedTimestamp)
-        : RealtimeOperationResult(PeerContext);
-
-    private sealed record LeaveCompleted(
-        PeerContext PeerContext,
-        ActiveSimulationSession Session,
-        SimulationSessionReleaseResult Result)
-        : RealtimeOperationResult(PeerContext);
-
-    private sealed record ItemOperationCompleted(
-        PeerContext PeerContext,
-        ActiveSimulationSession Session,
-        SimulationItemInteractionResult Result)
-        : RealtimeOperationResult(PeerContext);
-
-    private sealed record CorpseOperationCompleted(
-        PeerContext PeerContext,
-        ActiveSimulationSession Session,
-        SimulationCorpseInteractionResult Result,
-        bool RemoveOpenReservationOnFailure)
-        : RealtimeOperationResult(PeerContext);
-
-    private sealed record WorldInteractionOperationCompleted(
-        PeerContext PeerContext,
-        ActiveSimulationSession Session,
-        WorldInteractionAuthorityResult Result)
-        : RealtimeOperationResult(PeerContext);
-
-    private abstract record QueuedAuthorityOperation;
-
-    private sealed record QueuedItemOperation(RealtimeItemOperationIntent Intent)
-        : QueuedAuthorityOperation;
-
-    private sealed record QueuedCorpseOperation(RealtimeCorpseInteractionIntent Intent)
-        : QueuedAuthorityOperation;
-
-    private sealed record QueuedWorldInteractionOperation(
-        RealtimeWorldInteractionIntent Intent)
-        : QueuedAuthorityOperation;
 }
