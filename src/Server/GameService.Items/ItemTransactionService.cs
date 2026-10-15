@@ -2827,7 +2827,7 @@ internal sealed partial class ItemTransactionService(
         if (ItemOperationAdmission.RequiresRandomClientOperationId(request.Actor, operationKind)
             && !ItemOperationIds.IsRandomClientOperationId(request.OperationId))
         {
-            return CreateRejectedResult(
+            return ItemTransactionOutcomes.CreateRejected(
                 request.OperationId,
                 operationKind,
                 ItemTransactionErrorCodes.ItemOperationIdInvalid,
@@ -2843,7 +2843,7 @@ internal sealed partial class ItemTransactionService(
                 requestPayload,
                 effectiveOperationsOptions))
         {
-            return CreateRejectedResult(
+            return ItemTransactionOutcomes.CreateRejected(
                 request.OperationId,
                 operationKind,
                 ItemTransactionErrorCodes.ItemCommandPayloadTooLarge,
@@ -2895,7 +2895,7 @@ internal sealed partial class ItemTransactionService(
                     operationKind,
                     requestHash,
                     cancellationToken);
-                return committedReplay ?? CreateRejectedResult(
+                return committedReplay ?? ItemTransactionOutcomes.CreateRejected(
                     request.OperationId,
                     operationKind,
                     exception.Code,
@@ -2960,7 +2960,7 @@ internal sealed partial class ItemTransactionService(
             }
             catch (PostgresException exception)
             {
-                var mapped = MapPostgresError(exception);
+                var mapped = ItemTransactionOutcomes.MapPostgresError(exception);
                 if (mapped is null)
                 {
                     throw;
@@ -2979,13 +2979,13 @@ internal sealed partial class ItemTransactionService(
         catch (PostgresException exception)
         {
             await transaction.RollbackAsync(CancellationToken.None);
-            var mapped = MapPostgresError(exception);
+            var mapped = ItemTransactionOutcomes.MapPostgresError(exception);
             if (mapped is null)
             {
                 throw;
             }
 
-            return CreateRejectedResult(
+            return ItemTransactionOutcomes.CreateRejected(
                 request.OperationId,
                 operationKind,
                 mapped.Code,
@@ -3090,7 +3090,7 @@ internal sealed partial class ItemTransactionService(
         if (!string.Equals(existing.OperationKind, operationKind, StringComparison.Ordinal)
             || !string.Equals(existing.RequestHash, requestHash, StringComparison.Ordinal))
         {
-            return CreateRejectedResult(
+            return ItemTransactionOutcomes.CreateRejected(
                 operationId,
                 operationKind,
                 ItemTransactionErrorCodes.ItemOperationConflict,
@@ -3100,7 +3100,7 @@ internal sealed partial class ItemTransactionService(
         if (string.Equals(existing.Status, "pending", StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(existing.ResultPayload))
         {
-            return CreateRejectedResult(
+            return ItemTransactionOutcomes.CreateRejected(
                 operationId,
                 operationKind,
                 ItemTransactionErrorCodes.ItemOperationConflict,
@@ -3129,7 +3129,7 @@ internal sealed partial class ItemTransactionService(
             || ItemOperationKinds.IsRetriedSystemOperation(operationKind))
         {
             await transaction.RollbackAsync(cancellationToken);
-            return CreateRejectedResult(
+            return ItemTransactionOutcomes.CreateRejected(
                 operationId,
                 operationKind,
                 errorCode,
@@ -3159,7 +3159,7 @@ internal sealed partial class ItemTransactionService(
             $"rollback to savepoint {MutationSavepoint};",
             transaction: transaction,
             cancellationToken: cancellationToken));
-        var result = CreateRejectedResult(
+        var result = ItemTransactionOutcomes.CreateRejected(
             operationId,
             operationKind,
             errorCode,
@@ -3199,58 +3199,6 @@ internal sealed partial class ItemTransactionService(
             },
             transaction,
             cancellationToken: cancellationToken));
-    }
-
-    private static ItemTransactionResult CreateRejectedResult(
-        Guid operationId,
-        string operationKind,
-        string errorCode,
-        string errorMessage)
-    {
-        return new ItemTransactionResult(
-            operationId,
-            operationKind,
-            false,
-            new ItemTransactionError(errorCode, errorMessage),
-            [],
-            [],
-            [],
-            [],
-            null);
-    }
-
-    private static ItemTransactionError? MapPostgresError(PostgresException exception)
-    {
-        if (exception.SqlState is "57014" or "55P03")
-        {
-            return new ItemTransactionError(
-                ItemTransactionErrorCodes.ItemTransactionTimeout,
-                "The item transaction exceeded its configured database time limit.");
-        }
-
-        if (exception.SqlState is "40P01" or "40001")
-        {
-            return new ItemTransactionError(
-                ItemTransactionErrorCodes.ItemTransactionTimeout,
-                "The item transaction was aborted by concurrent database work. Retry it.");
-        }
-
-        return exception.ConstraintName switch
-        {
-            "ux_item_instances_container_slot" => new ItemTransactionError(
-                ItemTransactionErrorCodes.ItemSlotOccupied,
-                "The requested destination slot is occupied."),
-            "ux_item_instances_equipment_slot" => new ItemTransactionError(
-                ItemTransactionErrorCodes.EquipmentSlotOccupied,
-                "The requested equipment slot is occupied."),
-            "ux_recovery_deliveries_source" => new ItemTransactionError(
-                ItemTransactionErrorCodes.ItemOperationConflict,
-                "The Recovery Storage source event was already applied."),
-            "ck_item_instances_quantity" => new ItemTransactionError(
-                ItemTransactionErrorCodes.ItemQuantityChanged,
-                "The requested item quantity is no longer valid."),
-            _ => null
-        };
     }
 
     private static bool IsOperationallySignificant(string operationKind)
