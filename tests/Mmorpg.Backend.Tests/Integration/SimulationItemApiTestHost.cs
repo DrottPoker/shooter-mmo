@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -8,9 +7,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.Backend.Tests.Integration;
 
@@ -37,28 +36,17 @@ internal sealed class SimulationItemApiTestHost : IAsyncDisposable
         });
         builder.Configuration.AddConfiguration(context.Configuration);
         builder.Logging.ClearProviders();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            [$"ServiceAuthentication:SimulationWorkers:{workerId}"] = workerSecret
-        });
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddSingleton(context.DataSource);
-        builder.Services.AddScoped<ItemTransactionService>();
-        builder.Services.AddScoped<SimulationItemMutationService>();
-        builder.Services.AddApiProblemDetails();
-        builder.Services
-            .AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(
-                AuthenticationConstants.SimulationWorkerScheme,
-                _ => { });
-        builder.Services.AddAuthorization(options =>
+        var configuration = context.GameServiceConfiguration with
         {
-            options.AddPolicy(AuthenticationConstants.SimulationWorkerPolicy, policy =>
+            Accounts = context.GameServiceConfiguration.Accounts with
             {
-                policy.AddAuthenticationSchemes(AuthenticationConstants.SimulationWorkerScheme);
-                policy.RequireAuthenticatedUser();
-            });
-        });
+                SimulationWorkerCredentials = new SimulationWorkerCredentials(
+                    [new KeyValuePair<string, string?>(workerId, workerSecret)],
+                    null)
+            }
+        };
+        builder.Services.AddGameServiceForTests(context.DataSource, configuration);
 
         var application = builder.Build();
         application.UseApiPipeline();

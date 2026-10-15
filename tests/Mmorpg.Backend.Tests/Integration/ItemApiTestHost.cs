@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -8,9 +7,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.Backend.Tests.Integration;
 
@@ -35,26 +33,7 @@ internal sealed class ItemApiTestHost : IAsyncDisposable
         builder.Configuration.AddConfiguration(context.Configuration);
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddSingleton(context.DataSource);
-        builder.Services.AddScoped<SessionService>();
-        builder.Services.AddScoped<ItemCatalogQueryService>();
-        builder.Services.AddScoped<ItemQueryService>();
-        builder.Services.AddScoped<ItemTransactionService>();
-        builder.Services.AddScoped<AccountItemMutationService>();
-        builder.Services.AddApiProblemDetails();
-        builder.Services
-            .AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, AccountSessionAuthenticationHandler>(
-                AuthenticationConstants.AccountSessionScheme,
-                _ => { });
-        builder.Services.AddAuthorization(options =>
-        {
-            options.AddPolicy(AuthenticationConstants.AccountSessionPolicy, policy =>
-            {
-                policy.AddAuthenticationSchemes(AuthenticationConstants.AccountSessionScheme);
-                policy.RequireAuthenticatedUser();
-            });
-        });
+        builder.Services.AddGameServiceForTests(context.DataSource, context.GameServiceConfiguration);
 
         var application = builder.Build();
         application.UseApiPipeline();

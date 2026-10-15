@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Health;
 using Mmorpg.Server.Common.Networking;
 using Npgsql;
@@ -6,13 +7,13 @@ namespace Mmorpg.GameService.Health;
 
 public sealed class PostgresHealthProbe(
     NpgsqlDataSource dataSource,
-    Mmorpg.GameService.Config.GameServiceConfig config)
+    PlatformOptions options)
 {
     public async Task<DependencyHealth> CheckAsync(CancellationToken cancellationToken)
     {
-        var endpoint = PostgresConnectionString.ParseEndpoint(config.PostgresConnectionString);
+        var endpoint = PostgresConnectionString.ParseEndpoint(options.PostgresConnectionString);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(config.HealthCheckTimeout);
+        timeoutSource.CancelAfter(options.HealthCheckTimeout);
 
         try
         {

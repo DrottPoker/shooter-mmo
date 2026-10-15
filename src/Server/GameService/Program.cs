@@ -1,16 +1,9 @@
-using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.Authentication;
-using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Characters;
+using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
-using Mmorpg.GameService.Health;
-using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Redis;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Placement;
 using Mmorpg.Server.Common.Configuration;
-using Npgsql;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -37,249 +30,32 @@ builder.Configuration.AddCommandLine(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
-var config = GameServiceConfig.FromConfiguration(builder.Configuration);
-var worldManifestCatalog = WorldManifestCatalog.FromConfiguration(builder.Configuration);
-var developmentSimulationBotOptions = DevelopmentSimulationBotOptions.FromConfiguration(
-    builder.Configuration,
-    builder.Environment.IsDevelopment());
-var stackStressFixtureOptions = StackStressFixtureOptions.FromConfiguration(
-    builder.Configuration,
-    builder.Environment.IsDevelopment(),
-    config.PostgresConnectionString);
-var npcItemLifecycleOptions = NpcItemLifecycleOptions.FromConfiguration(
-    builder.Configuration);
-var itemOperationsOptions = ItemOperationsOptions.FromConfiguration(builder.Configuration);
-var redisAccelerationOptions = RedisAccelerationOptions.FromConfiguration(builder.Configuration);
+var configuration = GameServiceConfiguration.Load(builder.Configuration, builder.Environment);
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = itemOperationsOptions.MaximumHttpRequestBodyBytes;
+    options.Limits.MaxRequestBodySize = configuration.Items.Operations.MaximumHttpRequestBodyBytes;
 });
 
-builder.Services.AddSingleton(_ =>
-{
-    return NpgsqlDataSource.Create(config.PostgresConnectionString);
-});
-
-builder.Services.AddSingleton(config);
-builder.Services.AddSingleton(worldManifestCatalog);
-builder.Services.AddSingleton(developmentSimulationBotOptions);
-builder.Services.AddSingleton(stackStressFixtureOptions);
-builder.Services.AddSingleton(npcItemLifecycleOptions);
-builder.Services.AddSingleton(itemOperationsOptions);
-builder.Services.AddSingleton(redisAccelerationOptions);
-builder.Services.AddSingleton<RedisAccelerationMetrics>();
-builder.Services.AddSingleton<IRedisConnectionProvider, RedisConnectionProvider>();
-builder.Services.AddSingleton<IAccountSessionCache, RedisAccountSessionCache>();
-builder.Services.AddSingleton<RedisAuthenticationRateLimiter>();
-builder.Services.AddSingleton<ItemOperationsMetrics>();
-builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddSingleton(ItemCatalogSource.FromConfiguration(builder.Configuration));
-builder.Services.AddSingleton<DevelopmentSimulationBotAuthority>();
-builder.Services.AddSingleton<ItemCatalogSeeder>();
-builder.Services.AddSingleton<CharacterItemStateBootstrapper>();
-builder.Services.AddSingleton<DatabaseInitializer>();
-builder.Services.AddSingleton<SimulationTopologySeeder>();
-builder.Services.AddSingleton<PostgresHealthProbe>();
-builder.Services.AddSingleton<GameServiceHealthService>();
-builder.Services.AddScoped<AccountService>();
-builder.Services.AddScoped<CharacterService>();
-builder.Services.AddScoped<ItemCatalogQueryService>();
-builder.Services.AddScoped<ItemQueryService>();
-builder.Services.AddScoped<ItemTransactionService>();
-builder.Services.AddScoped<AccountItemMutationService>();
-builder.Services.AddScoped<SimulationItemMutationService>();
-builder.Services.AddScoped<ItemPolicyService>();
-builder.Services.AddScoped<QuestItemService>();
-builder.Services.AddScoped<CorpseService>();
-builder.Services.AddScoped<ItemOperationsMaintenanceService>();
-builder.Services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
-builder.Services.AddScoped<DevelopmentItemToolService>();
-builder.Services.AddScoped<StackStressFixtureService>();
-builder.Services.AddScoped<SessionService>();
-builder.Services.AddScoped<ShardService>();
-builder.Services.AddScoped<SimulationSessionService>();
-builder.Services.AddScoped<SimulationWorkerRegistryService>();
-builder.Services.AddScoped<DevelopmentSimulationBotPlacementService>();
-builder.Services.AddScoped<DevelopmentSimulationBotTicketService>();
-builder.Services.AddHostedService<CorpseExpiryHostedService>();
-builder.Services.AddHostedService<ItemOperationsMetricsReporterService>();
-builder.Services.AddHostedService<RedisAccelerationMetricsReporterService>();
-builder.Services.AddHostedService<ItemOperationsMaintenanceHostedService>();
-builder.Services.AddApiProblemDetails();
-builder.Services
-    .AddAuthentication()
-    .AddScheme<AuthenticationSchemeOptions, AccountSessionAuthenticationHandler>(
-        AuthenticationConstants.AccountSessionScheme,
-        _ => { })
-    .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(
-        AuthenticationConstants.SimulationWorkerScheme,
-        _ => { });
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy(AuthenticationConstants.AccountSessionPolicy, policy =>
-    {
-        policy.AddAuthenticationSchemes(AuthenticationConstants.AccountSessionScheme);
-        policy.RequireAuthenticatedUser();
-    });
-    options.AddPolicy(AuthenticationConstants.SimulationWorkerPolicy, policy =>
-    {
-        policy.AddAuthenticationSchemes(AuthenticationConstants.SimulationWorkerScheme);
-        policy.RequireAuthenticatedUser();
-    });
-});
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = async (context, cancellationToken) =>
-    {
-        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var remaining)
-            ? remaining
-            : config.AuthenticationRateLimitWindow;
-        context.HttpContext.Response.Headers.RetryAfter = Math.Max(
-                1,
-                (int)Math.Ceiling(retryAfter.TotalSeconds))
-            .ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-        await Results.Problem(
-                statusCode: StatusCodes.Status429TooManyRequests,
-                title: "Too Many Requests",
-                detail: "Too many authentication attempts. Try again later.",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "rate_limit_exceeded"
-                })
-            .ExecuteAsync(context.HttpContext);
-    };
-
-    AddAuthenticationRateLimitPolicy(options, "login", config);
-    AddAuthenticationRateLimitPolicy(options, "register", config);
-});
+builder.Services.AddGameService(configuration);
 
 var app = builder.Build();
 
-app.UseApiPipeline();
-app.UseMiddleware<RedisAuthenticationRateLimitMiddleware>();
-app.UseRateLimiter();
-app.UseAuthentication();
-app.UseAuthorization();
+app.UseGameServicePipeline();
 
-if (app.Configuration.GetValue("Database:RunMigrationsOnStartup", true))
+if (configuration.Platform.RunMigrationsOnStartup)
 {
-    var initializer = app.Services.GetRequiredService<DatabaseInitializer>();
+    var initializer = app.Services.GetRequiredService<GameServiceDatabaseInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);
-    var topologySeeder = app.Services.GetRequiredService<SimulationTopologySeeder>();
-    await topologySeeder.SeedAsync(CancellationToken.None);
+    await PlacementModule.SeedTopologyAsync(app.Services, CancellationToken.None);
 }
 
-if (PhaseNineDevelopmentFixtureCommand.TryParse(
-        args,
-        out var phaseNineCharacterId,
-        out var phaseNineFixtureError))
+var commandExitCode = await ItemsCommandLine.TryRunAsync(app.Services, args, app.Logger);
+if (commandExitCode is not null)
 {
-    if (!string.IsNullOrWhiteSpace(phaseNineFixtureError))
-    {
-        throw new InvalidOperationException(phaseNineFixtureError);
-    }
-
-    await using var scope = app.Services.CreateAsyncScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<PhaseNineDevelopmentFixtureSeeder>();
-    var result = await seeder.SeedAsync(phaseNineCharacterId, CancellationToken.None);
-    app.Logger.LogInformation(
-        "Seeded Phase 9 fixture for character {CharacterId} at revision {ItemStateRevision} with {GrantedItemCount} items, {RecoveryDeliveryCount} Recovery delivery, and carry {CarriedWeight}/{CarryCapacity}.",
-        result.CharacterId,
-        result.ItemStateRevision,
-        result.GrantedItemCount,
-        result.RecoveryDeliveryCount,
-        result.CarriedWeight,
-        result.CarryCapacity);
+    Environment.ExitCode = commandExitCode.Value;
     return;
 }
 
-if (DevelopmentItemToolCommandParser.TryParse(
-        args,
-        out var developmentItemToolCommand,
-        out var developmentItemToolError))
-{
-    DevelopmentItemToolResponse response;
-    if (!string.IsNullOrWhiteSpace(developmentItemToolError)
-        || developmentItemToolCommand is null)
-    {
-        response = new DevelopmentItemToolResponse(
-            false,
-            developmentItemToolError.Length == 0
-                ? "The development item tool command is invalid."
-                : developmentItemToolError,
-            null);
-        Environment.ExitCode = 1;
-    }
-    else
-    {
-        try
-        {
-            await using var scope = app.Services.CreateAsyncScope();
-            var service = scope.ServiceProvider.GetRequiredService<DevelopmentItemToolService>();
-            response = await service.ExecuteAsync(
-                developmentItemToolCommand,
-                CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            response = new DevelopmentItemToolResponse(false, exception.Message, null);
-            Environment.ExitCode = 1;
-        }
-    }
-
-    Console.WriteLine(DevelopmentItemToolProtocol.Serialize(response));
-    return;
-}
-
-app.MapGet("/", () => Results.Redirect("/health/ready"));
-app.MapGet("/health/live", () => Results.Ok(new
-{
-    service = "GameService",
-    status = "live",
-    checkedAt = DateTimeOffset.UtcNow
-}));
-app.MapGet("/health/ready", async (
-    GameServiceHealthService healthService,
-    CancellationToken cancellationToken) =>
-{
-    var health = await healthService.CheckReadinessAsync(cancellationToken);
-    return Results.Json(
-        health,
-        statusCode: health.Status == "ready"
-            ? StatusCodes.Status200OK
-            : StatusCodes.Status503ServiceUnavailable);
-});
-
-app.MapAccountEndpoints();
-app.MapCharacterEndpoints();
-app.MapItemEndpoints();
-app.MapSimulationItemEndpoints();
-app.MapCorpseEndpoints();
-app.MapSimulationEndpoints();
-app.MapDevelopmentSimulationBotEndpoints(developmentSimulationBotOptions);
-app.MapStackStressFixtureEndpoints(stackStressFixtureOptions);
+app.MapGameService(configuration);
 
 app.Run();
-
-static void AddAuthenticationRateLimitPolicy(
-    Microsoft.AspNetCore.RateLimiting.RateLimiterOptions options,
-    string policyName,
-    GameServiceConfig config)
-{
-    options.AddPolicy(policyName, httpContext =>
-    {
-        var remoteAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(
-            $"{policyName}:{remoteAddress}",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = config.AuthenticationPermitLimit,
-                Window = config.AuthenticationRateLimitWindow,
-                QueueLimit = 0,
-                AutoReplenishment = true
-            });
-    });
-}

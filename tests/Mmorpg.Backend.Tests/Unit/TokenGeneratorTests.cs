@@ -1,4 +1,4 @@
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Platform.Security;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

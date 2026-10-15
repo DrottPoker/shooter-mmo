@@ -1,5 +1,5 @@
 using Dapper;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Items;
 using Mmorpg.WorldData.Items;

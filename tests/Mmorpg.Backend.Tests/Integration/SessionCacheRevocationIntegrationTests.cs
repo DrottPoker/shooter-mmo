@@ -1,4 +1,6 @@
-using Mmorpg.GameService.Auth;
+using Microsoft.Extensions.DependencyInjection;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
 
 namespace Mmorpg.Backend.Tests.Integration;
 
@@ -9,9 +11,8 @@ public sealed class SessionCacheRevocationIntegrationTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync();
-        var service = new SessionService(
-            context.DataSource,
-            context.Configuration,
+        var service = ActivatorUtilities.CreateInstance<SessionService>(
+            context.Services,
             new RejectingSessionCache());
 
         var result = await service.RevokeAsync(

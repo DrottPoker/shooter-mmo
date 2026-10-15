@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\GameService.Module.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
+    <ProjectReference Include="..\GameService.Accounts\Mmorpg.GameService.Accounts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mmorpg.Backend.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Characters.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,203 @@
+namespace Mmorpg.GameService.Items;
+
+internal sealed record SimulationPlayerDeathRequest(
+    Guid OperationId,
+    Guid DeathEventId,
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    long ExpectedCharacterRevision,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double RotationW,
+    string PresentationKey);
+
+internal sealed record PlayerDeathPartitionResponse(
+    Guid OperationId,
+    Guid DeathEventId,
+    DurableCorpseResponse Corpse,
+    ItemTransactionCharacterRevision CharacterRevision,
+    IReadOnlyList<Guid> RecoveryDeliveryIds);
+
+internal sealed record MobCorpseLootEntryRequest(
+    Guid GrantId,
+    string DefinitionId,
+    int Quantity);
+
+internal sealed record CreatePersistentMobCorpseRequest(
+    Guid OperationId,
+    Guid CorpseId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SourceActorDefinitionId,
+    string SourceDisplayName,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double RotationW,
+    string PresentationKey,
+    double LifetimeSeconds,
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+
+internal sealed record PersistentMobCorpseResponse(
+    Guid OperationId,
+    DurableCorpseResponse Corpse);
+
+internal sealed record SimulationMobLootGrantRequest(
+    Guid GrantId,
+    Guid AccountId,
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    Guid SourceCorpseId,
+    string SourceActorDefinitionId,
+    string DefinitionId,
+    int Quantity,
+    Guid DestinationContainerId,
+    long ExpectedDestinationContainerRevision,
+    int DestinationSlotIndex);
+
+internal sealed record CorpseRestoreResponse(
+    DateTime DatabaseTime,
+    IReadOnlyList<DurableCorpseResponse> Corpses);
+
+internal sealed record DurableCorpseResponse(
+    Guid CorpseId,
+    Guid? SourceCharacterId,
+    string SourceDisplayName,
+    string ShardId,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double RotationW,
+    string PresentationKey,
+    long Revision,
+    DateTime CreatedAt,
+    DateTime ExpiresAt,
+    bool IsEmpty,
+    IReadOnlyList<CorpseSectionResponse> Sections);
+
+internal sealed record CorpseSectionResponse(
+    string SectionKind,
+    Guid ContainerId,
+    long ContainerRevision,
+    int ItemCount);
+
+internal sealed record CorpsePartitionRecord(
+    Guid DeathEventId,
+    Guid OriginalOperationId,
+    Guid CharacterId,
+    DurableCorpseResponse Corpse,
+    ItemTransactionCharacterRevision CharacterRevision,
+    IReadOnlyList<Guid> RecoveryDeliveryIds);
+
+internal sealed record SimulationCorpseOpenRequest(
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken);
+
+internal sealed record SimulationCorpseMutationRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    string OperationKind,
+    long ExpectedCorpseRevision,
+    Guid? ItemInstanceId = null,
+    long? ExpectedItemRevision = null,
+    int? Quantity = null,
+    Guid? DestinationContainerId = null,
+    long? ExpectedDestinationContainerRevision = null,
+    int? DestinationSlotIndex = null,
+    Guid? TargetItemInstanceId = null,
+    long? ExpectedTargetItemRevision = null,
+    Guid? CorpseBagContentsContainerId = null,
+    long? ExpectedCorpseBagContentsRevision = null,
+    Guid? PlayerBagItemInstanceId = null,
+    long? ExpectedPlayerBagRevision = null,
+    Guid? PlayerBagContentsContainerId = null,
+    long? ExpectedPlayerBagContentsRevision = null);
+
+internal sealed record CorpseMutationResponse(
+    ItemTransactionResult Transaction,
+    CorpseViewSnapshotResponse? Corpse);
+
+internal sealed record CorpseViewSnapshotResponse(
+    Guid CorpseId,
+    Guid? SourceCharacterId,
+    string SourceDisplayName,
+    string ShardId,
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    string PresentationKey,
+    long Revision,
+    DateTime CreatedAt,
+    DateTime ExpiresAt,
+    IReadOnlyList<CorpseViewSectionResponse> Sections,
+    IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots);
+
+internal sealed record CorpseViewSectionResponse(
+    string SectionKind,
+    Guid ContainerId,
+    string ContainerType,
+    long ContainerRevision,
+    int SlotCapacity,
+    IReadOnlyList<CorpseViewSlotResponse> Slots);
+
+internal sealed record CorpseViewSlotResponse(
+    int SlotIndex,
+    string SlotKind,
+    IReadOnlyList<string> AcceptedTags,
+    CorpseViewItemResponse? Item,
+    string EquipmentSlotId = "");
+
+internal sealed record CorpseViewItemResponse(
+    Guid ItemInstanceId,
+    string DefinitionId,
+    int Quantity,
+    long Revision,
+    Guid? BagContentsContainerId,
+    long? BagContentsRevision);
+
+internal sealed record CorpsePresentationSnapshotResponse(
+    string SnapshotKind,
+    int SortOrder,
+    string? DefinitionId,
+    string? EquipmentSlotId,
+    string? PolicyKind,
+    string PresentationPayload);
+
+internal static class CorpseInteractionOperationKinds
+{
+    public const string LootItem = "loot_item";
+    public const string LootPartialStack = "loot_partial_stack";
+    public const string DepositItem = "deposit_item";
+    public const string DepositPartialStack = "deposit_partial_stack";
+    public const string MoveItem = "move_item";
+    public const string MovePartialStack = "move_partial_stack";
+    public const string SwapBag = "swap_bag";
+}

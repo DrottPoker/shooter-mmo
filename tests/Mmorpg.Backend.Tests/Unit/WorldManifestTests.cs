@@ -85,7 +85,7 @@ public sealed class WorldManifestTests
         var second = CreateManifest();
         second.worldId = "second-world";
 
-        var catalog = Mmorpg.GameService.Simulation.WorldManifestCatalog.FromManifests(
+        var catalog = Mmorpg.GameService.Placement.WorldManifestCatalog.FromManifests(
             [first, second]);
 
         Assert.Equal(2, catalog.Manifests.Count);

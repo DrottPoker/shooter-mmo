@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
 
 namespace Mmorpg.Backend.Tests.Unit;
 
@@ -69,7 +70,7 @@ public sealed class SimulationWorkerAuthenticationHandlerTests
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(SimulationWorkerCredentials.FromConfiguration(configuration));
         services
             .AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(

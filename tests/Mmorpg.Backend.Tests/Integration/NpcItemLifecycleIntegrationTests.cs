@@ -1,6 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Placement;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Backend.Tests.Integration;
@@ -355,7 +355,7 @@ public sealed class NpcItemLifecycleIntegrationTests
             CapabilityId: capabilityId);
     }
 
-    private static Task<Mmorpg.GameService.Http.ServiceResult<ItemTransactionResult>> ExecuteAsync(
+    private static Task<Mmorpg.GameService.Platform.Http.ServiceResult<ItemTransactionResult>> ExecuteAsync(
         PostgresIntegrationTestContext context,
         ConsumedSimulationJoinTicketResponse session,
         SimulationItemOperationRequest request)

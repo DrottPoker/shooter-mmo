@@ -1,7 +1,10 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Config;
-using Mmorpg.GameService.Redis;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Accounts.Redis;
+using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Platform.Redis;
+using Mmorpg.GameService.Platform.Security;
 using Mmorpg.Server.Common.Networking;
 
 namespace Mmorpg.Backend.Tests.Unit;
@@ -11,12 +14,11 @@ public sealed class RedisFailureFallbackTests
     [Fact]
     public async Task UnavailableRedisFallsBackForReadsAndRateLimitsButRejectsRevocationPreparation()
     {
-        var config = new GameServiceConfig(
+        var config = new PlatformOptions(
             "Host=127.0.0.1;Database=test;Username=test;Password=test",
             "127.0.0.1:1",
             TimeSpan.FromMilliseconds(100),
-            TimeSpan.FromSeconds(30),
-            new SimulationTopologyConfig([], [], []));
+            RunMigrationsOnStartup: false);
         var options = new RedisAccelerationOptions(
             true,
             $"shooter-mmo-failure-test-{Guid.NewGuid():N}",

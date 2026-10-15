@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
-using Mmorpg.GameService.Redis;
+using Mmorpg.GameService.Accounts.Redis;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

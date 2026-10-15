@@ -2,11 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Dapper;
-using Microsoft.Extensions.Logging.Abstractions;
-using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Database.Migrations;
+using Microsoft.Extensions.DependencyInjection;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Items.Persistence;
+using Mmorpg.GameService.Placement;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 
@@ -600,11 +600,9 @@ public sealed class DeathLootIntegrationTests
             Guid.NewGuid(),
             "secondary-shard");
 
-        var restartedService = new CorpseService(
-            context.DataSource,
-            new ItemTransactionService(context.DataSource),
-            context.GameServiceConfig,
-            NullLogger<CorpseService>.Instance);
+        var restartedService = ActivatorUtilities.CreateInstance<CorpseService>(
+            context.Services,
+            ActivatorUtilities.CreateInstance<ItemTransactionService>(context.Services));
         var localRestore = await restartedService.ListForWorkerAsync(
             WorkerId,
             WorkerRuntimeId,

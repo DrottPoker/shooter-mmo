@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
+using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Redis;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
@@ -49,7 +49,7 @@ public sealed class ConfigurationValidationTests
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => GameServiceConfig.FromConfiguration(configuration));
+            () => GameServiceCoreConfiguration.FromConfiguration(configuration));
 
         Assert.Contains("ConnectionStrings:Postgres is required", exception.Message);
         Assert.Contains("SIMULATION_WORKER_SERVICE_SECRET", exception.Message);
@@ -62,10 +62,10 @@ public sealed class ConfigurationValidationTests
             .AddInMemoryCollection(AuthSettings(includeSecrets: true))
             .Build();
 
-        var config = GameServiceConfig.FromConfiguration(configuration);
+        var config = GameServiceCoreConfiguration.FromConfiguration(configuration);
 
-        Assert.Equal(TimeSpan.FromSeconds(30), config.SimulationWorkerHeartbeatTimeout);
-        var postgres = new NpgsqlConnectionStringBuilder(config.PostgresConnectionString);
+        Assert.Equal(TimeSpan.FromSeconds(30), config.Placement.WorkerHeartbeatTimeout);
+        var postgres = new NpgsqlConnectionStringBuilder(config.Platform.PostgresConnectionString);
         Assert.Equal(64, postgres.MaxPoolSize);
         Assert.Equal("Mmorpg.GameService", postgres.ApplicationName);
     }
@@ -84,7 +84,7 @@ public sealed class ConfigurationValidationTests
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => GameServiceConfig.FromConfiguration(configuration));
+            () => GameServiceCoreConfiguration.FromConfiguration(configuration));
 
         Assert.Contains(expectedMessage, exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -105,7 +105,7 @@ public sealed class ConfigurationValidationTests
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => GameServiceConfig.FromConfiguration(configuration));
+            () => GameServiceCoreConfiguration.FromConfiguration(configuration));
 
         Assert.Contains(expectedMessage, exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -122,7 +122,7 @@ public sealed class ConfigurationValidationTests
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => GameServiceConfig.FromConfiguration(configuration));
+            () => GameServiceCoreConfiguration.FromConfiguration(configuration));
 
         Assert.Contains("placeholder", exception.Message);
     }
@@ -138,9 +138,9 @@ public sealed class ConfigurationValidationTests
             .AddInMemoryCollection(settings)
             .Build();
 
-        var config = GameServiceConfig.FromConfiguration(configuration);
+        var config = GameServiceCoreConfiguration.FromConfiguration(configuration);
 
-        Assert.Equal(TimeSpan.FromSeconds(30), config.SimulationWorkerHeartbeatTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), config.Placement.WorkerHeartbeatTimeout);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public sealed class ConfigurationValidationTests
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => GameServiceConfig.FromConfiguration(configuration));
+            () => GameServiceCoreConfiguration.FromConfiguration(configuration));
 
         Assert.Contains("must use a valid worker identifier", exception.Message);
         Assert.Contains("FleetId references an unknown fleet", exception.Message);

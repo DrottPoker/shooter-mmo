@@ -1,0 +1,19 @@
+using Mmorpg.GameService.Platform.Database;
+
+namespace Mmorpg.GameService.Items.Persistence;
+
+// Migrations owned by Items. The host merges them with every other module's by id.
+internal static class ItemsSchemaMigrations
+{
+    public static IReadOnlyList<DatabaseMigration> All { get; } =
+    [
+        new(ItemPersistenceFoundationMigration.Id, ItemPersistenceFoundationMigration.Sql),
+        new(PlayerCorpsePersistenceMigration.Id, PlayerCorpsePersistenceMigration.Sql),
+        new(PlayerDeathCarryOverflowMigration.Id, PlayerDeathCarryOverflowMigration.Sql),
+        new(ItemOperationsHardeningMigration.Id, ItemOperationsHardeningMigration.Sql),
+        new(
+            ReleaseRetryableOperationClaimsMigration.Id,
+            ReleaseRetryableOperationClaimsMigration.Sql),
+        new(EquippedItemLookupIndexMigration.Id, EquippedItemLookupIndexMigration.Sql)
+    ];
+}

@@ -1,13 +1,14 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameProtocol;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Simulation;
+using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Worlds;
 using Npgsql;
@@ -16,59 +17,52 @@ namespace Mmorpg.Backend.Tests.Integration;
 
 internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 {
+    private readonly ServiceProvider serviceProvider;
+    private readonly AsyncServiceScope scope;
+
     private PostgresIntegrationTestContext(
         NpgsqlDataSource dataSource,
         IConfiguration configuration,
-        GameServiceConfig gameServiceConfig)
+        GameServiceConfiguration gameServiceConfiguration)
     {
         DataSource = dataSource;
         Configuration = configuration;
-        CatalogSource = ItemCatalogSource.FromConfiguration(configuration);
-        ItemCatalogSeeder = new ItemCatalogSeeder(
-            dataSource,
-            CatalogSource,
-            NullLogger<ItemCatalogSeeder>.Instance);
-        CharacterItemStateBootstrapper = new CharacterItemStateBootstrapper(dataSource);
-        ItemCatalogQueryService = new ItemCatalogQueryService(dataSource);
-        ItemQueryService = new ItemQueryService(dataSource);
-        ItemTransactionService = new ItemTransactionService(dataSource);
-        AccountItemMutationService = new AccountItemMutationService(ItemTransactionService);
-        SimulationItemMutationService = new SimulationItemMutationService(ItemTransactionService);
-        CorpseService = new CorpseService(
-            dataSource,
-            ItemTransactionService,
-            gameServiceConfig,
-            NullLogger<CorpseService>.Instance);
-        ItemPolicyService = new ItemPolicyService(ItemTransactionService);
-        QuestItemService = new QuestItemService(ItemTransactionService);
-        DatabaseInitializer = new DatabaseInitializer(
-            dataSource,
-            ItemCatalogSeeder,
-            CharacterItemStateBootstrapper,
-            NullLogger<DatabaseInitializer>.Instance);
-        SessionService = new SessionService(dataSource, configuration);
-        AccountService = new AccountService(
-            dataSource,
-            SessionService,
-            NullLogger<AccountService>.Instance);
-        CharacterService = new CharacterService(
-            dataSource,
-            configuration,
-            CharacterItemStateBootstrapper);
-        ShardService = new ShardService(dataSource, configuration, gameServiceConfig);
-        SimulationSessionService = new SimulationSessionService(dataSource, configuration);
-        SimulationWorkerRegistryService = new SimulationWorkerRegistryService(dataSource, gameServiceConfig);
-        SimulationTopologySeeder = new SimulationTopologySeeder(
-            dataSource,
-            gameServiceConfig,
-            LoadWorldManifestCatalog(),
-            NullLogger<SimulationTopologySeeder>.Instance);
-        GameServiceConfig = gameServiceConfig;
+        GameServiceConfiguration = gameServiceConfiguration;
+
+        var services = new ServiceCollection();
+        services.AddSingleton(configuration);
+        services.AddGameServiceForTests(dataSource, gameServiceConfiguration);
+        serviceProvider = services.BuildServiceProvider(validateScopes: true);
+        scope = serviceProvider.CreateAsyncScope();
+        Services = scope.ServiceProvider;
+
+        CatalogSource = Services.GetRequiredService<ItemCatalogSource>();
+        ItemCatalogSeeder = Services.GetRequiredService<ItemCatalogSeeder>();
+        CharacterItemStateBootstrapper = Services.GetRequiredService<CharacterItemStateBootstrapper>();
+        ItemCatalogQueryService = Services.GetRequiredService<ItemCatalogQueryService>();
+        ItemQueryService = Services.GetRequiredService<ItemQueryService>();
+        ItemTransactionService = Services.GetRequiredService<ItemTransactionService>();
+        AccountItemMutationService = Services.GetRequiredService<AccountItemMutationService>();
+        SimulationItemMutationService = Services.GetRequiredService<SimulationItemMutationService>();
+        CorpseService = Services.GetRequiredService<CorpseService>();
+        ItemPolicyService = Services.GetRequiredService<ItemPolicyService>();
+        QuestItemService = Services.GetRequiredService<QuestItemService>();
+        DatabaseInitializer = Services.GetRequiredService<GameServiceDatabaseInitializer>();
+        SessionService = Services.GetRequiredService<SessionService>();
+        AccountService = Services.GetRequiredService<AccountService>();
+        CharacterService = Services.GetRequiredService<CharacterService>();
+        ShardService = Services.GetRequiredService<ShardService>();
+        SimulationSessionService = Services.GetRequiredService<SimulationSessionService>();
+        SimulationWorkerRegistryService = Services.GetRequiredService<SimulationWorkerRegistryService>();
+        SimulationTopologySeeder = Services.GetRequiredService<SimulationTopologySeeder>();
     }
 
     public NpgsqlDataSource DataSource { get; }
 
-    public DatabaseInitializer DatabaseInitializer { get; }
+    // The production service graph, built by GameServiceTestComposition.
+    public IServiceProvider Services { get; }
+
+    public GameServiceDatabaseInitializer DatabaseInitializer { get; }
 
     public ItemCatalogSource CatalogSource { get; }
 
@@ -94,7 +88,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public IConfiguration Configuration { get; }
 
-    public GameServiceConfig GameServiceConfig { get; }
+    public GameServiceConfiguration GameServiceConfiguration { get; }
 
     public SessionService SessionService { get; }
 
@@ -141,21 +135,12 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 })
                 .Build();
 
-            var topology = new SimulationTopologyConfig(
-                [new FleetBootstrapConfig("local-fleet", "Local Development", "LOCAL")],
-                [new SimulationNodeBootstrapConfig("local-node-1", "local-fleet", "Local Node 1")],
-                [new ShardBootstrapConfig(
-                    "local-shard-1",
-                    "local-fleet",
-                    "Local Shard 1",
-                    "mvp-open-risk")]);
-            var gameServiceConfig = new GameServiceConfig(
-                connectionString,
-                "localhost:6379",
-                TimeSpan.FromSeconds(1),
-                TimeSpan.FromSeconds(30),
-                topology);
-            var context = new PostgresIntegrationTestContext(dataSource, configuration, gameServiceConfig);
+            var gameServiceConfiguration = GameServiceTestComposition.CreateConfiguration(
+                connectionString);
+            var context = new PostgresIntegrationTestContext(
+                dataSource,
+                configuration,
+                gameServiceConfiguration);
             if (initializeDatabase)
             {
                 await context.InitializeDatabaseAsync();
@@ -204,12 +189,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
             "integration-collision-revision");
-    }
-
-    private static WorldManifestCatalog LoadWorldManifestCatalog()
-    {
-        return WorldManifestCatalog.FromManifests(
-            WorldManifestFileStore.LoadAll(RepositoryPaths.Worlds));
     }
 
     public async Task<IntegrationPlayer> RegisterPlayerAsync(
@@ -283,9 +262,11 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         await command.ExecuteNonQueryAsync();
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        return DataSource.DisposeAsync();
+        await scope.DisposeAsync();
+        await serviceProvider.DisposeAsync();
+        await DataSource.DisposeAsync();
     }
 
     private static void EnsureDedicatedTestDatabase(string connectionString)

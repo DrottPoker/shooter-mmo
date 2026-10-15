@@ -1,5 +1,7 @@
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Mmorpg.Backend.Tests.Integration;
 using Mmorpg.GameService.Items;
 using Npgsql;
 
@@ -155,7 +157,11 @@ public sealed class ItemOperationsHardeningTests
         using var metrics = new ItemOperationsMetrics();
         await using var dataSource = NpgsqlDataSource.Create(
             "Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused;Timeout=1");
-        var service = new ItemTransactionService(dataSource, metrics, options);
+        await using var services = GameServiceTestComposition.BuildServiceProvider(dataSource);
+        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+            services,
+            metrics,
+            options);
         var result = await service.ExecuteAsync(
             new ItemTransactionRequest<AddRecoveryDeliveryCommand>(
                 Guid.NewGuid(),
