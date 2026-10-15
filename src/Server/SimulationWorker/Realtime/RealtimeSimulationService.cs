@@ -16,38 +16,26 @@ using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-public sealed class RealtimeSimulationService(
-    SimulationWorkerConfig config,
-    SimulationJoinService joinService,
-    SimulationSessionReleaseService releaseService,
-    ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
-    SimulationItemInteractionService itemInteractionService,
-    SimulationCorpseInteractionService corpseInteractionService,
-    DurableCorpseStore corpseStore,
-    CorpseViewerRegistry corpseViewers,
-    SimulationEntityRegistry entityRegistry,
-    ConnectionEntityBindingRegistry connectionBindings,
-    RealtimeTransportReadiness transportReadiness,
-    ChunkedStaticCollisionWorld staticCollisionWorld,
-    ICollisionWorld collisionWorld,
-    ILogger<RealtimeSimulationService> logger,
-    WorldCollisionStreamingStore? collisionStreamingStore = null,
-    SimulationInterestManager? providedInterestManager = null,
-    RealtimeNetworkMetrics? providedNetworkMetrics = null,
-    SimulationWorkerRegistrationLease? registrationLease = null,
-    RealtimePerformanceMetrics? providedPerformanceMetrics = null,
-    WorldActorStore? providedWorldActorStore = null,
-    WorldActorActivityScheduler? providedWorldActorActivityScheduler = null,
-    WorldInteractionLeaseRegistry? providedWorldInteractionLeases = null,
-    WorldInteractionAuthorityService? providedWorldInteractionAuthority = null,
-    WorldActorMetrics? providedWorldActorMetrics = null,
-    SimulationWorkerIdentity? workerIdentity = null,
-    LiveMobCorpseStore? providedLiveMobCorpseStore = null,
-    LiveMobCorpseInteractionService? providedLiveMobCorpseInteractionService = null,
-    CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
-    : BackgroundService
+public sealed class RealtimeSimulationService : BackgroundService
 {
+    private readonly SimulationWorkerConfig config;
+    private readonly SimulationJoinService joinService;
+    private readonly SimulationSessionReleaseService releaseService;
+    private readonly ActiveSimulationSessionStore sessionStore;
+    private readonly CarryStateStore carryStateStore;
+    private readonly SimulationItemInteractionService itemInteractionService;
+    private readonly SimulationCorpseInteractionService corpseInteractionService;
+    private readonly DurableCorpseStore corpseStore;
+    private readonly CorpseViewerRegistry corpseViewers;
+    private readonly SimulationEntityRegistry entityRegistry;
+    private readonly ConnectionEntityBindingRegistry connectionBindings;
+    private readonly RealtimeTransportReadiness transportReadiness;
+    private readonly ChunkedStaticCollisionWorld staticCollisionWorld;
+    private readonly ICollisionWorld collisionWorld;
+    private readonly ILogger<RealtimeSimulationService> logger;
+    private readonly WorldCollisionStreamingStore? collisionStreamingStore;
+    private readonly SimulationWorkerRegistrationLease? registrationLease;
+    private readonly SimulationWorkerIdentity? workerIdentity;
     private readonly RealtimeCompletionQueue completions = new();
     private readonly RealtimeOperationTracker operationTracker = new();
     private readonly Dictionary<int, RealtimePeerContext> peers = [];
@@ -63,31 +51,90 @@ public sealed class RealtimeSimulationService(
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly Dictionary<Guid, CorpseViewSnapshotResponse> corpseSnapshots = [];
     private readonly CorpseMutationCoordinator corpseMutationCoordinator = new();
-    private readonly TokenBucket aggregateSnapshotBytes = new(
-        config.UdpQuotas.AggregateSnapshotBytesPerSecond,
-        config.UdpQuotas.AggregateSnapshotByteBurst);
-    private readonly SimulationInterestManager interestManager =
-        providedInterestManager ?? new SimulationInterestManager(config.InterestManagement);
-    private readonly RealtimeNetworkMetrics networkMetrics =
-        providedNetworkMetrics ?? new RealtimeNetworkMetrics();
-    private readonly RealtimePerformanceMetrics performanceMetrics =
-        providedPerformanceMetrics ?? new RealtimePerformanceMetrics();
-    private readonly WorldActorStore? worldActorStore = providedWorldActorStore;
-    private readonly WorldActorActivityScheduler? worldActorActivityScheduler =
-        providedWorldActorActivityScheduler;
-    private readonly WorldInteractionLeaseRegistry? worldInteractionLeases =
-        providedWorldInteractionLeases;
-    private readonly WorldInteractionAuthorityService? worldInteractionAuthority =
-        providedWorldInteractionAuthority;
-    private readonly LiveMobCorpseStore? liveMobCorpseStore = providedLiveMobCorpseStore;
-    private readonly LiveMobCorpseInteractionService? liveMobCorpseInteractionService =
-        providedLiveMobCorpseInteractionService;
-    private readonly CorpseRuntimeMetrics? corpseRuntimeMetrics = providedCorpseRuntimeMetrics;
-    private readonly WorldActorMetrics? worldActorMetrics = providedWorldActorMetrics;
+    private readonly TokenBucket aggregateSnapshotBytes;
+    private readonly SimulationInterestManager interestManager;
+    private readonly RealtimeNetworkMetrics networkMetrics;
+    private readonly RealtimePerformanceMetrics performanceMetrics;
+    private readonly WorldActorStore? worldActorStore;
+    private readonly WorldActorActivityScheduler? worldActorActivityScheduler;
+    private readonly WorldInteractionLeaseRegistry? worldInteractionLeases;
+    private readonly WorldInteractionAuthorityService? worldInteractionAuthority;
+    private readonly LiveMobCorpseStore? liveMobCorpseStore;
+    private readonly LiveMobCorpseInteractionService? liveMobCorpseInteractionService;
+    private readonly CorpseRuntimeMetrics? corpseRuntimeMetrics;
+    private readonly WorldActorMetrics? worldActorMetrics;
+    private readonly RealtimePeerSender sender;
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
     private uint corpsePresenceSequence;
+
+    public RealtimeSimulationService(
+        SimulationWorkerConfig config,
+        SimulationJoinService joinService,
+        SimulationSessionReleaseService releaseService,
+        ActiveSimulationSessionStore sessionStore,
+        CarryStateStore carryStateStore,
+        SimulationItemInteractionService itemInteractionService,
+        SimulationCorpseInteractionService corpseInteractionService,
+        DurableCorpseStore corpseStore,
+        CorpseViewerRegistry corpseViewers,
+        SimulationEntityRegistry entityRegistry,
+        ConnectionEntityBindingRegistry connectionBindings,
+        RealtimeTransportReadiness transportReadiness,
+        ChunkedStaticCollisionWorld staticCollisionWorld,
+        ICollisionWorld collisionWorld,
+        ILogger<RealtimeSimulationService> logger,
+        WorldCollisionStreamingStore? collisionStreamingStore = null,
+        SimulationInterestManager? providedInterestManager = null,
+        RealtimeNetworkMetrics? providedNetworkMetrics = null,
+        SimulationWorkerRegistrationLease? registrationLease = null,
+        RealtimePerformanceMetrics? providedPerformanceMetrics = null,
+        WorldActorStore? providedWorldActorStore = null,
+        WorldActorActivityScheduler? providedWorldActorActivityScheduler = null,
+        WorldInteractionLeaseRegistry? providedWorldInteractionLeases = null,
+        WorldInteractionAuthorityService? providedWorldInteractionAuthority = null,
+        WorldActorMetrics? providedWorldActorMetrics = null,
+        SimulationWorkerIdentity? workerIdentity = null,
+        LiveMobCorpseStore? providedLiveMobCorpseStore = null,
+        LiveMobCorpseInteractionService? providedLiveMobCorpseInteractionService = null,
+        CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
+    {
+        this.config = config;
+        this.joinService = joinService;
+        this.releaseService = releaseService;
+        this.sessionStore = sessionStore;
+        this.carryStateStore = carryStateStore;
+        this.itemInteractionService = itemInteractionService;
+        this.corpseInteractionService = corpseInteractionService;
+        this.corpseStore = corpseStore;
+        this.corpseViewers = corpseViewers;
+        this.entityRegistry = entityRegistry;
+        this.connectionBindings = connectionBindings;
+        this.transportReadiness = transportReadiness;
+        this.staticCollisionWorld = staticCollisionWorld;
+        this.collisionWorld = collisionWorld;
+        this.logger = logger;
+        this.collisionStreamingStore = collisionStreamingStore;
+        this.registrationLease = registrationLease;
+        this.workerIdentity = workerIdentity;
+        aggregateSnapshotBytes = new(
+            config.UdpQuotas.AggregateSnapshotBytesPerSecond,
+            config.UdpQuotas.AggregateSnapshotByteBurst);
+        interestManager =
+            providedInterestManager ?? new SimulationInterestManager(config.InterestManagement);
+        networkMetrics = providedNetworkMetrics ?? new RealtimeNetworkMetrics();
+        performanceMetrics = providedPerformanceMetrics ?? new RealtimePerformanceMetrics();
+        worldActorStore = providedWorldActorStore;
+        worldActorActivityScheduler = providedWorldActorActivityScheduler;
+        worldInteractionLeases = providedWorldInteractionLeases;
+        worldInteractionAuthority = providedWorldInteractionAuthority;
+        liveMobCorpseStore = providedLiveMobCorpseStore;
+        liveMobCorpseInteractionService = providedLiveMobCorpseInteractionService;
+        corpseRuntimeMetrics = providedCorpseRuntimeMetrics;
+        worldActorMetrics = providedWorldActorMetrics;
+        sender = new RealtimePeerSender(networkMetrics, logger);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -229,29 +276,29 @@ public sealed class RealtimeSimulationService(
         }
     }
 
-    private void HandlePeerConnected(NetPeer peer)
+    private void HandlePeerConnected(NetPeer netPeer)
     {
-        peers[peer.Id] = new RealtimePeerContext(peer.Id, DateTime.UtcNow, config.UdpQuotas);
-        admissionGuard.OnPeerConnected(peer.Id, peer.Address);
+        peers[netPeer.Id] = new RealtimePeerContext(netPeer.Id, DateTime.UtcNow, config.UdpQuotas);
+        admissionGuard.OnPeerConnected(netPeer.Id, netPeer.Address);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
         logger.LogDebug(
             "[SIMULATION] UDP peer {PeerId} connected from {EndPoint} and must authenticate before joining.",
-            peer.Id,
-            peer.Address);
+            netPeer.Id,
+            netPeer.Address);
     }
 
-    private void HandlePeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
+    private void HandlePeerDisconnected(NetPeer netPeer, DisconnectInfo disconnectInfo)
     {
-        admissionGuard.OnPeerDisconnected(peer.Id);
-        if (!peers.Remove(peer.Id, out var context))
+        admissionGuard.OnPeerDisconnected(netPeer.Id);
+        if (!peers.Remove(netPeer.Id, out var context))
         {
             return;
         }
 
-        interestManager.RemoveConnection(peer.Id);
-        corpseViewers.RemovePeer(peer.Id);
-        worldInteractionLeases?.RemovePeer(peer.Id);
+        interestManager.RemoveConnection(netPeer.Id);
+        corpseViewers.RemovePeer(netPeer.Id);
+        worldInteractionLeases?.RemovePeer(netPeer.Id);
         networkMetrics.SetActivePeers(peers.Count);
         RefreshPeerPopulationMetrics();
 
@@ -270,16 +317,17 @@ public sealed class RealtimeSimulationService(
 
         logger.LogDebug(
             "[SIMULATION] UDP peer {PeerId} disconnected: {Reason}.",
-            peer.Id,
+            netPeer.Id,
             disconnectInfo.Reason);
     }
 
     private void HandleNetworkReceive(
-        NetPeer peer,
+        NetPeer netPeer,
         NetPacketReader reader,
         byte channel,
         DeliveryMethod deliveryMethod)
     {
+        var peer = LiteNetLibPeerConnection.For(netPeer);
         try
         {
             if (!peers.TryGetValue(peer.Id, out var context))
@@ -297,7 +345,7 @@ public sealed class RealtimeSimulationService(
             if (!context.Quota.TryConsumeInbound(packet.Length))
             {
                 networkMetrics.RecordQuotaRejected();
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "udp_rate_limited",
@@ -306,7 +354,7 @@ public sealed class RealtimeSimulationService(
             }
             if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType))
             {
-                RejectProtocol(peer, context, "invalid_packet", "Realtime packet header is invalid.");
+                sender.RejectProtocol(peer, context, "invalid_packet", "Realtime packet header is invalid.");
                 return;
             }
 
@@ -340,7 +388,7 @@ public sealed class RealtimeSimulationService(
                 peer.Id);
             if (peers.TryGetValue(peer.Id, out var failedContext))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     failedContext,
                     "internal_error",
@@ -354,7 +402,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void HandleUnauthenticatedMessage(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         RealtimePeerContext context,
         RealtimeMessageType messageType,
         byte[] packet,
@@ -366,13 +414,13 @@ public sealed class RealtimeSimulationService(
             || deliveryMethod != DeliveryMethod.ReliableOrdered
             || context.JoinStarted)
         {
-            RejectProtocol(peer, context, "join_required", "A single join request must complete before other messages are accepted.");
+            sender.RejectProtocol(peer, context, "join_required", "A single join request must complete before other messages are accepted.");
             return;
         }
 
         if (registrationLease is not null && !registrationLease.IsValid)
         {
-            RejectProtocol(
+            sender.RejectProtocol(
                 peer,
                 context,
                 "worker_registry_lease_unavailable",
@@ -382,7 +430,7 @@ public sealed class RealtimeSimulationService(
 
         if (!RealtimeProtocol.TryDecodeJoinRequest(packet, out var joinTicket, out var error))
         {
-            RejectProtocol(peer, context, "invalid_join_request", error);
+            sender.RejectProtocol(peer, context, "invalid_join_request", error);
             return;
         }
 
@@ -391,7 +439,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void HandleAuthenticatedMessage(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         RealtimePeerContext context,
         RealtimeMessageType messageType,
         byte[] packet,
@@ -403,7 +451,7 @@ public sealed class RealtimeSimulationService(
             if (channel != RealtimeProtocol.MovementInputChannel
                 || deliveryMethod != DeliveryMethod.Sequenced)
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_movement_delivery",
@@ -413,7 +461,7 @@ public sealed class RealtimeSimulationService(
 
             if (!TryGetBoundPlayer(context, out var playerEntity))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "movement_unavailable",
@@ -423,7 +471,7 @@ public sealed class RealtimeSimulationService(
 
             if (!RealtimeProtocol.TryDecodeMovementInputBatch(packet, out var inputs, out var movementError))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_movement_input",
@@ -440,7 +488,7 @@ public sealed class RealtimeSimulationService(
             if (channel != RealtimeProtocol.ControlChannel
                 || deliveryMethod != DeliveryMethod.ReliableOrdered)
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_item_operation_delivery",
@@ -450,7 +498,7 @@ public sealed class RealtimeSimulationService(
 
             if (!TryGetBoundPlayer(context, out var playerEntity))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "item_operation_unavailable",
@@ -463,7 +511,7 @@ public sealed class RealtimeSimulationService(
                     playerEntity.Session.SimulationSessionId,
                     out _))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "carry_state_missing",
@@ -476,7 +524,7 @@ public sealed class RealtimeSimulationService(
                     out var intent,
                     out var itemError))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_item_operation",
@@ -506,7 +554,7 @@ public sealed class RealtimeSimulationService(
             if (channel != RealtimeProtocol.ControlChannel
                 || deliveryMethod != DeliveryMethod.ReliableOrdered)
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_corpse_operation_delivery",
@@ -516,7 +564,7 @@ public sealed class RealtimeSimulationService(
 
             if (!TryGetBoundPlayer(context, out var playerEntity))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "corpse_interaction_unavailable",
@@ -529,7 +577,7 @@ public sealed class RealtimeSimulationService(
                     playerEntity.Session.SimulationSessionId,
                     out _))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "carry_state_missing",
@@ -542,7 +590,7 @@ public sealed class RealtimeSimulationService(
                     out var intent,
                     out var corpseError))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_corpse_operation",
@@ -572,7 +620,7 @@ public sealed class RealtimeSimulationService(
             if (channel != RealtimeProtocol.ControlChannel
                 || deliveryMethod != DeliveryMethod.ReliableOrdered)
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_world_interaction_delivery",
@@ -583,7 +631,7 @@ public sealed class RealtimeSimulationService(
             if (worldInteractionAuthority is null
                 || !TryGetBoundPlayer(context, out _))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "world_interaction_unavailable",
@@ -596,7 +644,7 @@ public sealed class RealtimeSimulationService(
                     out var intent,
                     out var interactionError))
             {
-                RejectProtocol(
+                sender.RejectProtocol(
                     peer,
                     context,
                     "invalid_world_interaction",
@@ -654,20 +702,20 @@ public sealed class RealtimeSimulationService(
             || deliveryMethod != DeliveryMethod.ReliableOrdered
             || context.LeaveStarted)
         {
-            RejectProtocol(peer, context, "unexpected_message", "The message is not valid for the current connection state.");
+            sender.RejectProtocol(peer, context, "unexpected_message", "The message is not valid for the current connection state.");
             return;
         }
 
         if (!RealtimeProtocol.TryDecodeLeaveRequest(packet, out var simulationSessionId, out var error)
             || !Guid.TryParse(simulationSessionId, out var parsedSessionId))
         {
-            SendControl(peer, RealtimeProtocol.EncodeLeaveRejected("invalid_leave_request", error));
+            sender.SendControl(peer, RealtimeProtocol.EncodeLeaveRejected("invalid_leave_request", error));
             return;
         }
 
         if (context.Session!.SimulationSessionId != parsedSessionId)
         {
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeLeaveRejected(
                     "simulation_session_changed",
@@ -951,7 +999,7 @@ public sealed class RealtimeSimulationService(
 
         if (TryGetCurrentPeer(operation.Context, out var peer))
         {
-            RejectProtocol(
+            sender.RejectProtocol(
                 peer,
                 operation.Context,
                 "internal_error",
@@ -979,7 +1027,7 @@ public sealed class RealtimeSimulationService(
                 completed.Context.PeerId,
                 completed.Result.Error!.Code,
                 completed.Result.Error.Message);
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeJoinRejected(
                     completed.Result.Error!.Code,
@@ -993,7 +1041,7 @@ public sealed class RealtimeSimulationService(
         if (!IsCurrentSession(session))
         {
             operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
-            RejectProtocol(peer, completed.Context, "session_missing", "The joined simulation session is no longer active.");
+            sender.RejectProtocol(peer, completed.Context, "session_missing", "The joined simulation session is no longer active.");
             return;
         }
 
@@ -1003,7 +1051,7 @@ public sealed class RealtimeSimulationService(
                 out var currentCarryState))
         {
             operationTracker.Track(ReleaseDisconnectedSessionAsync(session));
-            RejectProtocol(
+            sender.RejectProtocol(
                 peer,
                 completed.Context,
                 "carry_state_missing",
@@ -1068,7 +1116,7 @@ public sealed class RealtimeSimulationService(
             completed.Context.PeerId,
             entity.NetworkEntityId);
 
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeJoinAccepted(new RealtimeJoinAccepted(
                 response.SimulationSessionId.ToString("D"),
@@ -1137,7 +1185,7 @@ public sealed class RealtimeSimulationService(
                 completed.Result.Code,
                 completed.Result.Message);
             completed.Context.LeaveStarted = false;
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeLeaveRejected(
                     completed.Result.Code!,
@@ -1168,7 +1216,7 @@ public sealed class RealtimeSimulationService(
         RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
         completed.Context.Session = null;
         RefreshPeerPopulationMetrics();
-        SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
+        sender.SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
         completed.Context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
@@ -1408,26 +1456,26 @@ public sealed class RealtimeSimulationService(
     }
 
     private void SendWorldInteractionResult(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         WorldInteractionAuthorityResult result)
     {
         if (result.Opened is not null)
         {
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeWorldInteractionOpened(result.Opened));
         }
 
         if (result.Result is not null)
         {
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeWorldInteractionResult(result.Result));
         }
 
         if (result.Closed is not null)
         {
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeWorldInteractionClosed(result.Closed));
         }
@@ -1666,7 +1714,7 @@ public sealed class RealtimeSimulationService(
                 completed.Context.PeerId,
                 completed.Result.Intent.CorpseId);
             SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            SendControl(
+            sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeCorpseViewClosed(new RealtimeCorpseViewClosed(
                     completed.Result.Intent.CorpseId,
@@ -1733,7 +1781,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private bool TryApplyCorpseCarryState(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         RealtimePeerContext context,
         ActiveSimulationSession session,
         SimulationItemTransactionResponse transaction)
@@ -1787,7 +1835,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void SendCorpseOperationResult(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         ActiveSimulationSession session,
         SimulationCorpseInteractionResult result)
     {
@@ -1799,7 +1847,7 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeCorpseInteractionResult(
                 new RealtimeCorpseInteractionResult(
@@ -1818,7 +1866,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void SendCorpseOperationRejection(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         ActiveSimulationSession session,
         RealtimeCorpseInteractionIntent intent,
         string code,
@@ -1838,11 +1886,11 @@ public sealed class RealtimeSimulationService(
             .ToArray();
     }
 
-    private void SendCorpseState(NetPeer peer, IReadOnlyList<byte[]> packets)
+    private void SendCorpseState(IRealtimePeerConnection peer, IReadOnlyList<byte[]> packets)
     {
         foreach (var packet in packets)
         {
-            SendControl(peer, packet);
+            sender.SendControl(peer, packet);
         }
     }
 
@@ -1867,7 +1915,7 @@ public sealed class RealtimeSimulationService(
 
     private void CloseCorpseForPeer(
         RealtimePeerContext context,
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         Guid corpseId,
         string code,
         string message)
@@ -1879,7 +1927,7 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeCorpseViewClosed(
                 new RealtimeCorpseViewClosed(corpseId, code, message)));
@@ -1898,7 +1946,7 @@ public sealed class RealtimeSimulationService(
                 && context.Session is not null
                 && TryGetCurrentPeer(context, out var peer))
             {
-                SendControl(
+                sender.SendControl(
                     peer,
                     RealtimeProtocol.EncodeCorpseViewClosed(
                         new RealtimeCorpseViewClosed(corpseId, code, message)));
@@ -1935,7 +1983,7 @@ public sealed class RealtimeSimulationService(
     }
 
     private void SendItemOperationResult(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         ActiveSimulationSession session,
         SimulationItemInteractionResult result,
         bool requiresInventoryRefresh)
@@ -1975,11 +2023,11 @@ public sealed class RealtimeSimulationService(
             result.Succeeded
                 ? transaction!.RecoveryDeliveryIds.ToArray()
                 : Array.Empty<Guid>());
-        SendControl(peer, RealtimeProtocol.EncodeItemOperationResult(packetResult));
+        sender.SendControl(peer, RealtimeProtocol.EncodeItemOperationResult(packetResult));
     }
 
     private void SendItemOperationRejection(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent,
         string code,
@@ -1993,13 +2041,13 @@ public sealed class RealtimeSimulationService(
     }
 
     private void DisconnectForItemAuthorityFailure(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         RealtimePeerContext context,
         ActiveSimulationSession session,
         string code,
         string message)
     {
-        SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
+        sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
         sessionStore.Invalidate(
             session.CharacterId,
             session.SimulationSessionId,
@@ -2077,7 +2125,7 @@ public sealed class RealtimeSimulationService(
                         && context.Session is not null
                         && TryGetCurrentPeer(context, out var peer))
                     {
-                        SendControl(
+                        sender.SendControl(
                             peer,
                             RealtimeProtocol.EncodeWorldInteractionClosed(
                                 closure.Closed));
@@ -2211,9 +2259,8 @@ public sealed class RealtimeSimulationService(
                     continue;
                 }
 
-                recipient.Peer.Send(ownerPacket, DeliveryMethod.Unreliable);
+                sender.SendUnreliable(recipient.Peer, ownerPacket);
                 sentPacketCount++;
-                networkMetrics.RecordSent(ownerPacket.Length);
                 networkMetrics.RecordSnapshotEntities(1);
             }
 
@@ -2256,9 +2303,8 @@ public sealed class RealtimeSimulationService(
                 for (var packetIndex = 0; packetIndex < packetBatch.Packets.Count; packetIndex++)
                 {
                     var packet = packetBatch.Packets[packetIndex];
-                    recipient.Peer.Send(packet, DeliveryMethod.Unreliable);
+                    sender.SendUnreliable(recipient.Peer, packet);
                     sentPacketCount++;
-                    networkMetrics.RecordSent(packet.Length);
                     networkMetrics.RecordSnapshotEntities(
                         packetBatch.EntityCounts[packetIndex]);
                 }
@@ -2302,7 +2348,7 @@ public sealed class RealtimeSimulationService(
             return;
         }
 
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeCarryStateChanged(
                 RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState)));
@@ -2372,7 +2418,7 @@ public sealed class RealtimeSimulationService(
                          corpsePresenceSequence,
                          nearbyCorpses))
             {
-                SendControl(
+                sender.SendControl(
                     peer,
                     RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(chunk));
             }
@@ -2412,7 +2458,7 @@ public sealed class RealtimeSimulationService(
 
         if (TryGetCurrentPeer(previousContext, out var previousPeer))
         {
-            SendControl(
+            sender.SendControl(
                 previousPeer,
                 RealtimeProtocol.EncodeServerDisconnect(
                     "session_reconnected",
@@ -2440,7 +2486,7 @@ public sealed class RealtimeSimulationService(
 
             if (context.DisconnectAfterUtc is not null && context.DisconnectAfterUtc <= now)
             {
-                server!.DisconnectPeer(peer);
+                DisconnectPeer(peer);
                 continue;
             }
 
@@ -2456,7 +2502,7 @@ public sealed class RealtimeSimulationService(
                     context.PeerId,
                     queuedReliablePackets);
                 networkMetrics.RecordConnectionRejected();
-                server!.DisconnectPeer(peer);
+                DisconnectPeer(peer);
                 continue;
             }
 
@@ -2470,7 +2516,7 @@ public sealed class RealtimeSimulationService(
             {
                 if (now - context.ConnectedAtUtc > config.JoinHandshakeTimeout)
                 {
-                    RejectProtocol(peer, context, "join_timeout", "The join handshake timed out.");
+                    sender.RejectProtocol(peer, context, "join_timeout", "The join handshake timed out.");
                 }
 
                 continue;
@@ -2482,7 +2528,7 @@ public sealed class RealtimeSimulationService(
                 if (sessionStore.IsSupersededByReconnect(activeSession))
                 {
                     // The reconnecting client owns the entity and carry state now.
-                    SendControl(
+                    sender.SendControl(
                         peer,
                         RealtimeProtocol.EncodeServerDisconnect(
                             "session_reconnected",
@@ -2499,7 +2545,7 @@ public sealed class RealtimeSimulationService(
                     : new ActiveSimulationSessionInvalidation(
                         "session_revoked",
                         "The simulation session is no longer active.");
-                SendControl(
+                sender.SendControl(
                     peer,
                     RealtimeProtocol.EncodeServerDisconnect(
                         reason.Code,
@@ -2619,7 +2665,7 @@ public sealed class RealtimeSimulationService(
         return false;
     }
 
-    private void SendEntityBaseline(NetPeer peer, IReadOnlySet<ulong> visibleEntityIds)
+    private void SendEntityBaseline(IRealtimePeerConnection peer, IReadOnlySet<ulong> visibleEntityIds)
     {
         entityRegistry.CopyPlayersTo(playerBuffer);
         foreach (var entity in playerBuffer)
@@ -2825,7 +2871,7 @@ public sealed class RealtimeSimulationService(
             && ReferenceEquals(context, currentContext);
     }
 
-    private bool TryGetCurrentPeer(RealtimePeerContext context, out NetPeer peer)
+    private bool TryGetCurrentPeer(RealtimePeerContext context, out IRealtimePeerConnection peer)
     {
         peer = null!;
         if (server is null || !OwnsPeerId(context))
@@ -2839,23 +2885,13 @@ public sealed class RealtimeSimulationService(
             return false;
         }
 
-        peer = candidate;
+        peer = LiteNetLibPeerConnection.For(candidate);
         return true;
     }
 
-    private void RejectProtocol(
-        NetPeer peer,
-        RealtimePeerContext context,
-        string code,
-        string message)
+    private void DisconnectPeer(IRealtimePeerConnection peer)
     {
-        logger.LogWarning(
-            "[SIMULATION] Disconnecting UDP peer {PeerId} with code {Code}: {Message}",
-            context.PeerId,
-            code,
-            message);
-        SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
-        context.ScheduleDisconnect(DateTime.UtcNow);
+        server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
     }
 
     private void RefreshCollisionStreaming()
@@ -2910,17 +2946,17 @@ public sealed class RealtimeSimulationService(
         interestManager.Rebuild(interestEntityBuffer);
     }
 
-    private void SendSpawn(NetPeer peer, PlayerSimulationEntity entity)
+    private void SendSpawn(IRealtimePeerConnection peer, PlayerSimulationEntity entity)
     {
-        SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
+        sender.SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
         networkMetrics.RecordSpawnPacket();
     }
 
     private void SendWorldActorSpawn(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         WorldActorRuntimeState actor)
     {
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeWorldActorSpawn(
                 WorldActorProtocolMapper.ToSpawn(actor)));
@@ -2928,11 +2964,11 @@ public sealed class RealtimeSimulationService(
     }
 
     private void SendWorldActorDespawn(
-        NetPeer peer,
+        IRealtimePeerConnection peer,
         WorldActorRuntimeState actor,
         string reason)
     {
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeWorldActorDespawn(
                 new RealtimeWorldActorDespawn(
@@ -2956,21 +2992,16 @@ public sealed class RealtimeSimulationService(
                 continue;
             }
 
-            SendControl(peer, packet);
+            sender.SendControl(peer, packet);
         }
     }
 
-    private void SendDespawn(NetPeer peer, ulong entityId, string reason)
+    private void SendDespawn(IRealtimePeerConnection peer, ulong entityId, string reason)
     {
-        SendControl(
+        sender.SendControl(
             peer,
             RealtimeProtocol.EncodeEntityDespawn(new RealtimeEntityDespawn(entityId, reason)));
         networkMetrics.RecordDespawnPacket();
     }
 
-    private void SendControl(NetPeer peer, byte[] packet)
-    {
-        peer.Send(packet, DeliveryMethod.ReliableOrdered);
-        networkMetrics.RecordSent(packet.Length);
-    }
 }
