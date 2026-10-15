@@ -262,4 +262,6 @@ intended differences:
   (S5, S7), and Placement and Items read account sessions through `AccountsSql`
   (S10, S12, S13, S21, S23). The composition requires exactly one
   implementation of every SPI.
-- The Accounts, Characters, Placement, and Items extractions: in progress.
+- Accounts extracted: `src/Server/GameService.Accounts` builds
+  `Mmorpg.GameService.Accounts`, which references only Platform.
+- The Characters, Placement, and Items extractions: in progress.

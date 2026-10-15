@@ -19,7 +19,7 @@ internal static class GameServiceSourceMap
     private static readonly (string Prefix, string Module)[] PathRules =
     [
         ("GameService.Platform/", Platform),
-        ("GameService/Accounts/", Accounts),
+        ("GameService.Accounts/", Accounts),
         ("GameService/Characters/", Characters),
         ("GameService/Simulation/", Placement),
         ("GameService/Database/Migrations/DevelopmentWorldIdentityMigration.cs", Placement),
