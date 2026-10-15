@@ -31,7 +31,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 
 ## Current Foundation
 
-- ASP.NET Core GameService with PostgreSQL authority.
+- ASP.NET Core GameService with PostgreSQL authority, built as a modular
+  monolith whose Platform, Accounts, Characters, Placement, and Items projects
+  only reach each other through published contracts. See
+  [GameService Modules](docs/GAME_SERVICE_MODULES.md).
 - Headless .NET SimulationWorker with LiteNetLib UDP.
 - Explicit World, Fleet, Node, Shard, Worker, runtime, and assignment records.
 - Guarded offline Shard-to-World rebinding plus World-keyed worker content and
@@ -246,7 +249,12 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `src/Server/GameService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
+| `src/Server/GameService` | GameService host: startup, configuration loading, database startup and the frozen baseline migrations, health, and owned config |
+| `src/Server/GameService.Platform` | Shared GameService plumbing: Problem Details pipeline, token hashing, Redis connection, transaction scope, migration runner, and the module contract |
+| `src/Server/GameService.Accounts` | Accounts, sessions, account and worker authentication, rate limits, and Redis session acceleration |
+| `src/Server/GameService.Characters` | Characters, ownership, and currency |
+| `src/Server/GameService.Placement` | Topology, worker registry, Shard placement, join tickets, simulation session leases, and Development simulation bots |
+| `src/Server/GameService.Items` | Item catalog, item state and transactions, corpses, death loot, Recovery, policies, expiry, maintenance, and item development tools |
 | `src/Server/SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `src/Server/Common` | Framework-neutral helpers shared by the server processes |
 | `src/Shared/GameProtocol` | Local Unity package containing protocol source |

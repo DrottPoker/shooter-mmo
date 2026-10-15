@@ -158,8 +158,29 @@ relationship.
   authentication rate limits. PostgreSQL remains the durable session authority.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
 
-Feature folders remain inside the service that owns them. Configuration lives
-under `src/Server/GameService/Config`.
+GameService is one process and one deployable, but its code is a modular
+monolith whose project references enforce one dependency order:
+
+```text
+Platform <- Accounts <- Characters <- Placement <- Items <- host
+```
+
+| Project | Path | Owns |
+| --- | --- | --- |
+| `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, platform options, and `IGameServiceModule` |
+| `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Accounts, account sessions, account and worker authentication, policies, login and registration rate limits, and Redis session acceleration |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Characters, ownership, and character currency |
+| `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | World definitions, Fleets, Nodes, Shards, the worker registry, assignments, join tickets, simulation session leases, and Development simulation bots |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | The item catalog, item state and transactions, corpses, death partition, Recovery, policies, item operations maintenance, and the item development tools |
+| `Mmorpg.GameService` | `src/Server/GameService` | `Program.cs`, the configuration loader, database startup and the frozen baseline migrations, health routes, and the shipped `Config` and content files |
+
+Each module exposes only its module class, its options, and its `Contracts`
+namespace. A module reads, writes, or locks another module's tables only
+through the owner's contract, inside the caller's transaction, or through SQL
+fragments the owner publishes. A lower module publishes an SPI when a higher
+module must react in the same transaction. [GameService Modules](GAME_SERVICE_MODULES.md)
+records table ownership, the access rules, the lock order, every contract, and
+the guard tests.
 
 GameService owns one bounded Npgsql pool per process. The checked-in
 `Database:MaximumPoolSize` is `64`, leaving connection headroom on a default
@@ -387,7 +408,8 @@ and metrics.
 ### Tests And Tools
 
 `tests/Mmorpg.Backend.Tests` contains unit, socket-level, and isolated
-PostgreSQL integration tests. Unity tests live inside the Unity project. `Tools`
+PostgreSQL integration tests, plus the GameService architecture guard tests
+under `Architecture`. Unity tests live inside the Unity project. `Tools`
 contains repository-wide verification, collision and item content builds, and
 external stress tools. `StackStressGenerator` has a worker-only mode with an
 in-memory loopback authority and a full-stack mode that uses normal GameService
@@ -715,6 +737,14 @@ live corpses and central actor scheduling.
 | `corpse_snapshots` | Non-interactive Secure tier, insured equipment, and protected or insured Bag presentation metadata |
 | `death_events` | Unique authoritative death event, original operation, canonical request hash, corpse, and immutable result correlation |
 
+Every table belongs to exactly one GameService module: `accounts` and
+`account_sessions` to Accounts, `characters` to Characters, the World, Fleet,
+Node, Shard, worker, assignment, ticket, and simulation session tables to
+Placement, `schema_migrations` to Platform, and every item, catalog, Recovery,
+operation, corpse, and death table to Items. Only the owner writes or locks its
+rows; [GameService Modules](GAME_SERVICE_MODULES.md#access-rules) lists the
+contracts and read fragments other modules use instead.
+
 Active account login sessions are unique by account. Active simulation sessions
 are unique by both character and account. This prevents one account token from
 running multiple characters simultaneously, even if the token is copied to a
@@ -987,6 +1017,9 @@ combat producer pending
 ## Configuration Ownership
 
 - `src/Server/GameService/Config` owns GameService defaults and topology bootstrap.
+  Each GameService module validates the keys it owns; the host loads them all
+  before any service starts, as described in
+  [GameService Modules](GAME_SERVICE_MODULES.md#configuration).
 - `src/Server/SimulationWorker/Config` owns worker identity, endpoint, networking,
   simulation, collision streaming, quotas, and interest settings.
 - `src/Client/Assets/Resources/Config` owns runtime Unity

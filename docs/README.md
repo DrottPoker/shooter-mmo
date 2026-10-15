@@ -13,8 +13,8 @@ operations, and future design do not drift into duplicate descriptions.
 2. [Project Architecture](PROJECT_ARCHITECTURE.md) for system boundaries, data
    ownership, canonical topology terminology, and communication flows.
 3. [GameService Modules](GAME_SERVICE_MODULES.md) for the GameService module
-   split, table ownership, cross-module access rules, lock order, and migration
-   history guards.
+   projects, their contracts, table ownership, cross-module access rules, lock
+   order, migration ownership, and architecture guard tests.
 4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for detailed Unity
    runtime structure and client flows.
 5. [Service Features](SERVICE_FEATURES.md) for implemented backend and
