@@ -159,6 +159,12 @@ internal sealed class EntityPresenceReplicator(
             }
         }
 
+        PruneDespawned();
+    }
+
+    // Drops world actor tombstones that no connection still sees.
+    public void PruneDespawned()
+    {
         worldActorStore?.PruneDespawned(interestManager.IsVisibleToAnyConnection);
     }
 

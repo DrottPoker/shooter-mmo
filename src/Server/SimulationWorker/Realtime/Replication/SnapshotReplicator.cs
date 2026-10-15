@@ -53,6 +53,9 @@ internal sealed class SnapshotReplicator(
 
             if (snapshotPacketCache.EntitySnapshotCount == 0)
             {
+                // No bound player has interest to refresh, but despawned world actors
+                // must still be pruned, or their tombstones stay until a player joins.
+                presence.PruneDespawned();
                 return;
             }
 

@@ -229,6 +229,25 @@ public sealed class RealtimeWorldActorInteractionTests
         Assert.Equal(services.RuntimeActorId, despawn.RuntimeActorId);
     }
 
+    [Fact]
+    public async Task DespawnedWorldActorIsPrunedWhileNoPlayerIsBound()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableWorldActors = true
+        });
+        await harness.StartAsync();
+        var actor = harness.WorldActors!.ListActors()[0];
+
+        Assert.True(harness.WorldActors.TryDespawn(actor.NetworkEntityId, out _));
+        Assert.Equal(1, harness.WorldActors.DespawnedCount);
+
+        await harness.PollUntilAsync(
+            () => harness.WorldActors.DespawnedCount == 0,
+            "the despawned actor to be pruned");
+        Assert.False(harness.WorldActors.TryGetDespawnedByEntityId(actor.NetworkEntityId, out _));
+    }
+
     internal static async Task<RealtimeWorldActorSpawn> WaitForServicesAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client)
