@@ -1,6 +1,6 @@
 # Stack Stress Testing
 
-Last updated: 2026-07-19
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -583,6 +583,8 @@ sharing one Windows development machine:
 | Controlled overload | 400 | 120 s | 400/400 | 461,263 | 427.0 ms | 95.6% | at most 50 ms | 239.5 MiB | Not a supported quality tier |
 | Protocol 13 identical baseline | 400 | 60 s | 400/400 | 226,962 | 425.0 ms | 76.5% | at most 24 ms | 176.7 MiB | Snapshot quality failed |
 | Protocol 14 owner-priority scheduling | 400 | 60 s | 400/400 | 0 | 160.1 ms | 78.9% | at most 24 ms | 155.1 MiB | Clean owner path, remote cadence about 5.6 Hz |
+| Protocol 14 development `2d83d3f`, mean of three | 400 | 60 s | 400/400 | 0 | 169.0 ms | 86.6% | at most 24 ms | 191.7 MiB | Comparison baseline for the generated codec |
+| Protocol 14 generated span codec, mean of three | 400 | 60 s | 400/400 | 0 | 156.7 ms | 83.1% | at most 24 ms | 213.0 MiB | Clean short runs, same wire as development |
 
 At 200 bots, reusable interest state and visibility-set packet sharing reduced
 steady process allocation from about 1,690 MiB to 258 MiB per ten-second metrics
@@ -605,6 +607,20 @@ traffic was about 36.9 MiB/s. This establishes a clean local authority path for
 players. The current average remote entity cadence is about 5.6 Hz. Raising the
 budget is not the default fix. Larger maps should reduce interest cardinality,
 and future protocol work may add measured quantization or delta compression.
+On 2026-10-16 the schema-generated codec with its span-based core was compared
+with development `2d83d3f` on the same machine and tier: seed `1337`, 400 bots
+in four 100-bot steps five seconds apart, and a 60-second steady interval, in
+three alternating pairs. Every run joined and left 400 of 400 bots cleanly with
+zero snapshot gaps. Averaged over the three runs, input acknowledgement p50 fell
+from 114.3 ms to 105.5 ms and p95 from 169.0 ms to 156.7 ms, and average
+single-core worker CPU fell from 86.6 percent to 83.1 percent. Steady process
+allocation fell from about 569 MiB to 523 MiB per ten-second metrics interval,
+with gen0 collections down from about 37 to 33 per interval. Average simulation
+tick and snapshot broadcast times stayed within run-to-run noise, and the
+maximum working set varied between 170 and 213 MiB across all six runs. Codec
+work is a small share of a tick, so the gain comes mostly from fewer
+allocations.
+
 The 250- and 400-bot results are short runs. A 30 to 60 minute soak is still
 required before declaring a supported production tier.
 
