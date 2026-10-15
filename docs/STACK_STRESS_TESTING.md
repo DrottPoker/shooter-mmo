@@ -250,14 +250,16 @@ docker compose -f docker-compose.stack-stress.yml up -d --wait
 
 In terminal 1, start GameService against the disposable database. The high
 authentication limit is a load-test override because the normal local limit is
-five authentication requests per minute per client address.
+five authentication requests per minute per client address. GameService accepts
+at most 1,000 authentication requests per window, which covers the registration
+and login of 100 bots in one minute.
 
 ```powershell
 $env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
 $env:ConnectionStrings__Redis = "127.0.0.1:56379"
 $env:SIMULATION_WORKER_SERVICE_SECRET = "stack-stress-local-worker-secret-2026"
 $env:DevelopmentSimulationBots__Enabled = "false"
-$env:RateLimiting__Authentication__PermitLimit = "100000"
+$env:RateLimiting__Authentication__PermitLimit = "1000"
 $env:RateLimiting__Authentication__WindowSeconds = "60"
 $env:ASPNETCORE_URLS = "http://127.0.0.1:5500"
 dotnet run --project src/Server/GameService --configuration Release --no-build --no-launch-profile
