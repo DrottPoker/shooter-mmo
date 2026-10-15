@@ -137,7 +137,6 @@ public sealed class ItemTransactionKernelTests
             new ItemOperationLedger(source),
             new ItemTransactionDependencies(
                 services.GetRequiredService<ICharacterLocks>(),
-                services.GetRequiredService<ICharacterWallet>(),
                 services.GetRequiredService<ISimulationSessionAuthority>(),
                 services.GetRequiredService<ISimulationWorkerAuthority>(),
                 services.GetRequiredService<ISimulationPresence>()));

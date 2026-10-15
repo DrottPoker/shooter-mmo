@@ -36,8 +36,6 @@ internal sealed class ItemTransactionContext(
     // The transaction handed to other modules' contracts.
     public PostgresTransactionScope Scope { get; } = new(connection, transaction);
 
-    public ICharacterWallet CharacterWallet => dependencies.CharacterWallet;
-
     public Guid OperationId { get; } = operationId;
 
     public string OperationKind { get; } = operationKind;
