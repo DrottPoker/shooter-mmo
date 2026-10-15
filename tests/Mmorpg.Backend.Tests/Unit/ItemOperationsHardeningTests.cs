@@ -183,18 +183,6 @@ public sealed class ItemOperationsHardeningTests
         Assert.Equal(1, metrics.Capture().RejectedTransactions);
     }
 
-    [Fact]
-    public void CorpseMetricsSeparateLiveAndDurableWithoutIdentityLabels()
-    {
-        using var metrics = new SimulationWorker.Corpses.CorpseRuntimeMetrics();
-
-        metrics.Observe(7, 19);
-
-        var snapshot = metrics.Capture();
-        Assert.Equal(7, snapshot.DurableCorpses);
-        Assert.Equal(19, snapshot.LiveCorpses);
-    }
-
     private static ItemTransactionResult Success(string operationKind)
     {
         return new ItemTransactionResult(

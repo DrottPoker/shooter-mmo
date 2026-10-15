@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Placement;
 
 namespace Mmorpg.Backend.Tests.Unit;

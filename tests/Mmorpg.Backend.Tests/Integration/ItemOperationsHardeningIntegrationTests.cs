@@ -9,6 +9,10 @@ namespace Mmorpg.Backend.Tests.Integration;
 
 public sealed class ItemOperationsHardeningIntegrationTests
 {
+    // The worker's default mob corpse presentation. MobCorpseLifecycleIntegrationTests
+    // covers the worker constant itself end to end.
+    private const string GenericLootCratePresentationKey = "corpse.generic_loot_crate";
+
     [PostgresIntegrationFact]
     public async Task OperationClaimLockTimeoutReturnsStableConflict()
     {
@@ -218,7 +222,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
             0d,
             0d,
             1d,
-            SimulationWorker.Corpses.MobCorpseLifecycleService.DefaultPresentationKey);
+            GenericLootCratePresentationKey);
         var death = await context.CorpseService.ProcessSystemDeathAsync(
             deathOperationId,
             deathCommand,
