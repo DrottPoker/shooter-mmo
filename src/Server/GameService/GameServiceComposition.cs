@@ -5,6 +5,7 @@ using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Health;
 using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Redis;
 using Mmorpg.GameService.Simulation;
 using Npgsql;
@@ -20,10 +21,10 @@ internal static class GameServiceComposition
         GameServiceConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        var config = configuration.Core;
+        var platform = configuration.Platform;
 
-        services.AddSingleton(_ => NpgsqlDataSource.Create(config.PostgresConnectionString));
-        services.AddSingleton(config);
+        services.AddSingleton(_ => NpgsqlDataSource.Create(platform.PostgresConnectionString));
+        services.AddSingleton(platform);
         services.AddSingleton<IRedisConnectionProvider, RedisConnectionProvider>();
         services.AddSingleton(TimeProvider.System);
         services.AddHttpContextAccessor();
@@ -33,16 +34,10 @@ internal static class GameServiceComposition
         services.AddSingleton<PostgresHealthProbe>();
         services.AddSingleton<GameServiceHealthService>();
 
-        services.AddAccountsModule(config, configuration.RedisAcceleration);
-        services.AddCharactersModule();
-        services.AddPlacementModule(
-            configuration.Worlds,
-            configuration.DevelopmentSimulationBots);
-        services.AddItemsModule(
-            configuration.ItemCatalog,
-            configuration.StackStressFixtures,
-            configuration.NpcItemLifecycle,
-            configuration.ItemOperations);
+        services.AddAccountsModule(configuration.Accounts);
+        services.AddCharactersModule(configuration.Characters);
+        services.AddPlacementModule(configuration.Placement);
+        services.AddItemsModule(configuration.Items);
         return services;
     }
 
@@ -67,8 +62,8 @@ internal static class GameServiceComposition
         app.MapGameServiceHealthEndpoints();
         app.MapAccountsModule();
         app.MapCharactersModule();
-        app.MapPlacementModule(configuration.DevelopmentSimulationBots);
-        app.MapItemsModule(configuration.StackStressFixtures);
+        app.MapPlacementModule(configuration.Placement);
+        app.MapItemsModule(configuration.Items);
         return app;
     }
 }

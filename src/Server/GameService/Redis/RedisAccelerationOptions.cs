@@ -11,6 +11,17 @@ public sealed record RedisAccelerationOptions(
 {
     public const string SectionName = "RedisAcceleration";
 
+    // Redis is never contacted. PostgreSQL alone validates sessions and the in-process
+    // limiter alone applies the authentication rate limits.
+    public static RedisAccelerationOptions Disabled { get; } = new(
+        false,
+        "shooter-mmo",
+        false,
+        TimeSpan.FromSeconds(60),
+        TimeSpan.FromSeconds(120),
+        false,
+        TimeSpan.FromSeconds(30));
+
     public static RedisAccelerationOptions FromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);

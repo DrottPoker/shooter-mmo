@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace Mmorpg.GameService.Config;
+namespace Mmorpg.GameService.Items;
 
 public sealed record StackStressFixtureOptions(bool Enabled, string AuthoritySecret)
 {

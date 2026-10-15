@@ -1,5 +1,5 @@
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Simulation;
 
 namespace Mmorpg.GameService.Items;
 
@@ -28,7 +28,7 @@ public sealed record StackStressLootHotspotResponse(
 public sealed class StackStressFixtureService(
     ItemQueryService itemQueryService,
     ItemTransactionService transactionService,
-    GameServiceConfig gameServiceConfig)
+    SimulationWorkerLeasePolicy workerLeasePolicy)
 {
     private const string InventoryDefinitionId = "medical.field_dressing";
     private const string LootDefinitionId = "material.iron_ore";
@@ -165,7 +165,7 @@ public sealed class StackStressFixtureService(
                     1,
                     ItemTransactionService.DefaultPlayerCorpsePresentationKey,
                     request.LifetimeSeconds,
-                    checked((int)gameServiceConfig.SimulationWorkerHeartbeatTimeout.TotalSeconds),
+                    checked((int)workerLeasePolicy.HeartbeatTimeout.TotalSeconds),
                     loot)),
             cancellationToken);
         if (!result.Succeeded)

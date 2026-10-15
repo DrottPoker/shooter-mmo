@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Config;
+namespace Mmorpg.GameService.Simulation;
 
 public sealed record DevelopmentSimulationBotOptions(
     bool Enabled,
@@ -11,6 +11,14 @@ public sealed record DevelopmentSimulationBotOptions(
     public const string SectionName = "DevelopmentSimulationBots";
     public const string SecretEnvironmentVariable = "ACTIVE_SIMULATION_BOTS_SECRET";
     public const string AuthorityHeaderName = "X-Active-Simulation-Bots-Key";
+
+    // The configuration defaults with the bots turned off.
+    public static DevelopmentSimulationBotOptions Disabled { get; } = new(
+        false,
+        string.Empty,
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(30),
+        "Active Bot");
 
     public static DevelopmentSimulationBotOptions FromConfiguration(
         IConfiguration configuration,

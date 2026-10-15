@@ -1,8 +1,8 @@
 using System.Data;
 using Dapper;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Simulation;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -10,14 +10,14 @@ namespace Mmorpg.GameService.Items;
 public sealed partial class CorpseService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
-    GameServiceConfig gameServiceConfig,
+    SimulationWorkerLeasePolicy workerLeasePolicy,
     ILogger<CorpseService> logger)
 {
     private NpgsqlDataSource DataSource => dataSource;
 
     private ItemTransactionService TransactionService => transactionService;
 
-    private GameServiceConfig ServiceConfig => gameServiceConfig;
+    private SimulationWorkerLeasePolicy WorkerLeasePolicy => workerLeasePolicy;
 
     public async Task<ServiceResult<PlayerDeathPartitionResponse>> ProcessSimulationDeathAsync(
         string authenticatedWorkerId,
@@ -125,7 +125,7 @@ public sealed partial class CorpseService(
                     request.RotationW,
                     request.PresentationKey.Trim(),
                     request.LifetimeSeconds,
-                    checked((int)gameServiceConfig.SimulationWorkerHeartbeatTimeout.TotalSeconds),
+                    checked((int)workerLeasePolicy.HeartbeatTimeout.TotalSeconds),
                     request.Loot)),
             cancellationToken);
         if (!result.Succeeded)
@@ -243,7 +243,7 @@ public sealed partial class CorpseService(
                     {
                         WorkerId = workerId,
                         ShardId = shardId,
-                        HeartbeatTimeoutSeconds = gameServiceConfig.SimulationWorkerHeartbeatTimeout.TotalSeconds
+                        HeartbeatTimeoutSeconds = workerLeasePolicy.HeartbeatTimeout.TotalSeconds
                     },
                     transaction,
                     cancellationToken: cancellationToken));

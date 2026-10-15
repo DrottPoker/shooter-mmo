@@ -1,5 +1,4 @@
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
 using Mmorpg.WorldData.Items;
 

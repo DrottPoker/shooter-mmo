@@ -69,7 +69,7 @@ public sealed class SimulationWorkerAuthenticationHandlerTests
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(SimulationWorkerCredentials.FromConfiguration(configuration));
         services
             .AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(

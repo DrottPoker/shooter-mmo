@@ -6,7 +6,7 @@ using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Redis;
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Simulation;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Worlds;
@@ -142,26 +142,28 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                     "local-fleet",
                     "Local Shard 1",
                     "mvp-open-risk")]);
-            var gameServiceConfig = new GameServiceConfig(
-                connectionString,
-                "localhost:6379",
-                TimeSpan.FromSeconds(1),
-                TimeSpan.FromSeconds(30),
-                topology);
+            // Redis acceleration stays disabled, so tests never reach Redis.
             var gameServiceConfiguration = new GameServiceConfiguration(
-                gameServiceConfig,
-                LoadWorldManifestCatalog(),
-                new DevelopmentSimulationBotOptions(
-                    false,
-                    string.Empty,
-                    TimeSpan.FromSeconds(30),
-                    TimeSpan.FromSeconds(30),
-                    "Active Bot"),
-                new StackStressFixtureOptions(false, string.Empty),
-                NpcItemLifecycleOptions.Default,
-                ItemOperationsOptions.CreateDefaults(),
-                DisabledRedisAcceleration(),
-                ItemCatalogSource.FromConfiguration(configuration));
+                new PlatformOptions(
+                    connectionString,
+                    "localhost:6379",
+                    TimeSpan.FromSeconds(1),
+                    RunMigrationsOnStartup: true),
+                new AccountsModuleOptions(
+                    TimeSpan.FromHours(24),
+                    5,
+                    TimeSpan.FromSeconds(60),
+                    new SimulationWorkerCredentials([], null)),
+                new CharactersModuleOptions(5),
+                new PlacementModuleOptions(30, 60, TimeSpan.FromSeconds(30), topology)
+                {
+                    Worlds = LoadWorldManifestCatalog()
+                },
+                new ItemsModuleOptions(
+                    ItemCatalogSource.FromConfiguration(configuration),
+                    ItemOperationsOptions.CreateDefaults(),
+                    NpcItemLifecycleOptions.Default,
+                    new StackStressFixtureOptions(false, string.Empty)));
             var context = new PostgresIntegrationTestContext(
                 dataSource,
                 configuration,
@@ -214,19 +216,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
             "integration-collision-revision");
-    }
-
-    // Tests never reach Redis, so session lookups and rate limits use PostgreSQL only.
-    private static RedisAccelerationOptions DisabledRedisAcceleration()
-    {
-        return new RedisAccelerationOptions(
-            false,
-            "shooter-mmo",
-            false,
-            TimeSpan.FromSeconds(60),
-            TimeSpan.FromSeconds(120),
-            false,
-            TimeSpan.FromSeconds(30));
     }
 
     private static WorldManifestCatalog LoadWorldManifestCatalog()

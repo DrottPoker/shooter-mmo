@@ -1,13 +1,11 @@
 using Dapper;
-using Mmorpg.GameService.Config;
 using Npgsql;
 
 namespace Mmorpg.GameService.Simulation;
 
 public sealed class SimulationTopologySeeder(
     NpgsqlDataSource dataSource,
-    GameServiceConfig config,
-    WorldManifestCatalog worldManifestCatalog,
+    PlacementModuleOptions options,
     ILogger<SimulationTopologySeeder> logger)
 {
     public async Task SeedAsync(CancellationToken cancellationToken)
@@ -15,7 +13,7 @@ public sealed class SimulationTopologySeeder(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        foreach (var world in worldManifestCatalog.Manifests)
+        foreach (var world in options.Worlds.Manifests)
         {
             await connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -34,7 +32,7 @@ public sealed class SimulationTopologySeeder(
                 cancellationToken: cancellationToken));
         }
 
-        foreach (var fleet in config.SimulationTopology.Fleets)
+        foreach (var fleet in options.Topology.Fleets)
         {
             await connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -50,7 +48,7 @@ public sealed class SimulationTopologySeeder(
                 cancellationToken: cancellationToken));
         }
 
-        foreach (var node in config.SimulationTopology.Nodes)
+        foreach (var node in options.Topology.Nodes)
         {
             await connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -66,7 +64,7 @@ public sealed class SimulationTopologySeeder(
                 cancellationToken: cancellationToken));
         }
 
-        foreach (var shard in config.SimulationTopology.Shards)
+        foreach (var shard in options.Topology.Shards)
         {
             await ReconcileShardAsync(
                 connection,
@@ -78,10 +76,10 @@ public sealed class SimulationTopologySeeder(
         await transaction.CommitAsync(cancellationToken);
         logger.LogInformation(
             "Simulation topology bootstrap ensured {FleetCount} fleets, {NodeCount} nodes, {WorldCount} worlds, and {ShardCount} shards.",
-            config.SimulationTopology.Fleets.Count,
-            config.SimulationTopology.Nodes.Count,
-            worldManifestCatalog.Manifests.Count,
-            config.SimulationTopology.Shards.Count);
+            options.Topology.Fleets.Count,
+            options.Topology.Nodes.Count,
+            options.Worlds.Manifests.Count,
+            options.Topology.Shards.Count);
     }
 
     private static async Task ReconcileShardAsync(

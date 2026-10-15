@@ -407,7 +407,7 @@ public sealed partial class CorpseService
                 new
                 {
                     SimulationSessionId = simulationSessionId,
-                    HeartbeatTimeoutSeconds = ServiceConfig.SimulationWorkerHeartbeatTimeout.TotalSeconds
+                    HeartbeatTimeoutSeconds = WorkerLeasePolicy.HeartbeatTimeout.TotalSeconds
                 },
                 transaction,
                 cancellationToken: cancellationToken));

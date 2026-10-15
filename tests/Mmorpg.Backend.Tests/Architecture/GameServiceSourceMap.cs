@@ -25,13 +25,11 @@ internal static class GameServiceSourceMap
         ("GameService/Http/", Platform),
         ("GameService/Characters/", Characters),
         ("GameService/Simulation/", Placement),
-        ("GameService/Config/SimulationTopologyConfig.cs", Placement),
-        ("GameService/Config/DevelopmentSimulationBotOptions.cs", Placement),
-        ("GameService/Config/StackStressFixtureOptions.cs", Items),
         ("GameService/Database/Migrations/DevelopmentWorldIdentityMigration.cs", Placement),
         ("GameService/Database/Migrations/WorkerSelectedWorldBindingMigration.cs", Placement),
         ("GameService/Database/Migrations/", Items),
         ("GameService/Items/", Items),
+        ("GameService/Platform/", Platform),
         ("GameService/", Host)
     ];
 

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Redis;
 using Mmorpg.Server.Common.Networking;
 
@@ -15,12 +15,11 @@ public sealed class RedisAccelerationIntegrationTests
         var redisConnectionString = Environment.GetEnvironmentVariable(
             RedisIntegrationFactAttribute.ConnectionStringVariable)!;
         var prefix = $"shooter-mmo-test-{Guid.NewGuid():N}";
-        var config = new GameServiceConfig(
+        var config = new PlatformOptions(
             "Host=127.0.0.1;Database=test;Username=test;Password=test",
             redisConnectionString,
             TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(30),
-            new SimulationTopologyConfig([], [], []));
+            RunMigrationsOnStartup: false);
         var options = new RedisAccelerationOptions(
             true,
             prefix,

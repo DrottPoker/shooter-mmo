@@ -7,7 +7,7 @@ namespace Mmorpg.GameService.Characters;
 
 public sealed class CharacterService(
     NpgsqlDataSource dataSource,
-    IConfiguration configuration,
+    CharactersModuleOptions options,
     CharacterItemStateBootstrapper itemStateBootstrapper)
 {
     public async Task<ServiceResult<IReadOnlyCollection<CharacterResponse>>> ListAsync(
@@ -39,7 +39,7 @@ public sealed class CharacterService(
             return ServiceResult<CharacterResponse>.BadRequest("invalid_character_name", nameError);
         }
 
-        var maxCharacters = configuration.GetValue("Game:MaxCharactersPerAccount", 5);
+        var maxCharacters = options.MaxCharactersPerAccount;
         var name = request.Name!.Trim();
         var normalizedName = name.ToUpperInvariant();
 

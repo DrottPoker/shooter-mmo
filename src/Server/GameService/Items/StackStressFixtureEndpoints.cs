@@ -3,7 +3,6 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
 
 namespace Mmorpg.GameService.Items;

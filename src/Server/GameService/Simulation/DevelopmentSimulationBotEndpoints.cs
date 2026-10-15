@@ -1,7 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
 
 namespace Mmorpg.GameService.Simulation;

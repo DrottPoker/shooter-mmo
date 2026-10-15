@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Config;
+namespace Mmorpg.GameService.Simulation;
 
 public sealed record SimulationTopologyConfig(
     IReadOnlyCollection<FleetBootstrapConfig> Fleets,

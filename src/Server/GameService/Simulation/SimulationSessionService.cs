@@ -7,7 +7,7 @@ namespace Mmorpg.GameService.Simulation;
 
 public sealed class SimulationSessionService(
     NpgsqlDataSource dataSource,
-    IConfiguration configuration)
+    PlacementModuleOptions options)
 {
     public async Task<ServiceResult<SimulationSessionLeaseResponse>> HeartbeatAsync(
         Guid simulationSessionId,
@@ -22,9 +22,7 @@ public sealed class SimulationSessionService(
         }
 
         var sessionTokenHash = TokenGenerator.HashToken(request.SessionToken!.Trim());
-        var leaseLifetimeSeconds = configuration.GetValue(
-            "Simulation:SessionLeaseLifetimeSeconds",
-            30);
+        var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
 
         const string sql = """
             with refreshed_session as (

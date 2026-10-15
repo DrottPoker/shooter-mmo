@@ -1,6 +1,5 @@
 using Dapper;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
 using Npgsql;
 
@@ -8,8 +7,7 @@ namespace Mmorpg.GameService.Simulation;
 
 public sealed class ShardService(
     NpgsqlDataSource dataSource,
-    IConfiguration configuration,
-    GameServiceConfig config,
+    PlacementModuleOptions options,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
@@ -82,7 +80,7 @@ public sealed class ShardService(
             sql,
             new
             {
-                HeartbeatTimeoutSeconds = (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds
+                HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds
             },
             cancellationToken: cancellationToken));
 
@@ -110,9 +108,7 @@ public sealed class ShardService(
         }
 
         var normalizedShardId = shardId.Trim();
-        var ticketLifetimeSeconds = configuration.GetValue(
-            "Simulation:JoinTicketLifetimeSeconds",
-            30);
+        var ticketLifetimeSeconds = options.JoinTicketLifetimeSeconds;
         var ticket = TokenGenerator.CreateToken();
         var ticketHash = TokenGenerator.HashToken(ticket);
 
@@ -198,14 +194,14 @@ public sealed class ShardService(
                 connection,
                 transaction,
                 normalizedShardId,
-                (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds,
+                (int)options.WorkerHeartbeatTimeout.TotalSeconds,
                 developmentBotAuthority?.CaptureReservations() ?? [],
                 cancellationToken)
             : await SelectReconnectPlacementAsync(
                 connection,
                 transaction,
                 activeSession,
-                (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds,
+                (int)options.WorkerHeartbeatTimeout.TotalSeconds,
                 cancellationToken);
 
         if (placement is null)
@@ -288,9 +284,7 @@ public sealed class ShardService(
         var ticketHash = TokenGenerator.HashToken(request.Ticket!.Trim());
         var sessionToken = TokenGenerator.CreateToken();
         var sessionTokenHash = TokenGenerator.HashToken(sessionToken);
-        var leaseLifetimeSeconds = configuration.GetValue(
-            "Simulation:SessionLeaseLifetimeSeconds",
-            30);
+        var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);

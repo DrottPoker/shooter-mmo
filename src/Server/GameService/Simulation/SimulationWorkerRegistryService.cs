@@ -1,5 +1,4 @@
 using Dapper;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Http;
 using Npgsql;
 
@@ -7,7 +6,7 @@ namespace Mmorpg.GameService.Simulation;
 
 public sealed class SimulationWorkerRegistryService(
     NpgsqlDataSource dataSource,
-    GameServiceConfig config)
+    PlacementModuleOptions options)
 {
     private static readonly TimeSpan MaximumStartedAtClockSkew = TimeSpan.FromMinutes(10);
 
@@ -70,7 +69,7 @@ public sealed class SimulationWorkerRegistryService(
             connection,
             transaction,
             normalizedShardId,
-            (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds,
+            (int)options.WorkerHeartbeatTimeout.TotalSeconds,
             cancellationToken);
         var worldChanged = !string.Equals(
             topology.CurrentWorldId,
@@ -350,7 +349,7 @@ public sealed class SimulationWorkerRegistryService(
                     FleetId = request.FleetId!.Trim(),
                     ShardId = shardId,
                     WorldId = worldId,
-                    HeartbeatTimeoutSeconds = (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds
+                    HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds
                 },
                 transaction,
                 cancellationToken: cancellationToken));

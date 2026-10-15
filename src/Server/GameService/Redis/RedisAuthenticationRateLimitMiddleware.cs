@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.RateLimiting;
-using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Auth;
 
 namespace Mmorpg.GameService.Redis;
 
 public sealed class RedisAuthenticationRateLimitMiddleware(
     RequestDelegate next,
-    GameServiceConfig config)
+    AccountsModuleOptions options)
 {
     public async Task InvokeAsync(
         HttpContext context,
@@ -18,8 +18,8 @@ public sealed class RedisAuthenticationRateLimitMiddleware(
             return;
         }
 
-        var permitLimit = config.AuthenticationPermitLimit;
-        var window = config.AuthenticationRateLimitWindow;
+        var permitLimit = options.AuthenticationPermitLimit;
+        var window = options.AuthenticationRateLimitWindow;
         var remoteAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var decision = await limiter.AcquireAsync(
             policyName,

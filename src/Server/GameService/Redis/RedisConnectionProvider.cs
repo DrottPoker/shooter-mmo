@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Platform.Configuration;
 using StackExchange.Redis;
 
 namespace Mmorpg.GameService.Redis;
@@ -11,11 +12,11 @@ public sealed class RedisConnectionProvider : IRedisConnectionProvider, IAsyncDi
 {
     private readonly Lazy<Task<ConnectionMultiplexer>> connection;
 
-    public RedisConnectionProvider(Mmorpg.GameService.Config.GameServiceConfig config)
+    public RedisConnectionProvider(PlatformOptions options)
     {
-        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(options);
         connection = new Lazy<Task<ConnectionMultiplexer>>(
-            () => ConnectAsync(config),
+            () => ConnectAsync(options),
             LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
@@ -37,15 +38,14 @@ public sealed class RedisConnectionProvider : IRedisConnectionProvider, IAsyncDi
         multiplexer.Dispose();
     }
 
-    private static Task<ConnectionMultiplexer> ConnectAsync(
-        Mmorpg.GameService.Config.GameServiceConfig config)
+    private static Task<ConnectionMultiplexer> ConnectAsync(PlatformOptions platformOptions)
     {
-        var options = ConfigurationOptions.Parse(config.RedisConnectionString);
+        var options = ConfigurationOptions.Parse(platformOptions.RedisConnectionString);
         options.AbortOnConnectFail = false;
         options.BacklogPolicy = BacklogPolicy.FailFast;
         options.ConnectRetry = 1;
-        options.ConnectTimeout = checked((int)config.HealthCheckTimeout.TotalMilliseconds);
-        options.AsyncTimeout = checked((int)config.HealthCheckTimeout.TotalMilliseconds);
+        options.ConnectTimeout = checked((int)platformOptions.HealthCheckTimeout.TotalMilliseconds);
+        options.AsyncTimeout = checked((int)platformOptions.HealthCheckTimeout.TotalMilliseconds);
         options.ClientName = "shooter-mmo-game-service";
         return ConnectionMultiplexer.ConnectAsync(options);
     }

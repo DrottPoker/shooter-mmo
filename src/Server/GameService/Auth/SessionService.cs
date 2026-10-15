@@ -7,7 +7,7 @@ namespace Mmorpg.GameService.Auth;
 
 public sealed class SessionService(
     NpgsqlDataSource dataSource,
-    IConfiguration configuration,
+    AccountsModuleOptions options,
     IAccountSessionCache? configuredSessionCache = null,
     RedisAccelerationMetrics? redisMetrics = null)
 {
@@ -22,8 +22,7 @@ public sealed class SessionService(
     {
         var token = TokenGenerator.CreateToken();
         var tokenHash = TokenGenerator.HashToken(token);
-        var expiresAt = DateTime.UtcNow.AddHours(
-            configuration.GetValue("Auth:SessionLifetimeHours", 24));
+        var expiresAt = DateTime.UtcNow.Add(options.SessionLifetime);
 
         var sessionId = Guid.NewGuid();
 

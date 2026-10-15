@@ -1,12 +1,11 @@
 using Dapper;
-using Mmorpg.GameService.Config;
 using Npgsql;
 
 namespace Mmorpg.GameService.Simulation;
 
 public sealed class DevelopmentSimulationBotPlacementService(
     NpgsqlDataSource dataSource,
-    GameServiceConfig config)
+    PlacementModuleOptions options)
 {
     public async Task<DevelopmentSimulationBotPlacement?> SelectPlacementAsync(
         string shardId,
@@ -73,7 +72,7 @@ public sealed class DevelopmentSimulationBotPlacementService(
                 {
                     ShardId = shardId.Trim(),
                     HeartbeatTimeoutSeconds =
-                        (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds
+                        (int)options.WorkerHeartbeatTimeout.TotalSeconds
                 },
                 cancellationToken: cancellationToken));
     }

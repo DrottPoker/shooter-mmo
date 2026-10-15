@@ -1,7 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
-using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Redis;
 
 namespace Mmorpg.GameService.Auth;
@@ -12,13 +11,13 @@ public static class AccountsModuleRegistration
 {
     public static IServiceCollection AddAccountsModule(
         this IServiceCollection services,
-        GameServiceConfig config,
-        RedisAccelerationOptions redisAccelerationOptions)
+        AccountsModuleOptions options)
     {
-        ArgumentNullException.ThrowIfNull(config);
-        ArgumentNullException.ThrowIfNull(redisAccelerationOptions);
+        ArgumentNullException.ThrowIfNull(options);
 
-        services.AddSingleton(redisAccelerationOptions);
+        services.AddSingleton(options);
+        services.AddSingleton(options.RedisAcceleration);
+        services.AddSingleton(options.SimulationWorkerCredentials);
         services.AddSingleton<RedisAccelerationMetrics>();
         services.AddSingleton<IAccountSessionCache, RedisAccountSessionCache>();
         services.AddSingleton<RedisAuthenticationRateLimiter>();
@@ -46,14 +45,14 @@ public static class AccountsModuleRegistration
                 policy.RequireAuthenticatedUser();
             });
         });
-        services.AddRateLimiter(options =>
+        services.AddRateLimiter(rateLimiterOptions =>
         {
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.OnRejected = async (context, cancellationToken) =>
+            rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            rateLimiterOptions.OnRejected = async (context, cancellationToken) =>
             {
                 var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var remaining)
                     ? remaining
-                    : config.AuthenticationRateLimitWindow;
+                    : options.AuthenticationRateLimitWindow;
                 context.HttpContext.Response.Headers.RetryAfter = Math.Max(
                         1,
                         (int)Math.Ceiling(retryAfter.TotalSeconds))
@@ -70,8 +69,8 @@ public static class AccountsModuleRegistration
                     .ExecuteAsync(context.HttpContext);
             };
 
-            AddAuthenticationRateLimitPolicy(options, "login", config);
-            AddAuthenticationRateLimitPolicy(options, "register", config);
+            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "login", options);
+            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "register", options);
         });
 
         return services;
@@ -91,19 +90,19 @@ public static class AccountsModuleRegistration
     }
 
     private static void AddAuthenticationRateLimitPolicy(
-        RateLimiterOptions options,
+        RateLimiterOptions rateLimiterOptions,
         string policyName,
-        GameServiceConfig config)
+        AccountsModuleOptions options)
     {
-        options.AddPolicy(policyName, httpContext =>
+        rateLimiterOptions.AddPolicy(policyName, httpContext =>
         {
             var remoteAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             return RateLimitPartition.GetFixedWindowLimiter(
                 $"{policyName}:{remoteAddress}",
                 _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = config.AuthenticationPermitLimit,
-                    Window = config.AuthenticationRateLimitWindow,
+                    PermitLimit = options.AuthenticationPermitLimit,
+                    Window = options.AuthenticationRateLimitWindow,
                     QueueLimit = 0,
                     AutoReplenishment = true
                 });

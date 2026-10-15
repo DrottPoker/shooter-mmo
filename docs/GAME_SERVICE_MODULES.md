@@ -139,6 +139,29 @@ several modules' tables. The merged list must have unique ids, be strictly
 ascending by ordinal id, start with exactly the frozen history, and sort every
 newer id after `202610151000_equipped_item_lookup_index`.
 
+## Configuration
+
+Configuration keys did not change. Each module validates and owns the keys it
+reads, and services receive immutable validated option records instead of
+reading `IConfiguration`:
+
+| Keys | Owner |
+| --- | --- |
+| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds` | `PlatformOptions` |
+| `Auth:SessionLifetimeHours`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
+| `Game:MaxCharactersPerAccount` | `CharactersModuleOptions` |
+| `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
+| `Items:*`, `StackStressFixtures:*`, `STACK_STRESS_FIXTURE_SECRET` | `ItemsModuleOptions` |
+
+The host loader `GameServiceConfiguration.Load` first validates every required
+key of every module together and throws one `GameService configuration is
+invalid:` error that lists every problem. It then reads the self-contained
+option sets in their original order, each with its own error message. Worker
+credentials keep the original key casing, so only an exact worker id matches,
+and the shared worker secret applies only when no per-worker secret exists.
+Items reads the worker heartbeat timeout through Placement's
+`SimulationWorkerLeasePolicy`.
+
 ## Cross-Module Statements
 
 These are every SQL statement that crossed a future module boundary when the
@@ -225,6 +248,9 @@ intended differences:
 - Composition per module: done. `GameServiceComposition` registers the platform
   services, each module, and the host services, applies the middleware, and maps
   the routes. `Program.cs` and the tests use it.
-- Test composition through dependency injection, the options split, the
-  Platform project, and the Accounts, Characters, Placement, and Items
+- Test composition through dependency injection: done.
+  `GameServiceTestComposition` builds the production graph with a test-owned
+  data source, Redis acceleration disabled, and no module background services.
+- Options split: done.
+- The Platform project and the Accounts, Characters, Placement, and Items
   extractions: in progress.

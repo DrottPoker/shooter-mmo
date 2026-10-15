@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Auth;
 using Npgsql;
 
@@ -20,7 +19,11 @@ public sealed class SessionServiceCacheTests
             "Host=127.0.0.1;Port=1;Database=unreachable;Username=test;Password=test;Timeout=1");
         var service = new SessionService(
             dataSource,
-            new ConfigurationBuilder().Build(),
+            new AccountsModuleOptions(
+                TimeSpan.FromHours(24),
+                5,
+                TimeSpan.FromSeconds(60),
+                new SimulationWorkerCredentials([], null)),
             cache);
 
         var result = await service.ResolveTokenAsync(

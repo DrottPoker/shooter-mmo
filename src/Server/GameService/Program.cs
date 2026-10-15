@@ -33,7 +33,7 @@ builder.Logging.AddConsole();
 var configuration = GameServiceConfiguration.Load(builder.Configuration, builder.Environment);
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = configuration.ItemOperations.MaximumHttpRequestBodyBytes;
+    options.Limits.MaxRequestBodySize = configuration.Items.Operations.MaximumHttpRequestBodyBytes;
 });
 
 builder.Services.AddGameService(configuration);
@@ -42,7 +42,7 @@ var app = builder.Build();
 
 app.UseGameServicePipeline();
 
-if (app.Configuration.GetValue("Database:RunMigrationsOnStartup", true))
+if (configuration.Platform.RunMigrationsOnStartup)
 {
     var initializer = app.Services.GetRequiredService<DatabaseInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);

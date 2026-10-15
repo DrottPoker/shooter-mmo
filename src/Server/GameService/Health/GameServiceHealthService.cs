@@ -1,18 +1,18 @@
-using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Health;
 
 namespace Mmorpg.GameService.Health;
 
 public sealed class GameServiceHealthService(
     PostgresHealthProbe postgresHealthProbe,
-    GameServiceConfig config)
+    PlatformOptions options)
 {
     public async Task<ServiceHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
         var postgresTask = postgresHealthProbe.CheckAsync(cancellationToken);
         var redisTask = RedisHealthProbe.CheckAsync(
-            config.RedisConnectionString,
-            config.HealthCheckTimeout,
+            options.RedisConnectionString,
+            options.HealthCheckTimeout,
             cancellationToken);
         var dependencies = await Task.WhenAll(postgresTask, redisTask);
 

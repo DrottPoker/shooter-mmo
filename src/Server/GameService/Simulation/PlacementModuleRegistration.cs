@@ -1,5 +1,3 @@
-using Mmorpg.GameService.Config;
-
 namespace Mmorpg.GameService.Simulation;
 
 // Placement module composition: topology, the worker registry, Shard placement,
@@ -8,14 +6,14 @@ public static class PlacementModuleRegistration
 {
     public static IServiceCollection AddPlacementModule(
         this IServiceCollection services,
-        WorldManifestCatalog worldManifestCatalog,
-        DevelopmentSimulationBotOptions developmentSimulationBotOptions)
+        PlacementModuleOptions options)
     {
-        ArgumentNullException.ThrowIfNull(worldManifestCatalog);
-        ArgumentNullException.ThrowIfNull(developmentSimulationBotOptions);
+        ArgumentNullException.ThrowIfNull(options);
 
-        services.AddSingleton(worldManifestCatalog);
-        services.AddSingleton(developmentSimulationBotOptions);
+        services.AddSingleton(options);
+        services.AddSingleton(options.Worlds);
+        services.AddSingleton(options.DevelopmentSimulationBots);
+        services.AddSingleton(options.WorkerLeasePolicy);
         services.AddSingleton<DevelopmentSimulationBotAuthority>();
         services.AddSingleton<SimulationTopologySeeder>();
         services.AddScoped<ShardService>();
@@ -28,10 +26,12 @@ public static class PlacementModuleRegistration
 
     public static IEndpointRouteBuilder MapPlacementModule(
         this IEndpointRouteBuilder app,
-        DevelopmentSimulationBotOptions developmentSimulationBotOptions)
+        PlacementModuleOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         app.MapSimulationEndpoints();
-        app.MapDevelopmentSimulationBotEndpoints(developmentSimulationBotOptions);
+        app.MapDevelopmentSimulationBotEndpoints(options.DevelopmentSimulationBots);
         return app;
     }
 }

@@ -12,6 +12,7 @@ public sealed partial class NamespaceBoundaryTests
         ("Mmorpg.GameService.Auth", GameServiceSourceMap.Accounts),
         ("Mmorpg.GameService.Redis", GameServiceSourceMap.Accounts),
         ("Mmorpg.GameService.Http", GameServiceSourceMap.Platform),
+        ("Mmorpg.GameService.Platform", GameServiceSourceMap.Platform),
         ("Mmorpg.GameService.Characters", GameServiceSourceMap.Characters),
         ("Mmorpg.GameService.Simulation", GameServiceSourceMap.Placement),
         ("Mmorpg.GameService.Items", GameServiceSourceMap.Items),
@@ -26,22 +27,7 @@ public sealed partial class NamespaceBoundaryTests
     private static readonly IReadOnlySet<string> PendingUpwardReferences = new HashSet<string>(StringComparer.Ordinal)
     {
         // C2: character creation bootstraps item state directly.
-        "GameService/Characters/CharacterService.cs -> Mmorpg.GameService.Items",
-        // C6: the shared configuration object and module options live in the host.
-        "GameService/Auth/AccountsModuleRegistration.cs -> Mmorpg.GameService.Config",
-        "GameService/Items/CorpseService.cs -> Mmorpg.GameService.Config",
-        "GameService/Items/ItemsModuleRegistration.cs -> Mmorpg.GameService.Config",
-        "GameService/Items/StackStressFixtureEndpoints.cs -> Mmorpg.GameService.Config",
-        "GameService/Items/StackStressFixtureService.cs -> Mmorpg.GameService.Config",
-        "GameService/Redis/RedisAuthenticationRateLimitMiddleware.cs -> Mmorpg.GameService.Config",
-        "GameService/Redis/RedisConnectionProvider.cs -> Mmorpg.GameService.Config.GameServiceConfig",
-        "GameService/Simulation/DevelopmentSimulationBotAuthority.cs -> Mmorpg.GameService.Config",
-        "GameService/Simulation/DevelopmentSimulationBotEndpoints.cs -> Mmorpg.GameService.Config",
-        "GameService/Simulation/DevelopmentSimulationBotPlacementService.cs -> Mmorpg.GameService.Config",
-        "GameService/Simulation/PlacementModuleRegistration.cs -> Mmorpg.GameService.Config",
-        "GameService/Simulation/ShardService.cs -> Mmorpg.GameService.Config",
-        "GameService/Simulation/SimulationTopologySeeder.cs -> Mmorpg.GameService.Config",
-        "GameService/Simulation/SimulationWorkerRegistryService.cs -> Mmorpg.GameService.Config"
+        "GameService/Characters/CharacterService.cs -> Mmorpg.GameService.Items"
     };
 
     [Fact]

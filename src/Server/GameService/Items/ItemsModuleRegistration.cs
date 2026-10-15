@@ -1,5 +1,3 @@
-using Mmorpg.GameService.Config;
-
 namespace Mmorpg.GameService.Items;
 
 // Items module composition: the item catalog, item state and transactions, corpses,
@@ -8,20 +6,15 @@ public static class ItemsModuleRegistration
 {
     public static IServiceCollection AddItemsModule(
         this IServiceCollection services,
-        ItemCatalogSource itemCatalogSource,
-        StackStressFixtureOptions stackStressFixtureOptions,
-        NpcItemLifecycleOptions npcItemLifecycleOptions,
-        ItemOperationsOptions itemOperationsOptions)
+        ItemsModuleOptions options)
     {
-        ArgumentNullException.ThrowIfNull(itemCatalogSource);
-        ArgumentNullException.ThrowIfNull(stackStressFixtureOptions);
-        ArgumentNullException.ThrowIfNull(npcItemLifecycleOptions);
-        ArgumentNullException.ThrowIfNull(itemOperationsOptions);
+        ArgumentNullException.ThrowIfNull(options);
 
-        services.AddSingleton(stackStressFixtureOptions);
-        services.AddSingleton(npcItemLifecycleOptions);
-        services.AddSingleton(itemOperationsOptions);
-        services.AddSingleton(itemCatalogSource);
+        services.AddSingleton(options);
+        services.AddSingleton(options.StackStressFixtures);
+        services.AddSingleton(options.NpcLifecycle);
+        services.AddSingleton(options.Operations);
+        services.AddSingleton(options.Catalog);
         services.AddSingleton<ItemOperationsMetrics>();
         services.AddSingleton<ItemCatalogSeeder>();
         services.AddSingleton<CharacterItemStateBootstrapper>();
@@ -45,12 +38,14 @@ public static class ItemsModuleRegistration
 
     public static IEndpointRouteBuilder MapItemsModule(
         this IEndpointRouteBuilder app,
-        StackStressFixtureOptions stackStressFixtureOptions)
+        ItemsModuleOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         app.MapItemEndpoints();
         app.MapSimulationItemEndpoints();
         app.MapCorpseEndpoints();
-        app.MapStackStressFixtureEndpoints(stackStressFixtureOptions);
+        app.MapStackStressFixtureEndpoints(options.StackStressFixtures);
         return app;
     }
 }
