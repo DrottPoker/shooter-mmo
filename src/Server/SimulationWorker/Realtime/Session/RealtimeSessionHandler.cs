@@ -63,10 +63,19 @@ internal sealed class RealtimeSessionHandler(
         var peer = message.Peer;
         var context = message.Context;
         var packet = message.Packet;
-        if (!RealtimeProtocol.TryDecodeLeaveRequest(packet, out var simulationSessionId, out var error)
-            || !Guid.TryParse(simulationSessionId, out var parsedSessionId))
+        if (!RealtimeProtocol.TryDecodeLeaveRequest(packet, out var simulationSessionId, out var error))
         {
             sender.SendControl(peer, RealtimeProtocol.EncodeLeaveRejected("invalid_leave_request", error));
+            return;
+        }
+
+        if (!Guid.TryParse(simulationSessionId, out var parsedSessionId))
+        {
+            sender.SendControl(
+                peer,
+                RealtimeProtocol.EncodeLeaveRejected(
+                    "invalid_leave_request",
+                    "The leave request must name a simulation session id."));
             return;
         }
 

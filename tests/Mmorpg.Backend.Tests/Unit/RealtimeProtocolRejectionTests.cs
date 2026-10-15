@@ -34,8 +34,7 @@ public sealed class RealtimeProtocolRejectionTests
         { "world_without_authority", "world_interaction_unavailable" },
         { "second_join", "unexpected_message" },
         { "server_message", "unexpected_message" },
-        { "leave_unordered", "unexpected_message" },
-        { "leave_without_guid", "internal_error" }
+        { "leave_unordered", "unexpected_message" }
     };
 
     [Theory]
@@ -256,11 +255,6 @@ public sealed class RealtimeProtocolRejectionTests
             case "server_message":
                 client.Send(RealtimeProtocol.EncodeLeaveAccepted());
                 break;
-            case "leave_without_guid":
-                // The decoded leave has no error text, so encoding its rejection throws
-                // and the packet failure path disconnects the peer.
-                client.SendLeave("not-a-guid");
-                break;
             case "leave_unordered":
                 client.Send(
                     RealtimeProtocol.EncodeLeaveRequest(
@@ -272,14 +266,6 @@ public sealed class RealtimeProtocolRejectionTests
         }
 
         await AssertRejectedAsync(harness, client, expectedCode);
-        if (expectedCode == "internal_error")
-        {
-            Assert.Contains(
-                harness.Logger.Entries,
-                entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Error
-                    && entry.Template == "[SIMULATION] Could not process a realtime packet from UDP peer {PeerId}."
-                    && entry.Exception is ArgumentException);
-        }
     }
 
     [Fact]
@@ -332,6 +318,7 @@ public sealed class RealtimeProtocolRejectionTests
 
     [Theory]
     [InlineData("invalid_payload", "invalid_leave_request")]
+    [InlineData("session_id_not_a_guid", "invalid_leave_request")]
     [InlineData("other_session", "simulation_session_changed")]
     public async Task InvalidLeaveIsRejectedWithoutDisconnecting(
         string scenario,
@@ -342,10 +329,13 @@ public sealed class RealtimeProtocolRejectionTests
         await harness.StartAsync();
         var client = await harness.JoinAsync(character);
 
-        client.Send(scenario == "other_session"
-            ? RealtimeProtocol.EncodeLeaveRequest(Guid.NewGuid().ToString("D"))
-            : WithTrailingByte(RealtimeProtocol.EncodeLeaveRequest(
-                character.SimulationSessionId.ToString("D"))));
+        client.Send(scenario switch
+        {
+            "other_session" => RealtimeProtocol.EncodeLeaveRequest(Guid.NewGuid().ToString("D")),
+            "session_id_not_a_guid" => RealtimeProtocol.EncodeLeaveRequest("not-a-guid"),
+            _ => WithTrailingByte(RealtimeProtocol.EncodeLeaveRequest(
+                character.SimulationSessionId.ToString("D")))
+        });
         await harness.PollUntilAsync(
             () => client.LeaveRejections.Count == 1,
             "the leave rejection");
@@ -356,6 +346,13 @@ public sealed class RealtimeProtocolRejectionTests
         {
             Assert.Equal(
                 "The active simulation session no longer matches the leave request.",
+                rejection.Message);
+        }
+
+        if (scenario == "session_id_not_a_guid")
+        {
+            Assert.Equal(
+                "The leave request must name a simulation session id.",
                 rejection.Message);
         }
 
