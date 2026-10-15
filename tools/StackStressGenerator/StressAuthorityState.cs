@@ -247,7 +247,8 @@ public sealed class StressAuthorityState
                     SyntheticCarryCapacity,
                     false)
                 {
-                    IsSyntheticBot = true
+                    IsSyntheticBot = true,
+                    SessionLeaseDurationMilliseconds = (long)SessionLeaseDuration.TotalMilliseconds
                 });
         }
     }
@@ -401,7 +402,12 @@ public sealed class StressAuthorityState
             0,
             0,
             SyntheticCarryCapacity,
-            released);
+            released)
+        {
+            LeaseDurationMilliseconds = released
+                ? 0
+                : (long)SessionLeaseDuration.TotalMilliseconds
+        };
     }
 
     private static string CreateToken()

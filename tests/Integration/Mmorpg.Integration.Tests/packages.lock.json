@@ -317,6 +317,21 @@
           "xunit.v3.extensibility.core": "[3.2.2, )"
         }
       },
+      "mmorpg.tools.simulationbotclient": {
+        "type": "Project",
+        "dependencies": {
+          "LiteNetLib": "[2.1.4, )",
+          "Mmorpg.GameProtocol": "[1.0.0, )"
+        }
+      },
+      "mmorpg.tools.stackstressgenerator": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.Tools.SimulationBotClient": "[1.0.0, )",
+          "Npgsql": "[9.0.3, )"
+        }
+      },
       "mmorpg.worlddata": {
         "type": "Project"
       }

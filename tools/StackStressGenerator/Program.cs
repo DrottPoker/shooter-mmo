@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http.Json;
-using Microsoft.Extensions.Options;
 using Mmorpg.Tools.StackStressGenerator;
 
 public static class Program
@@ -71,24 +69,10 @@ public static class Program
         CancellationToken cancellationToken)
     {
         var authority = new StressAuthorityState(options);
-        var builder = WebApplication.CreateSlimBuilder(args);
-        builder.Logging.ClearProviders();
-        builder.Logging.AddSimpleConsole(console =>
-        {
-            console.SingleLine = true;
-            console.TimestampFormat = "HH:mm:ss ";
-        });
-        builder.Logging.SetMinimumLevel(LogLevel.Warning);
-        builder.WebHost.UseUrls(options.AuthorityUrl.ToString().TrimEnd('/'));
-        builder.Services.AddSingleton(authority);
-        builder.Services.Configure<JsonOptions>(json =>
-        {
-            json.SerializerOptions.PropertyNamingPolicy =
-                System.Text.Json.JsonNamingPolicy.CamelCase;
-        });
-
-        var app = builder.Build();
-        app.MapStressAuthority();
+        var app = StressAuthorityHost.Create(
+            authority,
+            options.AuthorityUrl.ToString().TrimEnd('/'),
+            args);
         await using var provider = new WorkerOnlyStressAdmissionProvider(options, authority);
 
         try

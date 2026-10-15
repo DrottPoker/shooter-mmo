@@ -61,6 +61,9 @@ public sealed record StressConsumedTicketResponse(
     bool IsReconnect)
 {
     public bool IsSyntheticBot { get; init; }
+
+    // Matches GameService: the worker sets its lease deadline on its own clock.
+    public long SessionLeaseDurationMilliseconds { get; init; }
 }
 
 public sealed record StressSessionCredentialRequest(
@@ -77,7 +80,11 @@ public sealed record StressSessionLeaseResponse(
     long ItemStateRevision,
     long CarriedWeight,
     long CarryCapacity,
-    bool Released);
+    bool Released)
+{
+    // Matches GameService: zero after a release, the lease lifetime otherwise.
+    public long LeaseDurationMilliseconds { get; init; }
+}
 
 public sealed record StressCorpseRestoreResponse(
     DateTime DatabaseTime,

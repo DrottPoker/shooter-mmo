@@ -4,6 +4,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\..\src\Server\SimulationWorker\Mmorpg.SimulationWorker.csproj" />
+    <ProjectReference Include="..\..\..\tools\StackStressGenerator\Mmorpg.Tools.StackStressGenerator.csproj" />
     <ProjectReference Include="..\..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
     <ProjectReference Include="..\..\Testing\Mmorpg.GameService.Testing\Mmorpg.GameService.Testing.csproj" />
   </ItemGroup>
