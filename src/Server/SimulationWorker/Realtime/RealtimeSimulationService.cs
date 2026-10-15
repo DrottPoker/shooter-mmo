@@ -17,7 +17,7 @@ using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-public sealed class RealtimeSimulationService : BackgroundService
+public sealed class RealtimeSimulationService : BackgroundService, IRealtimeCompletionHandler
 {
     private readonly SimulationWorkerConfig config;
     private readonly SimulationJoinService joinService;
@@ -67,6 +67,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly PeerDirectory peerDirectory;
     private readonly RealtimePeerRegistry peerRegistry;
     private readonly RealtimeMessageDispatcher dispatcher;
+    private readonly RealtimeCompletionProcessor completionProcessor;
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
@@ -155,6 +156,11 @@ public sealed class RealtimeSimulationService : BackgroundService
                 HandleCorpseInteractionIntent,
                 HandleWorldInteractionIntent,
                 HandleLeaveRequest));
+        completionProcessor = new RealtimeCompletionProcessor(
+            completions,
+            peerRegistry,
+            sender,
+            logger);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -255,7 +261,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 performanceMetrics.ObserveCorpseMutationCoordinator(
                     corpseMutationCoordinator.WaitingMutationCount,
                     corpseMutationCoordinator.ActiveCorpseCount);
-                ProcessCompletedOperations(completedOperationBudget);
+                completionProcessor.ProcessCompleted(completedOperationBudget);
                 performanceMetrics.ObserveCompletedOperationBacklog(
                     completions.Count);
                 performanceMetrics.ObserveCorpseMutationCoordinator(
@@ -633,7 +639,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         try
         {
             var result = await joinService.JoinAsync(joinTicket, CancellationToken.None);
-            completions.Post(new JoinCompleted(
+            completions.Post(this, new JoinCompleted(
                 context,
                 result,
                 Stopwatch.GetTimestamp()));
@@ -644,7 +650,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 exception,
                 "[SIMULATION] Unhandled error while authenticating UDP peer {PeerId}.",
                 context.PeerId);
-            completions.Post(new JoinCompleted(
+            completions.Post(this, new JoinCompleted(
                 context,
                 SimulationJoinResult<ActiveSimulationSession>.Failure(
                     500,
@@ -659,7 +665,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         try
         {
             var result = await releaseService.ReleaseAsync(session, CancellationToken.None);
-            completions.Post(new LeaveCompleted(context, session, result));
+            completions.Post(this, new LeaveCompleted(context, session, result));
         }
         catch (Exception exception)
         {
@@ -667,7 +673,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 exception,
                 "[SIMULATION] Unhandled error while releasing UDP peer {PeerId}.",
                 context.PeerId);
-            completions.Post(new LeaveCompleted(
+            completions.Post(this, new LeaveCompleted(
                 context,
                 session,
                 SimulationSessionReleaseResult.Failure(
@@ -693,7 +699,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 positionY,
                 positionZ,
                 CancellationToken.None);
-            completions.Post(new ItemOperationCompleted(
+            completions.Post(this, new ItemOperationCompleted(
                 context,
                 session,
                 result));
@@ -704,7 +710,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 exception,
                 "[SIMULATION] Unhandled error while mutating items for simulation session {SimulationSessionId}.",
                 session.SimulationSessionId);
-            completions.Post(new ItemOperationCompleted(
+            completions.Post(this, new ItemOperationCompleted(
                 context,
                 session,
                 SimulationItemInteractionResult.Rejected(
@@ -756,7 +762,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 _ => throw new InvalidOperationException(
                     "The queued corpse operation is not supported by GameService.")
             };
-            completions.Post(new CorpseOperationCompleted(
+            completions.Post(this, new CorpseOperationCompleted(
                 context,
                 session,
                 result,
@@ -769,7 +775,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 "[SIMULATION] Unhandled error while interacting with corpse {CorpseId} for simulation session {SimulationSessionId}.",
                 intent.CorpseId,
                 session.SimulationSessionId);
-            completions.Post(new CorpseOperationCompleted(
+            completions.Post(this, new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -823,28 +829,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         }
     }
 
-    private void ProcessCompletedOperations(TimeSpan budget)
-    {
-        var started = Stopwatch.GetTimestamp();
-        while (completions.TryDequeue(out var operation))
-        {
-            try
-            {
-                ProcessCompletedOperation(operation);
-            }
-            catch (Exception exception)
-            {
-                IsolateFailedOperation(operation, exception);
-            }
-
-            if (Stopwatch.GetElapsedTime(started) >= budget)
-            {
-                break;
-            }
-        }
-    }
-
-    private void ProcessCompletedOperation(RealtimeOperationResult operation)
+    void IRealtimeCompletionHandler.Complete(RealtimeOperationResult operation)
     {
         switch (operation)
         {
@@ -882,29 +867,13 @@ public sealed class RealtimeSimulationService : BackgroundService
         }
     }
 
-    // One failing operation must not stop the loop and drop every player, so only the
-    // affected peer is disconnected. Its normal disconnect path releases the session.
-    private void IsolateFailedOperation(RealtimeOperationResult operation, Exception exception)
+    void IRealtimeCompletionHandler.OnCompletionFailed(RealtimeOperationResult operation)
     {
-        logger.LogError(
-            exception,
-            "[SIMULATION] Could not process a completed {OperationType} for UDP peer {PeerId}.",
-            operation.GetType().Name,
-            operation.Context.PeerId);
         if (operation is JoinCompleted { Result.Succeeded: true } joinCompleted
             && joinCompleted.Context.Session is null
             && joinCompleted.Result.Value is not null)
         {
             operationTracker.Track(ReleaseDisconnectedSessionAsync(joinCompleted.Result.Value));
-        }
-
-        if (peerRegistry.TryGetCurrentPeer(operation.Context, out var peer))
-        {
-            sender.RejectProtocol(
-                peer,
-                operation.Context,
-                "internal_error",
-                "SimulationWorker could not process the request.");
         }
     }
 
@@ -1310,7 +1279,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 null);
         }
 
-        completions.Post(new WorldInteractionOperationCompleted(
+        completions.Post(this, new WorldInteractionOperationCompleted(
             context,
             entity.Session,
             result));
@@ -1392,7 +1361,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     {
         if (intent.OperationKind == RealtimeCorpseInteractionKind.Close)
         {
-            completions.Post(new CorpseOperationCompleted(
+            completions.Post(this, new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Closed(intent),
@@ -1410,7 +1379,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 : null;
         if (corpse is null)
         {
-            completions.Post(new CorpseOperationCompleted(
+            completions.Post(this, new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -1428,7 +1397,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 positionY,
                 positionZ))
         {
-            completions.Post(new CorpseOperationCompleted(
+            completions.Post(this, new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
@@ -1450,7 +1419,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                     out var leaseCode,
                     out var leaseMessage))
             {
-                completions.Post(new CorpseOperationCompleted(
+                completions.Post(this, new CorpseOperationCompleted(
                     context,
                     session,
                     SimulationCorpseInteractionResult.Rejected(
@@ -1477,7 +1446,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                         intent.CorpseId);
                 }
 
-                completions.Post(new CorpseOperationCompleted(
+                completions.Post(this, new CorpseOperationCompleted(
                     context,
                     session,
                     SimulationCorpseInteractionResult.Rejected(intent, code, message),
@@ -1496,7 +1465,7 @@ public sealed class RealtimeSimulationService : BackgroundService
 
         if (!corpseViewers.IsViewing(context.PeerId, intent.CorpseId))
         {
-            completions.Post(new CorpseOperationCompleted(
+            completions.Post(this, new CorpseOperationCompleted(
                 context,
                 session,
                 SimulationCorpseInteractionResult.Rejected(
