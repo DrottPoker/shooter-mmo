@@ -59,8 +59,8 @@ public sealed class RealtimeCorpseInteractionTests
         var firstOpen = RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpseId);
         first.SendCorpseIntent(firstOpen);
         await harness.PollUntilAsync(
-            () => first.CorpseResults.Count == 1 && first.CorpseViewChunks.Count > 0,
-            "the first open");
+            () => first.CorpseResults.Count == 1 && HasCompleteSnapshot(first),
+            "the first open and its snapshot");
 
         var openResult = Assert.Single(first.CorpseResults);
         Assert.True(openResult.Succeeded);
@@ -325,9 +325,14 @@ public sealed class RealtimeCorpseInteractionTests
         var watcher = await harness.JoinAsync(watcherCharacter);
         looter.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpseId));
         watcher.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpseId));
+        // The open result arrives before its snapshot chunks, so wait for the last chunk
+        // of each snapshot; otherwise a late snapshot chunk counts as part of the delta.
         await harness.PollUntilAsync(
-            () => looter.CorpseResults.Count == 1 && watcher.CorpseResults.Count == 1,
-            "both opens");
+            () => looter.CorpseResults.Count == 1
+                && watcher.CorpseResults.Count == 1
+                && HasCompleteSnapshot(looter)
+                && HasCompleteSnapshot(watcher),
+            "both opens and their snapshots");
         var looterChunks = looter.CorpseViewChunks.Count;
         var watcherChunks = watcher.CorpseViewChunks.Count;
 
@@ -415,5 +420,14 @@ public sealed class RealtimeCorpseInteractionTests
         Assert.False(harness.CorpseStore.TryGetActive(corpse.CorpseId, out _));
         var metrics = harness.CorpseRuntimeMetrics!.Capture();
         Assert.Equal(1, metrics.LiveCorpses);
+    }
+
+    // Chunks of one snapshot arrive in order on the reliable ordered channel, so the
+    // snapshot is complete once its last chunk has arrived.
+    private static bool HasCompleteSnapshot(RealtimeRecordingClient client)
+    {
+        return client.CorpseViewChunks.Any(chunk =>
+            chunk.UpdateKind == RealtimeCorpseViewUpdateKind.Snapshot
+            && chunk.ChunkIndex == chunk.ChunkCount - 1);
     }
 }
