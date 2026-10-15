@@ -1,52 +1,54 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Text;
 using Mmorpg.WorldData.Actors;
-using UnityEngine;
+using Mmorpg.WorldData.Content;
 
 namespace Mmorpg.WorldData.Editor.Actors
 {
     public sealed class WorldActorEditorPaths
     {
+        public const string DefaultWorldId = "development-world-1";
+
         public WorldActorEditorPaths(
             string repositoryRoot,
-            string catalogPath,
-            string spawnPath,
-            string runtimePath,
-            string compilerProjectPath)
+            string contentRoot,
+            string generatedRoot,
+            string worldId)
         {
             RepositoryRoot = Path.GetFullPath(repositoryRoot);
-            CatalogPath = Path.GetFullPath(catalogPath);
-            SpawnPath = Path.GetFullPath(spawnPath);
-            RuntimePath = Path.GetFullPath(runtimePath);
-            CompilerProjectPath = Path.GetFullPath(compilerProjectPath);
+            ContentRoot = Path.GetFullPath(contentRoot);
+            GeneratedRoot = Path.GetFullPath(generatedRoot);
+            WorldId = worldId;
+            SpawnPath = ContentLayout.ActorSpawnsPath(ContentRoot, worldId);
+            RuntimePath = ContentLayout.GeneratedWorldActorsPath(GeneratedRoot, worldId);
         }
 
         public string RepositoryRoot { get; }
-        public string CatalogPath { get; }
-        public string SpawnPath { get; }
-        public string RuntimePath { get; }
-        public string CompilerProjectPath { get; }
 
-        public static WorldActorEditorPaths CreateDefault()
+        public string ContentRoot { get; }
+
+        public string GeneratedRoot { get; }
+
+        // The World whose spawns the Editor edits. Every World is recompiled on save.
+        public string WorldId { get; }
+
+        public string ActorsDirectory => ContentLayout.ActorsDirectory(ContentRoot);
+
+        public string SpawnPath { get; }
+
+        public string RuntimePath { get; }
+
+        public static WorldActorEditorPaths CreateDefault(string worldId = DefaultWorldId)
         {
             var repositoryRoot = RepositoryLayout.FindRoot();
-            var world = Path.Combine(
-                RepositoryLayout.WorldsDirectory(repositoryRoot),
-                "development-world-1");
             return new WorldActorEditorPaths(
                 repositoryRoot,
-                Path.Combine(
-                    RepositoryLayout.SharedContentDirectory(repositoryRoot),
-                    "Authoring",
-                    "Actors",
-                    "core.world-actors.json"),
-                Path.Combine(world, "Authoring", "actor-spawns.json"),
-                Path.Combine(world, "Runtime", "world-actors.json"),
-                RepositoryLayout.ToolProjectPath(repositoryRoot, "WorldActorCompiler"));
+                RepositoryLayout.ContentRoot(repositoryRoot),
+                RepositoryLayout.GeneratedRoot(repositoryRoot),
+                worldId);
         }
     }
 
@@ -74,155 +76,21 @@ namespace Mmorpg.WorldData.Editor.Actors
         }
     }
 
-    public sealed class WorldActorCompilerRunResult
+    // One file a successful validation would write, with its canonical text.
+    public sealed class WorldActorEditorFile
     {
-        public WorldActorCompilerRunResult(bool success, string output)
+        public WorldActorEditorFile(string displayPath, string fullPath, string text, bool changed)
         {
-            Success = success;
-            Output = output ?? string.Empty;
+            DisplayPath = displayPath;
+            FullPath = fullPath;
+            Text = text;
+            Changed = changed;
         }
 
-        public bool Success { get; }
-        public string Output { get; }
-    }
-
-    public interface IWorldActorCompilerRunner
-    {
-        WorldActorCompilerRunResult Compile(
-            string catalogPath,
-            string spawnPath,
-            string runtimePath);
-
-        WorldActorCompilerRunResult Verify(
-            string catalogPath,
-            string spawnPath,
-            string runtimePath);
-    }
-
-    public sealed class WorldActorCompilerProcessRunner : IWorldActorCompilerRunner
-    {
-        private const int TimeoutMilliseconds = 120000;
-        private readonly string repositoryRoot;
-        private readonly string projectPath;
-
-        public WorldActorCompilerProcessRunner(
-            string repositoryRoot,
-            string projectPath)
-        {
-            this.repositoryRoot = Path.GetFullPath(repositoryRoot);
-            this.projectPath = Path.GetFullPath(projectPath);
-        }
-
-        public WorldActorCompilerRunResult Compile(
-            string catalogPath,
-            string spawnPath,
-            string runtimePath)
-        {
-            return Run(catalogPath, spawnPath, runtimePath, false);
-        }
-
-        public WorldActorCompilerRunResult Verify(
-            string catalogPath,
-            string spawnPath,
-            string runtimePath)
-        {
-            return Run(catalogPath, spawnPath, runtimePath, true);
-        }
-
-        private WorldActorCompilerRunResult Run(
-            string catalogPath,
-            string spawnPath,
-            string runtimePath,
-            bool verifyOnly)
-        {
-            if (!File.Exists(projectPath))
-            {
-                return new WorldActorCompilerRunResult(
-                    false,
-                    "WorldActorCompiler project was not found at '" + projectPath + "'.");
-            }
-
-            var arguments = "run --project " + Quote(projectPath)
-                + " --configuration Release -- "
-                + Quote(Path.GetFullPath(catalogPath)) + " "
-                + Quote(Path.GetFullPath(spawnPath)) + " "
-                + Quote(Path.GetFullPath(runtimePath))
-                + (verifyOnly ? " --verify" : string.Empty);
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = arguments,
-                WorkingDirectory = repositoryRoot,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            try
-            {
-                using (var process = Process.Start(startInfo))
-                {
-                    if (process == null)
-                    {
-                        return new WorldActorCompilerRunResult(
-                            false,
-                            "Could not start the world actor compiler.");
-                    }
-
-                    var outputTask = process.StandardOutput.ReadToEndAsync();
-                    var errorTask = process.StandardError.ReadToEndAsync();
-                    if (!process.WaitForExit(TimeoutMilliseconds))
-                    {
-                        TryKill(process);
-                        return new WorldActorCompilerRunResult(
-                            false,
-                            "World actor compilation exceeded the two-minute timeout.");
-                    }
-
-                    Task.WaitAll(new Task[] { outputTask, errorTask });
-                    var output = Combine(outputTask.Result, errorTask.Result);
-                    return new WorldActorCompilerRunResult(process.ExitCode == 0, output);
-                }
-            }
-            catch (Exception exception)
-            {
-                return new WorldActorCompilerRunResult(
-                    false,
-                    "Could not run the world actor compiler: " + exception.Message);
-            }
-        }
-
-        private static string Quote(string value)
-        {
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
-        }
-
-        private static string Combine(string output, string error)
-        {
-            var cleanOutput = (output ?? string.Empty).Trim();
-            var cleanError = (error ?? string.Empty).Trim();
-            if (cleanOutput.Length == 0)
-            {
-                return cleanError;
-            }
-
-            return cleanError.Length == 0
-                ? cleanOutput
-                : cleanOutput + Environment.NewLine + cleanError;
-        }
-
-        private static void TryKill(Process process)
-        {
-            try
-            {
-                process.Kill();
-            }
-            catch
-            {
-                // The process may have exited before timeout cleanup completed.
-            }
-        }
+        public string DisplayPath { get; }
+        public string FullPath { get; }
+        public string Text { get; }
+        public bool Changed { get; }
     }
 
     public sealed class WorldActorEditorValidationResult
@@ -230,16 +98,16 @@ namespace Mmorpg.WorldData.Editor.Actors
         private WorldActorEditorValidationResult(
             bool success,
             string message,
-            string catalogJson,
-            string spawnJson,
+            WorldActorEditorFile[] files,
+            string[] removedFiles,
             string runtimeJson,
             WorldActorRuntimeDocument candidate,
             string[] changes)
         {
             Success = success;
             Message = message ?? string.Empty;
-            CatalogJson = catalogJson;
-            SpawnJson = spawnJson;
+            Files = files ?? Array.Empty<WorldActorEditorFile>();
+            RemovedFiles = removedFiles ?? Array.Empty<string>();
             RuntimeJson = runtimeJson;
             Candidate = candidate;
             Changes = changes ?? Array.Empty<string>();
@@ -247,8 +115,14 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         public bool Success { get; }
         public string Message { get; }
-        public string CatalogJson { get; }
-        public string SpawnJson { get; }
+
+        // Authored and generated files in their canonical form, changed or not.
+        public WorldActorEditorFile[] Files { get; }
+
+        // Actor definition files whose actors were removed from the catalog.
+        public string[] RemovedFiles { get; }
+
+        // Compiled runtime of the edited World.
         public string RuntimeJson { get; }
         public WorldActorRuntimeDocument Candidate { get; }
         public string[] Changes { get; }
@@ -267,8 +141,8 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         public static WorldActorEditorValidationResult Passed(
             string message,
-            string catalogJson,
-            string spawnJson,
+            WorldActorEditorFile[] files,
+            string[] removedFiles,
             string runtimeJson,
             WorldActorRuntimeDocument candidate,
             string[] changes)
@@ -276,8 +150,8 @@ namespace Mmorpg.WorldData.Editor.Actors
             return new WorldActorEditorValidationResult(
                 true,
                 message,
-                catalogJson,
-                spawnJson,
+                files,
+                removedFiles,
                 runtimeJson,
                 candidate,
                 changes);
@@ -286,35 +160,35 @@ namespace Mmorpg.WorldData.Editor.Actors
 
     public sealed class WorldActorEditorService
     {
+        public const string CompilerToolName = "WorldActorCompiler";
+
         private readonly WorldActorEditorPaths paths;
-        private readonly IWorldActorCompilerRunner compilerRunner;
+        private readonly IContentCompilerRunner compilerRunner;
 
         public WorldActorEditorService(
             WorldActorEditorPaths paths,
-            IWorldActorCompilerRunner compilerRunner = null)
+            IContentCompilerRunner compilerRunner = null)
         {
             this.paths = paths ?? throw new ArgumentNullException(nameof(paths));
-            this.compilerRunner = compilerRunner ?? new WorldActorCompilerProcessRunner(
+            this.compilerRunner = compilerRunner ?? new ContentCompilerProcessRunner(
                 paths.RepositoryRoot,
-                paths.CompilerProjectPath);
+                CompilerToolName);
         }
 
         public WorldActorEditorPaths Paths => paths;
 
         public WorldActorEditorWorkspace Load()
         {
-            RequireFile(paths.CatalogPath);
             RequireFile(paths.SpawnPath);
             RequireFile(paths.RuntimePath);
             return new WorldActorEditorWorkspace(
-                WorldActorEditorJson.DeserializeCatalog(
-                    File.ReadAllText(paths.CatalogPath)),
-                WorldActorEditorJson.DeserializeSpawns(
-                    File.ReadAllText(paths.SpawnPath)),
-                WorldActorEditorJson.DeserializeRuntime(
-                    File.ReadAllText(paths.RuntimePath)));
+                WorldActorEditorContent.Load(paths.ActorsDirectory),
+                WorldActorEditorJson.DeserializeSpawns(File.ReadAllText(paths.SpawnPath)),
+                WorldActorEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)));
         }
 
+        // Compiles the edited catalog and spawns together with the committed spawns of every
+        // other World, because each World's runtime embeds the shared actor catalog.
         public WorldActorEditorValidationResult Validate(
             WorldActorEditorWorkspace workspace)
         {
@@ -329,29 +203,61 @@ namespace Mmorpg.WorldData.Editor.Actors
             Directory.CreateDirectory(temporaryDirectory);
             try
             {
-                var catalogJson = WorldActorEditorJson.SerializeCatalog(workspace.Catalog);
-                var spawnJson = WorldActorEditorJson.SerializeSpawns(workspace.Spawns);
                 var candidate = WorldActorCompiler.Compile(
                     workspace.Catalog.ToDomain(),
                     workspace.Spawns.ToDomain());
-                var catalogPath = Path.Combine(temporaryDirectory, "actors.json");
-                var spawnPath = Path.Combine(temporaryDirectory, "spawns.json");
-                var runtimePath = Path.Combine(temporaryDirectory, "runtime.json");
-                WriteText(catalogPath, catalogJson);
-                WriteText(spawnPath, spawnJson);
-                var compilerResult = compilerRunner.Compile(
-                    catalogPath,
-                    spawnPath,
-                    runtimePath);
-                if (!compilerResult.Success || !File.Exists(runtimePath))
+                var contentRoot = Path.Combine(temporaryDirectory, "content");
+                var generatedRoot = Path.Combine(temporaryDirectory, "generated");
+                var authoredFiles = CreateAuthoredFiles(workspace);
+                foreach (var file in authoredFiles)
+                {
+                    WriteText(Path.Combine(contentRoot, file.Key), file.Value);
+                }
+
+                var worldIds = ContentLayout.ListWorldIds(
+                        ContentLayout.WorldsDirectory(paths.ContentRoot),
+                        ContentLayout.ActorSpawnsFileName)
+                    .Concat(new[] { paths.WorldId })
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(worldId => worldId, StringComparer.Ordinal)
+                    .ToArray();
+                foreach (var worldId in worldIds.Where(worldId => worldId != paths.WorldId))
+                {
+                    WriteText(
+                        ContentLayout.ActorSpawnsPath(contentRoot, worldId),
+                        File.ReadAllText(ContentLayout.ActorSpawnsPath(paths.ContentRoot, worldId)));
+                }
+
+                var compilerResult = compilerRunner.Compile(contentRoot, generatedRoot);
+                if (!compilerResult.Success)
                 {
                     return WorldActorEditorValidationResult.Failed(
                         compilerResult.Output.Length == 0
-                            ? "WorldActorCompiler did not produce runtime JSON."
+                            ? CompilerToolName + " failed without output."
                             : compilerResult.Output);
                 }
 
-                var runtimeJson = Normalize(File.ReadAllText(runtimePath));
+                var generatedFiles = new List<KeyValuePair<string, string>>();
+                foreach (var worldId in worldIds)
+                {
+                    var relativePath = ContentLayout.GeneratedWorldActorsPath(string.Empty, worldId);
+                    var path = Path.Combine(generatedRoot, relativePath);
+                    if (!File.Exists(path))
+                    {
+                        return WorldActorEditorValidationResult.Failed(
+                            CompilerToolName + " did not produce runtime JSON for World '"
+                            + worldId + "'.");
+                    }
+
+                    generatedFiles.Add(new KeyValuePair<string, string>(
+                        relativePath,
+                        Normalize(File.ReadAllText(path))));
+                }
+
+                var runtimeJson = generatedFiles.Single(file => string.Equals(
+                    file.Key,
+                    ContentLayout.GeneratedWorldActorsPath(string.Empty, paths.WorldId),
+                    StringComparison.Ordinal)).Value;
                 var parsedRuntime = WorldActorEditorJson.DeserializeRuntime(runtimeJson);
                 if (!string.Equals(
                         candidate.Revision,
@@ -359,12 +265,38 @@ namespace Mmorpg.WorldData.Editor.Actors
                         StringComparison.Ordinal))
                 {
                     return WorldActorEditorValidationResult.Failed(
-                        "Editor validation and WorldActorCompiler revisions differ.");
+                        "Editor validation and " + CompilerToolName + " revisions differ.");
                 }
 
-                var changes = ClassifyChanges(workspace.CurrentRuntime, candidate);
+                var files = authoredFiles
+                    .Select(file => CreateFile("content", paths.ContentRoot, file))
+                    .Concat(generatedFiles.Select(file =>
+                        CreateFile("Generated", paths.GeneratedRoot, file)))
+                    .ToArray();
+                var written = new HashSet<string>(
+                    files.Select(file => file.FullPath),
+                    StringComparer.OrdinalIgnoreCase);
+                var removedFiles = ContentLayout.ListDefinitionFiles(paths.ActorsDirectory)
+                    .Select(file => Path.GetFullPath(file.Path))
+                    .Where(path => !written.Contains(path))
+                    .ToArray();
+                var changes = ClassifyChanges(workspace.CurrentRuntime, candidate).ToList();
+                foreach (var worldId in worldIds.Where(worldId => worldId != paths.WorldId))
+                {
+                    var runtimeFile = files.Single(file => string.Equals(
+                        file.FullPath,
+                        Path.GetFullPath(ContentLayout.GeneratedWorldActorsPath(
+                            paths.GeneratedRoot,
+                            worldId)),
+                        StringComparison.OrdinalIgnoreCase));
+                    if (runtimeFile.Changed)
+                    {
+                        changes.Add("Recompiled world actors: " + worldId);
+                    }
+                }
+
                 var message = compilerResult.Output.Trim();
-                if (changes.Length == 0)
+                if (changes.Count == 0)
                 {
                     message += Environment.NewLine + "No runtime actor changes detected.";
                 }
@@ -375,11 +307,11 @@ namespace Mmorpg.WorldData.Editor.Actors
 
                 return WorldActorEditorValidationResult.Passed(
                     message.Trim(),
-                    catalogJson,
-                    spawnJson,
+                    files,
+                    removedFiles,
                     runtimeJson,
                     candidate,
-                    changes);
+                    changes.ToArray());
             }
             catch (Exception exception)
             {
@@ -413,19 +345,52 @@ namespace Mmorpg.WorldData.Editor.Actors
                     "Successful actor validation is required before saving.");
             }
 
-            WriteText(paths.CatalogPath, validation.CatalogJson);
-            WriteText(paths.SpawnPath, validation.SpawnJson);
-            WriteText(paths.RuntimePath, validation.RuntimeJson);
+            ContentFileTransaction.Commit(
+                validation.Files.Select(file =>
+                    new KeyValuePair<string, string>(file.FullPath, file.Text)),
+                validation.RemovedFiles);
             workspace.ApplyRuntime(
                 WorldActorEditorJson.DeserializeRuntime(validation.RuntimeJson));
         }
 
-        public WorldActorCompilerRunResult VerifyCanonical()
+        public ContentCompilerRunResult VerifyCanonical()
         {
-            return compilerRunner.Verify(
-                paths.CatalogPath,
-                paths.SpawnPath,
-                paths.RuntimePath);
+            return compilerRunner.Verify(paths.ContentRoot, paths.GeneratedRoot);
+        }
+
+        // Authored file text keyed by path relative to the content root.
+        private List<KeyValuePair<string, string>> CreateAuthoredFiles(
+            WorldActorEditorWorkspace workspace)
+        {
+            var actorsDirectory = ContentLayout.ActorsDirectory(string.Empty);
+            var files = WorldActorEditorContent.CreateFiles(workspace.Catalog)
+                .OrderBy(file => file.Key, StringComparer.Ordinal)
+                .Select(file => new KeyValuePair<string, string>(
+                    Path.Combine(actorsDirectory, file.Key),
+                    file.Value))
+                .ToList();
+            files.Add(new KeyValuePair<string, string>(
+                ContentLayout.ActorSpawnsPath(string.Empty, paths.WorldId),
+                WorldActorEditorJson.SerializeSpawns(workspace.Spawns)));
+            return files;
+        }
+
+        private static WorldActorEditorFile CreateFile(
+            string displayRoot,
+            string root,
+            KeyValuePair<string, string> file)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(root, file.Key));
+            var changed = !File.Exists(fullPath)
+                || !string.Equals(
+                    Normalize(File.ReadAllText(fullPath)),
+                    file.Value,
+                    StringComparison.Ordinal);
+            return new WorldActorEditorFile(
+                displayRoot + "/" + file.Key.Replace('\\', '/'),
+                fullPath,
+                file.Value,
+                changed);
         }
 
         private static string[] ClassifyChanges(
@@ -497,18 +462,13 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         private static void WriteText(string path, string value)
         {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            File.WriteAllText(path, Normalize(value));
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, Normalize(value), new UTF8Encoding(false));
         }
 
         private static string Normalize(string value)
         {
-            return value.Replace("\r\n", "\n").Replace("\r", "\n");
+            return ContentFileTransaction.NormalizeLineEndings(value);
         }
     }
 }

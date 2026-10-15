@@ -211,32 +211,10 @@ dotnet restore Mmorpg.slnx --locked-mode
 & ./tools/Verify-DependencyPolicy.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
-dotnet run --project tools/ItemCatalogCompiler `
-  --configuration Release `
-  --no-build -- `
-  src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json `
-  --verify
 dotnet test Mmorpg.slnx --configuration Release --no-build
-dotnet run --project tools/WorldCollisionCompiler -- `
-  src/Shared/WorldData/Worlds/development-world-1/Authoring/collision.json `
-  src/Shared/WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1 `
-  --verify
-dotnet run --project tools/WorldCollisionCompiler -- `
-  src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json `
-  src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
-  --verify
-dotnet run --project tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  --verify
-dotnet run --project tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  src/Shared/WorldData/Shared/Authoring/Actors/core.world-actors.json `
-  src/Shared/WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
-  src/Shared/WorldData/Worlds/development-world-2/Runtime/world-actors.json `
-  --verify
+dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
@@ -273,10 +251,11 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `src/Server/Common` | Framework-neutral helpers shared by the server processes |
 | `src/Shared/GameProtocol` | Local Unity package containing protocol source |
 | `src/Shared/GameSimulation` | Local Unity package containing shared simulation source |
-| `src/Shared/WorldData` | Local Unity package with shared catalogs and domain rules, content tools, and self-contained `Worlds/<WorldId>` manifests, authoring, actor runtime, and checksummed collision data |
+| `content` | Authored game content: item and actor catalogs with one file per definition, and per-World manifests, spawns, and collision sources |
+| `src/Shared/WorldData` | Local Unity package with shared domain rules and compilers, the Unity content tools, and the deterministic `Generated` data compiled from `content` |
 | `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
 | `src/Client` | Unity project and Unity tests |
-| `tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
+| `tools` | Verification, content compilers and their shared pipeline library, stress benchmark, shared headless bot client, and active bot population |
 | `tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `docs` | Architecture, implemented features, setup, and product references |
 
@@ -302,6 +281,8 @@ complete dependency-ordered delivery plan is in
 The implemented scalable world-actor, NPC, Mob, visual spawn-authoring, and
 interaction foundation plus its deferred contract is in
 [NPC And Mob System Design](docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
+The authored content layout, its file rules, and the content compilers are in
+[Game Content](content/README.md).
 
 Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,
 configuration, architecture, and user workflows must be documented and manually

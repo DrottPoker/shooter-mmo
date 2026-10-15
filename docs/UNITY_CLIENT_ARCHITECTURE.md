@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Purpose
 
@@ -611,8 +611,9 @@ The presentation interpolation never feeds positions back into input packets or
 the shared simulation. The shared simulation source is installed as
 `com.mmorpg.game-simulation` and contains no Unity dependencies.
 
-`UnityWorldCollisionLoader` loads the selected world's manifest from the local
-`com.mmorpg.world-data` package. `UnityWorldCollisionStream` then loads and
+`UnityWorldCollisionLoader` loads the selected world's manifest from the
+`Generated/Resources/WorldCollision` folder of the local `com.mmorpg.world-data`
+package. `UnityWorldCollisionStream` then loads and
 checksum-validates chunks around the initial player and the authoritative local
 owner snapshot. Remote snapshot scheduling cannot move the prediction collision
 window. The stream retains a larger chunk ring before unloading, which prevents

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SharedTests;
+using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Backend.Tests.Unit;
@@ -207,13 +208,8 @@ public sealed class SharedSimulationHardeningTests
     private static CollisionWorldManifest LoadCommittedManifest(string worldId)
     {
         var path = Path.Combine(
-            RepositoryPaths.Worlds,
-            worldId,
-            "Runtime",
-            "Resources",
-            "WorldCollision",
-            worldId,
-            "manifest.json");
+            ContentLayout.GeneratedCollisionDirectory(RepositoryPaths.Generated, worldId),
+            ContentLayout.CollisionManifestFileName);
         return JsonSerializer.Deserialize<CollisionWorldManifest>(
                 File.ReadAllText(path),
                 ManifestJsonOptions)

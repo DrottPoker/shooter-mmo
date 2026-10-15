@@ -1,13 +1,16 @@
 using Mmorpg.Tools.ItemCatalogCompiler;
+using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Backend.Tests.Unit;
 
 internal static class ItemCatalogTestData
 {
+    public static string ItemsDirectory => ContentLayout.ItemsDirectory(RepositoryPaths.Content);
+
     public static ItemCatalogAuthoringDocument LoadAuthoring()
     {
-        return ItemCatalogJson.DeserializeAuthoring(File.ReadAllText(AuthoringPath));
+        return ItemCatalogContent.Load(ItemsDirectory);
     }
 
     public static ItemCatalogRuntimeDocument Compile()
@@ -15,19 +18,13 @@ internal static class ItemCatalogTestData
         return ItemCatalogCompiler.Compile(LoadAuthoring());
     }
 
-    public static string AuthoringJson => File.ReadAllText(AuthoringPath);
+    public static string CatalogJson => File.ReadAllText(ContentLayout.CatalogPath(ItemsDirectory));
 
-    public static string RuntimeJson => File.ReadAllText(RuntimePath);
+    public static string DefinitionJson(string definitionId)
+    {
+        return File.ReadAllText(ContentLayout.DefinitionPath(ItemsDirectory, definitionId));
+    }
 
-    private static string AuthoringPath => Path.Combine(
-        RepositoryPaths.SharedContent,
-        "Authoring",
-        "Items",
-        "core.item-catalog.json");
-
-    private static string RuntimePath => Path.Combine(
-        RepositoryPaths.SharedContent,
-        "Runtime",
-        "Items",
-        "core.item-catalog.json");
+    public static string RuntimeJson => File.ReadAllText(
+        ContentLayout.GeneratedItemCatalogPath(RepositoryPaths.Generated));
 }

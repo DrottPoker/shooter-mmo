@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Requirements
 
@@ -35,9 +35,11 @@ Explicit process environment variables and command-line values can still
 override service configuration for deployments. Configuration files are read
 once at startup; restart a service after changing them.
 
-SimulationWorker loads `src/Shared/WorldData/Worlds/<WorldId>/world.json` and derives actor
-and collision paths below the same World directory. The checked-in content for
-both development Worlds is copied into build and publish output. Startup
+SimulationWorker loads `WorldData/Worlds/<WorldId>/world.json` from its output folder and
+derives `world-actors.json` and the `Collision` chunk folder below the same World
+directory. The build copies `content/worlds/<WorldId>/world.json` and the
+generated actor and collision data from `src/Shared/WorldData/Generated` into
+that layout for both development Worlds, in build and publish output. Startup
 validates identity, bounds, spawn, service points, actor revisions, references,
 ordering, collision checksums, and content semantics before UDP admission
 begins. `SimulationWorker__WorldDataPath` can point a deployment at a different
@@ -69,12 +71,9 @@ dotnet restore Mmorpg.slnx --locked-mode
 & .\tools\Verify-DependencyPolicy.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
-dotnet run --project tools/ItemCatalogCompiler `
-  --configuration Release `
-  --no-build -- `
-  src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json `
-  --verify
+dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 dotnet test Mmorpg.slnx --configuration Release --no-build
 ```
 
@@ -118,11 +117,11 @@ and their NuGet lock file are ignored by Git.
 
 ## Item Catalog Authoring And Verification
 
-The neutral source catalog is
-`src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json`. It defines stable category,
-tag, equipment-slot, item, Bag-layout, location-eligibility, policy-default, and
-Secure Container tier content. The generated runtime catalog is
-`src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json`.
+The neutral source catalog is `content/items`: `catalog.json` defines stable
+category, tag, equipment-slot, and Secure Container tier content, and
+`definitions/<definition-id>.json` holds one item with its Bag layout,
+location eligibility, and policy defaults. The generated runtime catalog is
+`src/Shared/WorldData/Generated/Items/core.item-catalog.json`.
 
 Catalog format version 2 uses unitless non-negative integer `unitWeight` and
 `carryCapacityBonus` fields. Do not add physical-unit or decimal weight fields.
@@ -140,14 +139,14 @@ The canonical content workflow is available in Unity at
    the image data, in the presentation JSON. An item may remain iconless until
    approved client art is available.
 4. Select `Validate` to run the strict shared compiler without writing files.
-5. Select `Save` to write editable authoring and presentation content without
-   replacing the runtime gameplay catalog.
+5. Select `Save` to write `catalog.json`, one file per definition, and the
+   presentation content without replacing the runtime gameplay catalog. The
+   files of removed draft definitions are deleted.
 6. Select `Save And Bake` to validate and atomically replace authoring, runtime,
    and presentation JSON. Structural changes require explicit confirmation.
 
-The gameplay source remains
-`src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json`. The Editor-only assembly does
-not duplicate its rules. It invokes `tools/ItemCatalogCompiler`, which remains
+The gameplay source remains `content/items`. The Editor-only assembly does not
+duplicate its rules. It invokes `tools/ItemCatalogCompiler`, which remains
 the validation and structural-fingerprint authority used by backend development
 and CI.
 
@@ -163,24 +162,19 @@ files or complete definition data.
 After an intentional authoring change, compile the runtime catalog:
 
 ```powershell
-dotnet run --project tools/ItemCatalogCompiler -- `
-  src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json
+dotnet run --project tools/ItemCatalogCompiler
 ```
 
 Then verify the checked-in result:
 
 ```powershell
-dotnet run --project tools/ItemCatalogCompiler -- `
-  src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json `
-  --verify
+dotnet run --project tools/ItemCatalogCompiler -- --verify
 ```
 
 Expected result: both commands report catalog `core`, nine definitions, one
 base Secure Container tier, and the same SHA-256 catalog revision. `--verify`
-returns exit code 1 for malformed authoring, invalid rules, or stale runtime
-JSON.
+returns exit code 1 for malformed authoring, a definition file whose name does
+not match its id, invalid rules, or stale runtime JSON.
 
 Inspect `structuralFingerprint` for every changed definition and Secure
 Container tier. A display-only edit changes the catalog revision without
@@ -192,8 +186,8 @@ on it. Otherwise startup fails with the affected stable id and requires an
 explicit data migration before the new catalog can become current. Display-only
 changes remain safe because they preserve the structural fingerprint.
 
-The complete authoring contract is documented in
-`src/Shared/WorldData/Shared/Authoring/Items/README.md`. No Unity Editor action is required for
+The complete authoring contract is documented in `content/items/README.md`, and
+the general content rules in `content/README.md`. No Unity Editor action is required for
 command-line item catalog compilation or verification.
 
 If `Validate`, `Save`, or `Save And Bake` fails, read the field paths in the
@@ -921,24 +915,18 @@ Compile or verify the canonical actor content from any repository directory:
 
 ```powershell
 dotnet run --project tools/WorldActorCompiler --configuration Release
-dotnet run --project tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  --verify
-dotnet run --project tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  src/Shared/WorldData/Shared/Authoring/Actors/core.world-actors.json `
-  src/Shared/WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
-  src/Shared/WorldData/Worlds/development-world-2/Runtime/world-actors.json `
-  --verify
+dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```
 
-Expected result: the first two commands report World `development-world-1`
-with four definitions and five runtime instances. The third reports
-`development-world-2` with four definitions and seven runtime instances. Verify
-mode performs no write and fails if authoring, runtime JSON, references, bounds,
-transforms, fingerprints, ordering, or the complete revision diverge.
+Expected result: each command reports World `development-world-1` with four
+definitions and five runtime instances, and `development-world-2` with four
+definitions and seven runtime instances. The compiler reads
+`content/actors/catalog.json`, one file per actor below
+`content/actors/definitions`, and every `content/worlds/<WorldId>/actor-spawns.json`,
+and writes `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
+Verify mode performs no write and fails if authoring, runtime JSON, references,
+bounds, transforms, fingerprints, ordering, or the complete revision diverge, or
+if generated actor data exists for a World without spawn content.
 
 Run the focused backend actor and protocol coverage, then the complete Unity
 workflow:
@@ -987,10 +975,12 @@ presentation mapping:
    `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
    The prefab changes presentation only. This optional asset creation and prefab
    assignment are the only manual Unity asset steps.
-5. Click `Save + Compile`, then `Verify Canonical`. Expected result: canonical
-   authoring and runtime JSON save deterministically and verification reports
-   the same revision. If no intentional content change was made, the files stay
-   byte-for-byte equivalent.
+5. Click `Save + Compile`, then `Verify Canonical`. Expected result: the
+   actor catalog, one file per actor, the spawn file, and the runtime JSON of
+   every World save deterministically in one transaction, and verification
+   reports the same revisions. Removing an actor deletes its definition file.
+   If no intentional content change was made, the files stay byte-for-byte
+   equivalent.
 6. Open `MMORPG > Tools > Content > Spawn Authoring` and click `Import`.
    Inspect the Points, Groups, Areas, and Patrols tabs with `Scene Preview`
    enabled. Expected result: scene handles show the service NPC point, two-guard
@@ -1556,8 +1546,10 @@ Useful commands, run from `src/Client` or with
 - `unity list` lists every command the connected Editor exposes.
 - `unity command console_status` reports compiler failure state and console
   counts. `unity command console --level warning` returns the entries.
-- `unity command run_tests --mode editor --timeout 580` runs the EditMode suite
-  synchronously and returns every result.
+- `unity command run_tests --mode editor --async_tests` starts the EditMode
+  suite. Poll `unity command test_status` until `status` is `completed`; the
+  result lists every test. A synchronous run is limited to the Pipeline's 30
+  second request time and fails once the suite takes longer.
 - `unity command run_tests --mode playmode --async_tests` starts the PlayMode
   suite. Entering Play Mode reloads the Editor domain and drops a synchronous
   request, so poll `unity command test_status` until `status` is `completed`.
@@ -1751,9 +1743,9 @@ Expected result: Unity Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
 updates:
 
-- `src/Shared/WorldData/Worlds/development-world-1/Authoring/collision.json`
-- `src/Shared/WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1/manifest.json`
-- Four `chunk_*.bytes` files in the same runtime directory
+- `content/worlds/development-world-1/collision.json`
+- `src/Shared/WorldData/Generated/Resources/WorldCollision/development-world-1/manifest.json`
+- Four `chunk_*.bytes` files in the same generated directory
 
 The bake stops with a red error if the collision root contains enabled,
 non-trigger Collider types other than BoxCollider. This is intentional until a
@@ -1762,19 +1754,12 @@ later collision format adds terrain and triangle-mesh chunks.
 Verify the checked-in bake from the repository root:
 
 ```powershell
-dotnet run --project tools/WorldCollisionCompiler -- `
-  src/Shared/WorldData/Worlds/development-world-1/Authoring/collision.json `
-  src/Shared/WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1 `
-  --verify
-dotnet run --project tools/WorldCollisionCompiler -- `
-  src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json `
-  src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
-  --verify
+dotnet run --project tools/WorldCollisionCompiler -- --verify
 ```
 
-Expected result: the commands report the same World revisions, four verified
+Expected result: the command reports the same World revisions, four verified
 chunks for Development World 1, and 256 verified chunks for Development World
-2. Either command exits with code 1 if its authoring JSON and runtime data
+2. It exits with code 1 if any World's collision source and generated data
 differ.
 
 ### Compose DevelopmentWorld1
@@ -1924,13 +1909,14 @@ Shard-to-World binding is intentionally changeable between worker process
 generations. It is not a runtime map switch. Prepare all target World content
 before changing a shard:
 
-- Add `src/Shared/WorldData/Worlds/<WorldId>/world.json` with the stable identity, client
+- Add `content/worlds/<WorldId>/world.json` with the stable identity, client
   scene, bounds, spawn, and item service points.
-- Provide `Authoring/collision.json` and the checksummed collision runtime below
-  that World directory.
-- Provide `Authoring/actor-spawns.json` and `Runtime/world-actors.json` when the
+- Provide `content/worlds/<WorldId>/collision.json` and its compiled collision
+  data below `src/Shared/WorldData/Generated/Resources/WorldCollision/<WorldId>`.
+- Provide `content/worlds/<WorldId>/actor-spawns.json` and its compiled
+  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json` when the
   World uses actor content. Shared actor definitions remain under
-  `src/Shared/WorldData/Shared/Authoring/Actors`.
+  `content/actors`.
 - Add the authored Unity scene to the client build and map its `WorldId` in
   `Assets/Resources/Worlds/world-scene-catalog.json`.
 

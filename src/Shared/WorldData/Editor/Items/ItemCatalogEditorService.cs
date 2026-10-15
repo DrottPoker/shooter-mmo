@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
@@ -12,43 +13,41 @@ namespace Mmorpg.WorldData.Editor.Items
     {
         public ItemCatalogEditorPaths(
             string repositoryRoot,
-            string authoringPath,
-            string runtimePath,
-            string presentationPath,
-            string compilerProjectPath)
+            string contentRoot,
+            string generatedRoot,
+            string presentationPath)
         {
             RepositoryRoot = Path.GetFullPath(repositoryRoot);
-            AuthoringPath = Path.GetFullPath(authoringPath);
-            RuntimePath = Path.GetFullPath(runtimePath);
+            ContentRoot = Path.GetFullPath(contentRoot);
+            GeneratedRoot = Path.GetFullPath(generatedRoot);
             PresentationPath = Path.GetFullPath(presentationPath);
-            CompilerProjectPath = Path.GetFullPath(compilerProjectPath);
         }
 
         public string RepositoryRoot { get; }
 
-        public string AuthoringPath { get; }
+        public string ContentRoot { get; }
 
-        public string RuntimePath { get; }
+        public string GeneratedRoot { get; }
 
         public string PresentationPath { get; }
 
-        public string CompilerProjectPath { get; }
+        public string ItemsDirectory => ContentLayout.ItemsDirectory(ContentRoot);
+
+        public string RuntimePath => ContentLayout.GeneratedItemCatalogPath(GeneratedRoot);
 
         public static ItemCatalogEditorPaths CreateDefault()
         {
             var repositoryRoot = RepositoryLayout.FindRoot();
-            var sharedContent = RepositoryLayout.SharedContentDirectory(repositoryRoot);
             return new ItemCatalogEditorPaths(
                 repositoryRoot,
-                Path.Combine(sharedContent, "Authoring", "Items", "core.item-catalog.json"),
-                Path.Combine(sharedContent, "Runtime", "Items", "core.item-catalog.json"),
+                RepositoryLayout.ContentRoot(repositoryRoot),
+                RepositoryLayout.GeneratedRoot(repositoryRoot),
                 Path.Combine(
                     Application.dataPath,
                     "Resources",
                     "Items",
                     "Presentation",
-                    "item-presentation-catalog.json"),
-                RepositoryLayout.ToolProjectPath(repositoryRoot, "ItemCatalogCompiler"));
+                    "item-presentation-catalog.json"));
         }
     }
 
@@ -57,7 +56,7 @@ namespace Mmorpg.WorldData.Editor.Items
         private ItemCatalogEditorValidationResult(
             bool success,
             string message,
-            string authoringJson,
+            IReadOnlyDictionary<string, string> authoringFiles,
             string runtimeJson,
             string presentationJson,
             ItemCatalogEditorRuntimeDocument candidateRuntime,
@@ -66,7 +65,7 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             Success = success;
             Message = message ?? string.Empty;
-            AuthoringJson = authoringJson;
+            AuthoringFiles = authoringFiles;
             RuntimeJson = runtimeJson;
             PresentationJson = presentationJson;
             CandidateRuntime = candidateRuntime;
@@ -78,7 +77,8 @@ namespace Mmorpg.WorldData.Editor.Items
 
         public string Message { get; }
 
-        public string AuthoringJson { get; }
+        // Item content file text keyed by path relative to the items directory.
+        public IReadOnlyDictionary<string, string> AuthoringFiles { get; }
 
         public string RuntimeJson { get; }
 
@@ -109,7 +109,7 @@ namespace Mmorpg.WorldData.Editor.Items
 
         public static ItemCatalogEditorValidationResult Passed(
             string message,
-            string authoringJson,
+            IReadOnlyDictionary<string, string> authoringFiles,
             string runtimeJson,
             string presentationJson,
             ItemCatalogEditorRuntimeDocument candidateRuntime,
@@ -119,7 +119,7 @@ namespace Mmorpg.WorldData.Editor.Items
             return new ItemCatalogEditorValidationResult(
                 true,
                 message,
-                authoringJson,
+                authoringFiles,
                 runtimeJson,
                 presentationJson,
                 candidateRuntime,
@@ -130,29 +130,29 @@ namespace Mmorpg.WorldData.Editor.Items
 
     public sealed class ItemCatalogEditorService
     {
+        public const string CompilerToolName = "ItemCatalogCompiler";
+
         private readonly ItemCatalogEditorPaths paths;
-        private readonly IItemCatalogCompilerRunner compilerRunner;
+        private readonly IContentCompilerRunner compilerRunner;
 
         public ItemCatalogEditorService(
             ItemCatalogEditorPaths paths,
-            IItemCatalogCompilerRunner compilerRunner = null)
+            IContentCompilerRunner compilerRunner = null)
         {
             this.paths = paths ?? throw new ArgumentNullException(nameof(paths));
-            this.compilerRunner = compilerRunner ?? new ItemCatalogCompilerProcessRunner(
+            this.compilerRunner = compilerRunner ?? new ContentCompilerProcessRunner(
                 paths.RepositoryRoot,
-                paths.CompilerProjectPath);
+                CompilerToolName);
         }
 
         public ItemCatalogEditorPaths Paths => paths;
 
         public ItemCatalogEditorWorkspace Load()
         {
-            RequireFile(paths.AuthoringPath, "authoring catalog");
             RequireFile(paths.RuntimePath, "runtime catalog");
 
             ValidateCanonicalAuthoringBeforeLoad();
-            var authoring = ItemCatalogEditorJson.DeserializeAuthoring(
-                File.ReadAllText(paths.AuthoringPath));
+            var authoring = ItemCatalogEditorContent.Load(paths.ItemsDirectory);
             var runtime = ItemCatalogEditorJson.DeserializeRuntime(
                 File.ReadAllText(paths.RuntimePath));
             var presentation = File.Exists(paths.PresentationPath)
@@ -180,31 +180,29 @@ namespace Mmorpg.WorldData.Editor.Items
             var temporaryDirectory = CreateTemporaryDirectory();
             try
             {
-                var authoringJson = ItemCatalogEditorJson.SerializeAuthoring(
-                    workspace.Authoring);
-                var temporaryAuthoringPath = Path.Combine(
-                    temporaryDirectory,
-                    "candidate.item-catalog.json");
-                var temporaryRuntimePath = Path.Combine(
-                    temporaryDirectory,
-                    "candidate.runtime.json");
-                WriteText(temporaryAuthoringPath, authoringJson);
+                var authoringFiles = ItemCatalogEditorContent.CreateFiles(workspace.Authoring);
+                var contentRoot = Path.Combine(temporaryDirectory, "content");
+                var generatedRoot = Path.Combine(temporaryDirectory, "generated");
+                var itemsDirectory = ContentLayout.ItemsDirectory(contentRoot);
+                foreach (var file in authoringFiles)
+                {
+                    WriteText(Path.Combine(itemsDirectory, file.Key), file.Value);
+                }
 
-                var compilerResult = compilerRunner.Compile(
-                    temporaryAuthoringPath,
-                    temporaryRuntimePath);
+                var compilerResult = compilerRunner.Compile(contentRoot, generatedRoot);
                 if (!compilerResult.Success)
                 {
                     return ItemCatalogEditorValidationResult.Failed(compilerResult.Output);
                 }
 
-                if (!File.Exists(temporaryRuntimePath))
+                var runtimePath = ContentLayout.GeneratedItemCatalogPath(generatedRoot);
+                if (!File.Exists(runtimePath))
                 {
                     return ItemCatalogEditorValidationResult.Failed(
-                        "ItemCatalogCompiler did not produce candidate runtime JSON.");
+                        CompilerToolName + " did not produce candidate runtime JSON.");
                 }
 
-                var runtimeJson = NormalizeLineEndings(File.ReadAllText(temporaryRuntimePath));
+                var runtimeJson = NormalizeLineEndings(File.ReadAllText(runtimePath));
                 var candidateRuntime = ItemCatalogEditorJson.DeserializeRuntime(runtimeJson);
                 ItemPresentationCatalogDocument candidatePresentation;
                 try
@@ -231,7 +229,7 @@ namespace Mmorpg.WorldData.Editor.Items
                     changes);
                 return ItemCatalogEditorValidationResult.Passed(
                     message,
-                    authoringJson,
+                    authoringFiles,
                     runtimeJson,
                     presentationJson,
                     candidateRuntime,
@@ -253,11 +251,7 @@ namespace Mmorpg.WorldData.Editor.Items
             ItemCatalogEditorValidationResult validation)
         {
             RequireSuccessfulValidation(validation);
-            CommitFiles(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                [paths.AuthoringPath] = validation.AuthoringJson,
-                [paths.PresentationPath] = validation.PresentationJson
-            });
+            Commit(validation, false);
             ApplyPresentation(workspace, validation.CandidatePresentation);
         }
 
@@ -266,14 +260,49 @@ namespace Mmorpg.WorldData.Editor.Items
             ItemCatalogEditorValidationResult validation)
         {
             RequireSuccessfulValidation(validation);
-            CommitFiles(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                [paths.AuthoringPath] = validation.AuthoringJson,
-                [paths.RuntimePath] = validation.RuntimeJson,
-                [paths.PresentationPath] = validation.PresentationJson
-            });
+            Commit(validation, true);
             ApplyRuntime(workspace, validation.CandidateRuntime);
             ApplyPresentation(workspace, validation.CandidatePresentation);
+        }
+
+        // Writes authored files first and generated files last, then deletes definition
+        // files for drafts that were removed. A failure restores every file.
+        private void Commit(ItemCatalogEditorValidationResult validation, bool includeRuntime)
+        {
+            var writes = validation.AuthoringFiles
+                .OrderBy(file => file.Key, StringComparer.Ordinal)
+                .Select(file => new KeyValuePair<string, string>(
+                    Path.GetFullPath(Path.Combine(paths.ItemsDirectory, file.Key)),
+                    file.Value))
+                .ToList();
+            if (includeRuntime)
+            {
+                writes.Add(new KeyValuePair<string, string>(
+                    paths.RuntimePath,
+                    validation.RuntimeJson));
+            }
+
+            writes.Add(new KeyValuePair<string, string>(
+                paths.PresentationPath,
+                validation.PresentationJson));
+            var written = new HashSet<string>(
+                writes.Select(write => write.Key),
+                StringComparer.OrdinalIgnoreCase);
+            var removedDefinitions = ExistingDefinitionPaths()
+                .Where(path => !written.Contains(path))
+                .ToArray();
+            ContentFileTransaction.Commit(writes, removedDefinitions);
+        }
+
+        private IEnumerable<string> ExistingDefinitionPaths()
+        {
+            if (!Directory.Exists(ContentLayout.DefinitionsDirectory(paths.ItemsDirectory)))
+            {
+                return Enumerable.Empty<string>();
+            }
+
+            return ContentLayout.ListDefinitionFiles(paths.ItemsDirectory)
+                .Select(file => Path.GetFullPath(file.Path));
         }
 
         private void ValidateCanonicalAuthoringBeforeLoad()
@@ -281,10 +310,7 @@ namespace Mmorpg.WorldData.Editor.Items
             var temporaryDirectory = CreateTemporaryDirectory();
             try
             {
-                var temporaryRuntimePath = Path.Combine(
-                    temporaryDirectory,
-                    "load-validation.runtime.json");
-                var result = compilerRunner.Compile(paths.AuthoringPath, temporaryRuntimePath);
+                var result = compilerRunner.Compile(paths.ContentRoot, temporaryDirectory);
                 if (!result.Success)
                 {
                     throw new InvalidDataException(
@@ -369,80 +395,6 @@ namespace Mmorpg.WorldData.Editor.Items
             return builder.ToString().TrimEnd();
         }
 
-        private static void CommitFiles(IReadOnlyDictionary<string, string> contents)
-        {
-            var snapshots = contents.Keys.ToDictionary(
-                path => path,
-                path => File.Exists(path) ? File.ReadAllText(path) : null,
-                StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                foreach (var pair in contents)
-                {
-                    AtomicWriteText(pair.Key, pair.Value);
-                }
-            }
-            catch
-            {
-                foreach (var snapshot in snapshots)
-                {
-                    if (snapshot.Value == null)
-                    {
-                        if (File.Exists(snapshot.Key))
-                        {
-                            File.Delete(snapshot.Key);
-                        }
-
-                        continue;
-                    }
-
-                    AtomicWriteText(snapshot.Key, snapshot.Value);
-                }
-
-                throw;
-            }
-        }
-
-        private static void AtomicWriteText(string path, string content)
-        {
-            var directory = Path.GetDirectoryName(path);
-            if (string.IsNullOrWhiteSpace(directory))
-            {
-                throw new InvalidOperationException("Output path has no directory: " + path);
-            }
-
-            Directory.CreateDirectory(directory);
-            var temporaryPath = Path.Combine(
-                directory,
-                "." + Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N") + ".tmp");
-            var backupPath = temporaryPath + ".bak";
-            try
-            {
-                WriteText(temporaryPath, content);
-                if (File.Exists(path))
-                {
-                    File.Replace(temporaryPath, path, backupPath);
-                    File.Delete(backupPath);
-                }
-                else
-                {
-                    File.Move(temporaryPath, path);
-                }
-            }
-            finally
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
-
-                if (File.Exists(backupPath))
-                {
-                    File.Delete(backupPath);
-                }
-            }
-        }
-
         private static string CreateTemporaryDirectory()
         {
             var directory = Path.Combine(
@@ -475,12 +427,13 @@ namespace Mmorpg.WorldData.Editor.Items
 
         private static void WriteText(string path, string content)
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, NormalizeLineEndings(content), new UTF8Encoding(false));
         }
 
         private static string NormalizeLineEndings(string value)
         {
-            return (value ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
+            return ContentFileTransaction.NormalizeLineEndings(value);
         }
     }
 }

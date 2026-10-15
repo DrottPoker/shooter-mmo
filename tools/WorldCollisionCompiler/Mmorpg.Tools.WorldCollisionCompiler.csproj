@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\ContentPipeline\Mmorpg.Tools.ContentPipeline.csproj" />
     <ProjectReference Include="..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
   </ItemGroup>
 

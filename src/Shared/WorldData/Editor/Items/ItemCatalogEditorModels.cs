@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Xml;
+using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
@@ -195,77 +196,49 @@ namespace Mmorpg.WorldData.Editor.Items
         public string structuralFingerprint;
     }
 
+    // content/items/catalog.json: every authoring field except the definitions, which
+    // live in one file each below definitions/.
+    [Serializable]
+    public sealed class ItemCatalogEditorCatalogHeader
+    {
+        public int formatVersion;
+        public string catalogId;
+        public string baseSecureContainerTierId;
+        public ItemCatalogEditorIdentity[] categories;
+        public ItemCatalogEditorIdentity[] tags;
+        public ItemCatalogEditorIdentity[] equipmentSlots;
+        public ItemCatalogEditorSecureContainerTier[] secureContainerTiers;
+    }
+
     public static class ItemCatalogEditorJson
     {
-        public static ItemCatalogEditorDocument DeserializeAuthoring(string json)
+        public static ItemCatalogEditorCatalogHeader DeserializeCatalogHeader(string json)
         {
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                throw new InvalidDataException("Item catalog authoring JSON is empty.");
-            }
+            return Deserialize<ItemCatalogEditorCatalogHeader>(json, "Item catalog");
+        }
 
-            try
-            {
-                var document = JsonUtility.FromJson<ItemCatalogEditorDocument>(json)
-                    ?? throw new InvalidDataException(
-                        "Item catalog authoring JSON has no root object.");
-                ClearMissingBagPlaceholders(document);
-                return document;
-            }
-            catch (ArgumentException exception)
-            {
-                throw new InvalidDataException(
-                    "Item catalog authoring JSON is malformed: " + exception.Message,
-                    exception);
-            }
+        public static ItemCatalogEditorDefinition DeserializeDefinition(string json)
+        {
+            var definition = Deserialize<ItemCatalogEditorDefinition>(json, "Item definition");
+            ClearMissingBagPlaceholder(definition);
+            return definition;
         }
 
         public static ItemCatalogEditorRuntimeDocument DeserializeRuntime(string json)
         {
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                throw new InvalidDataException("Item catalog runtime JSON is empty.");
-            }
-
-            try
-            {
-                return JsonUtility.FromJson<ItemCatalogEditorRuntimeDocument>(json)
-                    ?? throw new InvalidDataException(
-                        "Item catalog runtime JSON has no root object.");
-            }
-            catch (ArgumentException exception)
-            {
-                throw new InvalidDataException(
-                    "Item catalog runtime JSON is malformed: " + exception.Message,
-                    exception);
-            }
+            return Deserialize<ItemCatalogEditorRuntimeDocument>(json, "Item catalog runtime");
         }
 
-        public static string SerializeAuthoring(ItemCatalogEditorDocument document)
+        // The canonical file format is DataContract JSON: fields in ordinal order,
+        // two-space indentation, and LF line endings.
+        public static string SerializeCatalogHeader(ItemCatalogEditorCatalogHeader header)
         {
-            if (document == null)
-            {
-                throw new ArgumentNullException(nameof(document));
-            }
+            return Serialize(header);
+        }
 
-            var normalized = Clone(document);
-            Normalize(normalized);
-            var serializer = CreateAuthoringSerializer();
-            using (var stream = new MemoryStream())
-            {
-                using (var writer = JsonReaderWriterFactory.CreateJsonWriter(
-                    stream,
-                    new UTF8Encoding(false),
-                    false,
-                    true,
-                    "  "))
-                {
-                    serializer.WriteObject(writer, normalized);
-                    writer.Flush();
-                }
-
-                return NormalizeLineEndings(Encoding.UTF8.GetString(stream.ToArray())) + "\n";
-            }
+        public static string SerializeDefinition(ItemCatalogEditorDefinition definition)
+        {
+            return Serialize(definition);
         }
 
         public static ItemCatalogEditorDocument Clone(ItemCatalogEditorDocument document)
@@ -275,7 +248,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 throw new ArgumentNullException(nameof(document));
             }
 
-            var serializer = CreateAuthoringSerializer();
+            var serializer = new DataContractJsonSerializer(typeof(ItemCatalogEditorDocument));
             using (var stream = new MemoryStream())
             {
                 serializer.WriteObject(stream, document);
@@ -290,7 +263,8 @@ namespace Mmorpg.WorldData.Editor.Items
             return DeserializeRuntime(JsonUtility.ToJson(document));
         }
 
-        private static void Normalize(ItemCatalogEditorDocument document)
+        // Sorts every order-insensitive list so saved files never churn on reordering.
+        public static void Normalize(ItemCatalogEditorDocument document)
         {
             document.categories = document.categories ?? Array.Empty<ItemCatalogEditorIdentity>();
             document.tags = document.tags ?? Array.Empty<ItemCatalogEditorIdentity>();
@@ -328,22 +302,64 @@ namespace Mmorpg.WorldData.Editor.Items
             }
         }
 
-        private static void ClearMissingBagPlaceholders(ItemCatalogEditorDocument document)
+        private static T Deserialize<T>(string json, string label)
+            where T : class
         {
-            foreach (var definition in document.definitions
-                ?? Array.Empty<ItemCatalogEditorDefinition>())
+            if (string.IsNullOrWhiteSpace(json))
             {
-                if (definition.bag != null
-                    && (definition.bag.slots == null || definition.bag.slots.Length == 0)
-                    && !string.Equals(
-                        definition.category,
-                        ItemCategoryIds.Bag,
-                        StringComparison.Ordinal))
+                throw new InvalidDataException(label + " JSON is empty.");
+            }
+
+            try
+            {
+                return JsonUtility.FromJson<T>(json)
+                    ?? throw new InvalidDataException(label + " JSON has no root object.");
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException(
+                    label + " JSON is malformed: " + exception.Message,
+                    exception);
+            }
+        }
+
+        private static string Serialize<T>(T value)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+
+            var serializer = new DataContractJsonSerializer(typeof(T));
+            using (var stream = new MemoryStream())
+            {
+                using (var writer = JsonReaderWriterFactory.CreateJsonWriter(
+                    stream,
+                    new UTF8Encoding(false),
+                    false,
+                    true,
+                    "  "))
                 {
-                    // JsonUtility materializes an empty nested class for a missing Bag field.
-                    // Strict validation runs before canonical Editor content reaches this model.
-                    definition.bag = null;
+                    serializer.WriteObject(writer, value);
+                    writer.Flush();
                 }
+
+                return NormalizeLineEndings(Encoding.UTF8.GetString(stream.ToArray())) + "\n";
+            }
+        }
+
+        private static void ClearMissingBagPlaceholder(ItemCatalogEditorDefinition definition)
+        {
+            if (definition.bag != null
+                && (definition.bag.slots == null || definition.bag.slots.Length == 0)
+                && !string.Equals(
+                    definition.category,
+                    ItemCategoryIds.Bag,
+                    StringComparison.Ordinal))
+            {
+                // JsonUtility materializes an empty nested class for a missing Bag field.
+                // Strict validation runs before canonical Editor content reaches this model.
+                definition.bag = null;
             }
         }
 
@@ -358,10 +374,98 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             return value.Replace("\r\n", "\n").Replace("\r", "\n");
         }
+    }
 
-        private static DataContractJsonSerializer CreateAuthoringSerializer()
+    // Reads and writes content/items: catalog.json plus one file per item definition.
+    public static class ItemCatalogEditorContent
+    {
+        public static ItemCatalogEditorDocument Load(string itemsDirectory)
         {
-            return new DataContractJsonSerializer(typeof(ItemCatalogEditorDocument));
+            var catalogPath = ContentLayout.CatalogPath(itemsDirectory);
+            if (!File.Exists(catalogPath))
+            {
+                throw new FileNotFoundException("Item catalog file is missing.", catalogPath);
+            }
+
+            var header = ItemCatalogEditorJson.DeserializeCatalogHeader(
+                File.ReadAllText(catalogPath));
+            var definitions = ContentLayout.ListDefinitionFiles(itemsDirectory)
+                .Select(LoadDefinition)
+                .ToArray();
+            return new ItemCatalogEditorDocument
+            {
+                formatVersion = header.formatVersion,
+                catalogId = header.catalogId,
+                baseSecureContainerTierId = header.baseSecureContainerTierId,
+                categories = header.categories,
+                tags = header.tags,
+                equipmentSlots = header.equipmentSlots,
+                definitions = definitions,
+                secureContainerTiers = header.secureContainerTiers
+            };
+        }
+
+        // File text keyed by path relative to the items directory.
+        public static Dictionary<string, string> CreateFiles(ItemCatalogEditorDocument document)
+        {
+            if (document == null)
+            {
+                throw new ArgumentNullException(nameof(document));
+            }
+
+            var normalized = ItemCatalogEditorJson.Clone(document);
+            ItemCatalogEditorJson.Normalize(normalized);
+            var files = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [ContentLayout.CatalogFileName] = ItemCatalogEditorJson.SerializeCatalogHeader(
+                    new ItemCatalogEditorCatalogHeader
+                    {
+                        formatVersion = normalized.formatVersion,
+                        catalogId = normalized.catalogId,
+                        baseSecureContainerTierId = normalized.baseSecureContainerTierId,
+                        categories = normalized.categories,
+                        tags = normalized.tags,
+                        equipmentSlots = normalized.equipmentSlots,
+                        secureContainerTiers = normalized.secureContainerTiers
+                    })
+            };
+            foreach (var definition in normalized.definitions)
+            {
+                var path = Path.Combine(
+                    ContentLayout.DefinitionsDirectoryName,
+                    ContentLayout.DefinitionFileName(definition.id));
+                if (files.ContainsKey(path))
+                {
+                    throw new InvalidDataException(
+                        "Item definition id '" + definition.id + "' is used more than once.");
+                }
+
+                files.Add(path, ItemCatalogEditorJson.SerializeDefinition(definition));
+            }
+
+            return files;
+        }
+
+        private static ItemCatalogEditorDefinition LoadDefinition(ContentDefinitionFile file)
+        {
+            ItemCatalogEditorDefinition definition;
+            try
+            {
+                definition = ItemCatalogEditorJson.DeserializeDefinition(
+                    File.ReadAllText(file.Path));
+            }
+            catch (InvalidDataException exception)
+            {
+                throw new InvalidDataException(file.Path + ": " + exception.Message, exception);
+            }
+
+            if (!string.Equals(definition.id, file.Id, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Item definition file '" + file.Path + "' must contain id '" + file.Id + "'.");
+            }
+
+            return definition;
         }
     }
 

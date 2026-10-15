@@ -1,0 +1,26 @@
+{
+    "id": "mob.feral_wolf",
+    "displayName": "Feral Wolf",
+    "kind": "mob",
+    "factionId": "wild",
+    "disposition": "hostile",
+    "presentationArchetypeId": "mob.feral_wolf",
+    "damagePolicy": "damageable",
+    "tags": [
+        "creature",
+        "wild"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.55,
+        "centerZ": 0.0,
+        "sizeX": 1.2,
+        "sizeY": 1.1,
+        "sizeZ": 1.8
+    },
+    "capabilities": [],
+    "activityProfileId": "mob.standard",
+    "respawnProfileId": "mob.normal",
+    "corpsePersistenceMode": "live",
+    "corpseLifetimeSeconds": 120.0
+}

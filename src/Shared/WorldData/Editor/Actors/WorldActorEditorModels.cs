@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Content;
 using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor.Actors
@@ -375,11 +377,31 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string structuralFingerprint;
     }
 
+    // content/actors/catalog.json: every catalog field except the actors, which live in
+    // one file each below definitions/.
+    [Serializable]
+    public sealed class WorldActorEditorCatalogHeader
+    {
+        public int formatVersion;
+        public string catalogId;
+        public WorldActorEditorFaction[] factions;
+        public WorldActorEditorPresentation[] presentationArchetypes;
+        public WorldActorEditorActivityProfile[] activityProfiles;
+        public WorldActorEditorRespawnProfile[] respawnProfiles;
+    }
+
+    // The canonical file format is pretty-printed JsonUtility output with shortest float
+    // text and LF line endings. The actor Editor models hold no double fields.
     public static class WorldActorEditorJson
     {
-        public static WorldActorEditorCatalog DeserializeCatalog(string json)
+        public static WorldActorEditorCatalogHeader DeserializeCatalogHeader(string json)
         {
-            return Deserialize<WorldActorEditorCatalog>(json, "actor catalog");
+            return Deserialize<WorldActorEditorCatalogHeader>(json, "actor catalog");
+        }
+
+        public static WorldActorEditorDefinition DeserializeDefinition(string json)
+        {
+            return Deserialize<WorldActorEditorDefinition>(json, "actor definition");
         }
 
         public static WorldActorEditorSpawns DeserializeSpawns(string json)
@@ -392,9 +414,14 @@ namespace Mmorpg.WorldData.Editor.Actors
             return Deserialize<WorldActorEditorRuntime>(json, "actor runtime");
         }
 
-        public static string SerializeCatalog(WorldActorEditorCatalog document)
+        public static string SerializeCatalogHeader(WorldActorEditorCatalogHeader header)
         {
-            return Serialize(document);
+            return Serialize(header);
+        }
+
+        public static string SerializeDefinition(WorldActorEditorDefinition definition)
+        {
+            return Serialize(definition);
         }
 
         public static string SerializeSpawns(WorldActorEditorSpawns document)
@@ -440,7 +467,99 @@ namespace Mmorpg.WorldData.Editor.Actors
                 throw new ArgumentNullException(nameof(document));
             }
 
-            return JsonUtility.ToJson(document, true).Replace("\r\n", "\n") + "\n";
+            return SinglePrecisionJson.ShortenFloats(JsonUtility.ToJson(document, true))
+                .Replace("\r\n", "\n") + "\n";
+        }
+    }
+
+    // Reads and writes content/actors: catalog.json plus one file per actor definition.
+    public static class WorldActorEditorContent
+    {
+        public static WorldActorEditorCatalog Load(string actorsDirectory)
+        {
+            var catalogPath = ContentLayout.CatalogPath(actorsDirectory);
+            if (!File.Exists(catalogPath))
+            {
+                throw new FileNotFoundException("World actor catalog file is missing.", catalogPath);
+            }
+
+            var header = WorldActorEditorJson.DeserializeCatalogHeader(
+                File.ReadAllText(catalogPath));
+            return new WorldActorEditorCatalog
+            {
+                formatVersion = header.formatVersion,
+                catalogId = header.catalogId,
+                factions = header.factions,
+                presentationArchetypes = header.presentationArchetypes,
+                activityProfiles = header.activityProfiles,
+                respawnProfiles = header.respawnProfiles,
+                actors = ContentLayout.ListDefinitionFiles(actorsDirectory)
+                    .Select(LoadDefinition)
+                    .ToArray()
+            };
+        }
+
+        // File text keyed by path relative to the actors directory.
+        public static Dictionary<string, string> CreateFiles(WorldActorEditorCatalog catalog)
+        {
+            if (catalog == null)
+            {
+                throw new ArgumentNullException(nameof(catalog));
+            }
+
+            var files = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [ContentLayout.CatalogFileName] = WorldActorEditorJson.SerializeCatalogHeader(
+                    new WorldActorEditorCatalogHeader
+                    {
+                        formatVersion = catalog.formatVersion,
+                        catalogId = catalog.catalogId,
+                        factions = catalog.factions ?? Array.Empty<WorldActorEditorFaction>(),
+                        presentationArchetypes = catalog.presentationArchetypes
+                            ?? Array.Empty<WorldActorEditorPresentation>(),
+                        activityProfiles = catalog.activityProfiles
+                            ?? Array.Empty<WorldActorEditorActivityProfile>(),
+                        respawnProfiles = catalog.respawnProfiles
+                            ?? Array.Empty<WorldActorEditorRespawnProfile>()
+                    })
+            };
+            foreach (var actor in catalog.actors ?? Array.Empty<WorldActorEditorDefinition>())
+            {
+                var path = Path.Combine(
+                    ContentLayout.DefinitionsDirectoryName,
+                    ContentLayout.DefinitionFileName(actor.id));
+                if (files.ContainsKey(path))
+                {
+                    throw new InvalidDataException(
+                        "World actor id '" + actor.id + "' is used more than once.");
+                }
+
+                files.Add(path, WorldActorEditorJson.SerializeDefinition(actor));
+            }
+
+            return files;
+        }
+
+        private static WorldActorEditorDefinition LoadDefinition(ContentDefinitionFile file)
+        {
+            WorldActorEditorDefinition actor;
+            try
+            {
+                actor = WorldActorEditorJson.DeserializeDefinition(File.ReadAllText(file.Path));
+            }
+            catch (InvalidDataException exception)
+            {
+                throw new InvalidDataException(file.Path + ": " + exception.Message, exception);
+            }
+
+            if (!string.Equals(actor.id, file.Id, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "World actor definition file '" + file.Path + "' must contain id '"
+                    + file.Id + "'.");
+            }
+
+            return actor;
         }
     }
 }

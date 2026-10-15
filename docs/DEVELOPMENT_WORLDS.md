@@ -1,6 +1,6 @@
 # Development Worlds
 
-Last updated: 2026-07-20
+Last updated: 2026-10-15
 
 ## Purpose
 
@@ -101,8 +101,8 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    Scene`.
 7. Confirm the Console reports a successful bake for
     `development-world-2`. The bake must create
-    `src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json` and
-    `src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2`.
+    `content/worlds/development-world-2/collision.json` and
+    `src/Shared/WorldData/Generated/Resources/WorldCollision/development-world-2`.
 8. Keep `DevelopmentWorld2` enabled in `File > Build Profiles`, after
    `LoginMenu` and `CharacterSelect`.
 
@@ -116,17 +116,12 @@ World IDs.
 From the repository root, verify the new collision outputs:
 
 ```powershell
-dotnet run --project tools/WorldCollisionCompiler `
-  --configuration Release `
-  --no-build -- `
-  src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json `
-  src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
-  --verify
+dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
-Expected result: the collision verifier reports `development-world-2` with 86
-boxes, 256 chunks, and a deterministic revision, and all Unity EditMode and
+Expected result: the collision verifier checks every World and reports
+`development-world-2` with 256 chunks and a deterministic revision, and all Unity EditMode and
 PlayMode tests pass. `Bake Build World Scenes` also verifies every
 catalog-to-Build Profiles mapping before writing collision output.
 

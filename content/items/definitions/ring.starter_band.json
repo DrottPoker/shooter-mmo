@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Starter Band",
+  "equipmentSlots": [
+    "ring_1",
+    "ring_2"
+  ],
+  "id": "ring.starter_band",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 1
+}

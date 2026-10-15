@@ -1,4 +1,5 @@
 using System.IO;
+using Mmorpg.WorldData.Content;
 using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor
@@ -7,38 +8,29 @@ namespace Mmorpg.WorldData.Editor
     // solution marker, so the tools keep working wherever the Unity project lives.
     public static class RepositoryLayout
     {
-        public const string SolutionFileName = "Mmorpg.slnx";
-
         public static string FindRoot()
         {
-            var directory = new DirectoryInfo(Application.dataPath);
-            while (directory != null)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, SolutionFileName)))
-                {
-                    return directory.FullName;
-                }
-
-                directory = directory.Parent;
-            }
-
-            throw new DirectoryNotFoundException(
-                "Could not locate " + SolutionFileName + " above the Unity project.");
+            return ContentLayout.FindRepositoryRoot(Application.dataPath);
         }
 
-        public static string WorldDataDirectory(string repositoryRoot)
+        public static string ContentRoot(string repositoryRoot)
         {
-            return Path.Combine(repositoryRoot, "src", "Shared", "WorldData");
+            return ContentLayout.ContentRoot(repositoryRoot);
         }
 
-        public static string SharedContentDirectory(string repositoryRoot)
+        public static string GeneratedRoot(string repositoryRoot)
         {
-            return Path.Combine(WorldDataDirectory(repositoryRoot), "Shared");
+            return ContentLayout.GeneratedRoot(repositoryRoot);
         }
 
-        public static string WorldsDirectory(string repositoryRoot)
+        public static string CollisionSourcePath(string repositoryRoot, string worldId)
         {
-            return Path.Combine(WorldDataDirectory(repositoryRoot), "Worlds");
+            return ContentLayout.CollisionSourcePath(ContentRoot(repositoryRoot), worldId);
+        }
+
+        public static string GeneratedCollisionDirectory(string repositoryRoot, string worldId)
+        {
+            return ContentLayout.GeneratedCollisionDirectory(GeneratedRoot(repositoryRoot), worldId);
         }
 
         public static string ToolProjectPath(string repositoryRoot, string toolName)

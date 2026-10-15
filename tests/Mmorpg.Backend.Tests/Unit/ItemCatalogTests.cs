@@ -179,33 +179,48 @@ public sealed class ItemCatalogTests
     [Fact]
     public void UnknownJsonMembersFailValidation()
     {
-        var malformed = ItemCatalogTestData.AuthoringJson.Replace(
+        var malformed = ItemCatalogTestData.CatalogJson.Replace(
             "\"catalogId\": \"core\",",
             "\"catalogId\": \"core\",\n  \"unknownCatalogField\": true,",
             StringComparison.Ordinal);
 
-        Assert.Throws<InvalidDataException>(() => ItemCatalogJson.DeserializeAuthoring(malformed));
+        Assert.Throws<InvalidDataException>(() => ItemCatalogJson.DeserializeCatalog(malformed));
+    }
+
+    [Fact]
+    public void CatalogFileRejectsInlineDefinitions()
+    {
+        var malformed = ItemCatalogTestData.CatalogJson.Replace(
+            "\"catalogId\": \"core\",",
+            "\"catalogId\": \"core\",\n  \"definitions\": [],",
+            StringComparison.Ordinal);
+
+        Assert.Throws<InvalidDataException>(() => ItemCatalogJson.DeserializeCatalog(malformed));
     }
 
     [Fact]
     public void DecimalWeightFailsJsonValidation()
     {
-        var malformed = ItemCatalogTestData.AuthoringJson.Replace(
+        var malformed = ItemCatalogTestData.DefinitionJson("ammunition.training_556").Replace(
             "\"unitWeight\": 1",
             "\"unitWeight\": 1.5",
             StringComparison.Ordinal);
 
-        Assert.Throws<InvalidDataException>(() => ItemCatalogJson.DeserializeAuthoring(malformed));
+        Assert.Throws<InvalidDataException>(
+            () => ItemCatalogJson.DeserializeDefinition(malformed));
     }
 
     [Fact]
     public void MissingRequiredBooleanFailsValidation()
     {
-        var malformed = ItemCatalogTestData.AuthoringJson.Replace(
-            "      \"playerDestroyable\": true,",
+        const string definitionId = "ammunition.training_556";
+        var malformed = ItemCatalogTestData.DefinitionJson(definitionId).Replace(
+            "  \"playerDestroyable\": true,\n",
             string.Empty,
             StringComparison.Ordinal);
-        var authoring = ItemCatalogJson.DeserializeAuthoring(malformed);
+        var authoring = ItemCatalogTestData.LoadAuthoring();
+        var index = Array.FindIndex(authoring.Definitions, value => value.Id == definitionId);
+        authoring.Definitions[index] = ItemCatalogJson.DeserializeDefinition(malformed);
 
         var exception = Assert.Throws<ItemCatalogValidationException>(
             () => ItemCatalogCompiler.Compile(authoring));
@@ -218,13 +233,13 @@ public sealed class ItemCatalogTests
     [Fact]
     public void DuplicateJsonPropertiesFailValidation()
     {
-        var malformed = ItemCatalogTestData.AuthoringJson.Replace(
+        var malformed = ItemCatalogTestData.CatalogJson.Replace(
             "\"catalogId\": \"core\",",
             "\"catalogId\": \"core\",\n  \"catalogId\": \"core\",",
             StringComparison.Ordinal);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ItemCatalogJson.DeserializeAuthoring(malformed));
+            () => ItemCatalogJson.DeserializeCatalog(malformed));
 
         Assert.Contains("duplicate property", exception.Message, StringComparison.Ordinal);
     }

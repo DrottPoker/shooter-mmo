@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-07-19
+Last updated: 2026-10-15
 
 ## Purpose
 
@@ -193,10 +193,11 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 
 Configuration lives under `src/Server/SimulationWorker/Config`. A process receives its
 worker, Fleet, Node, Shard, and desired World identity through validated
-configuration. `src/Shared/WorldData/Worlds/<WorldId>/world.json` owns map-local identity,
+configuration. `content/worlds/<WorldId>/world.json` owns map-local identity,
 client scene, movement bounds, authoritative spawn, and item service
-coordinates. Selecting `SimulationWorker:WorldId` loads that self-contained
-World directory, including collision and actor runtime content. Shared movement
+coordinates. The build copies it with the World's compiled collision and actor
+runtime content into one output World directory, and selecting
+`SimulationWorker:WorldId` loads that directory. Shared movement
 physics, networking, quotas, interest, collision streaming, and corpse radii
 remain process policy rather than map content.
 
@@ -290,20 +291,28 @@ transport, database, or presentation dependency.
 
 ### WorldData
 
-`WorldData` is shared content, so it correctly remains at repository root.
-`src/Shared/WorldData/Shared` contains global catalogs and domain rules.
-`src/Shared/WorldData/Worlds/<WorldId>` is a self-contained map package with a canonical
-`world.json`, collision and actor authoring, deterministic actor runtime, and
-compiled checksummed collision chunks. A shard references one World and its
-worker loads that directory.
+Authored content and compiled data are separate. `content/` at the repository
+root is the only authored source: the item and actor catalogs with one file per
+definition, and one directory per World with its `world.json`, actor spawns,
+and collision source. The `src/Shared/WorldData` Unity package holds the shared
+domain rules and compilers, the Unity content tools, and the deterministic data
+compiled from `content/` below `Generated/`. `Mmorpg.WorldData.Content.ContentLayout`
+defines every content and generated location and the definition file naming
+rules for Unity, the .NET tools, and tests. A shard references one World and its
+worker loads that World's manifest and compiled data. `content/README.md`
+describes the layout and the pipeline.
 
-`tools/WorldCollisionCompiler` builds and verifies the same data consumed by
-SimulationWorker and Unity. Static collision is deterministic and shared.
+`tools/WorldCollisionCompiler`, `tools/ItemCatalogCompiler`, and
+`tools/WorldActorCompiler` share the `tools/ContentPipeline` library for their
+command line, strict JSON parsing, and generated-file verification. Each
+compiles every World at once and fails verification for stale or orphaned
+generated data. `tools/WorldCollisionCompiler` builds and verifies the same data
+consumed by SimulationWorker and Unity. Static collision is deterministic and shared.
 Dynamic collision uses a mutable spatial hash behind the same collision-query
 interface, leaving room for doors, lifts, and other server-owned objects.
 
-`src/Shared/WorldData/Shared/Authoring/Items` owns the strict neutral item catalog source,
-and `src/Shared/WorldData/Shared/Runtime/Items` contains its deterministic compiled form. The catalog
+`content/items` owns the strict neutral item catalog source, and
+`src/Shared/WorldData/Generated/Items` contains its deterministic compiled form. The catalog
 has stable identities, one complete revision, per-definition and per-tier
 structural fingerprints, and no Shard identity. Framework-neutral catalog and
 pure rule source is compiled for Unity by the `Mmorpg.WorldData` assembly and
@@ -312,10 +321,9 @@ target becomes an authority. GameService validates and mirrors the compiled
 catalog at startup. Future mutation paths must still reapply the authoritative
 rules before committing durable item state.
 
-Neutral actor definitions live below
-`src/Shared/WorldData/Shared/Authoring/Actors`. Each World owns its spawn authoring at
-`src/Shared/WorldData/Worlds/<WorldId>/Authoring/actor-spawns.json` and deterministic
-runtime content at `src/Shared/WorldData/Worlds/<WorldId>/Runtime/world-actors.json`.
+Neutral actor definitions live below `content/actors`. Each World owns its
+spawn authoring at `content/worlds/<WorldId>/actor-spawns.json` and deterministic
+runtime content at `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 `tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
 and tests use the same framework-neutral compiler and runtime validator. Unity
 scene authoring imports and exports that content but does not replace it as the
@@ -805,8 +813,8 @@ revision, and collision revision.
 
 ### Worker Registration
 
-1. SimulationWorker validates config and loads
-   `src/Shared/WorldData/Worlds/<WorldId>/world.json`, actor runtime, and collision runtime.
+1. SimulationWorker validates config and loads the output
+   `WorldData/Worlds/<WorldId>/world.json`, actor runtime, and collision runtime.
 2. It binds UDP and reports transport readiness.
 3. It sends worker, runtime, topology, desired World, endpoint, capacity,
    protocol, simulation, and collision metadata to GameService.

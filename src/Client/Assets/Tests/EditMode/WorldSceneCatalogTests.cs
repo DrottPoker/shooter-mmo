@@ -1,9 +1,11 @@
 using System;
+using System.IO;
 using System.Linq;
 using Mmorpg.Client.Worlds;
+using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Worlds;
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -39,13 +41,15 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void CheckedInCatalogMatchesEveryCanonicalWorldManifest()
         {
-            const string worldsRoot = "Packages/com.mmorpg.world-data/Worlds";
-            var manifests = AssetDatabase
-                .FindAssets("t:TextAsset", new[] { worldsRoot })
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .Where(path => path.EndsWith("/world.json", StringComparison.Ordinal))
-                .Select(path => AssetDatabase.LoadAssetAtPath<TextAsset>(path))
-                .Select(asset => JsonUtility.FromJson<WorldManifestDocument>(asset.text))
+            var worldsDirectory = ContentLayout.WorldsDirectory(
+                RepositoryLayout.ContentRoot(RepositoryLayout.FindRoot()));
+            var manifests = ContentLayout
+                .ListWorldIds(worldsDirectory, WorldManifestFormat.FileName)
+                .Select(worldId => File.ReadAllText(Path.Combine(
+                    worldsDirectory,
+                    worldId,
+                    WorldManifestFormat.FileName)))
+                .Select(JsonUtility.FromJson<WorldManifestDocument>)
                 .OrderBy(manifest => manifest.worldId, StringComparer.Ordinal)
                 .ToArray();
             var catalogAsset = Resources.Load<TextAsset>(WorldSceneCatalog.ResourcePath);

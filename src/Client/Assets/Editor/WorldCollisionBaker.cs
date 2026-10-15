@@ -286,22 +286,15 @@ namespace Mmorpg.Client.Editor
             string authoringJson,
             CollisionWorldBakeResult result)
         {
-            var worldDirectory = Path.Combine(
-                RepositoryLayout.WorldsDirectory(RepositoryLayout.FindRoot()),
+            var repositoryRoot = RepositoryLayout.FindRoot();
+            var authoringPath = RepositoryLayout.CollisionSourcePath(
+                repositoryRoot,
                 result.Manifest.WorldId);
-            var authoringDirectory = Path.Combine(worldDirectory, "Authoring");
-            var outputDirectory = Path.Combine(
-                worldDirectory,
-                "Runtime",
-                "Resources",
-                "WorldCollision",
+            var outputDirectory = RepositoryLayout.GeneratedCollisionDirectory(
+                repositoryRoot,
                 result.Manifest.WorldId);
-            Directory.CreateDirectory(authoringDirectory);
+            Directory.CreateDirectory(Path.GetDirectoryName(authoringPath));
             Directory.CreateDirectory(outputDirectory);
-
-            var authoringPath = Path.Combine(
-                authoringDirectory,
-                "collision.json");
 
             // Chunks first and the manifest after them, so a reader never sees a manifest
             // whose checksums point at chunks that were not written.

@@ -1,0 +1,27 @@
+{
+    "id": "mob.feral_alpha",
+    "displayName": "Feral Alpha",
+    "kind": "mob",
+    "factionId": "wild",
+    "disposition": "hostile",
+    "presentationArchetypeId": "mob.feral_alpha",
+    "damagePolicy": "damageable",
+    "tags": [
+        "boss",
+        "creature",
+        "wild"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.8,
+        "centerZ": 0.0,
+        "sizeX": 1.6,
+        "sizeY": 1.6,
+        "sizeZ": 2.2
+    },
+    "capabilities": [],
+    "activityProfileId": "mob.standard",
+    "respawnProfileId": "mob.normal",
+    "corpsePersistenceMode": "durable",
+    "corpseLifetimeSeconds": 600.0
+}

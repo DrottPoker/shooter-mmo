@@ -1,82 +1,48 @@
+using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Content;
 
-if (!TryResolveArguments(
-        args,
-        out var actorAuthoringPath,
-        out var spawnAuthoringPath,
-        out var runtimePath,
-        out var verifyOnly,
-        out var argumentError))
+if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
     Console.Error.WriteLine(argumentError);
-    Console.Error.WriteLine(
-        "Usage: WorldActorCompiler [<actors.json> <spawns.json> <runtime.json>] [--verify]");
+    Console.Error.WriteLine("Usage: WorldActorCompiler " + ContentToolOptions.Usage);
     return 1;
 }
 
 try
 {
-    if (!File.Exists(actorAuthoringPath))
+    var contentRoot = options!.ContentRoot;
+    var catalog = WorldActorContent.LoadCatalog(ContentLayout.ActorsDirectory(contentRoot));
+    var worldIds = WorldActorContent.ListWorldIds(contentRoot);
+    if (worldIds.Length == 0)
     {
-        throw new FileNotFoundException(
-            "World actor authoring file does not exist.",
-            actorAuthoringPath);
+        throw new InvalidDataException(
+            $"No World below '{ContentLayout.WorldsDirectory(contentRoot)}' has "
+            + $"{ContentLayout.ActorSpawnsFileName}.");
     }
 
-    if (!File.Exists(spawnAuthoringPath))
+    foreach (var worldId in worldIds)
     {
-        throw new FileNotFoundException(
-            "World actor spawn authoring file does not exist.",
-            spawnAuthoringPath);
-    }
-
-    var actorJson = await File.ReadAllTextAsync(actorAuthoringPath);
-    var spawnJson = await File.ReadAllTextAsync(spawnAuthoringPath);
-    var actors = WorldActorJson.DeserializeActors(actorJson);
-    var spawns = WorldActorJson.DeserializeSpawns(spawnJson);
-    var runtime = WorldActorCompiler.Compile(actors, spawns);
-    var expectedRuntimeJson = WorldActorJson.SerializeRuntime(runtime);
-
-    if (verifyOnly)
-    {
-        if (!File.Exists(runtimePath))
-        {
-            throw new InvalidDataException("Compiled world actor runtime file is stale.");
-        }
-
-        var actualRuntimeJson = await File.ReadAllTextAsync(runtimePath);
-        _ = WorldActorJson.DeserializeRuntime(actualRuntimeJson);
-        if (!string.Equals(
-                NormalizeLineEndings(actualRuntimeJson),
-                expectedRuntimeJson,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("Compiled world actor runtime file is stale.");
-        }
-
+        var runtime = CompileWorld(catalog, contentRoot, worldId);
+        GeneratedOutput.WriteOrVerifyText(
+            ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
+            WorldActorJson.SerializeRuntime(runtime),
+            options.VerifyOnly,
+            $"Compiled world actors for World '{worldId}'");
         Console.WriteLine(
-            "World actors verified for world {0} at revision {1} with {2} definitions and {3} runtime instances.",
+            "World actors {0} for world {1} at revision {2} with {3} definitions and {4} runtime instances.",
+            options.VerifyOnly ? "verified" : "compiled",
             runtime.WorldId,
             runtime.Revision,
             runtime.Actors.Length,
             runtime.SpawnInstances.Length);
-        return 0;
     }
 
-    var runtimeDirectory = Path.GetDirectoryName(runtimePath);
-    if (!string.IsNullOrWhiteSpace(runtimeDirectory))
-    {
-        Directory.CreateDirectory(runtimeDirectory);
-    }
-
-    await File.WriteAllTextAsync(runtimePath, expectedRuntimeJson);
-    Console.WriteLine(
-        "World actors compiled for world {0} at revision {1} with {2} definitions and {3} runtime instances.",
-        runtime.WorldId,
-        runtime.Revision,
-        runtime.Actors.Length,
-        runtime.SpawnInstances.Length);
+    GeneratedOutput.RemoveOrRejectStale(
+        FindStaleRuntimeFiles(options.GeneratedRoot, worldIds),
+        options.VerifyOnly,
+        "Compiled world actors");
     return 0;
 }
 catch (Exception exception)
@@ -85,83 +51,33 @@ catch (Exception exception)
     return 1;
 }
 
-static bool TryResolveArguments(
-    string[] arguments,
-    out string actorAuthoringPath,
-    out string spawnAuthoringPath,
-    out string runtimePath,
-    out bool verifyOnly,
-    out string error)
+static WorldActorRuntimeDocument CompileWorld(
+    WorldActorCatalogAuthoringDocument catalog,
+    string contentRoot,
+    string worldId)
 {
-    verifyOnly = false;
-    error = string.Empty;
-    if (arguments.Length == 0
-        || (arguments.Length == 1
-            && string.Equals(arguments[0], "--verify", StringComparison.OrdinalIgnoreCase)))
+    try
     {
-        verifyOnly = arguments.Length == 1;
-        var worldData = Path.Combine(
-            FindRepositoryRoot(Directory.GetCurrentDirectory()),
-            "src",
-            "Shared",
-            "WorldData");
-        var world = Path.Combine(worldData, "Worlds", "development-world-1");
-        actorAuthoringPath = Path.Combine(
-            worldData,
-            "Shared",
-            "Authoring",
-            "Actors",
-            "core.world-actors.json");
-        spawnAuthoringPath = Path.Combine(world, "Authoring", "actor-spawns.json");
-        runtimePath = Path.Combine(world, "Runtime", "world-actors.json");
-        return true;
+        return WorldActorCompiler.Compile(catalog, WorldActorContent.LoadSpawns(contentRoot, worldId));
     }
-
-    if (arguments.Length is 3 or 4)
+    catch (WorldActorValidationException exception)
     {
-        verifyOnly = arguments.Length == 4
-            && string.Equals(arguments[3], "--verify", StringComparison.OrdinalIgnoreCase);
-        if (arguments.Length == 4 && !verifyOnly)
-        {
-            actorAuthoringPath = string.Empty;
-            spawnAuthoringPath = string.Empty;
-            runtimePath = string.Empty;
-            error = "The only supported fourth argument is --verify.";
-            return false;
-        }
-
-        actorAuthoringPath = Path.GetFullPath(arguments[0]);
-        spawnAuthoringPath = Path.GetFullPath(arguments[1]);
-        runtimePath = Path.GetFullPath(arguments[2]);
-        return true;
+        throw new InvalidDataException($"World '{worldId}': {exception.Message}", exception);
     }
-
-    actorAuthoringPath = string.Empty;
-    spawnAuthoringPath = string.Empty;
-    runtimePath = string.Empty;
-    error = "WorldActorCompiler arguments are invalid.";
-    return false;
 }
 
-static string FindRepositoryRoot(string startPath)
+static string[] FindStaleRuntimeFiles(string generatedRoot, string[] worldIds)
 {
-    var current = new DirectoryInfo(Path.GetFullPath(startPath));
-    while (current != null)
+    var directory = ContentLayout.GeneratedWorldsDirectory(generatedRoot);
+    if (!Directory.Exists(directory))
     {
-        if (File.Exists(Path.Combine(current.FullName, "Mmorpg.slnx")))
-        {
-            return current.FullName;
-        }
-
-        current = current.Parent;
+        return [];
     }
 
-    throw new DirectoryNotFoundException(
-        "Could not find the shooter-mmo repository root from '" + startPath + "'.");
-}
-
-static string NormalizeLineEndings(string value)
-{
-    return value.Replace("\r\n", "\n", StringComparison.Ordinal)
-        .Replace("\r", "\n", StringComparison.Ordinal);
+    return Directory.EnumerateDirectories(directory)
+        .Where(path => !worldIds.Contains(Path.GetFileName(path), StringComparer.Ordinal))
+        .Select(path => Path.Combine(path, ContentLayout.WorldActorsFileName))
+        .Where(File.Exists)
+        .Order(StringComparer.Ordinal)
+        .ToArray();
 }

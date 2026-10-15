@@ -1,0 +1,17 @@
+{
+  "bag": null,
+  "category": "tool",
+  "defaultPolicies": [ ],
+  "displayName": "Starter Pickaxe",
+  "equipmentSlots": [
+    "tool"
+  ],
+  "id": "tool.starter_pickaxe",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 15
+}

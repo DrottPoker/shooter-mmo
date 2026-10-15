@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Editor.Items;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
@@ -18,8 +20,20 @@ namespace Mmorpg.Client.Tests.EditMode
             var workspace = LoadCheckedInWorkspace();
             var firstCatalog = ItemCatalogCompiler.Compile(
                 workspace.Authoring.ToDomainDocument());
-            var roundTripped = ItemCatalogEditorJson.DeserializeAuthoring(
-                ItemCatalogEditorJson.SerializeAuthoring(workspace.Authoring));
+            var temporaryDirectory = CreateTemporaryDirectory();
+            ItemCatalogEditorDocument roundTripped;
+            try
+            {
+                WriteFiles(
+                    temporaryDirectory,
+                    ItemCatalogEditorContent.CreateFiles(workspace.Authoring));
+                roundTripped = ItemCatalogEditorContent.Load(temporaryDirectory);
+            }
+            finally
+            {
+                DeleteTemporaryDirectory(temporaryDirectory);
+            }
+
             var secondCatalog = ItemCatalogCompiler.Compile(
                 roundTripped.ToDomainDocument());
 
@@ -28,6 +42,27 @@ namespace Mmorpg.Client.Tests.EditMode
                 secondCatalog.Definitions.Select(definition => definition.StructuralFingerprint),
                 Is.EqualTo(firstCatalog.Definitions.Select(
                     definition => definition.StructuralFingerprint)));
+        }
+
+        [Test]
+        public void CheckedInItemContentIsInCanonicalEditorFormat()
+        {
+            var paths = ItemCatalogEditorPaths.CreateDefault();
+            var expected = ItemCatalogEditorContent.CreateFiles(
+                ItemCatalogEditorContent.Load(paths.ItemsDirectory));
+            var actual = Directory.EnumerateFiles(
+                    paths.ItemsDirectory,
+                    "*.json",
+                    SearchOption.AllDirectories)
+                .ToDictionary(
+                    path => Path.GetRelativePath(paths.ItemsDirectory, path),
+                    path => File.ReadAllText(path).Replace("\r\n", "\n"));
+
+            Assert.That(actual.Keys, Is.EquivalentTo(expected.Keys));
+            foreach (var file in expected)
+            {
+                Assert.That(actual[file.Key], Is.EqualTo(file.Value), file.Key);
+            }
         }
 
         [Test]
@@ -105,24 +140,33 @@ namespace Mmorpg.Client.Tests.EditMode
             var temporaryDirectory = CreateTemporaryDirectory();
             try
             {
-                var source = File.ReadAllText(paths.AuthoringPath);
-                var integerWeight = "\"unitWeight\": 1";
-                var weightIndex = source.IndexOf(integerWeight, StringComparison.Ordinal);
-                Assert.That(weightIndex, Is.GreaterThanOrEqualTo(0));
-                var invalidSource = source.Remove(weightIndex, integerWeight.Length)
-                    .Insert(weightIndex, "\"unitWeight\": 1.5");
-                var authoringPath = Path.Combine(temporaryDirectory, "decimal-authoring.json");
-                var runtimePath = Path.Combine(temporaryDirectory, "runtime.json");
-                File.WriteAllText(authoringPath, invalidSource);
-                var runner = new ItemCatalogCompilerProcessRunner(
+                var contentRoot = Path.Combine(temporaryDirectory, "content");
+                var generatedRoot = Path.Combine(temporaryDirectory, "generated");
+                var itemsDirectory = ContentLayout.ItemsDirectory(contentRoot);
+                WriteFiles(
+                    itemsDirectory,
+                    ItemCatalogEditorContent.CreateFiles(
+                        ItemCatalogEditorContent.Load(paths.ItemsDirectory)));
+                var definitionPath = ContentLayout.DefinitionPath(
+                    itemsDirectory,
+                    "ammunition.training_556");
+                var source = File.ReadAllText(definitionPath);
+                const string integerWeight = "\"unitWeight\": 1";
+                Assert.That(source, Does.Contain(integerWeight));
+                File.WriteAllText(
+                    definitionPath,
+                    source.Replace(integerWeight, "\"unitWeight\": 1.5"));
+                var runner = new ContentCompilerProcessRunner(
                     paths.RepositoryRoot,
-                    paths.CompilerProjectPath);
+                    ItemCatalogEditorService.CompilerToolName);
 
-                var result = runner.Compile(authoringPath, runtimePath);
+                var result = runner.Compile(contentRoot, generatedRoot);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Output, Does.Contain("unitWeight").IgnoreCase);
-                Assert.That(File.Exists(runtimePath), Is.False);
+                Assert.That(
+                    File.Exists(ContentLayout.GeneratedItemCatalogPath(generatedRoot)),
+                    Is.False);
             }
             finally
             {
@@ -190,7 +234,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 structuralRuntime);
             var validation = ItemCatalogEditorValidationResult.Passed(
                 "valid",
-                "authoring",
+                new Dictionary<string, string>(),
                 "runtime",
                 "presentation",
                 structuralRuntime,
@@ -213,31 +257,31 @@ namespace Mmorpg.Client.Tests.EditMode
             var temporaryDirectory = CreateTemporaryDirectory();
             try
             {
-                var authoringPath = Path.Combine(temporaryDirectory, "editor-authoring.json");
-                var firstRuntimePath = Path.Combine(temporaryDirectory, "first-runtime.json");
-                var secondRuntimePath = Path.Combine(temporaryDirectory, "second-runtime.json");
-                File.WriteAllText(
-                    authoringPath,
-                    ItemCatalogEditorJson.SerializeAuthoring(workspace.Authoring));
-                var runner = new ItemCatalogCompilerProcessRunner(
+                var contentRoot = Path.Combine(temporaryDirectory, "content");
+                var firstGeneratedRoot = Path.Combine(temporaryDirectory, "first");
+                var secondGeneratedRoot = Path.Combine(temporaryDirectory, "second");
+                WriteFiles(
+                    ContentLayout.ItemsDirectory(contentRoot),
+                    ItemCatalogEditorContent.CreateFiles(workspace.Authoring));
+                var runner = new ContentCompilerProcessRunner(
                     paths.RepositoryRoot,
-                    paths.CompilerProjectPath);
+                    ItemCatalogEditorService.CompilerToolName);
 
-                var firstResult = runner.Compile(authoringPath, firstRuntimePath);
-                var secondResult = runner.Compile(authoringPath, secondRuntimePath);
-                var verifyResult = runner.Verify(authoringPath, firstRuntimePath);
+                var firstResult = runner.Compile(contentRoot, firstGeneratedRoot);
+                var secondResult = runner.Compile(contentRoot, secondGeneratedRoot);
+                var verifyResult = runner.Verify(contentRoot, firstGeneratedRoot);
 
                 Assert.That(firstResult.Success, Is.True, firstResult.Output);
                 Assert.That(secondResult.Success, Is.True, secondResult.Output);
                 Assert.That(verifyResult.Success, Is.True, verifyResult.Output);
+                var firstRuntimePath = ContentLayout.GeneratedItemCatalogPath(firstGeneratedRoot);
+                var secondRuntimePath = ContentLayout.GeneratedItemCatalogPath(secondGeneratedRoot);
                 Assert.That(
                     File.ReadAllBytes(secondRuntimePath),
                     Is.EqualTo(File.ReadAllBytes(firstRuntimePath)));
-                var firstRuntime = ItemCatalogEditorJson.DeserializeRuntime(
-                    File.ReadAllText(firstRuntimePath));
-                var secondRuntime = ItemCatalogEditorJson.DeserializeRuntime(
-                    File.ReadAllText(secondRuntimePath));
-                Assert.That(secondRuntime.revision, Is.EqualTo(firstRuntime.revision));
+                Assert.That(
+                    File.ReadAllText(firstRuntimePath),
+                    Is.EqualTo(File.ReadAllText(paths.RuntimePath).Replace("\r\n", "\n")));
             }
             finally
             {
@@ -252,18 +296,11 @@ namespace Mmorpg.Client.Tests.EditMode
             var temporaryDirectory = CreateTemporaryDirectory();
             try
             {
-                var authoringPath = Path.Combine(temporaryDirectory, "authoring.json");
-                var runtimePath = Path.Combine(temporaryDirectory, "runtime.json");
-                var presentationPath = Path.Combine(temporaryDirectory, "presentation.json");
-                File.WriteAllText(authoringPath, "original authoring");
-                File.WriteAllText(runtimePath, "original runtime");
-                File.WriteAllText(presentationPath, "original presentation");
-                var paths = new ItemCatalogEditorPaths(
-                    temporaryDirectory,
-                    authoringPath,
-                    runtimePath,
-                    presentationPath,
-                    Path.Combine(temporaryDirectory, "compiler.csproj"));
+                var paths = CreateTemporaryPaths(temporaryDirectory);
+                var catalogPath = ContentLayout.CatalogPath(paths.ItemsDirectory);
+                WriteText(catalogPath, "original authoring");
+                WriteText(paths.RuntimePath, "original runtime");
+                WriteText(paths.PresentationPath, "original presentation");
                 var service = new ItemCatalogEditorService(paths, new FailingCompilerRunner());
 
                 var validation = service.Validate(workspace);
@@ -273,10 +310,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.Throws<InvalidOperationException>(() => service.Save(workspace, validation));
                 Assert.Throws<InvalidOperationException>(
                     () => service.SaveAndBake(workspace, validation));
-                Assert.That(File.ReadAllText(authoringPath), Is.EqualTo("original authoring"));
-                Assert.That(File.ReadAllText(runtimePath), Is.EqualTo("original runtime"));
+                Assert.That(File.ReadAllText(catalogPath), Is.EqualTo("original authoring"));
+                Assert.That(File.ReadAllText(paths.RuntimePath), Is.EqualTo("original runtime"));
                 Assert.That(
-                    File.ReadAllText(presentationPath),
+                    File.ReadAllText(paths.PresentationPath),
                     Is.EqualTo("original presentation"));
             }
             finally
@@ -292,24 +329,28 @@ namespace Mmorpg.Client.Tests.EditMode
             var temporaryDirectory = CreateTemporaryDirectory();
             try
             {
-                var authoringPath = Path.Combine(temporaryDirectory, "authoring.json");
-                var runtimePath = Path.Combine(temporaryDirectory, "runtime.json");
-                var blockedPresentationPath = Path.Combine(
-                    temporaryDirectory,
-                    "presentation-is-a-directory");
-                File.WriteAllText(authoringPath, "original authoring");
-                File.WriteAllText(runtimePath, "original runtime");
-                Directory.CreateDirectory(blockedPresentationPath);
-                var paths = new ItemCatalogEditorPaths(
-                    temporaryDirectory,
-                    authoringPath,
-                    runtimePath,
-                    blockedPresentationPath,
-                    Path.Combine(temporaryDirectory, "compiler.csproj"));
+                var paths = CreateTemporaryPaths(temporaryDirectory);
+                var catalogPath = ContentLayout.CatalogPath(paths.ItemsDirectory);
+                var removedDefinitionPath = ContentLayout.DefinitionPath(
+                    paths.ItemsDirectory,
+                    "material.old_ore");
+                var addedDefinitionPath = ContentLayout.DefinitionPath(
+                    paths.ItemsDirectory,
+                    "material.new_ore");
+                WriteText(catalogPath, "original authoring");
+                WriteText(removedDefinitionPath, "original definition");
+                WriteText(paths.RuntimePath, "original runtime");
+                Directory.CreateDirectory(paths.PresentationPath);
                 var service = new ItemCatalogEditorService(paths, new FailingCompilerRunner());
                 var validation = ItemCatalogEditorValidationResult.Passed(
                     "valid",
-                    "new authoring",
+                    new Dictionary<string, string>
+                    {
+                        [ContentLayout.CatalogFileName] = "new authoring",
+                        [Path.Combine(
+                            ContentLayout.DefinitionsDirectoryName,
+                            "material.new_ore.json")] = "new definition"
+                    },
                     "new runtime",
                     "new presentation",
                     workspace.CurrentRuntime,
@@ -318,14 +359,71 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.Throws<IOException>(
                     () => service.SaveAndBake(workspace, validation));
-                Assert.That(File.ReadAllText(authoringPath), Is.EqualTo("original authoring"));
-                Assert.That(File.ReadAllText(runtimePath), Is.EqualTo("original runtime"));
-                Assert.That(Directory.Exists(blockedPresentationPath), Is.True);
+                Assert.That(File.ReadAllText(catalogPath), Is.EqualTo("original authoring"));
+                Assert.That(
+                    File.ReadAllText(removedDefinitionPath),
+                    Is.EqualTo("original definition"));
+                Assert.That(File.Exists(addedDefinitionPath), Is.False);
+                Assert.That(File.ReadAllText(paths.RuntimePath), Is.EqualTo("original runtime"));
+                Assert.That(Directory.Exists(paths.PresentationPath), Is.True);
             }
             finally
             {
                 DeleteTemporaryDirectory(temporaryDirectory);
             }
+        }
+
+        [Test]
+        public void SaveWritesOneFilePerDefinitionAndDeletesRemovedDefinitions()
+        {
+            var workspace = LoadCheckedInWorkspace();
+            var temporaryDirectory = CreateTemporaryDirectory();
+            try
+            {
+                var paths = CreateTemporaryPaths(temporaryDirectory);
+                var removedDefinitionPath = ContentLayout.DefinitionPath(
+                    paths.ItemsDirectory,
+                    "material.removed_draft");
+                WriteText(removedDefinitionPath, "saved draft");
+                WriteText(paths.RuntimePath, "original runtime");
+                var service = new ItemCatalogEditorService(paths, new FailingCompilerRunner());
+                var authoringFiles = ItemCatalogEditorContent.CreateFiles(workspace.Authoring);
+                var validation = ItemCatalogEditorValidationResult.Passed(
+                    "valid",
+                    authoringFiles,
+                    "new runtime",
+                    "new presentation",
+                    workspace.CurrentRuntime,
+                    workspace.Presentation,
+                    Array.Empty<ItemCatalogDefinitionChange>());
+
+                service.Save(workspace, validation);
+
+                Assert.That(File.Exists(removedDefinitionPath), Is.False);
+                Assert.That(File.ReadAllText(paths.RuntimePath), Is.EqualTo("original runtime"));
+                Assert.That(File.ReadAllText(paths.PresentationPath), Is.EqualTo("new presentation"));
+                var reloaded = ItemCatalogEditorContent.Load(paths.ItemsDirectory);
+                Assert.That(
+                    reloaded.definitions.Select(definition => definition.id),
+                    Is.EqualTo(workspace.Authoring.definitions
+                        .Select(definition => definition.id)
+                        .OrderBy(id => id, StringComparer.Ordinal)));
+            }
+            finally
+            {
+                DeleteTemporaryDirectory(temporaryDirectory);
+            }
+        }
+
+        [Test]
+        public void DefinitionIdsThatCannotNameFilesFailBeforeAnyWrite()
+        {
+            var workspace = LoadCheckedInWorkspace();
+            var draft = workspace.CreateDefinition();
+            draft.id = "../outside";
+
+            Assert.Throws<InvalidDataException>(
+                () => ItemCatalogEditorContent.CreateFiles(workspace.Authoring));
         }
 
         [Test]
@@ -521,8 +619,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var paths = ItemCatalogEditorPaths.CreateDefault();
             return new ItemCatalogEditorWorkspace(
-                ItemCatalogEditorJson.DeserializeAuthoring(
-                    File.ReadAllText(paths.AuthoringPath)),
+                ItemCatalogEditorContent.Load(paths.ItemsDirectory),
                 ItemCatalogEditorJson.DeserializeRuntime(
                     File.ReadAllText(paths.RuntimePath)),
                 ItemPresentationCatalogJson.Deserialize(
@@ -596,15 +693,45 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        private sealed class FailingCompilerRunner : IItemCatalogCompilerRunner
+        private static ItemCatalogEditorPaths CreateTemporaryPaths(string temporaryDirectory)
         {
-            public ItemCatalogCompilerRunResult Compile(
-                string authoringPath,
-                string runtimePath)
+            return new ItemCatalogEditorPaths(
+                temporaryDirectory,
+                Path.Combine(temporaryDirectory, "content"),
+                Path.Combine(temporaryDirectory, "generated"),
+                Path.Combine(temporaryDirectory, "presentation.json"));
+        }
+
+        private static void WriteText(string path, string text)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, text);
+        }
+
+        private static void WriteFiles(
+            string directory,
+            IReadOnlyDictionary<string, string> files)
+        {
+            foreach (var file in files)
             {
-                return new ItemCatalogCompilerRunResult(
+                var path = Path.Combine(directory, file.Key);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, file.Value);
+            }
+        }
+
+        private sealed class FailingCompilerRunner : IContentCompilerRunner
+        {
+            public ContentCompilerRunResult Compile(string contentRoot, string generatedRoot)
+            {
+                return new ContentCompilerRunResult(
                     false,
                     "definitions[0].unitWeight has an invalid definition field.");
+            }
+
+            public ContentCompilerRunResult Verify(string contentRoot, string generatedRoot)
+            {
+                return Compile(contentRoot, generatedRoot);
             }
         }
     }

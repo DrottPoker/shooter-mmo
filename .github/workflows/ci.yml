@@ -75,47 +75,22 @@ jobs:
           --configuration Release
           --no-build
           --
-          src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json
-          src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json
           --verify
 
-      - name: Verify World collision data
+      - name: Verify world collision data
         run: >-
           dotnet run --project tools/WorldCollisionCompiler
           --configuration Release
           --no-build
           --
-          src/Shared/WorldData/Worlds/development-world-1/Authoring/collision.json
-          src/Shared/WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1
           --verify
 
-      - name: Verify Development World 2 collision data
-        run: >-
-          dotnet run --project tools/WorldCollisionCompiler
-          --configuration Release
-          --no-build
-          --
-          src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json
-          src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2
-          --verify
-
-      - name: Verify Development World 1 actors
+      - name: Verify world actors
         run: >-
           dotnet run --project tools/WorldActorCompiler
           --configuration Release
           --no-build
           --
-          --verify
-
-      - name: Verify Development World 2 actors
-        run: >-
-          dotnet run --project tools/WorldActorCompiler
-          --configuration Release
-          --no-build
-          --
-          src/Shared/WorldData/Shared/Authoring/Actors/core.world-actors.json
-          src/Shared/WorldData/Worlds/development-world-2/Authoring/actor-spawns.json
-          src/Shared/WorldData/Worlds/development-world-2/Runtime/world-actors.json
           --verify
 
       - name: Test

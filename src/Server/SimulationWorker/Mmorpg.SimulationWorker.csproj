@@ -24,16 +24,19 @@
     <None Update="Config\appsettings.Development.json"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\Shared\WorldData\Worlds\**\world.json"
+    <Content Include="..\..\..\content\worlds\**\world.json"
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\Shared\WorldData\Worlds\**\Runtime\world-actors.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Worlds\**\world-actors.json"
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\Shared\WorldData\Worlds\**\Runtime\Resources\WorldCollision\**\*"
-             Exclude="..\WorldData\Worlds\**\*.meta"
-             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Resources\WorldCollision\**\*"
+             Exclude="..\..\Shared\WorldData\Generated\Resources\WorldCollision\**\*.meta"
+             Link="WorldData\Worlds\%(RecursiveDir)Collision\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

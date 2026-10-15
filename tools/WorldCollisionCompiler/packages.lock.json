@@ -8,6 +8,12 @@
           "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
+      "mmorpg.tools.contentpipeline": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
       "mmorpg.worlddata": {
         "type": "Project"
       }

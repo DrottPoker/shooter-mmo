@@ -30,7 +30,10 @@ With Unity CLI.
   prefabs, and assets through `unity command ...` and never hand-edit `.unity`,
   `.prefab`, or `.asset` YAML.
 - Check compile state with `unity command console_status` after C# changes.
-- EditMode tests: `unity command run_tests --mode editor --timeout 580`.
+- EditMode tests: `unity command run_tests --mode editor --async_tests`, then
+  poll `unity command test_status` until `status` is `completed`. A synchronous
+  run fails once the suite takes longer than the Pipeline's 30 second request
+  limit, whatever `--timeout` says.
 - PlayMode tests: `unity command run_tests --mode playmode --async_tests`, then
   poll `unity command test_status` until `status` is `completed`.
 - `unity command eval_file --file <path>` runs a C# file. Keep such scripts in

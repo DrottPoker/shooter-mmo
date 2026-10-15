@@ -1,6 +1,6 @@
 # NPC And Mob System Design
 
-Last updated: 2026-07-18
+Last updated: 2026-10-15
 
 Status: Canonical design, Phase 12 foundation implemented
 
@@ -28,9 +28,10 @@ AI, Mob loot generation, final actor art, or final interaction UI.
 
 The implemented foundation includes:
 
-- Strict shared actor definitions in `src/Shared/WorldData/Shared/Authoring/Actors`,
-  per-World spawn authoring under `src/Shared/WorldData/Worlds/<WorldId>/Authoring`, and
-  deterministic runtime actor content in each World's `Runtime` directory.
+- Strict shared actor definitions in `content/actors`, with one file per actor,
+  per-World spawn authoring in `content/worlds/<WorldId>/actor-spawns.json`, and
+  deterministic runtime actor content in
+  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
 - A shared four-definition actor catalog, a checked-in
@@ -139,20 +140,24 @@ capability composition.
 
 ## Content Ownership And Compilation
 
-Neutral actor authoring belongs under:
+Neutral actor authoring and its compiled form live here:
 
 ```text
-src/Shared/WorldData/
-  Authoring/
-    Actors/
-    ActorSpawns/
-  Runtime/
-    Actors/
+content/
+  actors/
+    catalog.json                  factions, presentation, activity and respawn profiles
+    definitions/<actor-id>.json   one actor definition per file
+  worlds/<WorldId>/
+    actor-spawns.json             spawn points, groups, areas, and patrol paths
+src/Shared/WorldData/Generated/
+  Worlds/<WorldId>/
+    world-actors.json             compiled runtime content for one World
 ```
 
-The exact file split may group related definitions for authoring convenience,
-but the compiled runtime result must be deterministic, framework-neutral, and
-independent from a Unity scene or asset database.
+A definition file is named after its actor id. The compiled runtime result is
+deterministic, framework-neutral, and independent from a Unity scene or asset
+database. Every World's runtime embeds the shared catalog, so an actor change
+recompiles every World. The general content rules are in `content/README.md`.
 
 The same compiler and validation rules must be consumed by:
 
@@ -162,10 +167,12 @@ The same compiler and validation rules must be consumed by:
 - Backend unit and content tests.
 - Continuous integration.
 
-The command-line entry point is `tools/WorldActorCompiler`. Its default mode
-loads the committed canonical actor and spawn manifests, while explicit source
-and output arguments support isolated tests. `--verify` compiles in memory and
-fails when committed runtime output is missing or differs without rewriting it.
+The command-line entry point is `tools/WorldActorCompiler`. By default it
+compiles the repository actor catalog against every World that has
+`actor-spawns.json`. `--content-root` and `--generated-root` point it at other
+directories for isolated tests and for Unity Editor validation. `--verify`
+compiles in memory and fails when committed runtime output is missing, differs,
+or exists for a World without spawn content, without rewriting anything.
 
 Compilation produces a complete actor-content revision and stable structural
 fingerprints. Equivalent canonical input produces byte-for-byte equivalent

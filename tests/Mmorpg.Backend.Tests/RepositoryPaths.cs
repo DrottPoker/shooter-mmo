@@ -1,30 +1,15 @@
+using Mmorpg.WorldData.Content;
+
 namespace Mmorpg.Backend.Tests;
 
-// Repository locations for tests that read committed content. The root is found from
-// the solution marker above the test output folder.
+// Repository locations for tests that read authored content and generated World data.
 internal static class RepositoryPaths
 {
-    public static string Root { get; } = FindRoot();
+    public static string Root { get; } = ContentLayout.FindRepositoryRoot(AppContext.BaseDirectory);
 
-    public static string WorldData => Path.Combine(Root, "src", "Shared", "WorldData");
+    public static string Content => ContentLayout.ContentRoot(Root);
 
-    public static string SharedContent => Path.Combine(WorldData, "Shared");
+    public static string Generated => ContentLayout.GeneratedRoot(Root);
 
-    public static string Worlds => Path.Combine(WorldData, "Worlds");
-
-    private static string FindRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Mmorpg.slnx")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the MMORPG repository root.");
-    }
+    public static string Worlds => ContentLayout.WorldsDirectory(Content);
 }

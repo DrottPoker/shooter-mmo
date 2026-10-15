@@ -1,54 +1,94 @@
 using System.Text.Json;
 using Mmorpg.GameSimulation;
+using Mmorpg.Tools.ContentPipeline;
+using Mmorpg.WorldData.Content;
 
-if (args.Length is < 2 or > 3)
+if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
-    Console.Error.WriteLine(
-        "Usage: WorldCollisionCompiler <authoring.json> <output-directory> [--verify]");
+    Console.Error.WriteLine(argumentError);
+    Console.Error.WriteLine("Usage: WorldCollisionCompiler " + ContentToolOptions.Usage);
     return 1;
 }
 
-var authoringPath = Path.GetFullPath(args[0]);
-var outputDirectory = Path.GetFullPath(args[1]);
-var verifyOnly = args.Length == 3
-    && string.Equals(args[2], "--verify", StringComparison.OrdinalIgnoreCase);
-
-if (args.Length == 3 && !verifyOnly)
+var jsonOptions = new JsonSerializerOptions
 {
-    Console.Error.WriteLine("The only supported third argument is --verify.");
-    return 1;
-}
+    IncludeFields = true,
+    PropertyNameCaseInsensitive = true,
+    WriteIndented = true
+};
 
 try
 {
-    if (!File.Exists(authoringPath))
+    var worldIds = ContentLayout.ListWorldIds(
+        ContentLayout.WorldsDirectory(options!.ContentRoot),
+        ContentLayout.CollisionSourceFileName);
+    if (worldIds.Length == 0)
     {
-        throw new FileNotFoundException("Collision authoring file does not exist.", authoringPath);
+        throw new InvalidDataException(
+            $"No World below '{ContentLayout.WorldsDirectory(options.ContentRoot)}' has "
+            + $"{ContentLayout.CollisionSourceFileName}.");
     }
 
-    var jsonOptions = new JsonSerializerOptions
+    foreach (var worldId in worldIds)
     {
-        IncludeFields = true,
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true
-    };
-    var authoring = JsonSerializer.Deserialize<CollisionWorldAuthoringDocument>(
-        await File.ReadAllTextAsync(authoringPath),
-        jsonOptions) ?? throw new InvalidDataException("Collision authoring JSON is empty.");
-    var result = CollisionWorldCompiler.Compile(authoring);
-    var manifestJson = JsonSerializer.Serialize(result.Manifest, jsonOptions) + Environment.NewLine;
+        var result = CompileWorld(options.ContentRoot, worldId, jsonOptions);
+        var outputDirectory = ContentLayout.GeneratedCollisionDirectory(
+            options.GeneratedRoot,
+            worldId);
+        if (options.VerifyOnly)
+        {
+            VerifyOutputs(outputDirectory, result, jsonOptions);
+        }
+        else
+        {
+            await WriteOutputs(outputDirectory, result, jsonOptions);
+        }
 
-    if (verifyOnly)
-    {
-        VerifyOutputs(outputDirectory, result, jsonOptions);
         Console.WriteLine(
-            "Collision data verified for world {0} at revision {1} with {2} chunks.",
+            "Collision data {0} for world {1} at revision {2} with {3} chunks.",
+            options.VerifyOnly ? "verified" : "compiled",
             result.Manifest.WorldId,
             result.Manifest.Revision,
             result.Chunks.Count);
-        return 0;
     }
 
+    GeneratedOutput.RemoveOrRejectStale(
+        FindStaleOutputDirectories(options.GeneratedRoot, worldIds),
+        options.VerifyOnly,
+        "Compiled collision data");
+    return 0;
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine("Collision compilation failed: " + exception.Message);
+    return 1;
+}
+
+static CollisionWorldBakeResult CompileWorld(
+    string contentRoot,
+    string worldId,
+    JsonSerializerOptions jsonOptions)
+{
+    var authoringPath = ContentLayout.CollisionSourcePath(contentRoot, worldId);
+    var authoring = JsonSerializer.Deserialize<CollisionWorldAuthoringDocument>(
+        File.ReadAllText(authoringPath),
+        jsonOptions) ?? throw new InvalidDataException(
+            $"Collision authoring JSON is empty at '{authoringPath}'.");
+    var result = CollisionWorldCompiler.Compile(authoring);
+    if (!string.Equals(result.Manifest.WorldId, worldId, StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"Collision authoring '{authoringPath}' must declare worldId '{worldId}'.");
+    }
+
+    return result;
+}
+
+static async Task WriteOutputs(
+    string outputDirectory,
+    CollisionWorldBakeResult result,
+    JsonSerializerOptions jsonOptions)
+{
     Directory.CreateDirectory(outputDirectory);
     foreach (var staleChunk in Directory.EnumerateFiles(outputDirectory, "chunk_*.bytes"))
     {
@@ -62,18 +102,23 @@ try
             chunk.Data);
     }
 
-    await File.WriteAllTextAsync(Path.Combine(outputDirectory, "manifest.json"), manifestJson);
-    Console.WriteLine(
-        "Collision data compiled for world {0} at revision {1} with {2} chunks.",
-        result.Manifest.WorldId,
-        result.Manifest.Revision,
-        result.Chunks.Count);
-    return 0;
+    await File.WriteAllTextAsync(
+        Path.Combine(outputDirectory, ContentLayout.CollisionManifestFileName),
+        JsonSerializer.Serialize(result.Manifest, jsonOptions) + Environment.NewLine);
 }
-catch (Exception exception)
+
+static string[] FindStaleOutputDirectories(string generatedRoot, string[] worldIds)
 {
-    Console.Error.WriteLine("Collision compilation failed: " + exception.Message);
-    return 1;
+    var root = ContentLayout.GeneratedCollisionRoot(generatedRoot);
+    if (!Directory.Exists(root))
+    {
+        return [];
+    }
+
+    return Directory.EnumerateDirectories(root)
+        .Where(path => !worldIds.Contains(Path.GetFileName(path), StringComparer.Ordinal))
+        .Order(StringComparer.Ordinal)
+        .ToArray();
 }
 
 static void VerifyOutputs(
@@ -81,7 +126,7 @@ static void VerifyOutputs(
     CollisionWorldBakeResult expected,
     JsonSerializerOptions jsonOptions)
 {
-    var manifestPath = Path.Combine(outputDirectory, "manifest.json");
+    var manifestPath = Path.Combine(outputDirectory, ContentLayout.CollisionManifestFileName);
     if (!File.Exists(manifestPath))
     {
         throw new InvalidDataException("Compiled collision manifest is stale.");

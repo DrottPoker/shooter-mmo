@@ -1,11 +1,16 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.Server.Common.Worlds;
 
+// Reads the deployed World data folder. Each World directory holds world.json, the
+// compiled world-actors.json, and the compiled collision chunks below Collision/.
 public static class WorldManifestFileStore
 {
+    public const string CollisionDirectoryName = "Collision";
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         AllowTrailingCommas = false,
@@ -73,18 +78,14 @@ public static class WorldManifestFileStore
     {
         return Path.Combine(
             ResolveWorldDirectory(configuredRootPath, worldId),
-            "Runtime",
-            "world-actors.json");
+            ContentLayout.WorldActorsFileName);
     }
 
     public static string ResolveCollisionRuntimePath(string configuredRootPath, string worldId)
     {
         return Path.Combine(
             ResolveWorldDirectory(configuredRootPath, worldId),
-            "Runtime",
-            "Resources",
-            "WorldCollision",
-            worldId);
+            CollisionDirectoryName);
     }
 
     private static WorldManifestDocument LoadFromDirectory(

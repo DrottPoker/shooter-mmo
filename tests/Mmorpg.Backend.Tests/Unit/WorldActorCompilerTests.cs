@@ -230,7 +230,7 @@ public sealed class WorldActorCompilerTests
     [Fact]
     public void UnknownJsonMemberAndDuplicatePropertyFailStrictParsing()
     {
-        var unknown = WorldActorTestData.ActorAuthoringJson.Replace(
+        var unknown = WorldActorTestData.ActorCatalogJson.Replace(
             "\"catalogId\": \"core\",",
             "\"catalogId\": \"core\",\n  \"unknown\": true,",
             StringComparison.Ordinal);
@@ -239,7 +239,7 @@ public sealed class WorldActorCompilerTests
             "\"worldId\": \"development-world-1\",\n  \"worldId\": \"duplicate\",",
             StringComparison.Ordinal);
 
-        Assert.Throws<InvalidDataException>(() => WorldActorJson.DeserializeActors(unknown));
+        Assert.Throws<InvalidDataException>(() => WorldActorJson.DeserializeCatalog(unknown));
         Assert.Throws<InvalidDataException>(() => WorldActorJson.DeserializeSpawns(duplicate));
     }
 

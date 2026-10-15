@@ -25,6 +25,9 @@ operations, and future design do not drift into duplicate descriptions.
    bot population that can share the real shard with a Unity player.
 9. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
    layouts, and the Unity rebuild and authoring workflow.
+10. [Game Content](../content/README.md) for the authored content layout, its
+    file and naming rules, the content compilers, and the generated data. The
+    item authoring contract is in [Item Catalog Authoring](../content/items/README.md).
 
 ## Foundation Hardening
 
