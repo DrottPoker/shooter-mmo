@@ -459,6 +459,21 @@
         { "name": "CameraYawDegrees", "type": "f32", "description": "Camera facing in degrees." },
         { "name": "Buttons", "type": "MovementButtons", "description": "The held movement buttons." }
       ]
+    },
+    {
+      "name": "EntitySnapshot",
+      "family": "Replication",
+      "description": "The state of one remote entity in a simulation snapshot.",
+      "sizeConstant": "SimulationSnapshotEntitySize",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
+        {
+          "name": "LastProcessedInputSequence",
+          "type": "u32",
+          "description": "The newest input sequence the worker applied for the entity."
+        },
+        { "name": "State", "type": "PlayerState", "description": "The entity's authoritative movement state." }
+      ]
     }
   ],
   "messages": [
@@ -560,8 +575,29 @@
       "direction": "serverToClient",
       "channel": "UnreliableReceiveChannel",
       "delivery": "unreliable",
-      "codec": "handWritten",
-      "description": "One chunk of the remote entity states visible to the recipient."
+      "codec": "generated",
+      "description": "One chunk of the remote entity states visible to the recipient.",
+      "parameter": "snapshot",
+      "emptySizeConstant": "SimulationSnapshotPacketHeaderSize",
+      "fields": [
+        { "name": "SnapshotSequence", "type": "u32", "description": "Increases with every snapshot frame." },
+        { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the states." },
+        {
+          "name": "ChunkIndex",
+          "type": "u16",
+          "lessThan": "ChunkCount",
+          "description": "The position of this chunk in its frame."
+        },
+        { "name": "ChunkCount", "type": "u16", "minimum": 1, "description": "The number of chunks in the frame." },
+        {
+          "name": "Entities",
+          "type": "array",
+          "items": "EntitySnapshot",
+          "minCount": 1,
+          "maxCount": "MaximumSnapshotEntitiesPerChunk",
+          "description": "The entity states in this chunk."
+        }
+      ]
     },
     {
       "name": "EntitySpawn",
@@ -570,8 +606,39 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "An entity entered the recipient's interest."
+      "codec": "generated",
+      "description": "An entity entered the recipient's interest.",
+      "parameter": "spawn",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
+        { "name": "Kind", "type": "EntityKind", "description": "The kind of entity." },
+        {
+          "name": "PersistentId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "format": "guid",
+          "description": "The persistent id, such as the character id."
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "description": "The name shown for the entity."
+        },
+        {
+          "name": "ArchetypeId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The presentation archetype."
+        },
+        { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the initial state." },
+        {
+          "name": "InitialState",
+          "type": "PlayerState",
+          "description": "The movement state when the entity entered interest."
+        }
+      ]
     },
     {
       "name": "EntityDespawn",
@@ -580,8 +647,18 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "An entity left the recipient's interest."
+      "codec": "generated",
+      "description": "An entity left the recipient's interest.",
+      "parameter": "despawn",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
+        {
+          "name": "Reason",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "Why the entity left interest, as a code."
+        }
+      ]
     },
     {
       "name": "CarryStateChanged",

@@ -394,7 +394,13 @@ public static partial class ProtocolSchemaLoader
         }
         else
         {
-            var itemType = scope.Resolve(node, "items", node.RequiredString("items"));
+            var itemTypeName = node.RequiredString("items");
+            if (itemTypeName == "string")
+            {
+                throw node.Error("items", "string elements need an items object with their maxLength.");
+            }
+
+            var itemType = scope.Resolve(node, "items", itemTypeName);
             element = new ElementDefinition(itemType, ValueRules.None);
         }
 
@@ -456,12 +462,26 @@ public static partial class ProtocolSchemaLoader
                     Maximum = maximum,
                     LessThan = OptionalMemberName(node, "lessThan")
                 };
+            case StringWireType:
+                var format = (node.OptionalString("format") ?? "any") switch
+                {
+                    "any" => StringFormat.Any,
+                    "guid" => StringFormat.Guid,
+                    _ => throw node.Error("format", "must be any or guid.")
+                };
+                var oneOf = node.OptionalStrings("oneOf");
+                if (oneOf is { Count: 0 })
+                {
+                    throw node.Error("oneOf", "must list at least one value.");
+                }
+
+                return ValueRules.None with { Format = format, OneOf = oneOf };
             case ArrayWireType array:
                 var distinct = node.OptionalBoolean("distinct", false);
                 var distinctBy = OptionalMemberName(node, "distinctBy");
-                if (distinct && array.Element.Type is not (PrimitiveType or EnumWireType))
+                if (distinct && array.Element.Type is not (PrimitiveType or EnumWireType or StringWireType))
                 {
-                    throw node.Error("distinct", "applies to arrays of primitives and enums; use distinctBy for structs.");
+                    throw node.Error("distinct", "applies to arrays of primitives, enums, and strings; use distinctBy for structs.");
                 }
 
                 if (distinctBy is not null
@@ -700,6 +720,18 @@ public static partial class ProtocolSchemaLoader
             if (Primitives.TryGetValue(typeName, out var primitive))
             {
                 return new PrimitiveType(primitive);
+            }
+
+            if (typeName == "string")
+            {
+                var maximumLength = ReadIntBound(node, "maxLength")
+                    ?? throw node.Error("maxLength", "is required for string.");
+                if (maximumLength.Value is < 1 or > 4096)
+                {
+                    throw node.Error("maxLength", "must be between 1 and 4096.");
+                }
+
+                return new StringWireType(maximumLength);
             }
 
             var enumDefinition = enums.FirstOrDefault(definition => definition.Name == typeName);

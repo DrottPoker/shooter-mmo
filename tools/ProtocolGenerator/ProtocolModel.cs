@@ -129,6 +129,10 @@ public sealed record StructWireType(StructDefinition Definition) : WireType;
 // A u8 count followed by the elements.
 public sealed record ArrayWireType(ElementDefinition Element, int MinimumCount, IntBound MaximumCount) : WireType;
 
+// A u16 UTF-8 byte length, then the bytes. At most MaximumLength UTF-16 characters.
+// Required text must not be empty or whitespace when encoded.
+public sealed record StringWireType(IntBound MaximumLength) : WireType;
+
 // One byte whose bits are boolean properties. Unknown bits are rejected.
 public sealed record BitsWireType(IReadOnlyList<BitDefinition> Bits) : WireType;
 
@@ -143,9 +147,19 @@ public sealed record ValueRules(
     bool NonEmpty,
     string? LessThan,
     bool Distinct,
-    string? DistinctBy)
+    string? DistinctBy,
+    StringFormat Format,
+    IReadOnlyList<string>? OneOf)
 {
-    public static readonly ValueRules None = new(null, null, null, null, false, null, false, null);
+    public static readonly ValueRules None = new(null, null, null, null, false, null, false, null, StringFormat.Any, null);
+}
+
+public enum StringFormat
+{
+    Any,
+
+    // Text that Guid.TryParse accepts.
+    Guid
 }
 
 public sealed record ElementDefinition(WireType Type, ValueRules Rules);

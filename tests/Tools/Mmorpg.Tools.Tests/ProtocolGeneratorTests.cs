@@ -212,6 +212,48 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("private static bool IsDefined(RealtimeButtons value)", family, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TextFieldsReadWriteAndValidateTheirLimits()
+    {
+        var schema = GeneratedSchema();
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Owner", "type": "string", "maxLength": "MaximumThings", "format": "guid" }"""));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Section", "type": "string", "maxLength": 8, "oneOf": [ "bag", "equipment" ] }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(
+            new SizeRange(7 + 4 + 1 + 9 + 1 + 3 + 3, 7 + 4 + 1 + (4 * 9) + 1 + 2 + (3 * 4) + 2 + (3 * 8)),
+            WireSizes.OfMessage(model.Messages.Single()));
+        Assert.Contains("TryReadString(reader, MaximumThings, out var owner, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("WriteString(writer, value.Owner, MaximumThings, \"value.Owner\");", family, StringComparison.Ordinal);
+        Assert.Contains("|| string.IsNullOrWhiteSpace(value.Owner)", family, StringComparison.Ordinal);
+        Assert.Contains("|| !Guid.TryParse(value.Owner, out _)", family, StringComparison.Ordinal);
+        Assert.Contains("|| (value.Section != \"bag\" && value.Section != \"equipment\")", family, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("string without a maximum length", "$.messages[0].fields[3].maxLength")]
+    [InlineData("string array without an items object", "$.messages[0].fields[3].items")]
+    [InlineData("empty oneOf", "$.messages[0].fields[3].oneOf")]
+    [InlineData("unknown string format", "$.messages[0].fields[3].format")]
+    public void InvalidTextFieldsAreRejectedWithTheirPath(string mutation, string path)
+    {
+        var schema = GeneratedSchema();
+        var field = mutation switch
+        {
+            "string without a maximum length" => """{ "name": "Label", "type": "string" }""",
+            "string array without an items object" => """{ "name": "Tags", "type": "array", "items": "string", "maxCount": 2 }""",
+            "empty oneOf" => """{ "name": "Label", "type": "string", "maxLength": 4, "oneOf": [] }""",
+            _ => """{ "name": "Label", "type": "string", "maxLength": 4, "format": "email" }"""
+        };
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(field));
+
+        var exception = Assert.Throws<ProtocolSchemaException>(() => ProtocolSchemaLoader.Load(schema.ToJsonString()));
+        Assert.Equal(path, exception.Path);
+    }
+
     [Theory]
     [InlineData("unknown field type", "$.messages[0].fields[0].type")]
     [InlineData("rule that does not fit the type", "$.messages[0].fields[0].nonEmpty")]

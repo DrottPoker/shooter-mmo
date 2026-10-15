@@ -74,7 +74,7 @@ Structural phase 2 moves the families into the schema one at a time:
 | Family | Codec |
 | --- | --- |
 | `Movement` | Generated; `Movement/RealtimeProtocol.Movement.cs` holds its cross-field rules |
-| `Replication` | Hand-written |
+| `Replication` | Generated; no hand-written rules |
 | `Items` | Hand-written |
 | `Session` | Hand-written |
 | `WorldActors` | Hand-written |
@@ -102,6 +102,7 @@ each as a get-only property with the field's description.
 | `f32` | `float` | Always finite |
 | `bool` | `bool` | One byte |
 | `guid` | `Guid` | 16 bytes |
+| `string` | `string` | Text as described above; `maxLength` caps it in UTF-16 characters, and it may not be empty or whitespace when encoded |
 | An enum name | The enum | One byte; the value must be defined, and a flags value may only combine defined bits |
 | A struct name | The struct class | The struct's fields |
 | `array` | An array of `items` | A `u8` count from `minCount` to `maxCount`, then the elements |
@@ -114,6 +115,8 @@ decoding:
   may name a limit.
 - `exclusiveMinimum` and `exclusiveMaximum` for floats.
 - `nonEmpty` for a `guid` that must not be `Guid.Empty`.
+- `"format": "guid"` for a string that `Guid.TryParse` must accept, and
+  `oneOf` for a string that must be one of the listed values.
 - `lessThan` for an integer that must be below another integer field.
 - `distinct` for an array of primitives or enums whose elements must differ,
   and `distinctBy` for an array of structs whose elements must differ in one
@@ -143,6 +146,8 @@ largest size exceeds 1,023 bytes fails generation, so snapshots provably fit.
 A reliable message whose largest size can exceed 1,200 bytes must set
 `"runtimeSizeCheck": true`, which makes the risk a visible decision; encoding
 such a packet then throws `InvalidOperationException` when it is too large.
+Text counts as up to three UTF-8 bytes per allowed UTF-16 character, the most
+any character encodes to.
 
 ## Message Descriptors
 

@@ -193,9 +193,9 @@
       "anyOf": [{ "type": "number" }, { "$ref": "#/$defs/name" }]
     },
     "type": {
-      "description": "u8, u16, u32, u64, i32, i64, f32, bool, guid, array, bits8, or the name of an enum or struct.",
+      "description": "u8, u16, u32, u64, i32, i64, f32, bool, guid, string, array, bits8, or the name of an enum or struct.",
       "type": "string",
-      "pattern": "^(u8|u16|u32|u64|i32|i64|f32|bool|guid|array|bits8|[A-Z][A-Za-z0-9]*)$"
+      "pattern": "^(u8|u16|u32|u64|i32|i64|f32|bool|guid|string|array|bits8|[A-Z][A-Za-z0-9]*)$"
     },
     "fields": {
       "type": "array",
@@ -214,6 +214,12 @@
           "exclusiveMaximum": { "type": "number" },
           "nonEmpty": { "type": "boolean" },
           "lessThan": { "$ref": "#/$defs/name" },
+          "maxLength": {
+            "description": "The most UTF-16 characters of a string: a number or the name of a limit.",
+            "$ref": "#/$defs/bound"
+          },
+          "format": { "description": "guid: the text must be a GUID that Guid.TryParse accepts.", "enum": ["any", "guid"] },
+          "oneOf": { "description": "The only allowed values of a string.", "type": "array", "minItems": 1, "items": { "type": "string" } },
           "items": {
             "description": "The element type of an array, or an object with the type and its value rules.",
             "anyOf": [
@@ -228,7 +234,10 @@
                   "maximum": { "$ref": "#/$defs/bound" },
                   "exclusiveMinimum": { "type": "number" },
                   "exclusiveMaximum": { "type": "number" },
-                  "nonEmpty": { "type": "boolean" }
+                  "nonEmpty": { "type": "boolean" },
+                  "maxLength": { "$ref": "#/$defs/bound" },
+                  "format": { "enum": ["any", "guid"] },
+                  "oneOf": { "type": "array", "minItems": 1, "items": { "type": "string" } }
                 }
               }
             ]

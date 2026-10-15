@@ -27,6 +27,7 @@ internal static class CodecEmitter
             },
             EnumWireType enumType => enumType.Definition.ClassName,
             StructWireType structType => structType.Definition.ClassName,
+            StringWireType => "string",
             ArrayWireType array => TypeName(array.Element.Type) + "[]",
             _ => throw new InvalidOperationException($"Type {type} has no C# type.")
         };
@@ -226,6 +227,9 @@ internal static class CodecEmitter
             case EnumWireType:
                 writer.Line($"writer.Write((byte){expression});");
                 break;
+            case StringWireType text:
+                writer.Line($"WriteString(writer, {expression}, {text.MaximumLength.Expression}, {CSharpWriter.Literal(expression)});");
+                break;
             case StructWireType structType:
                 writer.Line($"Write{structType.Definition.Name}(writer, {expression});");
                 break;
@@ -313,6 +317,12 @@ internal static class CodecEmitter
         {
             case PrimitiveType primitive:
                 EmitPrimitiveRead(writer, ReaderSuffix(primitive.Kind), local);
+                return local;
+            case StringWireType text:
+                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out var {local}, out error))");
+                writer.Line("return false;");
+                writer.Close();
+                writer.BlankLine();
                 return local;
             case EnumWireType enumType:
                 EmitPrimitiveRead(writer, "Byte", local + "Byte");
@@ -480,6 +490,20 @@ internal static class CodecEmitter
                 break;
             case EnumWireType:
                 yield return $"!IsDefined({expression})";
+                break;
+            case StringWireType text:
+                yield return $"string.IsNullOrWhiteSpace({expression})";
+                yield return $"{expression}.Length > {text.MaximumLength.Expression}";
+                if (valueRules.Format == StringFormat.Guid)
+                {
+                    yield return $"!Guid.TryParse({expression}, out _)";
+                }
+
+                if (valueRules.OneOf is not null)
+                {
+                    yield return "(" + string.Join(" && ", valueRules.OneOf.Select(option => $"{expression} != {CSharpWriter.Literal(option)}")) + ")";
+                }
+
                 break;
             case StructWireType structType:
                 yield return $"!IsValid{structType.Definition.Name}({expression})";

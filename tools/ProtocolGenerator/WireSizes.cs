@@ -27,6 +27,9 @@ public static class WireSizes
         {
             PrimitiveType primitive => SizeRange.Fixed(PrimitiveSize(primitive.Kind)),
             EnumWireType or BitsWireType => SizeRange.Fixed(1),
+            // A UTF-16 character encodes to at most three UTF-8 bytes; a surrogate pair
+            // encodes to four bytes for two characters.
+            StringWireType text => new SizeRange(2 + 1, 2 + (3L * text.MaximumLength.Value)),
             StructWireType structType => OfFields(structType.Definition.Fields),
             ArrayWireType array => new SizeRange(
                 1 + (array.MinimumCount * Of(array.Element.Type).Minimum),

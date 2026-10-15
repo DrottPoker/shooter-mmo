@@ -171,6 +171,22 @@ internal sealed class SchemaNode
         throw new ProtocolSchemaException(Child(name), "must be an integer or the name of a limit.");
     }
 
+    public IReadOnlyList<string>? OptionalStrings(string name)
+    {
+        if (!TryRead(name, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Array
+            || value.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String))
+        {
+            throw new ProtocolSchemaException(Child(name), "must be an array of strings.");
+        }
+
+        return value.EnumerateArray().Select(item => item.GetString()!).ToArray();
+    }
+
     // Reads the property as an object when it is one; other kinds leave it for another reader.
     public bool TryReadObject(string name, out SchemaNode node)
     {
