@@ -4,11 +4,11 @@ Last updated: 2026-07-19
 
 ## Purpose
 
-`Tools/StackStressGenerator` is the repeatable load harness for the realtime
+`tools/StackStressGenerator` is the repeatable load harness for the realtime
 stack. It has two explicit modes so SimulationWorker capacity can be measured
-separately from account, placement, session, AuthService, and PostgreSQL load.
+separately from account, placement, session, GameService, and PostgreSQL load.
 
-| Mode | Real AuthService | PostgreSQL | Realtime UDP | Primary use |
+| Mode | Real GameService | PostgreSQL | Realtime UDP | Primary use |
 | --- | :---: | :---: | :---: | --- |
 | `worker-only` | No | No | Yes | Isolate SimulationWorker hotspots and capacity |
 | `full-stack` | Yes | Yes | Yes | Measure the complete login-to-game lifecycle and shared stack pressure |
@@ -42,7 +42,7 @@ StackStressGenerator
   in-memory stress authority <--- authenticated HTTP ---> SimulationWorker
   headless stress bots        -------- LiteNetLib UDP ---> SimulationWorker
 
-AuthService: not running
+GameService: not running
 PostgreSQL: not used
 Unity: not used
 ```
@@ -56,11 +56,11 @@ for the lifetime of the generator process.
 ### Full-stack mode
 
 ```text
-StackStressGenerator ---- player HTTP APIs ----> AuthService ---- SQL ----> PostgreSQL
-SimulationWorker ------- service HTTP APIs ----> AuthService
+StackStressGenerator ---- player HTTP APIs ----> GameService ---- SQL ----> PostgreSQL
+SimulationWorker ------- service HTTP APIs ----> GameService
 StackStressGenerator ---- LiteNetLib UDP ------> SimulationWorker
-AuthService -------- session cache and auth rate limits ------------> Redis
-AuthService and SimulationWorker health checks ---------------------> Redis
+GameService -------- session cache and auth rate limits ------------> Redis
+GameService and SimulationWorker health checks ---------------------> Redis
 ```
 
 Each full-stack bot completes the normal public lifecycle:
@@ -72,13 +72,13 @@ Each full-stack bot completes the normal public lifecycle:
 5. Optionally repeat authenticated session validation requests to isolate the
    Redis cache and PostgreSQL fallback cost.
 6. List characters and shards.
-7. Request a normal join ticket through AuthService placement.
+7. Request a normal join ticket through GameService placement.
 8. Join SimulationWorker over UDP and run the same realtime workload as
    worker-only mode.
 9. Leave the simulation cleanly and log out the account session.
 
 All bots still use production account authentication, placement, join tickets,
-UDP item commands, worker authority checks, AuthService transactions, and
+UDP item commands, worker authority checks, GameService transactions, and
 PostgreSQL custody. Non-lifecycle workloads use guarded Development-only fixture
 routes only to create each bot's initial items and the shared durable corpse.
 The measured gameplay operations do not call those fixture routes. Each bot owns
@@ -108,9 +108,9 @@ the visible set before this dense fallback is needed.
 
 Shared corpse traffic has two separate bounds. One committed mutation is
 encoded once and reuses the same packet bytes for every viewer. Open and refresh
-state targets only the requester. Mutations for one corpse enter AuthService one
+state targets only the requester. Mutations for one corpse enter GameService one
 at a time through a worker-local coordinator, while different corpses remain
-parallel. This retains AuthService idempotency and final PostgreSQL validation
+parallel. This retains GameService idempotency and final PostgreSQL validation
 without occupying the complete connection pool with waiters for one corpse row.
 The performance meter publishes
 `simulation_worker.corpse.mutation.backlog` and
@@ -122,19 +122,19 @@ retains the maximum observed queue depth.
 Full-stack mode is intentionally restricted to a disposable local database.
 It refuses to start unless all of these checks pass:
 
-- AuthService and PostgreSQL use loopback addresses.
+- GameService and PostgreSQL use loopback addresses.
 - The PostgreSQL database name contains `stress` or `test`.
 - `--confirm-disposable-database` exactly matches the connected database name.
-- AuthService has initialized the schema.
+- GameService has initialized the schema.
 - The `accounts` table is empty before the run.
 - The final account row count matches the number of successful registrations.
 
-Gameplay fixtures add another safety boundary. AuthService accepts fixture
+Gameplay fixtures add another safety boundary. GameService accepts fixture
 creation only when all of these conditions hold:
 
 - The hosting environment is `Development`.
 - `StackStressFixtures:Enabled` is explicitly true.
-- AuthService is connected to loopback PostgreSQL whose database name contains
+- GameService is connected to loopback PostgreSQL whose database name contains
   `stress` or `test`.
 - The request is authenticated as a real account, originates from loopback, and
   supplies the configured fixture secret.
@@ -155,9 +155,9 @@ session secrets are not written to the JSON report.
 PostgreSQL uses a temporary in-memory filesystem, so `docker compose down`
 discards the complete stress database.
 
-AuthService caps its Npgsql pool at `Database:MaximumPoolSize`, currently `64`.
+GameService caps its Npgsql pool at `Database:MaximumPoolSize`, currently `64`.
 Do not raise this value merely to make a stress tier pass. The combined pool
-limits of all AuthService replicas plus worker, health, monitoring, and
+limits of all GameService replicas plus worker, health, monitoring, and
 administrative clients must remain below PostgreSQL's non-reserved connection
 capacity. Pool saturation should queue bounded work. A transient database
 connection failure returns `503 database_unavailable`.
@@ -167,8 +167,8 @@ connection failure returns `503 database_unavailable`.
 Run from the repository root:
 
 ```powershell
-dotnet restore ShooterMmo.slnx --locked-mode
-dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet restore Mmorpg.slnx --locked-mode
+dotnet build Mmorpg.slnx --configuration Release --no-restore
 ```
 
 Expected result: the complete solution, including `StackStressGenerator`,
@@ -180,12 +180,12 @@ service configuration with every accepted baseline.
 
 ## Run Worker-only Mode
 
-AuthService, PostgreSQL, Redis, and Unity are not required.
+GameService, PostgreSQL, Redis, and Unity are not required.
 
 In the first PowerShell terminal, start the generator:
 
 ```powershell
-dotnet run --project Tools/StackStressGenerator `
+dotnet run --project tools/StackStressGenerator `
   --configuration Release `
   --no-build `
   -- `
@@ -206,7 +206,7 @@ start the worker. The following metrics override is also useful:
 
 ```powershell
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile
+dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result:
@@ -225,7 +225,7 @@ Stop SimulationWorker when the generator completes. Clear the overrides printed
 by the generator and this metrics override before normal local development:
 
 ```powershell
-Remove-Item Env:AUTH_SERVICE_BASE_URL -ErrorAction SilentlyContinue
+Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_SERVICE_SECRET -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_MAX_CONNECTIONS -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORLD_ID -ErrorAction SilentlyContinue
@@ -248,26 +248,28 @@ docker compose -f docker-compose.stack-stress.yml down
 docker compose -f docker-compose.stack-stress.yml up -d --wait
 ```
 
-In terminal 1, start AuthService against the disposable database. The high
+In terminal 1, start GameService against the disposable database. The high
 authentication limit is a load-test override because the normal local limit is
-five authentication requests per minute per client address.
+five authentication requests per minute per client address. GameService accepts
+at most 1,000 authentication requests per window, which covers the registration
+and login of 100 bots in one minute.
 
 ```powershell
 $env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
 $env:ConnectionStrings__Redis = "127.0.0.1:56379"
 $env:SIMULATION_WORKER_SERVICE_SECRET = "stack-stress-local-worker-secret-2026"
 $env:DevelopmentSimulationBots__Enabled = "false"
-$env:RateLimiting__Authentication__PermitLimit = "100000"
+$env:RateLimiting__Authentication__PermitLimit = "1000"
 $env:RateLimiting__Authentication__WindowSeconds = "60"
 $env:ASPNETCORE_URLS = "http://127.0.0.1:5500"
-dotnet run --project AuthService --configuration Release --no-build --no-launch-profile
+dotnet run --project src/Server/GameService --configuration Release --no-build --no-launch-profile
 ```
 
-Expected result: migrations complete and AuthService listens on
+Expected result: migrations complete and GameService listens on
 `http://127.0.0.1:5500`.
 
 For `inventory`, `loot-hotspot`, or `mixed-gameplay`, also set the guarded
-fixture configuration before starting AuthService:
+fixture configuration before starting GameService:
 
 ```powershell
 $env:DOTNET_ENVIRONMENT = "Development"
@@ -282,7 +284,7 @@ In terminal 2, start SimulationWorker with the matching secret and isolated
 Redis endpoint:
 
 ```powershell
-$env:AUTH_SERVICE_BASE_URL = "http://127.0.0.1:5500"
+$env:GAME_SERVICE_BASE_URL = "http://127.0.0.1:5500"
 $env:ConnectionStrings__Redis = "127.0.0.1:56379"
 $env:SIMULATION_WORKER_SERVICE_SECRET = "stack-stress-local-worker-secret-2026"
 $env:SIMULATION_WORKER_UDP_PORT = "27025"
@@ -290,11 +292,11 @@ $env:SIMULATION_WORKER_ADVERTISED_HOST = "127.0.0.1"
 $env:SIMULATION_WORKER_ADVERTISED_UDP_PORT = "27025"
 $env:SIMULATION_WORLD_ID = "development-world-2"
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile
+dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result: the worker registers `local-shard-1` and
-`development-world-2` with AuthService and advertises UDP port `27025`.
+`development-world-2` with GameService and advertises UDP port `27025`.
 
 For `loot-hotspot` or `mixed-gameplay`, use a one-second durable corpse
 reconciliation interval so a newly provisioned stress corpse becomes visible
@@ -309,13 +311,13 @@ environment instead of passing it as an argument:
 
 ```powershell
 $env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
-dotnet run --project Tools/StackStressGenerator `
+dotnet run --project tools/StackStressGenerator `
   --configuration Release `
   --no-build `
   -- `
   --mode full-stack `
   --workload lifecycle `
-  --auth-service-url http://127.0.0.1:5500 `
+  --game-service-url http://127.0.0.1:5500 `
   --confirm-disposable-database shooter_mmo_stack_stress_test `
   --bots 100 `
   --http-concurrency 32 `
@@ -329,7 +331,7 @@ dotnet run --project Tools/StackStressGenerator `
 Expected result:
 
 - All 100 accounts register and receive one character each.
-- Every account logs in and obtains a normal AuthService placement and ticket.
+- Every account logs in and obtains a normal GameService placement and ticket.
 - Every account performs the configured authenticated session checks, reported
   separately as `account_session_validate`.
 - All 100 bots join, run the UDP workload, and leave cleanly.
@@ -346,13 +348,13 @@ one explicit workload in terminal 3. This example runs the complete mixed path:
 ```powershell
 $env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
 $env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
-dotnet run --project Tools/StackStressGenerator `
+dotnet run --project tools/StackStressGenerator `
   --configuration Release `
   --no-build `
   -- `
   --mode full-stack `
   --workload mixed-gameplay `
-  --auth-service-url http://127.0.0.1:5500 `
+  --game-service-url http://127.0.0.1:5500 `
   --confirm-disposable-database shooter_mmo_stack_stress_test `
   --bots 100 `
   --http-concurrency 32 `
@@ -373,14 +375,20 @@ Expected result:
 - Every gameplay bot receives only the minimal initial fixture items.
 - Loot workloads create one shared durable Mob corpse at the configured hotspot.
 - Item and corpse commands travel over UDP and are authorized by the worker.
-- AuthService commits every accepted change through its normal item transaction
+- GameService commits every accepted change through its normal item transaction
   boundary.
 - Concurrent revision conflicts are reported as expected conflicts, not hidden
   as successes or counted as infrastructure failures.
+- In `mixed-gameplay`, `corpse_out_of_range` also counts as an expected
+  conflict. All bots start crowded on the corpse at the World spawn and keep
+  moving, so the worker correctly rejects a request from a bot that drifted past
+  the 3 m interaction radius. Repeated runs showed it in both the old and the new
+  code, from zero to about one percent of corpse requests. The stationary
+  `loot-hotspot` bots never leave the radius, so there it stays unexpected.
 - The run exits zero only when lifecycle checks, gameplay operations, and final
   PostgreSQL item invariants pass.
 
-Stop AuthService and SimulationWorker with Ctrl+C, then clean up:
+Stop GameService and SimulationWorker with Ctrl+C, then clean up:
 
 ```powershell
 docker compose -f docker-compose.stack-stress.yml down
@@ -393,7 +401,7 @@ Remove-Item Env:RateLimiting__Authentication__PermitLimit -ErrorAction SilentlyC
 Remove-Item Env:RateLimiting__Authentication__WindowSeconds -ErrorAction SilentlyContinue
 Remove-Item Env:RedisAcceleration__SessionCacheEnabled -ErrorAction SilentlyContinue
 Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue
-Remove-Item Env:AUTH_SERVICE_BASE_URL -ErrorAction SilentlyContinue
+Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_ADVERTISED_UDP_PORT -ErrorAction SilentlyContinue
@@ -471,7 +479,7 @@ but that ceiling is not a supported capacity claim. Do not change a production
 default based on a single local machine.
 
 Use worker-only mode first to establish the realtime boundary. Repeat accepted
-tiers in full-stack mode to identify when AuthService, HTTP admission, or
+tiers in full-stack mode to identify when GameService, HTTP admission, or
 PostgreSQL becomes the limiting component. Run the highest clean tier for 30 to
 60 minutes to detect memory growth, GC pressure, session-heartbeat instability,
 database contention, and late disconnects.
@@ -507,7 +515,7 @@ Full-stack reports additionally contain:
 - Per-gameplay-operation request, success, expected-conflict,
   unexpected-rejection, timeout, incomplete-request, stable result-code, and
   latency summaries.
-- AuthService process CPU, memory, and thread summaries when the local process
+- GameService process CPU, memory, and thread summaries when the local process
   can be identified.
 - PostgreSQL connection, active wait, idle-in-transaction, transaction, row,
   temporary-file, I/O timing, and deadlock statistics.
@@ -520,8 +528,8 @@ SimulationWorker logs interval timing for network polling, asynchronous
 completion handling, join queue and finalization, simulation ticks and lag,
 movement, collision streaming, interest work, snapshot construction and send,
 and fixed-tick resynchronization. Timing metrics are also published through the
-`ShooterMmo.SimulationWorker.Performance` meter. Network counters remain under
-`ShooterMmo.SimulationWorker.Realtime`. Performance counters also expose shared
+`Mmorpg.SimulationWorker.Performance` meter. Network counters remain under
+`Mmorpg.SimulationWorker.Realtime`. Performance counters also expose shared
 snapshot packet encoding, sent packets, and deferred remote entity updates.
 
 ## Quality Boundary
@@ -537,7 +545,7 @@ A tier is not supported merely because every process remains alive. Require:
 - Remote entity cadence and deferred-update rate match the tier's documented
   quality target. A process remaining alive is not enough if remote presentation
   falls below that target.
-- Worker, AuthService, and generator working sets stabilize after warmup.
+- Worker, GameService, and generator working sets stabilize after warmup.
 - Worker registration and simulation-session leases remain valid.
 - Full-stack HTTP operations complete without unexpected failure codes.
 - Gameplay profiles complete without unexpected item or corpse rejection and
@@ -603,7 +611,7 @@ required before declaring a supported production tier.
 ## Current Full-stack Baseline
 
 These local runs were recorded on 2026-07-19 on the same Ryzen 7 5800 machine.
-They used the normal AuthService account and placement APIs, real PostgreSQL,
+They used the normal GameService account and placement APIs, real PostgreSQL,
 real worker ticket consumption and session leases, and the realtime UDP load.
 
 | Run | Bots | HTTP concurrency | Steady interval | Complete lifecycle | HTTP failures | PostgreSQL max connections | Snapshot gaps | Input ack p95 | Result |
@@ -613,14 +621,14 @@ real worker ticket consumption and session leases, and the realtime UDP load.
 | After pool bound | 250 | 64 | 60 s | 250/250 | 0 | 66 | 0 | 148.4 ms | Clean short run |
 | Controlled overload | 400 | 64 | 30 s | 400/400 | 0 | 66 | 128,529 | 479.5 ms | Worker snapshot quality boundary failed |
 
-Before the pool bound, one AuthService process could grow its implicit Npgsql
+Before the pool bound, one GameService process could grow its implicit Npgsql
 pool to PostgreSQL's complete 100-connection limit. PostgreSQL logged repeated
 `too many clients already` failures across registration, character, login,
 placement, and worker ticket-consumption requests. This caused 52 bot failures.
 
 With `Database:MaximumPoolSize` set to `64`, the exact same 250-bot and
 64-concurrency profile completed every lifecycle. Database connections remained
-at or below 66 including non-AuthService clients, with no rollback, deadlock, or
+at or below 66 including non-GameService clients, with no rollback, deadlock, or
 expired unreleased session. Registration and login p95 were 5.46 and 5.33
 seconds under the intentional password-hashing and pool queue burst. This is
 bounded admission backpressure, not a steady-state gameplay delay.
@@ -634,7 +642,7 @@ is still required before replacing this historical row.
 ### Mixed Gameplay Results
 
 The following profiles used one shared durable corpse, real UDP item and corpse
-commands, AuthService transactions, PostgreSQL custody, and final database
+commands, GameService transactions, PostgreSQL custody, and final database
 invariant checks. The 250-bot comparisons used the same seed, 64-way HTTP
 admission, five 50-bot ramp steps five seconds apart, three-second inventory
 operations, four-second corpse operations, and a 60-second steady interval.
@@ -676,7 +684,7 @@ Full-stack mode measures account registration, character creation, login, shard
 discovery, placement, tickets, simulation-session leases, UDP gameplay traffic,
 leave, and logout. Explicit gameplay workloads also measure durable inventory
 relocation and shared corpse deposit and loot through the real worker and
-AuthService transaction path.
+GameService transaction path.
 
 Trading, combat-driven deaths, insurance claims, quest item policies, Bank,
 Recovery Storage, equipment, Bag nesting, and multiple geographically separated
@@ -690,7 +698,7 @@ Distributed load generation and remote service targets are not implemented.
 List every supported option:
 
 ```powershell
-dotnet run --project Tools/StackStressGenerator -- --help
+dotnet run --project tools/StackStressGenerator -- --help
 ```
 
 Important mode-specific options are:
@@ -698,7 +706,7 @@ Important mode-specific options are:
 - `--mode worker-only|full-stack`
 - `--workload lifecycle|inventory|loot-hotspot|mixed-gameplay`
 - `--authority-url` for the worker-only in-memory authority
-- `--auth-service-url` for full-stack AuthService
+- `--game-service-url` for full-stack GameService
 - `--confirm-disposable-database` for the exact full-stack database name
 - `--http-concurrency` for concurrent full-stack account lifecycles
 - `--session-validation-requests-per-bot` for 0 to 1000 repeated authenticated

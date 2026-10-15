@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-07-18
+Last updated: 2026-10-15
 
 Status: Locked design target; Phases 1 through 15 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
@@ -52,7 +52,7 @@ backpack, satchel, case, or another visual form without changing the domain.
 
 ## Authority And Data Ownership
 
-- AuthService owns persistent item definitions mirrored from shared content,
+- GameService owns persistent item definitions mirrored from shared content,
   item instances, slot assignments, equipment assignments, policies, bank,
   Secure Container, Recovery Storage, durable corpse custody, and all durable
   item transactions.
@@ -61,7 +61,7 @@ backpack, satchel, case, or another visual form without changing the domain.
   presentation, one-active-loot-interaction enforcement, combat state, and
   authoritative encumbrance effects for its assigned shard.
 - SimulationWorker requests durable mutations through an authenticated
-  AuthService service boundary. It never writes item tables directly.
+  GameService service boundary. It never writes item tables directly.
 - Unity sends intents and displays authoritative results. It never supplies
   trusted weight, capacity, policy, quantity, slot compatibility, or ownership.
 - Redis is not an item, inventory, corpse-custody, or transaction authority.
@@ -117,7 +117,7 @@ The game does not use weapon attachments in the current design.
 ### Catalog Authoring Workflow
 
 Phase 2 provides a custom Unity Editor window for item authoring. It operates on
-the canonical authoring JSON under `WorldData/Shared/Authoring/Items` and invokes the
+the canonical authoring JSON under `content/items`, one file per definition, and invokes the
 same deterministic catalog compiler used by command-line verification and CI.
 
 The Editor is a content-authoring interface, not an item authority. Unity assets
@@ -135,7 +135,7 @@ Item data is split by responsibility:
   layout.
 - Unity client presentation owns icons, localization keys, visual prefabs, and
   other non-authoritative presentation metadata.
-- AuthService owns durable instance state such as identity, quantity, custody,
+- GameService owns durable instance state such as identity, quantity, custody,
   policy state, and revision.
 
 The client presentation catalog is keyed by stable item definition id and is
@@ -147,7 +147,7 @@ and reuses the result across scenes and inventory refreshes.
 
 Server snapshots and mutation results send definition ids and changed instance
 state. They do not repeatedly send icons, complete definitions, or Unity asset
-references. AuthService never serves image bytes as part of inventory state.
+references. GameService never serves image bytes as part of inventory state.
 
 The implemented account read boundary exposes the current catalog separately
 from one complete owned-character inventory snapshot. Character reads require
@@ -448,7 +448,7 @@ by the owning account, but their mutations still require SimulationWorker's live
 access evaluation. Local Development can explicitly evaluate Bank and Recovery
 as globally accessible for testing. Production continues to evaluate authored
 major-city service points, and the Development option never includes insurance
-access or bypasses AuthService authority.
+access or bypasses GameService authority.
 The corpse context adapter exposes durable corpse custody as a bidirectional
 container without changing custody optimistically. Carried items may be
 deposited into corpse slots, and corpse items may be looted into carried slots.
@@ -619,9 +619,9 @@ Each mutation is a short transaction.
    SimulationWorker.
 2. SimulationWorker validates connection, active session, corpse identity,
    proximity, and the one-active-interaction rule.
-3. The worker calls AuthService with an idempotent operation id and expected item
+3. The worker calls GameService with an idempotent operation id and expected item
    state.
-4. AuthService locks the character, corpse, source item, optional occupied
+4. GameService locks the character, corpse, source item, optional occupied
    target, and both containers, then rereads authoritative state.
 5. The transaction validates both slot directions, stack compatibility, policy,
    prospective weight, and the 140 percent cap.
@@ -690,7 +690,7 @@ While a character has an active simulation session, durable mutations follow:
 ```text
 Unity intent
   -> assigned SimulationWorker
-  -> authenticated AuthService item transaction
+  -> authenticated GameService item transaction
   -> PostgreSQL commit
   -> authoritative inventory and carry-state revision
   -> SimulationWorker encumbrance update
@@ -698,7 +698,7 @@ Unity intent
 ```
 
 SimulationWorker authenticates with its logical worker id and runtime id.
-AuthService validates the exact active simulation session, character, worker,
+GameService validates the exact active simulation session, character, worker,
 runtime, and Shard before accepting an in-world command.
 
 Bank and Recovery Storage access additionally require a city-service validation
@@ -767,7 +767,7 @@ claim. Phases 1 through 15 now implement the neutral catalog, structural
 fingerprints, strict validation, pure rules, Unity authoring, transactional
 PostgreSQL definition mirror, constrained custody schema, canonical equipment
 slots, account Secure Container entitlement foundation, and complete empty item
-state for every active character. AuthService also exposes authenticated,
+state for every active character. GameService also exposes authenticated,
 read-only current-catalog and owned-character inventory snapshots with stable
 definition references and active policy summaries. Its internal transaction
 kernel now creates and mutates durable item instances atomically, owns canonical
@@ -784,13 +784,13 @@ Phase 7 carries each admission-fenced weight, capacity, and monotonic item-state
 revision into the active SimulationWorker session and Unity movement state. A
 session heartbeat applies later committed revisions monotonically. SimulationWorker
 and Unity use the same GameSimulation encumbrance rules for sprint eligibility
-and movement speed, while AuthService remains the durable item and hard-cap
+and movement speed, while GameService remains the durable item and hard-cap
 authority.
 
 Phase 8 adds the live SimulationWorker item-mutation path over the same durable
 kernel. A versioned reliable intent is bound to the exact account, character,
 simulation session, worker runtime, assignment, and Shard. The worker validates
-its authoritative position against configured service points, while AuthService
+its authoritative position against configured service points, while GameService
 revalidates the complete live authority inside the mutation transaction. Bank
 and Recovery Storage require their matching live access. Secure Container
 operations do not require city access. Only a committed result can advance the
@@ -815,7 +815,7 @@ SimulationWorker owns bounded presentation, one active view per player,
 three-dimensional proximity and lifetime validation, and viewer fanout. Full and
 partial transfers, internal corpse rearrangement, ordinary occupied-slot swaps,
 and atomic Bag aggregate swaps
-reuse the AuthService transaction kernel with targeted revisions and stable lock
+reuse the GameService transaction kernel with targeted revisions and stable lock
 ordering. Unity assembles protocol-v11 presence, complete snapshots, slot tags,
 and committed deltas without applying optimistic custody. The generic capsule
 and uGUI are replaceable presentation.
@@ -844,6 +844,6 @@ No vendor, gathering, quest progression, combat death producer, damage system,
 or Mob loot-table producer calls these boundaries yet. Final corpse art remains
 a later phase. Phase 13 routes insurance and quest item
 lifecycle actions through the Phase 12 world actor, shared crosshair targeting,
-one-active-interaction lease, and authoritative capability dispatch. AuthService
+one-active-interaction lease, and authoritative capability dispatch. GameService
 owns the atomic insurance charge, policy mutation, exact quest grant lineage,
 and audit. No Zone or Layer identity was introduced.

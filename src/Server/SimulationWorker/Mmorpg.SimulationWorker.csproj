@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\DotNet\GameProtocol\Mmorpg.GameProtocol.csproj" />
+    <ProjectReference Include="..\..\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
+    <ProjectReference Include="..\..\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
+    <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiteNetLib" Version="2.1.4" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mmorpg.SimulationWorker.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Config\appsettings.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Config\appsettings.Development.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\content\worlds\**\world.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Worlds\**\world-actors.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Resources\WorldCollision\**\*"
+             Exclude="..\..\Shared\WorldData\Generated\Resources\WorldCollision\**\*.meta"
+             Link="WorldData\Worlds\%(RecursiveDir)Collision\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

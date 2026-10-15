@@ -1,0 +1,22 @@
+{
+  "name": "Mmorpg.Client",
+  "rootNamespace": "Mmorpg.Client",
+  "references": [
+    "Unity.InputSystem",
+    "LiteNetLib",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData",
+    "Mmorpg.WorldData.Client",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

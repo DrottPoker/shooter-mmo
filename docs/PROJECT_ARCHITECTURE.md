@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-07-19
+Last updated: 2026-10-15
 
 ## Purpose
 
@@ -38,11 +38,30 @@ economy are global. Fleets are compute placement boundaries, not data silos.
 Players will be able to use the same character in different regions and shards,
 subject to the one-active-session rules.
 
+## Naming
+
+`Mmorpg` is the internal codename until the game has a product name. It is the
+root of every namespace (`Mmorpg.GameService`, `Mmorpg.SimulationWorker`,
+`Mmorpg.Server.Common`, `Mmorpg.GameProtocol`, `Mmorpg.GameSimulation`,
+`Mmorpg.WorldData`, `Mmorpg.Client`, `Mmorpg.Tools`), of the project and Unity
+assembly names, and of the Unity packages (`com.mmorpg.*`). Type names, file
+names, and Resources paths never contain the codename, so a later rename only
+touches namespaces, project and package names, and the test environment
+variables (`MMORPG_TEST_POSTGRES`, `MMORPG_TEST_REDIS`).
+
+`GameService` is the backend process for accounts, characters, items, corpses,
+and Shard placement. It was previously named `AuthService`.
+
+Persisted and local infrastructure identifiers keep their original names until
+a deliberate migration: the `shooter_mmo` database names and users, the Docker
+container and volume names, the `shooter-mmo` Redis key prefix, and the
+repository name. Renaming them would orphan existing local data and caches.
+
 ## Topology Model
 
 ```text
 Global Services
-  AuthService
+  GameService
   PostgreSQL
   Redis
   future economy, social, inventory, and persistence services
@@ -72,7 +91,7 @@ running shard.
 A shard belongs to one fleet and references exactly one World definition at a
 time. The binding is accepted runtime state, not permanent character or shard
 ownership. A replacement worker proposes its configured `WorldId` on its first
-heartbeat. AuthService locks the shard row and may persist the new binding only
+heartbeat. GameService locks the shard row and may persist the new binding only
 when there is no healthy assignment, pending unexpired join ticket, active
 unexpired simulation session, or open durable corpse. The same transaction
 creates the new assignment, so concurrent registration cannot bypass the
@@ -81,7 +100,7 @@ passes. Its pending tickets and simulation sessions are released before the
 blockers are counted, so a crashed worker cannot block a rebind until its
 leases expire. Open durable corpses always block.
 
-A node also belongs to one fleet. AuthService permits an assignment only when
+A node also belongs to one fleet. GameService permits an assignment only when
 the worker's node and target shard belong to the same fleet. After a successful
 offline World rebind, the replacement worker must start with the same `WorldId`
 and matching World content.
@@ -96,7 +115,7 @@ objects exist today.
 
 ```text
                       HTTPS or local HTTP
-Unity Client ------------------------------------> AuthService --------> PostgreSQL
+Unity Client ------------------------------------> GameService --------> PostgreSQL
      |                                                  ^
      | LiteNetLib UDP                                   | service-authenticated HTTP
      v                                                  |
@@ -104,24 +123,24 @@ SimulationWorker --------------------------------------+
      |
      +--------------------------------------------> Redis readiness
 
-AuthService --------------------------------------> Redis session cache,
+GameService --------------------------------------> Redis session cache,
                                                      auth rate limits,
                                                      and readiness
 ```
 
-Unity uses AuthService for identity, characters, shard discovery, and placement.
-AuthService returns a SimulationWorker endpoint only with a short-lived join
+Unity uses GameService for identity, characters, shard discovery, and placement.
+GameService returns a SimulationWorker endpoint only with a short-lived join
 ticket. Realtime gameplay packets travel directly between Unity and the assigned
-worker. AuthService never proxies realtime traffic.
-AuthService also consumes the deterministic WorldData runtime item catalog as a
+worker. GameService never proxies realtime traffic.
+GameService also consumes the deterministic WorldData runtime item catalog as a
 bundled build input. That is a content dependency, not a network authority
 relationship.
 
 ## Repository Boundaries
 
-### AuthService
+### GameService
 
-`AuthService` is the only ASP.NET Core application. It owns:
+`GameService` is the only ASP.NET Core application. It owns:
 
 - Accounts, password hashes, and revocable account sessions.
 - Characters and ownership.
@@ -139,13 +158,34 @@ relationship.
   authentication rate limits. PostgreSQL remains the durable session authority.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
 
-Feature folders remain inside the service that owns them. Configuration lives
-under `AuthService/Config`.
+GameService is one process and one deployable, but its code is a modular
+monolith whose project references enforce one dependency order:
 
-AuthService owns one bounded Npgsql pool per process. The checked-in
+```text
+Platform <- Accounts <- Characters <- Placement <- Items <- host
+```
+
+| Project | Path | Owns |
+| --- | --- | --- |
+| `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, platform options, and `IGameServiceModule` |
+| `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Accounts, account sessions, account and worker authentication, policies, login and registration rate limits, and Redis session acceleration |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Characters, ownership, and character currency |
+| `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | World definitions, Fleets, Nodes, Shards, the worker registry, assignments, join tickets, simulation session leases, and Development simulation bots |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | The item catalog, item state and transactions, corpses, death partition, Recovery, policies, item operations maintenance, and the item development tools |
+| `Mmorpg.GameService` | `src/Server/GameService` | `Program.cs`, the configuration loader, database startup and the frozen baseline migrations, health routes, and the shipped `Config` and content files |
+
+Each module exposes only its module class, its options, and its `Contracts`
+namespace. A module reads, writes, or locks another module's tables only
+through the owner's contract, inside the caller's transaction, or through SQL
+fragments the owner publishes. A lower module publishes an SPI when a higher
+module must react in the same transaction. [GameService Modules](GAME_SERVICE_MODULES.md)
+records table ownership, the access rules, the lock order, every contract, and
+the guard tests.
+
+GameService owns one bounded Npgsql pool per process. The checked-in
 `Database:MaximumPoolSize` is `64`, leaving connection headroom on a default
 100-connection PostgreSQL server for worker traffic, health probes, stress
-sampling, administration, and shutdown. Deployments with multiple AuthService
+sampling, administration, and shutdown. Deployments with multiple GameService
 replicas must budget the combined per-process pool limits below PostgreSQL's
 non-reserved connection capacity. Transient Npgsql connection failures return
 `503 database_unavailable` instead of an unclassified internal server error.
@@ -156,7 +196,7 @@ non-reserved connection capacity. Transient Npgsql connection failures return
 ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 
 - UDP admission, protocol validation, and join and leave handshakes.
-- Exact worker runtime identity and its AuthService registration lease.
+- Exact worker runtime identity and its GameService registration lease.
 - Active simulation sessions and connection-to-entity bindings.
 - Server-assigned network entity ids and reliable spawn and despawn.
 - Fixed-rate authoritative movement and collision queries.
@@ -172,14 +212,89 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - Position-driven world collision chunk streaming.
 - Fail-fast configuration and collision validation.
 
-Configuration lives under `SimulationWorker/Config`. A process receives its
+Configuration lives under `src/Server/SimulationWorker/Config`. A process receives its
 worker, Fleet, Node, Shard, and desired World identity through validated
-configuration. `WorldData/Worlds/<WorldId>/world.json` owns map-local identity,
+configuration. `content/worlds/<WorldId>/world.json` owns map-local identity,
 client scene, movement bounds, authoritative spawn, and item service
-coordinates. Selecting `SimulationWorker:WorldId` loads that self-contained
-World directory, including collision and actor runtime content. Shared movement
+coordinates. The build copies it with the World's compiled collision and actor
+runtime content into one output World directory, and selecting
+`SimulationWorker:WorldId` loads that directory. Shared movement
 physics, networking, quotas, interest, collision streaming, and corpse radii
 remain process policy rather than map content.
+
+#### Realtime Server Structure And Threading Contract
+
+`RealtimeSimulationService` is a thin hosted service. Its public constructor
+passes the injected services to `RealtimeServerComposition`, the only place that
+creates realtime components, and `ExecuteAsync` runs `RealtimeServer.RunAsync`.
+The components are not registered in dependency injection, so other hosted
+services cannot reach loop-confined state. All of them live below
+`src/Server/SimulationWorker/Realtime` in the `Mmorpg.SimulationWorker.Realtime`
+namespace, in folders that mirror the protocol families:
+
+| Folder | Responsibility |
+| --- | --- |
+| `Transport` | `LiteNetLibRealtimeTransport` owns the `NetManager` and resolves peers by id, `RealtimeConnectionAdmission` decides connection requests, `RealtimePeerSender` sends packets and protocol rejections. |
+| `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation and the orphan sweep. |
+| `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table in `RealtimeMessageRoutes`. |
+| `Operations` | `RealtimeCompletionQueue`, `RealtimeCompletionProcessor`, `RealtimeOperationTracker`, `AuthorityOperationScheduler`, and the completion records. |
+| `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors` | One loop-side handler per feature plus, where GameService or capability calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks, `EntityPresenceReplicator` owns the interest manager, and `SnapshotReplicator` owns snapshot budgets and fairness. |
+
+One sequential loop strand owns the realtime state. Each iteration polls the
+transport, drains completed operations within a budget, runs due simulation
+ticks, supervises peers, sweeps orphaned sessions, and then waits for the poll
+interval. The loop may resume on any thread-pool thread; the await gives each
+iteration a happens-before edge to the next. Every change to these types must
+keep the following contract:
+
+- Loop confinement. Every component except `RealtimeCompletionQueue` and
+  `RealtimeOperationTracker` is confined to the loop and uses no lock. Off-loop
+  code may only call synchronized services, post completions, and log, and it
+  may read only the immutable `PeerId` of a peer context.
+- The thread boundary is a type boundary. A feature's off-loop part is a
+  `*AuthorityOperations` class whose constructor receives only synchronized
+  services, the completion queue, and a logger.
+- LiteNetLib callbacks run inside `PollEvents` because `UnsyncedEvents` stays
+  false. A freed peer id can only be reused after its disconnect event, which is
+  what makes resolving peers by id safe. Never enable `UnsyncedEvents`.
+- Async work starts inline on the loop and is tracked; it is never wrapped in
+  `Task.Run` or `Task.Yield`. The synchronous prefix matters: a detached release
+  removes the local session before its first await, world interaction open,
+  close, and rejections complete synchronously, and an uncontended corpse
+  mutation acquires its gate synchronously.
+- All completions use one FIFO queue across peers and features, and each
+  completion names the handler that finalizes it. A pass processes at least one
+  completion and stops when the budget of one eighth of a tick is used.
+- Every finalizer first checks that the peer context still owns its id and is
+  connected, then that the session id and token still match. A stale corpse
+  completion releases a view reservation only for a context that still owns its
+  id.
+- A peer runs at most one item, corpse, or world interaction authority operation
+  at a time and queues at most eight more.
+- Peers are iterated in registry insertion order. Snapshot fairness and
+  broadcast order depend on it, so the table stays a plain dictionary.
+- A tick runs collision streaming, carry state and movement per player in
+  entity id order, world actor activity, interaction revalidation every fifth of
+  a second, snapshots at the snapshot rate, and corpse presence twice per
+  second. At most five ticks catch up before the clock resynchronizes.
+- Shutdown stops the transport, waits for in-flight operations, clears peers,
+  interest, bindings, entities, carry state, corpse viewers, interaction leases,
+  world actors, cached corpse views, and the orphan sweep state, zeroes the
+  population gauges, and logs `Realtime transport stopped.` last. Completions
+  produced during shutdown are not finalized.
+- A failing packet or completion disconnects only its own peer with
+  `internal_error`. An exception in a tick, peer supervision, or the orphan
+  sweep still stops the host.
+- Components log through the service's `ILogger<RealtimeSimulationService>`, so
+  the log category and templates stay stable. Completion record names appear in
+  the failure log and must not change.
+- Corpse range checks keep their exact float arithmetic, and the realtime code
+  never changes `src/Shared`.
+
+`IRealtimePeerConnection` and `IRealtimePeerDirectory` are the transport seam.
+Tests drive single components in memory with recording peers, and
+`RealtimeServerHarness` drives the whole service over real UDP with a scripted
+GameService.
 
 ### Shared
 
@@ -194,9 +309,17 @@ It must not become a dumping ground for feature logic.
 
 ### GameProtocol
 
-`GameProtocol/Runtime` is a local Unity package and the single source for the
-binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
+`src/Shared/GameProtocol/Runtime` is a local Unity package and the single source for the
+binary realtime contract. `src/Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
+
+The static `RealtimeProtocol` facade is one partial class. `RealtimeProtocol.cs`
+holds the version, channels, framing, error messages, and the primitive readers
+and writers. Each message family has its own folder with a message file and a
+codec file: `Session` (join, leave, disconnect), `Movement` (input, settings,
+owner snapshot), `Replication` (entity presence and simulation snapshots),
+`Items`, `Corpses`, and `WorldActors`. A new message belongs to one family folder
+and adds its type to `RealtimeMessageType` in the core file.
 
 Protocol version 14 includes:
 
@@ -256,8 +379,8 @@ prove the bounded tier or add spatial, frequency, or byte-budget degradation.
 
 ### GameSimulation
 
-`GameSimulation/Runtime` is the shared fixed-step simulation source. Unity uses
-it directly as a local package and `Shared/DotNet/GameSimulation` compiles it
+`src/Shared/GameSimulation/Runtime` is the shared fixed-step simulation source. Unity uses
+it directly as a local package and `src/Shared/DotNet/GameSimulation` compiles it
 for SimulationWorker.
 
 It owns movement integration, carry-state encumbrance, sprint restrictions,
@@ -266,38 +389,45 @@ codecs. Its carry wrapper delegates capacity, hard-cap, and multiplier arithmeti
 to the pure WorldData item rules. A carry tuple above the hard cap is valid,
 because death can leave an involuntary overflow. Only voluntary transitions are
 limited, through the shared `EncumbranceRules.IsAllowedVoluntaryTransition` rule
-that AuthService and the Unity target advisor both use. It has no Unity,
+that GameService and the Unity target advisor both use. It has no Unity,
 transport, database, or presentation dependency.
 
 ### WorldData
 
-`WorldData` is shared content, so it correctly remains at repository root.
-`WorldData/Shared` contains global catalogs and domain rules.
-`WorldData/Worlds/<WorldId>` is a self-contained map package with a canonical
-`world.json`, collision and actor authoring, deterministic actor runtime, and
-compiled checksummed collision chunks. A shard references one World and its
-worker loads that directory.
+Authored content and compiled data are separate. `content/` at the repository
+root is the only authored source: the item and actor catalogs with one file per
+definition, and one directory per World with its `world.json`, actor spawns,
+and collision source. The `src/Shared/WorldData` Unity package holds the shared
+domain rules and compilers, the Unity content tools, and the deterministic data
+compiled from `content/` below `Generated/`. `Mmorpg.WorldData.Content.ContentLayout`
+defines every content and generated location and the definition file naming
+rules for Unity, the .NET tools, and tests. A shard references one World and its
+worker loads that World's manifest and compiled data. `content/README.md`
+describes the layout and the pipeline.
 
-`Tools/WorldCollisionCompiler` builds and verifies the same data consumed by
-SimulationWorker and Unity. Static collision is deterministic and shared.
+`tools/WorldCollisionCompiler`, `tools/ItemCatalogCompiler`, and
+`tools/WorldActorCompiler` share the `tools/ContentPipeline` library for their
+command line, strict JSON parsing, and generated-file verification. Each
+compiles every World at once and fails verification for stale or orphaned
+generated data. `tools/WorldCollisionCompiler` builds and verifies the same data
+consumed by SimulationWorker and Unity. Static collision is deterministic and shared.
 Dynamic collision uses a mutable spatial hash behind the same collision-query
 interface, leaving room for doors, lifts, and other server-owned objects.
 
-`WorldData/Shared/Authoring/Items` owns the strict neutral item catalog source,
-and `WorldData/Shared/Runtime/Items` contains its deterministic compiled form. The catalog
+`content/items` owns the strict neutral item catalog source, and
+`src/Shared/WorldData/Generated/Items` contains its deterministic compiled form. The catalog
 has stable identities, one complete revision, per-definition and per-tier
 structural fingerprints, and no Shard identity. Framework-neutral catalog and
-pure rule source is compiled for Unity by the `ShooterMmo.WorldData` assembly and
-for .NET tooling and tests through `Shared/DotNet/WorldData`. Neither compilation
-target becomes an authority. AuthService validates and mirrors the compiled
+pure rule source is compiled for Unity by the `Mmorpg.WorldData` assembly and
+for .NET tooling and tests through `src/Shared/DotNet/WorldData`. Neither compilation
+target becomes an authority. GameService validates and mirrors the compiled
 catalog at startup. Future mutation paths must still reapply the authoritative
 rules before committing durable item state.
 
-Neutral actor definitions live below
-`WorldData/Shared/Authoring/Actors`. Each World owns its spawn authoring at
-`WorldData/Worlds/<WorldId>/Authoring/actor-spawns.json` and deterministic
-runtime content at `WorldData/Worlds/<WorldId>/Runtime/world-actors.json`.
-`Tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
+Neutral actor definitions live below `content/actors`. Each World owns its
+spawn authoring at `content/worlds/<WorldId>/actor-spawns.json` and deterministic
+runtime content at `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
+`tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
 and tests use the same framework-neutral compiler and runtime validator. Unity
 scene authoring imports and exports that content but does not replace it as the
 source consumed by SimulationWorker.
@@ -311,15 +441,15 @@ immutable shared movement state and applies the same multiplier and sprint
 threshold in SimulationWorker and Unity prediction. These rules have
 no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.
 
-`WorldData/Editor/Items` contains the Editor-only `ShooterMmo.WorldData.Editor`
-assembly and the canonical `Shooter MMO > Tools > Item Catalog` window. It edits
+`src/Shared/WorldData/Editor/Items` contains the Editor-only `Mmorpg.WorldData.Editor`
+assembly and the canonical `MMORPG > Tools > Item Catalog` window. It edits
 the neutral authoring JSON and invokes the same strict .NET compiler used by CI.
 Runtime WorldData assemblies do not reference `UnityEditor`.
 
 `Assets/Editor` contains project-local orchestration tools below the shared
-`Shooter MMO > Tools` menu root. `Inventory Item Grants` invokes guarded,
-machine-readable AuthService Development commands and renders their response. It
-never references PostgreSQL or item persistence directly. AuthService routes
+`MMORPG > Tools` menu root. `Inventory Item Grants` invokes guarded,
+machine-readable GameService Development commands and renders their response. It
+never references PostgreSQL or item persistence directly. GameService routes
 every requested grant through `ItemTransactionService`, so catalog, slot,
 policy, revision, weight, and hard-cap authority remain in the backend.
 
@@ -339,7 +469,7 @@ it never owns item custody or applies an optimistic mutation.
 
 ### Unity Client
 
-`shooter-mmorpg-unity-client` owns presentation, input, prediction,
+`src/Client` owns presentation, input, prediction,
 reconciliation, interpolation, scene transitions, HTTP serialization, and the
 persistent UDP client. It never owns authoritative gameplay state. See
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
@@ -351,23 +481,30 @@ and metrics.
 
 ### Tests And Tools
 
-`Tests/ShooterMmo.Backend.Tests` contains unit, socket-level, and isolated
-PostgreSQL integration tests. Unity tests live inside the Unity project. `Tools`
+`tests` holds one test project per server module: Server.Common, the
+GameService host with the architecture guard tests under `Architecture`,
+Platform, Accounts, Characters, Placement, Items, and SimulationWorker. Unit,
+socket-level, and isolated PostgreSQL tests live with the module they test.
+`Mmorpg.Shared.Tests` covers the shared runtime and the content compilers,
+`Mmorpg.Tools.Tests` the tools, and `Mmorpg.Integration.Tests` the flows across
+modules and processes. Shared test infrastructure lives under `tests/Testing`;
+see [Backend Tests](../tests/README.md). Unity tests live inside the Unity
+project. `Tools`
 contains repository-wide verification, collision and item content builds, and
 external stress tools. `StackStressGenerator` has a worker-only mode with an
-in-memory loopback authority and a full-stack mode that uses normal AuthService
+in-memory loopback authority and a full-stack mode that uses normal GameService
 account, character, login, placement, and session routes against a guarded
 disposable local PostgreSQL database. Explicit full-stack inventory and shared
 loot workloads provision minimal starting state through secret-protected,
 Development-only, loopback fixture endpoints, then measure the normal UDP worker
-authority, AuthService item transaction, and PostgreSQL custody path. Both modes
+authority, GameService item transaction, and PostgreSQL custody path. Both modes
 use manually polled headless UDP clients without per-bot transport threads.
 Bounded latency reservoirs and process samplers keep long local soak tests from
 accumulating every acknowledgement sample.
 
 `ActiveSimulationBots` reuses the same tool-only headless UDP client core but
-runs beside the real AuthService and SimulationWorker. A Development-only,
-loopback-only AuthService endpoint issues protected in-memory bot identities and
+runs beside the real GameService and SimulationWorker. A Development-only,
+loopback-only GameService endpoint issues protected in-memory bot identities and
 exact-runtime tickets. Worker ticket consumption, session heartbeat and release
 route in-memory bot credentials to that authority and all other credentials to
 the unchanged PostgreSQL services. Reserved worker capacity prevents bots from
@@ -383,14 +520,14 @@ corpse custody, concurrent corpse interaction, NPC insurance and quest item
   lifecycle, live or durable Mob corpse variants, and operational hardening
   implemented
 
-AuthService owns the durable item schema, mirrored definitions, character item
+GameService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
 and the implemented internal transaction boundary. PostgreSQL remains the
 authority. The schema, read model, and command kernel are present before player
 item traffic so later routes build on one constrained custody model instead of
 inventing endpoint-local state or SQL.
 
-AuthService account-session routes expose the current catalog, complete
+GameService account-session routes expose the current catalog, complete
 item-state, focused bank state, and focused Recovery Storage state only when the
 requested active character belongs to that account. Each query uses one
 PostgreSQL `REPEATABLE READ`, read-only transaction. Character responses use
@@ -409,10 +546,13 @@ uses the same character row lock, so a mutation and session acquisition cannot
 both pass concurrently. In-world proximity and city-service validation remain
 owned by the SimulationWorker live boundary.
 
-All durable commands enter `ItemTransactionService`. One command opens one
-connection and one `READ COMMITTED` transaction, claims the operation row, and
-then locks character item states, Bag aggregate roots and containers, item rows,
-and policy or delivery rows in canonical sorted order. A savepoint lets a stable
+All durable commands enter `ItemTransactionService`, a facade with one typed
+overload per command. Each overload routes its command to the item transaction
+kernel and to one stateless handler for its command family. The kernel owns the
+transaction: one command opens one connection and one `READ COMMITTED`
+transaction, claims the operation row, and then the handler locks character item
+states, Bag aggregate roots and containers, item rows, and policy or delivery
+rows in canonical sorted order. A savepoint lets a stable
 domain rejection persist its idempotent result while rolling back the complete
 candidate mutation. Successful commands recompute weight and equipped Bag
 capacity, advance revisions, append relational audit changes, and persist a
@@ -422,9 +562,13 @@ capacity bonus still applies. Startup bootstrap corrects older stored carry
 tuples and advances the character item-state revision only when reconciliation
 changes weight or capacity.
 
-The transaction context resolves current definitions and slot data from the
-mirrored catalog but delegates stack, equipment, Bag, Secure Container, policy
-capability, and integer-weight decisions to WorldData rules. The kernel does not
+Handlers reach the transaction through a context with five facets: actor
+authority, locks, state reads, slot placement, and the change journal. The
+kernel finalizes the journal and commits; handlers never end a transaction.
+`docs/GAME_SERVICE_MODULES.md` describes the kernel layout and its guard tests.
+The context resolves current definitions and slot data from the mirrored catalog
+but delegates stack, equipment, Bag, Secure Container, policy capability, and
+integer-weight decisions to WorldData rules. The kernel does not
 depend on HTTP, Unity, or SimulationWorker runtime state. Account, system, and
 simulation-worker authorization contexts are explicit command inputs. Offline
 access and exact live-session access are actor requirements enforced while the
@@ -453,7 +597,7 @@ and sends committed revisions to Unity over the reliable control channel.
 SimulationWorker owns live item-service proximity from its authoritative player
 position. While a character is active, a bounded per-peer queue serializes
 reliable item intents before the worker requests durable mutation through the
-service-authenticated AuthService boundary. AuthService revalidates the exact
+service-authenticated GameService boundary. GameService revalidates the exact
 account, character, simulation session and token, active account session,
 worker, runtime, Shard, and assignment inside the same transaction as the
 mutation. The worker applies carry state only from a committed result and never
@@ -463,12 +607,12 @@ Bank and Recovery Storage operations require a matching worker-validated service
 point. Secure Container operations require no city service. Insurance and quest
 item-lifecycle operations require a matching Phase 12 interaction session and
 capability handler. The worker asserts only the access already validated by that
-session. AuthService revalidates the live authority tuple, uses server-owned
+session. GameService revalidates the live authority tuple, uses server-owned
 insurance price and quest grant configuration, and commits through the same item
 transaction kernel.
 
 SimulationWorker also owns live corpse discovery, proximity, and viewer state.
-The runtime store contains only AuthService-provided corpse identity, transform,
+The runtime store contains only GameService-provided corpse identity, transform,
 presentation, section summaries, revision, and absolute expiry. A shared
 per-peer authority queue permits one in-flight item or corpse operation and one
 active corpse view per player while allowing many viewers on one corpse. Every
@@ -479,13 +623,13 @@ For local testing only, SimulationWorker loads an environment-specific
 Development option that can make Bank and Recovery access globally true. Startup
 rejects that option in every other environment. The override does not include
 insurance and does not move authority into Unity or SimulationWorker: the worker
-still supplies its evaluated access state, and AuthService still validates the
+still supplies its evaluated access state, and GameService still validates the
 exact live identity and commits the durable transaction. Production therefore
 retains authored service-point proximity without a separate code path or protocol
 contract.
 
 Player corpses use durable PostgreSQL custody with a database-timed absolute
-five-minute expiry. AuthService partitions one death event transactionally,
+five-minute expiry. GameService partitions one death event transactionally,
 persists the corpse transform and presentation metadata, and expires remaining
 loot through one durable cleanup operation. A replacement SimulationWorker
 restores only open, unexpired corpses for its exact runtime and Shard assignment.
@@ -493,15 +637,15 @@ The worker continues reconciling that durable assignment at a bounded interval
 so a newly created durable corpse becomes discoverable without restarting the
 worker. Reconciliation remains idempotent and never imports another runtime's
 corpse.
-AuthService serves complete three-section view snapshots and commits corpse loot
+GameService serves complete three-section view snapshots and commits corpse loot
 through the existing transaction kernel. Targeted item and container revisions
 let unrelated corpse operations commit even when the global corpse revision has
 advanced. The corpse row still serializes final custody, and Bag roots are locked
 before either aggregate's contents. A worker-local per-corpse mutation
-coordinator sends at most one mutation for the same corpse to AuthService at a
+coordinator sends at most one mutation for the same corpse to GameService at a
 time, while different corpses remain parallel. This prevents one hotspot from
 occupying the database pool with clients waiting on the same row lock and keeps
-AuthService as the idempotent final transaction authority. Open and refresh
+GameService as the idempotent final transaction authority. Open and refresh
 send a complete snapshot only to the requesting viewer. A committed revision
 broadcasts one targeted delta or complete replacement to every viewer. The
 worker encodes each immutable update once, reuses those bytes across viewers,
@@ -525,8 +669,8 @@ existing durable kernel and is not a service endpoint.
 
 Phase 10 adds an exact-session player-death route, an internal system death
 adapter, durable corpse restoration for the assigned worker, and an idempotent
-AuthService expiry loop. SimulationWorker holds only the bounded runtime corpse
-identity and presentation state returned by AuthService, never PostgreSQL item
+GameService expiry loop. SimulationWorker holds only the bounded runtime corpse
+identity and presentation state returned by GameService, never PostgreSQL item
 rows or an alternate custody model. Phase 11 adds exact-session corpse reads and
 mutations, shared viewers, proximity and lifetime enforcement, committed deltas,
 Unity presence and view state, temporary presentation, bidirectional item
@@ -563,7 +707,7 @@ topology layer:
 - Unity owns advisory crosshair targeting, immutable replicated actor and
   interaction state, prefab presentation, temporary uGUI, and Editor authoring
   tools.
-- AuthService remains the durable authority when a later capability mutates
+- GameService remains the durable authority when a later capability mutates
   items, currency, quests, policies, or progression.
 
 NPC and Mob are distinct actor kinds. NPC capability combinations are content,
@@ -622,8 +766,8 @@ Unity presentation resolves a `presentationArchetypeId` to a presentation-only
 `WorldActorView`, `NpcView`, or `MobView` prefab. Authoritative vendor, quest,
 crafting, insurance, or combat behavior never lives in a MonoBehaviour. The
 permanent Editor entry points are
-`Shooter MMO > Tools > Content > Actor Studio` and
-`Shooter MMO > Tools > Content > Spawn Authoring`, with visual scene handles
+`MMORPG > Tools > Content > Actor Studio` and
+`MMORPG > Tools > Content > Spawn Authoring`, with visual scene handles
 that export canonical neutral WorldData.
 
 The existing corpse view and transaction protocols remain authoritative. Phase
@@ -636,7 +780,7 @@ transactions, quest progression, complete Mob AI, combat, damage, death-event
 production, and loot-table generation remain later phases.
 
 Phase 15 hardens this existing authority graph rather than adding a new service
-or mutation path. AuthService bounds HTTP bodies, canonical commands,
+or mutation path. GameService bounds HTTP bodies, canonical commands,
 PostgreSQL statements, and lock waits. It publishes identity-free item and corpse
 measurements, carries a bounded correlation id across worker HTTP calls, and
 runs system-authority maintenance for audited Recovery expiry plus policy-bound
@@ -680,6 +824,14 @@ live corpses and central actor scheduling.
 | `corpse_snapshots` | Non-interactive Secure tier, insured equipment, and protected or insured Bag presentation metadata |
 | `death_events` | Unique authoritative death event, original operation, canonical request hash, corpse, and immutable result correlation |
 
+Every table belongs to exactly one GameService module: `accounts` and
+`account_sessions` to Accounts, `characters` to Characters, the World, Fleet,
+Node, Shard, worker, assignment, ticket, and simulation session tables to
+Placement, `schema_migrations` to Platform, and every item, catalog, Recovery,
+operation, corpse, and death table to Items. Only the owner writes or locks its
+rows; [GameService Modules](GAME_SERVICE_MODULES.md#access-rules) lists the
+contracts and read fragments other modules use instead.
+
 Active account login sessions are unique by account. Active simulation sessions
 are unique by both character and account. This prevents one account token from
 running multiple characters simultaneously, even if the token is copied to a
@@ -710,7 +862,7 @@ creates a random `RuntimeId`. Tickets and simulation sessions bind to both.
 
 Heartbeat processing is transactional:
 
-1. AuthService locks the target shard row.
+1. GameService locks the target shard row.
 2. It validates World, Fleet, Node, and Shard topology.
 3. A healthy existing assignment fences a different worker.
 4. A timed-out or explicitly offline owner is released atomically.
@@ -731,11 +883,11 @@ Heartbeat processing is transactional:
 SimulationWorker renews a local registration lease from successful heartbeat
 responses. The local lease runs from the moment the heartbeat request was sent,
 minus a safety margin of at most one second, so it always ends before the
-database lease. Simulation session leases work the same way: AuthService
+database lease. Simulation session leases work the same way: GameService
 returns the lease duration, and the worker sets each session deadline on its own
 clock from the request send time. Clock differences between hosts therefore
 never extend or cut short a lease. UDP joins are rejected without a valid lease. If the lease expires,
-or AuthService reports that the runtime lost authority, the process stops. This
+or GameService reports that the runtime lost authority, the process stops. This
 limits split-brain behavior during network partitions and allows another worker
 to take over after the authoritative heartbeat timeout.
 
@@ -754,7 +906,7 @@ revocation perform the same dependent cleanup with distinct reason codes.
 ### Service Authentication
 
 SimulationWorker sends `X-Simulation-Worker-ID` and
-`X-Simulation-Worker-Secret`. AuthService validates the configured secret with a
+`X-Simulation-Worker-Secret`. GameService validates the configured secret with a
 fixed-time comparison and adds the worker identity claim. Endpoint policies and
 request payload checks prevent a worker from acting for another worker id or
 runtime.
@@ -774,7 +926,7 @@ revision, and collision revision.
 
 ### Topology Bootstrap
 
-1. AuthService validates `Simulation:Topology` and loads every canonical World
+1. GameService validates `Simulation:Topology` and loads every canonical World
    manifest at startup.
 2. Database migrations create or upgrade the durable topology schema.
 3. The seeder idempotently mirrors World definitions from manifests and ensures
@@ -786,12 +938,12 @@ revision, and collision revision.
 
 ### Worker Registration
 
-1. SimulationWorker validates config and loads
+1. SimulationWorker validates config and loads the output
    `WorldData/Worlds/<WorldId>/world.json`, actor runtime, and collision runtime.
 2. It binds UDP and reports transport readiness.
 3. It sends worker, runtime, topology, desired World, endpoint, capacity,
-   protocol, simulation, and collision metadata to AuthService.
-4. AuthService validates the World database entry and fleet boundaries, safely
+   protocol, simulation, and collision metadata to GameService.
+4. GameService validates the World database entry and fleet boundaries, safely
    binds or rebinds the shard, creates the assignment, and returns a
    database-timed online lease.
 5. The worker renews its local registration lease and continues heartbeats.
@@ -799,12 +951,12 @@ revision, and collision revision.
 ### Shard Discovery And Placement
 
 1. Unity calls `GET /api/shards`.
-2. AuthService lists logical shards and reconciles worker-reported connections
+2. GameService lists logical shards and reconciles worker-reported connections
    with authoritative unexpired simulation sessions while aggregating fresh
    assigned-worker capacity.
 3. Worker host and UDP port are not exposed in this public list.
 4. Unity requests `POST /api/shards/{shardId}/join` for an owned character.
-5. AuthService locks the account and character, applies global active-session
+5. GameService locks the account and character, applies global active-session
    rules, reserves authoritative session and pending-ticket capacity under a
    worker row lock, and creates a ticket.
 6. The response contains the selected shard plus an exact worker runtime
@@ -813,7 +965,7 @@ revision, and collision revision.
 ### Join And Reconnect
 
 1. Unity connects to the placement endpoint and sends the ticket reliably.
-2. SimulationWorker consumes it through AuthService with its worker and runtime
+2. SimulationWorker consumes it through GameService with its worker and runtime
    identity.
 3. Ticket consumption and session claim occur in one PostgreSQL transaction.
 4. SimulationWorker creates or reconnects the entity and binds it to the peer.
@@ -837,7 +989,7 @@ starts its input sequence from the beginning.
 
 1. Unity requests leave with the exact simulation-session id.
 2. SimulationWorker releases the exact session token generation through
-   AuthService.
+   GameService.
 3. The worker removes the peer binding and entity and sends reliable despawn.
 4. Unexpected disconnect uses the same cleanup path. The worker first drops the
    local session, so its heartbeat stops renewing the lease, and then calls
@@ -848,7 +1000,7 @@ starts its input sequence from the beginning.
    that no peer has owned for twice the join handshake timeout.
 6. An unexpected failure while processing one packet or one completed
    operation disconnects only that peer. The simulation loop and every other
-   player keep running. AuthService error codes and messages are normalized to
+   player keep running. GameService error codes and messages are normalized to
    short printable text before they enter realtime protocol fields.
 7. Worker shutdown or authoritative failover releases its assignment, pending
    tickets, and bound sessions.
@@ -878,9 +1030,9 @@ Status: Implemented transport and authority boundary
 1. Unity sends an item interaction intent to its assigned SimulationWorker.
 2. SimulationWorker validates the exact live session, proximity, interaction,
    and service-access rules.
-3. The worker calls AuthService over its service-authenticated channel with an
+3. The worker calls GameService over its service-authenticated channel with an
    idempotent operation id and exact worker-runtime fencing.
-4. AuthService locks and validates durable PostgreSQL item state, commits the
+4. GameService locks and validates durable PostgreSQL item state, commits the
    complete transaction, and returns new inventory and carry-state revisions.
 5. SimulationWorker updates authoritative encumbrance only from the committed
    result, sends a reliable carry update before it affects movement, and forwards
@@ -902,8 +1054,8 @@ combat producer pending
    exists, the same boundary is exercised by system and PostgreSQL tests.
 2. SimulationWorker submits the exact account, character, simulation session,
    token, worker id, runtime id, Shard, expected item-state revision, transform,
-   and generic corpse presentation key over its authenticated AuthService client.
-3. AuthService revalidates the complete live authority, claims both the item
+   and generic corpse presentation key over its authenticated GameService client.
+3. GameService revalidates the complete live authority, claims both the item
    operation and death-event identities, then locks the character, Bag
    aggregates, containers, items, and policies in the durable transaction.
 4. Currency, bank, Recovery Storage, and Secure Container custody remain where
@@ -916,7 +1068,7 @@ combat producer pending
    permits only non-worsening remediation until the state returns within the
    cap.
 5. Each corpse stores database creation time plus the exact five-minute player
-   deadline. AuthService cleanup locks the corpse first, destroys each remaining
+   deadline. GameService cleanup locks the corpse first, destroys each remaining
    item once with audit, and closes even an already-empty corpse only at that
    deadline.
 6. After worker registration, SimulationWorker requests one read-only snapshot
@@ -926,7 +1078,7 @@ combat producer pending
    presentation only. A player may open one corpse within three metres. Multiple
    players may inspect the same corpse, and the worker validates proximity and
    cached lifetime before every refresh or mutation.
-8. AuthService opens a short read-only transaction for a complete three-section
+8. GameService opens a short read-only transaction for a complete three-section
    snapshot. Loot, deposit, corpse-internal movement, and Bag swaps enter the
    normal item transaction kernel with targeted item, destination, and Bag
    aggregate revisions. Full stacks move, partial stacks split or merge,
@@ -936,7 +1088,7 @@ combat producer pending
    their canonical equipment-slot id and reject incompatible definitions.
 9. A per-corpse worker coordinator serializes calls into the same durable
    aggregate without serializing different corpses. The mutation transaction
-   closes before AuthService loads the committed view. SimulationWorker applies
+   closes before GameService loads the committed view. SimulationWorker applies
    returned carry only for custody-changing transfers, keeps the newest corpse
    revision when HTTP completions arrive out of order, encodes one targeted
    delta, and reuses it for every other viewer. Open and refresh always return a
@@ -951,10 +1103,13 @@ combat producer pending
 
 ## Configuration Ownership
 
-- `AuthService/Config` owns AuthService defaults and topology bootstrap.
-- `SimulationWorker/Config` owns worker identity, endpoint, networking,
+- `src/Server/GameService/Config` owns GameService defaults and topology bootstrap.
+  Each GameService module validates the keys it owns; the host loads them all
+  before any service starts, as described in
+  [GameService Modules](GAME_SERVICE_MODULES.md#configuration).
+- `src/Server/SimulationWorker/Config` owns worker identity, endpoint, networking,
   simulation, collision streaming, quotas, and interest settings.
-- `shooter-mmorpg-unity-client/Assets/Resources/Config` owns runtime Unity
+- `src/Client/Assets/Resources/Config` owns runtime Unity
   endpoint and timeout configuration.
 - The ignored root `.env` owns local secrets and machine overrides.
 - `.env.example` is the committed environment contract.
@@ -968,7 +1123,7 @@ validation; change a value by restarting the process.
 
 ## Health And Operations
 
-AuthService exposes `/health/live` and `/health/ready`. Readiness performs a real
+GameService exposes `/health/live` and `/health/ready`. Readiness performs a real
 PostgreSQL query and Redis `PING` and returns HTTP 503 when an obligatory
 dependency fails. Protected account requests first check a bounded Redis token
 cache, then fall back to PostgreSQL on a miss or Redis failure. Successful
@@ -978,7 +1133,7 @@ replacement. Redis never decides item custody, simulation authority, or durable
 session truth.
 
 SimulationWorker uses `--health-check-only` because it has no HTTP server. It
-checks AuthService readiness, Redis, and UDP port availability and returns exit
+checks GameService readiness, Redis, and UDP port availability and returns exit
 code 1 on failure.
 
 Local Compose ports bind to `127.0.0.1`. Realtime metrics avoid account,

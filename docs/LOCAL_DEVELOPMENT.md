@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Requirements
 
@@ -25,7 +25,7 @@ Replace every `replace-with-...` placeholder in `.env`. The file contains local
 credentials and connection strings, including the shared
 `SIMULATION_WORKER_SERVICE_SECRET`, but does not select worker, fleet, node,
 shard, or World identities. Those identities live together in
-`SimulationWorker/Config/appsettings.json`. AuthService owns only the available
+`src/Server/SimulationWorker/Config/appsettings.json`. GameService owns only the available
 fleet, node, and shard topology. Both services search the working directory and
 their output directory, and the parents of each up to the repository root, for
 `.env`, so starting a service from its `bin` folder also finds the root file.
@@ -35,16 +35,18 @@ Explicit process environment variables and command-line values can still
 override service configuration for deployments. Configuration files are read
 once at startup; restart a service after changing them.
 
-SimulationWorker loads `WorldData/Worlds/<WorldId>/world.json` and derives actor
-and collision paths below the same World directory. The checked-in content for
-both development Worlds is copied into build and publish output. Startup
+SimulationWorker loads `WorldData/Worlds/<WorldId>/world.json` from its output folder and
+derives `world-actors.json` and the `Collision` chunk folder below the same World
+directory. The build copies `content/worlds/<WorldId>/world.json` and the
+generated actor and collision data from `src/Shared/WorldData/Generated` into
+that layout for both development Worlds, in build and publish output. Startup
 validates identity, bounds, spawn, service points, actor revisions, references,
 ordering, collision checksums, and content semantics before UDP admission
 begins. `SimulationWorker__WorldDataPath` can point a deployment at a different
 canonical Worlds root.
 
-AuthService reads `Items:CatalogPath` from its configuration. The checked-in
-default points to `WorldData/Items/core.item-catalog.json`, which the AuthService
+GameService reads `Items:CatalogPath` from its configuration. The checked-in
+default points to `src/Shared/WorldData/Items/core.item-catalog.json`, which the GameService
 project copies from the deterministic WorldData runtime catalog into build and
 publish output. Use `Items__CatalogPath` only when a deployment places that
 checked-in catalog at another path.
@@ -65,24 +67,23 @@ recreates the credentials, but permanently removes local database data.
 Restore locked dependencies and run the standard backend quality gate:
 
 ```powershell
-dotnet restore ShooterMmo.slnx --locked-mode
-& .\Tools\Verify-DependencyPolicy.ps1
-dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
-dotnet build ShooterMmo.slnx --configuration Release --no-restore
-dotnet run --project Tools/ItemCatalogCompiler `
-  --configuration Release `
-  --no-build -- `
-  WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  WorldData/Shared/Runtime/Items/core.item-catalog.json `
-  --verify
-dotnet test ShooterMmo.slnx --configuration Release --no-build
+dotnet restore Mmorpg.slnx --locked-mode
+& .\tools\Verify-DependencyPolicy.ps1
+dotnet format Mmorpg.slnx --verify-no-changes --no-restore
+dotnet build Mmorpg.slnx --configuration Release --no-restore
+dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
+dotnet test Mmorpg.slnx --configuration Release --no-build
 ```
 
 Expected result:
 
 - Restore accepts every committed `packages.lock.json` file.
-- Dependency policy verification confirms exact Unity and NuGet versions, local
-  package paths, Unity lock coverage, and the absence of tracked client builds.
+- Dependency policy verification confirms exact Unity and NuGet versions in
+  project, props, and targets files, one `xunit.v3` version across the test
+  projects, local package paths, Unity lock coverage, and the absence of tracked
+  client builds.
 - Format reports no files that need changes.
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports nine definitions, one base Secure Container
@@ -90,39 +91,40 @@ Expected result:
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
   configured. The Redis integration test is skipped unless
-  `SHOOTER_MMO_TEST_REDIS` points to a dedicated Redis test instance. See
+  `MMORPG_TEST_REDIS` points to a dedicated Redis test instance. See
   [Standard Quality Checks](../README.md#standard-quality-checks) for the full
   integration run with both test containers.
 
 Tests read configuration and content from repository paths, never from their
-output folder. AuthService, SimulationWorker, and ActiveSimulationBots all ship
-appsettings files at the same output paths, so the test project sets
-`CopyConflictingTransitiveContent` to `false` and owns empty `{}` placeholders
-under `Tests/ShooterMmo.Backend.Tests/TestOutput` for those paths. A test fails
-if a service copy ever replaces a placeholder.
+output folder. GameService, SimulationWorker, and ActiveSimulationBots all ship
+appsettings files at the same output paths, so `tests/Directory.Build.props`
+sets `CopyConflictingTransitiveContent` to `false` for every test project and
+links the empty `{}` placeholders in `tests/TestOutput` to those paths.
+`TestBuildOutputTests` fails if a service copy ever replaces a placeholder. The
+test projects and their rules are described in [Backend Tests](../tests/README.md).
 
 NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 `development`. Unity Package Manager updates remain explicit because Dependabot
 does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
 let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
 quality gate before merging. `LiteNetLib` must stay aligned between
-`SimulationWorker/SimulationWorker.csproj`,
-`Tools/SimulationBotClient/ShooterMmo.Tools.SimulationBotClient.csproj`, and the
+`src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj`,
+`tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj`, and the
 Unity manifest package `com.revenantx.litenetlib`. `Verify-DependencyPolicy.ps1`
 fails when the versions differ, and Dependabot ignores LiteNetLib so the three
 are always upgraded together by hand.
 
-`shooter-mmorpg-unity-client/Directory.Build.props` stops the repository build
+`src/Client/Directory.Build.props` stops the repository build
 settings from applying to the project files Unity generates, and those files
 and their NuGet lock file are ignored by Git.
 
 ## Item Catalog Authoring And Verification
 
-The neutral source catalog is
-`WorldData/Shared/Authoring/Items/core.item-catalog.json`. It defines stable category,
-tag, equipment-slot, item, Bag-layout, location-eligibility, policy-default, and
-Secure Container tier content. The generated runtime catalog is
-`WorldData/Shared/Runtime/Items/core.item-catalog.json`.
+The neutral source catalog is `content/items`: `catalog.json` defines stable
+category, tag, equipment-slot, and Secure Container tier content, and
+`definitions/<definition-id>.json` holds one item with its Bag layout,
+location eligibility, and policy defaults. The generated runtime catalog is
+`src/Shared/WorldData/Generated/Items/core.item-catalog.json`.
 
 Catalog format version 2 uses unitless non-negative integer `unitWeight` and
 `carryCapacityBonus` fields. Do not add physical-unit or decimal weight fields.
@@ -130,7 +132,7 @@ The baseline scale is ammunition `1`, pistol `10`, and base character capacity
 `200`.
 
 The canonical content workflow is available in Unity at
-`Shooter MMO > Tools > Item Catalog`:
+`MMORPG > Tools > Item Catalog`:
 
 1. Use the searchable definition list and category filter to select an item.
 2. Edit gameplay fields and the separate client presentation fields in the same
@@ -140,19 +142,19 @@ The canonical content workflow is available in Unity at
    the image data, in the presentation JSON. An item may remain iconless until
    approved client art is available.
 4. Select `Validate` to run the strict shared compiler without writing files.
-5. Select `Save` to write editable authoring and presentation content without
-   replacing the runtime gameplay catalog.
+5. Select `Save` to write `catalog.json`, one file per definition, and the
+   presentation content without replacing the runtime gameplay catalog. The
+   files of removed draft definitions are deleted.
 6. Select `Save And Bake` to validate and atomically replace authoring, runtime,
    and presentation JSON. Structural changes require explicit confirmation.
 
-The gameplay source remains
-`WorldData/Shared/Authoring/Items/core.item-catalog.json`. The Editor-only assembly does
-not duplicate its rules. It invokes `Tools/ItemCatalogCompiler`, which remains
+The gameplay source remains `content/items`. The Editor-only assembly does not
+duplicate its rules. It invokes `tools/ItemCatalogCompiler`, which remains
 the validation and structural-fingerprint authority used by backend development
 and CI.
 
 Client-only presentation content is bundled at
-`shooter-mmorpg-unity-client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
+`src/Client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
 It maps every stable gameplay definition id to an optional icon Resources path,
 localization key, fallback display name, and optional prefab presentation key.
 The file records the exact gameplay source revision and a separate deterministic
@@ -163,37 +165,32 @@ files or complete definition data.
 After an intentional authoring change, compile the runtime catalog:
 
 ```powershell
-dotnet run --project Tools/ItemCatalogCompiler -- `
-  WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  WorldData/Shared/Runtime/Items/core.item-catalog.json
+dotnet run --project tools/ItemCatalogCompiler
 ```
 
 Then verify the checked-in result:
 
 ```powershell
-dotnet run --project Tools/ItemCatalogCompiler -- `
-  WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  WorldData/Shared/Runtime/Items/core.item-catalog.json `
-  --verify
+dotnet run --project tools/ItemCatalogCompiler -- --verify
 ```
 
 Expected result: both commands report catalog `core`, nine definitions, one
 base Secure Container tier, and the same SHA-256 catalog revision. `--verify`
-returns exit code 1 for malformed authoring, invalid rules, or stale runtime
-JSON.
+returns exit code 1 for malformed authoring, a definition file whose name does
+not match its id, invalid rules, or stale runtime JSON.
 
 Inspect `structuralFingerprint` for every changed definition and Secure
 Container tier. A display-only edit changes the catalog revision without
 changing an item structural fingerprint. Weight, stack, tag, equipment,
 location, policy-default, Bag-layout, or tier-capacity changes alter the
-relevant structural fingerprint. AuthService now permits a structural revision
+relevant structural fingerprint. GameService now permits a structural revision
 only when no live item instance or affected Secure Container entitlement depends
 on it. Otherwise startup fails with the affected stable id and requires an
 explicit data migration before the new catalog can become current. Display-only
 changes remain safe because they preserve the structural fingerprint.
 
-The complete authoring contract is documented in
-`WorldData/Shared/Authoring/Items/README.md`. No Unity Editor action is required for
+The complete authoring contract is documented in `content/items/README.md`, and
+the general content rules in `content/README.md`. No Unity Editor action is required for
 command-line item catalog compilation or verification.
 
 If `Validate`, `Save`, or `Save And Bake` fails, read the field paths in the
@@ -215,17 +212,17 @@ Get-Content .env | ForEach-Object {
     $values[$matches[1]] = $matches[2]
   }
 }
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   "Host=127.0.0.1;Port=55432;" + `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemPersistenceIntegrationTests"
 ```
 
-Expected result: ten tests pass. They reset only the dedicated database whose
+Expected result: eleven tests pass. They reset only the dedicated database whose
 name contains `test`, then verify the complete catalog mirror, legacy backfill,
 atomic new-character bootstrap, uniqueness and location constraints, planned
 custody shapes, explicit delete behavior, and structural catalog startup fence.
@@ -233,7 +230,7 @@ custody shapes, explicit delete behavior, and structural catalog startup fence.
 To exercise concurrent migration initialization as well, run:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Integration/Mmorpg.Integration.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ConcurrentMigrationInitializationAppliesEachMigrationOnce"
 ```
@@ -241,7 +238,7 @@ dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
 Expected result: the test passes with ten immutable migration ids, one current
 catalog revision, and no duplicate topology or item seed rows.
 
-For an existing local development database, start AuthService normally. Expect
+For an existing local development database, start GameService normally. Expect
 one log entry if the new migration or a new catalog revision is applied. Inspect
 the resulting foundation without exposing database credentials:
 
@@ -273,12 +270,12 @@ Get-Content .env | ForEach-Object {
     $values[$matches[1]] = $matches[2]
   }
 }
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   "Host=127.0.0.1;Port=55432;" + `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemReadModelIntegrationTests"
 docker compose -f docker-compose.test.yml down
@@ -288,11 +285,11 @@ Expected result: seven tests pass. They verify the current catalog graph,
 cross-account denial, complete empty state, stable slot ordering, all owned
 snapshot sections, fixed-point encumbrance, definition-id deduplication,
 secret exclusion, and read-only behavior. Fixture items are written only by
-test-project helpers to the dedicated test database. AuthService exposes no
+test-project helpers to the dedicated test database. GameService exposes no
 grant route.
 
 To exercise the two real HTTP reads, start local PostgreSQL and Redis with
-`docker compose up -d --wait`, then run `dotnet run --project AuthService`. In a
+`docker compose up -d --wait`, then run `dotnet run --project src/Server/GameService`. In a
 second PowerShell terminal, create a disposable account and character:
 
 ```powershell
@@ -343,19 +340,19 @@ Get-Content .env | ForEach-Object {
     $values[$matches[1]] = $matches[2]
   }
 }
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   "Host=127.0.0.1;Port=55432;" + `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemConcurrencyIntegrationTests"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
-Expected result: eleven tests pass. The suite executes every internal command
+Expected result: seventeen tests pass. The suite executes every internal command
 and verifies account authorization, effective policy lineage, specific and
 deterministic slots, equipment, empty and non-empty Bag rules, Recovery add and
 claim, account-wide Secure Container tier changes, unitless carried-state
@@ -363,7 +360,7 @@ recomputation, exact hard-cap rollback, canonical operation replay, competing
 item, slot, equipment, and quantity races, the shared Bag aggregate lock, and
 failed-swap rollback. The dedicated database is reset between tests.
 
-No AuthService item write endpoint should be manually invoked because Phase 5
+No GameService item write endpoint should be manually invoked because Phase 5
 does not expose one. No Unity Editor action is required for Phase 5 verification.
 
 ## Phase 6 Policy And Offline Item API Verification
@@ -379,19 +376,19 @@ Get-Content .env | ForEach-Object {
     $values[$matches[1]] = $matches[2]
   }
 }
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   "Host=127.0.0.1;Port=55432;" + `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~ItemPolicyLifecycleIntegrationTests|FullyQualifiedName~ItemApiIntegrationTests"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
-Expected result: eight tests pass. They verify insurance application and
+Expected result: nine tests pass. They verify insurance application and
 removal, exact quest-grant cleanup and reaccept, catalog ETag and `304`, no-store
 headers, owner scoping, Secure Container tier access, stable Problem Details,
 offline session fencing, stable split, merge, and destroy validation, offline
@@ -401,7 +398,7 @@ session authentication handler and item endpoints over loopback HTTP.
 
 To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and
 Redis with `docker compose up -d --wait`, run
-`dotnet run --project AuthService`, and use the Phase 4 registration commands to
+`dotnet run --project src/Server/GameService`, and use the Phase 4 registration commands to
 create `$headers` and `$character`. The `-SkipHttpErrorCheck` switch needs
 PowerShell 7 (`pwsh`), so run this snippet in `pwsh`, not Windows PowerShell 5.1.
 Then run:
@@ -477,15 +474,15 @@ Get-Content .env | ForEach-Object {
     $values[$matches[1]] = $matches[2]
   }
 }
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   "Host=127.0.0.1;Port=55432;" + `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~PlayerMovementSimulationTests|FullyQualifiedName~CarryStateStoreTests|FullyQualifiedName~SimulationSessionReleaseServiceTests|FullyQualifiedName~AuthoritativePlayerMovementTests|FullyQualifiedName~RealtimeProtocolTests|FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~CarryStateIsFencedIntoJoinHeartbeatAndReconnect|FullyQualifiedName~CarryStateCountsEveryCarriedCustodyExactlyOnceAndExcludesExternalCustody|FullyQualifiedName~SwappingToLowerCapacityBagRejectsTheCompleteAggregateAboveHardCap"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
@@ -499,7 +496,7 @@ restoration.
 Run all Unity tests through the repository script:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Expected result: all EditMode and PlayMode tests pass. The EditMode suite runs
@@ -509,11 +506,11 @@ carry-state updates.
 For a manual default-state and reconnect check:
 
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
-2. Run `dotnet run --project AuthService` in one terminal.
-3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
+2. Run `dotnet run --project src/Server/GameService` in one terminal.
+3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
    startup reports realtime protocol version `14` and simulation revision
    `movement-simulation-v3`.
-4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
+4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
    `0 / 200`, movement `100%`, sprint allowed, and its committed item-state
@@ -537,15 +534,15 @@ Get-Content .env | ForEach-Object {
     $values[$matches[1]] = $matches[2]
   }
 }
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   "Host=127.0.0.1;Port=55432;" + `
   "Database=$($values['TEST_POSTGRES_DB']);" + `
   "Username=$($values['TEST_POSTGRES_USER']);" + `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
-  --filter "FullyQualifiedName~SimulationItemMutationIntegrationTests|FullyQualifiedName~DuplicateReliableItemIntentsReplayOneCommittedCarryRevision|FullyQualifiedName~ItemOperationIntentsRoundTripEveryPhaseEightMutationKind|FullyQualifiedName~ItemOperationResultRoundTripsCommittedRevisionsAndRefreshSignal|FullyQualifiedName~ItemOperationIntentRejectsUnboundedRecoveryClaims|FullyQualifiedName~SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry|FullyQualifiedName~SimulationWorkerRejectsInvalidItemServicePoints"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+  --filter "FullyQualifiedName~SimulationItemMutationIntegrationTests|FullyQualifiedName~DuplicateReliableItemIntentsReplayOneCommittedCarryRevision|FullyQualifiedName~ItemOperationIntentsRoundTripEveryPhaseEightMutationKind|FullyQualifiedName~ItemOperationResultRoundTripsCommittedRevisionsAndRefreshSignal|FullyQualifiedName~ItemOperationIntentRejectsUnboundedRecoveryClaims|FullyQualifiedName~SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry"
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
@@ -559,7 +556,7 @@ heartbeat, and reconnect restoration.
 Run all Unity tests:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Expected result: all EditMode and PlayMode tests pass. Phase 8 EditMode tests
@@ -569,12 +566,12 @@ source compiled by the backend and Unity.
 For a manual runtime smoke check:
 
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
-2. Run `dotnet run --project AuthService` in one terminal.
-3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
+2. Run `dotnet run --project src/Server/GameService` in one terminal.
+3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm it
    reports realtime protocol version `14` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
-4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
+4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
@@ -593,16 +590,16 @@ test database:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   (Get-Content .env | Where-Object {
-    $_ -like "SHOOTER_MMO_TEST_POSTGRES=*"
+    $_ -like "MMORPG_TEST_POSTGRES=*"
   }).Split("=", 2)[1]
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Expected result: every selected backend test passes, including one real
@@ -619,34 +616,34 @@ PlayMode verifies the persistent controller and runtime uGUI root.
 ### Give A Character Development Items
 
 The Unity Editor window is the primary workflow. It never writes directly to
-PostgreSQL. It runs the Release build of AuthService directly as
-`dotnet AuthService/bin/Release/<framework>/AuthService.dll`, so AuthService runs
+PostgreSQL. It runs the Release build of GameService directly as
+`dotnet src/Server/GameService/bin/Release/<framework>/Mmorpg.GameService.dll`, so GameService runs
 inside that one process and a cancel or the 60-second timeout ends it. It starts
-a guarded AuthService command that uses
+a guarded GameService command that uses
 `ItemTransactionService`, accepts only Development, requires a loopback
 PostgreSQL host with a non-production-like database name, and refuses an active
 character. Individual grants are repeatable. Exact test packages require a
 character with no items or Recovery deliveries.
 
 The offline requirement protects live authority. The Editor command commits
-directly through AuthService and does not have a SimulationWorker result path to
+directly through GameService and does not have a SimulationWorker result path to
 advance an already joined session's carry tuple and item-state revision. Simply
 removing the guard could leave the worker and Unity on stale live state. A safe
 online grant tool must be a separate service-authenticated development intent
 routed through the worker that currently owns the character.
 
-1. Build Release once, then start normal local infrastructure and AuthService:
+1. Build Release once, then start normal local infrastructure and GameService:
 
    ```powershell
-   dotnet build ShooterMmo.slnx --configuration Release
+   dotnet build Mmorpg.slnx --configuration Release
    docker compose up -d --wait
-   dotnet run --project AuthService
+   dotnet run --project src/Server/GameService
    ```
 
 2. Open LoginMenu in Unity, enter Play Mode, register a disposable local account,
-   and create a new character. Do not join a shard. Exit Play Mode. AuthService
+   and create a new character. Do not join a shard. Exit Play Mode. GameService
    may remain running.
-3. Select `Shooter MMO > Tools > Inventory Item Grants` from Unity's top menu.
+3. Select `MMORPG > Tools > Inventory Item Grants` from Unity's top menu.
    The window refreshes automatically. Select the new offline character. The
    row shows account, online state, item count, weight, and capacity.
 4. For a custom grant, choose an item definition, quantity, and Permanent
@@ -669,7 +666,7 @@ routed through the worker that currently owns the character.
    encumbrance packs report `200 / 200` and `280 / 200`. Package controls become
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
-   rejected by AuthService without a partial item transaction.
+   rejected by GameService without a partial item transaction.
 6. To create a durable corpse, keep a source character offline and use the
    `Create Phase 11 Corpse` section. Leave Shard Id as `local-shard-1`, enter a
    nearby safe World position such as `(0, 0, -1)`, and click
@@ -684,7 +681,7 @@ routed through the worker that currently owns the character.
    log into the target account, select its character, and join the local shard:
 
    ```powershell
-   dotnet run --project SimulationWorker
+   dotnet run --project src/Server/SimulationWorker
    ```
 
    Expected result: startup logs
@@ -702,23 +699,23 @@ The terminal interface remains available as a fallback or for automation. It
 uses the same guardrails and transaction service:
 
 ```powershell
-dotnet run --project AuthService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release --no-build -- `
   --dev-items-list
 
-dotnet run --project AuthService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release --no-build -- `
   --dev-items-grant <characterId> material.iron_ore 20 bank
 
-dotnet run --project AuthService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release --no-build -- `
   --dev-items-package <characterId> phase9_full
 
-dotnet run --project AuthService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release --no-build -- `
   --dev-items-corpse <characterId> local-shard-1 0 0 -1
 ```
 
 The original full-fixture command remains compatible:
 
 ```powershell
-dotnet run --project AuthService -- --seed-phase9-items <characterId>
+dotnet run --project src/Server/GameService -- --seed-phase9-items <characterId>
 ```
 
 Expected result: the process exits after logging 17 granted item instances, one
@@ -776,9 +773,9 @@ items.
     references remain stable. Automated EditMode coverage also asserts that both
     catalog loads return the same presentation index and icon cache.
 
-The checked-in `SimulationWorker/Config/appsettings.Development.json` sets
+The checked-in `src/Server/SimulationWorker/Config/appsettings.Development.json` sets
 `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess=true`. This is a local
-testing capability, not an AuthService or protocol bypass. If the same setting is
+testing capability, not an GameService or protocol bypass. If the same setting is
 enabled outside the Development environment, SimulationWorker refuses startup.
 Production continues to require authored Bank and Recovery service-point
 proximity, and insurance access always remains proximity based.
@@ -799,14 +796,14 @@ durable boundary against the isolated PostgreSQL database:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   (Get-Content .env | Where-Object {
-    $_ -like "SHOOTER_MMO_TEST_POSTGRES=*"
+    $_ -like "MMORPG_TEST_POSTGRES=*"
   }).Split("=", 2)[1]
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
-  --filter "FullyQualifiedName~DeathLootIntegrationTests|FullyQualifiedName~DurableCorpseStoreTests|FullyQualifiedName~AuthServiceClientTests"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+  --filter "FullyQualifiedName~DeathLootIntegrationTests|FullyQualifiedName~DurableCorpseStoreTests|FullyQualifiedName~GameServiceClientTests"
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
 
@@ -832,16 +829,16 @@ database, then run both Unity suites:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
-$env:SHOOTER_MMO_TEST_POSTGRES = `
+$env:MMORPG_TEST_POSTGRES = `
   (Get-Content .env | Where-Object {
-    $_ -like "SHOOTER_MMO_TEST_POSTGRES=*"
+    $_ -like "MMORPG_TEST_POSTGRES=*"
   }).Split("=", 2)[1]
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~CorpseLootConcurrencyIntegrationTests|FullyQualifiedName~CorpseInteractionEndpointsEnforceAuthorityCommitAndCloseTransactions|FullyQualifiedName~CorpseFixtureSeedsEmptyCharacterAndUsesDurableDeathPipeline|FullyQualifiedName~RealtimeCorpseProtocolTests|FullyQualifiedName~CorpseRealtimeStateTests|FullyQualifiedName~SimulationCorpseInteractionServiceTests"
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Expected result: every selected backend test and both Unity suites pass. The
@@ -864,11 +861,11 @@ at the same time:
 1. In Unity, open `File > Build Profiles`, select Windows, enable
    `Development Build`, and build the existing scene list. Do not add or reorder
    scenes. Expected result: the standalone player reaches LoginMenu.
-2. Start PostgreSQL, Redis, and AuthService. Using the Editor client, create
+2. Start PostgreSQL, Redis, and GameService. Using the Editor client, create
    three disposable accounts with one character each: one offline corpse source
    and two looters. Apply `Phase 9 Full Test Pack` to both looters while they are
    offline so each has an occupied equipped Bag.
-3. In `Shooter MMO > Tools > Inventory Item Grants`, select the offline source.
+3. In `MMORPG > Tools > Inventory Item Grants`, select the offline source.
    Under `Create Phase 11 Corpse`, keep Shard Id `local-shard-1`, use World
    Position `(0, 0, -1)`, and click `Create Durable Corpse`. Expected result:
    the tool reports a corpse id and an expiry five minutes in the future.
@@ -920,34 +917,29 @@ that combat must call later.
 Compile or verify the canonical actor content from any repository directory:
 
 ```powershell
-dotnet run --project Tools/WorldActorCompiler --configuration Release
-dotnet run --project Tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  --verify
-dotnet run --project Tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  WorldData/Shared/Authoring/Actors/core.world-actors.json `
-  WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
-  WorldData/Worlds/development-world-2/Runtime/world-actors.json `
-  --verify
+dotnet run --project tools/WorldActorCompiler --configuration Release
+dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```
 
-Expected result: the first two commands report World `development-world-1`
-with four definitions and five runtime instances. The third reports
-`development-world-2` with four definitions and seven runtime instances. Verify
-mode performs no write and fails if authoring, runtime JSON, references, bounds,
-transforms, fingerprints, ordering, or the complete revision diverge.
+Expected result: each command reports World `development-world-1` with four
+definitions and five runtime instances, and `development-world-2` with four
+definitions and seven runtime instances. The compiler reads
+`content/actors/catalog.json`, one file per actor below
+`content/actors/definitions`, and every `content/worlds/<WorldId>/actor-spawns.json`,
+and writes `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
+Verify mode performs no write and fails if authoring, runtime JSON, references,
+bounds, transforms, fingerprints, ordering, or the complete revision diverge, if
+a World directory lacks `world.json`, `actor-spawns.json`, or `collision.json`,
+or if generated actor data exists for a World that no longer exists.
 
 Run the focused backend actor and protocol coverage, then the complete Unity
 workflow:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~WorldActor|FullyQualifiedName~RealtimeWorldActor"
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Expected result: every selected backend test and every Unity EditMode and
@@ -964,11 +956,11 @@ Existing canonical content requires no scene, prefab, Inspector, package, or
 build-setting change. The committed presentation registry already maps every
 authored archetype to a placeholder prefab. A new archetype uses the tinted
 fallback, with one warning, until a prefab is added to
-`Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`.
+`Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
 Use these exact Unity Editor steps to exercise the authoring tools and
 presentation mapping:
 
-1. Open the Unity project and select `Shooter MMO > Tools > Content > Actor
+1. Open the Unity project and select `MMORPG > Tools > Content > Actor
    Studio`. Select `Mira the Quartermaster`. Expected result: the window shows
    an NPC with dialogue, vendor, quest offer, quest turn-in, crafting,
    insurance, bank, and Recovery Storage capabilities, an invulnerable damage
@@ -984,14 +976,16 @@ presentation mapping:
 4. To use authored prefabs, click `Create Presentation Registry`, then assign a
    prefab in `Replaceable prefab` for each presentation archetype. Expected
    result: Unity creates
-   `Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`.
+   `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
    The prefab changes presentation only. This optional asset creation and prefab
    assignment are the only manual Unity asset steps.
-5. Click `Save + Compile`, then `Verify Canonical`. Expected result: canonical
-   authoring and runtime JSON save deterministically and verification reports
-   the same revision. If no intentional content change was made, the files stay
-   byte-for-byte equivalent.
-6. Open `Shooter MMO > Tools > Content > Spawn Authoring` and click `Import`.
+5. Click `Save + Compile`, then `Verify Canonical`. Expected result: the
+   actor catalog, one file per actor, the spawn file, and the runtime JSON of
+   every World save deterministically in one transaction, and verification
+   reports the same revisions. Removing an actor deletes its definition file.
+   If no intentional content change was made, the files stay byte-for-byte
+   equivalent.
+6. Open `MMORPG > Tools > Content > Spawn Authoring` and click `Import`.
    Inspect the Points, Groups, Areas, and Patrols tabs with `Scene Preview`
    enabled. Expected result: scene handles show the service NPC point, two-guard
    group, two-wolf seeded area, and wolf patrol path imported from neutral
@@ -1001,7 +995,7 @@ presentation mapping:
    then click `Export + Compile` and `Verify Canonical`. Expected result: the
    preview shows exact neutral JSON, ground snapping uses authored scene
    collision, and clean export verifies deterministically.
-8. Start AuthService and SimulationWorker, join `local-shard-1`, and approach
+8. Start GameService and SimulationWorker, join `local-shard-1`, and approach
    Mira. Expected result: actor instances appear and disappear through normal
    interest presence. The worker startup log reports the actor content revision,
    four definitions, and five instances.
@@ -1030,7 +1024,7 @@ Run the deterministic realtime scalability workload separately when changing
 interest selection, snapshot encoding, or quota code:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --configuration Release `
   --filter "Category=Load"
 ```
@@ -1042,12 +1036,12 @@ Run the external headless stack stress flow before accepting a new capacity
 baseline or after changing the realtime loop, collision, interest, snapshot,
 session-heartbeat, account, placement, or database behavior. Worker-only mode
 uses in-memory identities to isolate SimulationWorker. Full-stack mode drives
-normal AuthService APIs against a guarded disposable PostgreSQL database.
+normal GameService APIs against a guarded disposable PostgreSQL database.
 Complete commands, expected results, measurements, safety checks, and cleanup
 are documented in [Stack Stress Testing](STACK_STRESS_TESTING.md).
 
-Use `Tools/ActiveSimulationBots` when a long-running synthetic population must
-share the normal AuthService, SimulationWorker, and shard with a Unity player.
+Use `tools/ActiveSimulationBots` when a long-running synthetic population must
+share the normal GameService, SimulationWorker, and shard with a Unity player.
 Its account-login bypass is Development-only and in memory, while every bot
 still uses an exact-runtime one-time ticket and the complete UDP join, input,
 snapshot, and leave flow. Configuration, startup commands, expected behavior,
@@ -1058,13 +1052,13 @@ in [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md).
 
 Phase 13 uses Mira the Quartermaster and the existing Phase 12 world interaction
 session. No scene object, inspector assignment, or new Unity asset is required.
-The default AuthService lifecycle profile charges `100` currency for one-death
+The default GameService lifecycle profile charges `100` currency for one-death
 insurance and grants one `quest_item.signal_transponder` with lineage
 `quest.local.signal_transponder`.
 
 Prepare a local character while it is offline:
 
-1. Open `Shooter MMO > Tools > Inventory Item Grants` and grant
+1. Open `MMORPG > Tools > Inventory Item Grants` and grant
    `weapon.training_rifle` into a free Permanent Inventory slot.
 2. Give the character local development currency. With the default Compose
    database values, replace the character name and run:
@@ -1077,7 +1071,7 @@ docker exec shooter_mmo_postgres psql -U shooter_mmo -d shooter_mmo -c `
 Expected result: PostgreSQL reports `UPDATE 1`. If local database names or users
 differ, use the matching values from `.env`.
 
-Start AuthService and SimulationWorker, join `local-shard-1`, approach Mira
+Start GameService and SimulationWorker, join `local-shard-1`, approach Mira
 within `3.0` metres, point the crosshair at her, and press `E`.
 
 Expected result:
@@ -1115,7 +1109,7 @@ lifetime:
 
 Verify the content manually:
 
-1. Open `Shooter MMO > Tools > Content > Actor Studio`.
+1. Open `MMORPG > Tools > Content > Actor Studio`.
 2. Select `mob.feral_wolf`. Confirm `Corpse Persistence` is `live` and
    `Corpse Lifetime Seconds` is `120`.
 3. Select `mob.feral_alpha`. Confirm persistence is `durable` and lifetime is
@@ -1131,7 +1125,7 @@ five runtime instances, and the checked-in actor runtime revision is
 Run the worker-memory lifecycle workflow:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~LiveMobCorpseStoreTests|FullyQualifiedName~MobCorpseLifecycleServiceTests"
@@ -1145,13 +1139,13 @@ grant id.
 With the isolated PostgreSQL test variable configured in the next section, run:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Integration/Mmorpg.Integration.Tests `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~MobCorpseLifecycleIntegrationTests"
 ```
 
-Expected result: both integration tests pass. Retrying one live Mob loot grant
+Expected result: all three integration tests pass. Retrying one live Mob loot grant
 creates one persistent player item. A durable alpha corpse restores into a new
 worker store with the same database deadline, three-section custody, and loot.
 
@@ -1163,7 +1157,7 @@ loot-table generation, and respawn remain future producers.
 ## Phase 15 Performance And Operations Hardening
 
 Phase 15 keeps the existing item, corpse, actor, capability, interaction, and
-authority graph. Checked-in AuthService defaults live under `Items:Operations`:
+authority graph. Checked-in GameService defaults live under `Items:Operations`:
 
 - `TransactionTimeoutMilliseconds`: `10000`.
 - `LockTimeoutMilliseconds`: `2000`.
@@ -1184,7 +1178,7 @@ With the isolated PostgreSQL variable configured in the next section, run the
 operational tests:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~ItemOperationsHardeningTests|FullyQualifiedName~ItemOperationsHardeningIntegrationTests"
@@ -1195,12 +1189,13 @@ Expected result: all focused tests pass. A blocked character mutation returns
 `item_command_payload_too_large` before database access; expired Recovery items
 are destroyed exactly once with `recovery_expired`; and policy-eligible empty
 closed corpses plus unreferenced old operation rows are removed without deleting
-durable destruction evidence.
+durable destruction evidence. The worker corpse metrics are covered by
+`CorpseRuntimeMetricsTests` in `Mmorpg.SimulationWorker.Tests`.
 
 Run the actor and transaction hotspot scenarios:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
+dotnet test Mmorpg.slnx `
   --configuration Release `
   --no-build `
   --filter "FullyQualifiedName~WorldActorRuntimeTests|FullyQualifiedName~CorpseLootConcurrencyIntegrationTests"
@@ -1218,21 +1213,22 @@ snapshot gaps remain zero under the accepted baseline, process measurements
 refer to the registered worker runtime, and the worker log contains no movement
 catch-up-budget warning.
 
-During local service operation, AuthService logs a periodic item summary with
+During local service operation, GameService logs a periodic item summary with
 transaction, contention, lifecycle, corpse, Recovery, and cleanup counts.
 Significant item transactions carry a bounded correlation id and operation id.
 SimulationWorker status distinguishes actor tiers and live versus durable corpse
 counts. Credentials, session tokens, and command bodies must not appear.
 
 No manual Unity Editor scene, prefab, inspector, package, input, or build-setting
-steps are required for Phase 15. Run `Tools/Run-UnityTests.ps1` as regression
+steps are required for Phase 15. Run `tools/Run-UnityTests.ps1` as regression
 coverage and expect all EditMode and PlayMode tests to pass unchanged.
 
 ## Isolated PostgreSQL Integration Tests
 
-The integration test resets the target database's `public` schema. Always use the
-isolated test Compose file and never point the test variable at a development,
-staging, or production database.
+Every test project with PostgreSQL tests uses its own database next to the
+database named in `MMORPG_TEST_POSTGRES` and resets that database's `public`
+schema before each test. Always use the isolated test Compose file and never
+point the test variable at a development, staging, or production database.
 
 Start the test database:
 
@@ -1244,10 +1240,10 @@ Set the dedicated connection and run all backend tests:
 
 ```powershell
 $testConnectionLine = Get-Content .env |
-  Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" } |
+  Where-Object { $_ -like "MMORPG_TEST_POSTGRES=*" } |
   Select-Object -First 1
-$env:SHOOTER_MMO_TEST_POSTGRES = $testConnectionLine.Split("=", 2)[1]
-dotnet test ShooterMmo.slnx --configuration Release
+$env:MMORPG_TEST_POSTGRES = $testConnectionLine.Split("=", 2)[1]
+dotnet test Mmorpg.slnx --configuration Release
 ```
 
 Expected result:
@@ -1257,12 +1253,23 @@ Expected result:
   reconnect, heartbeat, cross-shard and cross-character exclusion, assignment
   failover, and idempotent release tests pass
   instead of being skipped.
+- The server holds one test database per project with PostgreSQL tests:
+  `<base>_gameservice`, `<base>_gameservice_accounts`,
+  `<base>_gameservice_items`, and `<base>_integration`, where `<base>` is the
+  database named in the variable. Each is created on first use and kept. The
+  test container keeps its data in memory, so `down` removes them.
+- A second run of the same test project against the same server, started while
+  the first still runs, fails at once with a message that names the database.
+
+Add `--filter "Category=Integration"` to run only the PostgreSQL and Redis
+tests, or `--filter "Category!=Integration"` to run everything else without
+containers.
 
 Clean up the isolated environment:
 
 ```powershell
 docker compose -f docker-compose.test.yml down
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES
+Remove-Item Env:MMORPG_TEST_POSTGRES
 ```
 
 ## Local Infrastructure
@@ -1277,7 +1284,7 @@ The local services use these ports:
 
 - PostgreSQL: `localhost:5432`
 - Redis: `127.0.0.1:6379`
-- AuthService: `http://localhost:5000`
+- GameService: `http://localhost:5000`
 - SimulationWorker realtime transport: `0.0.0.0:27015/udp`
 - SimulationWorker advertised client endpoint: `127.0.0.1:27015/udp`
 
@@ -1290,13 +1297,13 @@ without changing the local bind port.
 
 ## Backend Services
 
-Run AuthService in the first terminal:
+Run GameService in the first terminal:
 
 ```powershell
-dotnet run --project AuthService
+dotnet run --project src/Server/GameService
 ```
 
-Check AuthService liveness and readiness:
+Check GameService liveness and readiness:
 
 ```powershell
 Invoke-RestMethod http://localhost:5000/health/live
@@ -1306,7 +1313,7 @@ Invoke-RestMethod http://localhost:5000/health/ready
 Expected result: liveness reports `live`. Readiness reports `ready` only after a
 real PostgreSQL `select 1` query and Redis `PING` both succeed.
 
-AuthService also uses Redis for bounded account-session validation caching and
+GameService also uses Redis for bounded account-session validation caching and
 distributed login and registration rate limits. Checked-in defaults are:
 
 ```json
@@ -1321,7 +1328,7 @@ distributed login and registration rate limits. Checked-in defaults are:
 }
 ```
 
-Set `RedisAcceleration__SessionCacheEnabled=false` before starting AuthService
+Set `RedisAcceleration__SessionCacheEnabled=false` before starting GameService
 to measure the PostgreSQL validation path without disabling the distributed
 authentication rate limit. A Redis read failure falls back to PostgreSQL.
 Disconnected Redis operations fail fast and do not build an in-process command
@@ -1369,7 +1376,7 @@ $character = Invoke-RestMethod http://localhost:5000/api/characters `
 Run SimulationWorker in the second terminal:
 
 ```powershell
-dotnet run --project SimulationWorker
+dotnet run --project src/Server/SimulationWorker
 ```
 
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
@@ -1385,7 +1392,7 @@ drops, and quota rejections. Detailed tick and phase timing remains in the
 server-side performance line.
 
 Routine `HttpClient` request-start, request-send, and successful-response logs
-for `AuthServiceClient` are filtered below `Warning`. This keeps bot heartbeat
+for `GameServiceClient` are filtered below `Warning`. This keeps bot heartbeat
 and release traffic from flooding the SimulationWorker terminal while HTTP
 warnings, failures, simulation lifecycle events, worker status, and performance
 logs remain visible.
@@ -1403,13 +1410,13 @@ Run a one-time SimulationWorker startup health check while the normal worker is
 stopped:
 
 ```powershell
-dotnet run --project SimulationWorker -- --health-check-only
+dotnet run --project src/Server/SimulationWorker -- --health-check-only
 ```
 
-Expected result: PostgreSQL is verified through AuthService readiness, Redis is
+Expected result: PostgreSQL is verified through GameService readiness, Redis is
 verified directly with `PING`, collision data is loaded and checksum-validated,
 UDP port availability is checked, and the process exits with code `0`. Stop
-Redis, stop AuthService, corrupt a collision chunk, or occupy UDP port 27015 and
+Redis, stop GameService, corrupt a collision chunk, or occupy UDP port 27015 and
 repeat to verify a nonzero exit:
 
 ```powershell
@@ -1428,7 +1435,7 @@ surface.
 
 Simulation topology and registration test:
 
-1. Start AuthService without SimulationWorker and call `GET /api/shards`.
+1. Start GameService without SimulationWorker and call `GET /api/shards`.
 2. Start SimulationWorker and call the endpoint again.
 3. Stop SimulationWorker normally with Ctrl+C and call the endpoint again.
 4. Start SimulationWorker, then terminate it without graceful shutdown. Wait longer
@@ -1460,16 +1467,35 @@ public shard list did not contain that endpoint.
 
 The ticket is intentionally short-lived and is consumed by the Unity UDP
 handshake. Do not attempt to send it to an HTTP SimulationWorker endpoint. The backend
-socket tests verify join, leave, and the reliable entity lifecycle with:
+socket tests verify join, leave, the reliable entity lifecycle, protocol
+rejections, reconnects, item, corpse, and world interaction flows, replication
+order, and shutdown with:
 
 ```powershell
-dotnet test Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj `
-  --filter "FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests"
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
+  --filter "FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~RealtimeEntityLifecycleTests|FullyQualifiedName~RealtimeProtocolRejectionTests|FullyQualifiedName~RealtimeSessionLifecycleTests|FullyQualifiedName~RealtimeItemOperationTests|FullyQualifiedName~RealtimeCorpseInteractionTests|FullyQualifiedName~RealtimeWorldActorInteractionTests|FullyQualifiedName~RealtimeReplicationContractTests"
 ```
 
-Expected result: the authenticated client joins, moves, and leaves with exact
-session cleanup. The two-client lifecycle test also proves that an existing peer
-receives reliable ordered spawn and despawn for the other player.
+Expected result: every test passes in about half a minute. The authenticated
+client joins, moves, and leaves with exact session cleanup, an existing peer
+receives reliable ordered spawn and despawn for another player, and every
+protocol rejection arrives with its documented code before the delayed
+disconnect. The tests start real UDP servers on free loopback ports and need no
+database.
+
+The realtime components also have in-memory tests that need no sockets:
+
+```powershell
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
+  --filter "FullyQualifiedName~RealtimeMessageDispatcherTests|FullyQualifiedName~RealtimeCompletionProcessorTests|FullyQualifiedName~RealtimeCorpsePeerIdReuseTests|FullyQualifiedName~RealtimeAuthorityQueueTests|FullyQualifiedName~RealtimeItemOperationHandlerTests|FullyQualifiedName~RealtimeWorldInteractionOperationsTests|FullyQualifiedName~RealtimeServiceDisposalTests|FullyQualifiedName~RealtimeMetricNamesTests"
+```
+
+Expected result: every test passes within seconds. The dispatcher test compares
+every peer state, message type, channel, and delivery method with the original
+routing rules. Run `dotnet test Mmorpg.slnx --filter "FullyQualifiedName~Realtime"`
+to run every realtime test at once. That filter spans the protocol tests in
+`Mmorpg.Shared.Tests` and the worker tests in `Mmorpg.SimulationWorker.Tests`,
+so run it against the solution.
 
 Optional logout test after the join flow is complete:
 
@@ -1526,16 +1552,20 @@ One-time setup on a new machine:
    terminal. Unity Hub may already have installed it in
    `%LOCALAPPDATA%\Unity\bin`.
 2. Sign in with `unity auth login`.
-3. Open the project with `unity open shooter-mmorpg-unity-client`, or through
+3. Open the project with `unity open src/Client`, or through
    Unity Hub, and wait for package import and script compilation to finish. If
    the Editor was already open when the manifest changed, focus the Editor window
-   so Package Manager resolves the change.
+   so Package Manager resolves the change. The Unity project moved from
+   `shooter-mmorpg-unity-client` to `src/Client` in October 2026. If Unity Hub
+   still lists the old folder, remove that entry with `Remove from list` and add
+   the new folder with `Add > Add project from disk`, or run
+   `unity projects add src/Client` from the repository root.
 
 No other manual Editor work is required. The package is already in the
 manifest, so `unity pipeline install` is only needed for a project that does not
 have it yet.
 
-Verify the connection from `shooter-mmorpg-unity-client`:
+Verify the connection from `src/Client`:
 
 ```powershell
 unity status
@@ -1550,14 +1580,16 @@ Expected result:
   Server Reachable `true`.
 - `editor_status` returns `"status":"ready"`.
 
-Useful commands, run from `shooter-mmorpg-unity-client` or with
+Useful commands, run from `src/Client` or with
 `--project-path`:
 
 - `unity list` lists every command the connected Editor exposes.
 - `unity command console_status` reports compiler failure state and console
   counts. `unity command console --level warning` returns the entries.
-- `unity command run_tests --mode editor --timeout 580` runs the EditMode suite
-  synchronously and returns every result.
+- `unity command run_tests --mode editor --async_tests` starts the EditMode
+  suite. Poll `unity command test_status` until `status` is `completed`; the
+  result lists every test. A synchronous run is limited to the Pipeline's 30
+  second request time and fails once the suite takes longer.
 - `unity command run_tests --mode playmode --async_tests` starts the PlayMode
   suite. Entering Play Mode reloads the Editor domain and drops a synchronous
   request, so poll `unity command test_status` until `status` is `completed`.
@@ -1731,11 +1763,11 @@ authoritative map collider changes.
    - Collision Root: drag the same `Environment` object into this field
    - Layer Mask: `3`
 5. Save DevelopmentWorld1.
-6. Select `Shooter MMO > Tools > World Collision > Bake Open Scene` from Unity's top
+6. Select `MMORPG > Tools > World Collision > Bake Open Scene` from Unity's top
    menu.
 7. Wait for asset import and script compilation to complete.
 
-After both development scenes exist in Build Profiles, use `Shooter MMO >
+After both development scenes exist in Build Profiles, use `MMORPG >
 Tools > World Collision > Bake Build World Scenes` to validate each catalog
 mapping and bake every enabled World scene in one deterministic pass. When
 several Worlds share one reusable scene, the scene is baked once for each of
@@ -1751,9 +1783,9 @@ Expected result: Unity Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
 updates:
 
-- `WorldData/Worlds/development-world-1/Authoring/collision.json`
-- `WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1/manifest.json`
-- Four `chunk_*.bytes` files in the same runtime directory
+- `content/worlds/development-world-1/collision.json`
+- `src/Shared/WorldData/Generated/Resources/WorldCollision/development-world-1/manifest.json`
+- Four `chunk_*.bytes` files in the same generated directory
 
 The bake stops with a red error if the collision root contains enabled,
 non-trigger Collider types other than BoxCollider. This is intentional until a
@@ -1762,19 +1794,12 @@ later collision format adds terrain and triangle-mesh chunks.
 Verify the checked-in bake from the repository root:
 
 ```powershell
-dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Worlds/development-world-1/Authoring/collision.json `
-  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
-  --verify
-dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Worlds/development-world-2/Authoring/collision.json `
-  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
-  --verify
+dotnet run --project tools/WorldCollisionCompiler -- --verify
 ```
 
-Expected result: the commands report the same World revisions, four verified
+Expected result: the command reports the same World revisions, four verified
 chunks for Development World 1, and 256 verified chunks for Development World
-2. Either command exits with code 1 if its authoring JSON and runtime data
+2. It exits with code 1 if any World's collision source and generated data
 differ.
 
 ### Compose DevelopmentWorld1
@@ -1812,7 +1837,7 @@ changes. You can run the same suites outside the Editor with:
 
 ```powershell
 $env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.4f1\Editor\Unity.exe"
-& .\Tools\Run-UnityTests.ps1
+& .\tools\Run-UnityTests.ps1
 ```
 
 An explicit `-UnityEditorPath` or `UNITY_EDITOR_PATH` always runs that Editor.
@@ -1847,7 +1872,7 @@ these exact manual steps:
 3. Open this project with Unity `6000.5.4f1` once and wait for package import and
    script compilation to finish without a licensing error.
 4. Close the Editor, keep the signed-in Hub session available, and rerun
-   `Tools/Run-UnityTests.ps1`.
+   `tools/Run-UnityTests.ps1`.
 
 Expected result: the script creates fresh EditMode and PlayMode XML files under
 `TestResults/Unity` and reports both suites as passed. License exit code `198`
@@ -1874,11 +1899,11 @@ Before using the Unity client, start these services:
 
 ```powershell
 docker compose up -d
-dotnet run --project AuthService
-dotnet run --project SimulationWorker
+dotnet run --project src/Server/GameService
+dotnet run --project src/Server/SimulationWorker
 ```
 
-Then open `shooter-mmorpg-unity-client` in Unity and start from:
+Then open `src/Client` in Unity and start from:
 
 ```text
 Assets/Scenes/LoginMenu.unity
@@ -1887,7 +1912,7 @@ Assets/Scenes/LoginMenu.unity
 The networking packages are declared in `Packages/manifest.json`. If Unity was
 open while they were first added, exit Play Mode and wait for package resolution
 and script compilation to finish. If Unity still displays the old duplicate
-`ShooterMmo.GameProtocol` assembly error after compilation, close and reopen the
+`Mmorpg.GameProtocol` assembly error after compilation, close and reopen the
 project once so its package cache is rebuilt. The persistent bootstrap adds
 `RealtimeSimulationClient` to its own runtime object. The only new authored movement
 reference is the Remote Player Prefab field on WorldSceneContext, described
@@ -1909,8 +1934,8 @@ An intended change to shared movement or collision behavior fails the movement
 determinism tests in both the backend suite and Unity EditMode. Bump
 `GameSimulationCompatibility.Revision`, then set `ExpectedSimulationRevision`
 and `ExpectedFingerprint` in
-`shooter-mmorpg-unity-client/Assets/Tests/EditMode/Shared/MovementDeterminismScenario.cs`
-to the new values. The backend test project compiles the same file, so both
+`src/Client/Assets/Tests/EditMode/Shared/MovementDeterminismScenario.cs`
+to the new values. `Mmorpg.Shared.Tests` compiles the same file, so both
 runtimes keep checking one pinned pair. If only Unity fails, a new float
 expression in `GameSimulation` is missing an explicit `(float)` cast around an
 intermediate result; `MovementDeterminismScenario.ComputeTrace()` returns the
@@ -1924,13 +1949,17 @@ Shard-to-World binding is intentionally changeable between worker process
 generations. It is not a runtime map switch. Prepare all target World content
 before changing a shard:
 
-- Add `WorldData/Worlds/<WorldId>/world.json` with the stable identity, client
+- Add `content/worlds/<WorldId>/world.json` with the stable identity, client
   scene, bounds, spawn, and item service points.
-- Provide `Authoring/collision.json` and the checksummed collision runtime below
-  that World directory.
-- Provide `Authoring/actor-spawns.json` and `Runtime/world-actors.json` when the
-  World uses actor content. Shared actor definitions remain under
-  `WorldData/Shared/Authoring/Actors`.
+- Provide `content/worlds/<WorldId>/collision.json` and its compiled collision
+  data below `src/Shared/WorldData/Generated/Resources/WorldCollision/<WorldId>`.
+- Provide `content/worlds/<WorldId>/actor-spawns.json` with at least one spawn
+  and its compiled
+  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`. The
+  SimulationWorker loads runtime actor data for every World, and both World
+  compilers reject a World directory that lacks `world.json`,
+  `actor-spawns.json`, or `collision.json`. Shared actor definitions remain under
+  `content/actors`.
 - Add the authored Unity scene to the client build and map its `WorldId` in
   `Assets/Resources/Worlds/world-scene-catalog.json`.
 
@@ -1942,18 +1971,18 @@ Perform the rebind in this order:
    to expire or close through their normal lifecycle. Do not rewrite World-local
    coordinates in PostgreSQL by hand.
 3. Change only `SimulationWorker:WorldId` in
-   `SimulationWorker/Config/appsettings.json` and verify that the selected World
+   `src/Server/SimulationWorker/Config/appsettings.json` and verify that the selected World
    directory contains its manifest, collision, and actor runtime data.
 4. Start SimulationWorker. Its first authenticated heartbeat proposes the
-   configured World. AuthService locks the shard, verifies that the World exists
+   configured World. GameService locks the shard, verifies that the World exists
    in the database, checks the offline rebind blockers, and atomically persists
    the new binding with the worker assignment.
-5. If the worker stops after AuthService returns
+5. If the worker stops after GameService returns
    `shard_world_rebind_blocked`, leave it stopped. The error lists active
    assignments, pending join tickets, active simulation sessions, and open
    corpses. Drain the reported state and start the worker again.
-6. If AuthService returns `simulation_world_not_found`, correct the World
-   manifest or configured `WorldId`, restart AuthService so it reconciles the
+6. If GameService returns `simulation_world_not_found`, correct the World
+   manifest or configured `WorldId`, restart GameService so it reconciles the
    canonical manifest catalog, and then start the worker again.
 7. Join through CharacterSelect. Unity resolves the accepted `WorldId` through
    its client catalog before it requests a ticket, revalidates the exact World
@@ -1982,12 +2011,12 @@ Scene flow:
 Expected result in `LoginMenu`:
 
 - A `Login Menu` panel appears in the Game view.
-- `Auth Service` displays `http://localhost:5000`.
+- `Game Service` displays `http://localhost:5000`.
 - Request timeout displays 10 seconds.
 - Realtime timeout displays 10 seconds.
 
 These values are stored in
-`Assets/Resources/Config/ShooterMmoClientConfig.asset`. Create build-specific
+`Assets/Resources/Config/ClientConfig.asset`. Create build-specific
 variants or change the asset before building a client for another environment.
 Endpoint fields are no longer editable from the runtime login panel.
 
@@ -2028,7 +2057,7 @@ Expected result:
 - `Leave Shard` receives server acknowledgement, closes UDP, and returns to
   `CharacterSelect`.
 - SimulationWorker logs the joined and released simulation-session ids.
-- `Back To Login` revokes the current AuthService session before clearing local
+- `Back To Login` revokes the current GameService session before clearing local
   client state.
 
 Expected Unity Console sequence for a successful login and simulation join:
@@ -2037,7 +2066,7 @@ Expected Unity Console sequence for a successful login and simulation join:
 [AUTH] Validating login credentials for username 'player_one'.
 [AUTH] Account 'player_one' (<account-id>) logged in.
 [CLIENT] Character 'Hero One' (<character-id>) is requesting access to shard 'local-shard-1'.
-[AUTH] AuthService issued a short-lived join ticket for character 'Hero One' on shard 'local-shard-1'.
+[AUTH] GameService issued a short-lived join ticket for character 'Hero One' on shard 'local-shard-1'.
 [CLIENT] Opening UDP connection to SimulationWorker 'local-simulation-worker-1' runtime '<worker-runtime-id>' at 127.0.0.1:27015/udp for shard 'local-shard-1'.
 [CLIENT] UDP transport connected to 127.0.0.1:27015/udp. Sending the short-lived join ticket to SimulationWorker.
 [SIMULATION] Account '<account-id>' with character 'Hero One' (<character-id>) connected to shard 'local-shard-1' for world 'development-world-2' through worker 'local-simulation-worker-1' runtime '<worker-runtime-id>'. Simulation session '<simulation-session-id>' controls network entity '<entity-id>'.
@@ -2085,7 +2114,7 @@ Unity client stability test:
 
 Single active account session test with a standalone build:
 
-1. Restart AuthService so it applies the latest database migration, then start
+1. Restart GameService so it applies the latest database migration, then start
    SimulationWorker.
 2. Rebuild the standalone development client so it contains the current session
    monitor and realtime disconnect handling.
@@ -2153,7 +2182,7 @@ Expected result:
 
 Server-authoritative movement test:
 
-1. Start PostgreSQL, Redis, AuthService, and SimulationWorker with the commands above.
+1. Start PostgreSQL, Redis, GameService, and SimulationWorker with the commands above.
 2. Enter DevelopmentWorld1 through LoginMenu and CharacterSelect. Do not start
    directly from DevelopmentWorld1 for this test.
 3. Confirm World Debug shows server-authoritative client prediction and an

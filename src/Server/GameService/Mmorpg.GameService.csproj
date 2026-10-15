@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
+    <ProjectReference Include="..\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
+    <ProjectReference Include="..\GameService.Accounts\Mmorpg.GameService.Accounts.csproj" />
+    <ProjectReference Include="..\GameService.Characters\Mmorpg.GameService.Characters.csproj" />
+    <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
+    <ProjectReference Include="..\GameService.Items\Mmorpg.GameService.Items.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test access follows the module dependency direction: the module's own tests, the
+         tests of modules that build on it, the GameService test kit, the host tests,
+         and the cross-module integration tests. Never a production assembly. -->
+    <InternalsVisibleTo Include="Mmorpg.GameService.Testing" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.Integration.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Config\appsettings*.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Items\core.item-catalog.json"
+             Link="WorldData\Items\core.item-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\content\worlds\**\world.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

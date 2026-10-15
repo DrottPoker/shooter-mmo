@@ -1,5 +1,9 @@
 # Foundation Hardening Plan
 
+> Historical record. Names and locations in this document describe the codebase
+> before the October 2026 restructure, which renamed the `ShooterMmo` namespace
+> root to `Mmorpg` and `AuthService` to `GameService`.
+
 Last updated: 2026-10-15
 
 Status: Active. This document tracks defects found in a full audit of the

@@ -1,0 +1,20 @@
+{
+  "name": "Mmorpg.Client.Editor",
+  "rootNamespace": "Mmorpg.Client.Editor",
+  "references": [
+    "Mmorpg.Client",
+    "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

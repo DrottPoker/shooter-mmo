@@ -1,6 +1,6 @@
-# Shooter MMO
+# MMORPG
 
-Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
+MMORPG is an early classless, profession-driven, open-world MMORPG with a
 World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
 combat. That direction is defined in
 [Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md) and is not
@@ -31,7 +31,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 
 ## Current Foundation
 
-- ASP.NET Core AuthService with PostgreSQL authority.
+- ASP.NET Core GameService with PostgreSQL authority, built as a modular
+  monolith whose Platform, Accounts, Characters, Placement, and Items projects
+  only reach each other through published contracts. See
+  [GameService Modules](docs/GAME_SERVICE_MODULES.md).
 - Headless .NET SimulationWorker with LiteNetLib UDP.
 - Explicit World, Fleet, Node, Shard, Worker, runtime, and assignment records.
 - Guarded offline Shard-to-World rebinding plus World-keyed worker content and
@@ -64,7 +67,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Account-authenticated conditionally cached item catalog, complete item-state,
   focused bank and Recovery Storage reads, and offline-safe item mutation APIs
   with stable Problem Details codes.
-- One internal AuthService item transaction kernel with canonical idempotency,
+- One internal GameService item transaction kernel with canonical idempotency,
   stable PostgreSQL lock order, optimistic revisions, atomic item and Bag
   commands, Recovery deliveries, Secure Container tier changes, carried-state
   recomputation, policy lifecycle, quest-grant cleanup, and relational audit.
@@ -123,7 +126,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 Phases 1 through 15 of the slot-based item and world-actor foundation are
 implemented. Shared content, pure rules, Unity authoring, deterministic baking,
 the transactional PostgreSQL catalog mirror, constrained custody schema, and
-complete empty character item-state bootstrap now exist. AuthService exposes
+complete empty character item-state bootstrap now exist. GameService exposes
 revision-cached catalog reads, owned item-state, bank and Recovery Storage reads, and
 account-authenticated offline mutation routes. The same transaction kernel owns
 policy records, insurance removal, quest-grant cleanup, Secure Container tier
@@ -132,7 +135,7 @@ characters now mutate through an exact-session, exact-worker SimulationWorker
 boundary with live service access and committed carry propagation. Unity now
 loads and reconciles authoritative item snapshots through a persistent client
 controller and presents the first temporary but complete uGUI inventory loop.
-Carry state drives shared authoritative and predicted movement. AuthService now
+Carry state drives shared authoritative and predicted movement. GameService now
 owns durable player-death partition, corpse custody, Recovery policy results,
 absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
@@ -174,22 +177,22 @@ docker compose up -d --wait
 Run the two backend processes in separate PowerShell terminals:
 
 ```powershell
-dotnet run --project AuthService
+dotnet run --project src/Server/GameService
 ```
 
 ```powershell
-dotnet run --project SimulationWorker
+dotnet run --project src/Server/SimulationWorker
 ```
 
 Expected result:
 
-- AuthService listens on `http://localhost:5000`.
+- GameService listens on `http://localhost:5000`.
 - SimulationWorker binds UDP `27015`, registers
   `local-simulation-worker-1`, loads the committed world-actor revision, and
   receives assignment to `local-shard-1`.
 - `GET http://localhost:5000/api/shards` reports the local shard online.
 
-Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
+Open `src/Client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
 The original focused test map is `development-world-1`. The larger greybox map
@@ -198,7 +201,7 @@ is `development-world-2`; its layout and Unity workflow are defined in
 bound to Development World 2 for broader gameplay testing. Switching either
 direction remains a separate offline operational step.
 
-AuthService and SimulationWorker load the root `.env` for local development.
+GameService and SimulationWorker load the root `.env` for local development.
 Real environment variables and command-line values override it. Never commit
 `.env`.
 
@@ -207,37 +210,15 @@ Real environment variables and command-line values override it. Never commit
 Run from the repository root:
 
 ```powershell
-dotnet restore ShooterMmo.slnx --locked-mode
-& ./Tools/Verify-DependencyPolicy.ps1
-dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
-dotnet build ShooterMmo.slnx --configuration Release --no-restore
-dotnet run --project Tools/ItemCatalogCompiler `
-  --configuration Release `
-  --no-build -- `
-  WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  WorldData/Shared/Runtime/Items/core.item-catalog.json `
-  --verify
-dotnet test ShooterMmo.slnx --configuration Release --no-build
-dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Worlds/development-world-1/Authoring/collision.json `
-  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
-  --verify
-dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Worlds/development-world-2/Authoring/collision.json `
-  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
-  --verify
-dotnet run --project Tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  --verify
-dotnet run --project Tools/WorldActorCompiler `
-  --configuration Release `
-  --no-build -- `
-  WorldData/Shared/Authoring/Actors/core.world-actors.json `
-  WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
-  WorldData/Worlds/development-world-2/Runtime/world-actors.json `
-  --verify
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+dotnet restore Mmorpg.slnx --locked-mode
+& ./tools/Verify-DependencyPolicy.ps1
+dotnet format Mmorpg.slnx --verify-no-changes --no-restore
+dotnet build Mmorpg.slnx --configuration Release --no-restore
+dotnet test Mmorpg.slnx --configuration Release --no-build
+dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Start the isolated PostgreSQL and Redis test containers before running
@@ -245,21 +226,35 @@ integration tests:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
-$env:SHOOTER_MMO_TEST_POSTGRES = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" }).Split("=", 2)[1]
-$env:SHOOTER_MMO_TEST_REDIS = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_REDIS=*" }).Split("=", 2)[1]
-dotnet test ShooterMmo.slnx --configuration Release
+$env:MMORPG_TEST_POSTGRES = (Get-Content .env | Where-Object { $_ -like "MMORPG_TEST_POSTGRES=*" }).Split("=", 2)[1]
+$env:MMORPG_TEST_REDIS = (Get-Content .env | Where-Object { $_ -like "MMORPG_TEST_REDIS=*" }).Split("=", 2)[1]
+dotnet test Mmorpg.slnx --configuration Release
 docker compose -f docker-compose.test.yml down
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES, Env:SHOOTER_MMO_TEST_REDIS
+Remove-Item Env:MMORPG_TEST_POSTGRES, Env:MMORPG_TEST_REDIS
 ```
 
 Expected result: every test passes and none is skipped. The full run takes about
-six to seven minutes.
+eight minutes, most of it in `Mmorpg.GameService.Items.Tests`.
 
-The integration suite resets the `public` schema. It refuses a database name
-that does not contain `test`, but the variable must still never target shared or
-production data. The Redis test writes only keys below a unique random prefix
-and removes them afterwards. The test Redis container listens on
+Each test project uses its own PostgreSQL database, `<base>_<project>`, next to
+the database named in `MMORPG_TEST_POSTGRES`. It creates the database on first
+use and resets its `public` schema before every test. Both database names must
+contain `test`, and the test role needs `CREATEDB`, which the test container's
+role has. Run one test run per project and server at a time: a second
+concurrent run of the same project fails at once. The variable must still never
+target shared or production data. Redis tests write only keys below a unique
+random prefix and remove them afterwards. The test Redis container listens on
 `127.0.0.1:56380` and keeps no data on disk.
+
+For a fast loop that needs no containers, or to run one test project:
+
+```powershell
+dotnet test Mmorpg.slnx --configuration Release --filter "Category!=Integration"
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release
+```
+
+The test projects, where a new test goes, the traits, and the database rules are
+described in [Backend Tests](tests/README.md).
 
 Run Unity tests through `Window > General > Test Runner`, or use the licensed
 headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
@@ -268,15 +263,22 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
-| `SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
-| `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
-| `GameProtocol` | Local Unity package containing protocol source |
-| `GameSimulation` | Local Unity package containing shared simulation source |
-| `WorldData` | Shared catalogs and domain rules plus self-contained `Worlds/<WorldId>` manifests, authoring, actor runtime, and checksummed collision data |
-| `Tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
-| `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
-| `shooter-mmorpg-unity-client` | Unity project and Unity tests |
+| `src/Server/GameService` | GameService host: startup, configuration loading, database startup and the frozen baseline migrations, health, and owned config |
+| `src/Server/GameService.Platform` | Shared GameService plumbing: Problem Details pipeline, token hashing, Redis connection, transaction scope, migration runner, and the module contract |
+| `src/Server/GameService.Accounts` | Accounts, sessions, account and worker authentication, rate limits, and Redis session acceleration |
+| `src/Server/GameService.Characters` | Characters, ownership, and currency |
+| `src/Server/GameService.Placement` | Topology, worker registry, Shard placement, join tickets, simulation session leases, and Development simulation bots |
+| `src/Server/GameService.Items` | Item catalog, item state and transactions, corpses, death loot, Recovery, policies, expiry, maintenance, and item development tools |
+| `src/Server/SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
+| `src/Server/Common` | Framework-neutral helpers shared by the server processes |
+| `src/Shared/GameProtocol` | Local Unity package containing protocol source |
+| `src/Shared/GameSimulation` | Local Unity package containing shared simulation source |
+| `content` | Authored game content: item and actor catalogs with one file per definition, and per-World manifests, spawns, and collision sources |
+| `src/Shared/WorldData` | Local Unity package with shared domain rules and compilers, the Unity content tools, and the deterministic `Generated` data compiled from `content` |
+| `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
+| `src/Client` | Unity project and Unity tests |
+| `tools` | Verification, content compilers and their shared pipeline library, stress benchmark, shared headless bot client, and active bot population |
+| `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |
 
 Repository-wide Compose, SDK, solution, build, and environment contracts remain
@@ -301,6 +303,8 @@ complete dependency-ordered delivery plan is in
 The implemented scalable world-actor, NPC, Mob, visual spawn-authoring, and
 interaction foundation plus its deferred contract is in
 [NPC And Mob System Design](docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
+The authored content layout, its file rules, and the content compilers are in
+[Game Content](content/README.md).
 
 Repository rules are defined in [AGENTS.md](AGENTS.md). Behavior,
 configuration, architecture, and user workflows must be documented and manually

@@ -16,30 +16,33 @@ artifacts/
 .claude/settings.local.json
 
 # Unity generated files
-shooter-mmorpg-unity-client/[Ll]ibrary/
-shooter-mmorpg-unity-client/[Tt]emp/
-shooter-mmorpg-unity-client/[Oo]bj/
-shooter-mmorpg-unity-client/[Bb]uild/
-shooter-mmorpg-unity-client/[Bb]uilds/
-shooter-mmorpg-unity-client/[Cc]lient[Bb]uilds/
-shooter-mmorpg-unity-client/[Ll]ogs/
-shooter-mmorpg-unity-client/[Uu]ser[Ss]ettings/
-shooter-mmorpg-unity-client/[Mm]emoryCaptures/
-shooter-mmorpg-unity-client/[Rr]ecordings/
-shooter-mmorpg-unity-client/Assets/_Recovery/
-shooter-mmorpg-unity-client/Assets/_Recovery.meta
-shooter-mmorpg-unity-client/*.csproj
-shooter-mmorpg-unity-client/*.sln
-shooter-mmorpg-unity-client/*.slnx
-shooter-mmorpg-unity-client/packages.lock.json
-shooter-mmorpg-unity-client/*.pidb
-shooter-mmorpg-unity-client/*.booproj
-shooter-mmorpg-unity-client/*.svd
-shooter-mmorpg-unity-client/*.pdb
-shooter-mmorpg-unity-client/*.mdb
-shooter-mmorpg-unity-client/*.opendb
-shooter-mmorpg-unity-client/*.VC.db
+src/Client/[Ll]ibrary/
+src/Client/[Tt]emp/
+src/Client/[Oo]bj/
+src/Client/[Bb]uild/
+src/Client/[Bb]uilds/
+src/Client/[Cc]lient[Bb]uilds/
+src/Client/[Ll]ogs/
+src/Client/[Uu]ser[Ss]ettings/
+src/Client/[Mm]emoryCaptures/
+src/Client/[Rr]ecordings/
+src/Client/Assets/_Recovery/
+src/Client/Assets/_Recovery.meta
+src/Client/*.csproj
+src/Client/*.sln
+src/Client/*.slnx
+src/Client/packages.lock.json
+src/Client/*.pidb
+src/Client/*.booproj
+src/Client/*.svd
+src/Client/*.pdb
+src/Client/*.mdb
+src/Client/*.opendb
+src/Client/*.VC.db
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Claude Code agent worktrees
+.claude/worktrees/

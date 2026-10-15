@@ -1,0 +1,13 @@
+{
+  "name": "com.mmorpg.game-simulation",
+  "version": "0.3.0",
+  "displayName": "MMORPG Game Simulation",
+  "description": "Deterministic fixed-step gameplay simulation shared by SimulationWorker and Unity.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.mmorpg.world-data": "0.4.0"
+  },
+  "author": {
+    "name": "MMORPG"
+  }
+}

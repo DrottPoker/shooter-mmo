@@ -1,0 +1,54 @@
+<Solution>
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/Common/Mmorpg.Server.Common.csproj" />
+    <Project Path="src/Server/GameService/Mmorpg.GameService.csproj" />
+    <Project Path="src/Server/GameService.Platform/Mmorpg.GameService.Platform.csproj" />
+    <Project Path="src/Server/GameService.Accounts/Mmorpg.GameService.Accounts.csproj" />
+    <Project Path="src/Server/GameService.Characters/Mmorpg.GameService.Characters.csproj" />
+    <Project Path="src/Server/GameService.Placement/Mmorpg.GameService.Placement.csproj" />
+    <Project Path="src/Server/GameService.Items/Mmorpg.GameService.Items.csproj" />
+    <Project Path="src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/DotNet/GameProtocol/Mmorpg.GameProtocol.csproj" />
+    <Project Path="src/Shared/DotNet/GameSimulation/Mmorpg.GameSimulation.csproj" />
+    <Project Path="src/Shared/DotNet/WorldData/Mmorpg.WorldData.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests/Directory.Build.props" />
+    <File Path="tests/README.md" />
+  </Folder>
+  <Folder Name="/tests/Testing/">
+    <Project Path="tests/Testing/Mmorpg.Testing/Mmorpg.Testing.csproj" />
+    <Project Path="tests/Testing/Mmorpg.Testing.Content/Mmorpg.Testing.Content.csproj" />
+    <Project Path="tests/Testing/Mmorpg.GameService.Testing/Mmorpg.GameService.Testing.csproj" />
+  </Folder>
+  <Folder Name="/tests/Shared/">
+    <Project Path="tests/Shared/Mmorpg.Shared.Tests/Mmorpg.Shared.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Server/">
+    <Project Path="tests/Server/Mmorpg.Server.Common.Tests/Mmorpg.Server.Common.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Tests/Mmorpg.GameService.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Platform.Tests/Mmorpg.GameService.Platform.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Accounts.Tests/Mmorpg.GameService.Accounts.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Characters.Tests/Mmorpg.GameService.Characters.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Placement.Tests/Mmorpg.GameService.Placement.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Items.Tests/Mmorpg.GameService.Items.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.SimulationWorker.Tests/Mmorpg.SimulationWorker.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Integration/">
+    <Project Path="tests/Integration/Mmorpg.Integration.Tests/Mmorpg.Integration.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Tools/">
+    <Project Path="tests/Tools/Mmorpg.Tools.Tests/Mmorpg.Tools.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
+    <Project Path="tools/ContentPipeline/Mmorpg.Tools.ContentPipeline.csproj" />
+    <Project Path="tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <Project Path="tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj" />
+    <Project Path="tools/StackStressGenerator/Mmorpg.Tools.StackStressGenerator.csproj" />
+    <Project Path="tools/WorldActorCompiler/Mmorpg.Tools.WorldActorCompiler.csproj" />
+    <Project Path="tools/WorldCollisionCompiler/Mmorpg.Tools.WorldCollisionCompiler.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,67 @@
+{
+    "id": "npc.city_services",
+    "displayName": "Mira the Quartermaster",
+    "kind": "npc",
+    "factionId": "city",
+    "disposition": "friendly",
+    "presentationArchetypeId": "npc.city_services",
+    "damagePolicy": "invulnerable",
+    "tags": [
+        "city",
+        "service"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 1.0,
+        "centerZ": 0.0,
+        "sizeX": 0.8,
+        "sizeY": 2.0,
+        "sizeZ": 0.8
+    },
+    "capabilities": [
+        {
+            "id": "services.bank",
+            "kind": "bank",
+            "displayName": "Character Bank"
+        },
+        {
+            "id": "services.crafting",
+            "kind": "crafting",
+            "displayName": "Crafting"
+        },
+        {
+            "id": "services.dialogue",
+            "kind": "dialogue",
+            "displayName": "Talk"
+        },
+        {
+            "id": "services.insurance",
+            "kind": "insurance",
+            "displayName": "Insurance"
+        },
+        {
+            "id": "services.quest_offer",
+            "kind": "quest_offer",
+            "displayName": "Available Quests"
+        },
+        {
+            "id": "services.quest_turn_in",
+            "kind": "quest_turn_in",
+            "displayName": "Complete Quest"
+        },
+        {
+            "id": "services.recovery",
+            "kind": "recovery_storage",
+            "displayName": "Recovery Storage"
+        },
+        {
+            "id": "services.vendor",
+            "kind": "vendor",
+            "displayName": "Trade"
+        }
+    ],
+    "activityProfileId": "",
+    "respawnProfileId": "",
+    "corpsePersistenceMode": "",
+    "corpseLifetimeSeconds": 0.0
+}

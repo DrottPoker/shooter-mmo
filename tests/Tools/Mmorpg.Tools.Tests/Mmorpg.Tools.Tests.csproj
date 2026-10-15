@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\tools\ActiveSimulationBots\Mmorpg.Tools.ActiveSimulationBots.csproj" />
+    <ProjectReference Include="..\..\..\tools\StackStressGenerator\Mmorpg.Tools.StackStressGenerator.csproj" />
+    <ProjectReference Include="..\..\..\tools\ContentPipeline\Mmorpg.Tools.ContentPipeline.csproj" />
+    <ProjectReference Include="..\..\..\tools\ItemCatalogCompiler\Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <ProjectReference Include="..\..\..\tools\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.Testing.Content\Mmorpg.Testing.Content.csproj" />
+  </ItemGroup>
+</Project>

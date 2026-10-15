@@ -1,0 +1,10 @@
+{
+  "name": "com.mmorpg.game-protocol",
+  "version": "0.5.0",
+  "displayName": "MMORPG Game Protocol",
+  "description": "Versioned player, corpse, world actor, and interaction wire protocol shared by SimulationWorker and Unity.",
+  "unity": "6000.0",
+  "author": {
+    "name": "MMORPG"
+  }
+}

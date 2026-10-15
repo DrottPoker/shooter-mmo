@@ -1,0 +1,17 @@
+{
+  "bag": null,
+  "category": "medical",
+  "defaultPolicies": [ ],
+  "displayName": "Field Dressing",
+  "equipmentSlots": [ ],
+  "id": "medical.field_dressing",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 10,
+  "playerDestroyable": true,
+  "tags": [
+    "medical"
+  ],
+  "unitWeight": 2
+}

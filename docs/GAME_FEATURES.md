@@ -44,7 +44,7 @@ not implemented.
 Status: Foundation implemented with temporary UI
 
 A selected character can enter an online local shard through the authenticated
-placement and join-ticket flow. AuthService selects the assigned healthy worker
+placement and join-ticket flow. GameService selects the assigned healthy worker
 runtime and returns its endpoint only with the ticket. The client validates the
 placement, connects with LiteNetLib, sends the ticket through the shared
 versioned protocol, and loads the World scene mapped from the accepted WorldId
@@ -55,7 +55,7 @@ state.
 Leave sends the exact simulation-session id over the active peer and waits for server
 acknowledgement before returning to CharacterSelect. Unexpected disconnects
 clear shard state and return an authenticated player to CharacterSelect. HTTP
-401 from AuthService still clears account state and returns the player to
+401 from GameService still clears account state and returns the player to
 LoginMenu.
 
 ## World Preview
@@ -223,7 +223,7 @@ base speed use the same linear multiplier until movement reaches `0.20` at the
 140 percent hard cap. Durable weight-increasing item operations that would
 exceed that cap are rejected atomically.
 
-AuthService owns the persistent tuple. SimulationWorker owns its movement
+GameService owns the persistent tuple. SimulationWorker owns its movement
 effect, and Unity predicts with the same shared GameSimulation rules. Join and
 reconnect restore one fenced committed revision. Later revisions advance over
 the reliable control path. The F2 panel shows the current weight, capacity,
@@ -234,7 +234,7 @@ relocation, equip, unequip, stack split and merge, allowed destruction, Secure
 Container access, ordinary occupied-slot swap, and complete Recovery Storage
 claims. Bank and Recovery
 Storage require proximity to their configured worker service points. Secure
-Container access has no city requirement. Only committed AuthService results can
+Container access has no city requirement. Only committed GameService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
 Local Development explicitly enables global Bank and Recovery access so item
@@ -250,7 +250,7 @@ Drag items to valid container or equipment destinations. Dropping onto an
 occupied compatible container slot merges compatible stacks and otherwise
 submits one atomic swap. Click selection is retained only for split and
 allowed-destroy actions. All mutations use the existing authoritative
-SimulationWorker and AuthService path. The panel renders only refreshed
+SimulationWorker and GameService path. The panel renders only refreshed
 committed snapshots and never pretends that a pending mutation has completed.
 See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
 
@@ -336,13 +336,13 @@ SimulationWorker restores their presentation, advertises nearby corpses,
 enforces three-dimensional proximity and lifetime, and permits multiple players
 to inspect the same corpse. Full and partial item transfers, corpse-internal
 moves, compatible stack merges, ordinary occupied-slot swaps, typed corpse
-equipment destinations, and Bag aggregate swaps commit through AuthService.
+equipment destinations, and Bag aggregate swaps commit through GameService.
 Every viewer receives committed state, while a stale or losing request gets a
 stable refreshable result. The dead character competes under the same rules as
 every other player.
 
 The project still has no combat death producer. Development testing creates a
-real durable corpse from an offline source character through `Shooter MMO >
+real durable corpse from an offline source character through `MMORPG >
 Tools > Inventory Item Grants`. The generic capsule and current uGUI are
 temporary visuals over permanent protocol, state, authority, transaction, and
 revision foundations.
@@ -418,7 +418,7 @@ persistence, Phase 11 concurrent corpse interaction, and Phase 12 world actors
 and authoritative interaction now exist. Phase 13 insurance and quest item
 lifecycle, Phase 14 Mob corpse variants, and Phase 15 operational hardening are
 also complete.
-AuthService supports owned
+GameService supports owned
 item-state, bank, Secure Container, and Recovery reads plus offline relocation,
 split, merge, allowed destruction, and tier-change operations. Offline operations
 never reach the bank or Recovery Storage; those city services and Recovery claims

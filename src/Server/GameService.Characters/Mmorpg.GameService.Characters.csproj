@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\GameService.Module.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
+    <ProjectReference Include="..\GameService.Accounts\Mmorpg.GameService.Accounts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test access follows the module dependency direction: the module's own tests, the
+         tests of modules that build on it, the GameService test kit, the host tests,
+         and the cross-module integration tests. Never a production assembly. -->
+    <InternalsVisibleTo Include="Mmorpg.GameService.Characters.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Placement.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Items.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Testing" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.Integration.Tests" />
+  </ItemGroup>
+
+</Project>

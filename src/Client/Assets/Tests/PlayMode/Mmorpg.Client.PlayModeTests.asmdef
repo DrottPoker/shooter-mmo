@@ -1,0 +1,19 @@
+{
+  "name": "Mmorpg.Client.PlayModeTests",
+  "rootNamespace": "Mmorpg.Client.Tests.PlayMode",
+  "references": [
+    "Mmorpg.Client"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

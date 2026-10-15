@@ -1,13 +1,13 @@
 # NPC And Mob System Design
 
-Last updated: 2026-07-18
+Last updated: 2026-10-15
 
 Status: Canonical design, Phase 12 foundation implemented
 
 ## Purpose
 
 This document is the canonical product and architecture design for scalable
-world actors, NPCs, Mobs, actor spawning, and player interaction in Shooter MMO.
+world actors, NPCs, Mobs, actor spawning, and player interaction in MMORPG.
 It locks the foundation needed before vendor, quest, crafting, insurance, combat,
 and Mob-loot features are connected.
 
@@ -28,9 +28,10 @@ AI, Mob loot generation, final actor art, or final interaction UI.
 
 The implemented foundation includes:
 
-- Strict shared actor definitions in `WorldData/Shared/Authoring/Actors`,
-  per-World spawn authoring under `WorldData/Worlds/<WorldId>/Authoring`, and
-  deterministic runtime actor content in each World's `Runtime` directory.
+- Strict shared actor definitions in `content/actors`, with one file per actor,
+  per-World spawn authoring in `content/worlds/<WorldId>/actor-spawns.json`, and
+  deterministic runtime actor content in
+  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
 - A shared four-definition actor catalog, a checked-in
@@ -53,7 +54,7 @@ The implemented foundation includes:
 Phase 13 replaces the insurance, quest-offer, and quest-turn-in deferred slots
 with explicit handlers. Insurance and quest item lifecycle actions reuse the
 same validated interaction session and dispatch contract before crossing the
-service-authenticated AuthService boundary. Quest progression and completion
+service-authenticated GameService boundary. Quest progression and completion
 remain unavailable.
 
 Phase 14 adds the Mob corpse lifecycle boundary without adding combat. Mob
@@ -68,7 +69,7 @@ Phase 15 validates this foundation at operational scale without changing its
 ownership. Automated load coverage schedules `2,000` event-driven NPCs and
 `2,000` centrally scheduled active or dormant Mobs, then opens `128` concurrent
 NPC interactions through independent player leases. The existing
-`ShooterMmo.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
+`Mmorpg.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
 event-driven, dormant, active, and interaction measurements. No actor receives
 an independent background task or durable row.
 
@@ -116,7 +117,7 @@ capability composition.
    new runtime actor subclass.
 5. SimulationWorker owns live actor state, interaction authority, interest, and
    runtime identity for its assigned Shard.
-6. AuthService remains the authority for global durable mutations invoked by a
+6. GameService remains the authority for global durable mutations invoked by a
    future capability, including items, currency, quests, policies, and durable
    progression.
 7. Unity sends advisory target and action intents. It never proves range, line
@@ -139,20 +140,24 @@ capability composition.
 
 ## Content Ownership And Compilation
 
-Neutral actor authoring belongs under:
+Neutral actor authoring and its compiled form live here:
 
 ```text
-WorldData/
-  Authoring/
-    Actors/
-    ActorSpawns/
-  Runtime/
-    Actors/
+content/
+  actors/
+    catalog.json                  factions, presentation, activity and respawn profiles
+    definitions/<actor-id>.json   one actor definition per file
+  worlds/<WorldId>/
+    actor-spawns.json             spawn points, groups, areas, and patrol paths
+src/Shared/WorldData/Generated/
+  Worlds/<WorldId>/
+    world-actors.json             compiled runtime content for one World
 ```
 
-The exact file split may group related definitions for authoring convenience,
-but the compiled runtime result must be deterministic, framework-neutral, and
-independent from a Unity scene or asset database.
+A definition file is named after its actor id. The compiled runtime result is
+deterministic, framework-neutral, and independent from a Unity scene or asset
+database. Every World's runtime embeds the shared catalog, so an actor change
+recompiles every World. The general content rules are in `content/README.md`.
 
 The same compiler and validation rules must be consumed by:
 
@@ -162,10 +167,13 @@ The same compiler and validation rules must be consumed by:
 - Backend unit and content tests.
 - Continuous integration.
 
-The command-line entry point is `Tools/WorldActorCompiler`. Its default mode
-loads the committed canonical actor and spawn manifests, while explicit source
-and output arguments support isolated tests. `--verify` compiles in memory and
-fails when committed runtime output is missing or differs without rewriting it.
+The command-line entry point is `tools/WorldActorCompiler`. By default it
+compiles the repository actor catalog against every World below
+`content/worlds` and fails when a World lacks `world.json`, `actor-spawns.json`,
+or `collision.json`. `--content-root` and `--generated-root` point it at other
+directories for isolated tests and for Unity Editor validation. `--verify`
+compiles in memory and fails when committed runtime output is missing, differs,
+or exists for a World that no longer exists, without rewriting anything.
 
 Compilation produces a complete actor-content revision and stable structural
 fingerprints. Equivalent canonical input produces byte-for-byte equivalent
@@ -230,8 +238,8 @@ internally, but availability and its expected revision remain session-scoped.
 
 Phase 12 proves composition and discovery. Phase 13 registers insurance and
 quest item-lifecycle handlers that bridge the already validated interaction
-session to AuthService. The worker passes exact session, worker runtime, Shard,
-interaction session, capability, operation, and revision identity. AuthService
+session to GameService. The worker passes exact session, worker runtime, Shard,
+interaction session, capability, operation, and revision identity. GameService
 then commits the server-owned price, policy, or grant-lineage transaction. The
 handler does not repeat target, range, line-of-sight, or capability discovery
 logic.
@@ -480,12 +488,12 @@ behavior through the existing input and UI coordination foundation.
 
 ## Unity Editor Authoring UX
 
-All project-specific Editor tools remain below `Shooter MMO > Tools`.
+All project-specific Editor tools remain below `MMORPG > Tools`.
 
 Phase 12 adds:
 
-- `Shooter MMO > Tools > Content > Actor Studio`.
-- `Shooter MMO > Tools > Content > Spawn Authoring`.
+- `MMORPG > Tools > Content > Actor Studio`.
+- `MMORPG > Tools > Content > Spawn Authoring`.
 
 Actor Studio supports:
 
@@ -623,7 +631,7 @@ Phase 12 requires automated coverage for:
 
 Implementation must also pass locked dependency restore, dependency policy,
 formatter verification, the existing item-catalog and collision verification,
-`Tools/WorldActorCompiler --verify`, the complete Release build, every backend
+`tools/WorldActorCompiler --verify`, the complete Release build, every backend
 test including isolated PostgreSQL integration tests, and all Unity EditMode and
 PlayMode tests.
 

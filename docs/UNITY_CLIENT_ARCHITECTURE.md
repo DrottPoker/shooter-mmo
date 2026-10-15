@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Purpose
 
@@ -15,8 +15,8 @@ runtime claim.
 
 ## Project Boundary
 
-The Unity project lives in `shooter-mmorpg-unity-client` and targets Unity
-6000.5.4f1. Runtime code is compiled into `ShooterMmo.Runtime`. EditMode and
+The Unity project lives in `src/Client` and targets Unity
+6000.5.4f1. Runtime code is compiled into `Mmorpg.Client`. EditMode and
 PlayMode tests use separate assemblies.
 
 The current runtime UI is intentionally temporary while the custom UI is being
@@ -32,15 +32,15 @@ generation code.
 ## Runtime Structure
 
 ```text
-ShooterMmoClientBootstrap
-  +-- ShooterMmoClientSession
-  +-- ShooterMmoApiClient
+ClientBootstrap
+  +-- ClientSession
+  +-- ApiClient
   +-- RealtimeSimulationClient
   +-- InventoryClientController
       +-- ClientItemCatalog
       +-- InventoryClientState
       +-- InventoryOperationJournal
-  +-- ShooterMmoClientConfig
+  +-- ClientConfig
   +-- scene lifecycle recovery
 
 Scene panel
@@ -84,7 +84,7 @@ Realtime movement
 
 ## Persistent Client Bootstrap
 
-`ShooterMmoClientBootstrap` creates the persistent runtime root and survives scene
+`ClientBootstrap` creates the persistent runtime root and survives scene
 changes. It initializes configuration, owns one `RealtimeSimulationClient` and
 one `InventoryClientController`, observes scene transitions, and performs
 fallback leave when an active World scene is left outside the normal panel flow.
@@ -96,39 +96,39 @@ run disconnect cleanup.
 
 ## Configuration
 
-`ShooterMmoClientConfig` is a ScriptableObject loaded from
-`Assets/Resources/Config/ShooterMmoClientConfig.asset`. Its C# definition lives
+`ClientConfig` is a ScriptableObject loaded from
+`Assets/Resources/Config/ClientConfig.asset`. Its C# definition lives
 in `Assets/Scripts/Config`. It currently contains:
 
-- AuthService base URL.
+- GameService base URL.
 - HTTP request timeout in seconds.
 - Realtime operation timeout in seconds.
 - Account-session validation interval in seconds.
 - A direct TextAsset reference to the gameplay runtime item catalog supplied by
   the local WorldData package.
 
-SimulationWorker host, runtime, and UDP port come from AuthService's short-lived
+SimulationWorker host, runtime, and UDP port come from GameService's short-lived
 shard placement response. They are not part of the public shard list and are not
 duplicated in client configuration. Different environments should use
 build-specific configuration assets or a future build configuration pipeline.
 
 ## Client Session State
 
-`ShooterMmoClientSession` stores the current in-memory client view:
+`ClientSession` stores the current in-memory client view:
 
-- AuthService endpoint.
+- GameService endpoint.
 - Account and bearer session details.
 - Selected character and shard.
 - Active simulation-session, shard, World, worker, and worker-runtime metadata.
 
-This state is a client cache, not an authority. AuthService and SimulationWorker remain
+This state is a client cache, not an authority. GameService and SimulationWorker remain
 authoritative. The persistent bootstrap validates an authenticated account
 session every five seconds, including outside the active World scene. HTTP 401
 clears all local session state before loading LoginMenu.
 
 ## API Layer
 
-`ShooterMmoApiClient` wraps UnityWebRequest in coroutines. It is responsible for:
+`ApiClient` wraps UnityWebRequest in coroutines. It is responsible for:
 
 - Request serialization and response deserialization.
 - Bearer authentication headers.
@@ -141,7 +141,7 @@ clears all local session state before loading LoginMenu.
   its iterator, so each owner disposes its client in `OnDestroy`, which aborts
   and releases any request that has not completed.
 
-`ShooterMmoApiError` carries the failure kind, HTTP status, stable server code,
+`ApiError` carries the failure kind, HTTP status, stable server code,
 message, and correlation id. Panels display a safe message rather than raw JSON.
 Array responses are validated through `JsonArrayUtility` before they reach UI
 state.
@@ -183,7 +183,7 @@ World identity, and exact worker runtime placement, then connects to the provide
 UDP endpoint. It sends the short-lived join ticket in a versioned reliable
 ordered packet. Join acceptance must match the placed character, shard, World,
 simulation revision, and collision revision before non-secret metadata is copied
-into `ShooterMmoClientSession`.
+into `ClientSession`.
 
 Unexpected disconnect clears the active shard view and returns an authenticated
 player to CharacterSelect. `RealtimeSimulationClient` also raises `SessionEnded`
@@ -198,7 +198,7 @@ types, oversized values, and trailing data.
 If another client logs into the same account, SimulationWorker can send
 `account_session_replaced` over the reliable control path. The client aborts its
 transport, clears the entire account session, logs an `[AUTH]` error, and loads
-LoginMenu. The periodic AuthService validation provides the same recovery when
+LoginMenu. The periodic GameService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
 Protocol version 14 uses two explicit LiteNetLib channels plus unchanneled
@@ -249,7 +249,7 @@ The join response must also match the client's compiled movement-simulation
 revision and baked collision revision. Either mismatch aborts activation with a
 structured client error.
 
-`GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
+`src/Shared/GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
 installed from OpenUPM. The runtime assembly references both by assembly name.
 LiteNetLib is pinned to version 2.1.4 in both the project manifest and package
 lock. Unity displays a missing-signature warning because the scoped third-party
@@ -291,7 +291,7 @@ LoginMenu -> CharacterSelect -> WorldSceneCatalog[accepted WorldId]
 ```
 
 `Assets/Resources/Worlds/world-scene-catalog.json` is the client-owned mapping
-from authoritative `WorldId` to an authored Unity scene name. AuthService and
+from authoritative `WorldId` to an authored Unity scene name. GameService and
 SimulationWorker never send a scene path. CharacterSelect resolves the selected
 shard's World before requesting a join ticket and rejects an unknown mapping or
 a scene missing from the build. It resolves the authoritative placement World
@@ -354,7 +354,7 @@ client. Recovery writes a specific temporary Unity Console message rather than
 presenting it as an ordinary expired session.
 
 Logout is different from recovery. A normal Back to Login action first asks
-AuthService to revoke the active account session, then clears local state.
+GameService to revoke the active account session, then clears local state.
 
 ## Local Player Lifecycle
 
@@ -481,7 +481,7 @@ upper-right, and character storage in the lower-right. Permanent inventory,
 equipped Bag contents, and Secure Container remain visible while Bank or
 Recovery Storage is selected. Bank and Recovery may be inspected through global
 owning-account reads. Every mutation still travels through the joined
-SimulationWorker and is committed through AuthService authority.
+SimulationWorker and is committed through GameService authority.
 
 `InventoryDragCoordinator`, `InventoryDragSource`, typed
 `InventoryDragPayload`, and `InventoryDropTarget` form the reusable uGUI
@@ -541,15 +541,15 @@ another corpse slot submits an authoritative internal move, split, merge, or
 complete swap. Equipment destinations show the catalog display name and stable
 equipment-slot id, and local feedback rejects obvious type mismatches. Dropping
 a corpse Bag onto the occupied player Bag slot submits one atomic aggregate
-swap. Green and red target feedback remains advisory, while AuthService owns all
+swap. Green and red target feedback remains advisory, while GameService owns all
 final slot, equipment, policy, revision, weight, capacity, and hard-cap
 validation.
 
 ### Development Item Tools
 
-`Shooter MMO > Tools > Inventory Item Grants` is an Editor-only local
+`MMORPG > Tools > Inventory Item Grants` is an Editor-only local
 development window. It discovers initialized characters and active definitions
-through a short-lived AuthService command, then invokes individual grants or
+through a short-lived GameService command, then invokes individual grants or
 deterministic test packages through the authoritative `ItemTransactionService`.
 The Editor owns only process orchestration and presentation. It does not connect
 to PostgreSQL, reproduce catalog rules, mutate runtime client state, or add a
@@ -582,14 +582,14 @@ SimulationWorker separately loads
 local Development character use Bank and Recovery Storage from any authoritative
 world position. The option is rejected if enabled outside the Development
 environment. It does not grant insurance access or weaken session, worker,
-runtime, Shard, assignment, AuthService transaction, item-rule, or hard-cap
+runtime, Shard, assignment, GameService transaction, item-rule, or hard-cap
 authority. Production continues to derive Bank and Recovery access from authored
 service points.
 
 All Unity Editor commands owned by the project use the shared
-`Shooter MMO > Tools` root. The item catalog authoring window is at
-`Shooter MMO > Tools > Item Catalog`, and collision baking is at
-`Shooter MMO > Tools > World Collision > Bake Open Scene`. `Bake Build World
+`MMORPG > Tools` root. The item catalog authoring window is at
+`MMORPG > Tools > Item Catalog`, and collision baking is at
+`MMORPG > Tools > World Collision > Bake Open Scene`. `Bake Build World
 Scenes` validates the World catalog against enabled Build Profiles scenes and
 bakes every mapped scene in one pass. A reusable scene shared by several Worlds
 is opened once and baked once for each of them; its authored World id must be
@@ -609,10 +609,11 @@ render frame rate, while `LocalPlayerController` smooths reconciliation
 corrections smaller than three meters and applies larger corrections immediately.
 The presentation interpolation never feeds positions back into input packets or
 the shared simulation. The shared simulation source is installed as
-`com.shootermmo.game-simulation` and contains no Unity dependencies.
+`com.mmorpg.game-simulation` and contains no Unity dependencies.
 
-`UnityWorldCollisionLoader` loads the selected world's manifest from the local
-`com.shootermmo.world-data` package. `UnityWorldCollisionStream` then loads and
+`UnityWorldCollisionLoader` loads the selected world's manifest from the
+`Generated/Resources/WorldCollision` folder of the local `com.mmorpg.world-data`
+package. `UnityWorldCollisionStream` then loads and
 checksum-validates chunks around the initial player and the authoritative local
 owner snapshot. Remote snapshot scheduling cannot move the prediction collision
 window. The stream retains a larger chunk ring before unloading, which prevents
@@ -628,7 +629,7 @@ authority or feeds presentation positions back into prediction.
 
 `WorldCollisionAuthoring` defines the world id, chunk size, collision root, and
 layer mask on an authored scene object. The Editor command
-`Shooter MMO > Tools > World Collision > Bake Open Scene` scans enabled, non-trigger
+`MMORPG > Tools > World Collision > Bake Open Scene` scans enabled, non-trigger
 BoxColliders below that root and writes neutral authoring JSON plus versioned
 binary resources into `WorldData`. Unsupported collider types fail the bake
 explicitly. The shared compiler canonicalizes signed floating-point zero before
@@ -694,7 +695,7 @@ Phase 12 adds permanent client state below replaceable presentation:
   `NpcView` and `MobView` add kind-specific presentation hooks without actor
   authority.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
-  The asset is `Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`
+  The asset is `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`
   and maps all four authored archetypes to collider-free placeholder prefabs in
   `Assets/Prefabs/WorldActors` with URP materials in
   `Assets/Art/Materials/WorldActors`. An authored prefab keeps its own look.
@@ -758,10 +759,10 @@ custody.
 
 All new Editor tools remain under the established menu root:
 
-- `Shooter MMO > Tools > Content > Actor Studio` owns searchable NPC and Mob
+- `MMORPG > Tools > Content > Actor Studio` owns searchable NPC and Mob
   authoring, templates, safe duplication, capability composition, references,
   validation, preview, compile, and verify.
-- `Shooter MMO > Tools > Content > Spawn Authoring` owns scene handles, ground
+- `MMORPG > Tools > Content > Spawn Authoring` owns scene handles, ground
   snapping, spawn areas and groups, patrol paths, prefab preview, canonical
   change preview, export, compile, and verify.
 
@@ -836,7 +837,7 @@ Manual flows and expected results are documented in
 - Keep authored collision in `WorldData`; never duplicate scene geometry as
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.
-- Keep persistent cross-scene session state in `ShooterMmoClientSession` and
+- Keep persistent cross-scene session state in `ClientSession` and
   item and corpse state in their bootstrap-owned controllers, not scene panels.
 - Keep planned actor and world-interaction state in bootstrap-owned controllers,
   not actor prefabs or the temporary interaction panel.

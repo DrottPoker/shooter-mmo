@@ -1,0 +1,17 @@
+{
+  "bag": null,
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Starter Vest",
+  "equipmentSlots": [
+    "body_armor"
+  ],
+  "id": "armor.starter_vest",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 20
+}

@@ -1,0 +1,30 @@
+scenario: change_secure_container_tier.unchanged
+trace:
+  c1 begin ReadCommitted
+  c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
+  c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
+  c1 sql savepoint item_mutation
+  c1 sql select pg_advisory_xact_lock( hashtextextended('item-secure-entitlement:' || cast($1 as text), 0))
+  c1 sql select state.character_id as "CharacterId", state.revision as "Revision" from character_item_states state join (select id, account_id, name from characters where deleted_at is null) character on character.id = state.character_id where character.account_id = $1 order by state.character_id
+  c1 sql select id as "CharacterId", account_id as "AccountId" from characters where id = any($1) and deleted_at is null order by id for no key update
+  c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.secure_container_id as "SecureContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = any($1) order by state.character_id for update of state
+  c1 sql select account_id as "AccountId", tier_id as "TierId", revision as "Revision" from account_secure_container_entitlements where account_id = $1 for update
+  c1 sql select id as "TierId", slot_capacity as "SlotCapacity" from secure_container_tiers where id = $1 and is_active
+  c1 sql insert into item_operation_changes ( operation_id, change_index, item_instance_id, change_kind, before_state, after_state) values ( $1, $2, $3, $4, cast($5 as jsonb), cast($6 as jsonb))
+  c1 sql update item_operations set status = $1, result_payload = cast($2 as jsonb), revision = revision + 1, completed_at = now() where operation_id = $3
+  c1 commit
+result:
+  operation kind: change_secure_container_tier
+  operation id matches: yes
+  succeeded: yes
+  error: none
+  character revisions: none
+  container revisions: none
+  item revisions: none
+  recovery deliveries: 0
+  secure entitlement revision: 2
+journal:
+  operation row: change_secure_container_tier committed
+  stored payload: equals returned result
+  changes:
+    0 secure_tier_unchanged item=none before=set after=set

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Server\SimulationWorker\Mmorpg.SimulationWorker.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
+    <ProjectReference Include="..\..\Testing\Mmorpg.Testing.Content\Mmorpg.Testing.Content.csproj" />
+  </ItemGroup>
+</Project>

@@ -4,8 +4,8 @@ Last updated: 2026-07-14
 
 ## Purpose
 
-`Tools/ActiveSimulationBots` is a long-running local development population
-driver. It keeps configurable headless bots connected to the real AuthService
+`tools/ActiveSimulationBots` is a long-running local development population
+driver. It keeps configurable headless bots connected to the real GameService
 and SimulationWorker while a Unity player can use the same shard. The bots use
 the normal LiteNetLib UDP connection, one-time join ticket, server-provided
 simulation tick rate, sequenced movement input, entity lifecycle, snapshots,
@@ -20,35 +20,35 @@ full-stack ramp, soak, resource, and latency measurements.
 ## Architecture And Safety Boundary
 
 ```text
-ActiveSimulationBots -- protected loopback HTTP --> AuthService
+ActiveSimulationBots -- protected loopback HTTP --> GameService
 ActiveSimulationBots -------- LiteNetLib UDP ----> SimulationWorker
 Unity client ----------------- LiteNetLib UDP ----> SimulationWorker
 
-AuthService and SimulationWorker: normal local processes
+GameService and SimulationWorker: normal local processes
 PostgreSQL: topology and real players only
-Development bot identities, tickets, and sessions: AuthService memory only
+Development bot identities, tickets, and sessions: GameService memory only
 ```
 
 The login bypass ends at the development ticket endpoint. A bot never bypasses
-SimulationWorker admission or UDP session validation. AuthService generates an
+SimulationWorker admission or UDP session validation. GameService generates an
 in-memory account id, character id, and name such as `Active Bot 1`, binds a
 short-lived one-time ticket to the exact Shard, worker, and runtime, and validates
 the in-memory session token for every worker heartbeat and release.
 
 The development ticket endpoint has four independent guards:
 
-- AuthService must run in the `Development` environment.
+- GameService must run in the `Development` environment.
 - `DevelopmentSimulationBots:Enabled` must be explicitly true.
 - The request must originate over loopback.
 - The request must carry the separate `ACTIVE_SIMULATION_BOTS_SECRET`, which
   must contain at least 32 characters and cannot be the checked-in placeholder.
 
-The endpoint is not mapped when the feature is disabled. AuthService refuses to
+The endpoint is not mapped when the feature is disabled. GameService refuses to
 start if it is enabled outside `Development` or if its secret is too short.
 Bot identities, tickets, and sessions are never inserted into PostgreSQL and
-disappear when AuthService stops.
+disappear when GameService stops.
 
-AuthService counts the worker's reported connections, durable active sessions,
+GameService counts the worker's reported connections, durable active sessions,
 durable pending tickets, in-memory bot sessions, and in-memory pending bot
 tickets before admitting another bot, and keeps `ReservedPlayerConnections` free
 for real players. Player placement counts the same in-memory bot sessions and
@@ -61,7 +61,7 @@ connections absorb that overlap.
 ## Configuration
 
 Authority controls live in
-`AuthService/Config/appsettings.Development.json`:
+`src/Server/GameService/Config/appsettings.Development.json`:
 
 | Setting | Default | Behavior |
 | --- | ---: | --- |
@@ -72,11 +72,11 @@ Authority controls live in
 | `ReservedPlayerConnections` | `8` | Worker connections bots never use, so real local players can still join |
 
 Population and behavior controls live in
-`Tools/ActiveSimulationBots/appsettings.json`:
+`tools/ActiveSimulationBots/appsettings.json`:
 
 | Setting | Default | Behavior |
 | --- | ---: | --- |
-| `AuthorityUrl` | `http://127.0.0.1:5000` | Real local AuthService URL, loopback only |
+| `AuthorityUrl` | `http://127.0.0.1:5000` | Real local GameService URL, loopback only |
 | `AuthoritySecret` | empty | Optional local override; prefer the ignored `.env` value |
 | `ShardId` | `local-shard-1` | Shard requested for every bot |
 | `MinimumActiveBots` | `5` | Lower bound for randomly selected population targets |
@@ -106,7 +106,7 @@ capacity admission but cannot be reached.
 For example:
 
 ```powershell
-dotnet run --project Tools/ActiveSimulationBots -- `
+dotnet run --project tools/ActiveSimulationBots -- `
   --ActiveSimulationBots:MinimumActiveBots 10 `
   --ActiveSimulationBots:MaximumActiveBots 25
 ```
@@ -121,7 +121,7 @@ ACTIVE_SIMULATION_BOTS_SECRET=replace-with-a-separate-secret-of-at-least-32-char
 ```
 
 Do not commit a real secret. The same ignored `.env` is discovered by
-AuthService and ActiveSimulationBots.
+GameService and ActiveSimulationBots.
 
 Start the normal local stack in separate PowerShell terminals:
 
@@ -130,23 +130,23 @@ docker compose up -d --wait
 ```
 
 ```powershell
-dotnet run --project AuthService
+dotnet run --project src/Server/GameService
 ```
 
 ```powershell
-dotnet run --project SimulationWorker
+dotnet run --project src/Server/SimulationWorker
 ```
 
 Then start the active population:
 
 ```powershell
-dotnet run --project Tools/ActiveSimulationBots --configuration Release
+dotnet run --project tools/ActiveSimulationBots --configuration Release
 ```
 
 Expected result:
 
 - The tool ramps to at least the configured minimum target.
-- AuthService logs successful development ticket requests without creating bot
+- GameService logs successful development ticket requests without creating bot
   account or character rows.
 - ActiveSimulationBots logs joined characters named `Active Bot 1`,
   `Active Bot 2`, and so on. SimulationWorker reports their aggregate count
@@ -170,7 +170,7 @@ Expected result:
   temporary population below the requested minimum.
 - Console status reports joined, joining, leaving, ticket request, lifetime
   login, clean logout, failure, rejection, and packet counts.
-- When SimulationWorker `MaxConnections` would be crossed, AuthService returns
+- When SimulationWorker `MaxConnections` would be crossed, GameService returns
   `development_bot_worker_capacity_reached` and the affected slot retries with
   exponential backoff and jitter.
 
@@ -182,9 +182,9 @@ waits up to `ShutdownTimeoutSeconds`, prints its final status, and exits.
 No Unity scene, prefab, package, Inspector, or build-setting changes are
 required.
 
-1. Start AuthService, SimulationWorker, and ActiveSimulationBots as described
+1. Start GameService, SimulationWorker, and ActiveSimulationBots as described
    above.
-2. Open `shooter-mmorpg-unity-client` in Unity.
+2. Open `src/Client` in Unity.
 3. Enter Play Mode from `Assets/Scenes/LoginMenu.unity`.
 4. Log in with a normal account, select a character, and join
    `local-shard-1`.
@@ -208,6 +208,6 @@ SimulationWorker terminal status and performance lines.
 ## Scope Boundary
 
 ActiveSimulationBots is development-only synthetic population. It does not
-measure AuthService or PostgreSQL capacity, create persistent accounts, exercise
+measure GameService or PostgreSQL capacity, create persistent accounts, exercise
 password authentication, validate final AI behavior, or establish production
 concurrency limits. It must never be enabled in staging or production.

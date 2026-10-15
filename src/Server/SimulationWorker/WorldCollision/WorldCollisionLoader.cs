@@ -1,0 +1,129 @@
+using System.Text.Json;
+using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Worlds;
+using Mmorpg.SimulationWorker.Config;
+
+namespace Mmorpg.SimulationWorker.WorldCollision;
+
+public static class WorldCollisionLoader
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        IncludeFields = true,
+        PropertyNameCaseInsensitive = true
+    };
+
+    public static ChunkedStaticCollisionWorld Load(SimulationWorkerConfig config)
+    {
+        var streamingStore = LoadStreaming(config);
+        streamingStore.LoadAll();
+        return streamingStore.CollisionWorld;
+    }
+
+    public static WorldCollisionStreamingStore LoadStreaming(SimulationWorkerConfig config)
+    {
+        var worldPath = WorldManifestFileStore.ResolveCollisionRuntimePath(
+            config.WorldDataPath,
+            config.WorldId);
+        var manifestPath = Path.Combine(worldPath, "manifest.json");
+        if (!File.Exists(manifestPath))
+        {
+            throw new InvalidOperationException(
+                $"Collision manifest does not exist for world '{config.WorldId}' at '{manifestPath}'.");
+        }
+
+        CollisionWorldManifest manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<CollisionWorldManifest>(
+                File.ReadAllText(manifestPath),
+                JsonOptions) ?? throw new InvalidDataException("Collision manifest is empty.");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("Collision manifest JSON is invalid.", exception);
+        }
+
+        ValidateManifest(manifest, config.WorldId);
+        var chunkSources = new List<WorldCollisionChunkSource>(manifest.Chunks.Length);
+        foreach (var entry in manifest.Chunks)
+        {
+            var chunkPath = Path.Combine(worldPath, entry.ResourceName + ".bytes");
+            if (!File.Exists(chunkPath))
+            {
+                throw new InvalidOperationException(
+                    $"Collision chunk '{entry.ResourceName}' does not exist at '{chunkPath}'.");
+            }
+
+            var bytes = File.ReadAllBytes(chunkPath);
+            var actualHash = CollisionWorldCompiler.ComputeSha256Hex(bytes);
+            if (!string.Equals(actualHash, entry.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Collision chunk '{entry.ResourceName}' failed checksum validation.");
+            }
+
+            chunkSources.Add(new WorldCollisionChunkSource(
+                entry.X,
+                entry.Z,
+                entry.ResourceName,
+                chunkPath,
+                entry.Sha256));
+        }
+
+        return new WorldCollisionStreamingStore(
+            manifest.WorldId,
+            manifest.Revision,
+            manifest.ChunkSize,
+            chunkSources,
+            config.CollisionStreaming);
+    }
+
+    private static void ValidateManifest(CollisionWorldManifest manifest, string expectedWorldId)
+    {
+        if (manifest.FormatVersion != CollisionDataFormat.Version)
+        {
+            throw new InvalidOperationException(
+                $"Collision format version {manifest.FormatVersion} is unsupported.");
+        }
+
+        if (!string.Equals(manifest.WorldId, expectedWorldId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Collision manifest world '{manifest.WorldId}' does not match configured world '{expectedWorldId}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.Revision)
+            || !CollisionDataFormat.IsValidChunkSize(manifest.ChunkSize)
+            || manifest.Chunks is null
+            || manifest.Chunks.Length == 0)
+        {
+            throw new InvalidOperationException("Collision manifest metadata is invalid.");
+        }
+
+        var coordinates = new HashSet<long>();
+        foreach (var entry in manifest.Chunks)
+        {
+            var key = ((long)entry.X << 32) | (uint)entry.Z;
+            if (string.IsNullOrWhiteSpace(entry.ResourceName)
+                || entry.ResourceName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || entry.ResourceName.Contains(Path.DirectorySeparatorChar)
+                || entry.ResourceName.Contains(Path.AltDirectorySeparatorChar)
+                || string.IsNullOrWhiteSpace(entry.Sha256)
+                || entry.Sha256.Length != 64
+                || !coordinates.Add(key))
+            {
+                throw new InvalidOperationException("Collision manifest contains an invalid chunk entry.");
+            }
+        }
+
+        if (!string.Equals(
+                CollisionWorldCompiler.ComputeManifestRevision(manifest),
+                manifest.Revision,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Collision manifest revision does not match its chunk content.");
+        }
+    }
+}

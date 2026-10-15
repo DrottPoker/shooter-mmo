@@ -1,0 +1,17 @@
+{
+  "bag": null,
+  "category": "material",
+  "defaultPolicies": [ ],
+  "displayName": "Iron Ore",
+  "equipmentSlots": [ ],
+  "id": "material.iron_ore",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 100,
+  "playerDestroyable": true,
+  "tags": [
+    "material"
+  ],
+  "unitWeight": 6
+}

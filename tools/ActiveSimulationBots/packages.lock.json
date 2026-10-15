@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "LiteNetLib": {
+        "type": "Transitive",
+        "resolved": "2.1.4",
+        "contentHash": "KWlxvMw3Urpqj9joD96LRiK+LC62pQNs/zkXRJc+rHnxgkGp+vV703xzDrxRmv+V1YhCFfIGzs5nrVWtREIlyA=="
+      },
+      "mmorpg.gameprotocol": {
+        "type": "Project"
+      },
+      "mmorpg.server.common": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
+      "mmorpg.tools.simulationbotclient": {
+        "type": "Project",
+        "dependencies": {
+          "LiteNetLib": "[2.1.4, )",
+          "Mmorpg.GameProtocol": "[1.0.0, )"
+        }
+      },
+      "mmorpg.worlddata": {
+        "type": "Project"
+      }
+    }
+  }
+}

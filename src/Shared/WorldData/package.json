@@ -1,0 +1,10 @@
+{
+  "name": "com.mmorpg.world-data",
+  "version": "0.4.0",
+  "displayName": "MMORPG World Data",
+  "description": "Versioned World content, framework-neutral item and actor rules, and Unity content authoring tools.",
+  "unity": "6000.0",
+  "author": {
+    "name": "MMORPG"
+  }
+}

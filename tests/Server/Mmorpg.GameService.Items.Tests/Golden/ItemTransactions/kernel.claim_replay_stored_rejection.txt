@@ -1,0 +1,21 @@
+scenario: kernel.claim_replay_stored_rejection
+trace:
+  c1 begin ReadCommitted
+  c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
+  c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
+  c1 sql select operation_kind as "OperationKind", request_hash as "RequestHash", status as "Status", result_payload::text as "ResultPayload" from item_operations where operation_id = $1 for update
+  c1 commit
+result:
+  operation kind: relocate
+  operation id matches: yes
+  succeeded: no
+  error: item_state_conflict | Item '<id>' changed before the operation committed.
+  character revisions: none
+  container revisions: none
+  item revisions: none
+  recovery deliveries: 0
+  secure entitlement revision: none
+journal:
+  operation row: relocate rejected
+  stored payload: equals returned result
+  changes: none

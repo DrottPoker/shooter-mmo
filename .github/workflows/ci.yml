@@ -18,8 +18,8 @@ jobs:
     timeout-minutes: 15
     env:
       CI: "true"
-      SHOOTER_MMO_TEST_POSTGRES: Host=localhost;Port=5432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password
-      SHOOTER_MMO_TEST_REDIS: localhost:6379
+      MMORPG_TEST_POSTGRES: Host=localhost;Port=5432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password
+      MMORPG_TEST_REDIS: localhost:6379
 
     services:
       postgres:
@@ -51,7 +51,7 @@ jobs:
 
       - name: Verify dependency policy
         shell: pwsh
-        run: ./Tools/Verify-DependencyPolicy.ps1
+        run: ./tools/Verify-DependencyPolicy.ps1
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -61,71 +61,69 @@ jobs:
           cache-dependency-path: "**/packages.lock.json"
 
       - name: Restore locked dependencies
-        run: dotnet restore ShooterMmo.slnx --locked-mode
+        run: dotnet restore Mmorpg.slnx --locked-mode
 
       - name: Verify formatting
-        run: dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
+        run: dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 
       - name: Build
-        run: dotnet build ShooterMmo.slnx --configuration Release --no-restore
+        run: dotnet build Mmorpg.slnx --configuration Release --no-restore
 
       - name: Verify item catalog
         run: >-
-          dotnet run --project Tools/ItemCatalogCompiler
+          dotnet run --project tools/ItemCatalogCompiler
           --configuration Release
           --no-build
           --
-          WorldData/Shared/Authoring/Items/core.item-catalog.json
-          WorldData/Shared/Runtime/Items/core.item-catalog.json
           --verify
 
-      - name: Verify World collision data
+      - name: Verify world collision data
         run: >-
-          dotnet run --project Tools/WorldCollisionCompiler
+          dotnet run --project tools/WorldCollisionCompiler
           --configuration Release
           --no-build
           --
-          WorldData/Worlds/development-world-1/Authoring/collision.json
-          WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1
           --verify
 
-      - name: Verify Development World 2 collision data
+      - name: Verify world actors
         run: >-
-          dotnet run --project Tools/WorldCollisionCompiler
-          --configuration Release
-          --no-build
-          --
-          WorldData/Worlds/development-world-2/Authoring/collision.json
-          WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2
-          --verify
-
-      - name: Verify Development World 1 actors
-        run: >-
-          dotnet run --project Tools/WorldActorCompiler
+          dotnet run --project tools/WorldActorCompiler
           --configuration Release
           --no-build
           --
           --verify
 
-      - name: Verify Development World 2 actors
-        run: >-
-          dotnet run --project Tools/WorldActorCompiler
-          --configuration Release
-          --no-build
-          --
-          WorldData/Shared/Authoring/Actors/core.world-actors.json
-          WorldData/Worlds/development-world-2/Authoring/actor-spawns.json
-          WorldData/Worlds/development-world-2/Runtime/world-actors.json
-          --verify
-
+      # Every test project writes TestResults/<Project>/test-results.trx and its own
+      # coverage folder, set by tests/Directory.Build.props.
       - name: Test
         run: >-
-          dotnet test ShooterMmo.slnx
+          dotnet test Mmorpg.slnx
           --configuration Release
           --no-build
-          --logger "trx;LogFileName=backend-tests.trx"
-          --results-directory TestResults
+          --logger "trx;LogFileName=test-results.trx"
           --collect "XPlat Code Coverage"
+
+      # A skipped infrastructure test means a missing service or MMORPG_TEST_* variable,
+      # so CI treats any test that did not run as a failure.
+      - name: Verify every test ran
+        shell: pwsh
+        run: |
+          $results = @(Get-ChildItem -Path TestResults -Recurse -Filter test-results.trx)
+          if ($results.Count -eq 0) {
+              throw "No test results were written below TestResults."
+          }
+
+          $notRun = foreach ($result in $results) {
+              [xml]$trx = Get-Content -Raw -LiteralPath $result.FullName
+              $trx.TestRun.Results.UnitTestResult |
+                  Where-Object { $_.outcome -ne "Passed" } |
+                  ForEach-Object { "$($_.testName): $($_.outcome)" }
+          }
+          if ($notRun) {
+              throw "Tests did not run or pass:`n$($notRun -join "`n")"
+          }
+
+          Write-Output "All tests in $($results.Count) test result files passed."
 
       - name: Upload test results
         if: always()
@@ -148,13 +146,13 @@ jobs:
 
       - name: Verify dependency policy
         shell: pwsh
-        run: ./Tools/Verify-DependencyPolicy.ps1
+        run: ./tools/Verify-DependencyPolicy.ps1
 
       - name: Run Unity EditMode and PlayMode tests
         shell: pwsh
         env:
           UNITY_EDITOR_PATH: ${{ vars.UNITY_EDITOR_PATH }}
-        run: ./Tools/Run-UnityTests.ps1
+        run: ./tools/Run-UnityTests.ps1
 
       - name: Upload Unity test results
         if: always()

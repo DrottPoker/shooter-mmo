@@ -1,0 +1,94 @@
+{
+  "baseSecureContainerTierId": "secure_container.base",
+  "catalogId": "core",
+  "categories": [
+    {
+      "displayName": "Material",
+      "id": "material"
+    },
+    {
+      "displayName": "Medical",
+      "id": "medical"
+    },
+    {
+      "displayName": "Weapon",
+      "id": "weapon"
+    },
+    {
+      "displayName": "Ammunition",
+      "id": "ammunition"
+    },
+    {
+      "displayName": "Armor",
+      "id": "armor"
+    },
+    {
+      "displayName": "Tool",
+      "id": "tool"
+    },
+    {
+      "displayName": "Bag",
+      "id": "bag"
+    },
+    {
+      "displayName": "Quest Item",
+      "id": "quest_item"
+    }
+  ],
+  "equipmentSlots": [
+    {
+      "displayName": "Head",
+      "id": "head"
+    },
+    {
+      "displayName": "Body Armor",
+      "id": "body_armor"
+    },
+    {
+      "displayName": "Primary Weapon",
+      "id": "primary_weapon"
+    },
+    {
+      "displayName": "Secondary Weapon",
+      "id": "secondary_weapon"
+    },
+    {
+      "displayName": "Tool",
+      "id": "tool"
+    },
+    {
+      "displayName": "Ring 1",
+      "id": "ring_1"
+    },
+    {
+      "displayName": "Ring 2",
+      "id": "ring_2"
+    },
+    {
+      "displayName": "Bag",
+      "id": "bag"
+    }
+  ],
+  "formatVersion": 2,
+  "secureContainerTiers": [
+    {
+      "displayName": "Secure Container",
+      "id": "secure_container.base",
+      "slotCapacity": 4
+    }
+  ],
+  "tags": [
+    {
+      "displayName": "Medical",
+      "id": "medical"
+    },
+    {
+      "displayName": "Material",
+      "id": "material"
+    },
+    {
+      "displayName": "Ammunition",
+      "id": "ammunition"
+    }
+  ]
+}

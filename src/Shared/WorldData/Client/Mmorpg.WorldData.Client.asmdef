@@ -1,0 +1,14 @@
+{
+  "name": "Mmorpg.WorldData.Client",
+  "rootNamespace": "Mmorpg.WorldData",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

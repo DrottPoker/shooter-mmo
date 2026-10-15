@@ -1,5 +1,9 @@
 # Items And Inventory Implementation Plan
 
+> Historical record. Names and locations in this document describe the codebase
+> before the October 2026 restructure, which renamed the `ShooterMmo` namespace
+> root to `Mmorpg` and `AuthService` to `GameService`.
+
 Last updated: 2026-07-18
 
 Status: Approved delivery baseline, Phases 1 through 15 implemented

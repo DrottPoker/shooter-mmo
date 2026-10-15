@@ -1,0 +1,37 @@
+{
+    "id": "npc.city_guard",
+    "displayName": "City Guard",
+    "kind": "npc",
+    "factionId": "city",
+    "disposition": "friendly",
+    "presentationArchetypeId": "npc.city_guard",
+    "damagePolicy": "invulnerable",
+    "tags": [
+        "city",
+        "guard"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 1.0,
+        "centerZ": 0.0,
+        "sizeX": 0.8,
+        "sizeY": 2.0,
+        "sizeZ": 0.8
+    },
+    "capabilities": [
+        {
+            "id": "guard.dialogue",
+            "kind": "dialogue",
+            "displayName": "Talk"
+        },
+        {
+            "id": "guard.trainer",
+            "kind": "trainer",
+            "displayName": "Training"
+        }
+    ],
+    "activityProfileId": "",
+    "respawnProfileId": "",
+    "corpsePersistenceMode": "",
+    "corpseLifetimeSeconds": 0.0
+}

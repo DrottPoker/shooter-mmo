@@ -11,17 +11,24 @@ only adds the workflow notes that a coding agent needs to verify its own work.
 - Backend quality gate: the command list in `README.md` under Standard Quality
   Checks. Run it from the repository root. The build must stay at zero warnings.
 - Integration tests: start `docker-compose.test.yml` and set
-  `SHOOTER_MMO_TEST_POSTGRES` and `SHOOTER_MMO_TEST_REDIS` from `.env`, as shown
-  in `README.md`. A full run takes about six to seven minutes, so run it in the
-  background. Never print `.env` values.
+  `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` from `.env`, as shown
+  in `README.md`. A full run takes about eight minutes, so run it in the
+  background. Never print `.env` values. Every test project uses its own
+  database `<base>_<project>`, so test projects run in parallel; never start two
+  runs of the same test project at once.
+- Focused runs: `dotnet test tests/Server/<Project> --configuration Release` for
+  one test project, or `dotnet test Mmorpg.slnx --configuration Release --filter
+  "Category!=Integration"` for a fast loop without containers.
+- New tests go into the test project of the module they test. The layout,
+  traits, database rules, and internal access policy are in `tests/README.md`.
 - Local stack for manual or end-to-end tests: `docker compose up -d --wait`,
-  then `dotnet run --project AuthService` and
-  `dotnet run --project SimulationWorker` as background processes. Stop both
+  then `dotnet run --project src/Server/GameService` and
+  `dotnet run --project src/Server/SimulationWorker` as background processes. Stop both
   processes when finished.
 
 ## Unity Editor
 
-The Unity project in `shooter-mmorpg-unity-client` includes the Pipeline
+The Unity project in `src/Client` includes the Pipeline
 package, so a running Editor can be driven with the `unity` CLI. Setup and
 security rules are in `docs/LOCAL_DEVELOPMENT.md` under Unity Editor Automation
 With Unity CLI.
@@ -30,7 +37,10 @@ With Unity CLI.
   prefabs, and assets through `unity command ...` and never hand-edit `.unity`,
   `.prefab`, or `.asset` YAML.
 - Check compile state with `unity command console_status` after C# changes.
-- EditMode tests: `unity command run_tests --mode editor --timeout 580`.
+- EditMode tests: `unity command run_tests --mode editor --async_tests`, then
+  poll `unity command test_status` until `status` is `completed`. A synchronous
+  run fails once the suite takes longer than the Pipeline's 30 second request
+  limit, whatever `--timeout` says.
 - PlayMode tests: `unity command run_tests --mode playmode --async_tests`, then
   poll `unity command test_status` until `status` is `completed`.
 - `unity command eval_file --file <path>` runs a C# file. Keep such scripts in
@@ -38,6 +48,6 @@ With Unity CLI.
 - `capture_game_view` and `capture_scene_view` always save below `Assets/`.
   Move the image out and delete the created folder and `.meta` file afterwards,
   so no screenshot reaches Git.
-- The headless `Tools/Run-UnityTests.ps1` cannot run while the Editor has the
+- The headless `tools/Run-UnityTests.ps1` cannot run while the Editor has the
   project open. Use the live Editor commands above instead.
 - Exit Play Mode with `unity command editor_stop` before finishing.

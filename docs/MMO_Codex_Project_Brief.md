@@ -1,5 +1,9 @@
 # MMO Project Brief for Codex
 
+> Historical record. Names and locations in this document describe the codebase
+> before the October 2026 restructure, which renamed the `ShooterMmo` namespace
+> root to `Mmorpg` and `AuthService` to `GameService`.
+
 _Original brief: 2026-07-06. Current-design alignment: 2026-10-13._
 
 > This is the original broad vision document. Current terminology and

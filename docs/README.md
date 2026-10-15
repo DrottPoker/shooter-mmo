@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-15
 
-This directory is the documentation entry point for Shooter MMO. Each active
+This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
 operations, and future design do not drift into duplicate descriptions.
 
@@ -12,19 +12,28 @@ operations, and future design do not drift into duplicate descriptions.
    project and its status.
 2. [Project Architecture](PROJECT_ARCHITECTURE.md) for system boundaries, data
    ownership, canonical topology terminology, and communication flows.
-3. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for detailed Unity
+3. [GameService Modules](GAME_SERVICE_MODULES.md) for the GameService module
+   projects, their contracts, table ownership, cross-module access rules, lock
+   order, migration ownership, and architecture guard tests.
+4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for detailed Unity
    runtime structure and client flows.
-4. [Service Features](SERVICE_FEATURES.md) for implemented backend and
+5. [Service Features](SERVICE_FEATURES.md) for implemented backend and
    infrastructure behavior.
-5. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
-6. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
+6. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
+7. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
    instructions.
-7. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
-   and full-stack AuthService, PostgreSQL, and SimulationWorker load testing.
-8. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
+8. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
+   and full-stack GameService, PostgreSQL, and SimulationWorker load testing.
+9. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
    bot population that can share the real shard with a Unity player.
-9. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
-   layouts, and the Unity rebuild and authoring workflow.
+10. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
+    layouts, and the Unity rebuild and authoring workflow.
+11. [Game Content](../content/README.md) for the authored content layout, its
+    file and naming rules, the content compilers, and the generated data. The
+    item authoring contract is in [Item Catalog Authoring](../content/items/README.md).
+12. [Backend Tests](../tests/README.md) for the backend test projects, where a new
+    test goes, test traits, per-project test databases, golden files, and test
+    access to internals.
 
 ## Foundation Hardening
 
