@@ -191,7 +191,12 @@ public sealed class RealtimeCorpseInteractionTests
         await harness.StartAsync();
         var client = await harness.JoinAsync(character);
         client.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpseId));
-        await harness.PollUntilAsync(() => client.CorpseResults.Count == 1, "the open");
+        // The server sends the open result before it stores the opened snapshot, and the
+        // view state after. Removing the corpse before the view state arrives races with
+        // that store update, which would bring the corpse back.
+        await harness.PollUntilAsync(
+            () => client.CorpseResults.Count == 1 && client.CorpseViewChunks.Count > 0,
+            "the open");
 
         Assert.True(harness.CorpseStore.Remove(corpseId));
         await harness.PollUntilAsync(
