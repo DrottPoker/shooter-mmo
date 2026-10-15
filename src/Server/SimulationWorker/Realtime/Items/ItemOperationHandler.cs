@@ -149,7 +149,21 @@ internal sealed class ItemOperationHandler(
         var requiresRefresh = completed.Result.RequiresInventoryRefresh;
         if (completed.Result.Succeeded)
         {
-            var characterRevision = completed.Result.Transaction!.CharacterRevisions.Single();
+            // Matches the corpse path: an unexpected revision set ends the session instead
+            // of failing the completion with internal_error.
+            var characterRevisions = completed.Result.Transaction!.CharacterRevisions;
+            if (characterRevisions.Count != 1)
+            {
+                teardown.TerminateForAuthorityFailure(
+                    peer,
+                    completed.Context,
+                    completed.Session,
+                    "item_state_diverged",
+                    "The item transaction returned an invalid character revision set.");
+                return;
+            }
+
+            var characterRevision = characterRevisions[0];
             var committedCarry = new PlayerCarryState(
                 characterRevision.Revision,
                 characterRevision.CarriedWeight,
