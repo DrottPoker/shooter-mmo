@@ -49,13 +49,16 @@ current tests do not exercise.
 
 ## Progress
 
-As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done, and
-the P2 pass is in progress, one verified group per commit. All 74 findings are
-fixed, including F74, which was found and fixed during the pass.
-The full verification after the P1 pass passed: 503 of 503 backend tests
-including PostgreSQL and Redis integration, 106 Unity EditMode and 2 PlayMode
-tests, and an end-to-end login, join, graceful leave, and rejoin in Development
-World 2 on URP.
+As of 2026-10-15 every finding, F01 to F74, and decisions D1 to D3 are done.
+F74 was found by the F73 movement golden test during the P2 pass and fixed in
+its own commit. The final verification after the P2 pass passed: the local
+mirror of the CI backend gate, with dependency policy, locked restore, format,
+Release build, item catalog, collision, and actor verification, and 526 of 526
+backend tests in Release including PostgreSQL and Redis integration; the shared
+simulation tests on Linux in the .NET SDK container; 111 Unity EditMode and 2
+PlayMode tests; and an end-to-end login, join, graceful leave, and rejoin in
+Development World 2 on URP with every actor presented by its registry prefab
+and no console warnings or errors.
 
 ## Priority Levels
 
