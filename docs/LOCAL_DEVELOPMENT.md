@@ -106,16 +106,41 @@ links the empty `{}` placeholders in `tests/TestOutput` to those paths.
 `TestBuildOutputTests` fails if a service copy ever replaces a placeholder. The
 test projects and their rules are described in [Backend Tests](../tests/README.md).
 
-NuGet and GitHub Actions updates are proposed monthly by Dependabot against
-`development`. Unity Package Manager updates remain explicit because Dependabot
-does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
-let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
-quality gate before merging. `LiteNetLib` must stay aligned between
+NuGet and GitHub Actions updates are proposed by Dependabot against
+`development` on the first day of each month. Unity Package Manager updates
+remain explicit because Dependabot does not own `Packages/manifest.json`. Update
+Unity packages in a focused branch, let Unity rewrite `packages-lock.json`, run
+both Unity suites, and run the backend quality gate before merging. `LiteNetLib`
+must stay aligned between
 `src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj`,
 `tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj`, and the
 Unity manifest package `com.revenantx.litenetlib`. `Verify-DependencyPolicy.ps1`
 fails when the versions differ, and Dependabot ignores LiteNetLib so the three
 are always upgraded together by hand.
+
+A Dependabot NuGet pull request rewrites only the `packages.lock.json` of the
+projects that reference the package directly. Every project that reaches the
+package through a `ProjectReference`, such as the test projects, keeps its old
+lock file, so CI fails at the locked restore with `NU1004`. Refresh all lock
+files on the pull request branch before review, then run the backend quality
+gate:
+
+```powershell
+gh pr checkout <number>
+dotnet restore Mmorpg.slnx --force-evaluate
+dotnet restore Mmorpg.slnx --locked-mode
+git add -- '*packages.lock.json'
+git commit -m "Refresh NuGet lock files"
+git push
+```
+
+Expected result: the locked restore succeeds and CI turns green on the pushed
+commit. Dependabot stops rebasing a pull request once it carries a commit of its
+own, so comment `@dependabot recreate` and refresh again if the pull request
+falls behind `development`. Dependabot refreshes an open pull request in the
+directories it was created for, so after a restructure it cannot update older
+pull requests. Close them and let the next monthly run, or a manual check under
+`Insights > Dependency graph > Dependabot`, propose them again.
 
 `src/Client/Directory.Build.props` stops the repository build
 settings from applying to the project files Unity generates, and those files

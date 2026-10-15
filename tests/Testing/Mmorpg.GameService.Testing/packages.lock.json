@@ -19,13 +19,13 @@
       },
       "BCrypt.Net-Next": {
         "type": "Transitive",
-        "resolved": "4.0.3",
-        "contentHash": "W+U9WvmZQgi5cX6FS5GDtDoPzUCV4LkBLkywq/kRZhuDwcbavOzcDAr3LXJFqHUi952Yj3LEYoWW0jbEUQChsA=="
+        "resolved": "4.2.1",
+        "contentHash": "cJ1Zaad8sBSQJq3QBSPmFuLq0XDi9ys0Dk5S11gakZ2qdFWC1aaRLZ7sqOLQjGJYhgIK3LW3TixJswM6+CVbyw=="
       },
       "Dapper": {
         "type": "Transitive",
-        "resolved": "2.1.66",
-        "contentHash": "/q77jUgDOS+bzkmk3Vy9SiWMaetTw+NOoPAV0xPBsGVAyljd5S6P+4RUW7R3ZUGGr9lDRyPKgAMj2UAOwvqZYw=="
+        "resolved": "2.1.89",
+        "contentHash": "1VjFE664wnxvuhlgP8kS4PeFFF4jqD3VkbIHW6Zlc52zuibgcz5ICnIHcQXlTp6pURpPNGLV0ZpNe5x9KePJnA=="
       },
       "Microsoft.Bcl.AsyncInterfaces": {
         "type": "Transitive",
@@ -34,8 +34,8 @@
       },
       "Npgsql": {
         "type": "Transitive",
-        "resolved": "9.0.3",
-        "contentHash": "tPvY61CxOAWxNsKLEBg+oR646X4Bc8UmyQ/tJszL/7mEmIXQnnBhVJZrZEEUv0Bstu0mEsHZD5At3EO8zQRAYw=="
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w=="
       },
       "RESPite": {
         "type": "Transitive",
@@ -76,58 +76,58 @@
           "Mmorpg.GameService.Placement": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )"
+          "Npgsql": "[10.0.3, )"
         }
       },
       "mmorpg.gameservice.accounts": {
         "type": "Project",
         "dependencies": {
-          "BCrypt.Net-Next": "[4.0.3, )",
-          "Dapper": "[2.1.66, )",
+          "BCrypt.Net-Next": "[4.2.1, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )",
+          "Npgsql": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )"
         }
       },
       "mmorpg.gameservice.characters": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )"
+          "Npgsql": "[10.0.3, )"
         }
       },
       "mmorpg.gameservice.items": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Placement": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Mmorpg.WorldData": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )"
+          "Npgsql": "[10.0.3, )"
         }
       },
       "mmorpg.gameservice.placement": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.WorldData": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )"
+          "Npgsql": "[10.0.3, )"
         }
       },
       "mmorpg.gameservice.platform": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )",
+          "Npgsql": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )"
         }
       },
@@ -147,7 +147,7 @@
         "type": "Project",
         "dependencies": {
           "Mmorpg.WorldData": "[1.0.0, )",
-          "Npgsql": "[9.0.3, )",
+          "Npgsql": "[10.0.3, )",
           "xunit.v3.assert": "[3.2.2, )",
           "xunit.v3.extensibility.core": "[3.2.2, )"
         }
