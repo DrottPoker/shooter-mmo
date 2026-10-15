@@ -30,7 +30,7 @@ public sealed class RealtimeSimulationServiceTests
     {
         Assert.Equal(
             expected,
-            RealtimeSimulationService.ShouldEnforceSessionInvalidation(
+            RealtimePeerSupervisor.ShouldEnforceSessionInvalidation(
                 leaveStarted,
                 isCurrentSession));
     }

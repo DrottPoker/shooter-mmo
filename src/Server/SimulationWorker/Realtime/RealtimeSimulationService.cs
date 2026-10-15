@@ -20,7 +20,6 @@ namespace Mmorpg.SimulationWorker.Realtime;
 public sealed class RealtimeSimulationService : BackgroundService
 {
     private readonly SimulationWorkerConfig config;
-    private readonly ActiveSimulationSessionStore sessionStore;
     private readonly CarryStateStore carryStateStore;
     private readonly CorpseViewerRegistry corpseViewers;
     private readonly SimulationEntityRegistry entityRegistry;
@@ -30,9 +29,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly SimulationWorkerRegistrationLease? registrationLease;
     private readonly RealtimeCompletionQueue completions = new();
     private readonly RealtimeOperationTracker operationTracker = new();
-    private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
     private readonly PeerAdmissionGuard admissionGuard;
-    private DateTime nextOrphanSweepUtc = DateTime.MinValue;
     private readonly RealtimeNetworkMetrics networkMetrics;
     private readonly RealtimePerformanceMetrics performanceMetrics;
     private readonly WorldActorStore? worldActorStore;
@@ -64,6 +61,8 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly SnapshotReplicator snapshots;
     private readonly WorldActorRuntimeDriver worldActors;
     private readonly SimulationTickLoop tickLoop;
+    private readonly RealtimePeerSupervisor supervisor;
+    private readonly RealtimePeerLifecycle lifecycle;
     private NetManager? server;
 
     public RealtimeSimulationService(
@@ -98,7 +97,6 @@ public sealed class RealtimeSimulationService : BackgroundService
         CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
     {
         this.config = config;
-        this.sessionStore = sessionStore;
         this.carryStateStore = carryStateStore;
         this.corpseViewers = corpseViewers;
         this.entityRegistry = entityRegistry;
@@ -280,6 +278,28 @@ public sealed class RealtimeSimulationService : BackgroundService
             collisionStreamingStore,
             performanceMetrics,
             logger);
+        supervisor = new RealtimePeerSupervisor(
+            config,
+            peerRegistry,
+            peerDirectory,
+            sender,
+            sessionStore,
+            teardown,
+            sessionOperations,
+            networkMetrics,
+            logger);
+        lifecycle = new RealtimePeerLifecycle(
+            config,
+            peerRegistry,
+            admissionGuard,
+            presence,
+            corpseViewers,
+            worldInteractionLeases,
+            sessionStore,
+            teardown,
+            sessionOperations,
+            networkMetrics,
+            logger);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -329,8 +349,9 @@ public sealed class RealtimeSimulationService : BackgroundService
 
             request.AcceptIfKey(RealtimeProtocol.ConnectionKey);
         };
-        listener.PeerConnectedEvent += HandlePeerConnected;
-        listener.PeerDisconnectedEvent += HandlePeerDisconnected;
+        listener.PeerConnectedEvent += peer => lifecycle.OnPeerConnected(peer.Id, peer.Address);
+        listener.PeerDisconnectedEvent += (peer, disconnectInfo) =>
+            lifecycle.OnPeerDisconnected(peer.Id, disconnectInfo.Reason);
         listener.NetworkReceiveEvent += HandleNetworkReceive;
         listener.NetworkErrorEvent += (endPoint, socketError) =>
         {
@@ -388,8 +409,8 @@ public sealed class RealtimeSimulationService : BackgroundService
                     simulationClock.Elapsed,
                     simulationInterval,
                     ref nextSimulationTick);
-                EnforcePeerState();
-                ReleaseOrphanedSessions();
+                supervisor.EnforcePeerState();
+                supervisor.ReleaseOrphanedSessions();
                 await Task.Delay(config.NetworkPollInterval, stoppingToken);
             }
         }
@@ -409,58 +430,13 @@ public sealed class RealtimeSimulationService : BackgroundService
             worldInteractionLeases?.Clear();
             worldActorStore?.Clear();
             corpseViews.ClearSnapshots();
-            unboundSessionsSinceUtc.Clear();
+            supervisor.ClearUnboundSessions();
             networkMetrics.SetActivePeers(0);
             networkMetrics.SetActiveEntities(0);
             networkMetrics.SetPeerPopulation(0, 0, 0);
             await operationTracker.WaitForAllAsync();
             logger.LogInformation("[SIMULATION] Realtime transport stopped.");
         }
-    }
-
-    private void HandlePeerConnected(NetPeer netPeer)
-    {
-        peerRegistry.Register(new RealtimePeerContext(netPeer.Id, DateTime.UtcNow, config.UdpQuotas));
-        admissionGuard.OnPeerConnected(netPeer.Id, netPeer.Address);
-        networkMetrics.SetActivePeers(peerRegistry.Count);
-        peerRegistry.RefreshPopulationMetrics();
-        logger.LogDebug(
-            "[SIMULATION] UDP peer {PeerId} connected from {EndPoint} and must authenticate before joining.",
-            netPeer.Id,
-            netPeer.Address);
-    }
-
-    private void HandlePeerDisconnected(NetPeer netPeer, DisconnectInfo disconnectInfo)
-    {
-        admissionGuard.OnPeerDisconnected(netPeer.Id);
-        if (!peerRegistry.Remove(netPeer.Id, out var context))
-        {
-            return;
-        }
-
-        presence.ForgetConnection(netPeer.Id);
-        corpseViewers.RemovePeer(netPeer.Id);
-        worldInteractionLeases?.RemovePeer(netPeer.Id);
-        networkMetrics.SetActivePeers(peerRegistry.Count);
-        peerRegistry.RefreshPopulationMetrics();
-
-        if (context.Session is not null)
-        {
-            if (sessionStore.IsSupersededByReconnect(context.Session))
-            {
-                teardown.DetachSupersededPeer(context);
-            }
-            else
-            {
-                teardown.RemoveBoundEntity(context, context.Session, "connection_closed");
-                sessionOperations.ReleaseDetachedInBackground(context.Session);
-            }
-        }
-
-        logger.LogDebug(
-            "[SIMULATION] UDP peer {PeerId} disconnected: {Reason}.",
-            netPeer.Id,
-            disconnectInfo.Reason);
     }
 
     private void HandleNetworkReceive(
@@ -481,157 +457,6 @@ public sealed class RealtimeSimulationService : BackgroundService
         {
             reader.Recycle();
         }
-    }
-
-    private void EnforcePeerState()
-    {
-        var now = DateTime.UtcNow;
-        foreach (var context in peerRegistry.Contexts.ToArray())
-        {
-            if (!peerRegistry.TryGetCurrentPeer(context, out var peer))
-            {
-                continue;
-            }
-
-            if (context.DisconnectAfterUtc is not null && context.DisconnectAfterUtc <= now)
-            {
-                peerDirectory.DisconnectPeer(peer);
-                continue;
-            }
-
-            // A client that never acknowledges reliable packets would grow this queue
-            // without bound, so it is disconnected without another reliable message.
-            var queuedReliablePackets = peer.GetPacketsCountInReliableQueue(
-                RealtimeProtocol.ControlChannel,
-                true);
-            if (queuedReliablePackets > config.Admission.MaxReliableQueuedPackets)
-            {
-                logger.LogWarning(
-                    "[SIMULATION] Disconnecting UDP peer {PeerId} with {QueuedPackets} unacknowledged reliable packets.",
-                    context.PeerId,
-                    queuedReliablePackets);
-                networkMetrics.RecordConnectionRejected();
-                peerDirectory.DisconnectPeer(peer);
-                continue;
-            }
-
-            if (context.DisconnectAfterUtc is not null)
-            {
-                continue;
-            }
-
-            var activeSession = context.Session;
-            if (activeSession is null)
-            {
-                if (now - context.ConnectedAtUtc > config.JoinHandshakeTimeout)
-                {
-                    sender.RejectProtocol(peer, context, "join_timeout", "The join handshake timed out.");
-                }
-
-                continue;
-            }
-
-            var isCurrentSession = IsCurrentSession(activeSession);
-            if (ShouldEnforceSessionInvalidation(context.LeaveStarted, isCurrentSession))
-            {
-                if (sessionStore.IsSupersededByReconnect(activeSession))
-                {
-                    // The reconnecting client owns the entity and carry state now.
-                    sender.SendControl(
-                        peer,
-                        RealtimeProtocol.EncodeServerDisconnect(
-                            "session_reconnected",
-                            "This character connected from another client."));
-                    teardown.DetachSupersededPeer(context);
-                    context.ScheduleDisconnect(now);
-                    continue;
-                }
-
-                var reason = sessionStore.TryTakeInvalidation(
-                    activeSession.SimulationSessionId,
-                    out var invalidation)
-                    ? invalidation!
-                    : new ActiveSimulationSessionInvalidation(
-                        "session_revoked",
-                        "The simulation session is no longer active.");
-                sender.SendControl(
-                    peer,
-                    RealtimeProtocol.EncodeServerDisconnect(
-                        reason.Code,
-                        reason.Message));
-                teardown.RemoveBoundEntity(context, activeSession, reason.Code);
-                context.Session = null;
-                peerRegistry.RefreshPopulationMetrics();
-                context.ScheduleDisconnect(now);
-            }
-        }
-    }
-
-    // Safety net: a local session that no peer has owned for a while is released, so a
-    // missed cleanup path can never keep renewing a lease for a player who is gone.
-    private void ReleaseOrphanedSessions()
-    {
-        var now = DateTime.UtcNow;
-        if (now < nextOrphanSweepUtc)
-        {
-            return;
-        }
-
-        nextOrphanSweepUtc = now + TimeSpan.FromSeconds(1);
-        var boundSessionIds = peerRegistry.Contexts
-            .Select(context => context.Session?.SimulationSessionId)
-            .OfType<Guid>()
-            .ToHashSet();
-        var orphanThreshold = config.JoinHandshakeTimeout * 2;
-        var activeSessionIds = new HashSet<Guid>();
-        foreach (var session in sessionStore.ListActiveSessions())
-        {
-            activeSessionIds.Add(session.SimulationSessionId);
-            if (boundSessionIds.Contains(session.SimulationSessionId))
-            {
-                unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
-                continue;
-            }
-
-            if (!unboundSessionsSinceUtc.TryGetValue(session.SimulationSessionId, out var since))
-            {
-                unboundSessionsSinceUtc[session.SimulationSessionId] = now;
-                continue;
-            }
-
-            if (now - since < orphanThreshold)
-            {
-                continue;
-            }
-
-            unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
-            logger.LogWarning(
-                "[SIMULATION] Releasing simulation session {SimulationSessionId} because no peer has owned it for {Seconds:F0} seconds.",
-                session.SimulationSessionId,
-                (now - since).TotalSeconds);
-            sessionOperations.ReleaseDetachedInBackground(session);
-        }
-
-        foreach (var sessionId in unboundSessionsSinceUtc.Keys.ToArray())
-        {
-            if (!activeSessionIds.Contains(sessionId))
-            {
-                unboundSessionsSinceUtc.Remove(sessionId);
-            }
-        }
-    }
-
-    internal static bool ShouldEnforceSessionInvalidation(
-        bool leaveStarted,
-        bool isCurrentSession)
-    {
-        // Leave completion owns cleanup after the release operation removes the local lease.
-        return !leaveStarted && !isCurrentSession;
-    }
-
-    private bool IsCurrentSession(ActiveSimulationSession session)
-    {
-        return sessionStore.IsCurrent(session, DateTime.UtcNow);
     }
 
     private sealed class PeerDirectory(RealtimeSimulationService owner) : IRealtimePeerDirectory
