@@ -119,12 +119,14 @@ internal sealed class ItemTransactionKernel(
                 },
                 transaction,
                 cancellationToken: cancellationToken));
-            var context = new ItemTransactionContext(
+            var session = new ItemTransactionSession(
                 connection,
                 transaction,
                 request.OperationId,
                 operationKind,
-                request.Actor,
+                request.Actor);
+            var context = new ItemTransactionContext(
+                session,
                 dependencies,
                 operationsMetrics);
             try

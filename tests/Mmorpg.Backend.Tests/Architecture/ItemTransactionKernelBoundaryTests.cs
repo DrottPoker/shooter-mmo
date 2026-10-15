@@ -17,11 +17,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     // Files outside the kernel that run inside an item transaction.
     private static IReadOnlyList<SourceFile> TransactionFiles { get; } = GameServiceSourceMap
         .LoadSourceFiles()
-        .Where(file => (file.RelativePath.StartsWith(TransactionsPath, StringComparison.Ordinal)
-                || string.Equals(
-                    file.RelativePath,
-                    "GameService.Items/ItemTransactionContext.cs",
-                    StringComparison.Ordinal))
+        .Where(file => file.RelativePath.StartsWith(TransactionsPath, StringComparison.Ordinal)
             && !file.RelativePath.StartsWith(KernelPath, StringComparison.Ordinal))
         .ToArray();
 
@@ -123,12 +119,12 @@ public sealed partial class ItemTransactionKernelBoundaryTests
 
         Assert.True(
             violations.Length == 0,
-            "Item transaction code rejects through ItemTransactionContext.Reject only:"
+            "Item transaction code rejects through ItemTransactionRejection.Reject only:"
             + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
-    // The file that defines the single rejection throw.
-    private const string RejectionOwner = "GameService.Items/ItemTransactionContext.cs";
+    // The file that defines the single rejection throw, ItemTransactionRejection.
+    private const string RejectionOwner = "GameService.Items/Transactions/ItemTransactionErrors.cs";
 
     private static int LockRank(string call)
     {

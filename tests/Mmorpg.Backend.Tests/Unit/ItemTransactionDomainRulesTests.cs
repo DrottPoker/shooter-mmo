@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
 
 namespace Mmorpg.Backend.Tests.Unit;
