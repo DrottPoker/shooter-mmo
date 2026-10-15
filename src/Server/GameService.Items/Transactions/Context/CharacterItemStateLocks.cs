@@ -127,7 +127,9 @@ internal sealed class CharacterItemStateLocks(
             {
                 Reject(
                     ItemTransactionErrorCodes.ItemStateConflict,
-                    "Account-authorized item operations require an expected character revision.");
+                    session.Actor.Authority == ItemTransactionAuthority.SimulationWorker
+                        ? "Simulation-authorized item operations require an expected character revision."
+                        : "Account-authorized item operations require an expected character revision.");
             }
 
             if (expected is not null && row.Revision != expected.Value)
