@@ -199,11 +199,7 @@ internal sealed class PlayerDeathCommandHandler
                 cancellationToken);
             var capabilities = ItemPolicyRules.Evaluate(
                 definition.RuntimeDefinition,
-                policies.Select(policy => new ItemPolicyState(
-                    policy.PolicyKind,
-                    policy.Status,
-                    policy.SourceKind,
-                    policy.SourceId)));
+                ItemPolicyStates.ToPolicyStates(policies));
             partitionItems.Add(new DeathPartitionItem(
                 source,
                 item,

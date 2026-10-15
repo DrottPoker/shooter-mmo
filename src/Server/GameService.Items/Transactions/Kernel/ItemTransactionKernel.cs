@@ -66,7 +66,6 @@ internal sealed class ItemTransactionKernel(
         CancellationToken cancellationToken)
         where TCommand : notnull
     {
-        ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Actor);
         ArgumentNullException.ThrowIfNull(request.Command);
         if (request.OperationId == Guid.Empty)

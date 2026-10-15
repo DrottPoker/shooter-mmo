@@ -10,7 +10,6 @@ internal sealed class ItemChangeJournal(
     ItemTransactionSession session,
     ItemStateReader reader)
 {
-    private static readonly JsonSerializerOptions AuditJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HashSet<Guid> touchedCharacterIds = [];
     private readonly HashSet<Guid> touchedContainerIds = [];
     private readonly HashSet<Guid> resultItemIds = [];
@@ -62,7 +61,7 @@ internal sealed class ItemChangeJournal(
                 policy.SourceKind,
                 policy.SourceId,
                 policy.Revision)).ToArray());
-        return JsonSerializer.Serialize(state, AuditJsonOptions);
+        return JsonSerializer.Serialize(state, ItemOperationJson.Options);
     }
 
     public void AddItemAudit(
@@ -96,8 +95,8 @@ internal sealed class ItemChangeJournal(
         auditChanges.Add(new ItemAuditChange(
             changeKind,
             null,
-            beforeState is null ? null : JsonSerializer.Serialize(beforeState, AuditJsonOptions),
-            afterState is null ? null : JsonSerializer.Serialize(afterState, AuditJsonOptions)));
+            beforeState is null ? null : JsonSerializer.Serialize(beforeState, ItemOperationJson.Options),
+            afterState is null ? null : JsonSerializer.Serialize(afterState, ItemOperationJson.Options)));
     }
 
     public void TouchCharacter(Guid characterId)

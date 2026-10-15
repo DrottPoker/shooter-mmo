@@ -102,7 +102,7 @@ internal sealed class ItemStackCommandHandler
             cancellationToken: cancellationToken));
 
         foreach (var policy in policies.Where(policy =>
-                     string.Equals(policy.Status, "active", StringComparison.Ordinal)))
+                     string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal)))
         {
             await context.Connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -215,7 +215,7 @@ internal sealed class ItemStackCommandHandler
             ItemPolicyStates.CalculatePolicyFingerprint(
                 sourcePolicies.Where(policy => string.Equals(
                     policy.Status,
-                    "active",
+                    ItemPolicyRules.ActiveStatus,
                     StringComparison.Ordinal))),
             ItemPolicyStates.EmptyStackStateFingerprint);
         var targetState = new ItemStackState(
@@ -224,7 +224,7 @@ internal sealed class ItemStackCommandHandler
             ItemPolicyStates.CalculatePolicyFingerprint(
                 targetPolicies.Where(policy => string.Equals(
                     policy.Status,
-                    "active",
+                    ItemPolicyRules.ActiveStatus,
                     StringComparison.Ordinal))),
             ItemPolicyStates.EmptyStackStateFingerprint);
         if (!ItemStackRules.CanMerge(definition.RuntimeDefinition, sourceState, targetState))
