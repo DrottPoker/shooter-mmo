@@ -125,7 +125,8 @@ public sealed class ItemTransactionKernelTests
         PostgresIntegrationTestContext context,
         StructuredLogger<ItemTransactionService>? logger = null,
         ItemOperationsOptions? options = null,
-        NpgsqlDataSource? dataSource = null)
+        NpgsqlDataSource? dataSource = null,
+        NpgsqlDataSource? ledgerDataSource = null)
     {
         var services = context.Services;
         var source = dataSource ?? context.DataSource;
@@ -134,7 +135,7 @@ public sealed class ItemTransactionKernelTests
             options ?? ItemOperationsOptions.CreateDefaults(),
             null,
             new ItemTransactionTelemetry(null, logger, null),
-            new ItemOperationLedger(source),
+            new ItemOperationLedger(ledgerDataSource ?? source),
             new ItemSimulationAuthority(
                 services.GetRequiredService<ICharacterLocks>(),
                 services.GetRequiredService<ISimulationSessionAuthority>(),

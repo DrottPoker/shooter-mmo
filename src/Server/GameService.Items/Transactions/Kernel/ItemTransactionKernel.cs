@@ -103,6 +103,7 @@ internal sealed class ItemTransactionKernel(
         await using var transaction = await connection.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
+        var lifetime = new TransactionLifetime(transaction);
 
         try
         {
@@ -139,7 +140,7 @@ internal sealed class ItemTransactionKernel(
             }
             catch (ItemTransactionRejectedException exception)
             {
-                await transaction.RollbackAsync(cancellationToken);
+                await lifetime.RollbackAsync(cancellationToken);
                 // A lost response can make the worker retry after its session ended. A
                 // committed result must still replay instead of turning into a failure.
                 var committedReplay = await ledger.LoadCommittedReplayAsync(
@@ -177,7 +178,7 @@ internal sealed class ItemTransactionKernel(
             }
             if (replay is not null)
             {
-                await transaction.CommitAsync(cancellationToken);
+                await lifetime.CommitAsync(cancellationToken);
                 return replay;
             }
 
@@ -197,14 +198,14 @@ internal sealed class ItemTransactionKernel(
                     result,
                     "committed",
                     cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
+                await lifetime.CommitAsync(cancellationToken);
                 return result;
             }
             catch (ItemTransactionRejectedException exception)
             {
                 return await RejectMutationAsync(
                     connection,
-                    transaction,
+                    lifetime,
                     request.OperationId,
                     operationKind,
                     exception.Code,
@@ -219,9 +220,20 @@ internal sealed class ItemTransactionKernel(
                     throw;
                 }
 
+                // A deferred constraint that fails at COMMIT has already ended the
+                // transaction, so its rejection cannot be stored.
+                if (lifetime.HasEnded)
+                {
+                    return ItemTransactionOutcomes.CreateRejected(
+                        request.OperationId,
+                        operationKind,
+                        mapped.Code,
+                        mapped.Message);
+                }
+
                 return await RejectMutationAsync(
                     connection,
-                    transaction,
+                    lifetime,
                     request.OperationId,
                     operationKind,
                     mapped.Code,
@@ -231,7 +243,7 @@ internal sealed class ItemTransactionKernel(
         }
         catch (PostgresException exception)
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            await lifetime.RollbackIfActiveAsync();
             var mapped = ItemTransactionOutcomes.MapPostgresError(exception);
             if (mapped is null)
             {
@@ -246,14 +258,14 @@ internal sealed class ItemTransactionKernel(
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            await lifetime.RollbackIfActiveAsync();
             throw;
         }
     }
 
     private async Task<ItemTransactionResult> RejectMutationAsync(
         NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+        TransactionLifetime lifetime,
         Guid operationId,
         string operationKind,
         string errorCode,
@@ -265,7 +277,7 @@ internal sealed class ItemTransactionKernel(
         if (errorCode == ItemTransactionErrorCodes.ItemTransactionTimeout
             || ItemOperationKinds.IsRetriedSystemOperation(operationKind))
         {
-            await transaction.RollbackAsync(cancellationToken);
+            await lifetime.RollbackAsync(cancellationToken);
             return ItemTransactionOutcomes.CreateRejected(
                 operationId,
                 operationKind,
@@ -275,7 +287,7 @@ internal sealed class ItemTransactionKernel(
 
         return await RollBackMutationAndRejectAsync(
             connection,
-            transaction,
+            lifetime,
             operationId,
             operationKind,
             errorCode,
@@ -285,7 +297,7 @@ internal sealed class ItemTransactionKernel(
 
     private async Task<ItemTransactionResult> RollBackMutationAndRejectAsync(
         NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+        TransactionLifetime lifetime,
         Guid operationId,
         string operationKind,
         string errorCode,
@@ -294,7 +306,7 @@ internal sealed class ItemTransactionKernel(
     {
         await connection.ExecuteAsync(new CommandDefinition(
             $"rollback to savepoint {MutationSavepoint};",
-            transaction: transaction,
+            transaction: lifetime.Transaction,
             cancellationToken: cancellationToken));
         var result = ItemTransactionOutcomes.CreateRejected(
             operationId,
@@ -303,11 +315,38 @@ internal sealed class ItemTransactionKernel(
             errorMessage);
         await ledger.CompleteAsync(
             connection,
-            transaction,
+            lifetime.Transaction,
             result,
             "rejected",
             cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        await lifetime.CommitAsync(cancellationToken);
         return result;
+    }
+
+    // Tracks whether a commit or rollback was attempted. A failed COMMIT ends the
+    // transaction on the server, so an ended transaction is never rolled back again and
+    // the original error stays visible.
+    private sealed class TransactionLifetime(NpgsqlTransaction transaction)
+    {
+        public NpgsqlTransaction Transaction { get; } = transaction;
+
+        public bool HasEnded { get; private set; }
+
+        public Task CommitAsync(CancellationToken cancellationToken)
+        {
+            HasEnded = true;
+            return Transaction.CommitAsync(cancellationToken);
+        }
+
+        public Task RollbackAsync(CancellationToken cancellationToken)
+        {
+            HasEnded = true;
+            return Transaction.RollbackAsync(cancellationToken);
+        }
+
+        public Task RollbackIfActiveAsync()
+        {
+            return HasEnded ? Task.CompletedTask : RollbackAsync(CancellationToken.None);
+        }
     }
 }
