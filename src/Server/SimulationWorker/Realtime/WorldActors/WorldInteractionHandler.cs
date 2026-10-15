@@ -102,7 +102,10 @@ internal sealed class WorldInteractionHandler(
         if (worldInteractionAuthority is null
             || !peers.TryGetCurrentPeer(context, out _))
         {
+            // The operation is dropped, so the rest of the queue must not wait for an
+            // intent that may never arrive.
             context.AuthorityOperationInFlight = false;
+            authorityScheduler.StartNext(context);
             return;
         }
 
