@@ -74,6 +74,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly CorpsePresenceReplicator corpsePresence;
     private readonly CorpseAuthorityOperations corpseAuthority;
     private readonly CorpseInteractionHandler corpseInteractions;
+    private readonly WorldInteractionHandler worldInteractions;
     private NetManager? server;
     private uint snapshotSequence;
 
@@ -237,6 +238,19 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             completions,
             corpseAuthority,
             corpseFinalizer);
+        worldInteractions = new WorldInteractionHandler(
+            worldInteractionAuthority,
+            peerRegistry,
+            sender,
+            entityRegistry,
+            carrySync,
+            teardown,
+            authorityScheduler,
+            operationTracker,
+            new WorldInteractionAuthorityOperations(
+                worldInteractionAuthority,
+                completions,
+                logger));
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -247,7 +261,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 HandleMovementInput,
                 itemOperations.HandleIntent,
                 corpseInteractions.HandleIntent,
-                HandleWorldInteractionIntent,
+                worldInteractions.HandleIntent,
                 HandleLeaveRequest));
         completionProcessor = new RealtimeCompletionProcessor(
             completions,
@@ -514,79 +528,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         playerEntity.Movement.AcceptInputs(inputs);
     }
 
-    private void HandleWorldInteractionIntent(in RealtimeInboundMessage message)
-    {
-        var peer = message.Peer;
-        var context = message.Context;
-        var packet = message.Packet;
-        if (worldInteractionAuthority is null
-            || !peerRegistry.TryGetBoundPlayer(context, out _))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "world_interaction_unavailable",
-                "World interaction authority is not active for this peer.");
-            return;
-        }
-
-        if (!RealtimeProtocol.TryDecodeWorldInteractionIntent(
-                packet,
-                out var intent,
-                out var interactionError))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "invalid_world_interaction",
-                interactionError);
-            return;
-        }
-
-        if (!context.WorldInteractionIntentQuota.TryConsume())
-        {
-            SendWorldInteractionResult(
-                peer,
-                new WorldInteractionAuthorityResult(
-                    null,
-                    new RealtimeWorldInteractionResult(
-                        intent.OperationId,
-                        intent.InteractionSessionId,
-                        intent.OperationKind,
-                        false,
-                        0,
-                        new RealtimeError(
-                            WorldInteractionIntentLimiter.RejectionCode,
-                            "World interaction intents exceeded the per-peer rate limit.")),
-                    null));
-            return;
-        }
-
-        if (context.AuthorityOperationQueue.Count
-            >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
-        {
-            SendWorldInteractionResult(
-                peer,
-                new WorldInteractionAuthorityResult(
-                    null,
-                    new RealtimeWorldInteractionResult(
-                        intent.OperationId,
-                        intent.InteractionSessionId,
-                        intent.OperationKind,
-                        false,
-                        0,
-                        new RealtimeError(
-                            "world_interaction_queue_full",
-                            "Too many authority operations are waiting for this peer.")),
-                    null));
-            return;
-        }
-
-        authorityScheduler.Enqueue(
-            context,
-            new QueuedWorldInteractionOperation(this, intent));
-    }
-
     private void HandleLeaveRequest(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -686,9 +627,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 }
             case LeaveCompleted leaveCompleted:
                 ProcessLeaveCompleted(leaveCompleted);
-                break;
-            case WorldInteractionOperationCompleted worldInteractionCompleted:
-                ProcessWorldInteractionOperationCompleted(worldInteractionCompleted);
                 break;
         }
     }
@@ -907,130 +845,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         completed.Context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
-    private void ProcessWorldInteractionOperation(
-        RealtimePeerContext context,
-        PlayerSimulationEntity entity,
-        RealtimeWorldInteractionIntent intent)
-    {
-        if (worldInteractionAuthority is null
-            || !peerRegistry.TryGetCurrentPeer(context, out _))
-        {
-            context.AuthorityOperationInFlight = false;
-            return;
-        }
-
-        operationTracker.Track(CompleteWorldInteractionOperationAsync(
-            context,
-            entity,
-            intent));
-    }
-
-    private async Task CompleteWorldInteractionOperationAsync(
-        RealtimePeerContext context,
-        PlayerSimulationEntity entity,
-        RealtimeWorldInteractionIntent intent)
-    {
-        WorldInteractionAuthorityResult result;
-        try
-        {
-            result = await worldInteractionAuthority!.ProcessAsync(
-                context.PeerId,
-                entity,
-                intent,
-                CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "[SIMULATION] Unhandled error while processing world interaction {OperationId}.",
-                intent.OperationId);
-            result = new WorldInteractionAuthorityResult(
-                null,
-                new RealtimeWorldInteractionResult(
-                    intent.OperationId,
-                    intent.InteractionSessionId,
-                    intent.OperationKind,
-                    false,
-                    0,
-                    new RealtimeError(
-                        "world_interaction_failed",
-                        "SimulationWorker could not complete the world interaction.")),
-                null);
-        }
-
-        completions.Post(this, new WorldInteractionOperationCompleted(
-            context,
-            entity.Session,
-            result));
-    }
-
-    private void ProcessWorldInteractionOperationCompleted(
-        WorldInteractionOperationCompleted completed)
-    {
-        completed.Context.AuthorityOperationInFlight = false;
-        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId
-                != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (completed.Result.ShouldDisconnect)
-        {
-            SendWorldInteractionResult(peer, completed.Result);
-            var error = completed.Result.Result!.Error!;
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                error.Code,
-                error.Message);
-            return;
-        }
-
-        if (entityRegistry.TryGetPlayerByCharacterId(
-                completed.Session.CharacterId,
-                out var entity))
-        {
-            carrySync.ApplyLatest(entity!);
-        }
-
-        SendWorldInteractionResult(peer, completed.Result);
-        authorityScheduler.StartNext(completed.Context);
-    }
-
-    private void SendWorldInteractionResult(
-        IRealtimePeerConnection peer,
-        WorldInteractionAuthorityResult result)
-    {
-        if (result.Opened is not null)
-        {
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeWorldInteractionOpened(result.Opened));
-        }
-
-        if (result.Result is not null)
-        {
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeWorldInteractionResult(result.Result));
-        }
-
-        if (result.Closed is not null)
-        {
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeWorldInteractionClosed(result.Closed));
-        }
-    }
-
     private void ProcessSimulationTicks(
         TimeSpan elapsed,
         TimeSpan simulationInterval,
@@ -1079,23 +893,10 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             var interactionValidationIntervalTicks = Math.Max(
                 1,
                 config.MovementSimulation.TickRateHz / 5);
-            if (worldInteractionAuthority is not null
+            if (worldInteractions.IsActive
                 && clock.ServerTick % interactionValidationIntervalTicks == 0)
             {
-                foreach (var closure in worldInteractionAuthority.Revalidate(
-                             peerRegistry.ResolvePlayerForInteraction))
-                {
-                    if (peerRegistry.TryGetAuthenticatedPeer(
-                            closure.PeerId,
-                            out _,
-                            out var peer))
-                    {
-                        sender.SendControl(
-                            peer,
-                            RealtimeProtocol.EncodeWorldInteractionClosed(
-                                closure.Closed));
-                    }
-                }
+                worldInteractions.RevalidateLeases();
             }
 
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
@@ -1492,22 +1293,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         public void DisconnectPeer(IRealtimePeerConnection peer)
         {
             owner.server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
-        }
-    }
-
-    private sealed record QueuedWorldInteractionOperation(
-        RealtimeSimulationService Owner,
-        RealtimeWorldInteractionIntent Intent) : IRealtimeAuthorityOperation
-    {
-        public void Start(
-            RealtimePeerContext context,
-            PlayerSimulationEntity entity,
-            PlayerMovementState state)
-        {
-            Owner.ProcessWorldInteractionOperation(
-                context,
-                entity,
-                Intent);
         }
     }
 }
