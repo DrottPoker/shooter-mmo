@@ -33,12 +33,12 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
             [command.ItemInstanceId],
             [],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
             cancellationToken);
-        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
         var policyKind = command.PolicyKind.Trim();
         if (string.Equals(policyKind, ItemPolicyIds.Insured, StringComparison.Ordinal))
         {
@@ -94,7 +94,7 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
             }
         }
 
-        var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
+        var policies = await context.State.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
         if (policies.Any(policy =>
                 string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal)
                 && string.Equals(policy.PolicyKind, policyKind, StringComparison.Ordinal)))
@@ -186,12 +186,12 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
             [command.ItemInstanceId],
             [],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
             cancellationToken);
-        var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
+        var policies = await context.State.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
         var insurance = policies.SingleOrDefault(policy =>
             string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal)
             && string.Equals(policy.PolicyKind, ItemPolicyIds.Insured, StringComparison.Ordinal));

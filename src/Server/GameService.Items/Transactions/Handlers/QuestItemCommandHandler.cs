@@ -61,7 +61,7 @@ internal sealed class QuestItemCommandHandler
 
         foreach (var itemInstanceId in itemIds.Order())
         {
-            var item = await context.LoadItemAsync(itemInstanceId, cancellationToken)
+            var item = await context.State.LoadItemAsync(itemInstanceId, cancellationToken)
                 ?? throw new InvalidOperationException(
                     $"Quest item '{itemInstanceId}' disappeared while its owner was locked.");
             var beforeState = await context.CaptureItemStateJsonAsync(

@@ -40,7 +40,7 @@ internal sealed class MobCorpseCommandHandler
         var definitions = new List<ResolvedItemDefinition>(command.Loot.Count);
         foreach (var loot in command.Loot)
         {
-            var definition = await context.LoadDefinitionAsync(
+            var definition = await context.State.LoadDefinitionAsync(
                 loot.DefinitionId,
                 cancellationToken);
             MobLootRules.ValidateMobLootDefinition(definition, loot.Quantity);

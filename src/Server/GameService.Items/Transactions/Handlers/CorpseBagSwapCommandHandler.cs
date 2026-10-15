@@ -26,10 +26,10 @@ internal sealed class CorpseBagSwapCommandHandler
             [command.CorpseBagContentsContainerId, command.PlayerBagContentsContainerId],
             cancellationToken);
 
-        var corpseBag = await context.LoadItemAsync(
+        var corpseBag = await context.State.LoadItemAsync(
             command.CorpseBagItemInstanceId,
             cancellationToken);
-        var playerBag = await context.LoadItemAsync(
+        var playerBag = await context.State.LoadItemAsync(
             command.PlayerBagItemInstanceId,
             cancellationToken);
         var sections = await LoadCorpseBagSectionAsync(

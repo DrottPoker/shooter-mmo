@@ -70,7 +70,7 @@ internal sealed class CorpseDepositCommandHandler
             [command.DestinationContainerId],
             cancellationToken);
 
-        var source = await context.LoadOwnedItemAsync(
+        var source = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
@@ -82,16 +82,16 @@ internal sealed class CorpseDepositCommandHandler
                 "Only items in carried container slots can enter corpse custody.");
         }
 
-        var sourceContainer = await context.LoadOwnedContainerAsync(
+        var sourceContainer = await context.State.LoadOwnedContainerAsync(
             source.ContainerId.Value,
             command.CharacterId,
             cancellationToken);
         CorpseItemTransfers.EnsureCarriedCorpseTransferSource(sourceContainer);
 
-        var definition = await context.LoadDefinitionAsync(
+        var definition = await context.State.LoadDefinitionAsync(
             source.DefinitionId,
             cancellationToken);
-        var sourcePolicies = await context.LoadPoliciesAsync(
+        var sourcePolicies = await context.State.LoadPoliciesAsync(
             source.ItemInstanceId,
             cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
@@ -104,7 +104,7 @@ internal sealed class CorpseDepositCommandHandler
                 "An active item policy prevents this carried item from entering corpse custody.");
         }
 
-        var sourceBagHasContents = await context.BagHasContentsAsync(source, cancellationToken);
+        var sourceBagHasContents = await context.State.BagHasContentsAsync(source, cancellationToken);
         if (source.IsBag && sourceBagHasContents)
         {
             ItemTransactionContext.Reject(
@@ -125,7 +125,7 @@ internal sealed class CorpseDepositCommandHandler
                 "The requested partial-stack quantity is no longer valid.");
         }
 
-        var destination = await context.LoadContainerAsync(
+        var destination = await context.State.LoadContainerAsync(
             command.DestinationContainerId,
             cancellationToken);
         if (!await CorpseCustody.IsCorpseSectionContainerAsync(
@@ -151,7 +151,7 @@ internal sealed class CorpseDepositCommandHandler
         var swapItems = false;
         if (command.TargetItemInstanceId is not null)
         {
-            target = await context.LoadItemAsync(
+            target = await context.State.LoadItemAsync(
                 command.TargetItemInstanceId.Value,
                 cancellationToken);
             if (target is null
@@ -185,7 +185,7 @@ internal sealed class CorpseDepositCommandHandler
                 false,
                 cancellationToken,
                 target.ItemInstanceId);
-            targetPolicies = await context.LoadPoliciesAsync(
+            targetPolicies = await context.State.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
             var stackDisposition = CorpseItemTransfers.GetCorpseStackDisposition(
@@ -203,7 +203,7 @@ internal sealed class CorpseDepositCommandHandler
                     CorpseItemTransfers.RejectCorpseStackMerge(stackDisposition);
                 }
 
-                var targetDefinition = await context.LoadDefinitionAsync(
+                var targetDefinition = await context.State.LoadDefinitionAsync(
                     target.DefinitionId,
                     cancellationToken);
                 var targetCapabilities = ItemPolicyRules.Evaluate(

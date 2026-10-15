@@ -63,7 +63,7 @@ internal sealed class RecoveryExpiryCommandHandler
 
         foreach (var deliveryItem in delivery.Items.OrderBy(item => item.ItemOrder))
         {
-            var item = await context.LoadItemAsync(
+            var item = await context.State.LoadItemAsync(
                 deliveryItem.ItemInstanceId,
                 cancellationToken);
             if (item is null
@@ -76,7 +76,7 @@ internal sealed class RecoveryExpiryCommandHandler
                     "Recovery expiry found item custody that no longer matches the delivery.");
             }
 
-            if (await context.BagHasContentsAsync(item, cancellationToken))
+            if (await context.State.BagHasContentsAsync(item, cancellationToken))
             {
                 ItemTransactionContext.Reject(
                     ItemTransactionErrorCodes.BagStateChanged,

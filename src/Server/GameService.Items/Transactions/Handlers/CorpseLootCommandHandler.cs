@@ -73,7 +73,7 @@ internal sealed class CorpseLootCommandHandler
             [command.DestinationContainerId],
             cancellationToken);
 
-        var source = await context.LoadItemAsync(command.ItemInstanceId, cancellationToken);
+        var source = await context.State.LoadItemAsync(command.ItemInstanceId, cancellationToken);
         if (source is null
             || source.ContainerId is null
             || source.ContainerSlotIndex is null
@@ -102,10 +102,10 @@ internal sealed class CorpseLootCommandHandler
                 "Corpse Bags move only through an atomic Bag aggregate swap.");
         }
 
-        var definition = await context.LoadDefinitionAsync(
+        var definition = await context.State.LoadDefinitionAsync(
             source.DefinitionId,
             cancellationToken);
-        var sourcePolicies = await context.LoadPoliciesAsync(
+        var sourcePolicies = await context.State.LoadPoliciesAsync(
             source.ItemInstanceId,
             cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
@@ -131,7 +131,7 @@ internal sealed class CorpseLootCommandHandler
                 "The requested partial-stack quantity is no longer valid.");
         }
 
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);
@@ -148,7 +148,7 @@ internal sealed class CorpseLootCommandHandler
         var swapItems = false;
         if (command.TargetItemInstanceId is not null)
         {
-            target = await context.LoadOwnedItemAsync(
+            target = await context.State.LoadOwnedItemAsync(
                 command.TargetItemInstanceId.Value,
                 command.CharacterId,
                 command.ExpectedTargetItemRevision!.Value,
@@ -170,7 +170,7 @@ internal sealed class CorpseLootCommandHandler
                 false,
                 cancellationToken,
                 target.ItemInstanceId);
-            targetPolicies = await context.LoadPoliciesAsync(
+            targetPolicies = await context.State.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
             var stackDisposition = CorpseItemTransfers.GetCorpseStackDisposition(
@@ -188,7 +188,7 @@ internal sealed class CorpseLootCommandHandler
                     CorpseItemTransfers.RejectCorpseStackMerge(stackDisposition);
                 }
 
-                var targetDefinition = await context.LoadDefinitionAsync(
+                var targetDefinition = await context.State.LoadDefinitionAsync(
                     target.DefinitionId,
                     cancellationToken);
                 var targetCapabilities = ItemPolicyRules.Evaluate(
@@ -201,10 +201,10 @@ internal sealed class CorpseLootCommandHandler
                         "An active item policy prevents the carried target from entering corpse custody.");
                 }
 
-                var sourceContainer = await context.LoadContainerAsync(
+                var sourceContainer = await context.State.LoadContainerAsync(
                     source.ContainerId.Value,
                     cancellationToken);
-                var targetBagHasContents = await context.BagHasContentsAsync(
+                var targetBagHasContents = await context.State.BagHasContentsAsync(
                     target,
                     cancellationToken);
                 await context.SelectDestinationSlotAsync(

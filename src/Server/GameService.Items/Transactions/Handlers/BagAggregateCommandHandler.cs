@@ -34,12 +34,12 @@ internal sealed class BagAggregateCommandHandler
             [command.FirstBagItemInstanceId, command.SecondBagItemInstanceId],
             [],
             cancellationToken);
-        var firstBag = await context.LoadOwnedItemAsync(
+        var firstBag = await context.State.LoadOwnedItemAsync(
             command.FirstBagItemInstanceId,
             command.FirstCharacterId,
             command.ExpectedFirstBagRevision,
             cancellationToken);
-        var secondBag = await context.LoadOwnedItemAsync(
+        var secondBag = await context.State.LoadOwnedItemAsync(
             command.SecondBagItemInstanceId,
             command.SecondCharacterId,
             command.ExpectedSecondBagRevision,

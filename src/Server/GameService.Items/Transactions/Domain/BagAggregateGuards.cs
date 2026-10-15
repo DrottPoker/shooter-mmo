@@ -10,14 +10,14 @@ internal static class BagAggregateGuards
         LockedItem bag,
         CancellationToken cancellationToken)
     {
-        var aggregateItemIds = await context.LoadBagAggregateItemIdsAsync(
+        var aggregateItemIds = await context.State.LoadBagAggregateItemIdsAsync(
             bag.ItemInstanceId,
             cancellationToken);
         foreach (var itemInstanceId in aggregateItemIds)
         {
             var item = itemInstanceId == bag.ItemInstanceId
                 ? bag
-                : await context.LoadItemAsync(itemInstanceId, cancellationToken);
+                : await context.State.LoadItemAsync(itemInstanceId, cancellationToken);
             if (item is null)
             {
                 ItemTransactionContext.Reject(
@@ -25,10 +25,10 @@ internal static class BagAggregateGuards
                     "A Bag aggregate item changed before policy validation completed.");
             }
 
-            var definition = await context.LoadDefinitionAsync(
+            var definition = await context.State.LoadDefinitionAsync(
                 item.DefinitionId,
                 cancellationToken);
-            var policies = await context.LoadPoliciesAsync(
+            var policies = await context.State.LoadPoliciesAsync(
                 item.ItemInstanceId,
                 cancellationToken);
             var capabilities = ItemPolicyRules.Evaluate(

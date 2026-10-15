@@ -188,13 +188,13 @@ internal sealed class PlayerDeathCommandHandler
         var partitionItems = new List<DeathPartitionItem>(sourceRows.Length);
         foreach (var source in sourceRows)
         {
-            var item = await context.LoadItemAsync(source.ItemInstanceId, cancellationToken)
+            var item = await context.State.LoadItemAsync(source.ItemInstanceId, cancellationToken)
                 ?? throw new InvalidOperationException(
                     $"Death item '{source.ItemInstanceId}' disappeared after locking.");
-            var definition = await context.LoadDefinitionAsync(
+            var definition = await context.State.LoadDefinitionAsync(
                 item.DefinitionId,
                 cancellationToken);
-            var policies = await context.LoadPoliciesAsync(
+            var policies = await context.State.LoadPoliciesAsync(
                 item.ItemInstanceId,
                 cancellationToken);
             var capabilities = ItemPolicyRules.Evaluate(

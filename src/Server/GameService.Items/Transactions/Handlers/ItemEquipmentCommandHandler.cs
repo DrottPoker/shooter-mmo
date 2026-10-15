@@ -19,7 +19,7 @@ internal sealed class ItemEquipmentCommandHandler
             [command.ItemInstanceId],
             [],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
@@ -39,8 +39,8 @@ internal sealed class ItemEquipmentCommandHandler
                 "Equipped items must have quantity one.");
         }
 
-        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
-        var bagHasContents = await context.BagHasContentsAsync(item, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
         await context.EnsureEquipmentDestinationAsync(
             command.CharacterId,
             command.EquipmentSlotId,
@@ -113,7 +113,7 @@ internal sealed class ItemEquipmentCommandHandler
             [command.ItemInstanceId],
             [command.DestinationContainerId],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
@@ -125,12 +125,12 @@ internal sealed class ItemEquipmentCommandHandler
                 "The item is not equipped by the requested character.");
         }
 
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);
-        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
-        var bagHasContents = await context.BagHasContentsAsync(item, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
         var slotIndex = await context.SelectDestinationSlotAsync(
             destination,
             definition,

@@ -22,7 +22,7 @@ internal sealed class ItemStackCommandHandler
             [command.ItemInstanceId],
             [command.DestinationContainerId],
             cancellationToken);
-        var source = await context.LoadOwnedItemAsync(
+        var source = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
@@ -42,7 +42,7 @@ internal sealed class ItemStackCommandHandler
                 "A split quantity must be positive and smaller than the source quantity.");
         }
 
-        var definition = await context.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
         if (definition.IsBag || definition.RuntimeDefinition.MaximumStackSize <= 1)
         {
             ItemTransactionContext.Reject(
@@ -50,7 +50,7 @@ internal sealed class ItemStackCommandHandler
                 "The item definition is not stackable.");
         }
 
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);
@@ -62,7 +62,7 @@ internal sealed class ItemStackCommandHandler
             null,
             false,
             cancellationToken);
-        var policies = await context.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
+        var policies = await context.State.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
         var beforeSource = await context.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
@@ -173,12 +173,12 @@ internal sealed class ItemStackCommandHandler
             [command.SourceItemInstanceId, command.TargetItemInstanceId],
             [],
             cancellationToken);
-        var source = await context.LoadOwnedItemAsync(
+        var source = await context.State.LoadOwnedItemAsync(
             command.SourceItemInstanceId,
             command.CharacterId,
             command.ExpectedSourceItemRevision,
             cancellationToken);
-        var target = await context.LoadOwnedItemAsync(
+        var target = await context.State.LoadOwnedItemAsync(
             command.TargetItemInstanceId,
             command.CharacterId,
             command.ExpectedTargetItemRevision,
@@ -193,9 +193,9 @@ internal sealed class ItemStackCommandHandler
                 "Both stacks must be in compatible ordinary container slots.");
         }
 
-        var definition = await context.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
-        var sourcePolicies = await context.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
-        var targetPolicies = await context.LoadPoliciesAsync(target.ItemInstanceId, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
+        var sourcePolicies = await context.State.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
+        var targetPolicies = await context.State.LoadPoliciesAsync(target.ItemInstanceId, cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
             ItemPolicyStates.ToPolicyStates(sourcePolicies));
@@ -295,12 +295,12 @@ internal sealed class ItemStackCommandHandler
             [command.ItemInstanceId],
             [],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
             cancellationToken);
-        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
         if (definition.IsBag)
         {
             ItemTransactionContext.Reject(

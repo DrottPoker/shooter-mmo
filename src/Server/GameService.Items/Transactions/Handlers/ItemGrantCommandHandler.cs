@@ -20,7 +20,7 @@ internal sealed class ItemGrantCommandHandler
             [command.DestinationContainerId],
             cancellationToken);
 
-        var definition = await context.LoadDefinitionAsync(command.DefinitionId, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(command.DefinitionId, cancellationToken);
         if (command.Quantity <= 0
             || command.Quantity > definition.RuntimeDefinition.MaximumStackSize)
         {
@@ -114,7 +114,7 @@ internal sealed class ItemGrantCommandHandler
             }
         }
 
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);

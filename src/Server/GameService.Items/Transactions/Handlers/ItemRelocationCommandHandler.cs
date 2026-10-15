@@ -19,7 +19,7 @@ internal sealed class ItemRelocationCommandHandler
             [command.ItemInstanceId],
             [command.DestinationContainerId],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
@@ -38,12 +38,12 @@ internal sealed class ItemRelocationCommandHandler
                 "Recovery Storage items must be withdrawn through a delivery claim.");
         }
 
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);
-        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
-        var bagHasContents = await context.BagHasContentsAsync(item, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
         var slotIndex = await context.SelectDestinationSlotAsync(
             destination,
             definition,
@@ -105,12 +105,12 @@ internal sealed class ItemRelocationCommandHandler
             [command.FirstItemInstanceId, command.SecondItemInstanceId],
             [],
             cancellationToken);
-        var firstItem = await context.LoadOwnedItemAsync(
+        var firstItem = await context.State.LoadOwnedItemAsync(
             command.FirstItemInstanceId,
             command.CharacterId,
             command.ExpectedFirstItemRevision,
             cancellationToken);
-        var secondItem = await context.LoadOwnedItemAsync(
+        var secondItem = await context.State.LoadOwnedItemAsync(
             command.SecondItemInstanceId,
             command.CharacterId,
             command.ExpectedSecondItemRevision,
@@ -139,24 +139,24 @@ internal sealed class ItemRelocationCommandHandler
                 "Recovery Storage items must be withdrawn through a delivery claim.");
         }
 
-        var firstContainer = await context.LoadOwnedContainerAsync(
+        var firstContainer = await context.State.LoadOwnedContainerAsync(
             firstItem.ContainerId.Value,
             command.CharacterId,
             cancellationToken);
-        var secondContainer = await context.LoadOwnedContainerAsync(
+        var secondContainer = await context.State.LoadOwnedContainerAsync(
             secondItem.ContainerId.Value,
             command.CharacterId,
             cancellationToken);
-        var firstDefinition = await context.LoadDefinitionAsync(
+        var firstDefinition = await context.State.LoadDefinitionAsync(
             firstItem.DefinitionId,
             cancellationToken);
-        var secondDefinition = await context.LoadDefinitionAsync(
+        var secondDefinition = await context.State.LoadDefinitionAsync(
             secondItem.DefinitionId,
             cancellationToken);
-        var firstBagHasContents = await context.BagHasContentsAsync(
+        var firstBagHasContents = await context.State.BagHasContentsAsync(
             firstItem,
             cancellationToken);
-        var secondBagHasContents = await context.BagHasContentsAsync(
+        var secondBagHasContents = await context.State.BagHasContentsAsync(
             secondItem,
             cancellationToken);
 

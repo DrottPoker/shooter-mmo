@@ -26,7 +26,7 @@ internal sealed class RecoveryDeliveryCommandHandler
             expectations.Keys,
             [state.RecoveryStorageContainerId],
             cancellationToken);
-        var recovery = await context.LoadKernelPlacementContainerAsync(
+        var recovery = await context.State.LoadKernelPlacementContainerAsync(
             state.RecoveryStorageContainerId,
             command.CharacterId,
             cancellationToken);
@@ -63,7 +63,7 @@ internal sealed class RecoveryDeliveryCommandHandler
         var items = new List<LockedItem>();
         foreach (var expectation in command.Items)
         {
-            var item = await context.LoadOwnedItemAsync(
+            var item = await context.State.LoadOwnedItemAsync(
                 expectation.ItemInstanceId,
                 command.CharacterId,
                 expectation.Revision,
@@ -75,7 +75,7 @@ internal sealed class RecoveryDeliveryCommandHandler
                     "The item is already in Recovery Storage.");
             }
 
-            if (await context.BagHasContentsAsync(item, cancellationToken))
+            if (await context.State.BagHasContentsAsync(item, cancellationToken))
             {
                 ItemTransactionContext.Reject(
                     ItemTransactionErrorCodes.BagNotEmpty,
@@ -263,7 +263,7 @@ internal sealed class RecoveryDeliveryCommandHandler
                 "The Recovery Storage delivery item set changed before it could be claimed.");
         }
 
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);
@@ -277,7 +277,7 @@ internal sealed class RecoveryDeliveryCommandHandler
 
         foreach (var deliveryItem in delivery.Items.OrderBy(item => item.ItemOrder))
         {
-            var item = await context.LoadOwnedItemAsync(
+            var item = await context.State.LoadOwnedItemAsync(
                 deliveryItem.ItemInstanceId,
                 command.CharacterId,
                 expectedItems[deliveryItem.ItemInstanceId],
@@ -290,8 +290,8 @@ internal sealed class RecoveryDeliveryCommandHandler
                     "A Recovery Storage item changed custody before it could be claimed.");
             }
 
-            var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
-            var bagHasContents = await context.BagHasContentsAsync(item, cancellationToken);
+            var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+            var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
             var destinationSlotIndex = await context.SelectDestinationSlotAsync(
                 destination,
                 definition,

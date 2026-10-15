@@ -27,7 +27,7 @@ internal sealed class ItemDestructionCommandHandler
             [command.ItemInstanceId],
             [],
             cancellationToken);
-        var item = await context.LoadOwnedItemAsync(
+        var item = await context.State.LoadOwnedItemAsync(
             command.ItemInstanceId,
             command.CharacterId,
             command.ExpectedItemRevision,
@@ -39,8 +39,8 @@ internal sealed class ItemDestructionCommandHandler
                 "Recovery Storage items cannot use player destruction.");
         }
 
-        var definition = await context.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
-        var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var policies = await context.State.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
         var capabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
             ItemPolicyStates.ToPolicyStates(policies));
@@ -62,7 +62,7 @@ internal sealed class ItemDestructionCommandHandler
                 "The item definition does not permit player destruction.");
         }
 
-        if (await context.BagHasContentsAsync(item, cancellationToken))
+        if (await context.State.BagHasContentsAsync(item, cancellationToken))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.BagNotEmpty,

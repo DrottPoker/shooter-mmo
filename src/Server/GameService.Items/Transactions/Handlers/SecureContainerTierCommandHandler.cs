@@ -201,11 +201,11 @@ internal sealed class SecureContainerTierCommandHandler
 
         foreach (var state in states.Values.OrderBy(value => value.CharacterId))
         {
-            var secureContainer = await context.LoadOwnedContainerAsync(
+            var secureContainer = await context.State.LoadOwnedContainerAsync(
                 state.SecureContainerId,
                 state.CharacterId,
                 cancellationToken);
-            var recoveryContainer = await context.LoadKernelPlacementContainerAsync(
+            var recoveryContainer = await context.State.LoadKernelPlacementContainerAsync(
                 state.RecoveryStorageContainerId,
                 state.CharacterId,
                 cancellationToken);
@@ -258,7 +258,7 @@ internal sealed class SecureContainerTierCommandHandler
                 for (var index = 0; index < characterOverflow.Length; index++)
                 {
                     var overflow = characterOverflow[index];
-                    var item = await context.LoadOwnedItemAsync(
+                    var item = await context.State.LoadOwnedItemAsync(
                         overflow.ItemInstanceId,
                         state.CharacterId,
                         overflow.Revision,

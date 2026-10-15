@@ -37,11 +37,11 @@ internal sealed class MobLootGrantCommandHandler
             [],
             [command.DestinationContainerId],
             cancellationToken);
-        var definition = await context.LoadDefinitionAsync(
+        var definition = await context.State.LoadDefinitionAsync(
             command.DefinitionId,
             cancellationToken);
         MobLootRules.ValidateMobLootDefinition(definition, command.Quantity);
-        var destination = await context.LoadOwnedContainerAsync(
+        var destination = await context.State.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);

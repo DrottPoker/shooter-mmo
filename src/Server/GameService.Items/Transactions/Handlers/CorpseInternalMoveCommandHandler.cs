@@ -69,7 +69,7 @@ internal sealed class CorpseInternalMoveCommandHandler
             [command.DestinationContainerId],
             cancellationToken);
 
-        var source = await context.LoadItemAsync(command.ItemInstanceId, cancellationToken);
+        var source = await context.State.LoadItemAsync(command.ItemInstanceId, cancellationToken);
         if (source is null
             || source.Revision != command.ExpectedItemRevision
             || source.ContainerId is null
@@ -85,10 +85,10 @@ internal sealed class CorpseInternalMoveCommandHandler
                 "The corpse source item moved before the internal transfer committed.");
         }
 
-        var sourceContainer = await context.LoadContainerAsync(
+        var sourceContainer = await context.State.LoadContainerAsync(
             source.ContainerId.Value,
             cancellationToken);
-        var sourceBagHasContents = await context.BagHasContentsAsync(source, cancellationToken);
+        var sourceBagHasContents = await context.State.BagHasContentsAsync(source, cancellationToken);
         if (source.IsBag && sourceBagHasContents)
         {
             ItemTransactionContext.Reject(
@@ -108,10 +108,10 @@ internal sealed class CorpseInternalMoveCommandHandler
                 "The corpse Bag owns the corpse Bag section and cannot leave its equipment slot.");
         }
 
-        var definition = await context.LoadDefinitionAsync(
+        var definition = await context.State.LoadDefinitionAsync(
             source.DefinitionId,
             cancellationToken);
-        var sourcePolicies = await context.LoadPoliciesAsync(
+        var sourcePolicies = await context.State.LoadPoliciesAsync(
             source.ItemInstanceId,
             cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
@@ -130,7 +130,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                 "The requested internal partial-stack quantity is no longer valid.");
         }
 
-        var destination = await context.LoadContainerAsync(
+        var destination = await context.State.LoadContainerAsync(
             command.DestinationContainerId,
             cancellationToken);
         if (!await CorpseCustody.IsCorpseSectionContainerAsync(
@@ -156,7 +156,7 @@ internal sealed class CorpseInternalMoveCommandHandler
         var swapItems = false;
         if (command.TargetItemInstanceId is not null)
         {
-            target = await context.LoadItemAsync(
+            target = await context.State.LoadItemAsync(
                 command.TargetItemInstanceId.Value,
                 cancellationToken);
             if (target is null
@@ -174,7 +174,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                     "The corpse target moved before the internal transfer committed.");
             }
 
-            var targetBagHasContents = await context.BagHasContentsAsync(
+            var targetBagHasContents = await context.State.BagHasContentsAsync(
                 target,
                 cancellationToken);
             if (target.IsBag && targetBagHasContents)
@@ -205,7 +205,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                 false,
                 cancellationToken,
                 target.ItemInstanceId);
-            targetPolicies = await context.LoadPoliciesAsync(
+            targetPolicies = await context.State.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
             var stackDisposition = CorpseItemTransfers.GetCorpseStackDisposition(
@@ -223,7 +223,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                     CorpseItemTransfers.RejectCorpseStackMerge(stackDisposition);
                 }
 
-                var targetDefinition = await context.LoadDefinitionAsync(
+                var targetDefinition = await context.State.LoadDefinitionAsync(
                     target.DefinitionId,
                     cancellationToken);
                 await context.SelectDestinationSlotAsync(
