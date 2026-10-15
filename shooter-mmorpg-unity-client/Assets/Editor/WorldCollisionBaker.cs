@@ -13,6 +13,19 @@ using UnityEngine.SceneManagement;
 
 namespace ShooterMmo.Editor
 {
+    public sealed class WorldSceneBakePlan
+    {
+        public WorldSceneBakePlan(string scenePath, IReadOnlyList<string> worldIds)
+        {
+            ScenePath = scenePath;
+            WorldIds = worldIds;
+        }
+
+        public string ScenePath { get; }
+
+        public IReadOnlyList<string> WorldIds { get; }
+    }
+
     public static class WorldCollisionBaker
     {
         public const string MenuPath = "Shooter MMO/Tools/World Collision/Bake Open Scene";
@@ -73,27 +86,18 @@ namespace ShooterMmo.Editor
                     throw new InvalidOperationException(catalogError);
                 }
 
-                var buildScenes = EditorBuildSettings.scenes
-                    .Where(scene => scene.enabled)
-                    .GroupBy(
-                        scene => Path.GetFileNameWithoutExtension(scene.path),
-                        StringComparer.Ordinal)
-                    .ToDictionary(
-                        group => group.Key,
-                        group => group.Select(scene => scene.path).ToArray(),
-                        StringComparer.Ordinal);
-                foreach (var entry in catalog.entries)
+                var plans = PlanBuildWorldBakes(
+                    catalog.entries,
+                    EditorBuildSettings.scenes
+                        .Where(scene => scene.enabled)
+                        .Select(scene => scene.path));
+                foreach (var plan in plans)
                 {
-                    if (!buildScenes.TryGetValue(entry.sceneName, out var scenePaths)
-                        || scenePaths.Length != 1)
+                    EditorSceneManager.OpenScene(plan.ScenePath, OpenSceneMode.Single);
+                    foreach (var worldId in plan.WorldIds)
                     {
-                        throw new InvalidOperationException(
-                            "World '" + entry.worldId + "' must map to exactly one enabled "
-                            + "Build Profiles scene named '" + entry.sceneName + "'.");
+                        BakeActiveScene(worldId, plan.WorldIds);
                     }
-
-                    EditorSceneManager.OpenScene(scenePaths[0], OpenSceneMode.Single);
-                    BakeActiveScene(entry.worldId);
                 }
             }
             finally
@@ -110,8 +114,48 @@ namespace ShooterMmo.Editor
             }
         }
 
+        // Groups catalog Worlds by their Build Profiles scene, so a reusable scene shared
+        // by several Worlds is opened once and baked once for each of them.
+        public static IReadOnlyList<WorldSceneBakePlan> PlanBuildWorldBakes(
+            IEnumerable<WorldSceneCatalogEntry> entries,
+            IEnumerable<string> enabledScenePaths)
+        {
+            var buildScenes = enabledScenePaths
+                .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToArray(),
+                    StringComparer.Ordinal);
+            var plans = new List<WorldSceneBakePlan>();
+            var plansByScene = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                if (!buildScenes.TryGetValue(entry.sceneName, out var scenePaths)
+                    || scenePaths.Length != 1)
+                {
+                    throw new InvalidOperationException(
+                        "World '" + entry.worldId + "' must map to exactly one enabled "
+                        + "Build Profiles scene named '" + entry.sceneName + "'.");
+                }
+
+                if (!plansByScene.TryGetValue(scenePaths[0], out var worldIds))
+                {
+                    worldIds = new List<string>();
+                    plansByScene.Add(scenePaths[0], worldIds);
+                    plans.Add(new WorldSceneBakePlan(scenePaths[0], worldIds));
+                }
+
+                worldIds.Add(entry.worldId);
+            }
+
+            return plans;
+        }
+
+        // The authored World id names the scene's own World. A reusable scene is baked
+        // for every catalog World that uses it, so the authored id must be one of them.
         private static CollisionWorldBakeResult BakeActiveScene(
-            string expectedWorldId = null)
+            string targetWorldId = null,
+            IReadOnlyCollection<string> sceneWorldIds = null)
         {
             var authoring = FindAuthoringComponent();
             if (!authoring.TryValidate(out var validationError))
@@ -119,23 +163,23 @@ namespace ShooterMmo.Editor
                 throw new InvalidOperationException(validationError);
             }
 
-            if (!string.IsNullOrWhiteSpace(expectedWorldId)
-                && !string.Equals(
-                    authoring.WorldId.Trim(),
-                    expectedWorldId,
-                    StringComparison.Ordinal))
+            var authoredWorldId = authoring.WorldId.Trim();
+            if (sceneWorldIds != null
+                && !sceneWorldIds.Contains(authoredWorldId, StringComparer.Ordinal))
             {
                 throw new InvalidOperationException(
                     "Scene '" + SceneManager.GetActiveScene().name + "' authored world '"
-                    + authoring.WorldId.Trim() + "' instead of catalog world '"
-                    + expectedWorldId + "'.");
+                    + authoredWorldId + "', which is not one of its catalog worlds '"
+                    + string.Join("', '", sceneWorldIds) + "'.");
             }
 
             var boxes = BuildBoxEntries(authoring).ToArray();
             var document = new CollisionWorldAuthoringDocument
             {
                 FormatVersion = CollisionDataFormat.Version,
-                WorldId = authoring.WorldId.Trim(),
+                WorldId = string.IsNullOrWhiteSpace(targetWorldId)
+                    ? authoredWorldId
+                    : targetWorldId,
                 ChunkSize = authoring.ChunkSize,
                 Boxes = boxes
             };

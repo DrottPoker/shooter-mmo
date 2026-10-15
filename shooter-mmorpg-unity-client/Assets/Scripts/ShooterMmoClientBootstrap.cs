@@ -27,6 +27,17 @@ namespace ShooterMmo
 
         public static WorldInteractionClientController WorldInteractionController { get; private set; }
 
+        // Static state survives entering Play Mode when domain reload is disabled.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            SimulationClient = null;
+            InventoryController = null;
+            CorpseController = null;
+            WorldActorController = null;
+            WorldInteractionController = null;
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
@@ -114,6 +125,9 @@ namespace ShooterMmo
             {
                 SimulationClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
             }
+
+            apiClient?.Dispose();
+            apiClient = null;
 
             SimulationClient = null;
             InventoryController = null;

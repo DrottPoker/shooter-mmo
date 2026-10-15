@@ -4,6 +4,9 @@ using ShooterMmo.Collision;
 using ShooterMmo.Config;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Gameplay;
+using ShooterMmo.WorldActors;
+using ShooterMmo.WorldData.Actors;
+using ShooterMmo.WorldData.Editor.Actors;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -408,6 +411,32 @@ namespace ShooterMmo.Tests.EditMode
                     levelPipeline.GetType().Name,
                     Is.EqualTo("UniversalRenderPipelineAsset"),
                     QualitySettings.names[level]);
+            }
+        }
+
+        [Test]
+        public void EveryAuthoredActorArchetypeHasAPresentationPrefab()
+        {
+            var registry = Resources.Load<WorldActorPresentationRegistry>(
+                WorldActorPresentationController.RegistryResourcePath);
+            Assert.That(registry, Is.Not.Null);
+            var workspace = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault()).Load();
+            var compiled = WorldActorCompiler.Compile(
+                workspace.Catalog.ToDomain(),
+                workspace.Spawns.ToDomain());
+
+            Assert.That(compiled.Actors, Is.Not.Empty);
+            foreach (var actor in compiled.Actors)
+            {
+                Assert.That(
+                    registry.TryResolve(actor.PresentationArchetypeId, out var prefab),
+                    Is.True,
+                    actor.PresentationArchetypeId);
+                // Presentation never takes part in physics or crosshair raycasts.
+                Assert.That(
+                    prefab.GetComponentsInChildren<Collider>(true),
+                    Is.Empty,
+                    actor.PresentationArchetypeId);
             }
         }
 

@@ -460,6 +460,14 @@ namespace ShooterMmo.WorldData.Items.Presentation
         private static string cachedKey;
         private static ItemPresentationCatalogIndex cachedIndex;
 
+        // Static state survives entering Play Mode when domain reload is disabled.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            cachedKey = null;
+            cachedIndex = null;
+        }
+
         public static bool TryLoadOnce(
             string expectedSourceCatalogRevision,
             IEnumerable<string> expectedDefinitionIds,

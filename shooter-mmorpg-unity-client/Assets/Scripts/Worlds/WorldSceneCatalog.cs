@@ -27,6 +27,15 @@ namespace ShooterMmo.Worlds
         private static WorldSceneCatalogDocument loadedCatalog;
         private static string loadError = string.Empty;
 
+        // Static state survives entering Play Mode when domain reload is disabled.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            loadAttempted = false;
+            loadedCatalog = null;
+            loadError = string.Empty;
+        }
+
         public static bool TryResolveScene(
             string worldId,
             out string sceneName,

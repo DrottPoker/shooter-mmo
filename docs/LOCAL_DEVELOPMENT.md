@@ -612,7 +612,10 @@ PlayMode verifies the persistent controller and runtime uGUI root.
 ### Give A Character Development Items
 
 The Unity Editor window is the primary workflow. It never writes directly to
-PostgreSQL. It starts a guarded AuthService command that uses
+PostgreSQL. It runs the Release build of AuthService directly as
+`dotnet AuthService/bin/Release/<framework>/AuthService.dll`, so AuthService runs
+inside that one process and a cancel or the 60-second timeout ends it. It starts
+a guarded AuthService command that uses
 `ItemTransactionService`, accepts only Development, requires a loopback
 PostgreSQL host with a non-production-like database name, and refuses an active
 character. Individual grants are repeatable. Exact test packages require a
@@ -950,9 +953,13 @@ Editor compiler integration.
 
 ### Manual Actor Authoring And Interaction Loop
 
-Existing canonical content and fallback presentation require no scene, prefab,
-Inspector, package, or build-setting change. Use these exact Unity Editor steps
-to exercise the authoring tools and optional presentation mapping:
+Existing canonical content requires no scene, prefab, Inspector, package, or
+build-setting change. The committed presentation registry already maps every
+authored archetype to a placeholder prefab. A new archetype uses the tinted
+fallback, with one warning, until a prefab is added to
+`Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`.
+Use these exact Unity Editor steps to exercise the authoring tools and
+presentation mapping:
 
 1. Open the Unity project and select `Shooter MMO > Tools > Content > Actor
    Studio`. Select `Mira the Quartermaster`. Expected result: the window shows
@@ -1723,7 +1730,9 @@ authoritative map collider changes.
 
 After both development scenes exist in Build Profiles, use `Shooter MMO >
 Tools > World Collision > Bake Build World Scenes` to validate each catalog
-mapping and bake every enabled World scene in one deterministic pass.
+mapping and bake every enabled World scene in one deterministic pass. When
+several Worlds share one reusable scene, the scene is baked once for each of
+those Worlds, and its `WorldCollisionAuthoring` World id must be one of them.
 
 The bake writes every file to a temporary `.tmp` sibling first and then swaps
 them in, chunks before the manifest, with a backup of each previous file. If any

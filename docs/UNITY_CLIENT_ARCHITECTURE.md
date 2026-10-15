@@ -137,6 +137,9 @@ clears all local session state before loading LoginMenu.
 - Structured mapping of HTTP, timeout, network, and invalid-response failures.
 - Owned-character complete item-state, focused Bank, and focused Recovery
   Storage reads used by the persistent inventory controller.
+- Tracking every request in flight. Unity stops a coroutine without disposing
+  its iterator, so each owner disposes its client in `OnDestroy`, which aborts
+  and releases any request that has not completed.
 
 `ShooterMmoApiError` carries the failure kind, HTTP status, stable server code,
 message, and correlation id. Panels display a safe message rather than raw JSON.
@@ -259,9 +262,9 @@ The client renders with the Universal Render Pipeline. `PC_RPAsset` and
 that uses the package default post-processing data. Graphics settings and the
 `PC` quality level use `PC_RPAsset` (4x MSAA, HDR, 80 m shadow distance), and the
 `Mobile` quality level uses `Mobile_RPAsset` (no MSAA, no HDR, 40 m shadow
-distance). Every project material uses `Universal Render Pipeline/Lit`. Runtime
-fallback presentations set both `_BaseColor` and `_Color`, so they stay correct
-in any pipeline. There is no post-processing Volume and no baked lighting yet.
+distance). Every project material uses `Universal Render Pipeline/Lit`. The
+runtime fallback presentation sets both `_BaseColor` and `_Color`, so it stays
+correct in any pipeline. There is no post-processing Volume and no baked lighting yet.
 
 The manifest lists only packages the client uses. The unused template packages
 AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting
@@ -588,7 +591,9 @@ All Unity Editor commands owned by the project use the shared
 `Shooter MMO > Tools > Item Catalog`, and collision baking is at
 `Shooter MMO > Tools > World Collision > Bake Open Scene`. `Bake Build World
 Scenes` validates the World catalog against enabled Build Profiles scenes and
-bakes every mapped scene in one pass.
+bakes every mapped scene in one pass. A reusable scene shared by several Worlds
+is opened once and baked once for each of them; its authored World id must be
+one of those Worlds.
 
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
@@ -689,6 +694,13 @@ Phase 12 adds permanent client state below replaceable presentation:
   `NpcView` and `MobView` add kind-specific presentation hooks without actor
   authority.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
+  The asset is `Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`
+  and maps all four authored archetypes to collider-free placeholder prefabs in
+  `Assets/Prefabs/WorldActors` with URP materials in
+  `Assets/Art/Materials/WorldActors`. An authored prefab keeps its own look.
+  Only an unmapped archetype falls back to a tinted primitive, with one warning
+  per archetype, and a missing registry logs one warning at startup instead.
+  An EditMode test fails when an authored archetype has no prefab.
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
@@ -758,10 +770,10 @@ neutral definitions, but only compiled WorldData creates runtime actors. Actor
 and spawn content must remain buildable and verifiable without opening Unity.
 
 The persistent bootstrap creates the actor, presentation, targeting,
-interaction, and temporary panel controllers at runtime. Existing canonical
-content works through fallback presentation without scene edits. A content
-creator uses the Editor windows only when changing definitions, spawn source,
-or the optional presentation registry asset.
+interaction, and temporary panel controllers at runtime. A new archetype works
+through the fallback presentation without scene edits until it is added to the
+presentation registry asset. A content creator uses the Editor windows only
+when changing definitions, spawn source, or the presentation registry asset.
 
 ## Test Architecture
 
@@ -830,6 +842,10 @@ Manual flows and expected results are documented in
   not actor prefabs or the temporary interaction panel.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
+- Give every type that holds static state a
+  `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]`
+  reset, so the client stays correct when Enter Play Mode Options disable domain
+  reload. An EditMode test lists the types that must have one.
 - Route every World-scene exit through exact-session UDP leave or disconnect
   fallback.
 - Add player-facing behavior to [Game Features](GAME_FEATURES.md) when it becomes

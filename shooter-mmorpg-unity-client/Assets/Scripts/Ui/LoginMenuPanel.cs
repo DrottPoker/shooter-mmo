@@ -17,6 +17,11 @@ namespace ShooterMmo.Ui
         private string status = "Register or login to continue.";
         private Vector2 scrollPosition;
 
+        private void OnDestroy()
+        {
+            apiClient?.Dispose();
+        }
+
         private void Awake()
         {
             apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);

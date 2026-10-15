@@ -1,5 +1,7 @@
+using System;
 using NUnit.Framework;
 using ShooterMmo.Editor;
+using ShooterMmo.Worlds;
 using ShooterMmo.WorldData.Editor.Items;
 
 namespace ShooterMmo.Tests.EditMode
@@ -21,6 +23,27 @@ namespace ShooterMmo.Tests.EditMode
             Assert.That(
                 ItemCatalogEditorWindow.MenuPath,
                 Does.StartWith("Shooter MMO/Tools/"));
+        }
+
+        [Test]
+        public void BuildWorldBakeOpensASharedSceneOnceForEveryWorld()
+        {
+            var plans = WorldCollisionBaker.PlanBuildWorldBakes(
+                new[]
+                {
+                    new WorldSceneCatalogEntry { worldId = "world-a", sceneName = "SharedArena" },
+                    new WorldSceneCatalogEntry { worldId = "world-b", sceneName = "SharedArena" },
+                    new WorldSceneCatalogEntry { worldId = "world-c", sceneName = "Solo" }
+                },
+                new[] { "Assets/Scenes/SharedArena.unity", "Assets/Scenes/Solo.unity" });
+
+            Assert.That(plans.Count, Is.EqualTo(2));
+            Assert.That(plans[0].ScenePath, Is.EqualTo("Assets/Scenes/SharedArena.unity"));
+            Assert.That(plans[0].WorldIds, Is.EqualTo(new[] { "world-a", "world-b" }));
+            Assert.That(plans[1].WorldIds, Is.EqualTo(new[] { "world-c" }));
+            Assert.Throws<InvalidOperationException>(() => WorldCollisionBaker.PlanBuildWorldBakes(
+                new[] { new WorldSceneCatalogEntry { worldId = "world-d", sceneName = "Missing" } },
+                new[] { "Assets/Scenes/Solo.unity" }));
         }
 
         [Test]

@@ -50,8 +50,8 @@ current tests do not exercise.
 ## Progress
 
 As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done, and
-the P2 pass is in progress, one verified group per commit. 67 findings are fixed
-and 7 P2 findings remain open. F74 was found and fixed during the pass.
+the P2 pass is in progress, one verified group per commit. 73 findings are fixed
+and 1 P2 finding remains open. F74 was found and fixed during the pass.
 The full verification after the P1 pass passed: 503 of 503 backend tests
 including PostgreSQL and Redis integration, 106 Unity EditMode and 2 PlayMode
 tests, and an end-to-end login, join, graceful leave, and rejoin in Development
@@ -142,12 +142,12 @@ reproduction.
 | F57 | Worker corpses | Opening a corpse can send a delta instead of a snapshot to the new viewer, which contradicts the documentation. | `RealtimeSimulationService.cs` | Fixed |
 | F58 | Worker sessions | Session invalidation entries for detached sessions are never removed. | `ActiveSimulationSessionStore.cs` | Fixed |
 | F59 | World actors | Despawn tombstones are never pruned although the documentation calls them bounded. | `SimulationWorker/WorldActors/WorldActorStore.cs` | Fixed |
-| F60 | Actor presentation | The fallback tint is also applied to authored prefabs. | `Assets/Scripts/WorldActors/WorldActorPresentationController.cs` | Open |
-| F61 | Actor presentation | The presentation registry asset has never been created, so every actor uses the fallback and the warning wrongly says the archetype is not mapped. | `WorldActorPresentationController.cs` | Open |
-| F62 | Item grant window | Cancelling a grant kills only the `dotnet run` host, not the AuthService child process. | `Assets/Editor/InventoryItemGrantWindow.cs` | Open |
-| F63 | Unity API client | Web requests in coroutines are not disposed when the owning object is destroyed. | `Assets/Scripts/Api/ShooterMmoApiClient.cs` | Open |
-| F64 | Unity static state | Static session and scene catalog caches have no reset for disabled domain reload. Harmless while domain reload stays on. | `Assets/Scripts/ShooterMmoClientSession.cs` | Open |
-| F65 | Collision bake | The bake requires one World per scene although the scene catalog allows shared scenes. | `WorldCollisionBaker.cs` | Open |
+| F60 | Actor presentation | The fallback tint is also applied to authored prefabs. | `Assets/Scripts/WorldActors/WorldActorPresentationController.cs` | Fixed |
+| F61 | Actor presentation | The presentation registry asset has never been created, so every actor uses the fallback and the warning wrongly says the archetype is not mapped. The registry now maps every authored archetype to a placeholder prefab. | `WorldActorPresentationController.cs` | Fixed |
+| F62 | Item grant window | Cancelling a grant kills only the `dotnet run` host, not the AuthService child process. | `Assets/Editor/InventoryItemGrantWindow.cs` | Fixed |
+| F63 | Unity API client | Web requests in coroutines are not disposed when the owning object is destroyed. | `Assets/Scripts/Api/ShooterMmoApiClient.cs` | Fixed |
+| F64 | Unity static state | Static session and scene catalog caches have no reset for disabled domain reload. Harmless while domain reload stays on. | `Assets/Scripts/ShooterMmoClientSession.cs` | Fixed |
+| F65 | Collision bake | The bake requires one World per scene although the scene catalog allows shared scenes. | `WorldCollisionBaker.cs` | Fixed |
 | F66 | Repository | A Unity crash-recovery scene is tracked in `Assets/_Recovery`. | `shooter-mmorpg-unity-client/Assets/_Recovery/` | Fixed |
 | F67 | Unity settings | The project-wide Input System actions setting points to a missing asset. | `ProjectSettings/EditorBuildSettings.asset` | Fixed |
 | F68 | Unity packages | Template packages without any use are installed: AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting. | `Packages/manifest.json` | Fixed |
