@@ -27,16 +27,12 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly ConnectionEntityBindingRegistry connectionBindings;
     private readonly RealtimeTransportReadiness transportReadiness;
     private readonly ILogger<RealtimeSimulationService> logger;
-    private readonly WorldCollisionStreamingStore? collisionStreamingStore;
     private readonly SimulationWorkerRegistrationLease? registrationLease;
-    private readonly SimulationWorkerIdentity? workerIdentity;
     private readonly RealtimeCompletionQueue completions = new();
     private readonly RealtimeOperationTracker operationTracker = new();
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
     private readonly PeerAdmissionGuard admissionGuard;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
-    private readonly List<PlayerSimulationEntity> playerBuffer = [];
-    private readonly List<SimulationVector3> collisionAnchorBuffer = [];
     private readonly RealtimeNetworkMetrics networkMetrics;
     private readonly RealtimePerformanceMetrics performanceMetrics;
     private readonly WorldActorStore? worldActorStore;
@@ -66,6 +62,8 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly WorldInteractionHandler worldInteractions;
     private readonly RealtimeSessionHandler sessions;
     private readonly SnapshotReplicator snapshots;
+    private readonly WorldActorRuntimeDriver worldActors;
+    private readonly SimulationTickLoop tickLoop;
     private NetManager? server;
 
     public RealtimeSimulationService(
@@ -107,9 +105,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         this.connectionBindings = connectionBindings;
         this.transportReadiness = transportReadiness;
         this.logger = logger;
-        this.collisionStreamingStore = collisionStreamingStore;
         this.registrationLease = registrationLease;
-        this.workerIdentity = workerIdentity;
         var interestManager =
             providedInterestManager ?? new SimulationInterestManager(config.InterestManagement);
         networkMetrics = providedNetworkMetrics ?? new RealtimeNetworkMetrics();
@@ -263,6 +259,27 @@ public sealed class RealtimeSimulationService : BackgroundService
             networkMetrics,
             performanceMetrics,
             clock);
+        worldActors = new WorldActorRuntimeDriver(
+            config,
+            worldActorStore,
+            worldActorActivityScheduler,
+            worldActorMetrics,
+            workerIdentity,
+            presence,
+            networkMetrics,
+            logger);
+        tickLoop = new SimulationTickLoop(
+            config,
+            clock,
+            entityRegistry,
+            carrySync,
+            worldActors,
+            worldInteractions,
+            snapshots,
+            corpsePresence,
+            collisionStreamingStore,
+            performanceMetrics,
+            logger);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -284,27 +301,7 @@ public sealed class RealtimeSimulationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (worldActorStore is not null)
-        {
-            if (workerIdentity is null)
-            {
-                throw new InvalidOperationException(
-                    "World actor runtime requires the current SimulationWorker identity.");
-            }
-
-            var actors = worldActorStore.ActivateAssignment(
-                config.WorldId,
-                config.ShardId,
-                workerIdentity.RuntimeId);
-            worldActorMetrics?.ObservePopulation(actors);
-            presence.RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
-            networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
-            logger.LogInformation(
-                "[SIMULATION] Activated {ActorCount} world actors from revision {WorldActorRevision} for worker runtime {RuntimeId}.",
-                actors.Count,
-                worldActorStore.ContentRevision,
-                workerIdentity.RuntimeId);
-        }
+        worldActors.Activate();
 
         var listener = new EventBasedNetListener();
         server = new NetManager(listener)
@@ -387,7 +384,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                     corpseAuthority.MutationCoordinator.ActiveCorpseCount);
                 performanceMetrics.RecordCompletedOperations(
                     Stopwatch.GetElapsedTime(phaseStarted));
-                ProcessSimulationTicks(
+                tickLoop.ProcessDueTicks(
                     simulationClock.Elapsed,
                     simulationInterval,
                     ref nextSimulationTick);
@@ -483,90 +480,6 @@ public sealed class RealtimeSimulationService : BackgroundService
         finally
         {
             reader.Recycle();
-        }
-    }
-
-    private void ProcessSimulationTicks(
-        TimeSpan elapsed,
-        TimeSpan simulationInterval,
-        ref TimeSpan nextSimulationTick)
-    {
-        const int maximumCatchUpTicks = 5;
-        var processedTicks = 0;
-
-        while (elapsed >= nextSimulationTick && processedTicks < maximumCatchUpTicks)
-        {
-            var tickStarted = Stopwatch.GetTimestamp();
-            performanceMetrics.RecordSimulationTickLag(elapsed - nextSimulationTick);
-            clock.Advance();
-
-            var phaseStarted = Stopwatch.GetTimestamp();
-            RefreshCollisionStreaming();
-            performanceMetrics.RecordCollisionStreaming(
-                Stopwatch.GetElapsedTime(phaseStarted));
-
-            phaseStarted = Stopwatch.GetTimestamp();
-            entityRegistry.CopyPlayersTo(playerBuffer);
-            foreach (var entity in playerBuffer)
-            {
-                carrySync.ApplyLatest(entity);
-                entity.Movement.SimulateTick();
-            }
-            performanceMetrics.RecordMovementSimulation(
-                Stopwatch.GetElapsedTime(phaseStarted));
-
-            if (worldActorActivityScheduler is not null)
-            {
-                foreach (var changedActor in worldActorActivityScheduler.Evaluate(
-                             playerBuffer,
-                             clock.ServerTick,
-                             config.MovementSimulation.TickRateHz))
-                {
-                    presence.BroadcastWorldActorState(changedActor);
-                }
-
-                if (worldActorStore is not null)
-                {
-                    worldActorMetrics?.ObservePopulation(worldActorStore.ListActors());
-                }
-            }
-
-            var interactionValidationIntervalTicks = Math.Max(
-                1,
-                config.MovementSimulation.TickRateHz / 5);
-            if (worldInteractions.IsActive
-                && clock.ServerTick % interactionValidationIntervalTicks == 0)
-            {
-                worldInteractions.RevalidateLeases();
-            }
-
-            var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
-            if (clock.ServerTick % snapshotIntervalTicks == 0)
-            {
-                snapshots.Broadcast();
-            }
-
-            var corpsePresenceIntervalTicks = Math.Max(
-                1,
-                config.MovementSimulation.TickRateHz / 2);
-            if (clock.ServerTick % corpsePresenceIntervalTicks == 0)
-            {
-                corpsePresence.Broadcast();
-            }
-
-            performanceMetrics.RecordSimulationTick(
-                Stopwatch.GetElapsedTime(tickStarted));
-            nextSimulationTick += simulationInterval;
-            processedTicks++;
-        }
-
-        if (processedTicks == maximumCatchUpTicks && elapsed >= nextSimulationTick)
-        {
-            logger.LogWarning(
-                "[SIMULATION] Movement simulation exceeded its catch-up budget at server tick {ServerTick}. Resynchronizing the fixed-tick clock.",
-                clock.ServerTick);
-            performanceMetrics.RecordTickResynchronization();
-            nextSimulationTick = elapsed + simulationInterval;
         }
     }
 
@@ -719,30 +632,6 @@ public sealed class RealtimeSimulationService : BackgroundService
     private bool IsCurrentSession(ActiveSimulationSession session)
     {
         return sessionStore.IsCurrent(session, DateTime.UtcNow);
-    }
-
-    private void RefreshCollisionStreaming()
-    {
-        if (collisionStreamingStore is null)
-        {
-            return;
-        }
-
-        entityRegistry.CopyPlayersTo(playerBuffer);
-        collisionAnchorBuffer.Clear();
-        foreach (var entity in playerBuffer)
-        {
-            collisionAnchorBuffer.Add(new SimulationVector3(
-                entity.Movement.State.PositionX,
-                entity.Movement.State.PositionY,
-                entity.Movement.State.PositionZ));
-        }
-
-        collisionAnchorBuffer.Add(new SimulationVector3(
-            config.MovementSpawn.X,
-            config.MovementSpawn.Y,
-            config.MovementSpawn.Z));
-        collisionStreamingStore.Refresh(collisionAnchorBuffer);
     }
 
     private sealed class PeerDirectory(RealtimeSimulationService owner) : IRealtimePeerDirectory
