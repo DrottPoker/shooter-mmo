@@ -24,8 +24,8 @@
       },
       "Dapper": {
         "type": "Transitive",
-        "resolved": "2.1.66",
-        "contentHash": "/q77jUgDOS+bzkmk3Vy9SiWMaetTw+NOoPAV0xPBsGVAyljd5S6P+4RUW7R3ZUGGr9lDRyPKgAMj2UAOwvqZYw=="
+        "resolved": "2.1.89",
+        "contentHash": "1VjFE664wnxvuhlgP8kS4PeFFF4jqD3VkbIHW6Zlc52zuibgcz5ICnIHcQXlTp6pURpPNGLV0ZpNe5x9KePJnA=="
       },
       "Microsoft.Bcl.AsyncInterfaces": {
         "type": "Transitive",
@@ -83,7 +83,7 @@
         "type": "Project",
         "dependencies": {
           "BCrypt.Net-Next": "[4.0.3, )",
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Npgsql": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )"
@@ -92,7 +92,7 @@
       "mmorpg.gameservice.characters": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
@@ -101,7 +101,7 @@
       "mmorpg.gameservice.items": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Placement": "[1.0.0, )",
@@ -113,7 +113,7 @@
       "mmorpg.gameservice.placement": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
@@ -125,7 +125,7 @@
       "mmorpg.gameservice.platform": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Npgsql": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )"

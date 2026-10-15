@@ -35,8 +35,8 @@
       },
       "Dapper": {
         "type": "Transitive",
-        "resolved": "2.1.66",
-        "contentHash": "/q77jUgDOS+bzkmk3Vy9SiWMaetTw+NOoPAV0xPBsGVAyljd5S6P+4RUW7R3ZUGGr9lDRyPKgAMj2UAOwvqZYw=="
+        "resolved": "2.1.89",
+        "contentHash": "1VjFE664wnxvuhlgP8kS4PeFFF4jqD3VkbIHW6Zlc52zuibgcz5ICnIHcQXlTp6pURpPNGLV0ZpNe5x9KePJnA=="
       },
       "Microsoft.ApplicationInsights": {
         "type": "Transitive",
@@ -201,7 +201,7 @@
       "mmorpg.gameservice.platform": {
         "type": "Project",
         "dependencies": {
-          "Dapper": "[2.1.66, )",
+          "Dapper": "[2.1.89, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Npgsql": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )"
