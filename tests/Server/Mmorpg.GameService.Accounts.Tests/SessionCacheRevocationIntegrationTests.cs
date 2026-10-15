@@ -4,7 +4,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class SessionCacheRevocationIntegrationTests
 {

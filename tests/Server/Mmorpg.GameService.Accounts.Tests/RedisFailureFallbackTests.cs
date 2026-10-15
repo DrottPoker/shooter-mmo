@@ -7,7 +7,7 @@ using Mmorpg.GameService.Platform.Redis;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.Server.Common.Networking;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class RedisFailureFallbackTests
 {

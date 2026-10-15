@@ -3,7 +3,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class SessionServiceCacheTests
 {

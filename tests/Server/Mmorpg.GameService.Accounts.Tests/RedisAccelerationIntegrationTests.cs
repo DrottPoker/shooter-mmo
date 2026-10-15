@@ -8,7 +8,7 @@ using Mmorpg.GameService.Platform.Security;
 using Mmorpg.Server.Common.Networking;
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class RedisAccelerationIntegrationTests
 {

@@ -29,6 +29,7 @@
   <Folder Name="/tests/Server/">
     <Project Path="tests/Server/Mmorpg.Server.Common.Tests/Mmorpg.Server.Common.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.GameService.Platform.Tests/Mmorpg.GameService.Platform.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Accounts.Tests/Mmorpg.GameService.Accounts.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.SimulationWorker.Tests/Mmorpg.SimulationWorker.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Tools/">

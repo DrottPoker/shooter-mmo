@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Mmorpg.GameService.Accounts.Redis;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class RedisAuthenticationRateLimitMiddlewareTests
 {

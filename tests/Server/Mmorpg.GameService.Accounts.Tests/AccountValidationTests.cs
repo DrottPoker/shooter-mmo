@@ -1,7 +1,7 @@
 using Mmorpg.GameService.Accounts;
 
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class AccountValidationTests
 {

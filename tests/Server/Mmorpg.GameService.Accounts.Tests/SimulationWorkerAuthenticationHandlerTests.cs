@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Contracts;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Accounts.Tests;
 
 public sealed class SimulationWorkerAuthenticationHandlerTests
 {
