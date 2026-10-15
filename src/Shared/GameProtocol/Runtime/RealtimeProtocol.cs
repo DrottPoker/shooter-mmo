@@ -100,11 +100,14 @@ namespace Mmorpg.GameProtocol
             }
         }
 
+        // allowBlank accepts an empty string; the reader never rejects whitespace, so
+        // validation decides whether blank text is valid.
         private static bool TryReadString(
             BinaryReader reader,
             int maximumLength,
             out string value,
-            out string error)
+            out string error,
+            bool allowBlank = false)
         {
             value = string.Empty;
             error = string.Empty;
@@ -112,7 +115,7 @@ namespace Mmorpg.GameProtocol
             try
             {
                 var byteLength = reader.ReadUInt16();
-                if (byteLength == 0 || byteLength > maximumLength * 4)
+                if ((byteLength == 0 && !allowBlank) || byteLength > maximumLength * 4)
                 {
                     error = "Packet string length is invalid.";
                     return false;
@@ -323,16 +326,20 @@ namespace Mmorpg.GameProtocol
             return false;
         }
 
+        // Text must not be empty or whitespace unless allowBlank is set.
         private static void WriteString(
             BinaryWriter writer,
             string value,
             int maximumLength,
-            string parameterName)
+            string parameterName,
+            bool allowBlank = false)
         {
-            if (string.IsNullOrWhiteSpace(value) || value.Length > maximumLength)
+            if (value == null || (!allowBlank && string.IsNullOrWhiteSpace(value)) || value.Length > maximumLength)
             {
                 throw new ArgumentException(
-                    $"Value must contain between 1 and {maximumLength} characters.",
+                    allowBlank
+                        ? $"Value must contain at most {maximumLength} characters."
+                        : $"Value must contain between 1 and {maximumLength} characters.",
                     parameterName);
             }
 

@@ -130,8 +130,9 @@ public sealed record StructWireType(StructDefinition Definition) : WireType;
 public sealed record ArrayWireType(ElementDefinition Element, int MinimumCount, IntBound MaximumCount) : WireType;
 
 // A u16 UTF-8 byte length, then the bytes. At most MaximumLength UTF-16 characters.
-// Required text must not be empty or whitespace when encoded.
-public sealed record StringWireType(IntBound MaximumLength) : WireType;
+// Text must not be empty or whitespace when encoded, unless AllowBlank lets it be
+// empty or whitespace in both directions.
+public sealed record StringWireType(IntBound MaximumLength, bool AllowBlank = false) : WireType;
 
 // One byte whose bits are boolean properties. Unknown bits are rejected.
 public sealed record BitsWireType(IReadOnlyList<BitDefinition> Bits) : WireType;
@@ -185,6 +186,9 @@ public sealed record FieldDefinition(string Name, string? Description, WireType 
     // Decoding accepts empty or whitespace text in this string field, or in the string
     // fields of this struct field. Encoding still rejects it.
     public bool AcceptBlankOnDecode { get; init; }
+
+    // The constructor turns null into an empty string or array.
+    public bool NullAsEmpty { get; init; }
 }
 
 // A message whose discriminator field decides which variant fields follow the common

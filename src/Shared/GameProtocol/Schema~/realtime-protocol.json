@@ -535,6 +535,37 @@
         { "name": "ContainerId", "type": "guid", "nonEmpty": true, "description": "The container." },
         { "name": "Revision", "type": "i64", "minimum": 0, "description": "The committed container revision." }
       ]
+    },
+    {
+      "name": "WorldActorCapability",
+      "family": "WorldActors",
+      "description": "A service that a world actor offers in an open interaction.",
+      "fields": [
+        {
+          "name": "Id",
+          "type": "string",
+          "maxLength": "MaximumWorldActorCapabilityIdLength",
+          "description": "The capability."
+        },
+        { "name": "Kind", "type": "WorldActorCapabilityKind", "description": "The kind of service." },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumWorldActorCapabilityNameLength",
+          "description": "The name the client shows."
+        },
+        {
+          "name": "IsAvailable",
+          "type": "bool",
+          "description": "Whether the character can use the capability now."
+        },
+        {
+          "name": "Revision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The capability revision an action must expect."
+        }
+      ]
     }
   ],
   "messages": [
@@ -554,7 +585,7 @@
           "name": "JoinTicket",
           "type": "string",
           "maxLength": "MaximumJoinTicketLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The join ticket that GameService issued for this session."
         }
       ]
@@ -575,42 +606,42 @@
           "name": "SimulationSessionId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The simulation session."
         },
         {
           "name": "AccountId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The account that joined."
         },
         {
           "name": "CharacterId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The character that joined."
         },
         {
           "name": "CharacterName",
           "type": "string",
           "maxLength": "MaximumNameLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The display name of the character."
         },
         {
           "name": "ShardId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The shard that hosts the session."
         },
         {
           "name": "WorldId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The world the character is in."
         },
         {
@@ -623,28 +654,28 @@
           "name": "SimulationRevision",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The simulation content revision of the worker."
         },
         {
           "name": "CollisionRevision",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The collision content revision of the worker."
         },
         {
           "name": "JoinedAt",
           "type": "string",
           "maxLength": "MaximumTimestampLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "When the session started, as an ISO 8601 timestamp."
         },
         {
           "name": "SessionExpiresAt",
           "type": "string",
           "maxLength": "MaximumTimestampLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "When the session expires, as an ISO 8601 timestamp."
         },
         { "name": "IsReconnect", "type": "bool", "description": "Whether this join resumed an earlier session." },
@@ -673,7 +704,7 @@
       "api": "unwrap",
       "encodeParameters": "expanded",
       "runtimeSizeCheck": true,
-      "fields": [ { "name": "Rejection", "type": "Error", "decodeBlank": "accept", "description": "Why the join failed." } ]
+      "fields": [ { "name": "Rejection", "type": "Error", "blank": "acceptOnDecode", "description": "Why the join failed." } ]
     },
     {
       "name": "LeaveRequest",
@@ -690,7 +721,7 @@
           "name": "SimulationSessionId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "The simulation session to leave."
         }
       ]
@@ -718,7 +749,9 @@
       "api": "unwrap",
       "encodeParameters": "expanded",
       "runtimeSizeCheck": true,
-      "fields": [ { "name": "Rejection", "type": "Error", "decodeBlank": "accept", "description": "Why the leave failed." } ]
+      "fields": [
+        { "name": "Rejection", "type": "Error", "blank": "acceptOnDecode", "description": "Why the leave failed." }
+      ]
     },
     {
       "name": "ServerDisconnect",
@@ -736,7 +769,7 @@
         {
           "name": "Reason",
           "type": "Error",
-          "decodeBlank": "accept",
+          "blank": "acceptOnDecode",
           "description": "Why the worker ends the connection."
         }
       ]
@@ -1113,8 +1146,101 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "A world actor entered the recipient's interest."
+      "codec": "generated",
+      "description": "A world actor entered the recipient's interest.",
+      "parameter": "spawn",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
+        {
+          "name": "RuntimeActorId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the actor."
+        },
+        {
+          "name": "ActorDefinitionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The actor definition."
+        },
+        {
+          "name": "SpawnDefinitionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The spawn that placed the actor."
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "description": "The name the client shows."
+        },
+        { "name": "Kind", "type": "WorldActorKind", "description": "The kind of actor." },
+        {
+          "name": "FactionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The faction of the actor."
+        },
+        { "name": "Disposition", "type": "WorldActorDisposition", "description": "How the actor treats players." },
+        {
+          "name": "PresentationArchetypeId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The presentation archetype the client renders."
+        },
+        { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "The revision of the actor state." },
+        {
+          "name": "InteractionRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The revision of the actor's interactions."
+        },
+        { "name": "IsActive", "type": "bool", "description": "Whether the actor is active." },
+        { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
+        { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
+        { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        { "name": "YawDegrees", "type": "f32", "description": "The facing around the vertical axis in degrees." },
+        {
+          "name": "ActivityTier",
+          "type": "WorldActorActivityTier",
+          "description": "How often the worker updates the actor."
+        },
+        {
+          "name": "BoundsCenterX",
+          "type": "f32",
+          "description": "The center of the interaction bounds on the x axis."
+        },
+        {
+          "name": "BoundsCenterY",
+          "type": "f32",
+          "description": "The center of the interaction bounds on the y axis."
+        },
+        {
+          "name": "BoundsCenterZ",
+          "type": "f32",
+          "description": "The center of the interaction bounds on the z axis."
+        },
+        {
+          "name": "BoundsSizeX",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "The size of the interaction bounds on the x axis."
+        },
+        {
+          "name": "BoundsSizeY",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "The size of the interaction bounds on the y axis."
+        },
+        {
+          "name": "BoundsSizeZ",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "The size of the interaction bounds on the z axis."
+        }
+      ]
     },
     {
       "name": "WorldActorState",
@@ -1123,8 +1249,29 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "A newer state of a visible world actor."
+      "codec": "generated",
+      "description": "A newer state of a visible world actor.",
+      "parameter": "state",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
+        { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "The revision of the actor state." },
+        {
+          "name": "InteractionRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The revision of the actor's interactions."
+        },
+        { "name": "IsActive", "type": "bool", "description": "Whether the actor is active." },
+        { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
+        { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
+        { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        { "name": "YawDegrees", "type": "f32", "description": "The facing around the vertical axis in degrees." },
+        {
+          "name": "ActivityTier",
+          "type": "WorldActorActivityTier",
+          "description": "How often the worker updates the actor."
+        }
+      ]
     },
     {
       "name": "WorldActorDespawn",
@@ -1133,8 +1280,24 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "A world actor left the recipient's interest."
+      "codec": "generated",
+      "description": "A world actor left the recipient's interest.",
+      "parameter": "despawn",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
+        {
+          "name": "RuntimeActorId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the actor."
+        },
+        {
+          "name": "Reason",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "A stable code for why the actor left."
+        }
+      ]
     },
     {
       "name": "WorldInteractionIntent",
@@ -1143,8 +1306,128 @@
       "direction": "clientToServer",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Asks to open, close, or act on a world interaction."
+      "codec": "generated",
+      "description": "Asks to open, close, or act on a world interaction.",
+      "parameter": "intent",
+      "rules": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "Identifies the operation and its result."
+        },
+        {
+          "name": "SimulationSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The simulation session of the character."
+        },
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "description": "The open interaction, or empty for Open."
+        },
+        { "name": "OperationKind", "type": "WorldInteractionOperationKind", "description": "The operation." },
+        {
+          "name": "TargetKind",
+          "type": "WorldInteractionTargetKind",
+          "description": "What the interaction targets."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the target."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the target."
+        },
+        {
+          "name": "ExpectedTargetRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The target revision the client saw."
+        }
+      ],
+      "variants": {
+        "discriminator": "OperationKind",
+        "fields": [
+          {
+            "name": "CapabilityId",
+            "type": "string",
+            "maxLength": "MaximumWorldActorCapabilityIdLength",
+            "description": "The capability the action uses."
+          },
+          {
+            "name": "CapabilityKind",
+            "type": "WorldActorCapabilityKind",
+            "description": "The kind of the capability."
+          },
+          {
+            "name": "ExpectedCapabilityRevision",
+            "type": "i64",
+            "description": "The capability revision the client saw."
+          },
+          {
+            "name": "LifecycleAction",
+            "type": "NpcLifecycleActionKind",
+            "description": "The item lifecycle action of the capability."
+          },
+          {
+            "name": "ExpectedCharacterRevision",
+            "type": "i64",
+            "description": "The character item-state revision the client saw."
+          },
+          {
+            "name": "ItemInstanceId",
+            "type": "guid",
+            "description": "The item that insurance applies to or is removed from."
+          },
+          { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
+          {
+            "name": "DestinationContainerId",
+            "type": "guid",
+            "description": "The container that receives a quest item."
+          },
+          {
+            "name": "DestinationSlotIndex",
+            "type": "i32",
+            "absent": -1,
+            "description": "The slot that receives a quest item, or -1 for any free slot."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "Open", "factory": "CreateOpen" } ],
+            "common": [ { "field": "InteractionSessionId", "fixed": "empty" } ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "Close", "factory": "CreateClose" } ],
+            "common": [ { "field": "InteractionSessionId", "nonEmpty": true } ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "CapabilityAction", "factory": "CreateCapabilityAction" } ],
+            "common": [ { "field": "InteractionSessionId", "nonEmpty": true } ],
+            "fields": [
+              { "field": "CapabilityId" },
+              { "field": "CapabilityKind" },
+              { "field": "ExpectedCapabilityRevision", "minimum": 1 },
+              { "field": "LifecycleAction", "parameterDefault": "None" },
+              { "field": "ExpectedCharacterRevision", "parameterDefault": 0 },
+              { "field": "ItemInstanceId", "parameterDefault": "default" },
+              { "field": "ExpectedItemRevision", "parameterDefault": 0 },
+              { "field": "DestinationContainerId", "parameterDefault": "default" },
+              { "field": "DestinationSlotIndex", "parameterDefault": -1 }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "WorldInteractionOpened",
@@ -1153,8 +1436,62 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "An opened world interaction and its capabilities."
+      "codec": "generated",
+      "description": "An opened world interaction and its capabilities.",
+      "parameter": "opened",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The Open operation this answers."
+        },
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The interaction that opened."
+        },
+        {
+          "name": "TargetKind",
+          "type": "WorldInteractionTargetKind",
+          "description": "What the interaction targets."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the target."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the target."
+        },
+        { "name": "TargetRevision", "type": "i64", "minimum": 1, "description": "The current target revision." },
+        {
+          "name": "CapabilitySummaryRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The revision of the capability list."
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "description": "The name the client shows."
+        },
+        {
+          "name": "Capabilities",
+          "type": "array",
+          "items": "WorldActorCapability",
+          "maxCount": "MaximumWorldActorCapabilities",
+          "nullAsEmpty": true,
+          "description": "The services the target offers."
+        }
+      ]
     },
     {
       "name": "WorldInteractionResult",
@@ -1163,8 +1500,42 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "The outcome of a world interaction intent."
+      "codec": "generated",
+      "description": "The outcome of a world interaction intent.",
+      "parameter": "result",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The operation this answers." },
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "description": "The interaction, or empty for a failed Open."
+        },
+        { "name": "OperationKind", "type": "WorldInteractionOperationKind", "description": "The operation." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the operation committed." },
+        {
+          "name": "TargetRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The target revision after the operation."
+        },
+        {
+          "name": "ItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The character item-state revision after the operation."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumWorldInteractionMessageLength",
+          "blank": "allow",
+          "nullAsEmpty": true,
+          "description": "Text for the player, which may be empty."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." }
+      ]
     },
     {
       "name": "WorldInteractionClosed",
@@ -1173,8 +1544,47 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "The worker closed a world interaction."
+      "codec": "generated",
+      "description": "The worker closed a world interaction.",
+      "parameter": "closed",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The interaction that closed."
+        },
+        {
+          "name": "TargetKind",
+          "type": "WorldInteractionTargetKind",
+          "description": "What the interaction targeted."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the target."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the target."
+        },
+        {
+          "name": "Code",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "A stable code for why it closed."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumErrorMessageLength",
+          "description": "A human-readable explanation."
+        }
+      ]
     },
     {
       "name": "OwnerSimulationSnapshot",

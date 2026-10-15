@@ -20,20 +20,20 @@ internal static class WorldActorProtocolMapper
             actor.Definition.FactionId,
             ToDisposition(actor.Definition.Disposition),
             actor.Definition.PresentationArchetypeId,
+            actor.StateRevision,
+            actor.InteractionRevision,
+            actor.IsActive,
             actor.PositionX,
             actor.PositionY,
             actor.PositionZ,
             actor.YawDegrees,
-            actor.StateRevision,
-            actor.InteractionRevision,
-            actor.IsActive,
+            ToActivityTier(actor.ActivityTier),
             bounds.CenterX,
             bounds.CenterY,
             bounds.CenterZ,
             bounds.SizeX,
             bounds.SizeY,
-            bounds.SizeZ,
-            ToActivityTier(actor.ActivityTier));
+            bounds.SizeZ);
     }
 
     public static RealtimeWorldActorState ToState(WorldActorRuntimeState actor)

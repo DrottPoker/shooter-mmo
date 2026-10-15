@@ -268,7 +268,7 @@ public sealed class ProtocolGeneratorTests
     }
 
     [Fact]
-    public void DecodeBlankRelaxesTextOnlyWhileDecoding()
+    public void AcceptOnDecodeRelaxesTextOnlyWhileDecoding()
     {
         var schema = GeneratedSchema();
         schema["structs"]!.AsArray().Add(JsonNode.Parse(
@@ -281,9 +281,9 @@ public sealed class ProtocolGeneratorTests
             }
             """));
         schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
-            """{ "name": "Note", "type": "string", "maxLength": 8, "decodeBlank": "accept" }"""));
+            """{ "name": "Note", "type": "string", "maxLength": 8, "blank": "acceptOnDecode" }"""));
         schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
-            """{ "name": "Reason", "type": "Label", "decodeBlank": "accept" }"""));
+            """{ "name": "Reason", "type": "Label", "blank": "acceptOnDecode" }"""));
         var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
         var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
 
@@ -299,6 +299,27 @@ public sealed class ProtocolGeneratorTests
             StringComparison.Ordinal);
         Assert.Contains("|| (!acceptBlankText && string.IsNullOrWhiteSpace(value.Text))", family, StringComparison.Ordinal);
         Assert.Contains("private static bool IsValidPoint(RealtimePoint value)", family, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BlankTextAndNullAsEmptyFieldsAllowEmptyValues()
+    {
+        var schema = GeneratedSchema();
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Note", "type": "string", "maxLength": 8, "blank": "allow", "nullAsEmpty": true }"""));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Pressed", "type": "array", "items": "Buttons", "maxCount": 2, "nullAsEmpty": true }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(7 + 4 + 1 + 9 + 1 + 2 + 1, WireSizes.OfMessage(model.Messages.Single()).Minimum);
+        Assert.Contains("Note = note ?? string.Empty;", family, StringComparison.Ordinal);
+        Assert.Contains("Pressed = pressed ?? Array.Empty<RealtimeButtons>();", family, StringComparison.Ordinal);
+        Assert.Contains("Points = points;", family, StringComparison.Ordinal);
+        Assert.Contains("WriteString(writer, value.Note, 8, \"value.Note\", allowBlank: true);", family, StringComparison.Ordinal);
+        Assert.Contains("TryReadString(reader, 8, out var note, out error, allowBlank: true)", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Note == null", family, StringComparison.Ordinal);
+        Assert.DoesNotContain("string.IsNullOrWhiteSpace(value.Note)", family, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -360,7 +381,7 @@ public sealed class ProtocolGeneratorTests
     [InlineData("default before a required parameter", "$.messages[0].variants.cases[0].fields")]
     [InlineData("condition on a non-struct field", "$.messages[0].fields[2].when")]
     [InlineData("condition on a missing bool", "$.messages[0].fields")]
-    [InlineData("decodeBlank on a variant field", "$.messages[0].variants.fields[2].decodeBlank")]
+    [InlineData("acceptOnDecode on a variant field", "$.messages[0].variants.fields[2].blank")]
     public void InvalidVariantsAndConditionsAreRejectedWithTheirPath(string mutation, string path)
     {
         var schema = UnionSchema();
@@ -398,9 +419,9 @@ public sealed class ProtocolGeneratorTests
                 message["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Note", "type": "Point", "when": "!Missing" }"""));
                 schema["structs"] = GeneratedSchema()["structs"]!.DeepClone();
                 break;
-            case "decodeBlank on a variant field":
+            case "acceptOnDecode on a variant field":
                 variants["fields"]!.AsArray().Add(JsonNode.Parse(
-                    """{ "name": "Note", "type": "string", "maxLength": 4, "decodeBlank": "accept" }"""));
+                    """{ "name": "Note", "type": "string", "maxLength": 4, "blank": "acceptOnDecode" }"""));
                 break;
         }
 
@@ -446,9 +467,13 @@ public sealed class ProtocolGeneratorTests
     [InlineData("struct that contains itself", "$")]
     [InlineData("unused struct", "$")]
     [InlineData("size constant used twice", "$")]
-    [InlineData("decodeBlank on a number", "$.messages[0].fields[0].decodeBlank")]
-    [InlineData("decodeBlank on a struct field", "$.structs[0].fields")]
-    [InlineData("decodeBlank on a struct with a nested struct", "$.messages[0].fields")]
+    [InlineData("acceptOnDecode on a number", "$.messages[0].fields[0].blank")]
+    [InlineData("acceptOnDecode on a struct field", "$.structs[0].fields")]
+    [InlineData("acceptOnDecode on a struct with a nested struct", "$.messages[0].fields")]
+    [InlineData("blank allow on a struct field", "$.messages[0].fields[1].blank")]
+    [InlineData("unknown blank value", "$.messages[0].fields[0].blank")]
+    [InlineData("nullAsEmpty on required text", "$.messages[0].fields[3].nullAsEmpty")]
+    [InlineData("nullAsEmpty on an array with minCount", "$.messages[0].fields[1].nullAsEmpty")]
     [InlineData("expanded encode on a class message", "$.messages[0].encodeParameters")]
     [InlineData("empty message with rules", "$.messages[0].api")]
     [InlineData("empty message with fields", "$.messages[0].fields")]
@@ -524,16 +549,32 @@ public sealed class ProtocolGeneratorTests
             case "size constant used twice":
                 message["emptySizeConstant"] = "PointSize";
                 break;
-            case "decodeBlank on a number":
-                fields[0]!["decodeBlank"] = "accept";
+            case "acceptOnDecode on a number":
+                fields[0]!["blank"] = "acceptOnDecode";
                 break;
-            case "decodeBlank on a struct field":
-                structFields.Add(JsonNode.Parse("""{ "name": "Tag", "type": "string", "maxLength": 4, "decodeBlank": "accept" }"""));
+            case "acceptOnDecode on a struct field":
+                structFields.Add(JsonNode.Parse("""{ "name": "Tag", "type": "string", "maxLength": 4, "blank": "acceptOnDecode" }"""));
                 break;
-            case "decodeBlank on a struct with a nested struct":
+            case "acceptOnDecode on a struct with a nested struct":
                 schema["structs"]!.AsArray().Add(JsonNode.Parse(
                     """{ "name": "Wrapper", "family": "Input", "description": "A wrapper.", "fields": [ { "name": "Inner", "type": "Point" } ] }"""));
-                fields.Add(JsonNode.Parse("""{ "name": "Wrapped", "type": "Wrapper", "decodeBlank": "accept" }"""));
+                fields.Add(JsonNode.Parse("""{ "name": "Wrapped", "type": "Wrapper", "blank": "acceptOnDecode" }"""));
+                break;
+            case "blank allow on a struct field":
+                fields[1]!["type"] = "Point";
+                fields[1]!.AsObject().Remove("items");
+                fields[1]!.AsObject().Remove("minCount");
+                fields[1]!.AsObject().Remove("maxCount");
+                fields[1]!["blank"] = "allow";
+                break;
+            case "unknown blank value":
+                fields[0]!["blank"] = "maybe";
+                break;
+            case "nullAsEmpty on required text":
+                fields.Add(JsonNode.Parse("""{ "name": "Label", "type": "string", "maxLength": 4, "nullAsEmpty": true }"""));
+                break;
+            case "nullAsEmpty on an array with minCount":
+                fields[1]!["nullAsEmpty"] = true;
                 break;
             case "expanded encode on a class message":
                 message["encodeParameters"] = "expanded";

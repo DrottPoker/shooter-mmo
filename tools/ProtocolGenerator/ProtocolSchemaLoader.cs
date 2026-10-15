@@ -225,7 +225,7 @@ public static partial class ProtocolSchemaLoader
             var blank = structs[index].Fields.FirstOrDefault(field => field.AcceptBlankOnDecode);
             if (blank is not null)
             {
-                throw nodes[index].Error("fields", $"'{blank.Name}' cannot use decodeBlank, which applies to message fields only.");
+                throw nodes[index].Error("fields", $"'{blank.Name}' cannot use blank acceptOnDecode, which applies to message fields only.");
             }
 
             nodes[index].EnsureFullyRead();
@@ -417,7 +417,7 @@ public static partial class ProtocolSchemaLoader
         return fields;
     }
 
-    // A struct read with decodeBlank relaxes its own text fields, so it must not nest
+    // A struct read with blank acceptOnDecode relaxes its own text fields, so it must not nest
     // structs or arrays that would still validate strictly.
     private static void EnsureFlatBlankStructs(SchemaNode owner, IReadOnlyList<FieldDefinition> fields)
     {
@@ -426,7 +426,7 @@ public static partial class ProtocolSchemaLoader
             var definition = ((StructWireType)field.Type).Definition;
             if (definition.Fields.Any(member => member.Type is StructWireType or ArrayWireType))
             {
-                throw owner.Error("fields", $"'{field.Name}' uses decodeBlank, so struct '{definition.Name}' must not contain struct or array fields.");
+                throw owner.Error("fields", $"'{field.Name}' accepts blank text on decode, so struct '{definition.Name}' must not contain struct or array fields.");
             }
         }
     }
@@ -453,7 +453,7 @@ public static partial class ProtocolSchemaLoader
 
             if (field.AcceptBlankOnDecode)
             {
-                throw fieldNode.Error("decodeBlank", "applies to common message fields only, not to variant fields.");
+                throw fieldNode.Error("blank", "acceptOnDecode applies to common message fields only, not to variant fields.");
             }
 
             if (absentText is not null || (absentNumber is not null && !IsInteger(field.Type)))
@@ -659,15 +659,28 @@ public static partial class ProtocolSchemaLoader
             _ => scope.Resolve(node, "type", typeName)
         };
         var field = new FieldDefinition(name, description, type, ReadRules(node, type, scope));
-        var decodeBlank = node.OptionalString("decodeBlank");
-        if (decodeBlank is not null)
+        switch (node.OptionalString("blank"))
         {
-            if (decodeBlank != "accept" || type is not (StringWireType or StructWireType))
+            case null:
+                break;
+            case "allow" when type is StringWireType text:
+                field = field with { Type = text with { AllowBlank = true } };
+                break;
+            case "acceptOnDecode" when type is StringWireType or StructWireType:
+                field = field with { AcceptBlankOnDecode = true };
+                break;
+            default:
+                throw node.Error("blank", "must be allow on a string field, or acceptOnDecode on a string or struct field.");
+        }
+
+        if (node.OptionalBoolean("nullAsEmpty", false))
+        {
+            if (field.Type is not (StringWireType { AllowBlank: true } or ArrayWireType { MinimumCount: 0 }))
             {
-                throw node.Error("decodeBlank", "must be accept, on a string or struct field.");
+                throw node.Error("nullAsEmpty", "applies to a string that allows blank text or an array without minCount.");
             }
 
-            field = field with { AcceptBlankOnDecode = true };
+            field = field with { NullAsEmpty = true };
         }
 
         var condition = node.OptionalString("when");

@@ -30,7 +30,7 @@ for a packet above the limit.
 | `f32` | IEEE single; NaN and infinities are rejected in both directions |
 | `bool` | One byte written as 0 or 1; any non-zero byte reads as true |
 | `guid` | 16 bytes in the order of .NET `Guid.ToByteArray` |
-| Text | A `u16` UTF-8 byte length, then the bytes. Required text has 1 to the limit of UTF-16 characters and at most four bytes per allowed character; invalid UTF-8 is rejected |
+| Text | A `u16` UTF-8 byte length, then the bytes. Text has 1 to the limit of UTF-16 characters, or 0 where blank text is allowed, and at most four bytes per allowed character; invalid UTF-8 is rejected |
 | Enum | One byte; undefined values are rejected |
 | Array | A `u8` count, then the elements |
 
@@ -77,7 +77,7 @@ Structural phase 2 moves the families into the schema one at a time:
 | `Replication` | Generated; no hand-written rules |
 | `Items` | Generated; `Items/RealtimeProtocol.Items.cs` holds its cross-field rules |
 | `Session` | Generated; no hand-written rules |
-| `WorldActors` | Hand-written |
+| `WorldActors` | Generated; `WorldActors/RealtimeProtocol.WorldActors.cs` holds its cross-field rules |
 | `Corpses` | Hand-written |
 
 Hand-written codecs call the generated struct helpers, such as
@@ -103,7 +103,7 @@ each as a get-only property with the field's description.
 | `f32` | `float` | Always finite |
 | `bool` | `bool` | One byte |
 | `guid` | `Guid` | 16 bytes |
-| `string` | `string` | Text as described above; `maxLength` caps it in UTF-16 characters, and it may not be empty or whitespace when encoded |
+| `string` | `string` | Text as described above; `maxLength` caps it in UTF-16 characters, and it may not be empty or whitespace when encoded unless `blank` allows it |
 | An enum name | The enum | One byte; the value must be defined, and a flags value may only combine defined bits |
 | A struct name | The struct class | The struct's fields |
 | `array` | An array of `items` | A `u8` count from `minCount` to `maxCount`, then the elements |
@@ -139,13 +139,20 @@ encode method takes the struct's fields instead, as
 message with `"api": "empty"` has no fields: `EncodeLeaveAccepted()` takes
 nothing, and `TryDecodeLeaveAccepted` only reports whether the packet is valid.
 
-Text that the encoder refuses as empty or whitespace is still accepted by the
-decoder when its message field sets `"decodeBlank": "accept"`. On a struct
-field, such as the `Error` of `JoinRejected`, it applies to every text field of
-that struct, which may then contain no struct or array fields. The Session
-messages use it, so a peer that sends blank text still gets through decoding,
-and the receiving code decides what blank text means. `decodeBlank` belongs to
-message fields only, not to struct fields or variant fields.
+Text must not be empty or whitespace unless its field sets `blank`:
+
+- `"blank": "allow"` makes empty and whitespace text valid in both directions,
+  so the length prefix may be 0. `WorldInteractionResult.Message` uses it.
+- `"blank": "acceptOnDecode"` keeps the encoder strict but lets the decoder
+  accept blank text, as the Session messages always did, so the receiving code
+  decides what blank text means. On a struct field, such as the `Error` of
+  `JoinRejected`, it applies to every text field of that struct, which may then
+  contain no struct or array fields. It belongs to message fields only, not to
+  struct fields or variant fields.
+
+`"nullAsEmpty": true` makes the constructor turn a null argument into an empty
+string or array, as `RealtimeWorldInteractionOpened` does for its capabilities.
+It needs `"blank": "allow"` on a string and no `minCount` on an array.
 
 `sizeConstant` on a fixed-size struct or message, and `emptySizeConstant` on a
 message with arrays, become public `RealtimeProtocol` constants such as

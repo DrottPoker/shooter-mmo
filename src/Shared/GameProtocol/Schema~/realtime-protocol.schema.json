@@ -305,9 +305,13 @@
             "type": "string",
             "pattern": "^!?[A-Z][A-Za-z0-9]*$"
           },
-          "decodeBlank": {
-            "description": "On a message string or struct field: decoding accepts empty or whitespace text that encoding refuses.",
-            "const": "accept"
+          "blank": {
+            "description": "allow: a string may be empty or whitespace in both directions. acceptOnDecode: on a message string or struct field, decoding accepts empty or whitespace text that encoding refuses.",
+            "enum": [ "allow", "acceptOnDecode" ]
+          },
+          "nullAsEmpty": {
+            "description": "The constructor turns null into an empty string or array. Needs blank allow on a string, and no minCount on an array.",
+            "type": "boolean"
           },
           "absent": {
             "description": "In variants.fields only: the integer value in cases that do not carry the field.",

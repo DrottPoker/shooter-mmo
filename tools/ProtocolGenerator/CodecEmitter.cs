@@ -53,7 +53,7 @@ internal static class CodecEmitter
     {
         var union = message.Union!;
         var members = Members(message.Fields)
-            .Concat(union.Pool.Select(pool => new Member(pool.Field.Name, TypeName(pool.Field.Type), pool.Field.Description)))
+            .Concat(Members(union.Pool.Select(pool => pool.Field)))
             .ToArray();
         writer.Summary(message.Description);
         writer.Open($"public sealed partial class {message.ClassName}");
@@ -71,7 +71,7 @@ internal static class CodecEmitter
         writer.Close();
     }
 
-    // A lenient struct is decoded somewhere with decodeBlank, so its reader and validation
+    // A lenient struct is decoded somewhere with blank acceptOnDecode, so its reader and validation
     // take acceptBlankText, which lets its text fields be empty or whitespace.
     public static void EmitStructCodec(CSharpWriter writer, StructDefinition definition, bool lenient)
     {
@@ -183,10 +183,10 @@ internal static class CodecEmitter
 
     // How validation relaxes text checks while decoding. Parameter names the bool that
     // allows empty or whitespace text; NestedStructs passes it on to lenient struct fields,
-    // and AllText applies it to every text field instead of only decodeBlank fields.
+    // and AllText applies it to every text field instead of only acceptOnDecode fields.
     private sealed record Leniency(string Parameter, bool NestedStructs, bool AllText);
 
-    // The structs that some decodeBlank field reads leniently.
+    // The structs that some acceptOnDecode field reads leniently.
     public static ISet<StructDefinition> LenientStructs(ProtocolModel model)
     {
         var fields = model.Structs.SelectMany(definition => definition.Fields)
@@ -254,8 +254,26 @@ internal static class CodecEmitter
             : "null";
     }
 
+    // The trailing argument that lets the string primitives accept blank text.
+    private static string AllowBlankArgument(StringWireType text)
+    {
+        return text.AllowBlank ? ", allowBlank: true" : string.Empty;
+    }
+
+    // The empty value that a nullAsEmpty field gets instead of null.
+    private static string EmptyValue(WireType type)
+    {
+        return type switch
+        {
+            StringWireType => "string.Empty",
+            ArrayWireType array => $"Array.Empty<{TypeName(array.Element.Type)}>()",
+            _ => throw new InvalidOperationException($"Type {type} has no empty value.")
+        };
+    }
+
     // A model member: one per field, and one bool per bit of a bits8 field.
-    private sealed record Member(string Name, string Type, string? Description);
+    // Fallback, when set, replaces a null constructor argument.
+    private sealed record Member(string Name, string Type, string? Description, string? Fallback = null);
 
     private static IEnumerable<Member> Members(IEnumerable<FieldDefinition> fields)
     {
@@ -271,7 +289,7 @@ internal static class CodecEmitter
                 continue;
             }
 
-            yield return new Member(field.Name, TypeName(field.Type), field.Description);
+            yield return new Member(field.Name, TypeName(field.Type), field.Description, field.NullAsEmpty ? EmptyValue(field.Type) : null);
         }
     }
 
@@ -286,7 +304,8 @@ internal static class CodecEmitter
         writer.Open($"    {members[^1].Type} {CSharpNames.Parameter(members[^1].Name)})");
         foreach (var member in members)
         {
-            writer.Line($"{member.Name} = {CSharpNames.Parameter(member.Name)};");
+            var fallback = member.Fallback is null ? string.Empty : " ?? " + member.Fallback;
+            writer.Line($"{member.Name} = {CSharpNames.Parameter(member.Name)}{fallback};");
         }
 
         writer.Close();
@@ -473,7 +492,7 @@ internal static class CodecEmitter
                 writer.Line($"writer.Write((byte){expression});");
                 break;
             case StringWireType text:
-                writer.Line($"WriteString(writer, {expression}, {text.MaximumLength.Expression}, {CSharpWriter.Literal(expression)});");
+                writer.Line($"WriteString(writer, {expression}, {text.MaximumLength.Expression}, {CSharpWriter.Literal(expression)}{AllowBlankArgument(text)});");
                 break;
             case StructWireType structType:
                 writer.Line($"Write{structType.Definition.Name}(writer, {expression});");
@@ -590,9 +609,14 @@ internal static class CodecEmitter
         foreach (var unionCase in union.Cases)
         {
             OpenCaseLabels(writer, unionCase, enumClass);
-            foreach (var fixedField in unionCase.CommonOverrides.Where(entry => entry.FixedValue is not null))
+            var fixedFields = unionCase.CommonOverrides.Where(entry => entry.FixedValue is not null).ToArray();
+            foreach (var fixedField in fixedFields)
             {
                 writer.Line($"{CSharpNames.Local(fixedField.Field.Name)} = {fixedField.FixedValue};");
+            }
+
+            if (fixedFields.Length > 0 && unionCase.Entries.Count > 0)
+            {
                 writer.BlankLine();
             }
 
@@ -651,7 +675,7 @@ internal static class CodecEmitter
                 EmitPrimitiveRead(writer, ReaderSuffix(primitive.Kind), local);
                 return local;
             case StringWireType text:
-                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out var {local}, out error))");
+                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out var {local}, out error{AllowBlankArgument(text)}))");
                 writer.Line("return false;");
                 writer.Close();
                 writer.BlankLine();
@@ -686,7 +710,7 @@ internal static class CodecEmitter
                 writer.Open($"if (!TryRead{ReaderSuffix(primitive.Kind)}(reader, out {target}, out error))");
                 break;
             case StringWireType text:
-                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out {target}, out error))");
+                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out {target}, out error{AllowBlankArgument(text)}))");
                 break;
             case EnumWireType enumType:
                 EmitPrimitiveRead(writer, "Byte", target + "Byte");
@@ -942,7 +966,11 @@ internal static class CodecEmitter
                 yield return $"!IsDefined({expression})";
                 break;
             case StringWireType text:
-                if (leniency is null)
+                if (text.AllowBlank)
+                {
+                    yield return $"{expression} == null";
+                }
+                else if (leniency is null)
                 {
                     yield return $"string.IsNullOrWhiteSpace({expression})";
                 }
