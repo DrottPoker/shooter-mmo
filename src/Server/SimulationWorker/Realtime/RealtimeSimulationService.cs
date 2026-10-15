@@ -47,7 +47,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
-    private readonly CorpseMutationCoordinator corpseMutationCoordinator = new();
     private readonly TokenBucket aggregateSnapshotBytes;
     private readonly RealtimeNetworkMetrics networkMetrics;
     private readonly RealtimePerformanceMetrics performanceMetrics;
@@ -73,6 +72,8 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly ItemOperationHandler itemOperations;
     private readonly CorpseViewDistributor corpseViews;
     private readonly CorpsePresenceReplicator corpsePresence;
+    private readonly CorpseAuthorityOperations corpseAuthority;
+    private readonly CorpseInteractionHandler corpseInteractions;
     private NetManager? server;
     private uint snapshotSequence;
 
@@ -203,6 +204,39 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             corpseViews,
             peerRegistry,
             sender);
+        corpseAuthority = new CorpseAuthorityOperations(
+            corpseInteractionService,
+            liveMobCorpseInteractionService,
+            completions,
+            logger);
+        var corpseFinalizer = new CorpseOperationFinalizer(
+            peerRegistry,
+            sender,
+            sessionStore,
+            carryStateStore,
+            entityRegistry,
+            carrySync,
+            teardown,
+            authorityScheduler,
+            corpseViewers,
+            worldInteractionLeases,
+            corpseViews,
+            corpseStore,
+            liveMobCorpseStore);
+        corpseInteractions = new CorpseInteractionHandler(
+            config,
+            peerRegistry,
+            sender,
+            carryStateStore,
+            corpseStore,
+            liveMobCorpseStore,
+            corpseViewers,
+            worldInteractionLeases,
+            authorityScheduler,
+            operationTracker,
+            completions,
+            corpseAuthority,
+            corpseFinalizer);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -212,7 +246,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             RealtimeMessageRoutes.CreateAuthenticated(
                 HandleMovementInput,
                 itemOperations.HandleIntent,
-                HandleCorpseInteractionIntent,
+                corpseInteractions.HandleIntent,
                 HandleWorldInteractionIntent,
                 HandleLeaveRequest));
         completionProcessor = new RealtimeCompletionProcessor(
@@ -318,14 +352,14 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 performanceMetrics.ObserveCompletedOperationBacklog(
                     completions.Count);
                 performanceMetrics.ObserveCorpseMutationCoordinator(
-                    corpseMutationCoordinator.WaitingMutationCount,
-                    corpseMutationCoordinator.ActiveCorpseCount);
+                    corpseAuthority.MutationCoordinator.WaitingMutationCount,
+                    corpseAuthority.MutationCoordinator.ActiveCorpseCount);
                 completionProcessor.ProcessCompleted(completedOperationBudget);
                 performanceMetrics.ObserveCompletedOperationBacklog(
                     completions.Count);
                 performanceMetrics.ObserveCorpseMutationCoordinator(
-                    corpseMutationCoordinator.WaitingMutationCount,
-                    corpseMutationCoordinator.ActiveCorpseCount);
+                    corpseAuthority.MutationCoordinator.WaitingMutationCount,
+                    corpseAuthority.MutationCoordinator.ActiveCorpseCount);
                 performanceMetrics.RecordCompletedOperations(
                     Stopwatch.GetElapsedTime(phaseStarted));
                 ProcessSimulationTicks(
@@ -480,62 +514,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         playerEntity.Movement.AcceptInputs(inputs);
     }
 
-    private void HandleCorpseInteractionIntent(in RealtimeInboundMessage message)
-    {
-        var peer = message.Peer;
-        var context = message.Context;
-        var packet = message.Packet;
-        if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "corpse_interaction_unavailable",
-                "Corpse interaction is not active for this peer.");
-            return;
-        }
-
-        if (!carryStateStore.TryGet(
-                playerEntity.Session.CharacterId,
-                playerEntity.Session.SimulationSessionId,
-                out _))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "carry_state_missing",
-                "Authoritative carry state is unavailable for corpse interaction.");
-            return;
-        }
-
-        if (!RealtimeProtocol.TryDecodeCorpseInteractionIntent(
-                packet,
-                out var intent,
-                out var corpseError))
-        {
-            sender.RejectProtocol(
-                peer,
-                context,
-                "invalid_corpse_operation",
-                corpseError);
-            return;
-        }
-
-        if (context.AuthorityOperationQueue.Count
-            >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
-        {
-            SendCorpseOperationRejection(
-                peer,
-                playerEntity.Session,
-                intent,
-                "item_operation_queue_full",
-                "Too many item or corpse operations are waiting for authority.");
-            return;
-        }
-
-        authorityScheduler.Enqueue(context, new QueuedCorpseOperation(this, intent));
-    }
-
     private void HandleWorldInteractionIntent(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -683,93 +661,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         }
     }
 
-    private async Task CompleteCorpseOperationAsync(
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
-        RealtimeCorpseInteractionIntent intent,
-        bool removeOpenReservationOnFailure,
-        bool isLiveMobCorpse)
-    {
-        try
-        {
-            var interactionService = isLiveMobCorpse
-                ? liveMobCorpseInteractionService
-                    ?? throw new InvalidOperationException(
-                        "Live Mob corpse interaction is not configured.")
-                : null;
-            var result = intent.OperationKind switch
-            {
-                RealtimeCorpseInteractionKind.Open
-                    or RealtimeCorpseInteractionKind.Refresh =>
-                    isLiveMobCorpse
-                        ? await interactionService!.OpenAsync(
-                            session,
-                            intent,
-                            CancellationToken.None)
-                        : await corpseInteractionService.OpenAsync(
-                            session,
-                            intent,
-                            CancellationToken.None),
-                RealtimeCorpseInteractionKind.LootItem
-                    or RealtimeCorpseInteractionKind.LootPartialStack
-                    or RealtimeCorpseInteractionKind.DepositItem
-                    or RealtimeCorpseInteractionKind.DepositPartialStack
-                    or RealtimeCorpseInteractionKind.MoveItem
-                    or RealtimeCorpseInteractionKind.MovePartialStack
-                    or RealtimeCorpseInteractionKind.SwapBag =>
-                    await CompleteCorpseMutationAsync(
-                        interactionService,
-                        session,
-                        intent,
-                        isLiveMobCorpse),
-                _ => throw new InvalidOperationException(
-                    "The queued corpse operation is not supported by GameService.")
-            };
-            completions.Post(this, new CorpseOperationCompleted(
-                context,
-                session,
-                result,
-                removeOpenReservationOnFailure));
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "[SIMULATION] Unhandled error while interacting with corpse {CorpseId} for simulation session {SimulationSessionId}.",
-                intent.CorpseId,
-                session.SimulationSessionId);
-            completions.Post(this, new CorpseOperationCompleted(
-                context,
-                session,
-                SimulationCorpseInteractionResult.Rejected(
-                    intent,
-                    "corpse_operation_failed",
-                    "SimulationWorker could not complete the corpse operation.",
-                    requiresCorpseRefresh: true),
-                removeOpenReservationOnFailure));
-        }
-    }
-
-    private async Task<SimulationCorpseInteractionResult> CompleteCorpseMutationAsync(
-        LiveMobCorpseInteractionService? interactionService,
-        ActiveSimulationSession session,
-        RealtimeCorpseInteractionIntent intent,
-        bool isLiveMobCorpse)
-    {
-        using var mutationLease = await corpseMutationCoordinator.AcquireAsync(
-            intent.CorpseId,
-            CancellationToken.None);
-        return isLiveMobCorpse
-            ? await interactionService!.MutateAsync(
-                session,
-                intent,
-                CancellationToken.None)
-            : await corpseInteractionService.MutateAsync(
-                session,
-                intent,
-                CancellationToken.None);
-    }
-
     void IRealtimeCompletionHandler.Complete(RealtimeOperationResult operation)
     {
         switch (operation)
@@ -795,9 +686,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 }
             case LeaveCompleted leaveCompleted:
                 ProcessLeaveCompleted(leaveCompleted);
-                break;
-            case CorpseOperationCompleted corpseCompleted:
-                ProcessCorpseOperationCompleted(corpseCompleted);
                 break;
             case WorldInteractionOperationCompleted worldInteractionCompleted:
                 ProcessWorldInteractionOperationCompleted(worldInteractionCompleted);
@@ -1141,417 +1029,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 peer,
                 RealtimeProtocol.EncodeWorldInteractionClosed(result.Closed));
         }
-    }
-
-    private void StartCorpseOperation(
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
-        RealtimeCorpseInteractionIntent intent,
-        float positionX,
-        float positionY,
-        float positionZ)
-    {
-        if (intent.OperationKind == RealtimeCorpseInteractionKind.Close)
-        {
-            completions.Post(this, new CorpseOperationCompleted(
-                context,
-                session,
-                SimulationCorpseInteractionResult.Closed(intent),
-                false));
-            return;
-        }
-
-        LiveMobCorpseState? liveCorpse = null;
-        var isLiveMobCorpse = liveMobCorpseStore is not null
-            && liveMobCorpseStore.TryGetActive(intent.CorpseId, out liveCorpse);
-        ICorpseRuntimePresence? corpse = isLiveMobCorpse
-            ? liveCorpse
-            : corpseStore.TryGetActive(intent.CorpseId, out var durableCorpse)
-                ? durableCorpse
-                : null;
-        if (corpse is null)
-        {
-            completions.Post(this, new CorpseOperationCompleted(
-                context,
-                session,
-                SimulationCorpseInteractionResult.Rejected(
-                    intent,
-                    "corpse_not_found",
-                    "The corpse is no longer active on this Shard.",
-                    shouldCloseView: true),
-                false));
-            return;
-        }
-
-        if (!IsWithinCorpseInteractionRange(
-                corpse!,
-                positionX,
-                positionY,
-                positionZ))
-        {
-            completions.Post(this, new CorpseOperationCompleted(
-                context,
-                session,
-                SimulationCorpseInteractionResult.Rejected(
-                    intent,
-                    "corpse_out_of_range",
-                    "Move closer to the corpse before interacting with it."),
-                false));
-            return;
-        }
-
-        if (intent.OperationKind == RealtimeCorpseInteractionKind.Open)
-        {
-            var acquiredInteractionLease = false;
-            if (worldInteractionLeases is not null
-                && !worldInteractionLeases.TryAcquireCorpse(
-                    context.PeerId,
-                    intent.CorpseId,
-                    out acquiredInteractionLease,
-                    out var leaseCode,
-                    out var leaseMessage))
-            {
-                completions.Post(this, new CorpseOperationCompleted(
-                    context,
-                    session,
-                    SimulationCorpseInteractionResult.Rejected(
-                        intent,
-                        leaseCode,
-                        leaseMessage),
-                    false));
-                return;
-            }
-
-            var alreadyViewing = corpseViewers.IsViewing(
-                context.PeerId,
-                intent.CorpseId);
-            if (!corpseViewers.TryOpen(
-                    context.PeerId,
-                    intent.CorpseId,
-                    out var code,
-                    out var message))
-            {
-                if (acquiredInteractionLease)
-                {
-                    worldInteractionLeases?.ReleaseCorpse(
-                        context.PeerId,
-                        intent.CorpseId);
-                }
-
-                completions.Post(this, new CorpseOperationCompleted(
-                    context,
-                    session,
-                    SimulationCorpseInteractionResult.Rejected(intent, code, message),
-                    false));
-                return;
-            }
-
-            operationTracker.Track(CompleteCorpseOperationAsync(
-                context,
-                session,
-                intent,
-                removeOpenReservationOnFailure: !alreadyViewing,
-                isLiveMobCorpse));
-            return;
-        }
-
-        if (!corpseViewers.IsViewing(context.PeerId, intent.CorpseId))
-        {
-            completions.Post(this, new CorpseOperationCompleted(
-                context,
-                session,
-                SimulationCorpseInteractionResult.Rejected(
-                    intent,
-                    "corpse_view_not_open",
-                    "Open the corpse before refreshing or looting it."),
-                false));
-            return;
-        }
-
-        operationTracker.Track(CompleteCorpseOperationAsync(
-            context,
-            session,
-            intent,
-            removeOpenReservationOnFailure: false,
-            isLiveMobCorpse));
-    }
-
-    private void ProcessCorpseOperationCompleted(CorpseOperationCompleted completed)
-    {
-        completed.Context.AuthorityOperationInFlight = false;
-        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId
-                != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
-        {
-            // LiteNetLib reuses peer ids, so only a context that still owns its id may
-            // release this open reservation. Every path that disconnects or detaches a
-            // context has already released the reservations it held.
-            if (completed.RemoveOpenReservationOnFailure && peerRegistry.OwnsPeerId(completed.Context))
-            {
-                corpseViewers.Close(
-                    completed.Context.PeerId,
-                    completed.Result.Intent.CorpseId);
-                worldInteractionLeases?.ReleaseCorpse(
-                    completed.Context.PeerId,
-                    completed.Result.Intent.CorpseId);
-            }
-
-            return;
-        }
-
-        if (!carryStateStore.TryGet(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                out _))
-        {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                "carry_state_missing",
-                "Authoritative carry state disappeared during the corpse operation.");
-            return;
-        }
-
-        if (completed.Result.ShouldDisconnect)
-        {
-            SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                completed.Result.Error!.Code,
-                completed.Result.Error.Message);
-            return;
-        }
-
-        if (!completed.Result.Succeeded)
-        {
-            if (completed.RemoveOpenReservationOnFailure)
-            {
-                corpseViewers.RemovePeer(completed.Context.PeerId);
-                worldInteractionLeases?.ReleaseCorpse(
-                    completed.Context.PeerId,
-                    completed.Result.Intent.CorpseId);
-            }
-
-            SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            if (completed.Result.ShouldCloseView)
-            {
-                if (CorpseViewDistributor.ShouldCloseCorpseForAll(completed.Result.Error!.Code))
-                {
-                    corpseViews.CloseCorpseForAll(
-                        completed.Result.Intent.CorpseId,
-                        completed.Result.Error.Code,
-                        completed.Result.Error.Message,
-                        removeFromStore: true);
-                }
-                else
-                {
-                    corpseViews.CloseCorpseForPeer(
-                        completed.Context,
-                        peer,
-                        completed.Result.Intent.CorpseId,
-                        completed.Result.Error.Code,
-                        completed.Result.Error.Message);
-                }
-            }
-
-            authorityScheduler.StartNext(completed.Context);
-            return;
-        }
-
-        if (completed.Result.Intent.OperationKind
-            == RealtimeCorpseInteractionKind.Close)
-        {
-            corpseViewers.Close(
-                completed.Context.PeerId,
-                completed.Result.Intent.CorpseId);
-            worldInteractionLeases?.ReleaseCorpse(
-                completed.Context.PeerId,
-                completed.Result.Intent.CorpseId);
-            SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeCorpseViewClosed(new RealtimeCorpseViewClosed(
-                    completed.Result.Intent.CorpseId,
-                    "corpse_view_closed",
-                    "The corpse view was closed.")));
-            authorityScheduler.StartNext(completed.Context);
-            return;
-        }
-
-        if (completed.Result.Mutation is not null
-            && completed.Result.RequiresInventoryRefresh
-            && !TryApplyCorpseCarryState(
-                peer,
-                completed.Context,
-                completed.Session,
-                completed.Result.Mutation.Transaction))
-        {
-            return;
-        }
-
-        SendCorpseOperationResult(peer, completed.Session, completed.Result);
-        var resultSnapshot = completed.Result.Snapshot;
-        if (resultSnapshot is null)
-        {
-            corpseViews.CloseCorpseForAll(
-                completed.Result.Intent.CorpseId,
-                "corpse_invalidated",
-                "The corpse is no longer available.",
-                removeFromStore: true);
-            authorityScheduler.StartNext(completed.Context);
-            return;
-        }
-
-        corpseViews.TryGetCachedSnapshot(resultSnapshot.CorpseId, out var cachedSnapshot);
-        var distribution = CorpseStateDistribution.Plan(
-            cachedSnapshot,
-            resultSnapshot,
-            completed.Result.Mutation is not null);
-        if (distribution.CachesResult)
-        {
-            if (liveMobCorpseStore is null
-                || !liveMobCorpseStore.TryGetActive(resultSnapshot.CorpseId, out _))
-            {
-                corpseStore.ApplySnapshot(resultSnapshot);
-            }
-
-            corpseViews.CacheSnapshot(resultSnapshot);
-        }
-
-        if (distribution.RequesterChunks.Count > 0)
-        {
-            corpseViews.SendCorpseState(peer, CorpseViewDistributor.EncodeCorpseStatePackets(distribution.RequesterChunks));
-        }
-
-        if (distribution.ViewerChunks.Count > 0)
-        {
-            corpseViews.BroadcastCorpseState(
-                resultSnapshot.CorpseId,
-                CorpseViewDistributor.EncodeCorpseStatePackets(distribution.ViewerChunks),
-                distribution.RequesterReceivesViewerChunks ? null : completed.Context.PeerId);
-        }
-
-        authorityScheduler.StartNext(completed.Context);
-    }
-
-    private bool TryApplyCorpseCarryState(
-        IRealtimePeerConnection peer,
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
-        SimulationItemTransactionResponse transaction)
-    {
-        if (transaction.CharacterRevisions.Count != 1)
-        {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                context,
-                session,
-                "item_state_diverged",
-                "The corpse transaction returned an invalid character revision set.");
-            return false;
-        }
-
-        var characterRevision = transaction.CharacterRevisions[0];
-        var committedCarry = new PlayerCarryState(
-            characterRevision.Revision,
-            characterRevision.CarriedWeight,
-            characterRevision.CarryCapacity);
-        var carryResult = carryStateStore.ApplyCommitted(
-            session.CharacterId,
-            session.SimulationSessionId,
-            committedCarry,
-            out var currentCarry);
-        if (carryResult is CarryStateApplyResult.Conflict
-            or CarryStateApplyResult.SessionMismatch)
-        {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                context,
-                session,
-                "item_state_diverged",
-                "Committed corpse transfer and carry revisions diverged from the active simulation state.");
-            return false;
-        }
-
-        sessionStore.RefreshCarryState(
-            session.CharacterId,
-            session.SimulationSessionId,
-            session.SimulationSessionToken,
-            currentCarry);
-        if (entityRegistry.TryGetPlayerByCharacterId(
-                session.CharacterId,
-                out var entity))
-        {
-            carrySync.ApplyLatest(entity!);
-        }
-
-        return true;
-    }
-
-    private void SendCorpseOperationResult(
-        IRealtimePeerConnection peer,
-        ActiveSimulationSession session,
-        SimulationCorpseInteractionResult result)
-    {
-        if (!carryStateStore.TryGet(
-                session.CharacterId,
-                session.SimulationSessionId,
-                out var carryState))
-        {
-            return;
-        }
-
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeCorpseInteractionResult(
-                new RealtimeCorpseInteractionResult(
-                    result.Intent.OperationId,
-                    result.Intent.OperationKind,
-                    result.Intent.CorpseId,
-                    result.Succeeded,
-                    result.RequiresCorpseRefresh,
-                    result.RequiresInventoryRefresh,
-                    result.Succeeded
-                        ? null!
-                        : new RealtimeError(
-                            result.Error!.Code,
-                            result.Error.Message),
-                    RealtimeStateMapper.ToRealtimeCarryState(carryState!))));
-    }
-
-    private void SendCorpseOperationRejection(
-        IRealtimePeerConnection peer,
-        ActiveSimulationSession session,
-        RealtimeCorpseInteractionIntent intent,
-        string code,
-        string message)
-    {
-        SendCorpseOperationResult(
-            peer,
-            session,
-            SimulationCorpseInteractionResult.Rejected(intent, code, message));
-    }
-
-    private bool IsWithinCorpseInteractionRange(
-        ICorpseRuntimePresence corpse,
-        float playerX,
-        float playerY,
-        float playerZ)
-    {
-        var deltaX = corpse.PositionX - playerX;
-        var deltaY = corpse.PositionY - playerY;
-        var deltaZ = corpse.PositionZ - playerZ;
-        var radius = config.ItemInteraction.CorpseInteractionRadius;
-        return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)
-            <= radius * radius;
     }
 
     private void ProcessSimulationTicks(
@@ -2015,25 +1492,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         public void DisconnectPeer(IRealtimePeerConnection peer)
         {
             owner.server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
-        }
-    }
-
-    private sealed record QueuedCorpseOperation(
-        RealtimeSimulationService Owner,
-        RealtimeCorpseInteractionIntent Intent) : IRealtimeAuthorityOperation
-    {
-        public void Start(
-            RealtimePeerContext context,
-            PlayerSimulationEntity entity,
-            PlayerMovementState state)
-        {
-            Owner.StartCorpseOperation(
-                context,
-                context.Session!,
-                Intent,
-                state.PositionX,
-                state.PositionY,
-                state.PositionZ);
         }
     }
 
