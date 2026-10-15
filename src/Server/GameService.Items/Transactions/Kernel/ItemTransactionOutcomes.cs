@@ -53,6 +53,20 @@ internal static class ItemTransactionOutcomes
             "ck_item_instances_quantity" => new ItemTransactionError(
                 ItemTransactionErrorCodes.ItemQuantityChanged,
                 "The requested item quantity is no longer valid."),
+            // Derived item ids, such as Mob loot ids, collide only with an existing item.
+            "item_instances_pkey" => new ItemTransactionError(
+                ItemTransactionErrorCodes.ItemOperationConflict,
+                "The item instance already exists."),
+            // Deferred foreign keys fail at COMMIT when a referenced slot, container, or
+            // Bag changed concurrently.
+            "fk_item_instances_container_slot"
+                or "fk_item_containers_bound_bag"
+                or "fk_character_item_states_inventory_container"
+                or "fk_character_item_states_bank_container"
+                or "fk_character_item_states_secure_container"
+                or "fk_character_item_states_recovery_container" => new ItemTransactionError(
+                    ItemTransactionErrorCodes.ItemStateConflict,
+                    "The item state changed before the operation committed."),
             _ => null
         };
     }
