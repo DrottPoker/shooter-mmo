@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 
@@ -341,7 +342,7 @@ internal sealed partial class ItemTransactionService
                         corpseTimes.CreatedAt,
                         corpseTimes.ExpiresAt
                     },
-                    OperationJsonOptions)
+                    ItemOperationJson.Options)
             },
             context.Transaction,
             cancellationToken: cancellationToken));
@@ -888,7 +889,7 @@ internal sealed partial class ItemTransactionService
                 PolicyKind = policyKind,
                 PresentationPayload = JsonSerializer.Serialize(
                     presentationPayload,
-                    OperationJsonOptions)
+                    ItemOperationJson.Options)
             },
             context.Transaction,
             cancellationToken: cancellationToken));
@@ -1234,7 +1235,7 @@ internal sealed partial class ItemTransactionService
                 command.RotationZ,
                 command.RotationW,
                 command.PresentationKey),
-            OperationJsonOptions);
+            ItemOperationJson.Options);
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 

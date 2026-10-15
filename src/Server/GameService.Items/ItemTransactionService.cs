@@ -1,13 +1,12 @@
 using System.Data;
 using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
@@ -28,7 +27,6 @@ internal sealed partial class ItemTransactionService(
 {
     private const string MutationSavepoint = "item_mutation";
     private const string EmptyStackStateFingerprint = "item-stack-state-v1";
-    private static readonly JsonSerializerOptions OperationJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ItemOperationsOptions effectiveOperationsOptions =
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults();
     private readonly ItemTransactionDependencies dependencies = new(
@@ -2826,7 +2824,7 @@ internal sealed partial class ItemTransactionService(
             throw new ArgumentException("An item operation id is required.", nameof(request));
         }
 
-        if (RequiresRandomClientOperationId(request.Actor, operationKind)
+        if (ItemOperationAdmission.RequiresRandomClientOperationId(request.Actor, operationKind)
             && !ItemOperationIds.IsRandomClientOperationId(request.OperationId))
         {
             return CreateRejectedResult(
@@ -2836,15 +2834,14 @@ internal sealed partial class ItemTransactionService(
                 "The item operation id must be a random version 4 UUID.");
         }
 
-        var requestPayload = JsonSerializer.Serialize(
-            new CanonicalOperationRequest(
-                CanonicalizeActor(request.Actor),
-                CanonicalizeCommand(request.Command)),
-            OperationJsonOptions);
-        var requestHash = Convert.ToHexStringLower(
-            SHA256.HashData(Encoding.UTF8.GetBytes(requestPayload)));
-        if (Encoding.UTF8.GetByteCount(requestPayload)
-            > effectiveOperationsOptions.MaximumCommandPayloadBytes)
+        var canonicalRequest = ItemOperationRequestCanonicalizer.Canonicalize(
+            request.Actor,
+            request.Command);
+        var requestPayload = canonicalRequest.Payload;
+        var requestHash = canonicalRequest.Hash;
+        if (ItemOperationAdmission.ExceedsPayloadLimit(
+                requestPayload,
+                effectiveOperationsOptions))
         {
             return CreateRejectedResult(
                 request.OperationId,
@@ -3026,7 +3023,7 @@ internal sealed partial class ItemTransactionService(
             cancellationToken: cancellationToken));
         return payload is null
             ? null
-            : JsonSerializer.Deserialize<ItemTransactionResult>(payload, OperationJsonOptions);
+            : JsonSerializer.Deserialize<ItemTransactionResult>(payload, ItemOperationJson.Options);
     }
 
     private static async Task<ItemTransactionResult?> ClaimOperationAsync(
@@ -3112,18 +3109,9 @@ internal sealed partial class ItemTransactionService(
 
         return JsonSerializer.Deserialize<ItemTransactionResult>(
                 existing.ResultPayload,
-                OperationJsonOptions)
+                ItemOperationJson.Options)
             ?? throw new InvalidOperationException(
                 $"Stored result for item operation '{operationId}' is invalid.");
-    }
-
-    private static bool RequiresRandomClientOperationId(
-        ItemTransactionActor actor,
-        string operationKind)
-    {
-        return actor.Authority == ItemTransactionAuthority.Account
-            || (actor.Authority == ItemTransactionAuthority.SimulationWorker
-                && !ItemOperationKinds.IsRetriedSystemOperation(operationKind));
     }
 
     private static async Task<ItemTransactionResult> RejectMutationAsync(
@@ -3193,7 +3181,7 @@ internal sealed partial class ItemTransactionService(
         string status,
         CancellationToken cancellationToken)
     {
-        var resultPayload = JsonSerializer.Serialize(result, OperationJsonOptions);
+        var resultPayload = JsonSerializer.Serialize(result, ItemOperationJson.Options);
         return connection.ExecuteAsync(new CommandDefinition(
             """
             update item_operations
@@ -3301,56 +3289,6 @@ internal sealed partial class ItemTransactionService(
             or ItemTransactionErrorCodes.CorpseStateChanged
             or ItemTransactionErrorCodes.ItemAlreadyLooted;
     }
-
-    private static object CanonicalizeCommand<TCommand>(TCommand command)
-        where TCommand : notnull
-    {
-        return command switch
-        {
-            ClaimRecoveryDeliveryCommand claim => claim with
-            {
-                Items = claim.Items
-                    .OrderBy(item => item.ItemInstanceId)
-                    .ThenBy(item => item.Revision)
-                    .ToArray()
-            },
-            ChangeSecureContainerTierCommand tier => tier with
-            {
-                CharacterRevisions = tier.CharacterRevisions
-                    .OrderBy(item => item.CharacterId)
-                    .ThenBy(item => item.Revision)
-                    .ToArray()
-            },
-            _ => command
-        };
-    }
-
-    private static CanonicalOperationActor CanonicalizeActor(ItemTransactionActor actor)
-    {
-        return new CanonicalOperationActor(
-            actor.Authority,
-            actor.AccountId,
-            actor.RequiresOfflineCharacter,
-            actor.Simulation?.SimulationSessionId,
-            actor.Simulation?.CharacterId,
-            actor.Simulation?.WorkerId,
-            actor.Simulation?.WorkerRuntimeId,
-            actor.Simulation?.ShardId);
-    }
-
-    private sealed record CanonicalOperationRequest(
-        CanonicalOperationActor Actor,
-        object Command);
-
-    private sealed record CanonicalOperationActor(
-        ItemTransactionAuthority Authority,
-        Guid? AccountId,
-        bool RequiresOfflineCharacter,
-        Guid? SimulationSessionId,
-        Guid? CharacterId,
-        string? WorkerId,
-        string? WorkerRuntimeId,
-        string? ShardId);
 
     private sealed class OperationRow
     {
