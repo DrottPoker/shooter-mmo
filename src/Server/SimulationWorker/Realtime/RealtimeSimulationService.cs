@@ -66,6 +66,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly RealtimePeerSender sender;
     private readonly PeerDirectory peerDirectory;
     private readonly RealtimePeerRegistry peerRegistry;
+    private readonly RealtimeMessageDispatcher dispatcher;
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
@@ -142,6 +143,18 @@ public sealed class RealtimeSimulationService : BackgroundService
             connectionBindings,
             entityRegistry,
             networkMetrics);
+        dispatcher = new RealtimeMessageDispatcher(
+            peerRegistry,
+            sender,
+            networkMetrics,
+            logger,
+            RealtimeMessageRoutes.CreateUnauthenticated(HandleJoinRequest),
+            RealtimeMessageRoutes.CreateAuthenticated(
+                HandleMovementInput,
+                HandleItemOperationIntent,
+                HandleCorpseInteractionIntent,
+                HandleWorldInteractionIntent,
+                HandleLeaveRequest));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -335,73 +348,13 @@ public sealed class RealtimeSimulationService : BackgroundService
         byte channel,
         DeliveryMethod deliveryMethod)
     {
-        var peer = LiteNetLibPeerConnection.For(netPeer);
         try
         {
-            if (!peerRegistry.TryGetContext(peer.Id, out var context))
-            {
-                return;
-            }
-
-            var packet = reader.GetRemainingBytes();
-            networkMetrics.RecordReceived(packet.Length);
-            if (context.DisconnectAfterUtc is not null)
-            {
-                return;
-            }
-
-            if (!context.Quota.TryConsumeInbound(packet.Length))
-            {
-                networkMetrics.RecordQuotaRejected();
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "udp_rate_limited",
-                    "The realtime connection exceeded its inbound UDP quota.");
-                return;
-            }
-            if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType))
-            {
-                sender.RejectProtocol(peer, context, "invalid_packet", "Realtime packet header is invalid.");
-                return;
-            }
-
-            var session = context.Session;
-            if (session is null)
-            {
-                HandleUnauthenticatedMessage(
-                    peer,
-                    context,
-                    messageType,
-                    packet,
-                    channel,
-                    deliveryMethod);
-                return;
-            }
-
-            HandleAuthenticatedMessage(
-                peer,
-                context,
-                messageType,
-                packet,
+            dispatcher.Dispatch(
+                LiteNetLibPeerConnection.For(netPeer),
+                reader.GetRemainingBytes(),
                 channel,
                 deliveryMethod);
-        }
-        catch (Exception exception)
-        {
-            // A packet that fails unexpectedly disconnects only its own peer.
-            logger.LogError(
-                exception,
-                "[SIMULATION] Could not process a realtime packet from UDP peer {PeerId}.",
-                peer.Id);
-            if (peerRegistry.TryGetContext(peer.Id, out var failedContext))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    failedContext,
-                    "internal_error",
-                    "SimulationWorker could not process the request.");
-            }
         }
         finally
         {
@@ -409,23 +362,11 @@ public sealed class RealtimeSimulationService : BackgroundService
         }
     }
 
-    private void HandleUnauthenticatedMessage(
-        IRealtimePeerConnection peer,
-        RealtimePeerContext context,
-        RealtimeMessageType messageType,
-        byte[] packet,
-        byte channel,
-        DeliveryMethod deliveryMethod)
+    private void HandleJoinRequest(in RealtimeInboundMessage message)
     {
-        if (messageType != RealtimeMessageType.JoinRequest
-            || channel != RealtimeProtocol.ControlChannel
-            || deliveryMethod != DeliveryMethod.ReliableOrdered
-            || context.JoinStarted)
-        {
-            sender.RejectProtocol(peer, context, "join_required", "A single join request must complete before other messages are accepted.");
-            return;
-        }
-
+        var peer = message.Peer;
+        var context = message.Context;
+        var packet = message.Packet;
         if (registrationLease is not null && !registrationLease.IsValid)
         {
             sender.RejectProtocol(
@@ -446,274 +387,226 @@ public sealed class RealtimeSimulationService : BackgroundService
         operationTracker.Track(CompleteJoinAsync(context, joinTicket));
     }
 
-    private void HandleAuthenticatedMessage(
-        IRealtimePeerConnection peer,
-        RealtimePeerContext context,
-        RealtimeMessageType messageType,
-        byte[] packet,
-        byte channel,
-        DeliveryMethod deliveryMethod)
+    private void HandleMovementInput(in RealtimeInboundMessage message)
     {
-        if (messageType == RealtimeMessageType.MovementInputBatch)
+        var peer = message.Peer;
+        var context = message.Context;
+        var packet = message.Packet;
+        if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
         {
-            if (channel != RealtimeProtocol.MovementInputChannel
-                || deliveryMethod != DeliveryMethod.Sequenced)
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_movement_delivery",
-                    "Movement inputs require the sequenced movement channel.");
-                return;
-            }
-
-            if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "movement_unavailable",
-                    "Movement simulation is not active for this peer.");
-                return;
-            }
-
-            if (!RealtimeProtocol.TryDecodeMovementInputBatch(packet, out var inputs, out var movementError))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_movement_input",
-                    movementError);
-                return;
-            }
-
-            playerEntity.Movement.AcceptInputs(inputs);
+            sender.RejectProtocol(
+                peer,
+                context,
+                "movement_unavailable",
+                "Movement simulation is not active for this peer.");
             return;
         }
 
-        if (messageType == RealtimeMessageType.ItemOperationIntent)
+        if (!RealtimeProtocol.TryDecodeMovementInputBatch(packet, out var inputs, out var movementError))
         {
-            if (channel != RealtimeProtocol.ControlChannel
-                || deliveryMethod != DeliveryMethod.ReliableOrdered)
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_item_operation_delivery",
-                    "Item operation intents require the reliable ordered control channel.");
-                return;
-            }
-
-            if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "item_operation_unavailable",
-                    "Item interaction is not active for this peer.");
-                return;
-            }
-
-            if (!carryStateStore.TryGet(
-                    playerEntity.Session.CharacterId,
-                    playerEntity.Session.SimulationSessionId,
-                    out _))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "carry_state_missing",
-                    "Authoritative carry state is unavailable for item interaction.");
-                return;
-            }
-
-            if (!RealtimeProtocol.TryDecodeItemOperationIntent(
-                    packet,
-                    out var intent,
-                    out var itemError))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_item_operation",
-                    itemError);
-                return;
-            }
-
-            if (context.AuthorityOperationQueue.Count
-                >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
-            {
-                SendItemOperationRejection(
-                    peer,
-                    playerEntity.Session,
-                    intent,
-                    "item_operation_queue_full",
-                    "Too many item operations are waiting for authority.");
-                return;
-            }
-
-            context.AuthorityOperationQueue.Enqueue(new QueuedItemOperation(intent));
-            StartNextAuthorityOperation(context);
+            sender.RejectProtocol(
+                peer,
+                context,
+                "invalid_movement_input",
+                movementError);
             return;
         }
 
-        if (messageType == RealtimeMessageType.CorpseInteractionIntent)
+        playerEntity.Movement.AcceptInputs(inputs);
+    }
+
+    private void HandleItemOperationIntent(in RealtimeInboundMessage message)
+    {
+        var peer = message.Peer;
+        var context = message.Context;
+        var packet = message.Packet;
+        if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
         {
-            if (channel != RealtimeProtocol.ControlChannel
-                || deliveryMethod != DeliveryMethod.ReliableOrdered)
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_corpse_operation_delivery",
-                    "Corpse interaction intents require the reliable ordered control channel.");
-                return;
-            }
-
-            if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "corpse_interaction_unavailable",
-                    "Corpse interaction is not active for this peer.");
-                return;
-            }
-
-            if (!carryStateStore.TryGet(
-                    playerEntity.Session.CharacterId,
-                    playerEntity.Session.SimulationSessionId,
-                    out _))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "carry_state_missing",
-                    "Authoritative carry state is unavailable for corpse interaction.");
-                return;
-            }
-
-            if (!RealtimeProtocol.TryDecodeCorpseInteractionIntent(
-                    packet,
-                    out var intent,
-                    out var corpseError))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_corpse_operation",
-                    corpseError);
-                return;
-            }
-
-            if (context.AuthorityOperationQueue.Count
-                >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
-            {
-                SendCorpseOperationRejection(
-                    peer,
-                    playerEntity.Session,
-                    intent,
-                    "item_operation_queue_full",
-                    "Too many item or corpse operations are waiting for authority.");
-                return;
-            }
-
-            context.AuthorityOperationQueue.Enqueue(new QueuedCorpseOperation(intent));
-            StartNextAuthorityOperation(context);
+            sender.RejectProtocol(
+                peer,
+                context,
+                "item_operation_unavailable",
+                "Item interaction is not active for this peer.");
             return;
         }
 
-        if (messageType == RealtimeMessageType.WorldInteractionIntent)
+        if (!carryStateStore.TryGet(
+                playerEntity.Session.CharacterId,
+                playerEntity.Session.SimulationSessionId,
+                out _))
         {
-            if (channel != RealtimeProtocol.ControlChannel
-                || deliveryMethod != DeliveryMethod.ReliableOrdered)
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_world_interaction_delivery",
-                    "World interaction intents require the reliable ordered control channel.");
-                return;
-            }
-
-            if (worldInteractionAuthority is null
-                || !peerRegistry.TryGetBoundPlayer(context, out _))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "world_interaction_unavailable",
-                    "World interaction authority is not active for this peer.");
-                return;
-            }
-
-            if (!RealtimeProtocol.TryDecodeWorldInteractionIntent(
-                    packet,
-                    out var intent,
-                    out var interactionError))
-            {
-                sender.RejectProtocol(
-                    peer,
-                    context,
-                    "invalid_world_interaction",
-                    interactionError);
-                return;
-            }
-
-            if (!context.WorldInteractionIntentQuota.TryConsume())
-            {
-                SendWorldInteractionResult(
-                    peer,
-                    new WorldInteractionAuthorityResult(
-                        null,
-                        new RealtimeWorldInteractionResult(
-                            intent.OperationId,
-                            intent.InteractionSessionId,
-                            intent.OperationKind,
-                            false,
-                            0,
-                            new RealtimeError(
-                                WorldInteractionIntentLimiter.RejectionCode,
-                                "World interaction intents exceeded the per-peer rate limit.")),
-                        null));
-                return;
-            }
-
-            if (context.AuthorityOperationQueue.Count
-                >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
-            {
-                SendWorldInteractionResult(
-                    peer,
-                    new WorldInteractionAuthorityResult(
-                        null,
-                        new RealtimeWorldInteractionResult(
-                            intent.OperationId,
-                            intent.InteractionSessionId,
-                            intent.OperationKind,
-                            false,
-                            0,
-                            new RealtimeError(
-                                "world_interaction_queue_full",
-                                "Too many authority operations are waiting for this peer.")),
-                        null));
-                return;
-            }
-
-            context.AuthorityOperationQueue.Enqueue(
-                new QueuedWorldInteractionOperation(intent));
-            StartNextAuthorityOperation(context);
+            sender.RejectProtocol(
+                peer,
+                context,
+                "carry_state_missing",
+                "Authoritative carry state is unavailable for item interaction.");
             return;
         }
 
-        if (messageType != RealtimeMessageType.LeaveRequest
-            || channel != RealtimeProtocol.ControlChannel
-            || deliveryMethod != DeliveryMethod.ReliableOrdered
-            || context.LeaveStarted)
+        if (!RealtimeProtocol.TryDecodeItemOperationIntent(
+                packet,
+                out var intent,
+                out var itemError))
         {
-            sender.RejectProtocol(peer, context, "unexpected_message", "The message is not valid for the current connection state.");
+            sender.RejectProtocol(
+                peer,
+                context,
+                "invalid_item_operation",
+                itemError);
             return;
         }
 
+        if (context.AuthorityOperationQueue.Count
+            >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
+        {
+            SendItemOperationRejection(
+                peer,
+                playerEntity.Session,
+                intent,
+                "item_operation_queue_full",
+                "Too many item operations are waiting for authority.");
+            return;
+        }
+
+        context.AuthorityOperationQueue.Enqueue(new QueuedItemOperation(intent));
+        StartNextAuthorityOperation(context);
+    }
+
+    private void HandleCorpseInteractionIntent(in RealtimeInboundMessage message)
+    {
+        var peer = message.Peer;
+        var context = message.Context;
+        var packet = message.Packet;
+        if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
+        {
+            sender.RejectProtocol(
+                peer,
+                context,
+                "corpse_interaction_unavailable",
+                "Corpse interaction is not active for this peer.");
+            return;
+        }
+
+        if (!carryStateStore.TryGet(
+                playerEntity.Session.CharacterId,
+                playerEntity.Session.SimulationSessionId,
+                out _))
+        {
+            sender.RejectProtocol(
+                peer,
+                context,
+                "carry_state_missing",
+                "Authoritative carry state is unavailable for corpse interaction.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeCorpseInteractionIntent(
+                packet,
+                out var intent,
+                out var corpseError))
+        {
+            sender.RejectProtocol(
+                peer,
+                context,
+                "invalid_corpse_operation",
+                corpseError);
+            return;
+        }
+
+        if (context.AuthorityOperationQueue.Count
+            >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
+        {
+            SendCorpseOperationRejection(
+                peer,
+                playerEntity.Session,
+                intent,
+                "item_operation_queue_full",
+                "Too many item or corpse operations are waiting for authority.");
+            return;
+        }
+
+        context.AuthorityOperationQueue.Enqueue(new QueuedCorpseOperation(intent));
+        StartNextAuthorityOperation(context);
+    }
+
+    private void HandleWorldInteractionIntent(in RealtimeInboundMessage message)
+    {
+        var peer = message.Peer;
+        var context = message.Context;
+        var packet = message.Packet;
+        if (worldInteractionAuthority is null
+            || !peerRegistry.TryGetBoundPlayer(context, out _))
+        {
+            sender.RejectProtocol(
+                peer,
+                context,
+                "world_interaction_unavailable",
+                "World interaction authority is not active for this peer.");
+            return;
+        }
+
+        if (!RealtimeProtocol.TryDecodeWorldInteractionIntent(
+                packet,
+                out var intent,
+                out var interactionError))
+        {
+            sender.RejectProtocol(
+                peer,
+                context,
+                "invalid_world_interaction",
+                interactionError);
+            return;
+        }
+
+        if (!context.WorldInteractionIntentQuota.TryConsume())
+        {
+            SendWorldInteractionResult(
+                peer,
+                new WorldInteractionAuthorityResult(
+                    null,
+                    new RealtimeWorldInteractionResult(
+                        intent.OperationId,
+                        intent.InteractionSessionId,
+                        intent.OperationKind,
+                        false,
+                        0,
+                        new RealtimeError(
+                            WorldInteractionIntentLimiter.RejectionCode,
+                            "World interaction intents exceeded the per-peer rate limit.")),
+                    null));
+            return;
+        }
+
+        if (context.AuthorityOperationQueue.Count
+            >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
+        {
+            SendWorldInteractionResult(
+                peer,
+                new WorldInteractionAuthorityResult(
+                    null,
+                    new RealtimeWorldInteractionResult(
+                        intent.OperationId,
+                        intent.InteractionSessionId,
+                        intent.OperationKind,
+                        false,
+                        0,
+                        new RealtimeError(
+                            "world_interaction_queue_full",
+                            "Too many authority operations are waiting for this peer.")),
+                    null));
+            return;
+        }
+
+        context.AuthorityOperationQueue.Enqueue(
+            new QueuedWorldInteractionOperation(intent));
+        StartNextAuthorityOperation(context);
+    }
+
+    private void HandleLeaveRequest(in RealtimeInboundMessage message)
+    {
+        var peer = message.Peer;
+        var context = message.Context;
+        var packet = message.Packet;
         if (!RealtimeProtocol.TryDecodeLeaveRequest(packet, out var simulationSessionId, out var error)
             || !Guid.TryParse(simulationSessionId, out var parsedSessionId))
         {
