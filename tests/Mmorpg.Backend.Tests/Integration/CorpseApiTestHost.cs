@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -8,7 +7,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Mmorpg.GameService.Auth;
 using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
 
@@ -42,24 +40,7 @@ internal sealed class CorpseApiTestHost : IAsyncDisposable
             [$"ServiceAuthentication:SimulationWorkers:{workerId}"] = workerSecret
         });
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddSingleton(context.DataSource);
-        builder.Services.AddSingleton(context.GameServiceConfig);
-        builder.Services.AddScoped<ItemTransactionService>();
-        builder.Services.AddScoped<CorpseService>();
-        builder.Services.AddApiProblemDetails();
-        builder.Services
-            .AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(
-                AuthenticationConstants.SimulationWorkerScheme,
-                _ => { });
-        builder.Services.AddAuthorization(options =>
-        {
-            options.AddPolicy(AuthenticationConstants.SimulationWorkerPolicy, policy =>
-            {
-                policy.AddAuthenticationSchemes(AuthenticationConstants.SimulationWorkerScheme);
-                policy.RequireAuthenticatedUser();
-            });
-        });
+        builder.Services.AddGameServiceForTests(context.DataSource, context.GameServiceConfiguration);
 
         var application = builder.Build();
         application.UseApiPipeline();

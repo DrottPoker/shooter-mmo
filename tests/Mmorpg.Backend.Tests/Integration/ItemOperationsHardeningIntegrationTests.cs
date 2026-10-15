@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameService.Items;
 
@@ -22,7 +23,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
             LockTimeout = TimeSpan.FromMilliseconds(100)
         };
         using var metrics = new ItemOperationsMetrics();
-        var service = new ItemTransactionService(context.DataSource, metrics, options);
+        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(context.Services, metrics, options);
         await using var blocker = await context.DataSource.OpenConnectionAsync();
         await using var blockerTransaction = await blocker.BeginTransactionAsync();
         await blocker.ExecuteAsync(
@@ -75,7 +76,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
             LockTimeout = TimeSpan.FromMilliseconds(100)
         };
         using var metrics = new ItemOperationsMetrics();
-        var service = new ItemTransactionService(context.DataSource, metrics, options);
+        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(context.Services, metrics, options);
         await using var blocker = await context.DataSource.OpenConnectionAsync();
         await using var blockerTransaction = await blocker.BeginTransactionAsync();
         await blocker.ExecuteAsync(
@@ -292,8 +293,8 @@ public sealed class ItemOperationsHardeningIntegrationTests
             CleanupBatchSize = 64
         };
         using var metrics = new ItemOperationsMetrics();
-        var transactionService = new ItemTransactionService(
-            context.DataSource,
+        var transactionService = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+            context.Services,
             metrics,
             options);
         var maintenance = new ItemOperationsMaintenanceService(
@@ -433,7 +434,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
         using var metrics = new ItemOperationsMetrics();
         var maintenance = new ItemOperationsMaintenanceService(
             context.DataSource,
-            new ItemTransactionService(context.DataSource, metrics, options),
+            ActivatorUtilities.CreateInstance<ItemTransactionService>(context.Services, metrics, options),
             options,
             metrics,
             NullLogger<ItemOperationsMaintenanceService>.Instance);

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Auth;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
@@ -361,14 +361,11 @@ public sealed class AuthSimulationFlowIntegrationTests
                 "Active Bot",
                 1),
             TimeProvider.System);
-        var shardService = new ShardService(
-            context.DataSource,
-            context.Configuration,
-            context.GameServiceConfig,
+        var shardService = ActivatorUtilities.CreateInstance<ShardService>(
+            context.Services,
             botAuthority);
-        var botPlacement = await new DevelopmentSimulationBotPlacementService(
-                context.DataSource,
-                context.GameServiceConfig)
+        var botPlacement = await context.Services
+            .GetRequiredService<DevelopmentSimulationBotPlacementService>()
             .SelectPlacementAsync(LocalShardId, CancellationToken.None);
         Assert.NotNull(botPlacement);
 
