@@ -85,7 +85,7 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
             return null;
         }
 
-        var existing = await connection.QuerySingleAsync<OperationRow>(new CommandDefinition(
+        var existing = await connection.QuerySingleOrDefaultAsync<OperationRow>(new CommandDefinition(
             """
             select
                 operation_kind as "OperationKind",
@@ -99,6 +99,16 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
             new { OperationId = operationId },
             transaction,
             cancellationToken: cancellationToken));
+        if (existing is null)
+        {
+            // Retention removed the conflicting row after the insert saw it. Nothing is
+            // claimed, so the caller retries the same operation id.
+            return ItemTransactionOutcomes.CreateRejected(
+                operationId,
+                operationKind,
+                ItemTransactionErrorCodes.ItemTransactionTimeout,
+                "The item transaction was aborted by concurrent database work. Retry it.");
+        }
 
         if (!string.Equals(existing.OperationKind, operationKind, StringComparison.Ordinal)
             || !string.Equals(existing.RequestHash, requestHash, StringComparison.Ordinal))
