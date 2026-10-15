@@ -76,7 +76,10 @@ heartbeat. AuthService locks the shard row and may persist the new binding only
 when there is no healthy assignment, pending unexpired join ticket, active
 unexpired simulation session, or open durable corpse. The same transaction
 creates the new assignment, so concurrent registration cannot bypass the
-check. A running shard cannot hot-swap Worlds.
+check. A running shard cannot hot-swap Worlds. A worker that stopped heartbeating is treated as gone once the heartbeat timeout
+passes. Its pending tickets and simulation sessions are released before the
+blockers are counted, so a crashed worker cannot block a rebind until its
+leases expire. Open durable corpses always block.
 
 A node also belongs to one fleet. AuthService permits an assignment only when
 the worker's node and target shard belong to the same fleet. After a successful
@@ -260,8 +263,11 @@ for SimulationWorker.
 It owns movement integration, carry-state encumbrance, sprint restrictions,
 gravity, facing, capsule collision, steps, slopes, bounds, and collision-data
 codecs. Its carry wrapper delegates capacity, hard-cap, and multiplier arithmetic
-to the pure WorldData item rules. It has no Unity, transport, database, or
-presentation dependency.
+to the pure WorldData item rules. A carry tuple above the hard cap is valid,
+because death can leave an involuntary overflow. Only voluntary transitions are
+limited, through the shared `EncumbranceRules.IsAllowedVoluntaryTransition` rule
+that AuthService and the Unity target advisor both use. It has no Unity,
+transport, database, or presentation dependency.
 
 ### WorldData
 
@@ -527,7 +533,7 @@ Unity presence and view state, temporary presentation, bidirectional item
 transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
 death generation remains a later gameplay boundary.
 
-Protocol version `11` retains the existing framing and adds corpse presence,
+Protocol version `11` (now `14`) retained the existing framing and added corpse presence,
 interaction, result, chunked view-state, and view-closure message types. Corpse
 chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
 The Phase 8 ordinary container-item swap continues to reuse its existing
@@ -551,7 +557,7 @@ topology layer:
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
   authoritative interaction, range and line-of-sight validation, NPC capability
   dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol uses version `13` for actor presence, interaction messages, and
+- GameProtocol uses version `14` for actor presence, interaction messages, and
   typed insurance or quest item-lifecycle actions
   compiled from the same source for .NET and Unity.
 - Unity owns advisory crosshair targeting, immutable replicated actor and
@@ -576,7 +582,8 @@ buckets keyed by activity profile, tier, and tick interval. No actor owns a
 task, timer, thread, database session, or HTTP poller. Actor visibility reuses
 the shared network-entity id allocator and existing spatial interest
 management. Bounded assignment-local despawn tombstones retain only the runtime
-identity required to send reliable actor-specific interest exits, and clear on
+identity required to send reliable actor-specific interest exits. Each interest
+pass drops a tombstone once no connection still sees the actor, and all clear on
 assignment reconstruction or worker shutdown.
 
 The typed capability registry maps every supported capability kind to one
@@ -709,11 +716,25 @@ Heartbeat processing is transactional:
 4. A timed-out or explicitly offline owner is released atomically.
 5. Pending tickets and active sessions for every superseded runtime are
    invalidated, including when the logical worker moves to another shard.
-6. A newer runtime may replace an older runtime for the same worker id.
+6. A newer runtime may replace an older live runtime for the same worker id.
+   Any runtime may replace one that is offline or past the heartbeat timeout,
+   because start times reported by different hosts are not comparable. A start
+   time more than ten minutes in the future is rejected. A replacement runtime
+   that has never owned the worker id treats `worker_runtime_changed` as "not
+   yet", keeps retrying while its transport rejects every connection, and takes
+   over once the previous lease expires. It stops only if another runtime stays
+   live beyond `RegistryAcquireTimeoutSeconds` (default 120). A runtime that has
+   owned the worker id and then receives `worker_runtime_changed` has lost
+   authority and stops at once.
 7. The exact active SimulationAssignment is created or retained.
 
 SimulationWorker renews a local registration lease from successful heartbeat
-responses. UDP joins are rejected without a valid lease. If the lease expires,
+responses. The local lease runs from the moment the heartbeat request was sent,
+minus a safety margin of at most one second, so it always ends before the
+database lease. Simulation session leases work the same way: AuthService
+returns the lease duration, and the worker sets each session deadline on its own
+clock from the request send time. Clock differences between hosts therefore
+never extend or cut short a lease. UDP joins are rejected without a valid lease. If the lease expires,
 or AuthService reports that the runtime lost authority, the process stops. This
 limits split-brain behavior during network partitions and allows another worker
 to take over after the authoritative heartbeat timeout.
@@ -806,7 +827,11 @@ revision, and collision revision.
 
 A reconnect is valid only for the exact active shard, worker, and runtime. It
 preserves session and entity state, rotates the secret simulation-session token,
-and disconnects the older peer generation.
+and disconnects the older peer generation. While the reconnect is still being
+finalized, the older peer only detaches its connection. It never removes the
+shared entity or carry state that the reconnecting client takes over. The reused
+entity resets its movement input sequence, because the new client generation
+starts its input sequence from the beginning.
 
 ### Leave, Disconnect, Expiry, And Failover
 
@@ -814,10 +839,18 @@ and disconnects the older peer generation.
 2. SimulationWorker releases the exact session token generation through
    AuthService.
 3. The worker removes the peer binding and entity and sends reliable despawn.
-4. Unexpected disconnect uses the same cleanup path.
-5. If release is unavailable, the database lease expires and local expiry
-   enforcement removes the session.
-6. Worker shutdown or authoritative failover releases its assignment, pending
+4. Unexpected disconnect uses the same cleanup path. The worker first drops the
+   local session, so its heartbeat stops renewing the lease, and then calls
+   release with two bounded retries.
+5. If release is unavailable, the database lease expires on its own because
+   nothing renews it. A join that is rejected during finalization releases its
+   session the same way. As a safety net, the worker releases any local session
+   that no peer has owned for twice the join handshake timeout.
+6. An unexpected failure while processing one packet or one completed
+   operation disconnects only that peer. The simulation loop and every other
+   player keep running. AuthService error codes and messages are normalized to
+   short printable text before they enter realtime protocol fields.
+7. Worker shutdown or authoritative failover releases its assignment, pending
    tickets, and bound sessions.
 
 ### Authoritative Movement
@@ -906,8 +939,9 @@ combat producer pending
    closes before AuthService loads the committed view. SimulationWorker applies
    returned carry only for custody-changing transfers, keeps the newest corpse
    revision when HTTP completions arrive out of order, encodes one targeted
-   delta, and reuses it for every viewer. Open and refresh snapshots return only
-   to their requester. Pure corpse rearrangement advances corpse, container,
+   delta, and reuses it for every other viewer. Open and refresh always return a
+   complete snapshot to their requester, even when a newer revision reaches the
+   existing viewers as a delta. Pure corpse rearrangement advances corpse, container,
    and item revisions without changing character carry or item-state revision.
    Unity refreshes stale bases and never applies optimistic custody.
 10. Expiry, invalidation, and not-found results close every affected view with a
@@ -928,7 +962,9 @@ combat producer pending
 
 Both backend processes load owned JSON, optional root `.env`, real environment
 variables, and command-line values in increasing precedence. Invalid application
-configuration fails before work is accepted.
+configuration fails before work is accepted. Configuration files are not
+reloaded while a process runs, so every value in use has passed startup
+validation; change a value by restarting the process.
 
 ## Health And Operations
 

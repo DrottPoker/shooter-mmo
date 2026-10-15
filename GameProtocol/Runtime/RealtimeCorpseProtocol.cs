@@ -669,10 +669,10 @@ namespace ShooterMmo.GameProtocol
         private const int MaximumCorpsePresentationKeyLength = 128;
         private const int MaximumCorpseSectionKindLength = 32;
         private const int MaximumCorpseSlotKindLength = 32;
-        private const int MaximumCorpseSlotTagLength = 64;
-        private const int MaximumCorpseSlotTags = 16;
-        private const int MaximumCorpseEquipmentSlotIdLength = 64;
-        private const int MaximumCorpseDefinitionIdLength = 128;
+        private const int MaximumCorpseSlotTagLength = RealtimeProtocolLimits.MaximumSlotTagLength;
+        private const int MaximumCorpseSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
+        private const int MaximumCorpseEquipmentSlotIdLength = RealtimeProtocolLimits.MaximumEquipmentSlotIdLength;
+        private const int MaximumCorpseDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
 
         public static byte[] EncodeCorpsePresenceSnapshotChunk(
             RealtimeCorpsePresenceSnapshotChunk chunk)

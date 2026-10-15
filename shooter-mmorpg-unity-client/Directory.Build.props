@@ -1,0 +1,7 @@
+<Project>
+  <!--
+    Stops MSBuild from importing the repository Directory.Build.props into the
+    project files Unity generates. Unity compiles the client itself, so the backend
+    lock-file, warnings-as-errors, and code-style settings must not apply here.
+  -->
+</Project>

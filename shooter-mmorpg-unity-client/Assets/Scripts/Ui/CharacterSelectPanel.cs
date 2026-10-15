@@ -22,6 +22,11 @@ namespace ShooterMmo.Ui
         private bool operationStepFailed;
         private Vector2 scrollPosition;
 
+        private void OnDestroy()
+        {
+            apiClient?.Dispose();
+        }
+
         private void Awake()
         {
             apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);

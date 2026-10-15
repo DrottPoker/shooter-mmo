@@ -1,3 +1,4 @@
+using AuthService.Auth;
 using AuthService.Characters;
 using AuthService.Config;
 using AuthService.Http;
@@ -21,7 +22,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(15, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(17, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -124,6 +125,57 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.False(heartbeatAfterRelease.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, heartbeatAfterRelease.StatusCode);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task RevokingAnotherAccountsSessionLeavesItsTicketsAndSimulationSessionsUntouched()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var attacker = await context.RegisterPlayerAsync(
+            "revoke-attacker@example.com",
+            "revoke_attacker",
+            "Revoke Attacker");
+        var victim = await context.RegisterPlayerAsync(
+            "revoke-victim@example.com",
+            "revoke_victim",
+            "Revoke Victim");
+
+        var join = await context.ShardService.CreateJoinTicketAsync(
+            victim.Account,
+            LocalShardId,
+            new JoinShardRequest(victim.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+
+        var revokeWithPendingTicket = await context.SessionService.RevokeAsync(
+            attacker.Registration.AccountId,
+            victim.Registration.SessionId,
+            AccountSessionRevocationReason.ManualRevoke,
+            CancellationToken.None);
+        Assert.True(revokeWithPendingTicket.Succeeded, revokeWithPendingTicket.Error?.Message);
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+
+        var revokeWithActiveSession = await context.SessionService.RevokeAsync(
+            attacker.Registration.AccountId,
+            victim.Registration.SessionId,
+            AccountSessionRevocationReason.ManualRevoke,
+            CancellationToken.None);
+        Assert.True(revokeWithActiveSession.Succeeded, revokeWithActiveSession.Error?.Message);
+        Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
+
+        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
+            consumed.Value!.SimulationSessionId,
+            LocalWorkerId,
+            Credential(consumed.Value.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        Assert.False(heartbeat.Value!.Released);
+        Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
+            victim.Registration.SessionToken,
+            CancellationToken.None));
     }
 
     [PostgresIntegrationFact]
@@ -250,6 +302,105 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(heartbeat.Value.ItemStateRevision, reconnect.Value.ItemStateRevision);
         Assert.Equal(heartbeat.Value.CarriedWeight, reconnect.Value.CarriedWeight);
         Assert.Equal(heartbeat.Value.CarryCapacity, reconnect.Value.CarryCapacity);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task RetriedJoinIsNotBlockedByTheAccountsOwnPendingTicket()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                MaxConnections = 1,
+                ActiveConnections = 0
+            },
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        var player = await context.RegisterPlayerAsync();
+
+        var firstAttempt = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(firstAttempt.Succeeded, firstAttempt.Error?.Message);
+
+        // The UDP join failed and the player clicks Join again on the full worker.
+        var retry = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+
+        Assert.True(retry.Succeeded, retry.Error?.Message);
+        Assert.Equal(1, await CountActiveTicketsAsync(context));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task PlayerPlacementCountsDevelopmentBotReservations()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                MaxConnections = 3,
+                ActiveConnections = 0
+            },
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        var botAuthority = new DevelopmentSimulationBotAuthority(
+            new DevelopmentSimulationBotOptions(
+                true,
+                new string('s', 32),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30),
+                "Active Bot",
+                1),
+            TimeProvider.System);
+        var shardService = new ShardService(
+            context.DataSource,
+            context.Configuration,
+            context.AuthServiceConfig,
+            botAuthority);
+        var botPlacement = await new DevelopmentSimulationBotPlacementService(
+                context.DataSource,
+                context.AuthServiceConfig)
+            .SelectPlacementAsync(LocalShardId, CancellationToken.None);
+        Assert.NotNull(botPlacement);
+
+        // Two bots reserve two of the three connections before either one connects.
+        for (var botIndex = 1; botIndex <= 2; botIndex++)
+        {
+            var botTicket = botAuthority.IssueTicket(
+                new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), botIndex, LocalShardId),
+                botPlacement);
+            Assert.True(botTicket.Succeeded, botTicket.Error?.Message);
+        }
+
+        var firstPlayer = await context.RegisterPlayerAsync();
+        var firstJoin = await shardService.CreateJoinTicketAsync(
+            firstPlayer.Account,
+            LocalShardId,
+            new JoinShardRequest(firstPlayer.Character.Id),
+            CancellationToken.None);
+        Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
+
+        var secondPlayer = await context.RegisterPlayerAsync(
+            "bot-capacity@example.com",
+            "bot_capacity",
+            "Bot Capacity");
+        var secondJoin = await shardService.CreateJoinTicketAsync(
+            secondPlayer.Account,
+            LocalShardId,
+            new JoinShardRequest(secondPlayer.Character.Id),
+            CancellationToken.None);
+
+        Assert.False(secondJoin.Succeeded);
+        Assert.Equal("shard_unavailable", secondJoin.Error!.Code);
     }
 
     [PostgresIntegrationFact]
@@ -415,7 +566,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(15, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(17, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             1,
             await context.ExecuteScalarIntAsync(
@@ -538,6 +689,59 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         Assert.Equal(1, authenticatedLoginCount);
         Assert.Equal(1, await CountActiveAccountSessionsAsync(context));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task ReplacementRuntimeWithASlowerClockTakesOverAnOfflineOrSilentRuntime()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var first = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-first-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddMinutes(-2)
+            },
+            CancellationToken.None);
+        Assert.True(first.Succeeded, first.Error?.Message);
+        var offline = await context.SimulationWorkerRegistryService.MarkOfflineAsync(
+            LocalWorkerId,
+            new SimulationWorkerOfflineRequest("clock-first-runtime"),
+            CancellationToken.None);
+        Assert.True(offline.Succeeded, offline.Error?.Message);
+
+        // The replacement host clock is an hour behind the previous host clock.
+        var replacement = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-replacement-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddHours(-1)
+            },
+            CancellationToken.None);
+        Assert.True(replacement.Succeeded, replacement.Error?.Message);
+        Assert.Equal("clock-replacement-runtime", replacement.Value!.RuntimeId);
+
+        // A runtime that stops heartbeating can be replaced the same way.
+        await context.ExecuteAsync(
+            "update simulation_workers set last_heartbeat_at = now() - interval '1 hour';");
+        var afterSilence = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-third-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddHours(-2)
+            },
+            CancellationToken.None);
+        Assert.True(afterSilence.Succeeded, afterSilence.Error?.Message);
+
+        var future = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest("clock-future-runtime") with
+            {
+                StartedAt = DateTime.UtcNow.AddHours(1)
+            },
+            CancellationToken.None);
+        Assert.False(future.Succeeded);
+        Assert.Equal("invalid_worker_started_at", future.Error!.Code);
     }
 
     [PostgresIntegrationFact]

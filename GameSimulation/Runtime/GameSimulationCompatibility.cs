@@ -2,6 +2,8 @@ namespace ShooterMmo.GameSimulation
 {
     public static class GameSimulationCompatibility
     {
-        public const string Revision = "movement-simulation-v3";
+        // Bump whenever shared movement or collision behavior changes. The movement
+        // determinism golden test pins this value to the expected fingerprint.
+        public const string Revision = "movement-simulation-v4";
     }
 }

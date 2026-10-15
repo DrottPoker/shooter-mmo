@@ -481,6 +481,109 @@ public sealed class RealtimeSimulationServiceTests
         }
     }
 
+    [Fact]
+    public async Task DisconnectWithUnavailableReleaseStopsRenewingTheLocalLease()
+    {
+        var port = FindAvailableUdpPort();
+        var authHandler = new UnavailableReleaseAuthHandler();
+        using var httpClient = new HttpClient(authHandler)
+        {
+            BaseAddress = new Uri("http://auth-service.test")
+        };
+        var authClient = new AuthServiceClient(httpClient);
+        var sessionStore = new ActiveSimulationSessionStore();
+        var carryStateStore = new CarryStateStore();
+        var config = CreateConfig(port);
+        var identity = new SimulationWorkerIdentity(
+            "test-runtime",
+            DateTime.UtcNow.AddMinutes(-1));
+        var staticCollisionWorld = CollisionTestWorldFactory.Create();
+        var collisionWorld = new CompositeCollisionWorld(
+            staticCollisionWorld,
+            new DynamicCollisionWorld(staticCollisionWorld.ChunkSize));
+        var server = new RealtimeSimulationService(
+            config,
+            new SimulationJoinService(
+                authClient,
+                sessionStore,
+                carryStateStore,
+                config,
+                identity),
+            new SimulationSessionReleaseService(
+                authClient,
+                sessionStore,
+                carryStateStore,
+                [TimeSpan.Zero]),
+            sessionStore,
+            carryStateStore,
+            new SimulationItemInteractionService(
+                authClient,
+                new ItemInteractionAccessService(config)),
+            new SimulationCorpseInteractionService(authClient),
+            new DurableCorpseStore(TimeProvider.System),
+            new CorpseViewerRegistry(),
+            new SimulationEntityRegistry(),
+            new ConnectionEntityBindingRegistry(),
+            new RealtimeTransportReadiness(),
+            staticCollisionWorld,
+            collisionWorld,
+            NullLogger<RealtimeSimulationService>.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await server.StartAsync(timeout.Token);
+        var joinAccepted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var listener = new EventBasedNetListener();
+        var client = new NetManager(listener)
+        {
+            ChannelsCount = RealtimeProtocol.ChannelCount
+        };
+        listener.PeerConnectedEvent += peer => peer.Send(
+            RealtimeProtocol.EncodeJoinRequest("unavailable-release-ticket"),
+            DeliveryMethod.ReliableOrdered);
+        listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
+        {
+            var packet = reader.GetRemainingBytes();
+            reader.Recycle();
+            if (RealtimeProtocol.TryReadMessageType(packet, out var messageType)
+                && messageType == RealtimeMessageType.JoinAccepted)
+            {
+                joinAccepted.TrySetResult();
+            }
+        };
+
+        try
+        {
+            Assert.True(client.Start());
+            client.Connect("127.0.0.1", port, RealtimeProtocol.ConnectionKey);
+            while (!joinAccepted.Task.IsCompleted)
+            {
+                client.PollEvents();
+                await Task.Delay(10, timeout.Token);
+            }
+
+            Assert.Single(sessionStore.ListActiveSessions());
+            client.DisconnectAll();
+            while (sessionStore.ListActiveSessions().Count > 0 || authHandler.ReleaseCount < 2)
+            {
+                client.PollEvents();
+                await Task.Delay(10, timeout.Token);
+            }
+
+            // The release failed twice, yet the heartbeat no longer sees a lease to renew.
+            Assert.Empty(sessionStore.ListActiveSessions());
+            Assert.False(carryStateStore.TryGet(
+                authHandler.CharacterId,
+                authHandler.SimulationSessionId,
+                out _));
+        }
+        finally
+        {
+            client.Stop();
+            await server.StopAsync(CancellationToken.None);
+            server.Dispose();
+        }
+    }
+
     private static SimulationWorkerConfig CreateConfig(int port)
     {
         return new SimulationWorkerConfig(
@@ -561,6 +664,7 @@ public sealed class RealtimeSimulationServiceTests
                     PlayerEncumbranceRules.BaseCharacterCapacity,
                     false)
                 {
+                    SessionLeaseDurationMilliseconds = 30_000,
                     IsSyntheticBot = isSyntheticBot
                 }));
             }
@@ -578,7 +682,10 @@ public sealed class RealtimeSimulationServiceTests
                     0,
                     0,
                     PlayerEncumbranceRules.BaseCharacterCapacity,
-                    true)));
+                    true)
+                {
+                    LeaseDurationMilliseconds = 30_000
+                }));
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -590,6 +697,62 @@ public sealed class RealtimeSimulationServiceTests
             {
                 Content = JsonContent.Create(value)
             };
+        }
+    }
+
+    private sealed class UnavailableReleaseAuthHandler : HttpMessageHandler
+    {
+        private int releaseCount;
+
+        public Guid CharacterId { get; } = Guid.NewGuid();
+
+        public Guid SimulationSessionId { get; } = Guid.NewGuid();
+
+        public int ReleaseCount => Volatile.Read(ref releaseCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/simulation-join-tickets/consume")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new ConsumedSimulationJoinTicketResponse(
+                        Guid.NewGuid(),
+                        CharacterId,
+                        "Release Hero",
+                        "local-shard-1",
+                        "development-world-1",
+                        "local-simulation-worker-1",
+                        "test-runtime",
+                        SimulationSessionId,
+                        "unavailable-release-session-token",
+                        DateTime.UtcNow.AddSeconds(30),
+                        0,
+                        0,
+                        PlayerEncumbranceRules.BaseCharacterCapacity,
+                        false)
+                    {
+                        SessionLeaseDurationMilliseconds = 30_000
+                    })
+                });
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref releaseCount);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        code = "database_unavailable",
+                        detail = "The database is unavailable."
+                    })
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
     }
 
@@ -625,7 +788,10 @@ public sealed class RealtimeSimulationServiceTests
                     0,
                     60,
                     200,
-                    false));
+                    false)
+                {
+                    SessionLeaseDurationMilliseconds = 30_000
+                });
             }
 
             if (request.RequestUri.AbsolutePath.EndsWith(
@@ -673,7 +839,10 @@ public sealed class RealtimeSimulationServiceTests
                     1,
                     0,
                     200,
-                    true));
+                    true)
+                {
+                    LeaseDurationMilliseconds = 30_000
+                });
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);

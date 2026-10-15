@@ -4,10 +4,14 @@ using ShooterMmo.Collision;
 using ShooterMmo.Config;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Gameplay;
+using ShooterMmo.WorldActors;
+using ShooterMmo.WorldData.Actors;
+using ShooterMmo.WorldData.Editor.Actors;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 namespace ShooterMmo.Tests.EditMode
@@ -393,20 +397,64 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
-        public void DevelopmentWorldTwoMaterialsUseTheSupportedStandardShader()
+        public void ProjectRendersWithUrpOnEveryQualityLevel()
         {
-            var materialGuids = AssetDatabase.FindAssets(
-                "t:Material",
-                new[] { DevelopmentWorld2MaterialDirectory });
+            Assert.That(GraphicsSettings.defaultRenderPipeline, Is.Not.Null);
+            Assert.That(
+                GraphicsSettings.defaultRenderPipeline.GetType().Name,
+                Is.EqualTo("UniversalRenderPipelineAsset"));
+            for (var level = 0; level < QualitySettings.names.Length; level++)
+            {
+                var levelPipeline = QualitySettings.GetRenderPipelineAssetAt(level);
+                Assert.That(levelPipeline, Is.Not.Null, QualitySettings.names[level]);
+                Assert.That(
+                    levelPipeline.GetType().Name,
+                    Is.EqualTo("UniversalRenderPipelineAsset"),
+                    QualitySettings.names[level]);
+            }
+        }
 
-            Assert.That(materialGuids, Has.Length.EqualTo(8));
+        [Test]
+        public void EveryAuthoredActorArchetypeHasAPresentationPrefab()
+        {
+            var registry = Resources.Load<WorldActorPresentationRegistry>(
+                WorldActorPresentationController.RegistryResourcePath);
+            Assert.That(registry, Is.Not.Null);
+            var workspace = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault()).Load();
+            var compiled = WorldActorCompiler.Compile(
+                workspace.Catalog.ToDomain(),
+                workspace.Spawns.ToDomain());
+
+            Assert.That(compiled.Actors, Is.Not.Empty);
+            foreach (var actor in compiled.Actors)
+            {
+                Assert.That(
+                    registry.TryResolve(actor.PresentationArchetypeId, out var prefab),
+                    Is.True,
+                    actor.PresentationArchetypeId);
+                // Presentation never takes part in physics or crosshair raycasts.
+                Assert.That(
+                    prefab.GetComponentsInChildren<Collider>(true),
+                    Is.Empty,
+                    actor.PresentationArchetypeId);
+            }
+        }
+
+        [Test]
+        public void EveryProjectMaterialUsesTheUrpLitShader()
+        {
+            Assert.That(
+                AssetDatabase.FindAssets("t:Material", new[] { DevelopmentWorld2MaterialDirectory }),
+                Has.Length.EqualTo(8));
+            var materialGuids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
+            Assert.That(materialGuids, Is.Not.Empty);
             foreach (var materialGuid in materialGuids)
             {
                 var path = AssetDatabase.GUIDToAssetPath(materialGuid);
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 Assert.That(material, Is.Not.Null, path);
                 Assert.That(material.shader, Is.Not.Null, path);
-                Assert.That(material.shader.name, Is.EqualTo("Standard"), path);
+                Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"), path);
             }
         }
 

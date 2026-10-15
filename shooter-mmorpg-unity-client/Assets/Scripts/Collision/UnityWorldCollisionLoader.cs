@@ -81,9 +81,7 @@ namespace ShooterMmo.Collision
                     expectedWorldId,
                     StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(manifest.Revision)
-                || float.IsNaN(manifest.ChunkSize)
-                || float.IsInfinity(manifest.ChunkSize)
-                || manifest.ChunkSize <= 0f
+                || !CollisionDataFormat.IsValidChunkSize(manifest.ChunkSize)
                 || manifest.Chunks == null
                 || manifest.Chunks.Length == 0)
             {
@@ -101,6 +99,15 @@ namespace ShooterMmo.Collision
                 {
                     throw new InvalidDataException("Collision manifest contains an invalid chunk.");
                 }
+            }
+
+            if (!string.Equals(
+                    CollisionWorldCompiler.ComputeManifestRevision(manifest),
+                    manifest.Revision,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Collision manifest revision does not match its chunk content.");
             }
         }
     }

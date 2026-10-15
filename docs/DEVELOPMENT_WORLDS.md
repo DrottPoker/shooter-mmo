@@ -75,11 +75,10 @@ coordinates without creating or changing actor content.
 | Teal | Reserved southeast expansion area |
 | Cyan | Visual-only actor placement guides |
 
-The palette builder selects its shader from the active render pipeline. It uses
-Unity's Standard shader while the current checked-in render configuration falls
-back to the Built-in Render Pipeline, and switches to URP/Lit only when a valid
-URP Pipeline Asset is active. The installed URP package alone does not make URP
-active, and URP/Lit materials render magenta without an active pipeline asset.
+The client renders with the Universal Render Pipeline, so the palette builder
+creates `Universal Render Pipeline/Lit` materials. It still selects the shader
+from the active render pipeline and would fall back to the Standard shader only
+if no URP Pipeline Asset were active.
 
 ## Rebuild and Authoring Workflow
 
@@ -90,7 +89,9 @@ touching `Gameplay`, actor authoring, or actor runtime content.
 2. Open `Assets/Scenes/DevelopmentWorld2.unity`.
 3. To restore the complete checked-in layout, select `Shooter MMO > Tools >
    Development Worlds > Rebuild Development World 2 Environment` and confirm
-   `Rebuild`. This intentionally replaces every child under `Environment`.
+   `Rebuild`. This intentionally replaces every child under `Environment`. If
+   an open scene has unsaved changes, Unity first asks whether to save them,
+   and cancelling stops the rebuild.
 4. To customize the greybox, edit the generated children under `Environment`.
    Keep authoritative geometry as enabled, non-trigger BoxColliders. Decorative
    route surfaces and cyan guides must remain collider-free.

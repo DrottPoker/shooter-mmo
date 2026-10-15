@@ -25,6 +25,7 @@ public sealed class AuthServiceClientTests
             simulationSessionId,
             simulationSessionToken = "simulation-session-token",
             sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
             itemStateRevision = 12,
             carriedWeight = 210,
             carryCapacity = 200,
@@ -62,6 +63,7 @@ public sealed class AuthServiceClientTests
             workerId = "local-simulation-worker-1",
             workerRuntimeId = "runtime-1",
             expiresAt = DateTime.UtcNow.AddMinutes(1),
+            leaseDurationMilliseconds = 30_000,
             itemStateRevision = 12,
             carriedWeight = 210,
             carryCapacity = 200,
@@ -657,7 +659,7 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
-    public async Task CorpseClientRejectsCrossShardViewAndOverHardCapMutation()
+    public async Task CorpseClientRejectsCrossShardViewAndInvalidCarryMutation()
     {
         var corpseId = Guid.NewGuid();
         var characterId = Guid.NewGuid();
@@ -696,7 +698,7 @@ public sealed class AuthServiceClientTests
             DestinationContainerId: Guid.NewGuid(),
             ExpectedDestinationContainerRevision: 1,
             DestinationSlotIndex: 0);
-        var hardCapHandler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        var invalidCarryHandler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
             transaction = new
             {
@@ -710,7 +712,7 @@ public sealed class AuthServiceClientTests
                     {
                         characterId,
                         revision = 2,
-                        carriedWeight = 281,
+                        carriedWeight = -1,
                         carryCapacity = 200
                     }
                 },
@@ -722,7 +724,7 @@ public sealed class AuthServiceClientTests
             corpse = CreateCorpseViewPayload(corpseId, characterId, "local-shard-1", 2)
         }));
 
-        var mutation = await CreateClient(hardCapHandler).MutateCorpseAsync(
+        var mutation = await CreateClient(invalidCarryHandler).MutateCorpseAsync(
             Guid.NewGuid(),
             corpseId,
             mutationRequest,
@@ -772,7 +774,7 @@ public sealed class AuthServiceClientTests
     }
 
     [Fact]
-    public async Task CarryStateAboveTheHardCapReturnsBadGateway()
+    public async Task CarryStateAboveTheHardCapIsAcceptedForAnInvoluntaryOverflow()
     {
         var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
@@ -786,8 +788,37 @@ public sealed class AuthServiceClientTests
             simulationSessionId = Guid.NewGuid(),
             simulationSessionToken = "simulation-session-token",
             sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
             itemStateRevision = 1,
-            carriedWeight = 281,
+            carriedWeight = 348,
+            carryCapacity = 200,
+            isReconnect = false
+        }));
+
+        var result = await ConsumeAsync(CreateClient(handler));
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(348, result.Value!.CarriedWeight);
+    }
+
+    [Fact]
+    public async Task NegativeCarriedWeightReturnsBadGateway()
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            accountId = Guid.NewGuid(),
+            characterId = Guid.NewGuid(),
+            characterName = "Hero One",
+            shardId = "local-shard-1",
+            worldId = "development-world-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId = Guid.NewGuid(),
+            simulationSessionToken = "simulation-session-token",
+            sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
+            itemStateRevision = 1,
+            carriedWeight = -1,
             carryCapacity = 200,
             isReconnect = false
         }));
@@ -822,6 +853,32 @@ public sealed class AuthServiceClientTests
         Assert.Equal(
             "The ticket belongs to another worker runtime.",
             result.Error.Message);
+    }
+
+    [Theory]
+    [InlineData("item_slot_occupied", "item_slot_occupied")]
+    [InlineData("", "auth_service_rejected")]
+    [InlineData("Not-A-Code", "auth_service_rejected")]
+    [InlineData("a_code_that_is_much_longer_than_the_sixty_four_character_protocol_limit", "auth_service_rejected")]
+    public void ForwardedErrorCodesAlwaysFitTheRealtimeProtocol(string code, string expected)
+    {
+        Assert.Equal(expected, AuthServiceClient.NormalizeForwardedErrorCode(code));
+    }
+
+    [Fact]
+    public void ForwardedErrorMessagesAlwaysFitTheRealtimeProtocol()
+    {
+        Assert.Equal(
+            "AuthService rejected the request.",
+            AuthServiceClient.NormalizeForwardedErrorMessage(""));
+        Assert.Equal(
+            "AuthService rejected the request.",
+            AuthServiceClient.NormalizeForwardedErrorMessage(null));
+        Assert.Equal("Slot ? is taken.", AuthServiceClient.NormalizeForwardedErrorMessage("Slot å is taken."));
+        Assert.Equal(256, AuthServiceClient.NormalizeForwardedErrorMessage(new string('x', 2_000)).Length);
+        RealtimeProtocol.EncodeServerDisconnect(
+            AuthServiceClient.NormalizeForwardedErrorCode("Bad Code"),
+            AuthServiceClient.NormalizeForwardedErrorMessage(new string('å', 2_000)));
     }
 
     private static Task<AuthServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeAsync(

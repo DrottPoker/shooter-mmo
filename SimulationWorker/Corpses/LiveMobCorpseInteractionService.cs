@@ -1,12 +1,14 @@
 using ShooterMmo.GameProtocol;
 using SimulationWorker.Auth;
+using SimulationWorker.Items;
 using SimulationWorker.Sessions;
 
 namespace SimulationWorker.Corpses;
 
 public sealed class LiveMobCorpseInteractionService(
     LiveMobCorpseStore corpseStore,
-    AuthServiceClient authServiceClient)
+    AuthServiceClient authServiceClient,
+    CarryStateStore carryStateStore)
 {
     public Task<SimulationCorpseInteractionResult> OpenAsync(
         ActiveSimulationSession session,
@@ -115,13 +117,27 @@ public sealed class LiveMobCorpseInteractionService(
                 "Live Mob loot must target one empty player inventory slot as a whole item.");
         }
 
+        // The session object is the join-time snapshot; carry changes after the join
+        // are only in the carry store, and AuthService rejects any stale revision.
+        if (!carryStateStore.TryGet(
+                session.CharacterId,
+                session.SimulationSessionId,
+                out var currentCarryState))
+        {
+            return SimulationCorpseInteractionResult.Rejected(
+                intent,
+                "carry_state_missing",
+                "The authoritative carry state is no longer active.",
+                requiresInventoryRefresh: true);
+        }
+
         var response = await authServiceClient.GrantLiveMobLootAsync(
             session.SimulationSessionId,
             new SimulationMobLootGrantRequest(
                 lootEntry.GrantId,
                 session.AccountId,
                 session.CharacterId,
-                session.CarryState.ItemStateRevision,
+                currentCarryState!.ItemStateRevision,
                 session.WorkerId,
                 session.WorkerRuntimeId,
                 session.ShardId,
@@ -152,7 +168,8 @@ public sealed class LiveMobCorpseInteractionService(
         RealtimeCorpseInteractionIntent intent,
         SimulationWorkerErrorResponse error)
     {
-        var requiresRefresh = error.Code is "item_state_conflict"
+        var requiresRefresh = AuthServiceOutcome.IsUncertain(error.Code)
+            || error.Code is "item_state_conflict"
             or "item_operation_conflict"
             or "item_slot_occupied"
             or "item_stack_limit_exceeded";

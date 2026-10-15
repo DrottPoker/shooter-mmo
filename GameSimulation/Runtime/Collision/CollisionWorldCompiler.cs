@@ -129,9 +129,7 @@ namespace ShooterMmo.GameSimulation
                 throw new InvalidDataException("Collision authoring world id is required.");
             }
 
-            if (float.IsNaN(authoring.ChunkSize)
-                || float.IsInfinity(authoring.ChunkSize)
-                || authoring.ChunkSize <= 0f)
+            if (!CollisionDataFormat.IsValidChunkSize(authoring.ChunkSize))
             {
                 throw new InvalidDataException("Collision authoring chunk size is invalid.");
             }
@@ -154,14 +152,20 @@ namespace ShooterMmo.GameSimulation
                     box.Bounds.Minimum.X,
                     authoring.ChunkSize);
                 var maximumX = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    box.Bounds.Maximum.X - ChunkMaximumEpsilon,
+                    (float)(box.Bounds.Maximum.X - ChunkMaximumEpsilon),
                     authoring.ChunkSize);
                 var minimumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
                     box.Bounds.Minimum.Z,
                     authoring.ChunkSize);
                 var maximumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    box.Bounds.Maximum.Z - ChunkMaximumEpsilon,
+                    (float)(box.Bounds.Maximum.Z - ChunkMaximumEpsilon),
                     authoring.ChunkSize);
+                if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
+                    > CollisionDataFormat.MaximumChunksPerBox)
+                {
+                    throw new InvalidDataException(
+                        "Collision box '" + box.StableId + "' spans too many chunks.");
+                }
 
                 for (var z = minimumZ; z <= maximumZ; z++)
                 {
@@ -183,8 +187,8 @@ namespace ShooterMmo.GameSimulation
             foreach (var pair in boxesByChunk.OrderBy(value => value.Key))
             {
                 DecodeChunkKey(pair.Key, out var x, out var z);
-                var minimumX = x * authoring.ChunkSize;
-                var minimumZ = z * authoring.ChunkSize;
+                var minimumX = (float)(x * authoring.ChunkSize);
+                var minimumZ = (float)(z * authoring.ChunkSize);
                 var bounds = new CollisionAabb(
                     new SimulationVector3(minimumX, float.MinValue, minimumZ),
                     new SimulationVector3(
@@ -256,6 +260,23 @@ namespace ShooterMmo.GameSimulation
             }
 
             return result == 0 ? 1UL : result;
+        }
+
+        // The revision is derived from the manifest content, so a loader can detect a
+        // manifest whose revision was edited or left stale after a partial bake.
+        public static string ComputeManifestRevision(CollisionWorldManifest manifest)
+        {
+            if (manifest == null)
+            {
+                throw new ArgumentNullException(nameof(manifest));
+            }
+
+            if (manifest.Chunks == null || string.IsNullOrWhiteSpace(manifest.WorldId))
+            {
+                throw new InvalidDataException("Collision manifest content is incomplete.");
+            }
+
+            return ComputeRevision(manifest.WorldId.Trim(), manifest.ChunkSize, manifest.Chunks);
         }
 
         private static string ComputeRevision(

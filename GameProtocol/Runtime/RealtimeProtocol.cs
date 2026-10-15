@@ -797,16 +797,28 @@ namespace ShooterMmo.GameProtocol
         public string Message { get; }
     }
 
+    // Wire limits that authored content must fit. Content compilers keep their own
+    // limits, and a compatibility test checks that they never exceed these.
+    public static class RealtimeProtocolLimits
+    {
+        public const int MaximumIdentifierLength = 128;
+        public const int MaximumNameLength = 128;
+        public const int MaximumEquipmentSlotIdLength = 64;
+        public const int MaximumSlotTagLength = 64;
+        public const int MaximumSlotTags = 16;
+        public const int MaximumDefinitionIdLength = 128;
+    }
+
     public static partial class RealtimeProtocol
     {
         private const uint Magic = 0x4F4D4D53;
         private const int MaximumJoinTicketLength = 1024;
-        private const int MaximumIdentifierLength = 128;
-        private const int MaximumNameLength = 128;
+        private const int MaximumIdentifierLength = RealtimeProtocolLimits.MaximumIdentifierLength;
+        private const int MaximumNameLength = RealtimeProtocolLimits.MaximumNameLength;
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
-        private const int MaximumEquipmentSlotIdLength = 64;
+        private const int MaximumEquipmentSlotIdLength = RealtimeProtocolLimits.MaximumEquipmentSlotIdLength;
         private const int MaximumItemOperationItems = 24;
         private const int MaximumItemResultItemRevisions = 32;
         private const int MaximumItemResultContainerRevisions = 8;
@@ -2700,20 +2712,13 @@ namespace ShooterMmo.GameProtocol
                 && settings.MaximumPenetrationIterations <= 16;
         }
 
+        // Weight above the hard cap is valid: death can leave an involuntary overflow.
         private static bool IsValidCarryState(RealtimeCarryState carryState)
         {
-            if (carryState == null
-                || carryState.ItemStateRevision < 0
-                || carryState.CarriedWeight < 0
-                || carryState.CarryCapacity <= 0)
-            {
-                return false;
-            }
-
-            var extraCapacity = ((carryState.CarryCapacity / 5) * 2)
-                + (((carryState.CarryCapacity % 5) * 2) / 5);
-            return carryState.CarryCapacity > long.MaxValue - extraCapacity
-                || carryState.CarriedWeight <= carryState.CarryCapacity + extraCapacity;
+            return carryState != null
+                && carryState.ItemStateRevision >= 0
+                && carryState.CarriedWeight >= 0
+                && carryState.CarryCapacity > 0;
         }
 
         private static bool IsValidPlayerState(RealtimePlayerState state)

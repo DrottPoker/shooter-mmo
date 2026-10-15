@@ -18,7 +18,8 @@ public sealed record ItemOperationsMetricsSnapshot(
     long RecoveryBacklog,
     long ExpiredRecoveryDeliveries,
     long RemovedClosedCorpses,
-    long RemovedAuditOperations);
+    long RemovedAuditOperations,
+    long RemovedClaimedRecoveryDeliveries = 0);
 
 public sealed class ItemOperationsMetrics : IDisposable
 {
@@ -55,6 +56,7 @@ public sealed class ItemOperationsMetrics : IDisposable
     private long expiredRecoveryDeliveries;
     private long removedClosedCorpses;
     private long removedAuditOperations;
+    private long removedClaimedRecoveryDeliveries;
 
     public ItemOperationsMetrics()
     {
@@ -184,6 +186,9 @@ public sealed class ItemOperationsMetrics : IDisposable
             case "audit_operation":
                 Interlocked.Add(ref removedAuditOperations, count);
                 break;
+            case "claimed_recovery_delivery":
+                Interlocked.Add(ref removedClaimedRecoveryDeliveries, count);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(
                     nameof(target),
@@ -213,7 +218,8 @@ public sealed class ItemOperationsMetrics : IDisposable
             Volatile.Read(ref recoveryBacklog),
             Volatile.Read(ref expiredRecoveryDeliveries),
             Volatile.Read(ref removedClosedCorpses),
-            Volatile.Read(ref removedAuditOperations));
+            Volatile.Read(ref removedAuditOperations),
+            Volatile.Read(ref removedClaimedRecoveryDeliveries));
     }
 
     public void Dispose()

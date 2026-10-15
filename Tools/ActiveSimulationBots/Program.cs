@@ -7,7 +7,7 @@ configuration
         Path.Combine(AppContext.BaseDirectory, "appsettings.json"),
         optional: false,
         reloadOnChange: false)
-    .AddOptionalDotEnvFile(Directory.GetCurrentDirectory())
+    .AddOptionalDotEnvFile(Directory.GetCurrentDirectory(), AppContext.BaseDirectory)
     .AddEnvironmentVariables()
     .AddCommandLine(args);
 

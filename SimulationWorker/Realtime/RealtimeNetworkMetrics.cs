@@ -36,6 +36,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     private long sentPackets;
     private long sentBytes;
     private long quotaRejectedPackets;
+    private long rejectedConnections;
     private long droppedSnapshotPackets;
     private long backpressureDroppedSnapshotPackets;
     private long acceptedJoins;
@@ -56,6 +57,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         meter.CreateObservableCounter("simulation_worker.realtime.sent.packets", () => Volatile.Read(ref sentPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.sent.bytes", () => Volatile.Read(ref sentBytes));
         meter.CreateObservableCounter("simulation_worker.realtime.quota_rejected.packets", () => Volatile.Read(ref quotaRejectedPackets));
+        meter.CreateObservableCounter("simulation_worker.realtime.connections.rejected", () => Volatile.Read(ref rejectedConnections));
         meter.CreateObservableCounter("simulation_worker.realtime.snapshot_dropped.packets", () => Volatile.Read(ref droppedSnapshotPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.snapshot_backpressure_dropped.packets", () => Volatile.Read(ref backpressureDroppedSnapshotPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.joins.accepted", () => Volatile.Read(ref acceptedJoins));
@@ -92,6 +94,8 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     }
 
     public void RecordQuotaRejected() => Interlocked.Increment(ref quotaRejectedPackets);
+
+    public void RecordConnectionRejected() => Interlocked.Increment(ref rejectedConnections);
 
     public void RecordSnapshotDropped(int packetCount = 1)
     {

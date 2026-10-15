@@ -1,18 +1,46 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
 namespace ShooterMmo.Api
 {
-    public sealed class ShooterMmoApiClient
+    // Owners dispose the client when they are destroyed. Unity stops a coroutine without
+    // disposing its iterator, so a request still in flight would otherwise never release
+    // its native resources.
+    public sealed class ShooterMmoApiClient : IDisposable
     {
         private readonly int timeoutSeconds;
+        private readonly HashSet<UnityWebRequest> activeRequests = new HashSet<UnityWebRequest>();
+        private bool disposed;
 
         public ShooterMmoApiClient(int timeoutSeconds)
         {
             this.timeoutSeconds = Mathf.Clamp(timeoutSeconds, 1, 120);
+        }
+
+        public int ActiveRequestCount
+        {
+            get { return activeRequests.Count; }
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            foreach (var request in activeRequests)
+            {
+                request.Abort();
+                request.Dispose();
+            }
+
+            activeRequests.Clear();
         }
 
         public IEnumerator Register(
@@ -215,7 +243,8 @@ namespace ShooterMmo.Api
             Action<T> onSuccess,
             Action<ShooterMmoApiError> onError)
         {
-            using (var request = CreateRequest(method, url, json, sessionToken))
+            var request = CreateRequest(method, url, json, sessionToken);
+            try
             {
                 yield return request.SendWebRequest();
 
@@ -251,6 +280,10 @@ namespace ShooterMmo.Api
 
                 onSuccess(response);
             }
+            finally
+            {
+                Release(request);
+            }
         }
 
         private IEnumerator SendArray<T>(
@@ -261,7 +294,8 @@ namespace ShooterMmo.Api
             Action<T[]> onSuccess,
             Action<ShooterMmoApiError> onError)
         {
-            using (var request = CreateRequest(method, url, json, sessionToken))
+            var request = CreateRequest(method, url, json, sessionToken);
+            try
             {
                 yield return request.SendWebRequest();
 
@@ -280,6 +314,10 @@ namespace ShooterMmo.Api
 
                 onSuccess(result);
             }
+            finally
+            {
+                Release(request);
+            }
         }
 
         private IEnumerator SendEmpty(
@@ -290,7 +328,8 @@ namespace ShooterMmo.Api
             Action onSuccess,
             Action<ShooterMmoApiError> onError)
         {
-            using (var request = CreateRequest(method, url, json, sessionToken))
+            var request = CreateRequest(method, url, json, sessionToken);
+            try
             {
                 yield return request.SendWebRequest();
 
@@ -302,6 +341,18 @@ namespace ShooterMmo.Api
 
                 onSuccess();
             }
+            finally
+            {
+                Release(request);
+            }
+        }
+
+        private void Release(UnityWebRequest request)
+        {
+            if (activeRequests.Remove(request))
+            {
+                request.Dispose();
+            }
         }
 
         private UnityWebRequest CreateRequest(
@@ -310,6 +361,11 @@ namespace ShooterMmo.Api
             string json,
             string sessionToken)
         {
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(ShooterMmoApiClient));
+            }
+
             var request = new UnityWebRequest(url, method)
             {
                 downloadHandler = new DownloadHandlerBuffer(),
@@ -330,6 +386,7 @@ namespace ShooterMmo.Api
                 request.SetRequestHeader("Authorization", "Bearer " + sessionToken);
             }
 
+            activeRequests.Add(request);
             return request;
         }
 

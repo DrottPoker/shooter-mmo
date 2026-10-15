@@ -22,11 +22,16 @@ namespace ShooterMmo.GameSimulation
                 throw new ArgumentOutOfRangeException(nameof(itemStateRevision));
             }
 
-            if (!PlayerEncumbranceRules.IsWithinHardCap(carriedWeight, carryCapacity))
+            // Weight above the hard cap is valid: death can leave an involuntary overflow,
+            // which moves at the minimum multiplier until the character sheds weight.
+            if (carriedWeight < 0)
             {
-                throw new ArgumentException(
-                    "Player carry state exceeds the authoritative hard cap.",
-                    nameof(carriedWeight));
+                throw new ArgumentOutOfRangeException(nameof(carriedWeight));
+            }
+
+            if (carryCapacity <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(carryCapacity));
             }
 
             ItemStateRevision = itemStateRevision;
@@ -58,8 +63,8 @@ namespace ShooterMmo.GameSimulation
         {
             get
             {
-                return movementMultiplierBasisPoints
-                    / (float)PlayerEncumbranceRules.BaseMovementMultiplierBasisPoints;
+                return (float)(movementMultiplierBasisPoints
+                    / (float)PlayerEncumbranceRules.BaseMovementMultiplierBasisPoints);
             }
         }
 

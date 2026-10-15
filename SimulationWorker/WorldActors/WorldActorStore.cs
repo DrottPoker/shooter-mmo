@@ -133,6 +133,17 @@ public sealed class WorldActorStore
         }
     }
 
+    public int DespawnedCount
+    {
+        get
+        {
+            lock (syncRoot)
+            {
+                return despawnedActorsByEntityId.Count;
+            }
+        }
+    }
+
     public long PopulationRevision => Volatile.Read(ref populationRevision);
 
     public IReadOnlyList<WorldActorRuntimeState> ActivateAssignment(
@@ -229,6 +240,32 @@ public sealed class WorldActorStore
             despawnedActorsByEntityId.Add(actor.NetworkEntityId, actor);
             Interlocked.Increment(ref populationRevision);
             return true;
+        }
+    }
+
+    // A tombstone exists only so the interest exit can name the despawned actor. Once
+    // no connection still sees the entity, every exit has been sent and it is dropped.
+    public int PruneDespawned(Func<ulong, bool> isStillVisible)
+    {
+        ArgumentNullException.ThrowIfNull(isStillVisible);
+        lock (syncRoot)
+        {
+            if (despawnedActorsByEntityId.Count == 0)
+            {
+                return 0;
+            }
+
+            var removed = 0;
+            foreach (var entityId in despawnedActorsByEntityId.Keys.ToArray())
+            {
+                if (!isStillVisible(entityId))
+                {
+                    despawnedActorsByEntityId.Remove(entityId);
+                    removed++;
+                }
+            }
+
+            return removed;
         }
     }
 

@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-07-19
+Last updated: 2026-10-14
 
 ## Purpose
 
@@ -16,7 +16,7 @@ runtime claim.
 ## Project Boundary
 
 The Unity project lives in `shooter-mmorpg-unity-client` and targets Unity
-6000.5.2f1. Runtime code is compiled into `ShooterMmo.Runtime`. EditMode and
+6000.5.4f1. Runtime code is compiled into `ShooterMmo.Runtime`. EditMode and
 PlayMode tests use separate assemblies.
 
 The current runtime UI is intentionally temporary while the custom UI is being
@@ -137,6 +137,9 @@ clears all local session state before loading LoginMenu.
 - Structured mapping of HTTP, timeout, network, and invalid-response failures.
 - Owned-character complete item-state, focused Bank, and focused Recovery
   Storage reads used by the persistent inventory controller.
+- Tracking every request in flight. Unity stops a coroutine without disposing
+  its iterator, so each owner disposes its client in `OnDestroy`, which aborts
+  and releases any request that has not completed.
 
 `ShooterMmoApiError` carries the failure kind, HTTP status, stable server code,
 message, and correlation id. Panels display a safe message rather than raw JSON.
@@ -183,7 +186,12 @@ simulation revision, and collision revision before non-secret metadata is copied
 into `ShooterMmoClientSession`.
 
 Unexpected disconnect clears the active shard view and returns an authenticated
-player to CharacterSelect. Join rejection stays in CharacterSelect and displays
+player to CharacterSelect. `RealtimeSimulationClient` also raises `SessionEnded`
+once whenever a joined session ends for any reason, including a graceful leave,
+`Abort`, or a failure while leaving. The inventory, corpse, world actor, and world
+interaction controllers reset their session-scoped state on that event, so a
+pending operation, open view, or corpse presence sequence never blocks the next
+join. Join rejection stays in CharacterSelect and displays
 the structured server code. Protocol decoding rejects wrong versions, invalid
 types, oversized values, and trailing data.
 
@@ -213,6 +221,12 @@ snapshot delivery:
   flight during and immediately after leave are ignored outside the `Joined`
   state. They are not protocol failures because LiteNetLib delivery methods do
   not provide ordering relative to each other.
+- While a leave is pending, SimulationWorker keeps sending reliable presence,
+  world actor, interaction, corpse, and item-operation messages until it has
+  released the session. The client ignores these in-flight messages in the
+  `Leaving` state, so a graceful leave never turns into a protocol disconnect.
+- After the session ended in one poll, later packets in the same poll are
+  ignored, so the first failure reason is the one shown to the player.
 
 Every accepted simulation session identifies the local player's server-assigned
 nonzero network entity id. `RealtimeSimulationClient` owns an in-memory registry of
@@ -242,6 +256,29 @@ lock. Unity displays a missing-signature warning because the scoped third-party
 registry package is not signed by Unity. This warning does not indicate a
 compile or runtime failure, but every package upgrade still requires source and
 changelog review.
+
+The client renders with the Universal Render Pipeline. `PC_RPAsset` and
+`Mobile_RPAsset` in `Assets/Settings/Rendering` each own one Universal Renderer
+that uses the package default post-processing data. Graphics settings and the
+`PC` quality level use `PC_RPAsset` (4x MSAA, HDR, 80 m shadow distance), and the
+`Mobile` quality level uses `Mobile_RPAsset` (no MSAA, no HDR, 40 m shadow
+distance). Every project material uses `Universal Render Pipeline/Lit`. The
+runtime fallback presentation sets both `_BaseColor` and `_Color`, so it stays
+correct in any pipeline. There is no post-processing Volume and no baked lighting yet.
+
+The manifest lists only packages the client uses. The unused template packages
+AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting
+were removed and are added back only when a feature needs them. The project has
+no project-wide Input System actions asset; gameplay input uses the
+`PlayerControls` asset referenced by the local player.
+
+`com.unity.pipeline` is an exact-pinned experimental Editor automation
+dependency that the Unity CLI and coding agents use to drive the running Editor.
+Client code does not reference it. Its runtime assembly compiles only in the
+Editor and in builds that define `ENABLE_PROFILER` or `ENABLE_RUNTIME_PIPELINE`,
+and its Player server stays disabled because the Pipeline Runtime setting
+`enableInBuilds` is `false`. The workflow and security rules are in
+[Local Development](LOCAL_DEVELOPMENT.md#unity-editor-automation-with-unity-cli).
 
 ## Scene And UI Flow
 
@@ -378,7 +415,8 @@ character system changes collider dimensions.
 Authenticated prediction also consumes the exact carry tuple owned by
 `NetworkMovementSession`. The shared simulation allows sprint at exactly 100
 percent capacity, disables sprint above it, and linearly reduces movement to
-`0.20` at the 140 percent hard cap. A reliable newer revision is applied before
+`0.20` at the 140 percent hard cap. An involuntary death overflow above the hard
+cap is a valid carry tuple and stays at `0.20`. A reliable newer revision is applied before
 subsequent prediction and reconciliation replay. The temporary F2 panel exposes
 weight, capacity, item-state revision, movement percentage, and sprint
 eligibility for observation without becoming inventory state or authority.
@@ -553,7 +591,9 @@ All Unity Editor commands owned by the project use the shared
 `Shooter MMO > Tools > Item Catalog`, and collision baking is at
 `Shooter MMO > Tools > World Collision > Bake Open Scene`. `Bake Build World
 Scenes` validates the World catalog against enabled Build Profiles scenes and
-bakes every mapped scene in one pass.
+bakes every mapped scene in one pass. A reusable scene shared by several Worlds
+is opened once and baked once for each of them; its authored World id must be
+one of those Worlds.
 
 For network movement, input is sampled at the server-provided tick rate and each
 command receives an input sequence and client tick. The local state is predicted
@@ -654,6 +694,13 @@ Phase 12 adds permanent client state below replaceable presentation:
   `NpcView` and `MobView` add kind-specific presentation hooks without actor
   authority.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
+  The asset is `Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`
+  and maps all four authored archetypes to collider-free placeholder prefabs in
+  `Assets/Prefabs/WorldActors` with URP materials in
+  `Assets/Art/Materials/WorldActors`. An authored prefab keeps its own look.
+  Only an unmapped archetype falls back to a tinted primitive, with one warning
+  per archetype, and a missing registry logs one warning at startup instead.
+  An EditMode test fails when an authored archetype has no prefab.
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
@@ -723,10 +770,10 @@ neutral definitions, but only compiled WorldData creates runtime actors. Actor
 and spawn content must remain buildable and verifiable without opening Unity.
 
 The persistent bootstrap creates the actor, presentation, targeting,
-interaction, and temporary panel controllers at runtime. Existing canonical
-content works through fallback presentation without scene edits. A content
-creator uses the Editor windows only when changing definitions, spawn source,
-or the optional presentation registry asset.
+interaction, and temporary panel controllers at runtime. A new archetype works
+through the fallback presentation without scene edits until it is added to the
+presentation registry asset. A content creator uses the Editor windows only
+when changing definitions, spawn source, or the presentation registry asset.
 
 ## Test Architecture
 
@@ -782,6 +829,10 @@ Manual flows and expected results are documented in
   `RealtimeSimulationClient`, not scene panels.
 - Keep deterministic movement rules in `GameSimulation`, not in transport or
   presentation components.
+- Wrap every float intermediate in `GameSimulation` in an explicit `(float)`
+  cast. Mono keeps float intermediates in double precision, so an expression
+  such as `(a * b) + c` without casts predicts differently in Unity than on the
+  worker. The movement determinism tests catch a missing cast.
 - Keep authored collision in `WorldData`; never duplicate scene geometry as
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.
@@ -791,6 +842,10 @@ Manual flows and expected results are documented in
   not actor prefabs or the temporary interaction panel.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
+- Give every type that holds static state a
+  `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]`
+  reset, so the client stays correct when Enter Play Mode Options disable domain
+  reload. An EditMode test lists the types that must have one.
 - Route every World-scene exit through exact-session UDP leave or disconnect
   fallback.
 - Add player-facing behavior to [Game Features](GAME_FEATURES.md) when it becomes

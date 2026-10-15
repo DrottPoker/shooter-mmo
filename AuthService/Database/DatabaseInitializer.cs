@@ -31,7 +31,11 @@ public sealed class DatabaseInitializer(
         new(PlayerDeathCarryOverflowMigration.Id, PlayerDeathCarryOverflowMigration.Sql),
         new(ItemOperationsHardeningMigration.Id, ItemOperationsHardeningMigration.Sql),
         new(DevelopmentWorldIdentityMigration.Id, DevelopmentWorldIdentityMigration.Sql),
-        new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql)
+        new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql),
+        new(
+            ReleaseRetryableOperationClaimsMigration.Id,
+            ReleaseRetryableOperationClaimsMigration.Sql),
+        new(EquippedItemLookupIndexMigration.Id, EquippedItemLookupIndexMigration.Sql)
     ];
 
     public async Task InitializeAsync(CancellationToken cancellationToken)

@@ -42,6 +42,29 @@ public sealed class AuthoritativePlayerMovementTests
     }
 
     [Fact]
+    public void ReconnectedClientInputSequenceIsAcceptedFromTheStart()
+    {
+        var movement = CreateMovement();
+        movement.AcceptInputs(new[]
+        {
+            Input(5_000, 0f, 1f, RealtimeMovementButtons.None)
+        });
+        movement.SimulateTick();
+
+        movement.ResetInputSequence();
+        movement.AcceptInputs(new[]
+        {
+            Input(1, 1f, 0f, RealtimeMovementButtons.None)
+        });
+        var positionBefore = movement.State.PositionX;
+        movement.SimulateTick();
+
+        Assert.Equal(1u, movement.LastReceivedInputSequence);
+        Assert.Equal(1u, movement.LastProcessedInputSequence);
+        Assert.True(movement.State.PositionX > positionBefore);
+    }
+
+    [Fact]
     public void RedundantBatchPreservesJumpEdgeUntilNextServerTick()
     {
         var movement = CreateMovement();

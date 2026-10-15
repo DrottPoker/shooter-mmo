@@ -42,7 +42,7 @@ namespace ShooterMmo.GameSimulation
                 throw new ArgumentException("Collision revision is required.", nameof(revision));
             }
 
-            if (!IsFinite(chunkSize) || chunkSize <= 0f)
+            if (!CollisionDataFormat.IsValidChunkSize(chunkSize))
             {
                 throw new ArgumentOutOfRangeException(nameof(chunkSize));
             }
@@ -133,38 +133,77 @@ namespace ShooterMmo.GameSimulation
 
             lock (syncRoot)
             {
+                // A query wider than the loaded set scans the loaded chunks instead, so
+                // the cost is bounded by the world and never by the query size.
+                if (CellCount(minimumX, maximumX, minimumZ, maximumZ) > chunks.Count)
+                {
+                    foreach (var chunk in chunks.Values)
+                    {
+                        if (chunk.X >= minimumX
+                            && chunk.X <= maximumX
+                            && chunk.Z >= minimumZ
+                            && chunk.Z <= maximumZ)
+                        {
+                            AddIntersectingBoxes(chunk, bounds, layerMask, buffer);
+                        }
+                    }
+
+                    return;
+                }
+
                 for (var z = minimumZ; z <= maximumZ; z++)
                 {
                     for (var x = minimumX; x <= maximumX; x++)
                     {
-                        if (!chunks.TryGetValue(ChunkKey(x, z), out var chunk)
-                            || !chunk.Bounds.Intersects(bounds))
+                        if (chunks.TryGetValue(ChunkKey(x, z), out var chunk))
                         {
-                            continue;
-                        }
-
-                        for (var index = 0; index < chunk.Boxes.Count; index++)
-                        {
-                            var box = chunk.Boxes[index];
-                            if ((box.LayerMask & layerMask) != 0 && box.Bounds.Intersects(bounds))
-                            {
-                                buffer.Add(box);
-                            }
+                            AddIntersectingBoxes(chunk, bounds, layerMask, buffer);
                         }
                     }
                 }
             }
         }
 
+        private static void AddIntersectingBoxes(
+            CollisionChunk chunk,
+            CollisionAabb bounds,
+            uint layerMask,
+            CollisionQueryBuffer buffer)
+        {
+            if (!chunk.Bounds.Intersects(bounds))
+            {
+                return;
+            }
+
+            for (var index = 0; index < chunk.Boxes.Count; index++)
+            {
+                var box = chunk.Boxes[index];
+                if ((box.LayerMask & layerMask) != 0 && box.Bounds.Intersects(bounds))
+                {
+                    buffer.Add(box);
+                }
+            }
+        }
+
         private void ValidateChunkBounds(CollisionChunk chunk)
         {
+            if (Math.Abs(chunk.X) > CollisionDataFormat.MaximumChunkCoordinate
+                || Math.Abs(chunk.Z) > CollisionDataFormat.MaximumChunkCoordinate)
+            {
+                throw new ArgumentException(
+                    "Collision chunk coordinates are outside the supported range.",
+                    nameof(chunk));
+            }
+
             const float epsilon = 0.001f;
-            var expectedMinimumX = chunk.X * ChunkSize;
-            var expectedMinimumZ = chunk.Z * ChunkSize;
-            if (Math.Abs(chunk.Bounds.Minimum.X - expectedMinimumX) > epsilon
-                || Math.Abs(chunk.Bounds.Minimum.Z - expectedMinimumZ) > epsilon
-                || Math.Abs(chunk.Bounds.Maximum.X - (expectedMinimumX + ChunkSize)) > epsilon
-                || Math.Abs(chunk.Bounds.Maximum.Z - (expectedMinimumZ + ChunkSize)) > epsilon)
+            var expectedMinimumX = (float)(chunk.X * ChunkSize);
+            var expectedMinimumZ = (float)(chunk.Z * ChunkSize);
+            var expectedMaximumX = (float)(expectedMinimumX + ChunkSize);
+            var expectedMaximumZ = (float)(expectedMinimumZ + ChunkSize);
+            if (Math.Abs((float)(chunk.Bounds.Minimum.X - expectedMinimumX)) > epsilon
+                || Math.Abs((float)(chunk.Bounds.Minimum.Z - expectedMinimumZ)) > epsilon
+                || Math.Abs((float)(chunk.Bounds.Maximum.X - expectedMaximumX)) > epsilon
+                || Math.Abs((float)(chunk.Bounds.Maximum.Z - expectedMaximumZ)) > epsilon)
             {
                 throw new ArgumentException(
                     "Collision chunk bounds do not match its coordinates.",
@@ -172,19 +211,42 @@ namespace ShooterMmo.GameSimulation
             }
         }
 
+        // Clamping keeps the conversion identical in every runtime, because a float to
+        // int cast outside the int range differs between .NET and Unity.
         internal static int ToChunkCoordinate(float position, float chunkSize)
         {
-            return (int)Math.Floor(position / chunkSize);
+            var coordinate = Math.Floor((float)(position / chunkSize));
+            if (double.IsNaN(coordinate))
+            {
+                throw new ArgumentOutOfRangeException(nameof(position));
+            }
+
+            if (coordinate >= CollisionDataFormat.MaximumChunkCoordinate)
+            {
+                return CollisionDataFormat.MaximumChunkCoordinate;
+            }
+
+            if (coordinate <= -CollisionDataFormat.MaximumChunkCoordinate)
+            {
+                return -CollisionDataFormat.MaximumChunkCoordinate;
+            }
+
+            return (int)coordinate;
+        }
+
+        internal static long CellCount(int minimumX, int maximumX, int minimumZ, int maximumZ)
+        {
+            if (maximumX < minimumX || maximumZ < minimumZ)
+            {
+                return 0;
+            }
+
+            return ((long)maximumX - minimumX + 1) * ((long)maximumZ - minimumZ + 1);
         }
 
         internal static long ChunkKey(int x, int z)
         {
             return ((long)x << 32) | (uint)z;
-        }
-
-        private static bool IsFinite(float value)
-        {
-            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 
@@ -199,7 +261,7 @@ namespace ShooterMmo.GameSimulation
 
         public DynamicCollisionWorld(float chunkSize)
         {
-            if (float.IsNaN(chunkSize) || float.IsInfinity(chunkSize) || chunkSize <= 0f)
+            if (!CollisionDataFormat.IsValidChunkSize(chunkSize))
             {
                 throw new ArgumentOutOfRangeException(nameof(chunkSize));
             }
@@ -274,6 +336,23 @@ namespace ShooterMmo.GameSimulation
                     bounds.Maximum.Z,
                     chunkSize);
 
+                // A query wider than the occupied cells scans the entries instead, so the
+                // cost is bounded by the dynamic boxes and never by the query size.
+                if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
+                    > stableIdsByCell.Count)
+                {
+                    foreach (var entry in entries.Values)
+                    {
+                        var box = entry.Box;
+                        if ((box.LayerMask & layerMask) != 0 && box.Bounds.Intersects(bounds))
+                        {
+                            buffer.Add(box);
+                        }
+                    }
+
+                    return;
+                }
+
                 for (var z = minimumZ; z <= maximumZ; z++)
                 {
                     for (var x = minimumX; x <= maximumX; x++)
@@ -304,6 +383,12 @@ namespace ShooterMmo.GameSimulation
             var maximumX = ChunkedStaticCollisionWorld.ToChunkCoordinate(bounds.Maximum.X, chunkSize);
             var minimumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(bounds.Minimum.Z, chunkSize);
             var maximumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(bounds.Maximum.Z, chunkSize);
+            if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
+                > CollisionDataFormat.MaximumChunksPerBox)
+            {
+                throw new ArgumentException("Dynamic collision box spans too many cells.");
+            }
+
             var keys = new List<long>();
             for (var z = minimumZ; z <= maximumZ; z++)
             {

@@ -327,7 +327,20 @@ public sealed class PlayerMovementSimulationTests
             CollisionWorld);
 
         Assert.Equal(Settings.WalkSpeed * 0.2f, result.VelocityZ, 4);
-        Assert.Throws<ArgumentException>(() => new PlayerCarryState(2, 281, 200));
+
+        // Death can leave retained weight above the hard cap; it moves at the minimum.
+        var involuntaryOverflow = new PlayerCarryState(2, 348, 200);
+        var overflowResult = PlayerMovementSimulation.Step(
+            grounded,
+            input,
+            Settings,
+            involuntaryOverflow,
+            CollisionWorld);
+
+        Assert.False(involuntaryOverflow.SprintAllowed);
+        Assert.Equal(Settings.WalkSpeed * 0.2f, overflowResult.VelocityZ, 4);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PlayerCarryState(3, -1, 200));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PlayerCarryState(3, 10, 0));
     }
 
     [Fact]

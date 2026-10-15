@@ -81,6 +81,7 @@ public sealed class SimulationSessionHeartbeatService(
     {
         try
         {
+            var requestedAt = DateTime.UtcNow;
             var result = await authServiceClient.HeartbeatSimulationSessionAsync(
                 session.SimulationSessionId,
                 session.WorkerRuntimeId,
@@ -93,7 +94,7 @@ public sealed class SimulationSessionHeartbeatService(
                     session.CharacterId,
                     session.SimulationSessionId,
                     session.SimulationSessionToken,
-                    result.Value!.ExpiresAt);
+                    requestedAt.AddMilliseconds(result.Value!.LeaseDurationMilliseconds));
                 if (!refreshed)
                 {
                     return;

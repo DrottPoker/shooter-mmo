@@ -250,6 +250,13 @@ public sealed class SessionService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // Lock the account first, in the same order as login, join, and ticket consume.
+        await connection.ExecuteAsync(new CommandDefinition(
+            "select id from accounts where id = @AccountId for update;",
+            new { AccountId = accountId },
+            transaction,
+            cancellationToken: cancellationToken));
+
         const string activeSessionSql = """
             select id as "SessionId",
                    token_hash as "TokenHash"
@@ -291,7 +298,7 @@ public sealed class SessionService(
             where id = @SessionId and account_id = @AccountId;
             """;
 
-        await connection.ExecuteAsync(new CommandDefinition(
+        var ownedSessions = await connection.ExecuteAsync(new CommandDefinition(
             revokeSessionSql,
             new
             {
@@ -301,6 +308,13 @@ public sealed class SessionService(
             },
             transaction,
             cancellationToken: cancellationToken));
+        if (ownedSessions == 0)
+        {
+            // Another account's session id must not release its leases or tickets.
+            // Report success so the response does not reveal foreign session ids.
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<bool>.Ok(true);
+        }
 
         const string releaseSimulationSessionsSql = """
             update character_simulation_sessions

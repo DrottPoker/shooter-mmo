@@ -536,27 +536,9 @@ namespace ShooterMmo.Editor
             string repositoryRoot,
             IReadOnlyList<string> commandArguments)
         {
-            var projectPath = Path.Combine(
-                repositoryRoot,
-                "AuthService",
-                "AuthService.csproj");
-            if (!File.Exists(projectPath))
-            {
-                throw new FileNotFoundException(
-                    "Could not locate AuthService.csproj from the Unity project.",
-                    projectPath);
-            }
-
-            var arguments = new List<string>
-            {
-                "run",
-                "--project",
-                projectPath,
-                "--configuration",
-                "Release",
-                "--no-build",
-                "--"
-            };
+            // The built assembly runs inside this one dotnet process. 'dotnet run' would
+            // start AuthService as a child that survives a cancel or timeout.
+            var arguments = new List<string> { FindAuthServiceAssembly(repositoryRoot) };
             arguments.AddRange(commandArguments);
             var startInfo = new ProcessStartInfo
             {
@@ -578,6 +560,27 @@ namespace ShooterMmo.Editor
             }
 
             return new DevelopmentItemToolCliProcess(process);
+        }
+
+        internal static string FindAuthServiceAssembly(string repositoryRoot)
+        {
+            var releaseDirectory = Path.Combine(repositoryRoot, "AuthService", "bin", "Release");
+            var assemblyPath = Directory.Exists(releaseDirectory)
+                ? Directory.GetDirectories(releaseDirectory)
+                    .Select(directory => Path.Combine(directory, "AuthService.dll"))
+                    .Where(File.Exists)
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault()
+                : null;
+            if (assemblyPath == null)
+            {
+                throw new FileNotFoundException(
+                    "AuthService has no Release build. Build the Release solution once with "
+                        + "'dotnet build ShooterMmo.slnx --configuration Release', then retry.",
+                    releaseDirectory);
+            }
+
+            return assemblyPath;
         }
 
         public bool TryComplete(

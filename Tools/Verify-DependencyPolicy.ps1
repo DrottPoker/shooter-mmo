@@ -34,6 +34,7 @@ foreach ($dependency in $manifest.dependencies.PSObject.Properties) {
     }
 }
 
+$liteNetLibVersions = @{}
 $projectFiles = Get-ChildItem -Path $repositoryRoot -Recurse -Filter *.csproj |
     Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
 foreach ($projectFile in $projectFiles) {
@@ -51,7 +52,20 @@ foreach ($projectFile in $projectFiles) {
         if ($version -notmatch $exactVersionPattern) {
             throw "NuGet dependency '$($packageReference.Include)' in '$($projectFile.Name)' must use an exact version."
         }
+
+        if ($packageReference.Include -eq "LiteNetLib") {
+            $liteNetLibVersions["$($projectFile.Name)"] = $version
+        }
     }
+}
+
+# The server, bot tools, and Unity client must speak the same LiteNetLib wire protocol.
+$liteNetLibVersions["Packages/manifest.json"] = [string]$manifest.dependencies.'com.revenantx.litenetlib'
+$distinctLiteNetLibVersions = @($liteNetLibVersions.Values | Sort-Object -Unique)
+if ($distinctLiteNetLibVersions.Count -ne 1) {
+    $details = ($liteNetLibVersions.GetEnumerator() | Sort-Object Name |
+        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ", "
+    throw "LiteNetLib versions must match across the server, tools, and Unity client: $details."
 }
 
 $trackedBuilds = & git -C $repositoryRoot ls-files "shooter-mmorpg-unity-client/ClientBuilds" "shooter-mmorpg-unity-client/Builds"

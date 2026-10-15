@@ -87,9 +87,12 @@ public sealed class WorldActorRuntimeTests
         var entered = interest.Refresh(91, player.NetworkEntityId);
         Assert.Contains(actor.NetworkEntityId, entered.Entered);
 
+        Assert.True(interest.IsVisibleToAnyConnection(actor.NetworkEntityId));
+
         interest.UpdateEntity(new SimulationInterestEntity(actor.NetworkEntityId, 200f, 200f));
         var exited = interest.Refresh(91, player.NetworkEntityId);
         Assert.Contains(actor.NetworkEntityId, exited.Exited);
+        Assert.False(interest.IsVisibleToAnyConnection(actor.NetworkEntityId));
     }
 
     [Fact]
@@ -116,6 +119,15 @@ public sealed class WorldActorRuntimeTests
             "local-shard-1",
             "replacement-runtime");
         Assert.False(actorStore.TryGetDespawnedByEntityId(actor.NetworkEntityId, out _));
+
+        // A tombstone stays while a connection still sees the entity and leaves after.
+        var replacement = actorStore.ListActors()[0];
+        Assert.True(actorStore.TryDespawn(replacement.NetworkEntityId, out _));
+        Assert.Equal(0, actorStore.PruneDespawned(_ => true));
+        Assert.Equal(1, actorStore.DespawnedCount);
+        Assert.Equal(1, actorStore.PruneDespawned(_ => false));
+        Assert.Equal(0, actorStore.DespawnedCount);
+        Assert.False(actorStore.TryGetDespawnedByEntityId(replacement.NetworkEntityId, out _));
     }
 
     [Fact]

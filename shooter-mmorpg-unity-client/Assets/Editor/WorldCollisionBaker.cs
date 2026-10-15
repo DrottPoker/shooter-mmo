@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using ShooterMmo.Collision;
 using ShooterMmo.GameSimulation;
 using ShooterMmo.Worlds;
@@ -12,6 +13,19 @@ using UnityEngine.SceneManagement;
 
 namespace ShooterMmo.Editor
 {
+    public sealed class WorldSceneBakePlan
+    {
+        public WorldSceneBakePlan(string scenePath, IReadOnlyList<string> worldIds)
+        {
+            ScenePath = scenePath;
+            WorldIds = worldIds;
+        }
+
+        public string ScenePath { get; }
+
+        public IReadOnlyList<string> WorldIds { get; }
+    }
+
     public static class WorldCollisionBaker
     {
         public const string MenuPath = "Shooter MMO/Tools/World Collision/Bake Open Scene";
@@ -72,27 +86,18 @@ namespace ShooterMmo.Editor
                     throw new InvalidOperationException(catalogError);
                 }
 
-                var buildScenes = EditorBuildSettings.scenes
-                    .Where(scene => scene.enabled)
-                    .GroupBy(
-                        scene => Path.GetFileNameWithoutExtension(scene.path),
-                        StringComparer.Ordinal)
-                    .ToDictionary(
-                        group => group.Key,
-                        group => group.Select(scene => scene.path).ToArray(),
-                        StringComparer.Ordinal);
-                foreach (var entry in catalog.entries)
+                var plans = PlanBuildWorldBakes(
+                    catalog.entries,
+                    EditorBuildSettings.scenes
+                        .Where(scene => scene.enabled)
+                        .Select(scene => scene.path));
+                foreach (var plan in plans)
                 {
-                    if (!buildScenes.TryGetValue(entry.sceneName, out var scenePaths)
-                        || scenePaths.Length != 1)
+                    EditorSceneManager.OpenScene(plan.ScenePath, OpenSceneMode.Single);
+                    foreach (var worldId in plan.WorldIds)
                     {
-                        throw new InvalidOperationException(
-                            "World '" + entry.worldId + "' must map to exactly one enabled "
-                            + "Build Profiles scene named '" + entry.sceneName + "'.");
+                        BakeActiveScene(worldId, plan.WorldIds);
                     }
-
-                    EditorSceneManager.OpenScene(scenePaths[0], OpenSceneMode.Single);
-                    BakeActiveScene(entry.worldId);
                 }
             }
             finally
@@ -109,8 +114,48 @@ namespace ShooterMmo.Editor
             }
         }
 
+        // Groups catalog Worlds by their Build Profiles scene, so a reusable scene shared
+        // by several Worlds is opened once and baked once for each of them.
+        public static IReadOnlyList<WorldSceneBakePlan> PlanBuildWorldBakes(
+            IEnumerable<WorldSceneCatalogEntry> entries,
+            IEnumerable<string> enabledScenePaths)
+        {
+            var buildScenes = enabledScenePaths
+                .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToArray(),
+                    StringComparer.Ordinal);
+            var plans = new List<WorldSceneBakePlan>();
+            var plansByScene = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                if (!buildScenes.TryGetValue(entry.sceneName, out var scenePaths)
+                    || scenePaths.Length != 1)
+                {
+                    throw new InvalidOperationException(
+                        "World '" + entry.worldId + "' must map to exactly one enabled "
+                        + "Build Profiles scene named '" + entry.sceneName + "'.");
+                }
+
+                if (!plansByScene.TryGetValue(scenePaths[0], out var worldIds))
+                {
+                    worldIds = new List<string>();
+                    plansByScene.Add(scenePaths[0], worldIds);
+                    plans.Add(new WorldSceneBakePlan(scenePaths[0], worldIds));
+                }
+
+                worldIds.Add(entry.worldId);
+            }
+
+            return plans;
+        }
+
+        // The authored World id names the scene's own World. A reusable scene is baked
+        // for every catalog World that uses it, so the authored id must be one of them.
         private static CollisionWorldBakeResult BakeActiveScene(
-            string expectedWorldId = null)
+            string targetWorldId = null,
+            IReadOnlyCollection<string> sceneWorldIds = null)
         {
             var authoring = FindAuthoringComponent();
             if (!authoring.TryValidate(out var validationError))
@@ -118,23 +163,23 @@ namespace ShooterMmo.Editor
                 throw new InvalidOperationException(validationError);
             }
 
-            if (!string.IsNullOrWhiteSpace(expectedWorldId)
-                && !string.Equals(
-                    authoring.WorldId.Trim(),
-                    expectedWorldId,
-                    StringComparison.Ordinal))
+            var authoredWorldId = authoring.WorldId.Trim();
+            if (sceneWorldIds != null
+                && !sceneWorldIds.Contains(authoredWorldId, StringComparer.Ordinal))
             {
                 throw new InvalidOperationException(
                     "Scene '" + SceneManager.GetActiveScene().name + "' authored world '"
-                    + authoring.WorldId.Trim() + "' instead of catalog world '"
-                    + expectedWorldId + "'.");
+                    + authoredWorldId + "', which is not one of its catalog worlds '"
+                    + string.Join("', '", sceneWorldIds) + "'.");
             }
 
             var boxes = BuildBoxEntries(authoring).ToArray();
             var document = new CollisionWorldAuthoringDocument
             {
                 FormatVersion = CollisionDataFormat.Version,
-                WorldId = authoring.WorldId.Trim(),
+                WorldId = string.IsNullOrWhiteSpace(targetWorldId)
+                    ? authoredWorldId
+                    : targetWorldId,
                 ChunkSize = authoring.ChunkSize,
                 Boxes = boxes
             };
@@ -260,18 +305,27 @@ namespace ShooterMmo.Editor
             var authoringPath = Path.Combine(
                 authoringDirectory,
                 "collision.json");
-            File.WriteAllText(authoringPath, authoringJson);
-            File.WriteAllText(
-                Path.Combine(outputDirectory, "manifest.json"),
-                JsonUtility.ToJson(result.Manifest, true) + Environment.NewLine);
 
+            // Chunks first and the manifest after them, so a reader never sees a manifest
+            // whose checksums point at chunks that were not written.
+            var writes = new List<KeyValuePair<string, byte[]>>();
             var expectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var chunk in result.Chunks)
             {
                 var fileName = chunk.ManifestEntry.ResourceName + ".bytes";
                 expectedFiles.Add(fileName);
-                File.WriteAllBytes(Path.Combine(outputDirectory, fileName), chunk.Data);
+                writes.Add(new KeyValuePair<string, byte[]>(
+                    Path.Combine(outputDirectory, fileName),
+                    chunk.Data));
             }
+
+            writes.Add(new KeyValuePair<string, byte[]>(
+                Path.Combine(outputDirectory, "manifest.json"),
+                Encoding.UTF8.GetBytes(JsonUtility.ToJson(result.Manifest, true) + Environment.NewLine)));
+            writes.Add(new KeyValuePair<string, byte[]>(
+                authoringPath,
+                Encoding.UTF8.GetBytes(authoringJson)));
+            ReplaceFilesAtomically(writes);
 
             foreach (var stalePath in Directory.EnumerateFiles(outputDirectory, "chunk_*.bytes"))
             {
@@ -283,6 +337,76 @@ namespace ShooterMmo.Editor
                     {
                         File.Delete(metaPath);
                     }
+                }
+            }
+        }
+
+        // Writes every file to a temporary sibling first and then swaps them in with
+        // backups, restoring the previous files if any swap fails. Unity ignores .tmp
+        // files, so partial output is never imported.
+        private static void ReplaceFilesAtomically(IReadOnlyList<KeyValuePair<string, byte[]>> writes)
+        {
+            var temporaryPaths = new List<string>();
+            var committed = new List<KeyValuePair<string, string>>();
+            try
+            {
+                foreach (var write in writes)
+                {
+                    var temporaryPath = write.Key + ".bake.tmp";
+                    temporaryPaths.Add(temporaryPath);
+                    File.WriteAllBytes(temporaryPath, write.Value);
+                }
+
+                for (var index = 0; index < writes.Count; index++)
+                {
+                    var target = writes[index].Key;
+                    var backupPath = target + ".backup.tmp";
+                    if (File.Exists(target))
+                    {
+                        File.Replace(temporaryPaths[index], target, backupPath);
+                        committed.Add(new KeyValuePair<string, string>(target, backupPath));
+                    }
+                    else
+                    {
+                        File.Move(temporaryPaths[index], target);
+                        committed.Add(new KeyValuePair<string, string>(target, null));
+                    }
+                }
+            }
+            catch
+            {
+                for (var index = committed.Count - 1; index >= 0; index--)
+                {
+                    var target = committed[index].Key;
+                    var backupPath = committed[index].Value;
+                    if (backupPath == null)
+                    {
+                        File.Delete(target);
+                    }
+                    else
+                    {
+                        File.Replace(backupPath, target, null);
+                    }
+                }
+
+                throw;
+            }
+            finally
+            {
+                foreach (var temporaryPath in temporaryPaths)
+                {
+                    if (File.Exists(temporaryPath))
+                    {
+                        File.Delete(temporaryPath);
+                    }
+                }
+            }
+
+            foreach (var entry in committed)
+            {
+                if (entry.Value != null && File.Exists(entry.Value))
+                {
+                    File.Delete(entry.Value);
                 }
             }
         }

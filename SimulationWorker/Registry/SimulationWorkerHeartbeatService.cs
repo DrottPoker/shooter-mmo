@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ShooterMmo.GameProtocol;
@@ -21,7 +22,11 @@ public sealed class SimulationWorkerHeartbeatService(
     SimulationWorkerRegistrationLease? registrationLease = null,
     IHostApplicationLifetime? applicationLifetime = null) : BackgroundService
 {
+    private const string WorkerRuntimeChangedCode = "worker_runtime_changed";
+
     private volatile bool registrationAttempted;
+    private volatile bool hasHeldAuthority;
+    private long? acquireStartedTimestamp;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -56,7 +61,8 @@ public sealed class SimulationWorkerHeartbeatService(
                 config.SimulationWorkerId,
                 identity.RuntimeId,
                 result.Error!.Code);
-            if (IsAuthorityFailure(result.Error.Code))
+            // A runtime that never owned the worker id has no authority to lose.
+            if (hasHeldAuthority && IsAuthorityFailure(result.Error.Code))
             {
                 StopForLostAuthority(result.Error.Code);
             }
@@ -72,6 +78,7 @@ public sealed class SimulationWorkerHeartbeatService(
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
     {
         registrationAttempted = true;
+        var renewalStart = registrationLease?.CaptureRenewalStart();
         var result = await authServiceClient.HeartbeatSimulationWorkerAsync(
             config.SimulationWorkerId,
             new SimulationWorkerHeartbeatRequest(
@@ -97,6 +104,11 @@ public sealed class SimulationWorkerHeartbeatService(
                 config.SimulationWorkerId,
                 identity.RuntimeId,
                 result.Error!.Code);
+            if (IsWaitingForPreviousRuntime(result.Error.Code))
+            {
+                return;
+            }
+
             if (IsAuthorityFailure(result.Error.Code))
             {
                 StopForLostAuthority(result.Error.Code);
@@ -118,7 +130,49 @@ public sealed class SimulationWorkerHeartbeatService(
             return;
         }
 
-        registrationLease?.Renew(result.Value.OnlineUntil - result.Value.LastHeartbeatAt);
+        if (renewalStart is not null)
+        {
+            registrationLease!.Renew(
+                renewalStart.Value,
+                result.Value.OnlineUntil - result.Value.LastHeartbeatAt);
+        }
+
+        hasHeldAuthority = true;
+        acquireStartedTimestamp = null;
+    }
+
+    // A replacement runtime can start before the previous runtime's lease expires, and
+    // the registry orders two live runtimes by reported start time, which a slower host
+    // clock loses. Until this runtime first owns the worker id it keeps retrying, while
+    // the realtime transport rejects every connection, and only gives up when another
+    // runtime stays live for longer than the acquire timeout.
+    private bool IsWaitingForPreviousRuntime(string code)
+    {
+        if (hasHeldAuthority
+            || !string.Equals(code, WorkerRuntimeChangedCode, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        acquireStartedTimestamp ??= Stopwatch.GetTimestamp();
+        var waited = Stopwatch.GetElapsedTime(acquireStartedTimestamp.Value);
+        if (waited < config.RegistryAcquireTimeout)
+        {
+            logger.LogWarning(
+                "Simulation worker {WorkerId} runtime {RuntimeId} is waiting for the previous runtime's registry lease to expire ({Waited} of {Timeout}).",
+                config.SimulationWorkerId,
+                identity.RuntimeId,
+                waited,
+                config.RegistryAcquireTimeout);
+            return true;
+        }
+
+        logger.LogCritical(
+            "Simulation worker {WorkerId} runtime {RuntimeId} could not acquire the worker id within {Timeout}, so another live runtime owns it.",
+            config.SimulationWorkerId,
+            identity.RuntimeId,
+            config.RegistryAcquireTimeout);
+        return false;
     }
 
     private void StopForLostAuthority(string code)

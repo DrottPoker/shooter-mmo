@@ -44,13 +44,12 @@ worker. Zone and layer partitioning are not implemented.
 | `GET /api/item-catalog` and `GET /api/items/catalog` | Account session | Return the neutral current catalog with revision ETag validation |
 | `GET /api/characters/{characterId}/item-state` and `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent no-store character item-state snapshot |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
-| `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store Recovery Storage deliveries |
-| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel |
+| `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
+| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
 | `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
 | `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
-| `POST /api/characters/{characterId}/recovery/{deliveryId}/claim` | Owning offline account session | Claim a complete available delivery to inventory or bank |
-| `POST /api/items/secure-container-tier` | Offline account session | Apply an account Secure Container tier with every character revision |
+| `POST /api/items/secure-container-tier` | Offline account session | Return the account to the base Secure Container tier with every character revision. A larger tier needs a trusted entitlement source, so this route returns `403` with `item_authority_required` for it |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew exact worker runtime |
@@ -80,20 +79,33 @@ PostgreSQL services.
 
 ## Accounts And Authentication
 
-- Email and username are normalized and unique.
-- Passwords use ASP.NET Core `PasswordHasher`.
+- Email and username are normalized and unique. An email must be a plain
+  address; display-name forms such as `Name <a@b.c>` are rejected.
+- Passwords are hashed with BCrypt at work factor 12. A password must be 8 to
+  128 characters and at most 72 UTF-8 bytes, because BCrypt ignores later bytes.
+- Login releases its database connection before the password check, and an
+  unknown login is checked against a fixed hash, so response time does not show
+  whether an account exists. Registration still reports whether an email or
+  username is taken until an email verification flow exists; its rate limit
+  bounds enumeration.
 - Account tokens are opaque and only their SHA-256 hashes are stored.
 - PostgreSQL enforces one unrevoked account session per account.
-- A successful login locks the account, revokes the older session with
+- A successful login locks the account, revokes the older session with the
+  stored reason `session_replaced` and the client error code
   `account_session_replaced`, consumes its pending tickets, releases its active
   simulation sessions, and creates the replacement session transactionally.
 - Logout and manual revoke use explicit revocation reasons and dependent cleanup.
+  They lock the account first, like login and join, and clean up only sessions
+  that belong to the caller. Revoking another account's session id succeeds
+  without effect, so foreign session ids are not revealed.
 - The Unity client periodically validates its account token and handles
   replacement as a controlled disconnect.
 
 Login and registration use independent fixed-window limits keyed by remote IP.
-Rejected requests return HTTP 429 with structured Problem Details and
-`Retry-After`.
+Rejected requests return HTTP 429 with structured Problem Details and a
+`Retry-After` that counts down to the end of the current window. The policy is
+taken from the matched endpoint, so a different path casing such as
+`/api/accounts/LOGIN` cannot skip the distributed limit.
 
 ## Character Access
 
@@ -122,13 +134,16 @@ migrations, `SimulationTopologySeeder` idempotently upserts configured records.
 It does not manufacture online workers. A seeded shard remains offline until a
 valid heartbeat and active assignment exist.
 
-An existing shard may be rebound to another configured World on AuthService
-startup. Reconciliation locks the shard row and refuses the change while any
-active assignment, pending unexpired join ticket, active unexpired simulation
-session, or open durable corpse still references the shard. The worker must be
-stopped cleanly and World-local state must be drained before retrying. The next
-worker runtime must report the rebound World identity, so stale content cannot
-silently simulate the shard. A migration placeholder assignment with no worker
+A shard is rebound to another World when a worker heartbeat proposes a different
+configured `WorldId`. AuthService locks the shard row and refuses the change while
+a healthy assignment, pending unexpired join ticket, active unexpired simulation
+session, or open durable corpse still references the shard. A worker that stopped heartbeating is treated as gone once the heartbeat timeout
+passes. Its pending tickets and simulation sessions are released before the
+blockers are counted, so a crashed worker cannot block a rebind until its
+leases expire. Open durable corpses always block. The
+worker must be stopped cleanly and World-local state must be drained before
+retrying. The next worker runtime must report the rebound World identity, so
+stale content cannot silently simulate the shard. A migration placeholder assignment with no worker
 runtime is not simulation authority and therefore does not block a rebind.
 
 ## Worker Registration And Assignment
@@ -151,12 +166,15 @@ target shard and applies these rules:
 - A timed-out or explicitly offline owner can be replaced.
 - Replacement invalidates old-runtime tickets and simulation sessions even when
   the logical worker moves to another shard.
-- A newer runtime can replace an older runtime for the same worker id.
+- A newer runtime can replace an older live runtime for the same worker id, and
+  any runtime can replace one that is offline or past the heartbeat timeout.
+- Worker secrets are matched to the exact, case-sensitive worker id.
 - The older runtime is fenced by `worker_runtime_changed`.
 - A stale process cannot mark a newer runtime offline.
 - Active assignment indexes prevent two worker or shard owners.
 
-SimulationWorker stores the database-issued lease duration locally. It rejects
+SimulationWorker stores the database-issued lease duration locally, measured
+from the moment the heartbeat request was sent. It rejects
 new UDP joins without a valid registration lease. A one-second monitor stops the
 process after lease expiry. Definitive topology, assignment, runtime, or service
 credential rejection also stops the process.
@@ -174,14 +192,23 @@ Join placement:
 2. Locks the account and character.
 3. Releases expired account simulation sessions.
 4. Rejects another active character or cross-shard active session.
-5. Selects the assigned worker only when its heartbeat is fresh and it has room.
+5. Invalidates older pending tickets for the account, so a retried join is not
+   blocked by its own earlier ticket.
+6. Selects the assigned worker only when its heartbeat is fresh and it has room.
    Capacity uses the greater of worker-reported connections and authoritative
    unexpired simulation sessions, then adds pending tickets in PostgreSQL.
-6. Invalidates older pending tickets for the account.
-7. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
+   A reconnect ticket for an already counted session is not added again. In
+   Development, the in-memory sessions and pending tickets of synthetic bots
+   are joined into the same query, so players and bots never reserve the same
+   connections.
+7. Re-reads the assignment after locking the worker, so a worker that moved to
+   another Shard in the meantime is never placed.
+8. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
    account session.
-8. Computes expiry after placement locks are acquired.
-9. Returns the shard and exact endpoint metadata.
+9. Computes expiry with `clock_timestamp()` after placement locks are acquired.
+   Ticket consumption and session leases use the same clock, so time spent
+   waiting for a lock never shortens or extends a ticket or lease.
+10. Returns the shard and exact endpoint metadata.
 
 Selection serializes reservations on the target shard, then locks the selected
 worker. A waiting request recalculates session and ticket usage from a fresh
@@ -214,7 +241,9 @@ Simulation session properties:
   revoked sessions.
 
 The worker also enforces cached lease expiry locally so an AuthService outage
-cannot leave a connected player active forever.
+cannot leave a connected player active forever. The local deadline is the
+request send time plus the lease duration that AuthService returns, so it does
+not depend on the database clock.
 
 ## Realtime UDP Transport
 
@@ -231,6 +260,15 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   validated.
 - Protocol violations receive a stable error where possible and are then
   disconnected.
+- `SimulationWorker:Admission` limits remote peers that have not joined yet: at
+  most `MaxUnauthenticatedPeers` in total and `MaxUnauthenticatedPeersPerAddress`
+  per address, and new connections per address are rate limited by
+  `ConnectionAttemptsPerAddressPerSecond` with a `ConnectionAttemptBurstPerAddress`
+  burst. Loopback peers, such as local bots and stress tools, are exempt.
+- A peer with more than `MaxReliableQueuedPackets` unacknowledged reliable
+  control packets is disconnected, so a client that never acknowledges cannot
+  grow server memory without bound. Rejected connections are counted by the
+  `simulation_worker.realtime.connections.rejected` metric.
 
 Protocol version `14` carries Shard and World identity plus the initial carry
 tuple in join acceptance. Reliable ordered control messages carry later item
@@ -304,9 +342,11 @@ instances for `development-world-1`, and seven prepared spawn instances for
   buckets selected by their shared activity profile. No actor owns a task,
   timer, thread, database session, or HTTP poller.
 - Actor presence reuses reliable interest enter and exit messages, while actor
-  state changes use bounded reliable updates. Assignment-local, bounded despawn
+  state changes use bounded reliable updates. Assignment-local despawn
   tombstones retain runtime identity until every interest exit can encode the
-  actor-specific despawn contract.
+  actor-specific despawn contract. Each interest pass drops a tombstone once no
+  connection still has the actor in its interest set, so they stay bounded by
+  current visibility.
 - One typed capability registry composes dialogue, vendor, quest, crafting,
   insurance, trainer, bank, and Recovery Storage descriptors. Each registered
   kind has an explicit Phase 12 deferred handler unless a later phase replaces
@@ -358,8 +398,25 @@ corpse view.
 - Each chunk has a SHA-256 checksum.
 - The manifest has a deterministic complete collision revision.
 - SimulationWorker validates format, World id, checksums, coordinates, and
-  revision before binding UDP.
-- Unity validates and loads the same data before prediction.
+  revision before binding UDP. It recomputes the revision from the manifest
+  chunk list and rejects a manifest whose stored revision differs.
+- Unity validates and loads the same data, with the same revision check, before
+  prediction.
+- Collision data stays within plus or minus 1,000,000 world units, chunk sizes
+  stay between 1 and 4096, and one box may span at most 65,536 chunks. Chunk
+  coordinates are clamped to plus or minus 2^24, so .NET and Unity map every
+  position to the same chunk, and a query wider than the loaded set scans the
+  loaded chunks instead of every cell in its range.
+- The character motor derives its substep count from the full displacement
+  length, so no substep, diagonal or not, exceeds the configured limit.
+- Shared simulation math wraps every float intermediate in an explicit
+  `(float)` cast. Unity's Mono runtime keeps float intermediates in double
+  precision and rounds only stored values, while .NET rounds every operation,
+  so without the casts Unity prediction drifted from the worker. Movement is
+  now bit-identical in both runtimes. Sine, cosine, and arctangent come from the
+  platform C runtime in double precision and are rounded to float, so a libm
+  difference between platforms only matters in the rare case where it crosses
+  a float rounding boundary.
 - Static shapes are assigned to every intersected chunk and deduplicated by
   stable id during queries.
 - Position-driven load and larger unload radii provide streaming hysteresis.
@@ -473,6 +530,30 @@ concurrent inspection, and authoritative looting:
   policy, delivery, entitlement, carried-state, revision, or audit mutation can
   survive. Replaying the same operation id and canonical payload returns the
   stored result. A different payload returns `item_operation_conflict`.
+- A retry of a committed SimulationWorker operation replays its stored result
+  even when the live session has ended since, so a lost response never turns a
+  committed change into a reported failure.
+- Committed operations recompute carried weight with indexed lookups of the
+  character's carried containers and equipped Bag, and the death partition
+  selects its source items the same way. A partial index on
+  `item_instances(equipped_character_id, equipment_slot_id)` supports both.
+- AuthService startup bootstraps only characters that have no item state, each
+  in its own short transaction, and then recomputes carry state in batches of
+  500 rows that it locks first, so a concurrent item transaction can never be
+  overwritten with a stale weight and startup scales with the number of
+  accounts.
+- Two kinds of rejection are returned without being stored, so the same id can
+  run again: `item_transaction_timeout`, which also covers lock timeouts,
+  statement timeouts, deadlocks, and serialization failures, and every
+  rejection of a retried system operation. The retried system operations are
+  player death, persistent Mob corpse creation, live Mob loot grants, corpse
+  expiry, and Recovery expiry. A live Mob loot grant therefore stays claimable
+  after a rejected attempt until one claim commits.
+- Player-chosen operation ids, from account routes and from SimulationWorker
+  requests other than the retried system operations, must be random version 4
+  UUIDs or the command returns `item_operation_id_invalid` without claiming the
+  id. Every derived system id is a version 5 UUID, so a player cannot claim an
+  id that a system operation needs.
 - Successful commands recompute unitless carried weight and equipped Bag
   capacity from authoritative custody, advance touched character, container,
   Bag, and item revisions, and append before and after audit rows. Voluntary
@@ -490,7 +571,12 @@ concurrent inspection, and authoritative looting:
 - Recovery Storage remains system-write-only. Internal delivery creation and
   complete claims to permanent inventory or bank preserve item identity,
   quantity, and policy lineage. Recovery custody remains excluded from weight.
+  Player reads return only unclaimed deliveries. A claimed delivery is kept as
+  history for the audit retention period and then removed by maintenance.
 - Secure Container tier changes update every active character on the account.
+  An account actor may only select the catalog base tier. A larger tier is
+  granted only by a trusted entitlement or purchase source with system
+  authority.
   Removed slots are drained in descending order to deterministic
   `secure_capacity_reduction` Recovery deliveries before the slots are removed.
   Character bootstrap and tier changes share one account-entitlement advisory
@@ -502,6 +588,8 @@ concurrent inspection, and authoritative looting:
   same transaction kernel. Insurance removal changes policy lifecycle without
   replacing the item. Quest abandon removes only active protected items with the
   exact quest-grant source id, and reaccept suppresses duplicate active grants.
+  Abandoning an item held in Recovery Storage also removes its slot row and any
+  unclaimed delivery left without items, so no empty delivery remains.
 - Account mutation requests derive authority from the authenticated principal
   and use an offline-required actor. Character and item-state rows are locked
   before checking active simulation sessions, using the same character lock as
@@ -518,9 +606,9 @@ concurrent inspection, and authoritative looting:
   applies only increasing item-state revisions. Same-revision conflicts
   invalidate the local lease instead of accepting contradictory weight or
   capacity.
-- GameSimulation revision `movement-simulation-v3` owns the immutable carry
-  state and deterministic encumbrance calculation used by worker movement and
-  Unity prediction. Sprint is allowed through exactly 100 percent load, then
+- GameSimulation, at revision `movement-simulation-v4` and with carry state
+  since `v3`, owns the immutable carry state and deterministic encumbrance
+  calculation used by worker movement and Unity prediction. Sprint is allowed through exactly 100 percent load, then
   disabled, while the movement multiplier falls linearly to `0.20` at the exact
   140 percent hard cap.
 - Realtime protocol version `14` retains carry state on join, later committed
@@ -557,7 +645,11 @@ concurrent inspection, and authoritative looting:
   replay with the same authoritative character, Shard, transform, and
   presentation data returns the original corpse, absolute expiry, Recovery
   deliveries, and committed character revision without repartitioning. Reusing
-  the event id with different data returns `death_event_conflict`.
+  the event id with different data returns `death_event_conflict`. The event
+  row is removed together with its closed corpse after the closed-corpse
+  retention period. Every death request carries the expected character
+  revision and the partition always advances it, so a replay that outlives the
+  event row is rejected as a revision conflict instead of partitioning twice.
 - One death transaction leaves currency, bank, existing Recovery Storage, and
   Secure Container contents unchanged. Protected items and otherwise-lootable
   active insured items move to source-correlated Recovery deliveries. Insurance
@@ -593,13 +685,20 @@ concurrent inspection, and authoritative looting:
   internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
   swaps reuse `ItemTransactionService` with targeted item, container, and
   Bag-root revisions. Internal moves can split, merge, or swap across the three
-  corpse sections without advancing character item-state or carry. Corpse
-  equipment destinations carry canonical equipment-slot ids and validate
-  definition compatibility. Unrelated corpse changes may commit concurrently,
+  corpse sections without advancing character item-state or carry. The corpse
+  Bag owns the corpse Bag section, so it never leaves its equipment slot through
+  an internal move or swap, even when empty; only an atomic Bag aggregate swap
+  replaces it. Corpse equipment destinations carry canonical equipment-slot ids
+  and validate definition compatibility. Unrelated corpse changes may commit concurrently,
   competing custody has one stable winner, and no PostgreSQL transaction remains
   open across a client network wait.
 - The worker broadcasts each committed targeted delta or replacement to every
-  current viewer. Its runtime store accepts only monotonic corpse revisions.
+  current viewer. An open or refresh always gives its requester a complete
+  snapshot, while the other viewers receive the delta from the newer revision.
+  Its runtime store accepts only monotonic corpse revisions. A completion that
+  arrives after its peer disconnected never releases the corpse reservation of
+  a new peer that reuses the LiteNetLib peer id; disconnect cleanup releases
+  every reservation of the old peer first.
   Expiry, invalidation, and missing-corpse results close affected views with
   stable codes, while stale item or quantity conflicts trigger refresh.
 - SimulationWorker updates its carry-state store only from committed AuthService
@@ -679,6 +778,11 @@ budget.
 Session heartbeats use bounded concurrency so one worker cannot create an
 unbounded AuthService request fan-out. HTTP calls map timeout, connection,
 invalid-response, authentication, and domain failures to structured results.
+`auth_service_timeout` and `auth_service_unavailable` are unknown outcomes,
+because AuthService may have committed the operation before the response was
+lost, so item, corpse, and live Mob loot results with those codes always ask the
+client to refresh. Live Mob loot claims send the current committed item-state
+revision from the carry store, not the revision from the time of the join.
 
 ## Metrics And Logs
 
@@ -762,7 +866,9 @@ Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
   configured, it becomes an exact allowlist and shared fallback is disabled.
 - Secrets are compared in fixed time.
 - Central middleware converts unhandled failures into RFC Problem Details.
-- Responses carry `X-Correlation-ID`.
+- Responses carry `X-Correlation-ID`, including error responses produced by
+  the exception handler. A request the client aborted is logged at debug level
+  and is not reported as a server error.
 - Token-bearing responses use `Cache-Control: no-store` and `Pragma: no-cache`.
 - No debug HTTP endpoint is registered in the current service surface.
 
@@ -844,7 +950,8 @@ not a live World rebind.
 Phase 15 adds partial indexes for completed operation retention, closed-corpse
 retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
 uses deterministic system-authority operations to destroy expired Recovery
-items with durable audit, removes empty closed corpses only after retention, and
+items with durable audit, removes empty closed corpses only after retention,
+removes claimed Recovery deliveries after the audit retention period, and
 deletes old operation rows only when no destruction or death record references
 them. Every database unit uses statement and lock limits plus `skip locked`
 batch selection where concurrent maintenance is permitted.
@@ -869,6 +976,17 @@ the test connection variable at development or production data.
 - Item catalog determinism, malformed and duplicate content rejection,
   structural fingerprint detection, pure rule behavior, and exact integer
   encumbrance boundaries.
+- Catalog tags and equipment slot ids are limited to 64 characters and Bag
+  slots to 16 accepted tags, the realtime protocol limits. A test keeps the
+  `ItemCatalogFormat` limits within `RealtimeProtocolLimits`.
+- A movement determinism golden test runs one shared scenario in .NET and in
+  Unity EditMode and pins `GameSimulationCompatibility.Revision` together with
+  the same fingerprint in both, so a movement change without a revision bump,
+  or a runtime that diverges, fails. A coverage test keeps the scenario
+  blocking on a wall, climbing and dropping off a rotated ramp, stopping at a
+  rotated pillar, stepping up, and jumping.
+- Committed collision manifests are checked against their recomputed
+  revision.
 - Isolated PostgreSQL item tests for concurrent migration initialization,
   complete and idempotent character backfill, catalog reconciliation and
   compatibility fencing, exact custody constraints, delete behavior, and
@@ -884,8 +1002,8 @@ the test connection variable at development or production data.
   reduction without item loss.
 - Isolated policy and HTTP tests for insurance removal, exact quest-grant cleanup
   and reaccept, ETag `304`, no-store responses, owner scoping, stable Problem
-  Details, offline session fencing, Recovery deposit rejection, system delivery,
-  successful claims, and hard-cap claim rollback.
+  Details, offline session fencing, offline bank and Recovery rejection, system
+  delivery, successful kernel claims, and hard-cap claim rollback.
 - Shared carry and movement tests for exact custody contribution, base and Bag
   capacity, lower-capacity Bag rejection, sprint at and above 100 percent,
   fixed-point movement reference points, monotonic active-session propagation,

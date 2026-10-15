@@ -13,6 +13,7 @@ artifacts/
 # Local environment
 .env
 .env.local
+.claude/settings.local.json
 
 # Unity generated files
 shooter-mmorpg-unity-client/[Ll]ibrary/
@@ -25,9 +26,12 @@ shooter-mmorpg-unity-client/[Ll]ogs/
 shooter-mmorpg-unity-client/[Uu]ser[Ss]ettings/
 shooter-mmorpg-unity-client/[Mm]emoryCaptures/
 shooter-mmorpg-unity-client/[Rr]ecordings/
+shooter-mmorpg-unity-client/Assets/_Recovery/
+shooter-mmorpg-unity-client/Assets/_Recovery.meta
 shooter-mmorpg-unity-client/*.csproj
 shooter-mmorpg-unity-client/*.sln
 shooter-mmorpg-unity-client/*.slnx
+shooter-mmorpg-unity-client/packages.lock.json
 shooter-mmorpg-unity-client/*.pidb
 shooter-mmorpg-unity-client/*.booproj
 shooter-mmorpg-unity-client/*.svd

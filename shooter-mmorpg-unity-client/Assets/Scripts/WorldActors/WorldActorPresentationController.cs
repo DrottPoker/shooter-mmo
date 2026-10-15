@@ -9,6 +9,9 @@ namespace ShooterMmo.WorldActors
     [DisallowMultipleComponent]
     public sealed class WorldActorPresentationController : MonoBehaviour
     {
+        public const string RegistryResourcePath =
+            "ShooterMmo/WorldActors/WorldActorPresentationRegistry";
+
         private readonly Dictionary<ulong, WorldActorView> presentations =
             new Dictionary<ulong, WorldActorView>();
         private MaterialPropertyBlock materialProperties;
@@ -26,7 +29,16 @@ namespace ShooterMmo.WorldActors
         {
             actorController = ShooterMmoClientBootstrap.WorldActorController;
             presentationRegistry = Resources.Load<WorldActorPresentationRegistry>(
-                "ShooterMmo/WorldActors/WorldActorPresentationRegistry");
+                RegistryResourcePath);
+            if (presentationRegistry == null)
+            {
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "World actor presentation registry is missing at Resources/"
+                        + RegistryResourcePath
+                        + ". Every actor uses the explicit development fallback.");
+            }
+
             presentationRoot = new GameObject("WorldActorPresentations").transform;
             presentationRoot.SetParent(transform, false);
             if (actorController != null)
@@ -89,7 +101,9 @@ namespace ShooterMmo.WorldActors
             }
             else
             {
-                if (missingArchetypes.Add(actor.PresentationArchetypeId))
+                // A missing registry is reported once at startup instead of per archetype.
+                if (presentationRegistry != null
+                    && missingArchetypes.Add(actor.PresentationArchetypeId))
                 {
                     ClientLog.Warning(
                         ClientLogCategory.Client,
@@ -108,6 +122,9 @@ namespace ShooterMmo.WorldActors
                 {
                     existingCollider.enabled = false;
                 }
+
+                // Only the fallback primitive is tinted; an authored prefab keeps its look.
+                ApplyFallbackColor(presentation, actor);
             }
 
             presentation.name = "WorldActor_" + actor.ActorDefinitionId
@@ -121,7 +138,6 @@ namespace ShooterMmo.WorldActors
             }
 
             view.Initialize(actor);
-            ApplyFallbackColor(presentation, actor);
             return view;
         }
 

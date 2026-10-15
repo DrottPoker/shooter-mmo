@@ -9,6 +9,8 @@ public sealed class SimulationWorkerRegistryService(
     NpgsqlDataSource dataSource,
     AuthServiceConfig config)
 {
+    private static readonly TimeSpan MaximumStartedAtClockSkew = TimeSpan.FromMinutes(10);
+
     public async Task<ServiceResult<SimulationWorkerHeartbeatResponse>> HeartbeatAsync(
         string workerId,
         SimulationWorkerHeartbeatRequest request,
@@ -153,7 +155,7 @@ public sealed class SimulationWorkerRegistryService(
             await transaction.RollbackAsync(cancellationToken);
             return ServiceResult<SimulationWorkerHeartbeatResponse>.Conflict(
                 "worker_runtime_changed",
-                "A newer runtime currently owns this simulation worker identity.");
+                "Another live runtime currently owns this simulation worker identity.");
         }
 
         await ReleaseSupersededRuntimeAccessAsync(
@@ -304,8 +306,13 @@ public sealed class SimulationWorkerRegistryService(
                 is_online = true,
                 last_heartbeat_at = now(),
                 updated_at = now()
+            -- A runtime that is offline or no longer heartbeating can always be replaced.
+            -- Reported start times only order two live runtimes, because host clocks differ.
             where simulation_workers.runtime_id is null
                or simulation_workers.runtime_id = excluded.runtime_id
+               or simulation_workers.is_online = false
+               or simulation_workers.last_heartbeat_at
+                    + make_interval(secs => @HeartbeatTimeoutSeconds) <= now()
                or simulation_workers.started_at < excluded.started_at
             returning id as "WorkerId",
                       runtime_id as "RuntimeId",
@@ -630,6 +637,12 @@ public sealed class SimulationWorkerRegistryService(
         if (request.StartedAt == default || request.StartedAt.Kind != DateTimeKind.Utc)
         {
             return ("invalid_worker_started_at", "Simulation worker start time must be UTC.");
+        }
+
+        // A start time far in the future would let one misconfigured host fence every other.
+        if (request.StartedAt > DateTime.UtcNow.Add(MaximumStartedAtClockSkew))
+        {
+            return ("invalid_worker_started_at", "Simulation worker start time is in the future.");
         }
 
         if (string.IsNullOrWhiteSpace(request.Host)

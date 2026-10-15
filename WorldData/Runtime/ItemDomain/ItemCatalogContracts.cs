@@ -5,6 +5,13 @@ namespace ShooterMmo.WorldData.Items
     public static class ItemCatalogFormat
     {
         public const int Version = 2;
+
+        // Tags and equipment slot ids travel in realtime item and corpse messages, so
+        // they must fit the protocol limits that RealtimeProtocolLimits defines.
+        public const int MaximumIdentifierLength = 128;
+        public const int MaximumTagLength = 64;
+        public const int MaximumEquipmentSlotIdLength = 64;
+        public const int MaximumAcceptedTagsPerSlot = 16;
     }
 
     public static class ItemCategoryIds
@@ -80,7 +87,9 @@ namespace ShooterMmo.WorldData.Items
         public long UnitWeight = -1;
         public int MaximumStackSize;
         public string[] EquipmentSlots;
+#pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
         public bool? PlayerDestroyable;
+#pragma warning restore UAC1001
         public ItemLocationEligibilityAuthoringEntry LocationEligibility;
         public string[] DefaultPolicies;
         public BagDefinitionAuthoringEntry Bag;
@@ -89,7 +98,9 @@ namespace ShooterMmo.WorldData.Items
     [Serializable]
     public sealed class ItemLocationEligibilityAuthoringEntry
     {
+#pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
         public bool? SecureContainer;
+#pragma warning restore UAC1001
     }
 
     [Serializable]

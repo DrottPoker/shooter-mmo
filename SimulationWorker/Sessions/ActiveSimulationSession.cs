@@ -20,8 +20,11 @@ public sealed record ActiveSimulationSession(
 {
     public bool IsSyntheticBot { get; init; }
 
+    // requestedAt is the worker-clock time when the consume request was sent, so the
+    // local deadline never outlives the database lease.
     public static ActiveSimulationSession FromJoinTicket(
-        ConsumedSimulationJoinTicketResponse ticket)
+        ConsumedSimulationJoinTicketResponse ticket,
+        DateTime requestedAt)
     {
         return new ActiveSimulationSession(
             ticket.SimulationSessionId,
@@ -34,7 +37,7 @@ public sealed record ActiveSimulationSession(
             ticket.WorkerId,
             ticket.WorkerRuntimeId,
             DateTime.UtcNow,
-            ticket.SessionExpiresAt,
+            requestedAt.AddMilliseconds(ticket.SessionLeaseDurationMilliseconds),
             new PlayerCarryState(
                 ticket.ItemStateRevision,
                 ticket.CarriedWeight,

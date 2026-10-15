@@ -53,7 +53,9 @@ public sealed class DevelopmentSimulationBotAuthority(
                     placement.ActiveDatabaseSessions + activeBotsForRuntime)
                 + placement.PendingDatabaseTickets
                 + pendingForRuntime;
-            if (occupiedOrReservedConnections >= placement.MaxConnections)
+            // Bots never take the last connections, so real local players can still join.
+            if (occupiedOrReservedConnections
+                >= placement.MaxConnections - options.ReservedPlayerConnections)
             {
                 return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
                     "development_bot_worker_capacity_reached",
@@ -220,7 +222,9 @@ public sealed class DevelopmentSimulationBotAuthority(
                     CarryWeightDefaults.BaseCharacterCapacity,
                     false)
                 {
-                    IsSyntheticBot = true
+                    IsSyntheticBot = true,
+                    SessionLeaseDurationMilliseconds =
+                        (long)options.SessionLeaseLifetime.TotalMilliseconds
                 });
             return true;
         }
@@ -252,6 +256,32 @@ public sealed class DevelopmentSimulationBotAuthority(
             request,
             release: true,
             out result);
+    }
+
+    // Bot tickets and sessions live only in this process, so player placement reads them
+    // here; otherwise both paths could reserve the same worker connections.
+    public IReadOnlyList<DevelopmentSimulationBotReservation> CaptureReservations()
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        lock (gate)
+        {
+            Cleanup(now);
+            var pending = pendingTickets.Values
+                .Where(ticket => ticket.ExpiresAt > now)
+                .Select(ticket => (ticket.WorkerId, ticket.WorkerRuntimeId, Session: 0, Ticket: 1));
+            var active = sessions.Values
+                .Where(session => session.ReleasedAt is null && session.ExpiresAt > now)
+                .Select(session => (session.WorkerId, session.WorkerRuntimeId, Session: 1, Ticket: 0));
+            return pending
+                .Concat(active)
+                .GroupBy(entry => (entry.WorkerId, entry.WorkerRuntimeId))
+                .Select(group => new DevelopmentSimulationBotReservation(
+                    group.Key.WorkerId,
+                    group.Key.WorkerRuntimeId,
+                    group.Sum(entry => entry.Session),
+                    group.Sum(entry => entry.Ticket)))
+                .ToArray();
+        }
     }
 
     public DevelopmentSimulationBotAuthoritySnapshot CaptureSnapshot()
@@ -323,7 +353,12 @@ public sealed class DevelopmentSimulationBotAuthority(
                     0,
                     0,
                     CarryWeightDefaults.BaseCharacterCapacity,
-                    release));
+                    release)
+                {
+                    LeaseDurationMilliseconds = release
+                        ? 0
+                        : (long)options.SessionLeaseLifetime.TotalMilliseconds
+                });
             return true;
         }
     }

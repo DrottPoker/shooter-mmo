@@ -170,7 +170,7 @@ namespace ShooterMmo.WorldActors
             simulationClient.WorldInteractionOpened += OnOpened;
             simulationClient.WorldInteractionCompleted += OnCompleted;
             simulationClient.WorldInteractionClosed += OnClosed;
-            simulationClient.UnexpectedlyDisconnected += OnDisconnected;
+            simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             State.Clear();
         }
@@ -438,7 +438,7 @@ namespace ShooterMmo.WorldActors
             State.Close(closed);
         }
 
-        private void OnDisconnected(RealtimeClientError error)
+        private void OnSessionEnded(RealtimeClientError error)
         {
             State.Clear();
         }
@@ -453,7 +453,7 @@ namespace ShooterMmo.WorldActors
             simulationClient.WorldInteractionOpened -= OnOpened;
             simulationClient.WorldInteractionCompleted -= OnCompleted;
             simulationClient.WorldInteractionClosed -= OnClosed;
-            simulationClient.UnexpectedlyDisconnected -= OnDisconnected;
+            simulationClient.SessionEnded -= OnSessionEnded;
             initialized = false;
         }
     }

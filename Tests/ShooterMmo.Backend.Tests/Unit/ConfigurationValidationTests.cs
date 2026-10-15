@@ -89,6 +89,44 @@ public sealed class ConfigurationValidationTests
         Assert.Contains(expectedMessage, exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("Auth:SessionLifetimeHours", "100000000", "from 1 to 720")]
+    [InlineData("RateLimiting:Authentication:WindowSeconds", "0", "from 1 to 3600")]
+    [InlineData("RateLimiting:Authentication:PermitLimit", "1001", "from 1 to 1000")]
+    public void AuthServiceRejectsOutOfRangeAuthenticationLimits(
+        string key,
+        string value,
+        string expectedMessage)
+    {
+        var settings = AuthSettings(includeSecrets: true);
+        settings[key] = value;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => AuthServiceConfig.FromConfiguration(configuration));
+
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AuthServiceRejectsThePlaceholderWorkerSecret()
+    {
+        var settings = AuthSettings(includeSecrets: true);
+        settings.Remove("ServiceAuthentication:SimulationWorkers:local-simulation-worker-1");
+        settings["SIMULATION_WORKER_SERVICE_SECRET"] =
+            "replace-with-a-long-local-simulation-worker-secret";
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => AuthServiceConfig.FromConfiguration(configuration));
+
+        Assert.Contains("placeholder", exception.Message);
+    }
+
     [Fact]
     public void AuthServiceAcceptsSharedWorkerSecretWithoutEnvironmentWorkerIdentity()
     {
@@ -331,6 +369,7 @@ public sealed class ConfigurationValidationTests
         settings["SimulationWorker:InterestManagement:CellSize"] = "1";
         settings["SimulationWorker:InterestManagement:ExitRadius"] = "100";
         settings["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "17";
+        settings["SimulationWorker:RegistryAcquireTimeoutSeconds"] = "10";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
@@ -341,6 +380,9 @@ public sealed class ConfigurationValidationTests
         Assert.Contains("aggregate snapshot quota exceeds", exception.Message);
         Assert.Contains("no more than 64 searched cells", exception.Message);
         Assert.Contains("UnloadRadiusChunks must not exceed 16", exception.Message);
+        Assert.Contains(
+            "RegistryAcquireTimeoutSeconds must be longer than RegistryHeartbeatSeconds",
+            exception.Message);
     }
 
     [Fact]

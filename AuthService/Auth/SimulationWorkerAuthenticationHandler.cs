@@ -30,10 +30,16 @@ public sealed class SimulationWorkerAuthenticationHandler(
                 "Simulation worker identity is invalid."));
         }
 
-        var workerSecrets = configuration.GetSection("ServiceAuthentication:SimulationWorkers");
-        var configuredSecret = workerSecrets[workerId];
-        if (string.IsNullOrWhiteSpace(configuredSecret)
-            && !workerSecrets.GetChildren().Any())
+        // Configuration keys ignore case, but worker ids are case-sensitive in the
+        // database, so only an exact key match may authenticate a worker id.
+        var workerSecrets = configuration
+            .GetSection("ServiceAuthentication:SimulationWorkers")
+            .GetChildren()
+            .ToArray();
+        var configuredSecret = workerSecrets
+            .FirstOrDefault(entry => string.Equals(entry.Key, workerId, StringComparison.Ordinal))
+            ?.Value;
+        if (string.IsNullOrWhiteSpace(configuredSecret) && workerSecrets.Length == 0)
         {
             configuredSecret = configuration["SIMULATION_WORKER_SERVICE_SECRET"];
         }

@@ -25,14 +25,44 @@ public sealed class ActiveSimulationSessionStoreTests
             PlayerEncumbranceRules.BaseCharacterCapacity,
             false)
         {
-            IsSyntheticBot = true
+            IsSyntheticBot = true,
+            SessionLeaseDurationMilliseconds = 30_000
         };
 
-        var session = ActiveSimulationSession.FromJoinTicket(ticket);
+        var session = ActiveSimulationSession.FromJoinTicket(ticket, DateTime.UtcNow);
         var response = ActiveSimulationSessionResponse.FromSession(session);
 
         Assert.True(session.IsSyntheticBot);
         Assert.True(response.IsSyntheticBot);
+    }
+
+    [Fact]
+    public void SessionDeadlineUsesTheWorkerClockAndTheLeaseDuration()
+    {
+        // The database clock is far ahead of the worker clock.
+        var ticket = new ConsumedSimulationJoinTicketResponse(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Clock Skew Hero",
+            "local-shard-1",
+            "development-world-1",
+            "local-simulation-worker-1",
+            "worker-runtime-1",
+            Guid.NewGuid(),
+            "session-token",
+            DateTime.UtcNow.AddHours(5),
+            0,
+            0,
+            PlayerEncumbranceRules.BaseCharacterCapacity,
+            false)
+        {
+            SessionLeaseDurationMilliseconds = 30_000
+        };
+        var requestedAt = new DateTime(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
+
+        var session = ActiveSimulationSession.FromJoinTicket(ticket, requestedAt);
+
+        Assert.Equal(requestedAt.AddSeconds(30), session.SessionExpiresAt);
     }
 
     [Fact]
@@ -164,6 +194,27 @@ public sealed class ActiveSimulationSessionStoreTests
         Assert.True(store.TryTakeInvalidation(session.SimulationSessionId, out var invalidation));
         Assert.Equal("session_expired", invalidation!.Code);
         Assert.Equal("The simulation session lease expired.", invalidation.Message);
+    }
+
+    [Fact]
+    public void InvalidationsOfDetachedSessionsArePrunedAfterTheRetention()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var detached = CreateSession();
+        store.Register(detached);
+        Assert.True(store.Invalidate(
+            detached.CharacterId,
+            detached.SimulationSessionId,
+            detached.SimulationSessionToken,
+            "session_revoked",
+            "No peer owns this session any more."));
+        Assert.Equal(1, store.PendingInvalidationCount);
+
+        Assert.Equal(0, store.PruneInvalidations(DateTime.UtcNow - ActiveSimulationSessionStore.InvalidationRetention));
+        Assert.Equal(1, store.PendingInvalidationCount);
+        Assert.Equal(1, store.PruneInvalidations(DateTime.UtcNow.AddSeconds(1)));
+        Assert.Equal(0, store.PendingInvalidationCount);
+        Assert.False(store.TryTakeInvalidation(detached.SimulationSessionId, out _));
     }
 
     private static ActiveSimulationSession CreateSession(

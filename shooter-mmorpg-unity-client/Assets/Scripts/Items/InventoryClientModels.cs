@@ -965,10 +965,8 @@ namespace ShooterMmo.Items
                 .CalculateMovementMultiplierBasisPoints(
                     response.carriedWeight,
                     response.carryCapacity);
-            if (!EncumbranceRules.IsWithinHardCap(
-                    response.carriedWeight,
-                    response.carryCapacity)
-                || response.loadRatioBasisPoints != expectedLoadRatio
+            // Weight above the hard cap is valid after an involuntary death overflow.
+            if (response.loadRatioBasisPoints != expectedLoadRatio
                 || response.sprintEligible != expectedSprintEligibility
                 || response.movementMultiplierBasisPoints != expectedMovementMultiplier)
             {

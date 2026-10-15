@@ -529,6 +529,56 @@ public sealed class DeathLootIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CharacterWithInvoluntaryDeathOverflowCanJoinAgain()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "death-overflow-join@example.com",
+            "death_overflow_join",
+            "Death Overflow Joiner");
+        var fixture = new DeathInventoryFixture(context, player);
+        var initial = await fixture.GetSnapshotAsync();
+        var bag = await fixture.GrantAsync(
+            "bag.field_pack",
+            1,
+            initial.PermanentInventory.ContainerId,
+            0);
+        await fixture.EquipAsync(bag, "bag");
+        await fixture.GrantAsync(
+            "material.iron_ore",
+            50,
+            initial.SecureContainer.Contents.ContainerId,
+            0);
+        await ProcessDeathAsync(context, player, Guid.NewGuid());
+
+        var join = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            ShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+        var consumed = await context.ShardService.ConsumeJoinTicketAsync(
+            new ConsumeSimulationJoinTicketRequest(
+                join.Value!.JoinTicket,
+                WorkerId,
+                WorkerRuntimeId,
+                ShardId),
+            CancellationToken.None);
+
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+        Assert.Equal(300, consumed.Value!.CarriedWeight);
+        Assert.Equal(200, consumed.Value.CarryCapacity);
+        var workerCarry = new ShooterMmo.GameSimulation.PlayerCarryState(
+            consumed.Value.ItemStateRevision,
+            consumed.Value.CarriedWeight,
+            consumed.Value.CarryCapacity);
+        Assert.False(workerCarry.SprintAllowed);
+        Assert.Equal(
+            EncumbranceRules.MinimumMovementMultiplierBasisPoints,
+            workerCarry.MovementMultiplierBasisPoints);
+    }
+
+    [PostgresIntegrationFact]
     public async Task RestartRestoresOnlyOwnedUnexpiredShardCorpsesAndKeepsEmptyCorpseUntilExpiry()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

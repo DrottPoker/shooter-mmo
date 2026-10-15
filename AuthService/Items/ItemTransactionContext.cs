@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -743,14 +742,28 @@ internal sealed class ItemTransactionContext(
         Guid characterId,
         CancellationToken cancellationToken)
     {
+        var container = await LoadKernelPlacementContainerAsync(
+            containerId,
+            characterId,
+            cancellationToken);
+        EnsureLiveContainerAccess(container.ContainerType);
+
+        return container;
+    }
+
+    // Loads a container that the kernel itself places items into, such as Recovery Storage
+    // for displaced items. It is not a player-chosen location, so no service access applies.
+    public async Task<LockedContainer> LoadKernelPlacementContainerAsync(
+        Guid containerId,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
         var container = await LoadContainerAsync(containerId, cancellationToken);
 
         if (container.OwningCharacterId != characterId)
         {
             Reject(ItemTransactionErrorCodes.ItemNotOwned, "The character does not own the item container.");
         }
-
-        EnsureLiveContainerAccess(container.ContainerType);
 
         return container;
     }
@@ -884,28 +897,35 @@ internal sealed class ItemTransactionContext(
         }
     }
 
+    // Bank and Recovery Storage are city services. Only a live character at a validated
+    // service point may change them, so offline account routes can never reach them.
     private void EnsureLiveContainerAccess(string? containerType)
     {
-        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
+        if (Actor.Authority == ItemTransactionAuthority.System
             || string.IsNullOrWhiteSpace(containerType))
         {
             return;
         }
 
+        var isLive = Actor.Authority == ItemTransactionAuthority.SimulationWorker;
         if (string.Equals(containerType, "bank", StringComparison.Ordinal)
-            && !Actor.Simulation!.LiveAccess.Bank)
+            && !(isLive && Actor.Simulation!.LiveAccess.Bank))
         {
             Reject(
                 ItemTransactionErrorCodes.BankAccessRequired,
-                "The character is outside validated bank access.");
+                isLive
+                    ? "The character is outside validated bank access."
+                    : "Bank access requires the character at a city bank in the world.");
         }
 
         if (string.Equals(containerType, "recovery_storage", StringComparison.Ordinal)
-            && !Actor.Simulation!.LiveAccess.RecoveryStorage)
+            && !(isLive && Actor.Simulation!.LiveAccess.RecoveryStorage))
         {
             Reject(
                 ItemTransactionErrorCodes.RecoveryAccessRequired,
-                "The character is outside validated Recovery Storage access.");
+                isLive
+                    ? "The character is outside validated Recovery Storage access."
+                    : "Recovery Storage access requires the character at a city service in the world.");
         }
     }
 
@@ -1412,9 +1432,12 @@ internal sealed class ItemTransactionContext(
                     new { CharacterId = characterId },
                     Transaction,
                     cancellationToken: cancellationToken));
-            if (!EncumbranceRules.IsWithinHardCap(carry.CarriedWeight, carry.CarryCapacity)
-                && !allowInvoluntaryHardCapOverflow
-                && !IsNonWorseningExistingOverflow(previousCarry, carry))
+            if (!allowInvoluntaryHardCapOverflow
+                && !EncumbranceRules.IsAllowedVoluntaryTransition(
+                    previousCarry.CarriedWeight,
+                    previousCarry.CarryCapacity,
+                    carry.CarriedWeight,
+                    carry.CarryCapacity))
             {
                 Reject(
                     ItemTransactionErrorCodes.CarryWeightLimitExceeded,
@@ -1510,18 +1533,6 @@ internal sealed class ItemTransactionContext(
             secureContainerEntitlementRevision);
     }
 
-    private static bool IsNonWorseningExistingOverflow(
-        CharacterCarryResult previousCarry,
-        CalculatedCarryState nextCarry)
-    {
-        return !EncumbranceRules.IsWithinHardCap(
-                previousCarry.CarriedWeight,
-                previousCarry.CarryCapacity)
-            && nextCarry.CarriedWeight <= previousCarry.CarriedWeight
-            && ((BigInteger)nextCarry.CarriedWeight * previousCarry.CarryCapacity)
-                <= ((BigInteger)previousCarry.CarriedWeight * nextCarry.CarryCapacity);
-    }
-
     [DoesNotReturn]
     public static void Reject(string code, string message)
     {
@@ -1594,24 +1605,31 @@ internal sealed class ItemTransactionContext(
             cancellationToken: cancellationToken));
         var weights = await Connection.QueryAsync<CarriedItemWeightRow>(new CommandDefinition(
             """
+            -- Each branch is an indexed lookup; an OR across joined tables scans every item.
+            with carried_containers as (
+                select state.permanent_inventory_container_id as container_id
+                from character_item_states state
+                where state.character_id = @CharacterId
+                union
+                select state.secure_container_id
+                from character_item_states state
+                where state.character_id = @CharacterId
+                union
+                select container.id
+                from item_instances bag
+                join item_containers container
+                  on container.bound_bag_item_instance_id = bag.id
+                where bag.equipped_character_id = @CharacterId
+                  and bag.equipment_slot_id = 'bag'
+                  and container.container_type = 'bag_contents'
+                  and container.lifecycle = 'active'
+            )
             select
                 definition.unit_weight as "UnitWeight",
                 item.quantity as "Quantity"
-            from item_instances item
-            join item_definitions definition on definition.id = item.definition_id
-            left join item_containers container on container.id = item.container_id
-            left join item_instances bound_bag
-              on bound_bag.id = container.bound_bag_item_instance_id
-            left join character_item_states state on state.character_id = @CharacterId
-            where item.container_id in (
-                    state.permanent_inventory_container_id,
-                    state.secure_container_id)
-               or (
-                    container.container_type = 'bag_contents'
-                    and container.lifecycle = 'active'
-                    and bound_bag.equipped_character_id = @CharacterId
-                    and bound_bag.equipment_slot_id = 'bag')
-            order by item.id;
+            from carried_containers carried
+            join item_instances item on item.container_id = carried.container_id
+            join item_definitions definition on definition.id = item.definition_id;
             """,
             new { CharacterId = characterId },
             Transaction,

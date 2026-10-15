@@ -1,13 +1,20 @@
 using ShooterMmo.Api;
+using UnityEngine;
 
 namespace ShooterMmo
 {
     public static class ShooterMmoClientSession
     {
-        public static string AuthServiceBaseUrl { get; private set; } = "http://localhost:5000";
-        public static int RequestTimeoutSeconds { get; private set; } = 10;
-        public static int RealtimeTimeoutSeconds { get; private set; } = 10;
-        public static int SessionValidationIntervalSeconds { get; private set; } = 5;
+        private const string DefaultAuthServiceBaseUrl = "http://localhost:5000";
+        private const int DefaultRequestTimeoutSeconds = 10;
+        private const int DefaultRealtimeTimeoutSeconds = 10;
+        private const int DefaultSessionValidationIntervalSeconds = 5;
+
+        public static string AuthServiceBaseUrl { get; private set; } = DefaultAuthServiceBaseUrl;
+        public static int RequestTimeoutSeconds { get; private set; } = DefaultRequestTimeoutSeconds;
+        public static int RealtimeTimeoutSeconds { get; private set; } = DefaultRealtimeTimeoutSeconds;
+        public static int SessionValidationIntervalSeconds { get; private set; } =
+            DefaultSessionValidationIntervalSeconds;
         public static AuthResponse Auth;
         public static CharacterResponse SelectedCharacter;
         public static ShardResponse SelectedShard;
@@ -42,6 +49,17 @@ namespace ShooterMmo
             SelectedCharacter = null;
             SelectedShard = null;
             ActiveSimulationSession = null;
+        }
+
+        // Static state survives entering Play Mode when domain reload is disabled.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        internal static void ResetStaticState()
+        {
+            Clear();
+            AuthServiceBaseUrl = DefaultAuthServiceBaseUrl;
+            RequestTimeoutSeconds = DefaultRequestTimeoutSeconds;
+            RealtimeTimeoutSeconds = DefaultRealtimeTimeoutSeconds;
+            SessionValidationIntervalSeconds = DefaultSessionValidationIntervalSeconds;
         }
     }
 }

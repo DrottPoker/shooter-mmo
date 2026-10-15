@@ -256,7 +256,9 @@ namespace ShooterMmo.Items
                     secondItem,
                     secondContainer.ContainerType,
                     firstContainer.ContainerType);
-                if (!EncumbranceRules.IsWithinHardCap(
+                if (!EncumbranceRules.IsAllowedVoluntaryTransition(
+                    state.FullSnapshot.CarriedWeight,
+                    state.FullSnapshot.CarryCapacity,
                     finalWeight,
                     state.FullSnapshot.CarryCapacity))
                 {
@@ -331,7 +333,9 @@ namespace ShooterMmo.Items
                     externalItem,
                     externalContainer.ContainerType,
                     carriedContainer.ContainerType);
-                if (!EncumbranceRules.IsWithinHardCap(
+                if (!EncumbranceRules.IsAllowedVoluntaryTransition(
+                    state.FullSnapshot.CarriedWeight,
+                    state.FullSnapshot.CarryCapacity,
                     finalWeight,
                     state.FullSnapshot.CarryCapacity))
                 {
@@ -452,7 +456,9 @@ namespace ShooterMmo.Items
                             deliveryItem.Item.Quantity));
                 }
 
-                if (!EncumbranceRules.IsWithinHardCap(
+                if (!EncumbranceRules.IsAllowedVoluntaryTransition(
+                    state.FullSnapshot.CarriedWeight,
+                    state.FullSnapshot.CarryCapacity,
                     finalWeight,
                     state.FullSnapshot.CarryCapacity))
                 {
@@ -587,7 +593,9 @@ namespace ShooterMmo.Items
                 var addedWeight = ItemWeightRules.CalculateStackWeight(
                     definition.UnitWeight,
                     quantity);
-                return EncumbranceRules.IsWithinHardCap(
+                return EncumbranceRules.IsAllowedVoluntaryTransition(
+                    snapshot.CarriedWeight,
+                    snapshot.CarryCapacity,
                     checked(snapshot.CarriedWeight + addedWeight),
                     snapshot.CarryCapacity);
             }
@@ -620,7 +628,11 @@ namespace ShooterMmo.Items
 
                 return finalCapacity > 0
                     && finalWeight >= 0
-                    && EncumbranceRules.IsWithinHardCap(finalWeight, finalCapacity);
+                    && EncumbranceRules.IsAllowedVoluntaryTransition(
+                        snapshot.CarriedWeight,
+                        snapshot.CarryCapacity,
+                        finalWeight,
+                        finalCapacity);
             }
             catch (OverflowException)
             {

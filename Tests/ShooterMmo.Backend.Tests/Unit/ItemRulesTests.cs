@@ -262,6 +262,42 @@ public sealed class ItemRulesTests
         Assert.False(EncumbranceRules.IsWithinHardCap(281, 200));
     }
 
+    [Theory]
+    // Within the hard cap afterwards is always allowed.
+    [InlineData(100, 200, 280, 200, true)]
+    [InlineData(348, 200, 280, 200, true)]
+    // A voluntary change may not cross the hard cap.
+    [InlineData(280, 200, 281, 200, false)]
+    // An existing overflow may shrink, but not grow or worsen its load ratio.
+    [InlineData(348, 200, 340, 200, true)]
+    [InlineData(348, 200, 348, 200, true)]
+    [InlineData(348, 200, 349, 200, false)]
+    [InlineData(348, 200, 300, 150, false)]
+    [InlineData(348, 200, 340, 250, true)]
+    public void VoluntaryTransitionsKeepOrShrinkAnInvoluntaryOverflow(
+        long previousWeight,
+        long previousCapacity,
+        long nextWeight,
+        long nextCapacity,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            EncumbranceRules.IsAllowedVoluntaryTransition(
+                previousWeight,
+                previousCapacity,
+                nextWeight,
+                nextCapacity));
+    }
+
+    [Fact]
+    public void MovementMultiplierStaysAtTheMinimumAboveTheHardCap()
+    {
+        Assert.Equal(
+            EncumbranceRules.MinimumMovementMultiplierBasisPoints,
+            EncumbranceRules.CalculateMovementMultiplierBasisPoints(348, 200));
+    }
+
     private static ItemDefinition Definition(string id)
     {
         return ItemCatalogTestData.Compile().Definitions.Single(definition => definition.Id == id);

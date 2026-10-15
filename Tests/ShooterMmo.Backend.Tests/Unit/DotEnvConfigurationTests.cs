@@ -28,4 +28,51 @@ public sealed class DotEnvConfigurationTests
             directory.Delete(recursive: true);
         }
     }
+
+    [Fact]
+    public void ExportPrefixesAndInlineCommentsAreHandledAndSecretsNeverLeak()
+    {
+        var values = DotEnvConfigurationExtensions.Parse(
+            ".env",
+            [
+                "export SIMULATION_WORKER_SERVICE_SECRET=abc123 # local only",
+                "QuotedHash=\"value # kept\""
+            ]);
+
+        Assert.Equal("abc123", values["SIMULATION_WORKER_SERVICE_SECRET"]);
+        Assert.Equal("value # kept", values["QuotedHash"]);
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            DotEnvConfigurationExtensions.Parse(".env", ["# comment", "super-secret-value"]));
+        Assert.Contains("line 2", exception.Message);
+        Assert.DoesNotContain("super-secret-value", exception.Message);
+    }
+
+    [Fact]
+    public void ServiceOutputFolderFindsTheRepositoryRootEnvFile()
+    {
+        var repository = Directory.CreateTempSubdirectory("shooter-mmo-repo-");
+
+        try
+        {
+            File.WriteAllText(Path.Combine(repository.FullName, "ShooterMmo.slnx"), string.Empty);
+            File.WriteAllText(Path.Combine(repository.FullName, ".env"), "RepositoryValue=root\n");
+            var outputFolder = Directory.CreateDirectory(Path.Combine(
+                repository.FullName,
+                "AuthService",
+                "bin",
+                "Debug",
+                "net10.0"));
+
+            var configuration = new ConfigurationBuilder()
+                .AddOptionalDotEnvFile(outputFolder.FullName)
+                .Build();
+
+            Assert.Equal("root", configuration["RepositoryValue"]);
+        }
+        finally
+        {
+            repository.Delete(recursive: true);
+        }
+    }
 }

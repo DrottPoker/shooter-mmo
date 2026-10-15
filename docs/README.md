@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-13
+Last updated: 2026-10-15
 
 This directory is the documentation entry point for Shooter MMO. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -23,6 +23,15 @@ operations, and future design do not drift into duplicate descriptions.
    and full-stack AuthService, PostgreSQL, and SimulationWorker load testing.
 8. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
    bot population that can share the real shard with a Unity player.
+9. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
+   layouts, and the Unity rebuild and authoring workflow.
+
+## Foundation Hardening
+
+- [Foundation Hardening Plan](FOUNDATION_HARDENING_PLAN.md) records the verified
+  baseline, every finding from the October 2026 audit of the existing
+  foundation, open decisions, and the fix order. It is completed before new
+  gameplay work starts.
 
 ## Product Direction
 

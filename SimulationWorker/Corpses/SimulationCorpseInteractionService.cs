@@ -143,7 +143,8 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
 
     private static bool RequiresCorpseRefresh(string code)
     {
-        return code is "item_already_looted"
+        return AuthServiceOutcome.IsUncertain(code)
+            || code is "item_already_looted"
             or "item_quantity_changed"
             or "bag_state_changed"
             or "item_state_conflict"

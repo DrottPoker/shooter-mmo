@@ -34,9 +34,15 @@ public sealed record SimulationWorkerConfig(
 {
     public int SimulationSessionHeartbeatMaxConcurrency { get; init; } = 8;
 
+    // How long a new runtime keeps retrying while a previous runtime's registry lease
+    // is still live, before it concludes that another live runtime owns the worker id.
+    public TimeSpan RegistryAcquireTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
     public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
 
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
+
+    public AdmissionConfig Admission { get; init; } = AdmissionConfig.Default;
 
     public InterestManagementConfig InterestManagement { get; init; } =
         InterestManagementConfig.Default;
@@ -240,6 +246,13 @@ public sealed record SimulationWorkerConfig(
                 configuration["SIMULATION_WORKER_REGISTRY_HEARTBEAT_SECONDS"]),
             "SimulationWorker:RegistryHeartbeatSeconds",
             errors);
+        var registryAcquireTimeoutSeconds = string.IsNullOrWhiteSpace(
+                section["RegistryAcquireTimeoutSeconds"])
+            ? 120
+            : PositiveInt(
+                section["RegistryAcquireTimeoutSeconds"],
+                "SimulationWorker:RegistryAcquireTimeoutSeconds",
+                errors);
         var networkMetricsLogSeconds = PositiveInt(
             section["NetworkMetricsLogSeconds"],
             "SimulationWorker:NetworkMetricsLogSeconds",
@@ -276,6 +289,33 @@ public sealed record SimulationWorkerConfig(
         var aggregateSnapshotByteBurst = PositiveInt(
             udpQuotaSection["AggregateSnapshotByteBurst"],
             "SimulationWorker:UdpQuotas:AggregateSnapshotByteBurst",
+            errors);
+        var admissionSection = section.GetSection("Admission");
+        var admissionDefaults = AdmissionConfig.Default;
+        var maxUnauthenticatedPeers = PositiveInt(
+            admissionSection["MaxUnauthenticatedPeers"]
+                ?? admissionDefaults.MaxUnauthenticatedPeers.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:MaxUnauthenticatedPeers",
+            errors);
+        var maxUnauthenticatedPeersPerAddress = PositiveInt(
+            admissionSection["MaxUnauthenticatedPeersPerAddress"]
+                ?? admissionDefaults.MaxUnauthenticatedPeersPerAddress.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:MaxUnauthenticatedPeersPerAddress",
+            errors);
+        var connectionAttemptsPerAddressPerSecond = PositiveInt(
+            admissionSection["ConnectionAttemptsPerAddressPerSecond"]
+                ?? admissionDefaults.ConnectionAttemptsPerAddressPerSecond.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:ConnectionAttemptsPerAddressPerSecond",
+            errors);
+        var connectionAttemptBurstPerAddress = PositiveInt(
+            admissionSection["ConnectionAttemptBurstPerAddress"]
+                ?? admissionDefaults.ConnectionAttemptBurstPerAddress.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:ConnectionAttemptBurstPerAddress",
+            errors);
+        var maxReliableQueuedPackets = PositiveInt(
+            admissionSection["MaxReliableQueuedPackets"]
+                ?? admissionDefaults.MaxReliableQueuedPackets.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:Admission:MaxReliableQueuedPackets",
             errors);
         var interestSection = section.GetSection("InterestManagement");
         var interestCellSize = FiniteFloat(
@@ -350,6 +390,13 @@ public sealed record SimulationWorkerConfig(
         if (sessionHeartbeatMaxConcurrency > 128)
         {
             errors.Add("SimulationWorker:SimulationSessionHeartbeatMaxConcurrency must not exceed 128.");
+        }
+
+        if (registryAcquireTimeoutSeconds <= registryHeartbeatSeconds
+            || registryAcquireTimeoutSeconds > 3_600)
+        {
+            errors.Add(
+                "SimulationWorker:RegistryAcquireTimeoutSeconds must be longer than RegistryHeartbeatSeconds and must not exceed 3600.");
         }
 
         if (networkMetricsLogSeconds > 3_600)
@@ -473,6 +520,12 @@ public sealed record SimulationWorkerConfig(
         {
             errors.Add("SimulationWorker:AuthServiceSecret must be at least 32 characters.");
         }
+        else if (authServiceSecret is not null
+            && authServiceSecret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase))
+        {
+            // Every secret placeholder in .env.example starts with this prefix.
+            errors.Add("SimulationWorker:AuthServiceSecret still has the .env.example placeholder value.");
+        }
 
         if (redis is not null)
         {
@@ -519,6 +572,7 @@ public sealed record SimulationWorkerConfig(
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds))
         {
             SimulationSessionHeartbeatMaxConcurrency = sessionHeartbeatMaxConcurrency,
+            RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,
@@ -529,6 +583,12 @@ public sealed record SimulationWorkerConfig(
                 snapshotByteBurst,
                 aggregateSnapshotBytesPerSecond,
                 aggregateSnapshotByteBurst),
+            Admission = new AdmissionConfig(
+                maxUnauthenticatedPeers,
+                maxUnauthenticatedPeersPerAddress,
+                connectionAttemptsPerAddressPerSecond,
+                connectionAttemptBurstPerAddress,
+                maxReliableQueuedPackets),
             InterestManagement = new InterestManagementConfig(
                 interestCellSize,
                 interestEnterRadius,
@@ -647,6 +707,16 @@ public sealed record UdpQuotaConfig(
         512 * 1024,
         38 * 1024 * 1024,
         4 * 1024 * 1024);
+}
+
+public sealed record AdmissionConfig(
+    int MaxUnauthenticatedPeers,
+    int MaxUnauthenticatedPeersPerAddress,
+    int ConnectionAttemptsPerAddressPerSecond,
+    int ConnectionAttemptBurstPerAddress,
+    int MaxReliableQueuedPackets)
+{
+    public static AdmissionConfig Default { get; } = new(256, 8, 5, 20, 1024);
 }
 
 public sealed record InterestManagementConfig(

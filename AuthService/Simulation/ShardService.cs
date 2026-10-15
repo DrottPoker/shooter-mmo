@@ -9,7 +9,8 @@ namespace AuthService.Simulation;
 public sealed class ShardService(
     NpgsqlDataSource dataSource,
     IConfiguration configuration,
-    AuthServiceConfig config)
+    AuthServiceConfig config,
+    DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
         CancellationToken cancellationToken)
@@ -66,6 +67,7 @@ public sealed class ShardService(
                 where pending_ticket.simulation_worker_id = worker.id
                   and pending_ticket.worker_runtime_id = worker.runtime_id
                   and pending_ticket.consumed_at is null
+                  and pending_ticket.simulation_session_id is null
                   and pending_ticket.expires_at > now()
             ) ticket_usage on true
             where shard.is_enabled
@@ -178,12 +180,26 @@ public sealed class ShardService(
                 $"Character is already active on shard {activeSession.ShardId}.");
         }
 
+        // The account's own pending ticket is superseded by this request, so it must
+        // not count against capacity when the placement is chosen.
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            update simulation_join_tickets
+            set consumed_at = now()
+            where account_id = @AccountId
+              and consumed_at is null;
+            """,
+            new { AccountId = account.AccountId },
+            transaction,
+            cancellationToken: cancellationToken));
+
         var placement = activeSession is null
             ? await SelectPlacementAsync(
                 connection,
                 transaction,
                 normalizedShardId,
                 (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds,
+                developmentBotAuthority?.CaptureReservations() ?? [],
                 cancellationToken)
             : await SelectReconnectPlacementAsync(
                 connection,
@@ -203,17 +219,6 @@ public sealed class ShardService(
                     ? "No healthy simulation worker currently has capacity for this shard."
                     : "The simulation worker that owns the active character session is unavailable.");
         }
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
-            update simulation_join_tickets
-            set consumed_at = now()
-            where account_id = @AccountId
-              and consumed_at is null;
-            """,
-            new { AccountId = account.AccountId },
-            transaction,
-            cancellationToken: cancellationToken));
 
         const string insertTicketSql = """
             insert into simulation_join_tickets (
@@ -236,7 +241,7 @@ public sealed class ShardService(
                 @ShardId,
                 @WorkerId,
                 @WorkerRuntimeId,
-                now() + make_interval(secs => @TicketLifetimeSeconds),
+                clock_timestamp() + make_interval(secs => @TicketLifetimeSeconds),
                 @SimulationSessionId)
             returning expires_at;
             """;
@@ -444,7 +449,10 @@ public sealed class ShardService(
                 carryState.ItemStateRevision,
                 carryState.CarriedWeight,
                 carryState.CarryCapacity,
-                isReconnect));
+                isReconnect)
+            {
+                SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
+            });
     }
 
     private static Task<CharacterCarryStateRow> LockCarryStateAsync(
@@ -467,11 +475,14 @@ public sealed class ShardService(
             cancellationToken: cancellationToken));
     }
 
+    // Development bot reservations exist only in AuthService memory, so they are joined
+    // in as parameters and count against capacity like database sessions and tickets.
     private static async Task<PlacementRow?> SelectPlacementAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string shardId,
         int heartbeatTimeoutSeconds,
+        IReadOnlyList<DevelopmentSimulationBotReservation> botReservations,
         CancellationToken cancellationToken)
     {
         const string sql = """
@@ -487,7 +498,9 @@ public sealed class ShardService(
                    worker.host as "Host",
                    worker.udp_port as "UdpPort",
                    worker.max_connections as "Capacity",
-                   greatest(worker.active_connections, session_usage.active_players)
+                   greatest(
+                       worker.active_connections,
+                       session_usage.active_players + bot_usage.active_sessions)
                        as "ActivePlayers",
                    worker.protocol_version as "ProtocolVersion",
                    worker.simulation_revision as "SimulationRevision",
@@ -516,12 +529,28 @@ public sealed class ShardService(
                 where pending_ticket.simulation_worker_id = worker.id
                   and pending_ticket.worker_runtime_id = worker.runtime_id
                   and pending_ticket.consumed_at is null
+                  and pending_ticket.simulation_session_id is null
                   and pending_ticket.expires_at > now()
             ) ticket_usage
+            cross join lateral (
+                select coalesce(sum(bot.active_sessions), 0)::integer as active_sessions,
+                       coalesce(sum(bot.pending_tickets), 0)::integer as pending_tickets
+                from unnest(
+                    @BotWorkerIds::text[],
+                    @BotRuntimeIds::text[],
+                    @BotActiveSessions::integer[],
+                    @BotPendingTickets::integer[])
+                    as bot(worker_id, runtime_id, active_sessions, pending_tickets)
+                where bot.worker_id = worker.id
+                  and bot.runtime_id = worker.runtime_id
+            ) bot_usage
             where shard.id = @ShardId
               and shard.is_enabled
-              and greatest(worker.active_connections, session_usage.active_players)
+              and greatest(
+                      worker.active_connections,
+                      session_usage.active_players + bot_usage.active_sessions)
                   + ticket_usage.pending_tickets
+                  + bot_usage.pending_tickets
                   < worker.max_connections
             order by (
                 worker.active_connections::numeric
@@ -531,11 +560,41 @@ public sealed class ShardService(
             limit 1;
             """;
 
-        return await connection.QuerySingleOrDefaultAsync<PlacementRow>(new CommandDefinition(
+        var placement = await connection.QuerySingleOrDefaultAsync<PlacementRow>(new CommandDefinition(
             sql,
-            new { ShardId = shardId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
+            new
+            {
+                ShardId = shardId,
+                HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds,
+                BotWorkerIds = botReservations.Select(value => value.WorkerId).ToArray(),
+                BotRuntimeIds = botReservations.Select(value => value.WorkerRuntimeId).ToArray(),
+                BotActiveSessions = botReservations.Select(value => value.ActiveSessions).ToArray(),
+                BotPendingTickets = botReservations.Select(value => value.PendingTickets).ToArray()
+            },
             transaction,
             cancellationToken: cancellationToken));
+        if (placement is null)
+        {
+            return null;
+        }
+
+        // The lock re-reads the worker row but not the joined assignment row, so a worker
+        // that moved to another Shard meanwhile is caught by a fresh read after the lock.
+        var stillAssigned = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            """
+            select exists (
+                select 1
+                from simulation_assignments assignment
+                join simulation_workers worker on worker.id = assignment.worker_id
+                where assignment.worker_id = @WorkerId
+                  and assignment.shard_id = @ShardId
+                  and assignment.released_at is null
+                  and worker.runtime_id = @RuntimeId);
+            """,
+            new { placement.WorkerId, placement.ShardId, placement.RuntimeId },
+            transaction,
+            cancellationToken: cancellationToken));
+        return stillAssigned ? placement : null;
     }
 
     private static async Task<PlacementRow?> SelectReconnectPlacementAsync(
@@ -709,7 +768,7 @@ public sealed class ShardService(
             join shards shard on shard.id = ticket.shard_id
             where ticket.ticket_hash = @TicketHash
               and ticket.consumed_at is null
-              and ticket.expires_at > now()
+              and ticket.expires_at > clock_timestamp()
               and ticket.simulation_worker_id is not null
               and ticket.worker_runtime_id is not null
               and (
@@ -743,7 +802,7 @@ public sealed class ShardService(
             set released_at = now()
             where account_id = @AccountId
               and released_at is null
-              and expires_at <= now();
+              and expires_at <= clock_timestamp();
             """,
             new { AccountId = accountId },
             transaction,
@@ -803,7 +862,7 @@ public sealed class ShardService(
                 @ShardId,
                 @WorkerId,
                 @WorkerRuntimeId,
-                now() + make_interval(secs => @LeaseLifetimeSeconds))
+                clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds))
             returning id as "Id",
                       character_id as "CharacterId",
                       shard_id as "ShardId",
@@ -845,8 +904,8 @@ public sealed class ShardService(
                 account_session_id = @AccountSessionId,
                 simulation_worker_id = @WorkerId,
                 worker_runtime_id = @WorkerRuntimeId,
-                last_heartbeat_at = now(),
-                expires_at = now() + make_interval(secs => @LeaseLifetimeSeconds)
+                last_heartbeat_at = clock_timestamp(),
+                expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds)
             where id = @SimulationSessionId
               and released_at is null
             returning id as "Id",

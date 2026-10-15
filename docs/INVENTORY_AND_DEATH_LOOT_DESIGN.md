@@ -284,7 +284,9 @@ to an equipment slot.
 - The account owns the entitlement that selects the Secure Container name, tier,
   and slot capacity for its characters.
 - The base tier starts with four slots.
-- Future premium or progression systems may grant larger tiers.
+- Future premium or progression systems may grant larger tiers. A player may
+  only return to the base tier; a larger tier is granted only by a trusted
+  entitlement source.
 - The Secure Container itself has no item weight, but every item inside it
   contributes to the character's carried weight.
 
@@ -524,7 +526,10 @@ child items have been partitioned, so the recovered Bag is empty.
 ## Player Death Partition
 
 Player death uses one idempotent PostgreSQL transaction identified by a unique
-death event id. The transaction partitions every relevant item exactly once:
+death event id and an expected character revision. The death event id fences
+replays while its corpse is retained, and the revision, which every partition
+advances, fences replays after that. The transaction partitions every relevant
+item exactly once:
 
 1. Currency remains on the character.
 2. Secure Container contents remain in place.
@@ -697,7 +702,9 @@ AuthService validates the exact active simulation session, character, worker,
 runtime, and Shard before accepting an in-world command.
 
 Bank and Recovery Storage access additionally require a city-service validation
-from SimulationWorker. Secure Container operations are allowed in the world but
+from SimulationWorker. Offline account routes can never reach the bank or
+Recovery Storage, because both are city services that need a live character at
+a validated service point. Recovery is therefore claimed only in the world. Secure Container operations are allowed in the world but
 remain category, slot, policy, weight, and session validated.
 
 Phase 12 adds the generic NPC and world-interaction session that later service

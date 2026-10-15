@@ -8,6 +8,8 @@ public sealed class AccountValidationTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("not-an-email")]
+    [InlineData("x <victim@example.com>")]
+    [InlineData("\"Victim\" victim@example.com")]
     public void ValidateEmailRejectsInvalidValues(string? email)
     {
         Assert.NotNull(AccountValidation.ValidateEmail(email));
@@ -40,6 +42,7 @@ public sealed class AccountValidationTests
     [InlineData(null)]
     [InlineData("short")]
     [InlineData("        ")]
+    [InlineData("åååååååååååååååååååååååååååååååååååååååå")]
     public void ValidatePasswordRejectsInvalidValues(string? password)
     {
         Assert.NotNull(AccountValidation.ValidatePassword(password));

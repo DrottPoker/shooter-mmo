@@ -4,9 +4,25 @@ namespace SimulationWorker.Sessions;
 
 public sealed class ActiveSimulationSessionStore
 {
+    // An invalidation is only read by a peer that still holds the session, which happens
+    // on the next tick, so entries of detached sessions are dropped after this window.
+    public static readonly TimeSpan InvalidationRetention = TimeSpan.FromMinutes(1);
+
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, ActiveSimulationSession> sessionsByCharacterId = [];
-    private readonly Dictionary<Guid, ActiveSimulationSessionInvalidation> invalidationsBySimulationSessionId = [];
+    private readonly Dictionary<Guid, StoredInvalidation> invalidationsBySimulationSessionId = [];
+    private DateTime nextInvalidationPruneUtc = DateTime.MinValue;
+
+    public int PendingInvalidationCount
+    {
+        get
+        {
+            lock (syncRoot)
+            {
+                return invalidationsBySimulationSessionId.Count;
+            }
+        }
+    }
 
     public ActiveSimulationSessionRegistration Register(ActiveSimulationSession session)
     {
@@ -31,8 +47,7 @@ public sealed class ActiveSimulationSessionStore
 
             if (existingSession.SessionExpiresAt <= DateTime.UtcNow)
             {
-                invalidationsBySimulationSessionId[existingSession.SimulationSessionId] =
-                    SessionExpiredInvalidation();
+                StoreInvalidation(existingSession.SimulationSessionId, SessionExpiredInvalidation());
                 sessionsByCharacterId[session.CharacterId] = session;
                 return ActiveSimulationSessionRegistration.ReplacedExpired;
             }
@@ -69,8 +84,23 @@ public sealed class ActiveSimulationSessionStore
             }
 
             sessionsByCharacterId.Remove(expectedSession.CharacterId);
-            invalidationsBySimulationSessionId[current.SimulationSessionId] = SessionExpiredInvalidation();
+            StoreInvalidation(current.SimulationSessionId, SessionExpiredInvalidation());
             return false;
+        }
+    }
+
+    // True when a reconnect re-registered the same session with a newer token, so the
+    // older connection must detach without removing the shared entity or carry state.
+    public bool IsSupersededByReconnect(ActiveSimulationSession session)
+    {
+        lock (syncRoot)
+        {
+            return sessionsByCharacterId.TryGetValue(session.CharacterId, out var current)
+                && current.SimulationSessionId == session.SimulationSessionId
+                && !string.Equals(
+                    current.SimulationSessionToken,
+                    session.SimulationSessionToken,
+                    StringComparison.Ordinal);
         }
     }
 
@@ -160,9 +190,9 @@ public sealed class ActiveSimulationSessionStore
             }
 
             sessionsByCharacterId.Remove(characterId);
-            invalidationsBySimulationSessionId[simulationSessionId] = new ActiveSimulationSessionInvalidation(
-                code,
-                message);
+            StoreInvalidation(
+                simulationSessionId,
+                new ActiveSimulationSessionInvalidation(code, message));
             return true;
         }
     }
@@ -179,8 +209,16 @@ public sealed class ActiveSimulationSessionStore
                 return false;
             }
 
-            invalidation = stored;
+            invalidation = stored.Invalidation;
             return true;
+        }
+    }
+
+    public int PruneInvalidations(DateTime recordedBeforeUtc)
+    {
+        lock (syncRoot)
+        {
+            return PruneInvalidationsLocked(recordedBeforeUtc);
         }
     }
 
@@ -209,6 +247,41 @@ public sealed class ActiveSimulationSessionStore
             "session_expired",
             "The simulation session lease expired.");
     }
+
+    private void StoreInvalidation(
+        Guid simulationSessionId,
+        ActiveSimulationSessionInvalidation invalidation)
+    {
+        var now = DateTime.UtcNow;
+        if (now >= nextInvalidationPruneUtc)
+        {
+            PruneInvalidationsLocked(now - InvalidationRetention);
+            nextInvalidationPruneUtc = now + TimeSpan.FromSeconds(1);
+        }
+
+        invalidationsBySimulationSessionId[simulationSessionId] = new StoredInvalidation(
+            invalidation,
+            now);
+    }
+
+    private int PruneInvalidationsLocked(DateTime recordedBeforeUtc)
+    {
+        var removed = 0;
+        foreach (var pair in invalidationsBySimulationSessionId.ToArray())
+        {
+            if (pair.Value.RecordedAtUtc < recordedBeforeUtc)
+            {
+                invalidationsBySimulationSessionId.Remove(pair.Key);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    private readonly record struct StoredInvalidation(
+        ActiveSimulationSessionInvalidation Invalidation,
+        DateTime RecordedAtUtc);
 }
 
 public enum ActiveSimulationSessionRegistration

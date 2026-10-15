@@ -9,14 +9,24 @@ $ErrorActionPreference = "Stop"
 $requiredVersion = ((Get-Content (Join-Path $ProjectPath "ProjectSettings\ProjectVersion.txt")) |
     Where-Object { $_ -match '^m_EditorVersion: ' }) -replace '^m_EditorVersion: ', ''
 
+# An explicitly configured Editor path always wins. The Unity CLI is only picked
+# automatically when neither an Editor path nor a CLI path was given.
+$explicitEditorPath = -not [string]::IsNullOrWhiteSpace($UnityEditorPath)
+$explicitCliPath = -not [string]::IsNullOrWhiteSpace($UnityCliPath)
+
+if (-not $explicitEditorPath -and -not $explicitCliPath -and
+    ($IsWindows -or $env:OS -eq "Windows_NT")) {
+    $UnityCliPath = Join-Path $env:LOCALAPPDATA "Unity\bin\unity.exe"
+}
+
+if ($explicitEditorPath -and -not $explicitCliPath) {
+    $UnityCliPath = $null
+}
+
 if ([string]::IsNullOrWhiteSpace($UnityEditorPath)) {
     if ($IsWindows -or $env:OS -eq "Windows_NT") {
         $UnityEditorPath = "C:\Program Files\Unity\Hub\Editor\$requiredVersion\Editor\Unity.exe"
     }
-}
-
-if ([string]::IsNullOrWhiteSpace($UnityCliPath) -and ($IsWindows -or $env:OS -eq "Windows_NT")) {
-    $UnityCliPath = Join-Path $env:LOCALAPPDATA "Unity\bin\unity.exe"
 }
 
 $useUnityCli = -not [string]::IsNullOrWhiteSpace($UnityCliPath) -and

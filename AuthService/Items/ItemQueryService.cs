@@ -492,6 +492,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             from recovery_deliveries
             where character_id = @CharacterId
               and recovery_storage_container_id = @ContainerId
+              and claimed_at is null
             order by created_at, id;
 
             select
@@ -505,6 +506,7 @@ public sealed class ItemQueryService(NpgsqlDataSource dataSource)
             join item_instances item on item.id = link.item_instance_id
             where delivery.character_id = @CharacterId
               and delivery.recovery_storage_container_id = @ContainerId
+              and delivery.claimed_at is null
             order by link.recovery_delivery_id, link.item_order;
             """,
             new

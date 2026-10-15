@@ -28,6 +28,81 @@ public sealed class CorpseRealtimeStateTests
     }
 
     [Fact]
+    public void OpenSendsTheOpenerASnapshotAndOtherViewersTheDelta()
+    {
+        var corpseId = Guid.NewGuid();
+        var containerId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var cached = CreateSnapshot(corpseId, 4, containerId, 7, itemId, 5, 6);
+        var current = CreateSnapshot(corpseId, 5, containerId, 8, itemId, 6, 4);
+
+        var open = CorpseStateDistribution.Plan(cached, current, hasMutation: false);
+
+        Assert.True(open.CachesResult);
+        Assert.NotEmpty(open.RequesterChunks);
+        Assert.All(open.RequesterChunks, chunk =>
+            Assert.Equal(RealtimeCorpseViewUpdateKind.Snapshot, chunk.UpdateKind));
+        Assert.Equal(5, open.RequesterChunks[^1].Revision);
+        Assert.False(open.RequesterReceivesViewerChunks);
+        var delta = Assert.Single(open.ViewerChunks);
+        Assert.Equal(RealtimeCorpseViewUpdateKind.Delta, delta.UpdateKind);
+        Assert.Equal(4, delta.BaseRevision);
+    }
+
+    [Fact]
+    public void FirstOpenSendsOnlyTheOpenerASnapshot()
+    {
+        var current = CreateSnapshot(Guid.NewGuid(), 5, Guid.NewGuid(), 8, Guid.NewGuid(), 6, 4);
+
+        var open = CorpseStateDistribution.Plan(null, current, hasMutation: false);
+
+        Assert.True(open.CachesResult);
+        Assert.All(open.RequesterChunks, chunk =>
+            Assert.Equal(RealtimeCorpseViewUpdateKind.Snapshot, chunk.UpdateKind));
+        Assert.NotEmpty(open.RequesterChunks);
+        Assert.Empty(open.ViewerChunks);
+    }
+
+    [Fact]
+    public void MutationSendsEveryViewerIncludingTheRequesterTheDelta()
+    {
+        var corpseId = Guid.NewGuid();
+        var containerId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var cached = CreateSnapshot(corpseId, 4, containerId, 7, itemId, 5, 6);
+        var current = CreateSnapshot(corpseId, 5, containerId, 8, itemId, 6, 4);
+
+        var mutation = CorpseStateDistribution.Plan(cached, current, hasMutation: true);
+
+        Assert.True(mutation.CachesResult);
+        Assert.Empty(mutation.RequesterChunks);
+        Assert.True(mutation.RequesterReceivesViewerChunks);
+        Assert.Equal(
+            RealtimeCorpseViewUpdateKind.Delta,
+            Assert.Single(mutation.ViewerChunks).UpdateKind);
+    }
+
+    [Fact]
+    public void StaleResultKeepsTheCacheAndOnlyAnOpenerReceivesTheCachedSnapshot()
+    {
+        var corpseId = Guid.NewGuid();
+        var containerId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var cached = CreateSnapshot(corpseId, 6, containerId, 9, itemId, 7, 3);
+        var stale = CreateSnapshot(corpseId, 5, containerId, 8, itemId, 6, 4);
+
+        var open = CorpseStateDistribution.Plan(cached, stale, hasMutation: false);
+        var mutation = CorpseStateDistribution.Plan(cached, stale, hasMutation: true);
+
+        Assert.False(open.CachesResult);
+        Assert.Equal(6, open.RequesterChunks[^1].Revision);
+        Assert.Empty(open.ViewerChunks);
+        Assert.False(mutation.CachesResult);
+        Assert.Empty(mutation.RequesterChunks);
+        Assert.Empty(mutation.ViewerChunks);
+    }
+
+    [Fact]
     public void TargetedDeltaCarriesOnlyChangedSlotsAndRevision()
     {
         var corpseId = Guid.NewGuid();

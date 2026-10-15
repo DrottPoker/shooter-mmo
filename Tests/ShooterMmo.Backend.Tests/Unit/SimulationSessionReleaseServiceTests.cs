@@ -68,6 +68,37 @@ public sealed class SimulationSessionReleaseServiceTests
         Assert.False(carryStateStore.TryGet(characterId, simulationSessionId, out _));
     }
 
+    [Fact]
+    public void ReconnectWithANewTokenSupersedesTheOlderConnectionOnly()
+    {
+        var sessionStore = new ActiveSimulationSessionStore();
+        var characterId = Guid.NewGuid();
+        var simulationSessionId = Guid.NewGuid();
+        var original = CreateSession(
+            characterId,
+            simulationSessionId,
+            "original-token",
+            PlayerCarryState.Default);
+        var reconnected = CreateSession(
+            characterId,
+            simulationSessionId,
+            "reconnected-token",
+            PlayerCarryState.Default);
+        var otherSession = CreateSession(
+            characterId,
+            Guid.NewGuid(),
+            "other-token",
+            PlayerCarryState.Default);
+
+        sessionStore.Register(original);
+        Assert.False(sessionStore.IsSupersededByReconnect(original));
+        sessionStore.Register(reconnected);
+
+        Assert.True(sessionStore.IsSupersededByReconnect(original));
+        Assert.False(sessionStore.IsSupersededByReconnect(reconnected));
+        Assert.False(sessionStore.IsSupersededByReconnect(otherSession));
+    }
+
     private static ActiveSimulationSession CreateSession(
         Guid characterId,
         Guid simulationSessionId,

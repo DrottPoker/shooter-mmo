@@ -61,6 +61,18 @@ internal sealed class ApiExceptionHandler(
         Exception exception,
         CancellationToken cancellationToken)
     {
+        if (exception is OperationCanceledException
+            && httpContext.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogDebug(
+                "Client aborted {Method} {Path} with correlation id {CorrelationId}.",
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier);
+            httpContext.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            return true;
+        }
+
         var isBadRequest = exception is BadHttpRequestException;
         var isDatabaseUnavailable = IsDatabaseUnavailable(exception);
         var statusCode = isBadRequest
@@ -139,7 +151,12 @@ internal sealed class CorrelationIdMiddleware(RequestDelegate next)
             : Guid.NewGuid().ToString("N");
 
         context.TraceIdentifier = correlationId;
-        context.Response.Headers[ApiPipelineExtensions.CorrelationIdHeaderName] = correlationId;
+        // The exception handler clears headers, so the header is added when the response starts.
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers[ApiPipelineExtensions.CorrelationIdHeaderName] = correlationId;
+            return Task.CompletedTask;
+        });
 
         await next(context);
     }

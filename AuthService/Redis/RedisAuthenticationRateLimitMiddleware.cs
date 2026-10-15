@@ -1,8 +1,11 @@
+using AuthService.Config;
+using Microsoft.AspNetCore.RateLimiting;
+
 namespace AuthService.Redis;
 
 public sealed class RedisAuthenticationRateLimitMiddleware(
     RequestDelegate next,
-    IConfiguration configuration)
+    AuthServiceConfig config)
 {
     public async Task InvokeAsync(
         HttpContext context,
@@ -15,12 +18,8 @@ public sealed class RedisAuthenticationRateLimitMiddleware(
             return;
         }
 
-        var permitLimit = configuration.GetValue(
-            "RateLimiting:Authentication:PermitLimit",
-            5);
-        var window = TimeSpan.FromSeconds(configuration.GetValue(
-            "RateLimiting:Authentication:WindowSeconds",
-            60));
+        var permitLimit = config.AuthenticationPermitLimit;
+        var window = config.AuthenticationRateLimitWindow;
         var remoteAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var decision = await limiter.AcquireAsync(
             policyName,
@@ -49,18 +48,12 @@ public sealed class RedisAuthenticationRateLimitMiddleware(
             .ExecuteAsync(context);
     }
 
-    private static string? ResolvePolicyName(HttpContext context)
+    // Routing matches paths case-insensitively, so the policy comes from the matched
+    // endpoint instead of a literal path comparison that a different casing could skip.
+    public static string? ResolvePolicyName(HttpContext context)
     {
-        if (!HttpMethods.IsPost(context.Request.Method))
-        {
-            return null;
-        }
-
-        return context.Request.Path.Value switch
-        {
-            "/api/accounts/login" => "login",
-            "/api/accounts/register" => "register",
-            _ => null
-        };
+        var policyName = context.GetEndpoint()?.Metadata
+            .GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+        return policyName is "login" or "register" ? policyName : null;
     }
 }

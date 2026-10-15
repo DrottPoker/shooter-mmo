@@ -25,6 +25,10 @@ public sealed record ConsumedSimulationJoinTicketResponse(
     bool IsReconnect)
 {
     public bool IsSyntheticBot { get; init; }
+
+    // The lease duration lets the worker set a deadline on its own clock, so clock
+    // differences between the worker and the database never move the deadline.
+    public long SessionLeaseDurationMilliseconds { get; init; }
 }
 
 public sealed record SimulationSessionCredentialRequest(
@@ -41,7 +45,12 @@ public sealed record SimulationSessionLeaseResponse(
     long ItemStateRevision,
     long CarriedWeight,
     long CarryCapacity,
-    bool Released);
+    bool Released)
+{
+    // The lease duration lets the worker set a deadline on its own clock, so clock
+    // differences between the worker and the database never move the deadline.
+    public long LeaseDurationMilliseconds { get; init; }
+}
 
 public sealed record SimulationItemAccessRequest(
     bool Bank,

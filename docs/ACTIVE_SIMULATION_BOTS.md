@@ -50,9 +50,13 @@ disappear when AuthService stops.
 
 AuthService counts the worker's reported connections, durable active sessions,
 durable pending tickets, in-memory bot sessions, and in-memory pending bot
-tickets before admitting another bot. SimulationWorker `MaxConnections` is the
-single server-side connection limit. AuthService does not impose a separate bot
-identity limit or reserve worker slots specifically for real players.
+tickets before admitting another bot, and keeps `ReservedPlayerConnections` free
+for real players. Player placement counts the same in-memory bot sessions and
+pending bot tickets, so a bot ticket that has not connected yet still holds its
+connection. SimulationWorker `MaxConnections` is the single server-side
+connection limit. A bot ticket and a player ticket issued at the same moment
+can both pass, because bot tickets are not database rows; the reserved player
+connections absorb that overlap.
 
 ## Configuration
 
@@ -65,6 +69,7 @@ Authority controls live in
 | `JoinTicketLifetimeSeconds` | `30` | Lifetime of an unconsumed one-time bot ticket |
 | `SessionLeaseLifetimeSeconds` | `30` | Worker-renewed in-memory bot session lease |
 | `CharacterNamePrefix` | `Active Bot` | Server-owned visible bot name prefix |
+| `ReservedPlayerConnections` | `8` | Worker connections bots never use, so real local players can still join |
 
 Population and behavior controls live in
 `Tools/ActiveSimulationBots/appsettings.json`:

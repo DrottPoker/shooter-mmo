@@ -1427,7 +1427,7 @@ public sealed partial class ItemTransactionService(
         {
             var currencyBefore = await context.Connection.QuerySingleAsync<long>(
                 new CommandDefinition(
-                    "select currency from characters where id = @CharacterId for update;",
+                    "select currency from characters where id = @CharacterId for no key update;",
                     new { command.CharacterId },
                     context.Transaction,
                     cancellationToken: cancellationToken));
@@ -1648,6 +1648,33 @@ public sealed partial class ItemTransactionService(
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
+            if (string.Equals(item.SourceContainerType, "recovery_storage", StringComparison.Ordinal))
+            {
+                // Recovery items own their slot row, and a delivery that loses its last
+                // item can never be claimed, so both are removed with the item.
+                await context.Connection.ExecuteAsync(new CommandDefinition(
+                    """
+                    delete from item_container_slots
+                    where container_id = @ContainerId
+                      and slot_index = @SlotIndex;
+
+                    delete from recovery_deliveries delivery
+                    where delivery.recovery_storage_container_id = @ContainerId
+                      and delivery.claimed_at is null
+                      and not exists (
+                          select 1
+                          from recovery_delivery_items link
+                          where link.recovery_delivery_id = delivery.id);
+                    """,
+                    new
+                    {
+                        item.ContainerId,
+                        SlotIndex = item.ContainerSlotIndex
+                    },
+                    context.Transaction,
+                    cancellationToken: cancellationToken));
+            }
+
             context.AddItemAudit("quest_item_removed", item.ItemInstanceId, beforeState, null);
             context.TouchContainer(item.ContainerId);
         }
@@ -1843,7 +1870,7 @@ public sealed partial class ItemTransactionService(
             expectations.Keys,
             [state.RecoveryStorageContainerId],
             cancellationToken);
-        var recovery = await context.LoadOwnedContainerAsync(
+        var recovery = await context.LoadKernelPlacementContainerAsync(
             state.RecoveryStorageContainerId,
             command.CharacterId,
             cancellationToken);
@@ -2293,6 +2320,27 @@ public sealed partial class ItemTransactionService(
                 "The Secure Container tier was not found.");
         }
 
+        // An account may always return to the free base tier. A larger tier is granted
+        // only by a trusted entitlement or purchase source running with system authority.
+        if (context.Actor.Authority != ItemTransactionAuthority.System)
+        {
+            var baseTierId = await context.Connection.ExecuteScalarAsync<string>(
+                new CommandDefinition(
+                    """
+                    select base_secure_container_tier_id
+                    from item_catalog_revisions
+                    where is_current;
+                    """,
+                    transaction: context.Transaction,
+                    cancellationToken: cancellationToken));
+            if (!string.Equals(tier.TierId, baseTierId, StringComparison.Ordinal))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.AuthorityRequired,
+                    "Only an entitlement source can grant a Secure Container tier above the base tier.");
+            }
+        }
+
         if (string.Equals(entitlement.TierId, tier.TierId, StringComparison.Ordinal))
         {
             var unchanged = new SecureEntitlementAuditState(
@@ -2351,7 +2399,7 @@ public sealed partial class ItemTransactionService(
                 state.SecureContainerId,
                 state.CharacterId,
                 cancellationToken);
-            var recoveryContainer = await context.LoadOwnedContainerAsync(
+            var recoveryContainer = await context.LoadKernelPlacementContainerAsync(
                 state.RecoveryStorageContainerId,
                 state.CharacterId,
                 cancellationToken);
@@ -2772,6 +2820,16 @@ public sealed partial class ItemTransactionService(
             throw new ArgumentException("An item operation id is required.", nameof(request));
         }
 
+        if (RequiresRandomClientOperationId(request.Actor, operationKind)
+            && !ItemOperationIds.IsRandomClientOperationId(request.OperationId))
+        {
+            return CreateRejectedResult(
+                request.OperationId,
+                operationKind,
+                ItemTransactionErrorCodes.ItemOperationIdInvalid,
+                "The item operation id must be a random version 4 UUID.");
+        }
+
         var requestPayload = JsonSerializer.Serialize(
             new CanonicalOperationRequest(
                 CanonicalizeActor(request.Actor),
@@ -2826,7 +2884,14 @@ public sealed partial class ItemTransactionService(
             catch (ItemTransactionRejectedException exception)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return CreateRejectedResult(
+                // A lost response can make the worker retry after its session ended. A
+                // committed result must still replay instead of turning into a failure.
+                var committedReplay = await LoadCommittedReplayAsync(
+                    request.OperationId,
+                    operationKind,
+                    requestHash,
+                    cancellationToken);
+                return committedReplay ?? CreateRejectedResult(
                     request.OperationId,
                     operationKind,
                     exception.Code,
@@ -2880,7 +2945,7 @@ public sealed partial class ItemTransactionService(
             }
             catch (ItemTransactionRejectedException exception)
             {
-                return await RollBackMutationAndRejectAsync(
+                return await RejectMutationAsync(
                     connection,
                     transaction,
                     request.OperationId,
@@ -2897,7 +2962,7 @@ public sealed partial class ItemTransactionService(
                     throw;
                 }
 
-                return await RollBackMutationAndRejectAsync(
+                return await RejectMutationAsync(
                     connection,
                     transaction,
                     request.OperationId,
@@ -2927,6 +2992,34 @@ public sealed partial class ItemTransactionService(
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private async Task<ItemTransactionResult?> LoadCommittedReplayAsync(
+        Guid operationId,
+        string operationKind,
+        string requestHash,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var payload = await connection.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            """
+            select result_payload::text
+            from item_operations
+            where operation_id = @OperationId
+              and operation_kind = @OperationKind
+              and request_hash = @RequestHash
+              and status = 'committed';
+            """,
+            new
+            {
+                OperationId = operationId,
+                OperationKind = operationKind,
+                RequestHash = requestHash
+            },
+            cancellationToken: cancellationToken));
+        return payload is null
+            ? null
+            : JsonSerializer.Deserialize<ItemTransactionResult>(payload, OperationJsonOptions);
     }
 
     private static async Task<ItemTransactionResult?> ClaimOperationAsync(
@@ -3025,6 +3118,47 @@ public sealed partial class ItemTransactionService(
                 $"Stored result for item operation '{operationId}' is invalid.");
     }
 
+    private static bool RequiresRandomClientOperationId(
+        ItemTransactionActor actor,
+        string operationKind)
+    {
+        return actor.Authority == ItemTransactionAuthority.Account
+            || (actor.Authority == ItemTransactionAuthority.SimulationWorker
+                && !ItemOperationKinds.IsRetriedSystemOperation(operationKind));
+    }
+
+    private static async Task<ItemTransactionResult> RejectMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid operationId,
+        string operationKind,
+        string errorCode,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        // A transient database rejection is not an outcome of the request, and a retried
+        // system operation must stay claimable, so both release the operation claim.
+        if (errorCode == ItemTransactionErrorCodes.ItemTransactionTimeout
+            || ItemOperationKinds.IsRetriedSystemOperation(operationKind))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreateRejectedResult(
+                operationId,
+                operationKind,
+                errorCode,
+                errorMessage);
+        }
+
+        return await RollBackMutationAndRejectAsync(
+            connection,
+            transaction,
+            operationId,
+            operationKind,
+            errorCode,
+            errorMessage,
+            cancellationToken);
+    }
+
     private static async Task<ItemTransactionResult> RollBackMutationAndRejectAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -3105,6 +3239,13 @@ public sealed partial class ItemTransactionService(
             return new ItemTransactionError(
                 ItemTransactionErrorCodes.ItemTransactionTimeout,
                 "The item transaction exceeded its configured database time limit.");
+        }
+
+        if (exception.SqlState is "40P01" or "40001")
+        {
+            return new ItemTransactionError(
+                ItemTransactionErrorCodes.ItemTransactionTimeout,
+                "The item transaction was aborted by concurrent database work. Retry it.");
         }
 
         return exception.ConstraintName switch

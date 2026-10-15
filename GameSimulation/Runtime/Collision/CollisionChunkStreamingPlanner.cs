@@ -89,8 +89,8 @@ namespace ShooterMmo.GameSimulation
                     throw new ArgumentException("Collision streaming anchors must be finite.", nameof(anchors));
                 }
 
-                var centerX = (int)Math.Floor(anchor.X / chunkSize);
-                var centerZ = (int)Math.Floor(anchor.Z / chunkSize);
+                var centerX = ChunkedStaticCollisionWorld.ToChunkCoordinate(anchor.X, chunkSize);
+                var centerZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(anchor.Z, chunkSize);
                 for (var z = centerZ - radius; z <= centerZ + radius; z++)
                 {
                     for (var x = centerX - radius; x <= centerX + radius; x++)

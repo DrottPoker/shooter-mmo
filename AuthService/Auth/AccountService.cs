@@ -10,6 +10,11 @@ public sealed class AccountService(
     SessionService sessionService,
     ILogger<AccountService> logger)
 {
+    // Verifying unknown logins against a real hash keeps their response time equal to a
+    // wrong password, so timing does not reveal whether an account exists.
+    private static readonly Lazy<string> UnknownAccountPasswordHash = new(
+        () => BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"), workFactor: 12));
+
     public async Task<ServiceResult<AuthResponse>> RegisterAsync(
         RegisterAccountRequest request,
         CancellationToken cancellationToken)
@@ -135,16 +140,24 @@ public sealed class AccountService(
             where normalized_email = @Login or normalized_username = @Login;
             """;
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var account = await connection.QuerySingleOrDefaultAsync<AccountLoginRow>(
-            new CommandDefinition(sql, new { Login = normalizedLogin }, cancellationToken: cancellationToken));
+        AccountLoginRow? account;
+        await using (var lookupConnection = await dataSource.OpenConnectionAsync(cancellationToken))
+        {
+            account = await lookupConnection.QuerySingleOrDefaultAsync<AccountLoginRow>(
+                new CommandDefinition(sql, new { Login = normalizedLogin }, cancellationToken: cancellationToken));
+        }
 
-        if (account is null || !BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
+        // The pooled connection is released before the CPU-bound hash check.
+        var passwordMatches = BCrypt.Net.BCrypt.Verify(
+            request.Password,
+            account?.PasswordHash ?? UnknownAccountPasswordHash.Value);
+        if (account is null || !passwordMatches)
         {
             logger.LogWarning("[AUTH] Login rejected because the supplied credentials were invalid.");
             return ServiceResult<AuthResponse>.Unauthorized("invalid_credentials", "Login or password is incorrect.");
         }
 
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         (Guid SessionId, string Token, DateTime ExpiresAt, int ReplacedSessionCount) session;
         try

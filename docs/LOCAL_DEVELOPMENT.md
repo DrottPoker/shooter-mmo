@@ -1,12 +1,16 @@
 # Local Development
 
-Last updated: 2026-07-19
+Last updated: 2026-10-14
 
 ## Requirements
 
-- .NET SDK 10.0 or newer.
+- .NET SDK 10.0.301 or a newer 10.0.3xx feature band. `global.json` rolls
+  forward only within .NET 10, so .NET 10.0.1xx or 10.0.2xx and .NET 11 SDKs
+  are not selected.
 - Docker Desktop.
 - Unity Editor for the client project.
+- Optional: Unity CLI for Editor automation and coding-agent access, described
+  in [Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli).
 
 ## Local Environment File
 
@@ -22,9 +26,14 @@ credentials and connection strings, including the shared
 `SIMULATION_WORKER_SERVICE_SECRET`, but does not select worker, fleet, node,
 shard, or World identities. Those identities live together in
 `SimulationWorker/Config/appsettings.json`. AuthService owns only the available
-fleet, node, and shard topology. Both services search their content root and
-parent directories for `.env`. Explicit process environment variables and
-command-line values can still override service configuration for deployments.
+fleet, node, and shard topology. Both services search the working directory and
+their output directory, and the parents of each up to the repository root, for
+`.env`, so starting a service from its `bin` folder also finds the root file.
+Lines may start with `export`, unquoted values may end with a ` #` comment, and
+a malformed line is reported by line number without echoing its content.
+Explicit process environment variables and command-line values can still
+override service configuration for deployments. Configuration files are read
+once at startup; restart a service after changing them.
 
 SimulationWorker loads `WorldData/Worlds/<WorldId>/world.json` and derives actor
 and collision paths below the same World directory. The checked-in content for
@@ -80,14 +89,32 @@ Expected result:
   tier, and the deterministic checked-in revision.
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
-  configured.
+  configured. The Redis integration test is skipped unless
+  `SHOOTER_MMO_TEST_REDIS` points to a dedicated Redis test instance. See
+  [Standard Quality Checks](../README.md#standard-quality-checks) for the full
+  integration run with both test containers.
+
+Tests read configuration and content from repository paths, never from their
+output folder. AuthService, SimulationWorker, and ActiveSimulationBots all ship
+appsettings files at the same output paths, so the test project sets
+`CopyConflictingTransitiveContent` to `false` and owns empty `{}` placeholders
+under `Tests/ShooterMmo.Backend.Tests/TestOutput` for those paths. A test fails
+if a service copy ever replaces a placeholder.
 
 NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 `development`. Unity Package Manager updates remain explicit because Dependabot
 does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
 let Unity rewrite `packages-lock.json`, run both Unity suites, and run the backend
 quality gate before merging. `LiteNetLib` must stay aligned between
-`SimulationWorker/SimulationWorker.csproj` and the Unity manifest.
+`SimulationWorker/SimulationWorker.csproj`,
+`Tools/SimulationBotClient/ShooterMmo.Tools.SimulationBotClient.csproj`, and the
+Unity manifest package `com.revenantx.litenetlib`. `Verify-DependencyPolicy.ps1`
+fails when the versions differ, and Dependabot ignores LiteNetLib so the three
+are always upgraded together by hand.
+
+`shooter-mmorpg-unity-client/Directory.Build.props` stops the repository build
+settings from applying to the project files Unity generates, and those files
+and their NuGet lock file are ignored by Git.
 
 ## Item Catalog Authoring And Verification
 
@@ -367,15 +394,17 @@ docker compose -f docker-compose.test.yml down
 Expected result: eight tests pass. They verify insurance application and
 removal, exact quest-grant cleanup and reaccept, catalog ETag and `304`, no-store
 headers, owner scoping, Secure Container tier access, stable Problem Details,
-offline session fencing, stable split, merge, and destroy validation, Recovery
-deposit rejection, system delivery, successful bank claim, and hard-cap claim
-rollback. The test host uses the real account
+offline session fencing, stable split, merge, and destroy validation, offline
+bank and Recovery rejection, system delivery, successful kernel bank claim, and
+hard-cap claim rollback. The test host uses the real account
 session authentication handler and item endpoints over loopback HTTP.
 
 To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and
 Redis with `docker compose up -d --wait`, run
 `dotnet run --project AuthService`, and use the Phase 4 registration commands to
-create `$headers` and `$character`. Then run:
+create `$headers` and `$character`. The `-SkipHttpErrorCheck` switch needs
+PowerShell 7 (`pwsh`), so run this snippet in `pwsh`, not Windows PowerShell 5.1.
+Then run:
 
 ```powershell
 $catalogResponse = Invoke-WebRequest `
@@ -482,9 +511,9 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `11` and simulation revision
+   startup reports realtime protocol version `14` and simulation revision
    `movement-simulation-v3`.
-4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
+4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
    `0 / 200`, movement `100%`, sprint allowed, and its committed item-state
@@ -542,10 +571,10 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project AuthService` in one terminal.
 3. Run `dotnet run --project SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `11` and loads the configured local bank,
+   reports realtime protocol version `14` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
-4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.2f1`, open LoginMenu,
+4. Open `shooter-mmorpg-unity-client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
@@ -590,7 +619,10 @@ PlayMode verifies the persistent controller and runtime uGUI root.
 ### Give A Character Development Items
 
 The Unity Editor window is the primary workflow. It never writes directly to
-PostgreSQL. It starts a guarded AuthService command that uses
+PostgreSQL. It runs the Release build of AuthService directly as
+`dotnet AuthService/bin/Release/<framework>/AuthService.dll`, so AuthService runs
+inside that one process and a cancel or the 60-second timeout ends it. It starts
+a guarded AuthService command that uses
 `ItemTransactionService`, accepts only Development, requires a loopback
 PostgreSQL host with a non-production-like database name, and refuses an active
 character. Individual grants are repeatable. Exact test packages require a
@@ -928,9 +960,13 @@ Editor compiler integration.
 
 ### Manual Actor Authoring And Interaction Loop
 
-Existing canonical content and fallback presentation require no scene, prefab,
-Inspector, package, or build-setting change. Use these exact Unity Editor steps
-to exercise the authoring tools and optional presentation mapping:
+Existing canonical content requires no scene, prefab, Inspector, package, or
+build-setting change. The committed presentation registry already maps every
+authored archetype to a placeholder prefab. A new archetype uses the tinted
+fallback, with one warning, until a prefab is added to
+`Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset`.
+Use these exact Unity Editor steps to exercise the authoring tools and
+presentation mapping:
 
 1. Open the Unity project and select `Shooter MMO > Tools > Content > Actor
    Studio`. Select `Mira the Quartermaster`. Expected result: the window shows
@@ -1459,10 +1495,101 @@ are maintained as long-term foundations. The UI is created automatically when
 each scene starts. The local player and test map must be authored as Unity assets
 and are not generated at runtime.
 
+## Unity Editor Automation With Unity CLI
+
+The Unity project includes the Editor automation package `com.unity.pipeline`,
+pinned to the experimental version `0.8.0-exp.1`. Together with the Unity CLI it
+lets local tools and coding agents such as Claude Code drive a running Editor:
+read and change scenes, GameObjects, components, and assets, read the console
+and compiler state, evaluate C# in the Editor, enter Play Mode, and run tests.
+It replaces the deprecated MCP server in the Unity AI Assistant package and does
+not require a Unity AI subscription.
+
+Security rules:
+
+- The Editor server binds only to `127.0.0.1`. Every request needs the bearer
+  token from a per-user descriptor file in the ignored `Library/` folder, and
+  requests with an `Origin` header are refused, so browser pages cannot reach it.
+- `eval` runs arbitrary C# with full Editor access, and some Editor changes
+  cannot be undone. Commit or stash work before an agent makes larger Editor
+  changes.
+- The package runtime assembly compiles only in the Editor and in builds that
+  define `ENABLE_PROFILER` (development builds) or `ENABLE_RUNTIME_PIPELINE`.
+  Its Player server stays off because the Pipeline Runtime setting
+  `enableInBuilds` is `false`. Do not enable `enableInBuilds`,
+  `Allow Browser Clients`, or `ENABLE_RUNTIME_PIPELINE` without a reviewed
+  reason.
+
+One-time setup on a new machine:
+
+1. Install the Unity CLI with `winget install Unity.CLI` and open a new
+   terminal. Unity Hub may already have installed it in
+   `%LOCALAPPDATA%\Unity\bin`.
+2. Sign in with `unity auth login`.
+3. Open the project with `unity open shooter-mmorpg-unity-client`, or through
+   Unity Hub, and wait for package import and script compilation to finish. If
+   the Editor was already open when the manifest changed, focus the Editor window
+   so Package Manager resolves the change.
+
+No other manual Editor work is required. The package is already in the
+manifest, so `unity pipeline install` is only needed for a project that does not
+have it yet.
+
+Verify the connection from `shooter-mmorpg-unity-client`:
+
+```powershell
+unity status
+unity pipeline list
+unity command editor_status
+```
+
+Expected result:
+
+- `unity status` lists the project as `ready` on a loopback port such as `7800`.
+- `unity pipeline list` reports Pipeline `true`, version `0.8.0-exp.1`, and
+  Server Reachable `true`.
+- `editor_status` returns `"status":"ready"`.
+
+Useful commands, run from `shooter-mmorpg-unity-client` or with
+`--project-path`:
+
+- `unity list` lists every command the connected Editor exposes.
+- `unity command console_status` reports compiler failure state and console
+  counts. `unity command console --level warning` returns the entries.
+- `unity command run_tests --mode editor --timeout 580` runs the EditMode suite
+  synchronously and returns every result.
+- `unity command run_tests --mode playmode --async_tests` starts the PlayMode
+  suite. Entering Play Mode reloads the Editor domain and drops a synchronous
+  request, so poll `unity command test_status` until `status` is `completed`.
+
+Coding agents:
+
+- Unity's official Claude Code plugin, `unity@unity-agent-plugin`, adds Unity
+  skills that call the CLI. In the Claude desktop app, open `Plugins > Browse`
+  and search for Unity. In a Claude Code terminal, run
+  `/plugin marketplace add Unity-Technologies/unity-agent-plugin` and then
+  `/plugin install unity@unity-agent-plugin`.
+- Agents that can run shell commands should call `unity` directly. It is faster
+  and uses fewer tokens than MCP.
+- MCP clients that cannot run shell commands can use the CLI MCP server through
+  `unity mcp configure <client>`. `unity mcp configure --list` shows supported
+  clients. This repository does not configure an MCP client.
+
+Package updates follow the normal Unity package rule in
+[Repository Quality Checks](#repository-quality-checks). Because the package is
+experimental, review its changelog, update it in a focused branch with
+`unity pipeline install --package-version <version>`, let Unity rewrite
+`packages-lock.json`, and run both Unity suites and the backend quality gate.
+
 ## One-Time Unity World Scene Authoring
 
-The code foundation expects real scene and prefab assets. Complete these manual
-steps in Unity Editor after the scripts compile.
+The scenes, prefabs, and `PlayerControls` asset described here are already
+committed. Do not repeat these steps on an existing checkout, because recreating
+an asset replaces the committed version and its later additions. The steps
+record how the assets were first created; use them only to rebuild a missing
+asset from scratch. The committed `PlayerControls` asset has more actions than
+the original seven, including `ToggleInventory`, `ToggleCharacterInventory`,
+`ToggleEquipmentInventory`, and `Interact`.
 
 ### Create The Input Actions Asset
 
@@ -1610,7 +1737,15 @@ authoritative map collider changes.
 
 After both development scenes exist in Build Profiles, use `Shooter MMO >
 Tools > World Collision > Bake Build World Scenes` to validate each catalog
-mapping and bake every enabled World scene in one deterministic pass.
+mapping and bake every enabled World scene in one deterministic pass. When
+several Worlds share one reusable scene, the scene is baked once for each of
+those Worlds, and its `WorldCollisionAuthoring` World id must be one of them.
+
+The bake writes every file to a temporary `.tmp` sibling first and then swaps
+them in, chunks before the manifest, with a backup of each previous file. If any
+write or swap fails, the previous files are restored, so a failed bake never
+leaves a manifest whose checksums do not match its chunks. Unity ignores the
+`.tmp` files.
 
 Expected result: Unity Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
@@ -1676,9 +1811,17 @@ Open `Window > General > Test Runner` and run both suites before delivering Unit
 changes. You can run the same suites outside the Editor with:
 
 ```powershell
-$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe"
+$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.4f1\Editor\Unity.exe"
 & .\Tools\Run-UnityTests.ps1
 ```
+
+An explicit `-UnityEditorPath` or `UNITY_EDITOR_PATH` always runs that Editor.
+The script uses the Unity CLI only when `-UnityCliPath` or `UNITY_CLI_PATH` is
+set, or when neither path is set and the CLI exists at
+`%LOCALAPPDATA%\Unity\bin\unity.exe`. The headless run cannot start while an
+Editor has the project open; use the live Editor commands in
+[Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
+instead.
 
 Expected result:
 
@@ -1701,7 +1844,7 @@ these exact manual steps:
    icon.
 2. Start Unity Hub, sign in, and confirm that a valid Personal or organization
    license is active under `Preferences > Licenses`.
-3. Open this project with Unity `6000.5.2f1` once and wait for package import and
+3. Open this project with Unity `6000.5.4f1` once and wait for package import and
    script compilation to finish without a licensing error.
 4. Close the Editor, keep the signed-in Hub session available, and rerun
    `Tools/Run-UnityTests.ps1`.
@@ -1715,8 +1858,8 @@ installed and activated Editor. To enable it:
 
 1. In the GitHub repository, open `Settings > Actions > Runners` and register a
    Windows x64 self-hosted runner.
-2. Add the custom label `unity-6000.5.2f1` to that runner.
-3. Install and activate Unity `6000.5.2f1` for the Windows account that runs the
+2. Add the custom label `unity-6000.5.4f1` to that runner.
+3. Install and activate Unity `6000.5.4f1` for the Windows account that runs the
    runner service.
 4. Add repository variable `UNITY_CI_ENABLED` with value `true`.
 5. If Unity is not installed in the default Unity Hub path, add repository
@@ -1761,6 +1904,17 @@ the compiled movement-simulation revision, the initial carry tuple,
 server-assigned network entity ids, reliable carry-state updates, reliable item
 operation intents and results, and reliable entity lifecycle messages.
 Rebuild every standalone client after a protocol or simulation revision change.
+
+An intended change to shared movement or collision behavior fails the movement
+determinism tests in both the backend suite and Unity EditMode. Bump
+`GameSimulationCompatibility.Revision`, then set `ExpectedSimulationRevision`
+and `ExpectedFingerprint` in
+`shooter-mmorpg-unity-client/Assets/Tests/EditMode/Shared/MovementDeterminismScenario.cs`
+to the new values. The backend test project compiles the same file, so both
+runtimes keep checking one pinned pair. If only Unity fails, a new float
+expression in `GameSimulation` is missing an explicit `(float)` cast around an
+intermediate result; `MovementDeterminismScenario.ComputeTrace()` returns the
+per-tick states for comparing the runtimes.
 Standalone build output belongs under ignored `ClientBuilds` or `Builds`
 directories and must never be committed.
 

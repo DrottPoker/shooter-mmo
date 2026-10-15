@@ -152,6 +152,36 @@ public sealed class DevelopmentSimulationBotAuthorityTests
     }
 
     [Fact]
+    public void ReservationsGroupPendingTicketsAndActiveSessionsPerRuntime()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var first = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1"),
+            CreatePlacement());
+        var second = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 2, "local-shard-1"),
+            CreatePlacement());
+        Assert.True(first.Succeeded && second.Succeeded);
+        Assert.True(authority.TryConsumeTicket(
+            new ConsumeSimulationJoinTicketRequest(
+                first.Value!.JoinTicket,
+                "worker-1",
+                "runtime-1",
+                "local-shard-1"),
+            out var consumed));
+        Assert.True(consumed.Succeeded);
+
+        var reservation = Assert.Single(authority.CaptureReservations());
+
+        Assert.Equal("worker-1", reservation.WorkerId);
+        Assert.Equal("runtime-1", reservation.WorkerRuntimeId);
+        Assert.Equal(1, reservation.ActiveSessions);
+        Assert.Equal(1, reservation.PendingTickets);
+    }
+
+    [Fact]
     public void WorkerConnectionCapacityRejectsAdditionalBotTicket()
     {
         var authority = new DevelopmentSimulationBotAuthority(
@@ -237,14 +267,38 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.Equal("development_bot_worker_capacity_reached", rejected.Error!.Code);
     }
 
-    private static DevelopmentSimulationBotOptions CreateOptions()
+    [Fact]
+    public void BotsLeaveTheReservedConnectionsForRealPlayers()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(reservedPlayerConnections: 2),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var placement = CreatePlacement() with { MaxConnections = 4 };
+
+        for (var index = 1; index <= 2; index++)
+        {
+            Assert.True(authority.IssueTicket(
+                new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), index, "local-shard-1"),
+                placement).Succeeded);
+        }
+
+        var rejected = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 3, "local-shard-1"),
+            placement);
+
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("development_bot_worker_capacity_reached", rejected.Error!.Code);
+    }
+
+    private static DevelopmentSimulationBotOptions CreateOptions(int reservedPlayerConnections = 0)
     {
         return new DevelopmentSimulationBotOptions(
             true,
             new string('s', 32),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(30),
-            "Active Bot");
+            "Active Bot",
+            reservedPlayerConnections);
     }
 
     private static DevelopmentSimulationBotPlacement CreatePlacement()

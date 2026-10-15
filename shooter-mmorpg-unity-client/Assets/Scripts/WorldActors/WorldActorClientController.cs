@@ -29,7 +29,7 @@ namespace ShooterMmo.WorldActors
             simulationClient.WorldActorSpawned += OnSpawned;
             simulationClient.WorldActorStateReceived += OnStateReceived;
             simulationClient.WorldActorDespawned += OnDespawned;
-            simulationClient.UnexpectedlyDisconnected += OnDisconnected;
+            simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
 
             State.Clear();
@@ -74,7 +74,7 @@ namespace ShooterMmo.WorldActors
             }
         }
 
-        private void OnDisconnected(RealtimeClientError error)
+        private void OnSessionEnded(RealtimeClientError error)
         {
             State.Clear();
         }
@@ -89,7 +89,7 @@ namespace ShooterMmo.WorldActors
             simulationClient.WorldActorSpawned -= OnSpawned;
             simulationClient.WorldActorStateReceived -= OnStateReceived;
             simulationClient.WorldActorDespawned -= OnDespawned;
-            simulationClient.UnexpectedlyDisconnected -= OnDisconnected;
+            simulationClient.SessionEnded -= OnSessionEnded;
             initialized = false;
         }
     }

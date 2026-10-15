@@ -79,6 +79,8 @@ public sealed class RedisAccelerationIntegrationTests
         Assert.True(second.Allowed);
         Assert.False(rejected.Allowed);
         Assert.True(rejected.RetryAfter > TimeSpan.Zero);
+        // The fixed window resets at the bucket end, never later than one window.
+        Assert.True(rejected.RetryAfter <= TimeSpan.FromSeconds(30));
 
         var server = database.Multiplexer.GetEndPoints().Single();
         var redisServer = database.Multiplexer.GetServer(server);

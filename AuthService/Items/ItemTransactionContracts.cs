@@ -220,7 +220,7 @@ public sealed record AbandonQuestItemsCommand(
 public sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
     Guid CharacterId,
-    long? ExpectedCharacterRevision,
+    long ExpectedCharacterRevision,
     string ShardId,
     double PositionX,
     double PositionY,
@@ -406,4 +406,28 @@ public static class ItemOperationKinds
     public const string MoveCorpseItem = "move_corpse_item";
     public const string MoveCorpsePartialStack = "move_corpse_partial_stack";
     public const string SwapCorpseBag = "swap_corpse_bag";
+
+    // System operations use derived or server-held ids and are retried until they
+    // commit, so a rejection is returned without being stored for replay.
+    public static bool IsRetriedSystemOperation(string operationKind)
+    {
+        return operationKind is ProcessPlayerDeath
+            or CreatePersistentMobCorpse
+            or GrantMobLoot
+            or ExpireCorpse
+            or ExpireRecoveryDelivery;
+    }
+}
+
+public static class ItemOperationIds
+{
+    // Player-chosen ids must be random version 4 UUIDs. Every derived system id is a
+    // version 5 UUID, so a player can never claim an id a system operation needs.
+    public static bool IsRandomClientOperationId(Guid operationId)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        operationId.TryWriteBytes(bytes);
+        return (bytes[7] & 0xf0) == 0x40
+            && (bytes[8] & 0xc0) == 0x80;
+    }
 }

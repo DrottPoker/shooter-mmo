@@ -30,7 +30,7 @@ namespace ShooterMmo.WorldData.Items
 
     public static class ItemCatalogCompiler
     {
-        private const int MaximumIdentifierLength = 128;
+        private const int MaximumIdentifierLength = ItemCatalogFormat.MaximumIdentifierLength;
         private const int MaximumDisplayNameLength = 128;
         private const int MaximumContainerSlotCapacity = 65535;
 
@@ -118,11 +118,20 @@ namespace ShooterMmo.WorldData.Items
                 "baseSecureContainerTierId",
                 errors);
 
-            var categoryIds = ValidateIdentities(authoring.Categories, "categories", errors);
-            var tagIds = ValidateIdentities(authoring.Tags, "tags", errors);
+            var categoryIds = ValidateIdentities(
+                authoring.Categories,
+                "categories",
+                MaximumIdentifierLength,
+                errors);
+            var tagIds = ValidateIdentities(
+                authoring.Tags,
+                "tags",
+                ItemCatalogFormat.MaximumTagLength,
+                errors);
             var equipmentSlotIds = ValidateIdentities(
                 authoring.EquipmentSlots,
                 "equipmentSlots",
+                ItemCatalogFormat.MaximumEquipmentSlotIdLength,
                 errors);
 
             ValidateRequiredIds(categoryIds, RequiredCategories, "categories", errors);
@@ -153,6 +162,7 @@ namespace ShooterMmo.WorldData.Items
         private static HashSet<string> ValidateIdentities(
             ItemCatalogIdentityEntry[] entries,
             string collectionName,
+            int maximumLength,
             ICollection<string> errors)
         {
             var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -172,7 +182,7 @@ namespace ShooterMmo.WorldData.Items
                     continue;
                 }
 
-                ValidateIdentifier(entry.Id, path + ".id", errors);
+                ValidateIdentifier(entry.Id, path + ".id", errors, maximumLength);
                 ValidateDisplayName(entry.DisplayName, path + ".displayName", errors);
                 if (!string.IsNullOrWhiteSpace(entry.Id) && !ids.Add(entry.Id))
                 {
@@ -413,6 +423,14 @@ namespace ShooterMmo.WorldData.Items
                 var acceptedTagCount = slot.AcceptedTags == null
                     ? 0
                     : slot.AcceptedTags.Length;
+                if (acceptedTagCount > ItemCatalogFormat.MaximumAcceptedTagsPerSlot)
+                {
+                    errors.Add(
+                        slotPath + ".acceptedTags must not contain more than "
+                        + ItemCatalogFormat.MaximumAcceptedTagsPerSlot
+                        + " tags.");
+                }
+
                 if (string.Equals(slot.Kind, BagSlotKindIds.General, StringComparison.Ordinal)
                     && acceptedTagCount != 0)
                 {
@@ -582,10 +600,11 @@ namespace ShooterMmo.WorldData.Items
         private static void ValidateIdentifier(
             string value,
             string path,
-            ICollection<string> errors)
+            ICollection<string> errors,
+            int maximumLength = MaximumIdentifierLength)
         {
             if (string.IsNullOrWhiteSpace(value)
-                || value.Length > MaximumIdentifierLength
+                || value.Length > maximumLength
                 || !string.Equals(value, value.Trim(), StringComparison.Ordinal)
                 || !IsLowerAsciiLetter(value[0])
                 || !IsLowerAsciiLetterOrDigit(value[value.Length - 1]))

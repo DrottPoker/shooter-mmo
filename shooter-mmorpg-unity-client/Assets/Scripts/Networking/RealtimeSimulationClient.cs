@@ -32,6 +32,9 @@ namespace ShooterMmo.Networking
         private float operationDeadline;
         private bool transportStarted;
         private bool stopTransportAfterPoll;
+        private bool sessionJoined;
+        private bool pendingSessionEnded;
+        private RealtimeClientError pendingSessionEndError;
         private bool leaveAccepted;
         private bool hasSnapshotSequence;
         private uint latestSnapshotSequence;
@@ -44,6 +47,10 @@ namespace ShooterMmo.Networking
             new Dictionary<ulong, long>();
 
         public event Action<RealtimeClientError> UnexpectedlyDisconnected;
+
+        // Raised once whenever a joined session ends for any reason, including a graceful
+        // leave, so session-scoped client state can reset. The error is null for a leave.
+        public event Action<RealtimeClientError> SessionEnded;
 
         public event Action<RealtimeSimulationSnapshot> SimulationSnapshotReceived;
 
@@ -185,6 +192,14 @@ namespace ShooterMmo.Networking
                 var error = pendingUnexpectedDisconnect;
                 pendingUnexpectedDisconnect = null;
                 UnexpectedlyDisconnected?.Invoke(error);
+            }
+
+            if (pendingSessionEnded)
+            {
+                var error = pendingSessionEndError;
+                pendingSessionEnded = false;
+                pendingSessionEndError = null;
+                SessionEnded?.Invoke(error);
             }
         }
 
@@ -535,6 +550,10 @@ namespace ShooterMmo.Networking
 
         public void Abort()
         {
+            var endedJoinedSession = sessionJoined;
+            sessionJoined = false;
+            pendingSessionEnded = false;
+            pendingSessionEndError = null;
             State = RealtimeConnectionState.Disconnected;
             joinedSession = null;
             pendingPlacement = null;
@@ -544,6 +563,10 @@ namespace ShooterMmo.Networking
             operationError = null;
             pendingUnexpectedDisconnect = null;
             StopTransport();
+            if (endedJoinedSession)
+            {
+                SessionEnded?.Invoke(null);
+            }
         }
 
         private void OnPeerConnected(NetPeer peer)
@@ -583,6 +606,7 @@ namespace ShooterMmo.Networking
             ResetRealtimeDiagnostics();
             ClearSpawnedEntities("connection_lost");
             stopTransportAfterPoll = true;
+            MarkSessionEnded(error);
             LogFailure(error);
 
             if (previousState == RealtimeConnectionState.Joined)
@@ -602,6 +626,13 @@ namespace ShooterMmo.Networking
                 var packet = reader.GetRemainingBytes();
                 RealtimePacketsReceived++;
                 RealtimeBytesReceived += packet.Length;
+                if (State == RealtimeConnectionState.Disconnected || stopTransportAfterPoll)
+                {
+                    // The session already ended in this poll; later packets must not
+                    // replace the first failure reason.
+                    return;
+                }
+
                 if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType))
                 {
                     FailProtocol("invalid_packet", "SimulationWorker returned an invalid realtime packet.");
@@ -643,6 +674,12 @@ namespace ShooterMmo.Networking
                     FailProtocol(
                         "invalid_control_delivery",
                         "SimulationWorker control messages require the reliable ordered control channel.");
+                    return;
+                }
+
+                if (State == RealtimeConnectionState.Leaving
+                    && ShouldIgnoreWhileLeaving(messageType))
+                {
                     return;
                 }
 
@@ -721,6 +758,31 @@ namespace ShooterMmo.Networking
             return state != RealtimeConnectionState.Joined;
         }
 
+        // The worker keeps sending presence and operation results until it has released the
+        // session, so these in-flight messages are expected while a leave is pending.
+        internal static bool ShouldIgnoreWhileLeaving(RealtimeMessageType messageType)
+        {
+            switch (messageType)
+            {
+                case RealtimeMessageType.EntitySpawn:
+                case RealtimeMessageType.EntityDespawn:
+                case RealtimeMessageType.ItemOperationResult:
+                case RealtimeMessageType.CorpsePresenceSnapshotChunk:
+                case RealtimeMessageType.CorpseInteractionResult:
+                case RealtimeMessageType.CorpseViewStateChunk:
+                case RealtimeMessageType.CorpseViewClosed:
+                case RealtimeMessageType.WorldActorSpawn:
+                case RealtimeMessageType.WorldActorState:
+                case RealtimeMessageType.WorldActorDespawn:
+                case RealtimeMessageType.WorldInteractionOpened:
+                case RealtimeMessageType.WorldInteractionResult:
+                case RealtimeMessageType.WorldInteractionClosed:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private void OnNetworkError(System.Net.IPEndPoint endPoint, System.Net.Sockets.SocketError socketError)
         {
             if (State == RealtimeConnectionState.Disconnected)
@@ -784,6 +846,7 @@ namespace ShooterMmo.Networking
             MovementSession = movementSession;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Joined;
+            sessionJoined = true;
             ClientLog.Info(
                 ClientLogCategory.Simulation,
                 "Account '" + joinedSession.accountId + "' with character '" + joinedSession.characterName
@@ -1339,6 +1402,7 @@ namespace ShooterMmo.Networking
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
+            MarkSessionEnded(null);
         }
 
         private void HandleLeaveRejected(byte[] packet)
@@ -1383,6 +1447,7 @@ namespace ShooterMmo.Networking
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
+            MarkSessionEnded(disconnectError);
             LogFailure(disconnectError);
 
             if (previousState == RealtimeConnectionState.Joined)
@@ -1403,6 +1468,13 @@ namespace ShooterMmo.Networking
 
         private void FailCurrentOperation(RealtimeClientError error)
         {
+            if (State == RealtimeConnectionState.Disconnected && operationError != null)
+            {
+                // Keep the first failure reason for the caller.
+                LogFailure(error);
+                return;
+            }
+
             var previousState = State;
             operationError = error;
             ClearSpawnedEntities(error.Code);
@@ -1411,12 +1483,25 @@ namespace ShooterMmo.Networking
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
+            MarkSessionEnded(error);
             LogFailure(error);
 
             if (previousState == RealtimeConnectionState.Joined)
             {
                 pendingUnexpectedDisconnect = error;
             }
+        }
+
+        private void MarkSessionEnded(RealtimeClientError error)
+        {
+            if (!sessionJoined)
+            {
+                return;
+            }
+
+            sessionJoined = false;
+            pendingSessionEnded = true;
+            pendingSessionEndError = error;
         }
 
         private void ResetOperation()

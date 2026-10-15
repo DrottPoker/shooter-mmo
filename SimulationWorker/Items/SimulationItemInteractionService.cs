@@ -120,7 +120,8 @@ public sealed class SimulationItemInteractionService(
 
     private static bool RequiresInventoryRefresh(string code)
     {
-        return code is "item_state_conflict"
+        return AuthServiceOutcome.IsUncertain(code)
+            || code is "item_state_conflict"
             or "item_operation_conflict"
             or "item_quantity_changed"
             or "bag_state_changed"
