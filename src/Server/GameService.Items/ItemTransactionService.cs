@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
@@ -21,7 +22,6 @@ internal sealed partial class ItemTransactionService(
     ILogger<ItemTransactionService>? logger = null,
     IHttpContextAccessor? httpContextAccessor = null)
 {
-    private const string EmptyStackStateFingerprint = "item-stack-state-v1";
     private readonly ItemTransactionKernel kernel = new(
         dataSource,
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
@@ -1073,10 +1073,10 @@ internal sealed partial class ItemTransactionService(
         var targetPolicies = await context.LoadPoliciesAsync(target.ItemInstanceId, cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(sourcePolicies));
+            ItemPolicyStates.ToPolicyStates(sourcePolicies));
         var targetCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(targetPolicies));
+            ItemPolicyStates.ToPolicyStates(targetPolicies));
         if (!sourceCapabilities.CanStack || !targetCapabilities.CanStack)
         {
             ItemTransactionContext.Reject(
@@ -1087,21 +1087,21 @@ internal sealed partial class ItemTransactionService(
         var sourceState = new ItemStackState(
             source.DefinitionId,
             source.Quantity,
-            ItemTransactionContext.CalculatePolicyFingerprint(
+            ItemPolicyStates.CalculatePolicyFingerprint(
                 sourcePolicies.Where(policy => string.Equals(
                     policy.Status,
                     "active",
                     StringComparison.Ordinal))),
-            EmptyStackStateFingerprint);
+            ItemPolicyStates.EmptyStackStateFingerprint);
         var targetState = new ItemStackState(
             target.DefinitionId,
             target.Quantity,
-            ItemTransactionContext.CalculatePolicyFingerprint(
+            ItemPolicyStates.CalculatePolicyFingerprint(
                 targetPolicies.Where(policy => string.Equals(
                     policy.Status,
                     "active",
                     StringComparison.Ordinal))),
-            EmptyStackStateFingerprint);
+            ItemPolicyStates.EmptyStackStateFingerprint);
         if (!ItemStackRules.CanMerge(definition.RuntimeDefinition, sourceState, targetState))
         {
             var sameDefinitionAndPolicy = ItemStackRules.AreCompatible(sourceState, targetState);
@@ -1276,7 +1276,7 @@ internal sealed partial class ItemTransactionService(
         var policies = await context.LoadPoliciesAsync(item.ItemInstanceId, cancellationToken);
         var capabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(policies));
+            ItemPolicyStates.ToPolicyStates(policies));
         if (string.Equals(
                 definition.RuntimeDefinition.Category,
                 ItemCategoryIds.QuestItem,
@@ -1709,16 +1709,6 @@ internal sealed partial class ItemTransactionService(
         order by item.id;
         """;
 
-    private static IEnumerable<ItemPolicyState> ToPolicyStates(
-        IEnumerable<LockedItemPolicy> policies)
-    {
-        return policies.Select(policy => new ItemPolicyState(
-            policy.PolicyKind,
-            policy.Status,
-            policy.SourceKind,
-            policy.SourceId));
-    }
-
     private static async Task EnsureBagAggregateTransferAllowedAsync(
         ItemTransactionContext context,
         LockedItem bag,
@@ -1747,7 +1737,7 @@ internal sealed partial class ItemTransactionService(
                 cancellationToken);
             var capabilities = ItemPolicyRules.Evaluate(
                 definition.RuntimeDefinition,
-                ToPolicyStates(policies));
+                ItemPolicyStates.ToPolicyStates(policies));
             if (!capabilities.CanChangeOwningCharacter)
             {
                 ItemTransactionContext.Reject(

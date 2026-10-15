@@ -1482,24 +1482,6 @@ internal sealed class ItemTransactionContext(
         throw new ItemTransactionRejectedException(code, message);
     }
 
-    public static string CalculatePolicyFingerprint(IEnumerable<LockedItemPolicy> policies)
-    {
-        var canonical = string.Join(
-            '\n',
-            policies
-                .OrderBy(policy => policy.PolicyKind, StringComparer.Ordinal)
-                .ThenBy(policy => policy.Status, StringComparer.Ordinal)
-                .ThenBy(policy => policy.SourceKind, StringComparer.Ordinal)
-                .ThenBy(policy => policy.SourceId, StringComparer.Ordinal)
-                .Select(policy => string.Join(
-                    '|',
-                    policy.PolicyKind,
-                    policy.Status,
-                    policy.SourceKind,
-                    policy.SourceId)));
-        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
-    }
-
     private async Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesCoreAsync(
         Guid itemInstanceId,
         CancellationToken cancellationToken)

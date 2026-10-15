@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
@@ -275,7 +276,7 @@ internal sealed partial class ItemTransactionService
             cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(sourcePolicies));
+            ItemPolicyStates.ToPolicyStates(sourcePolicies));
         if (!sourceCapabilities.CanChangeOwningCharacter)
         {
             ItemTransactionContext.Reject(
@@ -358,7 +359,7 @@ internal sealed partial class ItemTransactionService
                     cancellationToken);
                 var targetCapabilities = ItemPolicyRules.Evaluate(
                     targetDefinition.RuntimeDefinition,
-                    ToPolicyStates(targetPolicies));
+                    ItemPolicyStates.ToPolicyStates(targetPolicies));
                 if (!targetCapabilities.CanChangeOwningCharacter)
                 {
                     ItemTransactionContext.Reject(
@@ -488,7 +489,7 @@ internal sealed partial class ItemTransactionService
             cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(sourcePolicies));
+            ItemPolicyStates.ToPolicyStates(sourcePolicies));
         if (!sourceCapabilities.CanChangeOwningCharacter)
         {
             ItemTransactionContext.Reject(
@@ -600,7 +601,7 @@ internal sealed partial class ItemTransactionService
                     cancellationToken);
                 var targetCapabilities = ItemPolicyRules.Evaluate(
                     targetDefinition.RuntimeDefinition,
-                    ToPolicyStates(targetPolicies));
+                    ItemPolicyStates.ToPolicyStates(targetPolicies));
                 if (!targetCapabilities.CanChangeOwningCharacter)
                 {
                     ItemTransactionContext.Reject(
@@ -754,7 +755,7 @@ internal sealed partial class ItemTransactionService
             cancellationToken);
         var sourceCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(sourcePolicies));
+            ItemPolicyStates.ToPolicyStates(sourcePolicies));
         var isPartial = command.Quantity is not null;
         var movedQuantity = isPartial ? command.Quantity!.Value : source.Quantity;
         if (isPartial
@@ -1378,25 +1379,25 @@ internal sealed partial class ItemTransactionService
     {
         var targetCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
-            ToPolicyStates(targetPolicies));
+            ItemPolicyStates.ToPolicyStates(targetPolicies));
         var sourceState = new ItemStackState(
             source.DefinitionId,
             movedQuantity,
-            ItemTransactionContext.CalculatePolicyFingerprint(
+            ItemPolicyStates.CalculatePolicyFingerprint(
                 sourcePolicies.Where(policy => string.Equals(
                     policy.Status,
                     ItemPolicyRules.ActiveStatus,
                     StringComparison.Ordinal))),
-            EmptyStackStateFingerprint);
+            ItemPolicyStates.EmptyStackStateFingerprint);
         var targetState = new ItemStackState(
             target.DefinitionId,
             target.Quantity,
-            ItemTransactionContext.CalculatePolicyFingerprint(
+            ItemPolicyStates.CalculatePolicyFingerprint(
                 targetPolicies.Where(policy => string.Equals(
                     policy.Status,
                     ItemPolicyRules.ActiveStatus,
                     StringComparison.Ordinal))),
-            EmptyStackStateFingerprint);
+            ItemPolicyStates.EmptyStackStateFingerprint);
         if (sourceCapabilities.CanStack
             && targetCapabilities.CanStack
             && ItemStackRules.CanMerge(definition.RuntimeDefinition, sourceState, targetState))
