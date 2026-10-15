@@ -77,7 +77,9 @@ with each other.
 Use `--filter "Category!=Integration"` for a fast loop without containers and
 `--filter "Category=Integration"` for only the infrastructure tests. The
 attributes skip their test while `MMORPG_TEST_POSTGRES` or `MMORPG_TEST_REDIS`
-is unset, so a full run must show no skipped test.
+is unset, so a full run must show no skipped test. CI writes one TRX file per
+test project to `TestResults/<Project>/test-results.trx` and fails when any test
+in them did not run or pass.
 
 ## Databases And Redis
 
