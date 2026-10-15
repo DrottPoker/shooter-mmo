@@ -12,7 +12,6 @@ namespace Mmorpg.GameService.Items;
 
 internal sealed partial class ItemTransactionService
 {
-    private const string PlayerCorpsePresentationKey = "corpse.generic_loot_crate";
     private const string DeathProtectionRecoverySource = "death_protection";
     private const string ProtectedBagRecoverySource = "protected_bag";
     private const string InsuranceRecoverySource = "insurance";
@@ -48,7 +47,7 @@ internal sealed partial class ItemTransactionService
     {
         ValidatePlayerDeathCommand(command);
         EnsureDeathAuthority(context);
-        await LockDeathEventKeyAsync(context, command.DeathEventId, cancellationToken);
+        await DurableCorpseRecords.LockDeathEventKeyAsync(context, command.DeathEventId, cancellationToken);
 
         var characterState = await context.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
@@ -124,7 +123,7 @@ internal sealed partial class ItemTransactionService
 
         var corpseId = Guid.NewGuid();
         var expiryOperationId = Guid.NewGuid();
-        var corpseTimes = await CreateDurableCorpseRecordAsync(
+        var corpseTimes = await DurableCorpseRecords.CreateDurableCorpseRecordAsync(
             context,
             corpseId,
             "player",
@@ -1185,21 +1184,6 @@ internal sealed partial class ItemTransactionService
             cancellationToken: cancellationToken));
     }
 
-    private static async Task LockDeathEventKeyAsync(
-        ItemTransactionContext context,
-        Guid deathEventId,
-        CancellationToken cancellationToken)
-    {
-        var bytes = deathEventId.ToByteArray();
-        var firstKey = BitConverter.ToInt32(bytes, 0) ^ 0x44_45_41_54;
-        var secondKey = BitConverter.ToInt32(bytes, 4) ^ BitConverter.ToInt32(bytes, 8);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
-            "select pg_advisory_xact_lock(@FirstKey, @SecondKey);",
-            new { FirstKey = firstKey, SecondKey = secondKey },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-    }
-
     private static Task<DeathEventRow?> LoadDeathEventAsync(
         ItemTransactionContext context,
         Guid deathEventId,
@@ -1270,7 +1254,7 @@ internal sealed partial class ItemTransactionService
         if (!IsPresentationKey(command.PresentationKey)
             || !string.Equals(
                 command.PresentationKey,
-                PlayerCorpsePresentationKey,
+                CorpseTransformRules.PlayerCorpsePresentationKey,
                 StringComparison.Ordinal))
         {
             ItemTransactionContext.Reject(
@@ -1278,9 +1262,9 @@ internal sealed partial class ItemTransactionService
                 "Player death must use the authoritative generic corpse presentation key.");
         }
 
-        if (!IsFinitePosition(command.PositionX)
-            || !IsFinitePosition(command.PositionY)
-            || !IsFinitePosition(command.PositionZ))
+        if (!CorpseTransformRules.IsFinitePosition(command.PositionX)
+            || !CorpseTransformRules.IsFinitePosition(command.PositionY)
+            || !CorpseTransformRules.IsFinitePosition(command.PositionZ))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.DeathEventConflict,
@@ -1320,12 +1304,7 @@ internal sealed partial class ItemTransactionService
                 char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.');
     }
 
-    private static bool IsFinitePosition(double value)
-    {
-        return double.IsFinite(value) && value is >= -1_000_000d and <= 1_000_000d;
-    }
-
-    internal static string DefaultPlayerCorpsePresentationKey => PlayerCorpsePresentationKey;
+    internal static string DefaultPlayerCorpsePresentationKey => CorpseTransformRules.PlayerCorpsePresentationKey;
 
     private sealed record DeathEventRequestFingerprint(
         Guid DeathEventId,

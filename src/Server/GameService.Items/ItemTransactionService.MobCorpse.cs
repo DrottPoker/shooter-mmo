@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Dapper;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.GameService.Items;
@@ -45,7 +46,7 @@ internal sealed partial class ItemTransactionService
             command.ShardId,
             command.WorkerHeartbeatTimeoutSeconds,
             cancellationToken);
-        await LockDeathEventKeyAsync(context, command.CorpseId, cancellationToken);
+        await DurableCorpseRecords.LockDeathEventKeyAsync(context, command.CorpseId, cancellationToken);
 
         var corpseExists = await context.Connection.QuerySingleAsync<bool>(
             new CommandDefinition(
@@ -74,7 +75,7 @@ internal sealed partial class ItemTransactionService
         var equipmentContainerId = Guid.NewGuid();
         var bagContainerId = Guid.NewGuid();
         var expiryOperationId = CreateScopedGuid("mob-corpse-expiry", command.CorpseId);
-        var corpseTimes = await CreateDurableCorpseRecordAsync(
+        var corpseTimes = await DurableCorpseRecords.CreateDurableCorpseRecordAsync(
             context,
             command.CorpseId,
             "persistent_npc",
@@ -321,17 +322,17 @@ internal sealed partial class ItemTransactionService
             || command.SourceDisplayName.Length > 128
             || !string.Equals(
                 command.PresentationKey,
-                PlayerCorpsePresentationKey,
+                CorpseTransformRules.PlayerCorpsePresentationKey,
                 StringComparison.Ordinal)
             || !double.IsFinite(command.LifetimeSeconds)
             || command.LifetimeSeconds
                 is < WorldActorCorpseRules.MinimumLifetimeSeconds
                 or > WorldActorCorpseRules.MaximumLifetimeSeconds
             || command.WorkerHeartbeatTimeoutSeconds <= 0
-            || !IsFinitePosition(command.PositionX)
-            || !IsFinitePosition(command.PositionY)
-            || !IsFinitePosition(command.PositionZ)
-            || !IsNormalizedRotation(
+            || !CorpseTransformRules.IsFinitePosition(command.PositionX)
+            || !CorpseTransformRules.IsFinitePosition(command.PositionY)
+            || !CorpseTransformRules.IsFinitePosition(command.PositionZ)
+            || !CorpseTransformRules.IsNormalizedRotation(
                 command.RotationX,
                 command.RotationY,
                 command.RotationZ,
@@ -373,24 +374,6 @@ internal sealed partial class ItemTransactionService
             && value.All(character =>
                 char.IsAsciiLetterOrDigit(character)
                 || character is '-' or '_' or '.');
-    }
-
-    private static bool IsNormalizedRotation(
-        double rotationX,
-        double rotationY,
-        double rotationZ,
-        double rotationW)
-    {
-        var lengthSquared = (rotationX * rotationX)
-            + (rotationY * rotationY)
-            + (rotationZ * rotationZ)
-            + (rotationW * rotationW);
-        return double.IsFinite(lengthSquared)
-            && Math.Abs(lengthSquared - 1d) <= 0.0001d
-            && Math.Abs(rotationX) <= 1d
-            && Math.Abs(rotationY) <= 1d
-            && Math.Abs(rotationZ) <= 1d
-            && Math.Abs(rotationW) <= 1d;
     }
 
     private static Guid CreateScopedGuid(string scope, Guid sourceId)

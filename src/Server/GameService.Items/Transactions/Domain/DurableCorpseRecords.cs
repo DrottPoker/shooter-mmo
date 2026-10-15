@@ -1,10 +1,12 @@
 using Dapper;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Items.Transactions.Domain;
 
-internal sealed partial class ItemTransactionService
+// The durable corpse row shared by player death and persistent Mob corpses, and the
+// advisory lock that serializes work on one death event or corpse id.
+internal static class DurableCorpseRecords
 {
-    private static Task<CreatedCorpseTimes> CreateDurableCorpseRecordAsync(
+    public static Task<CreatedCorpseTimes> CreateDurableCorpseRecordAsync(
         ItemTransactionContext context,
         Guid corpseId,
         string sourceType,
@@ -94,10 +96,32 @@ internal sealed partial class ItemTransactionService
                 cancellationToken: cancellationToken));
     }
 
-    private sealed class CreatedCorpseTimes
+    public static async Task LockDeathEventKeyAsync(
+        ItemTransactionContext context,
+        Guid deathEventId,
+        CancellationToken cancellationToken)
     {
-        public DateTime CreatedAt { get; set; }
-
-        public DateTime ExpiresAt { get; set; }
+        var (firstKey, secondKey) = DeathEventLockKeys(deathEventId);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            "select pg_advisory_xact_lock(@FirstKey, @SecondKey);",
+            new { FirstKey = firstKey, SecondKey = secondKey },
+            context.Transaction,
+            cancellationToken: cancellationToken));
     }
+
+    // The advisory lock key pair of a death event id or a durable corpse id.
+    public static (int FirstKey, int SecondKey) DeathEventLockKeys(Guid deathEventId)
+    {
+        var bytes = deathEventId.ToByteArray();
+        var firstKey = BitConverter.ToInt32(bytes, 0) ^ 0x44_45_41_54;
+        var secondKey = BitConverter.ToInt32(bytes, 4) ^ BitConverter.ToInt32(bytes, 8);
+        return (firstKey, secondKey);
+    }
+}
+
+internal sealed class CreatedCorpseTimes
+{
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime ExpiresAt { get; set; }
 }

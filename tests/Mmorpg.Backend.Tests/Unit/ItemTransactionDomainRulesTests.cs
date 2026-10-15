@@ -71,6 +71,26 @@ public sealed class ItemTransactionDomainRulesTests
             "Recovery Storage expiry cannot precede availability.");
     }
 
+    [Theory]
+    [InlineData("c0000000-0000-4000-8000-000000000001", -2075836076, 1073741952)]
+    [InlineData("12345678-9abc-4def-8123-456789abcdef", 1450252076, 715831613)]
+    public void DeathEventLockKeysKeepTheirDerivation(string id, int firstKey, int secondKey)
+    {
+        Assert.Equal((firstKey, secondKey), DurableCorpseRecords.DeathEventLockKeys(Guid.Parse(id)));
+    }
+
+    [Fact]
+    public void CorpseTransformRulesBoundPositionsAndNormalizeRotations()
+    {
+        Assert.Equal("corpse.generic_loot_crate", CorpseTransformRules.PlayerCorpsePresentationKey);
+        Assert.True(CorpseTransformRules.IsFinitePosition(1_000_000d));
+        Assert.False(CorpseTransformRules.IsFinitePosition(1_000_000.5d));
+        Assert.False(CorpseTransformRules.IsFinitePosition(double.NaN));
+        Assert.True(CorpseTransformRules.IsNormalizedRotation(0d, 0.6d, 0d, 0.8d));
+        Assert.False(CorpseTransformRules.IsNormalizedRotation(0d, 0d, 0d, 0.99d));
+        Assert.False(CorpseTransformRules.IsNormalizedRotation(0d, 0d, 0d, double.PositiveInfinity));
+    }
+
     private static void AssertRejected(Action action, string code, string message)
     {
         var exception = Assert.Throws<ItemTransactionRejectedException>(action);
