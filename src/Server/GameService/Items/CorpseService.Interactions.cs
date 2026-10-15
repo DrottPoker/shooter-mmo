@@ -2,7 +2,8 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
-using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
@@ -368,43 +369,10 @@ public sealed partial class CorpseService
         SimulationCorpseOpenRequest request,
         CancellationToken cancellationToken)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<CorpseReadAuthorityRow>(
-            new CommandDefinition(
-                $"""
-                select
-                    session.account_id as "AccountId",
-                    session.character_id as "CharacterId",
-                    session.shard_id as "ShardId",
-                    session.simulation_worker_id as "WorkerId",
-                    session.worker_runtime_id as "WorkerRuntimeId",
-                    session.session_token_hash as "SessionTokenHash",
-                    session.released_at is null
-                        and session.expires_at > now()
-                        and {AccountsSql.IsActiveOrUnboundSession("session.account_session_id")} as "SessionIsActive",
-                    worker.is_online
-                        and worker.last_heartbeat_at is not null
-                        and worker.last_heartbeat_at > now()
-                            - make_interval(secs => @HeartbeatTimeoutSeconds)
-                        and worker.runtime_id = session.worker_runtime_id
-                        as "WorkerHasFreshLease",
-                    exists (
-                        select 1
-                        from simulation_assignments assignment
-                        where assignment.worker_id = session.simulation_worker_id
-                          and assignment.shard_id = session.shard_id
-                          and assignment.released_at is null) as "WorkerHasAssignment"
-                from character_simulation_sessions session
-                join simulation_workers worker
-                  on worker.id = session.simulation_worker_id
-                where session.id = @SimulationSessionId;
-                """,
-                new
-                {
-                    SimulationSessionId = simulationSessionId,
-                    HeartbeatTimeoutSeconds = WorkerLeasePolicy.HeartbeatTimeout.TotalSeconds
-                },
-                transaction,
-                cancellationToken: cancellationToken));
+        var row = await SessionAuthority.GetReadAuthorityAsync(
+            new PostgresTransactionScope(connection, transaction),
+            simulationSessionId,
+            cancellationToken);
         if (row is null || !row.SessionIsActive)
         {
             return new SnapshotError(
@@ -767,27 +735,6 @@ public sealed partial class CorpseService
         {
             return new SnapshotLoadResult(null, new SnapshotError(code, message));
         }
-    }
-
-    private sealed class CorpseReadAuthorityRow
-    {
-        public Guid AccountId { get; set; }
-
-        public Guid CharacterId { get; set; }
-
-        public string ShardId { get; set; } = string.Empty;
-
-        public string WorkerId { get; set; } = string.Empty;
-
-        public string WorkerRuntimeId { get; set; } = string.Empty;
-
-        public string SessionTokenHash { get; set; } = string.Empty;
-
-        public bool SessionIsActive { get; set; }
-
-        public bool WorkerHasFreshLease { get; set; }
-
-        public bool WorkerHasAssignment { get; set; }
     }
 
     private sealed class CorpseViewRow

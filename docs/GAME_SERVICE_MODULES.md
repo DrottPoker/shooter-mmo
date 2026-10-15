@@ -278,5 +278,9 @@ intended differences:
   Items implements `ISimulationCharacterStateProvider` (S11, S12, S14) and
   `IShardWorldLocalStateProbe` (S15), and reads Placement state through
   `PlacementSql` (S33, S37 to S39).
-- Placement authority contracts, Placement migrations, and the Placement and
-  Items extractions: in progress.
+- Placement authority contracts: done. Items judges simulation sessions,
+  worker leases, assignments, and presence through `ISimulationSessionAuthority`,
+  `ISimulationWorkerAuthority`, and `ISimulationPresence` (S20 to S25, S27,
+  S29). No GameService source reads, writes, or locks another module's table
+  outside the frozen migrations.
+- Placement migrations and the Placement and Items extractions: in progress.

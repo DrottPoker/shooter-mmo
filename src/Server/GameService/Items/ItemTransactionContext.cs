@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Dapper;
-using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
@@ -138,26 +137,10 @@ internal sealed class ItemTransactionContext(
                 "The simulation account does not own the requested character.");
         }
 
-        var session = await Connection.QuerySingleOrDefaultAsync<LiveSimulationSessionRow>(
-            new CommandDefinition(
-                $"""
-                select
-                    simulation_session.account_id as "AccountId",
-                    simulation_session.character_id as "CharacterId",
-                    simulation_session.shard_id as "ShardId",
-                    simulation_session.simulation_worker_id as "WorkerId",
-                    simulation_session.worker_runtime_id as "WorkerRuntimeId",
-                    simulation_session.session_token_hash as "SessionTokenHash",
-                    simulation_session.released_at is null
-                        and simulation_session.expires_at > now()
-                        and {AccountsSql.IsActiveOrUnboundSession("simulation_session.account_session_id")} as "IsActive"
-                from character_simulation_sessions simulation_session
-                where simulation_session.id = @SimulationSessionId
-                for update of simulation_session;
-                """,
-                new { simulation.SimulationSessionId },
-                Transaction,
-                cancellationToken: cancellationToken));
+        var session = await dependencies.SimulationSessions.LockForItemMutationAsync(
+            Scope,
+            simulation.SimulationSessionId,
+            cancellationToken);
         if (session is null || !session.IsActive)
         {
             Reject(
@@ -198,18 +181,10 @@ internal sealed class ItemTransactionContext(
                 "The simulation session credentials or Shard binding are invalid.");
         }
 
-        var worker = await Connection.QuerySingleOrDefaultAsync<LiveSimulationWorkerRow>(
-            new CommandDefinition(
-                """
-                select
-                    worker.runtime_id as "RuntimeId",
-                    worker.is_online as "IsOnline"
-                from simulation_workers worker
-                where worker.id = @WorkerId;
-                """,
-                new { WorkerId = simulation.WorkerId },
-                Transaction,
-                cancellationToken: cancellationToken));
+        var worker = await dependencies.SimulationWorkers.GetRuntimeAsync(
+            Scope,
+            simulation.WorkerId,
+            cancellationToken);
         if (worker is null
             || !worker.IsOnline
             || !string.Equals(
@@ -222,24 +197,12 @@ internal sealed class ItemTransactionContext(
                 "The simulation worker runtime no longer owns live authority.");
         }
 
-        var assignmentId = await Connection.QuerySingleOrDefaultAsync<string>(
-            new CommandDefinition(
-                """
-                select assignment.id
-                from simulation_assignments assignment
-                where assignment.worker_id = @WorkerId
-                  and assignment.shard_id = @ShardId
-                  and assignment.released_at is null
-                for share of assignment;
-                """,
-                new
-                {
-                    WorkerId = simulation.WorkerId,
-                    ShardId = simulation.ShardId
-                },
-                Transaction,
-                cancellationToken: cancellationToken));
-        if (string.IsNullOrWhiteSpace(assignmentId))
+        var ownsAssignment = await dependencies.SimulationWorkers.LockAssignmentForShareAsync(
+            Scope,
+            simulation.WorkerId,
+            simulation.ShardId,
+            cancellationToken);
+        if (!ownsAssignment)
         {
             Reject(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
@@ -393,20 +356,10 @@ internal sealed class ItemTransactionContext(
 
         if (Actor.RequiresOfflineCharacter)
         {
-            var activeCharacterId = await Connection.QuerySingleOrDefaultAsync<Guid?>(
-                new CommandDefinition(
-                    """
-                    select character_id
-                    from character_simulation_sessions
-                    where character_id = any(@CharacterIds)
-                      and released_at is null
-                      and expires_at > now()
-                    order by character_id
-                    limit 1;
-                    """,
-                    new { CharacterIds = requested.Select(request => request.CharacterId).ToArray() },
-                    Transaction,
-                    cancellationToken: cancellationToken));
+            var activeCharacterId = await dependencies.SimulationPresence.FindActiveCharacterAsync(
+                Scope,
+                requested.Select(request => request.CharacterId).ToArray(),
+                cancellationToken);
             if (activeCharacterId is not null)
             {
                 Reject(
@@ -857,27 +810,11 @@ internal sealed class ItemTransactionContext(
                 "Mob corpse creation requires complete simulation worker service authority.");
         }
 
-        var authority = await Connection.QuerySingleOrDefaultAsync<WorkerServiceAuthorityRow>(
-            new CommandDefinition(
-                """
-                select
-                    worker.runtime_id as "RuntimeId",
-                    worker.is_online
-                        and worker.last_heartbeat_at is not null
-                        and worker.last_heartbeat_at > now()
-                            - make_interval(secs => @HeartbeatTimeoutSeconds)
-                        as "HasFreshLease"
-                from simulation_workers worker
-                where worker.id = @WorkerId
-                for no key update of worker;
-                """,
-                new
-                {
-                    WorkerId = workerId,
-                    HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds
-                },
-                Transaction,
-                cancellationToken: cancellationToken));
+        var authority = await dependencies.SimulationWorkers.LockLeaseAsync(
+            Scope,
+            workerId,
+            heartbeatTimeoutSeconds,
+            cancellationToken);
         if (authority is null
             || !authority.HasFreshLease
             || !string.Equals(
@@ -890,19 +827,11 @@ internal sealed class ItemTransactionContext(
                 "The simulation worker runtime no longer owns a fresh registry lease.");
         }
 
-        var assignmentOwner = await Connection.QuerySingleOrDefaultAsync<string>(
-            new CommandDefinition(
-                """
-                select assignment.worker_id
-                from simulation_assignments assignment
-                where assignment.worker_id = @WorkerId
-                  and assignment.shard_id = @ShardId
-                  and assignment.released_at is null
-                for no key update of assignment;
-                """,
-                new { WorkerId = workerId, ShardId = shardId },
-                Transaction,
-                cancellationToken: cancellationToken));
+        var assignmentOwner = await dependencies.SimulationWorkers.LockAssignmentAsync(
+            Scope,
+            workerId,
+            shardId,
+            cancellationToken);
         if (!string.Equals(assignmentOwner, workerId, StringComparison.Ordinal))
         {
             Reject(
@@ -1810,37 +1739,6 @@ internal sealed class ItemTransactionContext(
     private sealed record CalculatedCarryState(
         long CarriedWeight,
         long CarryCapacity);
-
-    private sealed class LiveSimulationSessionRow
-    {
-        public Guid AccountId { get; set; }
-
-        public Guid CharacterId { get; set; }
-
-        public string ShardId { get; set; } = string.Empty;
-
-        public string WorkerId { get; set; } = string.Empty;
-
-        public string WorkerRuntimeId { get; set; } = string.Empty;
-
-        public string SessionTokenHash { get; set; } = string.Empty;
-
-        public bool IsActive { get; set; }
-    }
-
-    private sealed class LiveSimulationWorkerRow
-    {
-        public string? RuntimeId { get; set; }
-
-        public bool IsOnline { get; set; }
-    }
-
-    private sealed class WorkerServiceAuthorityRow
-    {
-        public string? RuntimeId { get; set; }
-
-        public bool HasFreshLease { get; set; }
-    }
 }
 
 internal sealed record CharacterLockRequest(

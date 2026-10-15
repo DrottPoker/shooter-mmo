@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 
@@ -17,6 +18,9 @@ public sealed partial class ItemTransactionService(
     NpgsqlDataSource dataSource,
     ICharacterLocks characterLocks,
     ICharacterWallet characterWallet,
+    ISimulationSessionAuthority simulationSessionAuthority,
+    ISimulationWorkerAuthority simulationWorkerAuthority,
+    ISimulationPresence simulationPresence,
     ItemOperationsMetrics? operationsMetrics = null,
     ItemOperationsOptions? itemOperationsOptions = null,
     ILogger<ItemTransactionService>? logger = null,
@@ -29,7 +33,10 @@ public sealed partial class ItemTransactionService(
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults();
     private readonly ItemTransactionDependencies dependencies = new(
         characterLocks,
-        characterWallet);
+        characterWallet,
+        simulationSessionAuthority,
+        simulationWorkerAuthority,
+        simulationPresence);
 
     public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<GrantItemCommand> request,

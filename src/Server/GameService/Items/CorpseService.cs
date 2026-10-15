@@ -1,6 +1,7 @@
 using System.Data;
 using Dapper;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
@@ -11,13 +12,15 @@ public sealed partial class CorpseService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
     SimulationWorkerLeasePolicy workerLeasePolicy,
+    ISimulationWorkerAuthority workerAuthority,
+    ISimulationSessionAuthority sessionAuthority,
     ILogger<CorpseService> logger)
 {
     private NpgsqlDataSource DataSource => dataSource;
 
     private ItemTransactionService TransactionService => transactionService;
 
-    private SimulationWorkerLeasePolicy WorkerLeasePolicy => workerLeasePolicy;
+    private ISimulationSessionAuthority SessionAuthority => sessionAuthority;
 
     public async Task<ServiceResult<PlayerDeathPartitionResponse>> ProcessSimulationDeathAsync(
         string authenticatedWorkerId,
@@ -221,32 +224,11 @@ public sealed partial class CorpseService(
 
         try
         {
-            var authority = await connection.QuerySingleOrDefaultAsync<CorpseWorkerAuthorityRow>(
-                new CommandDefinition(
-                    """
-                    select
-                        worker.runtime_id as "RuntimeId",
-                        worker.is_online
-                            and worker.last_heartbeat_at is not null
-                            and worker.last_heartbeat_at > now() - make_interval(secs => @HeartbeatTimeoutSeconds)
-                            as "HasFreshLease",
-                        exists (
-                            select 1
-                            from simulation_assignments assignment
-                            where assignment.worker_id = worker.id
-                              and assignment.shard_id = @ShardId
-                              and assignment.released_at is null) as "HasAssignment"
-                    from simulation_workers worker
-                    where worker.id = @WorkerId;
-                    """,
-                    new
-                    {
-                        WorkerId = workerId,
-                        ShardId = shardId,
-                        HeartbeatTimeoutSeconds = workerLeasePolicy.HeartbeatTimeout.TotalSeconds
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+            var authority = await workerAuthority.GetShardLeaseAsync(
+                new PostgresTransactionScope(connection, transaction),
+                workerId,
+                shardId,
+                cancellationToken);
             if (authority is null
                 || !authority.HasFreshLease
                 || !string.Equals(
@@ -900,15 +882,6 @@ public sealed partial class CorpseService(
         public long ContainerRevision { get; set; }
 
         public int ItemCount { get; set; }
-    }
-
-    private sealed class CorpseWorkerAuthorityRow
-    {
-        public string? RuntimeId { get; set; }
-
-        public bool HasFreshLease { get; set; }
-
-        public bool HasAssignment { get; set; }
     }
 
     private sealed class CorpseExpiryCandidate
