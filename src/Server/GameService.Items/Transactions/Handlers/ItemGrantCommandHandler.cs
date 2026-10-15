@@ -118,7 +118,7 @@ internal sealed class ItemGrantCommandHandler
             command.DestinationContainerId,
             command.CharacterId,
             cancellationToken);
-        var slotIndex = await context.SelectDestinationSlotAsync(
+        var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
             command.DestinationSlotIndex,

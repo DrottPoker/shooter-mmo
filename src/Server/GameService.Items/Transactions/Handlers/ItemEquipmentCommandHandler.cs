@@ -41,7 +41,7 @@ internal sealed class ItemEquipmentCommandHandler
 
         var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
         var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
-        await context.EnsureEquipmentDestinationAsync(
+        await context.Placement.EnsureEquipmentDestinationAsync(
             command.CharacterId,
             command.EquipmentSlotId,
             definition,
@@ -131,7 +131,7 @@ internal sealed class ItemEquipmentCommandHandler
             cancellationToken);
         var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
         var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
-        var slotIndex = await context.SelectDestinationSlotAsync(
+        var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
             command.DestinationSlotIndex,

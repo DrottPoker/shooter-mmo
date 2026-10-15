@@ -292,7 +292,7 @@ internal sealed class RecoveryDeliveryCommandHandler
 
             var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
             var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
-            var destinationSlotIndex = await context.SelectDestinationSlotAsync(
+            var destinationSlotIndex = await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 null,

@@ -196,7 +196,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                     "The corpse Bag owns the corpse Bag section and cannot leave its equipment slot.");
             }
 
-            await context.SelectDestinationSlotAsync(
+            await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 command.DestinationSlotIndex,
@@ -226,7 +226,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                 var targetDefinition = await context.State.LoadDefinitionAsync(
                     target.DefinitionId,
                     cancellationToken);
-                await context.SelectDestinationSlotAsync(
+                await context.Placement.SelectDestinationSlotAsync(
                     sourceContainer,
                     targetDefinition,
                     source.ContainerSlotIndex,
@@ -240,7 +240,7 @@ internal sealed class CorpseInternalMoveCommandHandler
         }
         else
         {
-            await context.SelectDestinationSlotAsync(
+            await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 command.DestinationSlotIndex,

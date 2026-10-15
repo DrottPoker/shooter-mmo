@@ -44,7 +44,7 @@ internal sealed class ItemRelocationCommandHandler
             cancellationToken);
         var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
         var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
-        var slotIndex = await context.SelectDestinationSlotAsync(
+        var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
             command.DestinationSlotIndex,
@@ -160,7 +160,7 @@ internal sealed class ItemRelocationCommandHandler
             secondItem,
             cancellationToken);
 
-        await context.SelectDestinationSlotAsync(
+        await context.Placement.SelectDestinationSlotAsync(
             secondContainer,
             firstDefinition,
             secondItem.ContainerSlotIndex.Value,
@@ -169,7 +169,7 @@ internal sealed class ItemRelocationCommandHandler
             false,
             cancellationToken,
             secondItem.ItemInstanceId);
-        await context.SelectDestinationSlotAsync(
+        await context.Placement.SelectDestinationSlotAsync(
             firstContainer,
             secondDefinition,
             firstItem.ContainerSlotIndex.Value,

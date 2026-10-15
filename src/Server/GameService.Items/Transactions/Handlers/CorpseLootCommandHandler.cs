@@ -161,7 +161,7 @@ internal sealed class CorpseLootCommandHandler
                     "The target stack moved before the loot operation committed.");
             }
 
-            await context.SelectDestinationSlotAsync(
+            await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 command.DestinationSlotIndex,
@@ -207,7 +207,7 @@ internal sealed class CorpseLootCommandHandler
                 var targetBagHasContents = await context.State.BagHasContentsAsync(
                     target,
                     cancellationToken);
-                await context.SelectDestinationSlotAsync(
+                await context.Placement.SelectDestinationSlotAsync(
                     sourceContainer,
                     targetDefinition,
                     source.ContainerSlotIndex,
@@ -221,7 +221,7 @@ internal sealed class CorpseLootCommandHandler
         }
         else
         {
-            await context.SelectDestinationSlotAsync(
+            await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 command.DestinationSlotIndex,

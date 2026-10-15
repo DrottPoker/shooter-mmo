@@ -176,7 +176,7 @@ internal sealed class CorpseDepositCommandHandler
                     "Corpse Bags move only through an atomic Bag aggregate swap.");
             }
 
-            await context.SelectDestinationSlotAsync(
+            await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 command.DestinationSlotIndex,
@@ -216,7 +216,7 @@ internal sealed class CorpseDepositCommandHandler
                         "An active item policy prevents the corpse target from changing ownership.");
                 }
 
-                await context.SelectDestinationSlotAsync(
+                await context.Placement.SelectDestinationSlotAsync(
                     sourceContainer,
                     targetDefinition,
                     source.ContainerSlotIndex,
@@ -230,7 +230,7 @@ internal sealed class CorpseDepositCommandHandler
         }
         else
         {
-            await context.SelectDestinationSlotAsync(
+            await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
                 command.DestinationSlotIndex,
