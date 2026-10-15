@@ -166,6 +166,63 @@ transaction, a character must never exist without item state, and a World
 rebind needs exact blocker counts. An outbox becomes necessary only if a module
 later becomes its own service.
 
+## Items Transaction Kernel
+
+Every durable item mutation runs through one item transaction kernel in
+`src/Server/GameService.Items/Transactions`:
+
+| Folder | Namespace | Contents |
+| --- | --- | --- |
+| `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, the facade with one `ExecuteAsync` overload per command; the command, actor, and result contracts; the error codes and `ItemTransactionRejection` |
+| `Kernel/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionKernel`, `IItemCommandHandler<TCommand>`, admission, the canonical request, the operation ledger, outcomes, telemetry, and the persisted JSON options |
+| `Context/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionContext` with its session and facets, the kernel-owned finalizer, the simulation authority, and the lock types |
+| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, and transform and Mob loot rules |
+| `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
+
+Each overload routes its command with the persisted operation kind and the
+actor character id to the kernel and one handler. The facade composes the
+kernel and the handlers in its constructor; only `ItemTransactionService` is
+registered in dependency injection.
+
+`ItemTransactionKernel` owns the whole transaction. In this order it rejects an
+invalid operation id or an oversized canonical payload without database access,
+opens one connection with one `READ COMMITTED` transaction, sets the
+transaction-local `statement_timeout` and `lock_timeout`, validates the actor and
+the live simulation session, claims the operation in `item_operations` or replays
+its stored result, sets the `item_mutation` savepoint, runs the handler,
+finalizes, completes the operation, and commits. A rejection rolls back to the
+savepoint and stores the rejected result, except for a timeout or a retried
+system operation, which roll back completely and release the claim. A
+transaction whose commit or rollback was attempted is never rolled back again,
+so a constraint that fails at COMMIT is returned as an unstored rejection or
+propagates with its original error.
+
+`ItemTransactionContext` is the handler-facing API. It carries the
+`ItemTransactionSession` (connection, transaction, operation, actor, and the
+`PostgresTransactionScope` for other modules' contracts) and five facets:
+
+| Facet | Type | Responsibility |
+| --- | --- | --- |
+| `Authority` | `ItemActorAuthority` | System, account, NPC service, and live container access |
+| `Locks` | `ItemTransactionLocks` | Character state locks (`CharacterItemStateLocks`) and the mutation scope (`ItemMutationScopeLocks`) |
+| `State` | `ItemStateReader` | Item, container, definition, and policy loads with their ownership and revision checks |
+| `Placement` | `ItemSlotPlacement` | Container slot and equipment slot rules |
+| `Journal` | `ItemChangeJournal` | Audit changes, touched characters and containers, result items, and Recovery deliveries |
+
+`ItemTransactionFinalizer` turns the journal into container revisions, carry
+weight with the hard cap, character revisions, result item revisions, and audit
+rows. Handlers never commit, roll back, or open a connection, and they reject
+only through `ItemTransactionContext.Reject`.
+
+`ItemTransactionKernelBoundaryTests` pins the boundary: only `Kernel/` begins,
+commits, or rolls back a transaction, uses the savepoint or `set_config`, or
+touches `item_operations`; handlers hold only readonly injected state; no
+transaction code runs database commands in parallel; handlers take locks in the
+order below; only `ItemTransactionRejection` throws a rejection; the kernel never
+uses HTTP API error codes; and only the types named in
+[Cross-Module Statements](#cross-module-statements) use another module's
+contracts or SQL fragments.
+
 ## Lock Order
 
 Every transaction that spans modules takes locks in this order:
@@ -187,6 +244,13 @@ together with its item state. Both orders take the first character first, and
 the only transaction that locks item states without characters is the startup
 backfill, which never waits on a character lock, so the change cannot deadlock,
 even while old and new versions run side by side.
+
+Inside Items, a handler takes its locks in this order: the advisory key (the
+account's Secure Container entitlement key, or the death event or Mob corpse
+key), then its characters and their item states in ascending id order, then the
+corpse row for corpse interactions, then the mutation scope. The mutation scope
+locks Bag aggregate roots, then containers, then ordinary items and Bag
+children, then item policies, each in ascending id order.
 
 ## Migrations
 
@@ -282,19 +346,19 @@ is Placement, and Itm is Items. R is read, W is write, and L is lock.
 | S19 | `bootstrap_character_item_state` reads `characters` | Chr R | R4, frozen |
 | S20 | Corpse restoration checks the worker lease | Plc R | `ISimulationWorkerAuthority.GetShardLeaseAsync` |
 | S21 | Corpse view checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` |
-| S22 | Live item authority locks the character | Chr L | `ICharacterLocks.LockActiveForItemMutationAsync` |
-| S23 | Live item authority locks the simulation session | Plc L, Acc R | `ISimulationSessionAuthority.LockForItemMutationAsync` |
-| S24 | Live item authority reads the worker runtime | Plc R | `ISimulationWorkerAuthority.GetRuntimeAsync` |
-| S25 | Live item authority shares the assignment | Plc L | `ISimulationWorkerAuthority.LockAssignmentForShareAsync` |
-| S26 | Item mutations lock characters with their item state | Chr L | `ICharacterLocks`, then the item state lock |
-| S27 | Offline item mutations check for an active session | Plc R | `ISimulationPresence.FindActiveCharacterAsync` |
-| S28 | Death and corpse loot lock one character with its item state | Chr L | as S26 |
-| S29 | Mob corpse creation locks the worker lease and assignment | Plc L | `ISimulationWorkerAuthority.LockLeaseAsync`, then `LockAssignmentAsync` |
-| S30 | Insurance charges character currency | Chr L, W | `ICharacterWallet.DebitAsync` |
-| S31 | Secure Container tier change lists account characters | Chr R | `CharactersSql.ActiveCharacters` |
-| S32 | Operation claims reference the actor account and character | Acc R, Chr R | `AccountsSql.ExistingIdOrNull`, `CharactersSql.ExistingIdOrNull` |
-| S33 | Death reads the character name and Shard | Chr R, Plc R | `CharactersSql.ActiveCharacters` and `PlacementSql.ShardExists` |
-| S34 | Corpse snapshot reads the account entitlement through the character | Chr R | the locked item state's account id |
+| S22 | Live item authority locks the character | Chr L | `ICharacterLocks.LockActiveForItemMutationAsync` in `ItemSimulationAuthority` |
+| S23 | Live item authority locks the simulation session | Plc L, Acc R | `ISimulationSessionAuthority.LockForItemMutationAsync` in `ItemSimulationAuthority` |
+| S24 | Live item authority reads the worker runtime | Plc R | `ISimulationWorkerAuthority.GetRuntimeAsync` in `ItemSimulationAuthority` |
+| S25 | Live item authority shares the assignment | Plc L | `ISimulationWorkerAuthority.LockAssignmentForShareAsync` in `ItemSimulationAuthority` |
+| S26 | Item mutations lock characters with their item state | Chr L | `ICharacterLocks`, then the item state lock, in `CharacterItemStateLocks` |
+| S27 | Offline item mutations check for an active session | Plc R | `ISimulationPresence.FindActiveCharacterAsync` in `CharacterItemStateLocks` |
+| S28 | Death and corpse loot lock one character with its item state | Chr L | as S26, in `CharacterItemStateLocks` |
+| S29 | Mob corpse creation locks the worker lease and assignment | Plc L | `ISimulationWorkerAuthority.LockLeaseAsync`, then `LockAssignmentAsync`, in `ItemSimulationAuthority` |
+| S30 | Insurance charges character currency | Chr L, W | `ICharacterWallet.DebitAsync` in `ItemPolicyCommandHandler` |
+| S31 | Secure Container tier change lists account characters | Chr R | `CharactersSql.ActiveCharacters` in `SecureContainerTierCommandHandler` |
+| S32 | Operation claims reference the actor account and character | Acc R, Chr R | `AccountsSql.ExistingIdOrNull`, `CharactersSql.ExistingIdOrNull` in `ItemOperationLedger` |
+| S33 | Death reads the character name and Shard | Chr R, Plc R | `CharactersSql.ActiveCharacters` and `PlacementSql.ShardExists` in `PlayerDeathCommandHandler` |
+| S34 | Corpse snapshot reads the account entitlement through the character | Chr R | the locked item state's account id in `PlayerCorpseLayoutWriter` |
 | S35 | Recovery expiry scan skips deleted characters | Chr R | `CharactersSql.ActiveCharacters` |
 | S36 | Inventory reads check character ownership | Chr R | `CharactersSql.ActiveCharacters` |
 | S37 | Development item tool lists characters | Chr R, Acc R, Plc R | `CharactersSql.ActiveCharacters`, `AccountsSql.UsernameOf`, `PlacementSql.HasActiveSimulationSession` |
@@ -320,6 +384,7 @@ All guard tests live in `tests/Mmorpg.Backend.Tests/Architecture`.
 | `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |
 | `ModulePublicSurfaceTests` | Each module's exported types and Platform's internal middleware |
 | `ModuleCompositionTests` | Exactly one implementation of every SPI and contract, from its owner module, and startup failure for a missing or duplicate SPI |
+| `ItemTransactionKernelBoundaryTests` | The item transaction kernel boundary described in [Items Transaction Kernel](#items-transaction-kernel) |
 
 ## Accepted Behavior Changes
 
@@ -400,6 +465,15 @@ context resets the `public` schema, `dotnet test` runs test assemblies in
 parallel, and `bootstrap_character_item_state` pins `search_path` to `public`,
 so separate schemas do not work. Use one database per test project, or run the
 GameService test projects one after another.
+
+The item transaction kernel has golden tests in
+`tests/Mmorpg.Backend.Tests/Golden/ItemTransactions`. Each golden file holds the
+statements and transaction boundaries that Npgsql logs for one command or kernel
+path, the result, the stored operation, and its audit journal.
+`ItemTransactionTraceGoldenTests` compares them byte for byte, so any change to
+item transaction SQL, its order, or its journal shows up as a reviewed golden
+diff. Run the tests with `MMORPG_UPDATE_GOLDENS=1` to rewrite the files after an
+intended change.
 
 Measure the extra round trips of the item state lock split and the session
 heartbeat with the full-stack stack stress run before raising load targets.

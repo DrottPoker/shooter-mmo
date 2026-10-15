@@ -540,10 +540,13 @@ uses the same character row lock, so a mutation and session acquisition cannot
 both pass concurrently. In-world proximity and city-service validation remain
 owned by the SimulationWorker live boundary.
 
-All durable commands enter `ItemTransactionService`. One command opens one
-connection and one `READ COMMITTED` transaction, claims the operation row, and
-then locks character item states, Bag aggregate roots and containers, item rows,
-and policy or delivery rows in canonical sorted order. A savepoint lets a stable
+All durable commands enter `ItemTransactionService`, a facade with one typed
+overload per command. Each overload routes its command to the item transaction
+kernel and to one stateless handler for its command family. The kernel owns the
+transaction: one command opens one connection and one `READ COMMITTED`
+transaction, claims the operation row, and then the handler locks character item
+states, Bag aggregate roots and containers, item rows, and policy or delivery
+rows in canonical sorted order. A savepoint lets a stable
 domain rejection persist its idempotent result while rolling back the complete
 candidate mutation. Successful commands recompute weight and equipped Bag
 capacity, advance revisions, append relational audit changes, and persist a
@@ -553,9 +556,13 @@ capacity bonus still applies. Startup bootstrap corrects older stored carry
 tuples and advances the character item-state revision only when reconciliation
 changes weight or capacity.
 
-The transaction context resolves current definitions and slot data from the
-mirrored catalog but delegates stack, equipment, Bag, Secure Container, policy
-capability, and integer-weight decisions to WorldData rules. The kernel does not
+Handlers reach the transaction through a context with five facets: actor
+authority, locks, state reads, slot placement, and the change journal. The
+kernel finalizes the journal and commits; handlers never end a transaction.
+`docs/GAME_SERVICE_MODULES.md` describes the kernel layout and its guard tests.
+The context resolves current definitions and slot data from the mirrored catalog
+but delegates stack, equipment, Bag, Secure Container, policy capability, and
+integer-weight decisions to WorldData rules. The kernel does not
 depend on HTTP, Unity, or SimulationWorker runtime state. Account, system, and
 simulation-worker authorization contexts are explicit command inputs. Offline
 access and exact live-session access are actor requirements enforced while the
