@@ -271,4 +271,6 @@ intended differences:
   (S30), foreign character and account reads use `CharactersSql` and
   `AccountsSql` (S10, S16, S17, S31 to S33, S35 to S39), and corpse snapshots
   read the entitlement through the locked account (S34).
-- The Characters, Placement, and Items extractions: in progress.
+- Characters extracted: `src/Server/GameService.Characters` builds
+  `Mmorpg.GameService.Characters`, which references Platform and Accounts.
+- The Placement and Items extractions: in progress.

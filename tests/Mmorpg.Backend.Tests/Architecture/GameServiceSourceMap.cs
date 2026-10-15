@@ -20,7 +20,7 @@ internal static class GameServiceSourceMap
     [
         ("GameService.Platform/", Platform),
         ("GameService.Accounts/", Accounts),
-        ("GameService/Characters/", Characters),
+        ("GameService.Characters/", Characters),
         ("GameService/Simulation/", Placement),
         ("GameService/Database/Migrations/DevelopmentWorldIdentityMigration.cs", Placement),
         ("GameService/Database/Migrations/WorkerSelectedWorldBindingMigration.cs", Placement),
