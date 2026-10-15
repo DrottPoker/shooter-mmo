@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using LiteNetLib;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -38,7 +39,6 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly SimulationWorkerIdentity? workerIdentity;
     private readonly RealtimeCompletionQueue completions = new();
     private readonly RealtimeOperationTracker operationTracker = new();
-    private readonly Dictionary<int, RealtimePeerContext> peers = [];
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
     private PeerAdmissionGuard admissionGuard = null!;
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
@@ -64,6 +64,8 @@ public sealed class RealtimeSimulationService : BackgroundService
     private readonly CorpseRuntimeMetrics? corpseRuntimeMetrics;
     private readonly WorldActorMetrics? worldActorMetrics;
     private readonly RealtimePeerSender sender;
+    private readonly PeerDirectory peerDirectory;
+    private readonly RealtimePeerRegistry peerRegistry;
     private NetManager? server;
     private uint serverTick;
     private uint snapshotSequence;
@@ -134,6 +136,12 @@ public sealed class RealtimeSimulationService : BackgroundService
         corpseRuntimeMetrics = providedCorpseRuntimeMetrics;
         worldActorMetrics = providedWorldActorMetrics;
         sender = new RealtimePeerSender(networkMetrics, logger);
+        peerDirectory = new PeerDirectory(this);
+        peerRegistry = new RealtimePeerRegistry(
+            peerDirectory,
+            connectionBindings,
+            entityRegistry,
+            networkMetrics);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -258,7 +266,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         {
             server.Stop();
             server = null;
-            peers.Clear();
+            peerRegistry.Clear();
             interestManager.Clear();
             connectionBindings.Clear();
             entityRegistry.Clear();
@@ -278,10 +286,10 @@ public sealed class RealtimeSimulationService : BackgroundService
 
     private void HandlePeerConnected(NetPeer netPeer)
     {
-        peers[netPeer.Id] = new RealtimePeerContext(netPeer.Id, DateTime.UtcNow, config.UdpQuotas);
+        peerRegistry.Register(new RealtimePeerContext(netPeer.Id, DateTime.UtcNow, config.UdpQuotas));
         admissionGuard.OnPeerConnected(netPeer.Id, netPeer.Address);
-        networkMetrics.SetActivePeers(peers.Count);
-        RefreshPeerPopulationMetrics();
+        networkMetrics.SetActivePeers(peerRegistry.Count);
+        peerRegistry.RefreshPopulationMetrics();
         logger.LogDebug(
             "[SIMULATION] UDP peer {PeerId} connected from {EndPoint} and must authenticate before joining.",
             netPeer.Id,
@@ -291,7 +299,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     private void HandlePeerDisconnected(NetPeer netPeer, DisconnectInfo disconnectInfo)
     {
         admissionGuard.OnPeerDisconnected(netPeer.Id);
-        if (!peers.Remove(netPeer.Id, out var context))
+        if (!peerRegistry.Remove(netPeer.Id, out var context))
         {
             return;
         }
@@ -299,8 +307,8 @@ public sealed class RealtimeSimulationService : BackgroundService
         interestManager.RemoveConnection(netPeer.Id);
         corpseViewers.RemovePeer(netPeer.Id);
         worldInteractionLeases?.RemovePeer(netPeer.Id);
-        networkMetrics.SetActivePeers(peers.Count);
-        RefreshPeerPopulationMetrics();
+        networkMetrics.SetActivePeers(peerRegistry.Count);
+        peerRegistry.RefreshPopulationMetrics();
 
         if (context.Session is not null)
         {
@@ -330,7 +338,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         var peer = LiteNetLibPeerConnection.For(netPeer);
         try
         {
-            if (!peers.TryGetValue(peer.Id, out var context))
+            if (!peerRegistry.TryGetContext(peer.Id, out var context))
             {
                 return;
             }
@@ -386,7 +394,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 exception,
                 "[SIMULATION] Could not process a realtime packet from UDP peer {PeerId}.",
                 peer.Id);
-            if (peers.TryGetValue(peer.Id, out var failedContext))
+            if (peerRegistry.TryGetContext(peer.Id, out var failedContext))
             {
                 sender.RejectProtocol(
                     peer,
@@ -459,7 +467,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 return;
             }
 
-            if (!TryGetBoundPlayer(context, out var playerEntity))
+            if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
             {
                 sender.RejectProtocol(
                     peer,
@@ -496,7 +504,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 return;
             }
 
-            if (!TryGetBoundPlayer(context, out var playerEntity))
+            if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
             {
                 sender.RejectProtocol(
                     peer,
@@ -562,7 +570,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                 return;
             }
 
-            if (!TryGetBoundPlayer(context, out var playerEntity))
+            if (!peerRegistry.TryGetBoundPlayer(context, out var playerEntity))
             {
                 sender.RejectProtocol(
                     peer,
@@ -629,7 +637,7 @@ public sealed class RealtimeSimulationService : BackgroundService
             }
 
             if (worldInteractionAuthority is null
-                || !TryGetBoundPlayer(context, out _))
+                || !peerRegistry.TryGetBoundPlayer(context, out _))
             {
                 sender.RejectProtocol(
                     peer,
@@ -997,7 +1005,7 @@ public sealed class RealtimeSimulationService : BackgroundService
             operationTracker.Track(ReleaseDisconnectedSessionAsync(joinCompleted.Result.Value));
         }
 
-        if (TryGetCurrentPeer(operation.Context, out var peer))
+        if (peerRegistry.TryGetCurrentPeer(operation.Context, out var peer))
         {
             sender.RejectProtocol(
                 peer,
@@ -1009,7 +1017,7 @@ public sealed class RealtimeSimulationService : BackgroundService
 
     private void ProcessJoinCompleted(JoinCompleted completed)
     {
-        if (!TryGetCurrentPeer(completed.Context, out var peer))
+        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer))
         {
             if (completed.Result.Succeeded
                 && completed.Result.Value is not null)
@@ -1097,7 +1105,7 @@ public sealed class RealtimeSimulationService : BackgroundService
             entity.NetworkEntityId);
         completed.Context.Session = session;
         admissionGuard.OnPeerAuthenticated(completed.Context.PeerId);
-        RefreshPeerPopulationMetrics();
+        peerRegistry.RefreshPopulationMetrics();
         DisconnectReplacedConnection(binding.ReplacedConnectionId);
         var response = ActiveSimulationSessionResponse.FromSession(session);
         IReadOnlyList<int> connectionsEnteringNewEntity;
@@ -1166,7 +1174,7 @@ public sealed class RealtimeSimulationService : BackgroundService
 
     private void ProcessLeaveCompleted(LeaveCompleted completed)
     {
-        if (!TryGetCurrentPeer(completed.Context, out var peer))
+        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer))
         {
             return;
         }
@@ -1215,7 +1223,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         }
         RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
         completed.Context.Session = null;
-        RefreshPeerPopulationMetrics();
+        peerRegistry.RefreshPopulationMetrics();
         sender.SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
         completed.Context.ScheduleDisconnect(DateTime.UtcNow);
     }
@@ -1223,7 +1231,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     private void ProcessItemOperationCompleted(ItemOperationCompleted completed)
     {
         completed.Context.AuthorityOperationInFlight = false;
-        if (!TryGetCurrentPeer(completed.Context, out var peer)
+        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
                 != completed.Session.SimulationSessionId
@@ -1317,7 +1325,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         if (context.AuthorityOperationInFlight
             || context.AuthorityOperationQueue.Count == 0
             || context.Session is null
-            || !TryGetBoundPlayer(context, out var entity))
+            || !peerRegistry.TryGetBoundPlayer(context, out var entity))
         {
             return;
         }
@@ -1363,7 +1371,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         RealtimeWorldInteractionIntent intent)
     {
         if (worldInteractionAuthority is null
-            || !TryGetCurrentPeer(context, out _))
+            || !peerRegistry.TryGetCurrentPeer(context, out _))
         {
             context.AuthorityOperationInFlight = false;
             return;
@@ -1419,7 +1427,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         WorldInteractionOperationCompleted completed)
     {
         completed.Context.AuthorityOperationInFlight = false;
-        if (!TryGetCurrentPeer(completed.Context, out var peer)
+        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
                 != completed.Session.SimulationSessionId
@@ -1617,7 +1625,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     private void ProcessCorpseOperationCompleted(CorpseOperationCompleted completed)
     {
         completed.Context.AuthorityOperationInFlight = false;
-        if (!TryGetCurrentPeer(completed.Context, out var peer)
+        if (!peerRegistry.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
                 != completed.Session.SimulationSessionId
@@ -1629,7 +1637,7 @@ public sealed class RealtimeSimulationService : BackgroundService
             // LiteNetLib reuses peer ids, so only a context that still owns its id may
             // release this open reservation. Every path that disconnects or detaches a
             // context has already released the reservations it held.
-            if (completed.RemoveOpenReservationOnFailure && OwnsPeerId(completed.Context))
+            if (completed.RemoveOpenReservationOnFailure && peerRegistry.OwnsPeerId(completed.Context))
             {
                 corpseViewers.Close(
                     completed.Context.PeerId,
@@ -1902,9 +1910,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         foreach (var viewerPeerId in corpseViewers.GetViewers(corpseId))
         {
             if (viewerPeerId == excludedPeerId
-                || !peers.TryGetValue(viewerPeerId, out var context)
-                || context.Session is null
-                || !TryGetCurrentPeer(context, out var peer))
+                || !peerRegistry.TryGetAuthenticatedPeer(viewerPeerId, out _, out var peer))
             {
                 continue;
             }
@@ -1942,9 +1948,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         foreach (var viewerPeerId in corpseViewers.CloseCorpse(corpseId))
         {
             worldInteractionLeases?.ReleaseCorpse(viewerPeerId, corpseId);
-            if (peers.TryGetValue(viewerPeerId, out var context)
-                && context.Session is not null
-                && TryGetCurrentPeer(context, out var peer))
+            if (peerRegistry.TryGetAuthenticatedPeer(viewerPeerId, out _, out var peer))
             {
                 sender.SendControl(
                     peer,
@@ -2060,7 +2064,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         corpseViewers.RemovePeer(context.PeerId);
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.Session = null;
-        RefreshPeerPopulationMetrics();
+        peerRegistry.RefreshPopulationMetrics();
         context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
@@ -2119,11 +2123,12 @@ public sealed class RealtimeSimulationService : BackgroundService
                 && serverTick % interactionValidationIntervalTicks == 0)
             {
                 foreach (var closure in worldInteractionAuthority.Revalidate(
-                             ResolvePlayerForInteraction))
+                             peerRegistry.ResolvePlayerForInteraction))
                 {
-                    if (peers.TryGetValue(closure.PeerId, out var context)
-                        && context.Session is not null
-                        && TryGetCurrentPeer(context, out var peer))
+                    if (peerRegistry.TryGetAuthenticatedPeer(
+                            closure.PeerId,
+                            out _,
+                            out var peer))
                     {
                         sender.SendControl(
                             peer,
@@ -2203,13 +2208,13 @@ public sealed class RealtimeSimulationService : BackgroundService
             }
 
             snapshotRecipientBuffer.Clear();
-            foreach (var context in peers.Values)
+            foreach (var context in peerRegistry.Contexts)
             {
                 if (context.Session is null
                     || !connectionBindings.TryGetEntityId(
                         context.PeerId,
                         out var controlledEntityId)
-                    || !TryGetCurrentPeer(context, out var peer))
+                    || !peerRegistry.TryGetCurrentPeer(context, out var peer))
                 {
                     continue;
                 }
@@ -2341,9 +2346,9 @@ public sealed class RealtimeSimulationService : BackgroundService
         if (!connectionBindings.TryGetConnectionId(
                 entity.NetworkEntityId,
                 out var connectionId)
-            || !peers.TryGetValue(connectionId, out var context)
+            || !peerRegistry.TryGetContext(connectionId, out var context)
             || context.Session?.SimulationSessionId != entity.Session.SimulationSessionId
-            || !TryGetCurrentPeer(context, out var peer))
+            || !peerRegistry.TryGetCurrentPeer(context, out var peer))
         {
             return;
         }
@@ -2386,11 +2391,11 @@ public sealed class RealtimeSimulationService : BackgroundService
             corpsePresenceSequence++;
         }
 
-        foreach (var context in peers.Values)
+        foreach (var context in peerRegistry.Contexts)
         {
             if (context.Session is null
-                || !TryGetBoundPlayer(context, out var entity)
-                || !TryGetCurrentPeer(context, out var peer))
+                || !peerRegistry.TryGetBoundPlayer(context, out var entity)
+                || !peerRegistry.TryGetCurrentPeer(context, out var peer))
             {
                 continue;
             }
@@ -2451,12 +2456,12 @@ public sealed class RealtimeSimulationService : BackgroundService
     private void DisconnectReplacedConnection(int? replacedConnectionId)
     {
         if (replacedConnectionId is null
-            || !peers.TryGetValue(replacedConnectionId.Value, out var previousContext))
+            || !peerRegistry.TryGetContext(replacedConnectionId.Value, out var previousContext))
         {
             return;
         }
 
-        if (TryGetCurrentPeer(previousContext, out var previousPeer))
+        if (peerRegistry.TryGetCurrentPeer(previousContext, out var previousPeer))
         {
             sender.SendControl(
                 previousPeer,
@@ -2467,7 +2472,7 @@ public sealed class RealtimeSimulationService : BackgroundService
             previousContext.AuthorityOperationQueue.Clear();
             corpseViewers.RemovePeer(previousContext.PeerId);
             worldInteractionLeases?.RemovePeer(previousContext.PeerId);
-            RefreshPeerPopulationMetrics();
+            peerRegistry.RefreshPopulationMetrics();
             previousContext.ScheduleDisconnect(DateTime.UtcNow);
         }
 
@@ -2477,16 +2482,16 @@ public sealed class RealtimeSimulationService : BackgroundService
     private void EnforcePeerState()
     {
         var now = DateTime.UtcNow;
-        foreach (var context in peers.Values.ToArray())
+        foreach (var context in peerRegistry.Contexts.ToArray())
         {
-            if (!TryGetCurrentPeer(context, out var peer))
+            if (!peerRegistry.TryGetCurrentPeer(context, out var peer))
             {
                 continue;
             }
 
             if (context.DisconnectAfterUtc is not null && context.DisconnectAfterUtc <= now)
             {
-                DisconnectPeer(peer);
+                peerDirectory.DisconnectPeer(peer);
                 continue;
             }
 
@@ -2502,7 +2507,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                     context.PeerId,
                     queuedReliablePackets);
                 networkMetrics.RecordConnectionRejected();
-                DisconnectPeer(peer);
+                peerDirectory.DisconnectPeer(peer);
                 continue;
             }
 
@@ -2552,7 +2557,7 @@ public sealed class RealtimeSimulationService : BackgroundService
                         reason.Message));
                 RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
-                RefreshPeerPopulationMetrics();
+                peerRegistry.RefreshPopulationMetrics();
                 context.ScheduleDisconnect(now);
             }
         }
@@ -2569,7 +2574,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         }
 
         nextOrphanSweepUtc = now + TimeSpan.FromSeconds(1);
-        var boundSessionIds = peers.Values
+        var boundSessionIds = peerRegistry.Contexts
             .Select(context => context.Session?.SimulationSessionId)
             .OfType<Guid>()
             .ToHashSet();
@@ -2625,46 +2630,6 @@ public sealed class RealtimeSimulationService : BackgroundService
         return sessionStore.IsCurrent(session, DateTime.UtcNow);
     }
 
-    private void RefreshPeerPopulationMetrics()
-    {
-        var activeRealPlayers = 0;
-        var activeSyntheticBots = 0;
-        var unauthenticatedPeers = 0;
-        foreach (var context in peers.Values)
-        {
-            if (context.Session is null)
-            {
-                unauthenticatedPeers++;
-            }
-            else if (context.Session.IsSyntheticBot)
-            {
-                activeSyntheticBots++;
-            }
-            else
-            {
-                activeRealPlayers++;
-            }
-        }
-
-        networkMetrics.SetPeerPopulation(
-            activeRealPlayers,
-            activeSyntheticBots,
-            unauthenticatedPeers);
-    }
-
-    private bool TryGetBoundPlayer(RealtimePeerContext context, out PlayerSimulationEntity entity)
-    {
-        if (connectionBindings.TryGetEntityId(context.PeerId, out var entityId)
-            && entityRegistry.TryGetPlayer(entityId, out var player))
-        {
-            entity = player!;
-            return true;
-        }
-
-        entity = null!;
-        return false;
-    }
-
     private void SendEntityBaseline(IRealtimePeerConnection peer, IReadOnlySet<ulong> visibleEntityIds)
     {
         entityRegistry.CopyPlayersTo(playerBuffer);
@@ -2697,9 +2662,7 @@ public sealed class RealtimeSimulationService : BackgroundService
     {
         foreach (var connectionId in connectionIds)
         {
-            if (peers.TryGetValue(connectionId, out var context)
-                && context.Session is not null
-                && TryGetCurrentPeer(context, out var peer))
+            if (peerRegistry.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
             {
                 SendSpawn(peer, entity);
             }
@@ -2708,12 +2671,12 @@ public sealed class RealtimeSimulationService : BackgroundService
 
     private void RefreshInterests(int? excludedConnectionId)
     {
-        foreach (var context in peers.Values)
+        foreach (var context in peerRegistry.Contexts)
         {
             if (context.PeerId == excludedConnectionId
                 || context.Session is null
                 || !connectionBindings.TryGetEntityId(context.PeerId, out var controlledEntityId)
-                || !TryGetCurrentPeer(context, out var peer))
+                || !peerRegistry.TryGetCurrentPeer(context, out var peer))
             {
                 continue;
             }
@@ -2775,9 +2738,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         foreach (var connectionId in affectedConnections)
         {
             if (connectionId != excludedConnectionId
-                && peers.TryGetValue(connectionId, out var context)
-                && context.Session is not null
-                && TryGetCurrentPeer(context, out var peer))
+                && peerRegistry.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
             {
                 SendDespawn(peer, entityId, reason);
             }
@@ -2816,7 +2777,7 @@ public sealed class RealtimeSimulationService : BackgroundService
         connectionBindings.UnbindConnection(context.PeerId, out _);
         interestManager.RemoveConnection(context.PeerId);
         context.Session = null;
-        RefreshPeerPopulationMetrics();
+        peerRegistry.RefreshPopulationMetrics();
     }
 
     private void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
@@ -2851,47 +2812,9 @@ public sealed class RealtimeSimulationService : BackgroundService
             RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State));
     }
 
-    private PlayerSimulationEntity? ResolvePlayerForInteraction(int peerId)
-    {
-        return peers.TryGetValue(peerId, out var context)
-            && context.Session is not null
-            && TryGetBoundPlayer(context, out var player)
-            ? player
-            : null;
-    }
-
     private int GetActiveEntityCount()
     {
         return entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
-    }
-
-    private bool OwnsPeerId(RealtimePeerContext context)
-    {
-        return peers.TryGetValue(context.PeerId, out var currentContext)
-            && ReferenceEquals(context, currentContext);
-    }
-
-    private bool TryGetCurrentPeer(RealtimePeerContext context, out IRealtimePeerConnection peer)
-    {
-        peer = null!;
-        if (server is null || !OwnsPeerId(context))
-        {
-            return false;
-        }
-
-        var candidate = server.GetPeerById(context.PeerId) as NetPeer;
-        if (candidate is null || candidate.ConnectionState != ConnectionState.Connected)
-        {
-            return false;
-        }
-
-        peer = LiteNetLibPeerConnection.For(candidate);
-        return true;
-    }
-
-    private void DisconnectPeer(IRealtimePeerConnection peer)
-    {
-        server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
     }
 
     private void RefreshCollisionStreaming()
@@ -2982,12 +2905,12 @@ public sealed class RealtimeSimulationService : BackgroundService
     {
         var packet = RealtimeProtocol.EncodeWorldActorState(
             WorldActorProtocolMapper.ToState(actor));
-        foreach (var context in peers.Values)
+        foreach (var context in peerRegistry.Contexts)
         {
             if (context.Session is null
                 || !interestManager.GetVisible(context.PeerId)
                     .Contains(actor.NetworkEntityId)
-                || !TryGetCurrentPeer(context, out var peer))
+                || !peerRegistry.TryGetCurrentPeer(context, out var peer))
             {
                 continue;
             }
@@ -3004,4 +2927,31 @@ public sealed class RealtimeSimulationService : BackgroundService
         networkMetrics.RecordDespawnPacket();
     }
 
+    private sealed class PeerDirectory(RealtimeSimulationService owner) : IRealtimePeerDirectory
+    {
+        public bool TryGetConnectedPeer(
+            int peerId,
+            [NotNullWhen(true)] out IRealtimePeerConnection? peer)
+        {
+            peer = null;
+            if (owner.server is null)
+            {
+                return false;
+            }
+
+            var candidate = owner.server.GetPeerById(peerId) as NetPeer;
+            if (candidate is null || candidate.ConnectionState != ConnectionState.Connected)
+            {
+                return false;
+            }
+
+            peer = LiteNetLibPeerConnection.For(candidate);
+            return true;
+        }
+
+        public void DisconnectPeer(IRealtimePeerConnection peer)
+        {
+            owner.server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
+        }
+    }
 }
