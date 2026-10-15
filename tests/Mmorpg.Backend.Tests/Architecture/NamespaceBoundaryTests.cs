@@ -28,7 +28,9 @@ public sealed partial class NamespaceBoundaryTests
         // C2: character creation bootstraps item state directly.
         "GameService/Characters/CharacterService.cs -> Mmorpg.GameService.Items",
         // C6: the shared configuration object and module options live in the host.
+        "GameService/Auth/AccountsModuleRegistration.cs -> Mmorpg.GameService.Config",
         "GameService/Items/CorpseService.cs -> Mmorpg.GameService.Config",
+        "GameService/Items/ItemsModuleRegistration.cs -> Mmorpg.GameService.Config",
         "GameService/Items/StackStressFixtureEndpoints.cs -> Mmorpg.GameService.Config",
         "GameService/Items/StackStressFixtureService.cs -> Mmorpg.GameService.Config",
         "GameService/Redis/RedisAuthenticationRateLimitMiddleware.cs -> Mmorpg.GameService.Config",
@@ -36,6 +38,7 @@ public sealed partial class NamespaceBoundaryTests
         "GameService/Simulation/DevelopmentSimulationBotAuthority.cs -> Mmorpg.GameService.Config",
         "GameService/Simulation/DevelopmentSimulationBotEndpoints.cs -> Mmorpg.GameService.Config",
         "GameService/Simulation/DevelopmentSimulationBotPlacementService.cs -> Mmorpg.GameService.Config",
+        "GameService/Simulation/PlacementModuleRegistration.cs -> Mmorpg.GameService.Config",
         "GameService/Simulation/ShardService.cs -> Mmorpg.GameService.Config",
         "GameService/Simulation/SimulationTopologySeeder.cs -> Mmorpg.GameService.Config",
         "GameService/Simulation/SimulationWorkerRegistryService.cs -> Mmorpg.GameService.Config"

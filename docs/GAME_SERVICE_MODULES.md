@@ -201,10 +201,30 @@ the list only shrinks.
 | `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis` and `Mmorpg.GameService.Items` meters and every `auth_service.*` instrument |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `NamespaceBoundaryTests` | Namespace references only point down the dependency order |
+| `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata |
+
+## Accepted Behavior Changes
+
+The split keeps routes, request and response shapes, error codes and messages,
+policies, transaction boundaries, isolation levels, statement order inside
+transactions, and every persisted or observable identifier. These are the only
+intended differences:
+
+- **Hosted service start order.** Modules register in dependency order, so the
+  Redis acceleration metrics reporter now starts before the corpse expiry, item
+  metrics, and item maintenance services instead of third of four. None of them
+  depends on another.
+- **Endpoint registration order.** Routes are registered module by module, with
+  the health routes first. ASP.NET Core matches routes by template precedence
+  and HTTP method, never by registration order, so routing is unchanged.
+  `RouteTableSnapshotTests` pins the complete table.
 
 ## Implementation Status
 
 - Guard rails: done.
-- Composition per module, test composition through dependency injection, the
-  options split, the Platform project, and the Accounts, Characters, Placement,
-  and Items extractions: in progress.
+- Composition per module: done. `GameServiceComposition` registers the platform
+  services, each module, and the host services, applies the middleware, and maps
+  the routes. `Program.cs` and the tests use it.
+- Test composition through dependency injection, the options split, the
+  Platform project, and the Accounts, Characters, Placement, and Items
+  extractions: in progress.
