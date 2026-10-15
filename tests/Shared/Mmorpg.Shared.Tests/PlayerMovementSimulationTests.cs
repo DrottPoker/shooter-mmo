@@ -1,7 +1,7 @@
 using Mmorpg.GameSimulation;
 using Mmorpg.Testing.Content;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Shared.Tests;
 
 public sealed class PlayerMovementSimulationTests
 {

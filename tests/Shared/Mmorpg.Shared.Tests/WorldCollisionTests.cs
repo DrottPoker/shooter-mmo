@@ -1,6 +1,6 @@
 using Mmorpg.GameSimulation;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Shared.Tests;
 
 public sealed class WorldCollisionTests
 {

@@ -16,10 +16,4 @@
     <ProjectReference Include="..\Testing\Mmorpg.Testing.Content\Mmorpg.Testing.Content.csproj" />
     <ProjectReference Include="..\Testing\Mmorpg.GameService.Testing\Mmorpg.GameService.Testing.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <!-- Shared with the Unity EditMode tests so both runtimes run the same scenario. -->
-    <Compile Include="..\..\src\Client\Assets\Tests\EditMode\Shared\*.cs"
-             Link="Shared\%(Filename)%(Extension)" />
-  </ItemGroup>
 </Project>

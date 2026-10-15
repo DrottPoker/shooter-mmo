@@ -7,7 +7,7 @@ using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Shared.Tests;
 
 public sealed class SharedSimulationHardeningTests
 {

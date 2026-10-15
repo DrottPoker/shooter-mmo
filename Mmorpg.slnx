@@ -23,6 +23,9 @@
     <Project Path="tests/Testing/Mmorpg.Testing.Content/Mmorpg.Testing.Content.csproj" />
     <Project Path="tests/Testing/Mmorpg.GameService.Testing/Mmorpg.GameService.Testing.csproj" />
   </Folder>
+  <Folder Name="/tests/Shared/">
+    <Project Path="tests/Shared/Mmorpg.Shared.Tests/Mmorpg.Shared.Tests.csproj" />
+  </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
     <Project Path="tools/ContentPipeline/Mmorpg.Tools.ContentPipeline.csproj" />

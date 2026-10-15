@@ -1,6 +1,6 @@
 using Mmorpg.GameProtocol;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Shared.Tests;
 
 public sealed class RealtimeWorldActorProtocolTests
 {
