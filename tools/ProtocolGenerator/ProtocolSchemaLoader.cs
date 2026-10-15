@@ -6,8 +6,20 @@ namespace Mmorpg.Tools.ProtocolGenerator;
 // Reads realtime-protocol.json strictly and resolves it into a validated ProtocolModel.
 public static partial class ProtocolSchemaLoader
 {
-    private const int FrameHeaderSize = 7;
     private const string ClassPrefix = "Realtime";
+
+    private static readonly Dictionary<string, PrimitiveKind> Primitives = new(StringComparer.Ordinal)
+    {
+        ["u8"] = PrimitiveKind.U8,
+        ["u16"] = PrimitiveKind.U16,
+        ["u32"] = PrimitiveKind.U32,
+        ["u64"] = PrimitiveKind.U64,
+        ["i32"] = PrimitiveKind.I32,
+        ["i64"] = PrimitiveKind.I64,
+        ["f32"] = PrimitiveKind.F32,
+        ["bool"] = PrimitiveKind.Bool,
+        ["guid"] = PrimitiveKind.Guid
+    };
 
     public static ProtocolModel Load(string json)
     {
@@ -41,11 +53,11 @@ public static partial class ProtocolSchemaLoader
 
             var magic = protocol.RequiredHexUInt32("magic");
             var connectionKey = protocol.RequiredString("connectionKey");
-            var maximumPacketSize = ReadSize(protocol, "maximumPacketSize", FrameHeaderSize + 1, int.MaxValue);
+            var maximumPacketSize = ReadSize(protocol, "maximumPacketSize", WireSizes.FrameHeaderSize + 1, int.MaxValue);
             var maximumUnreliablePacketSize = ReadSize(
                 protocol,
                 "maximumUnreliablePacketSize",
-                FrameHeaderSize + 1,
+                WireSizes.FrameHeaderSize + 1,
                 maximumPacketSize);
             var channelCount = (byte)ReadSize(protocol, "channelCount", 1, byte.MaxValue);
             var channels = ReadChannels(protocol, channelCount);
@@ -53,11 +65,16 @@ public static partial class ProtocolSchemaLoader
 
             var limits = ReadLimits(root);
             var enums = ReadEnums(root);
-            var messages = ReadMessages(root, channels);
+            var scope = new TypeScope(limits, enums)
+            {
+                MaximumPacketSize = maximumPacketSize,
+                MaximumUnreliablePacketSize = maximumUnreliablePacketSize
+            };
+            var structs = ReadStructs(root, scope);
+            var messages = ReadMessages(root, channels, scope);
             root.EnsureFullyRead();
 
-            EnsureUniqueTypeNames(enums, messages);
-            return new ProtocolModel(
+            var model = new ProtocolModel(
                 description,
                 @namespace,
                 (ushort)version,
@@ -69,7 +86,10 @@ public static partial class ProtocolSchemaLoader
                 channels,
                 limits,
                 enums,
+                structs,
                 messages);
+            Validate(model);
+            return model;
         }
     }
 
@@ -174,9 +194,49 @@ public static partial class ProtocolSchemaLoader
         return enums;
     }
 
+    // Structs may reference structs defined later, so every struct is declared before any
+    // field is read.
+    private static IReadOnlyList<StructDefinition> ReadStructs(SchemaNode root, TypeScope scope)
+    {
+        var nodes = root.OptionalObjects("structs") ?? [];
+        var structs = new List<StructDefinition>();
+        foreach (var node in nodes)
+        {
+            var name = RequireMemberName(node, "name");
+            var definition = new StructDefinition(
+                name,
+                ClassPrefix + name,
+                RequireMemberName(node, "family"),
+                node.RequiredString("description"),
+                node.OptionalBoolean("rules", false),
+                OptionalMemberName(node, "sizeConstant"));
+            if (!scope.Structs.TryAdd(name, definition))
+            {
+                throw node.Error("name", $"'{name}' appears more than once.");
+            }
+
+            structs.Add(definition);
+        }
+
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            structs[index].Fields.AddRange(ReadFields(nodes[index], scope));
+            nodes[index].EnsureFullyRead();
+        }
+
+        // Sizes recurse into structs, so a cycle must fail before any size is computed.
+        foreach (var definition in structs)
+        {
+            EnsureAcyclic(definition, []);
+        }
+
+        return structs;
+    }
+
     private static IReadOnlyList<MessageDefinition> ReadMessages(
         SchemaNode root,
-        IReadOnlyList<ChannelDefinition> channels)
+        IReadOnlyList<ChannelDefinition> channels,
+        TypeScope scope)
     {
         var messages = new List<MessageDefinition>();
         foreach (var node in root.RequiredObjects("messages"))
@@ -208,17 +268,69 @@ public static partial class ProtocolSchemaLoader
             var codec = node.RequiredString("codec") switch
             {
                 "handWritten" => MessageCodec.HandWritten,
-                _ => throw node.Error("codec", "must be handWritten.")
+                "generated" => MessageCodec.Generated,
+                _ => throw node.Error("codec", "must be handWritten or generated.")
             };
-            messages.Add(new MessageDefinition(
-                name,
-                (byte)id,
-                family,
-                direction,
-                channel,
-                delivery,
-                codec,
-                node.RequiredString("description")));
+            var messageDescription = node.RequiredString("description");
+            var className = ClassPrefix + name;
+            MessageDefinition message;
+            if (codec == MessageCodec.HandWritten)
+            {
+                message = new MessageDefinition(
+                    name,
+                    (byte)id,
+                    family,
+                    direction,
+                    channel,
+                    delivery,
+                    codec,
+                    messageDescription,
+                    MessageApi.Class,
+                    className,
+                    CSharpNames.Camel(name),
+                    false,
+                    null,
+                    null,
+                    false,
+                    []);
+            }
+            else
+            {
+                var api = (node.OptionalString("api") ?? "class") switch
+                {
+                    "class" => MessageApi.Class,
+                    "unwrap" => MessageApi.Unwrap,
+                    _ => throw node.Error("api", "must be class or unwrap.")
+                };
+                var fields = ReadFields(node, scope);
+                if (api == MessageApi.Unwrap && (fields.Count != 1 || fields[0].Type is BitsWireType))
+                {
+                    throw node.Error("api", "unwrap requires exactly one field that is not bits8.");
+                }
+
+                var parameter = node.OptionalString("parameter")
+                    ?? CSharpNames.Camel(api == MessageApi.Unwrap ? fields[0].Name : name);
+                message = new MessageDefinition(
+                    name,
+                    (byte)id,
+                    family,
+                    direction,
+                    channel,
+                    delivery,
+                    codec,
+                    messageDescription,
+                    api,
+                    className,
+                    parameter,
+                    node.OptionalBoolean("rules", false),
+                    OptionalMemberName(node, "sizeConstant"),
+                    OptionalMemberName(node, "emptySizeConstant"),
+                    node.OptionalBoolean("runtimeSizeCheck", false),
+                    fields);
+                CheckMessageSizes(node, message, scope);
+            }
+
+            messages.Add(message);
             node.EnsureFullyRead();
         }
 
@@ -227,18 +339,308 @@ public static partial class ProtocolSchemaLoader
         return messages;
     }
 
-    private static void EnsureUniqueTypeNames(
-        IReadOnlyList<EnumDefinition> enums,
-        IReadOnlyList<MessageDefinition> messages)
+    private static List<FieldDefinition> ReadFields(SchemaNode owner, TypeScope scope)
     {
-        var names = new HashSet<string>(StringComparer.Ordinal) { "MessageType" };
-        foreach (var name in enums.Select(definition => definition.Name).Concat(messages.Select(message => message.Name)))
+        var fields = new List<FieldDefinition>();
+        foreach (var node in owner.RequiredObjects("fields"))
         {
-            if (!names.Add(name))
+            fields.Add(ReadField(node, scope));
+            node.EnsureFullyRead();
+        }
+
+        if (fields.Count == 0)
+        {
+            throw owner.Error("fields", "must contain at least one field.");
+        }
+
+        var memberNames = fields.SelectMany(field => field.Type is BitsWireType bits
+            ? bits.Bits.Select(bit => bit.Name)
+            : [field.Name]);
+        EnsureUnique(owner, "fields", memberNames);
+        foreach (var field in fields.Where(field => field.Rules.LessThan is not null))
+        {
+            var target = fields.FirstOrDefault(candidate => candidate.Name == field.Rules.LessThan);
+            if (target is null || target.Type is not PrimitiveType { Kind: not (PrimitiveKind.F32 or PrimitiveKind.Bool or PrimitiveKind.Guid) })
+            {
+                throw owner.Error("fields", $"'{field.Name}' must be less than an integer field, not '{field.Rules.LessThan}'.");
+            }
+        }
+
+        return fields;
+    }
+
+    private static FieldDefinition ReadField(SchemaNode node, TypeScope scope)
+    {
+        var name = RequireMemberName(node, "name");
+        var description = node.OptionalString("description");
+        var typeName = node.RequiredString("type");
+        WireType type = typeName switch
+        {
+            "array" => ReadArray(node, scope),
+            "bits8" => ReadBits(node),
+            _ => scope.Resolve(node, "type", typeName)
+        };
+        return new FieldDefinition(name, description, type, ReadRules(node, type, scope));
+    }
+
+    private static ArrayWireType ReadArray(SchemaNode node, TypeScope scope)
+    {
+        ElementDefinition element;
+        if (node.Has("items") && node.TryReadObject("items", out var itemNode))
+        {
+            var itemType = scope.Resolve(itemNode, "type", itemNode.RequiredString("type"));
+            element = new ElementDefinition(itemType, ReadRules(itemNode, itemType, scope));
+            itemNode.EnsureFullyRead();
+        }
+        else
+        {
+            var itemType = scope.Resolve(node, "items", node.RequiredString("items"));
+            element = new ElementDefinition(itemType, ValueRules.None);
+        }
+
+        var minimumCount = (int)(node.OptionalInteger("minCount") ?? 0);
+        var maximumCount = scope.ReadIntBound(node, "maxCount")
+            ?? throw node.Error("maxCount", "is required.");
+        if (minimumCount < 0 || minimumCount > maximumCount.Value || maximumCount.Value > byte.MaxValue)
+        {
+            throw node.Error("maxCount", "requires 0 <= minCount <= maxCount <= 255.");
+        }
+
+        return new ArrayWireType(element, minimumCount, maximumCount);
+    }
+
+    private static BitsWireType ReadBits(SchemaNode node)
+    {
+        var bits = new List<BitDefinition>();
+        foreach (var bitNode in node.RequiredObjects("bits"))
+        {
+            bits.Add(new BitDefinition(RequireMemberName(bitNode, "name"), bitNode.OptionalString("description")));
+            bitNode.EnsureFullyRead();
+        }
+
+        if (bits.Count is 0 or > 8)
+        {
+            throw node.Error("bits", "must contain between 1 and 8 bits.");
+        }
+
+        return new BitsWireType(bits);
+    }
+
+    // Reads the value rules that fit the type. Rules that do not fit stay unread, so the
+    // strict reader rejects them as unknown properties.
+    private static ValueRules ReadRules(SchemaNode node, WireType type, TypeScope scope)
+    {
+        switch (type)
+        {
+            case PrimitiveType { Kind: PrimitiveKind.F32 }:
+                return ValueRules.None with
+                {
+                    Minimum = ReadFloatBound(node, "minimum"),
+                    Maximum = ReadFloatBound(node, "maximum"),
+                    ExclusiveMinimum = ReadFloatBound(node, "exclusiveMinimum"),
+                    ExclusiveMaximum = ReadFloatBound(node, "exclusiveMaximum")
+                };
+            case PrimitiveType { Kind: PrimitiveKind.Guid }:
+                return ValueRules.None with { NonEmpty = node.OptionalBoolean("nonEmpty", false) };
+            case PrimitiveType { Kind: not PrimitiveKind.Bool } primitive:
+                var minimum = ReadIntegerBound(node, "minimum", primitive.Kind, scope);
+                var maximum = ReadIntegerBound(node, "maximum", primitive.Kind, scope);
+                if (minimum is not null && maximum is not null && minimum.Value > maximum.Value)
+                {
+                    throw node.Error("minimum", "must not exceed the maximum.");
+                }
+
+                return ValueRules.None with
+                {
+                    Minimum = minimum,
+                    Maximum = maximum,
+                    LessThan = OptionalMemberName(node, "lessThan")
+                };
+            case ArrayWireType array:
+                var distinct = node.OptionalBoolean("distinct", false);
+                var distinctBy = OptionalMemberName(node, "distinctBy");
+                if (distinct && array.Element.Type is not (PrimitiveType or EnumWireType))
+                {
+                    throw node.Error("distinct", "applies to arrays of primitives and enums; use distinctBy for structs.");
+                }
+
+                if (distinctBy is not null
+                    && (array.Element.Type is not StructWireType elementStruct
+                        || elementStruct.Definition.Fields.All(field => field.Name != distinctBy)))
+                {
+                    throw node.Error("distinctBy", $"must name a field of the array's struct, not '{distinctBy}'.");
+                }
+
+                return ValueRules.None with { Distinct = distinct, DistinctBy = distinctBy };
+            default:
+                return ValueRules.None;
+        }
+    }
+
+    private static NumericBound? ReadFloatBound(SchemaNode node, string name)
+    {
+        var value = node.OptionalNumber(name);
+        return value is null ? null : new NumericBound(value.Value, null);
+    }
+
+    private static NumericBound? ReadIntegerBound(SchemaNode node, string name, PrimitiveKind kind, TypeScope scope)
+    {
+        var bound = scope.ReadIntBound(node, name);
+        if (bound is null)
+        {
+            return null;
+        }
+
+        var (minimum, maximum) = kind switch
+        {
+            PrimitiveKind.U8 => (0L, byte.MaxValue),
+            PrimitiveKind.U16 => (0L, ushort.MaxValue),
+            PrimitiveKind.U32 => (0L, uint.MaxValue),
+            PrimitiveKind.U64 => (0L, long.MaxValue),
+            PrimitiveKind.I32 => (int.MinValue, int.MaxValue),
+            _ => (long.MinValue, long.MaxValue)
+        };
+        if (bound.Value < minimum || bound.Value > maximum)
+        {
+            throw node.Error(name, "does not fit the field type.");
+        }
+
+        return new NumericBound(bound.Value, bound.LimitName);
+    }
+
+    private static void CheckMessageSizes(SchemaNode node, MessageDefinition message, TypeScope scope)
+    {
+        var size = WireSizes.OfMessage(message);
+        if (message.Delivery == MessageDelivery.Unreliable && size.Maximum > scope.MaximumUnreliablePacketSize)
+        {
+            throw node.Error(
+                "fields",
+                $"can reach {size.Maximum} bytes, above the unreliable limit of {scope.MaximumUnreliablePacketSize}.");
+        }
+
+        if (message.Delivery != MessageDelivery.Unreliable
+            && size.Maximum > scope.MaximumPacketSize
+            && !message.RuntimeSizeCheck)
+        {
+            throw node.Error(
+                "runtimeSizeCheck",
+                $"must be true: the message can reach {size.Maximum} bytes, above the packet limit of {scope.MaximumPacketSize}.");
+        }
+
+        if (message.SizeConstant is not null && !size.IsFixed)
+        {
+            throw node.Error("sizeConstant", "requires a message with a fixed size.");
+        }
+
+        if (message.EmptySizeConstant is not null && message.Fields.All(field => field.Type is not ArrayWireType))
+        {
+            throw node.Error("emptySizeConstant", "requires a message with an array field.");
+        }
+    }
+
+    private static void Validate(ProtocolModel model)
+    {
+        var typeNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "MessageType",
+            "MessageDescriptor",
+            "Delivery",
+            "MessageDirection",
+            "Protocol",
+            "ProtocolLimits"
+        };
+        foreach (var name in model.Enums.Select(definition => definition.Name)
+            .Concat(model.Structs.Select(definition => definition.Name))
+            .Concat(model.Messages.Select(message => message.Name)))
+        {
+            if (!typeNames.Add(name))
             {
                 throw new ProtocolSchemaException("$", $"type name '{name}' is used more than once.");
             }
         }
+
+        var constants = new HashSet<string>(model.Limits.Select(limit => limit.Name), StringComparer.Ordinal);
+        foreach (var constant in model.Structs.Select(definition => definition.SizeConstant)
+            .Concat(model.Messages.SelectMany(message => new[] { message.SizeConstant, message.EmptySizeConstant }))
+            .OfType<string>())
+        {
+            if (!constants.Add(constant))
+            {
+                throw new ProtocolSchemaException("$", $"constant '{constant}' is defined more than once.");
+            }
+        }
+
+        foreach (var definition in model.Structs)
+        {
+            if (definition.SizeConstant is not null && !WireSizes.OfFields(definition.Fields).IsFixed)
+            {
+                throw new ProtocolSchemaException("$", $"struct '{definition.Name}' has a sizeConstant but no fixed size.");
+            }
+        }
+
+        // Hand-written codecs may use any struct, so unused structs are only known once every
+        // message is generated.
+        if (model.Messages.Any(message => message.Codec == MessageCodec.HandWritten))
+        {
+            return;
+        }
+
+        var used = new HashSet<StructDefinition>();
+        foreach (var message in model.Messages)
+        {
+            foreach (var field in message.Fields)
+            {
+                CollectStructs(field.Type, used);
+            }
+        }
+
+        var unused = model.Structs.FirstOrDefault(definition => !used.Contains(definition));
+        if (unused is not null)
+        {
+            throw new ProtocolSchemaException("$", $"struct '{unused.Name}' is not used by any generated message.");
+        }
+    }
+
+    private static void EnsureAcyclic(StructDefinition definition, HashSet<StructDefinition> path)
+    {
+        if (!path.Add(definition))
+        {
+            throw new ProtocolSchemaException("$", $"struct '{definition.Name}' contains itself.");
+        }
+
+        foreach (var field in definition.Fields)
+        {
+            foreach (var nested in DirectStructs(field.Type))
+            {
+                EnsureAcyclic(nested, path);
+            }
+        }
+
+        path.Remove(definition);
+    }
+
+    private static void CollectStructs(WireType type, HashSet<StructDefinition> used)
+    {
+        foreach (var nested in DirectStructs(type))
+        {
+            if (used.Add(nested))
+            {
+                foreach (var field in nested.Fields)
+                {
+                    CollectStructs(field.Type, used);
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<StructDefinition> DirectStructs(WireType type)
+    {
+        return type switch
+        {
+            StructWireType structType => [structType.Definition],
+            ArrayWireType array => DirectStructs(array.Element.Type),
+            _ => []
+        };
     }
 
     private static string RequireMemberName(SchemaNode node, string property)
@@ -250,6 +652,11 @@ public static partial class ProtocolSchemaLoader
         }
 
         return name;
+    }
+
+    private static string? OptionalMemberName(SchemaNode node, string property)
+    {
+        return node.Has(property) ? RequireMemberName(node, property) : null;
     }
 
     private static void EnsureUnique(SchemaNode node, string property, IEnumerable<string> values)
@@ -269,4 +676,68 @@ public static partial class ProtocolSchemaLoader
 
     [GeneratedRegex("^[A-Z][A-Za-z0-9]*(\\.[A-Z][A-Za-z0-9]*)*$")]
     private static partial Regex NamespacePattern();
+
+    // Names that field types and bounds may refer to.
+    private sealed class TypeScope
+    {
+        private readonly IReadOnlyList<LimitDefinition> limits;
+        private readonly IReadOnlyList<EnumDefinition> enums;
+
+        public TypeScope(IReadOnlyList<LimitDefinition> limits, IReadOnlyList<EnumDefinition> enums)
+        {
+            this.limits = limits;
+            this.enums = enums;
+        }
+
+        public int MaximumPacketSize { get; init; } = int.MaxValue;
+
+        public int MaximumUnreliablePacketSize { get; init; } = int.MaxValue;
+
+        public Dictionary<string, StructDefinition> Structs { get; } = new(StringComparer.Ordinal);
+
+        public WireType Resolve(SchemaNode node, string property, string typeName)
+        {
+            if (Primitives.TryGetValue(typeName, out var primitive))
+            {
+                return new PrimitiveType(primitive);
+            }
+
+            var enumDefinition = enums.FirstOrDefault(definition => definition.Name == typeName);
+            if (enumDefinition is not null)
+            {
+                return new EnumWireType(enumDefinition);
+            }
+
+            if (Structs.TryGetValue(typeName, out var structDefinition))
+            {
+                return new StructWireType(structDefinition);
+            }
+
+            throw node.Error(property, $"'{typeName}' is not a primitive, enum, or struct.");
+        }
+
+        // A number, or the name of a limit whose value it takes.
+        public IntBound? ReadIntBound(SchemaNode node, string name)
+        {
+            var limitName = node.OptionalStringOrNull(name, out var number);
+            if (limitName is null)
+            {
+                if (number is null)
+                {
+                    return null;
+                }
+
+                if (number < int.MinValue || number > int.MaxValue)
+                {
+                    throw node.Error(name, "is out of range.");
+                }
+
+                return new IntBound((int)number.Value, null);
+            }
+
+            var limit = limits.FirstOrDefault(candidate => candidate.Name == limitName)
+                ?? throw node.Error(name, $"names no limit: '{limitName}'.");
+            return new IntBound(limit.Value, limit.Name);
+        }
+    }
 }

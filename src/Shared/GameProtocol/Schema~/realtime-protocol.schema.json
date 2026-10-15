@@ -95,11 +95,32 @@
         }
       }
     },
-    "messages": {
+    "structs": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
+        "required": ["name", "family", "description", "fields"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "family": { "$ref": "#/$defs/name" },
+          "description": { "$ref": "#/$defs/text" },
+          "rules": {
+            "description": "Generated validation also calls a hand-written SatisfiesRules overload in the family folder.",
+            "type": "boolean"
+          },
+          "sizeConstant": {
+            "description": "A public RealtimeProtocol constant with the fixed encoded size of the struct.",
+            "$ref": "#/$defs/name"
+          },
+          "fields": { "$ref": "#/$defs/fields" }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
         "required": ["name", "id", "family", "direction", "channel", "delivery", "codec", "description"],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
@@ -114,16 +135,125 @@
           "channel": { "$ref": "#/$defs/name" },
           "delivery": { "enum": ["reliableOrdered", "sequenced", "unreliable"] },
           "codec": {
-            "description": "handWritten: the family folder still encodes and decodes the message by hand.",
-            "enum": ["handWritten"]
+            "description": "handWritten: the family folder still encodes and decodes the message by hand. generated: the generator writes the model and the codec from fields.",
+            "enum": ["handWritten", "generated"]
           },
-          "description": { "$ref": "#/$defs/text" }
-        }
+          "description": { "$ref": "#/$defs/text" },
+          "api": {
+            "description": "class: encode and decode a generated message class. unwrap: the message has one field, and encode and decode use its value directly.",
+            "enum": ["class", "unwrap"]
+          },
+          "parameter": {
+            "description": "The parameter name of the encode and decode methods.",
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$"
+          },
+          "rules": {
+            "description": "Generated validation also calls a hand-written SatisfiesRules overload in the family folder.",
+            "type": "boolean"
+          },
+          "sizeConstant": {
+            "description": "A public RealtimeProtocol constant with the fixed packet size, including the frame header.",
+            "$ref": "#/$defs/name"
+          },
+          "emptySizeConstant": {
+            "description": "A public RealtimeProtocol constant with the packet size when every array is empty.",
+            "$ref": "#/$defs/name"
+          },
+          "runtimeSizeCheck": {
+            "description": "Required when a reliable message can exceed the packet limit; encoding then throws InvalidOperationException for an oversized packet.",
+            "type": "boolean"
+          },
+          "fields": { "$ref": "#/$defs/fields" }
+        },
+        "if": { "properties": { "codec": { "const": "generated" } } },
+        "then": { "required": ["fields"] },
+        "else": {
+          "not": {
+            "anyOf": [
+              { "required": ["fields"] },
+              { "required": ["api"] },
+              { "required": ["parameter"] },
+              { "required": ["rules"] },
+              { "required": ["sizeConstant"] },
+              { "required": ["emptySizeConstant"] },
+              { "required": ["runtimeSizeCheck"] }
+            ]
+          }
+        },
+        "unevaluatedProperties": false
       }
     }
   },
   "$defs": {
     "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
-    "text": { "type": "string", "minLength": 1 }
+    "text": { "type": "string", "minLength": 1 },
+    "bound": {
+      "description": "A number, or the name of a limit for integer fields.",
+      "anyOf": [{ "type": "number" }, { "$ref": "#/$defs/name" }]
+    },
+    "type": {
+      "description": "u8, u16, u32, u64, i32, i64, f32, bool, guid, array, bits8, or the name of an enum or struct.",
+      "type": "string",
+      "pattern": "^(u8|u16|u32|u64|i32|i64|f32|bool|guid|array|bits8|[A-Z][A-Za-z0-9]*)$"
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "description": { "$ref": "#/$defs/text" },
+          "type": { "$ref": "#/$defs/type" },
+          "minimum": { "$ref": "#/$defs/bound" },
+          "maximum": { "$ref": "#/$defs/bound" },
+          "exclusiveMinimum": { "type": "number" },
+          "exclusiveMaximum": { "type": "number" },
+          "nonEmpty": { "type": "boolean" },
+          "lessThan": { "$ref": "#/$defs/name" },
+          "items": {
+            "description": "The element type of an array, or an object with the type and its value rules.",
+            "anyOf": [
+              { "$ref": "#/$defs/type" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type"],
+                "properties": {
+                  "type": { "$ref": "#/$defs/type" },
+                  "minimum": { "$ref": "#/$defs/bound" },
+                  "maximum": { "$ref": "#/$defs/bound" },
+                  "exclusiveMinimum": { "type": "number" },
+                  "exclusiveMaximum": { "type": "number" },
+                  "nonEmpty": { "type": "boolean" }
+                }
+              }
+            ]
+          },
+          "minCount": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "maxCount": { "$ref": "#/$defs/bound" },
+          "distinct": { "description": "Array elements must differ.", "type": "boolean" },
+          "distinctBy": { "description": "Struct array elements must differ in this field.", "$ref": "#/$defs/name" },
+          "bits": {
+            "description": "The boolean properties of a bits8 field, lowest bit first.",
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name"],
+              "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "description": { "$ref": "#/$defs/text" }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

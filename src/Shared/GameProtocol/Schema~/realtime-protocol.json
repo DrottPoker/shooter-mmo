@@ -10,16 +10,8 @@
     "maximumUnreliablePacketSize": 1023,
     "channelCount": 2,
     "channels": [
-      {
-        "name": "ControlChannel",
-        "id": 0,
-        "description": "Reliable ordered control messages in both directions."
-      },
-      {
-        "name": "MovementInputChannel",
-        "id": 1,
-        "description": "Sequenced movement input from the client."
-      },
+      { "name": "ControlChannel", "id": 0, "description": "Reliable ordered control messages in both directions." },
+      { "name": "MovementInputChannel", "id": 1, "description": "Sequenced movement input from the client." },
       {
         "name": "UnreliableReceiveChannel",
         "id": 0,
@@ -52,12 +44,7 @@
       "visibility": "public",
       "description": "Characters in one accepted slot tag."
     },
-    {
-      "name": "MaximumSlotTags",
-      "value": 16,
-      "visibility": "public",
-      "description": "Accepted tags on one slot."
-    },
+    { "name": "MaximumSlotTags", "value": 16, "visibility": "public", "description": "Accepted tags on one slot." },
     {
       "name": "MaximumDefinitionIdLength",
       "value": 128,
@@ -214,9 +201,7 @@
       "name": "EntityKind",
       "family": "Replication",
       "description": "The kind of a replicated simulation entity.",
-      "values": [
-        { "name": "Player", "value": 1 }
-      ]
+      "values": [ { "name": "Player", "value": 1 } ]
     },
     {
       "name": "ItemOperationKind",
@@ -254,48 +239,31 @@
       "name": "CorpseViewUpdateKind",
       "family": "Corpses",
       "description": "Whether a corpse view chunk replaces the view or applies a delta.",
-      "values": [
-        { "name": "Snapshot", "value": 1 },
-        { "name": "Delta", "value": 2 }
-      ]
+      "values": [ { "name": "Snapshot", "value": 1 }, { "name": "Delta", "value": 2 } ]
     },
     {
       "name": "WorldActorKind",
       "family": "WorldActors",
       "description": "The kind of a world actor.",
-      "values": [
-        { "name": "Npc", "value": 1 },
-        { "name": "Mob", "value": 2 }
-      ]
+      "values": [ { "name": "Npc", "value": 1 }, { "name": "Mob", "value": 2 } ]
     },
     {
       "name": "WorldActorDisposition",
       "family": "WorldActors",
       "description": "How a world actor treats players.",
-      "values": [
-        { "name": "Friendly", "value": 1 },
-        { "name": "Neutral", "value": 2 },
-        { "name": "Hostile", "value": 3 }
-      ]
+      "values": [ { "name": "Friendly", "value": 1 }, { "name": "Neutral", "value": 2 }, { "name": "Hostile", "value": 3 } ]
     },
     {
       "name": "WorldActorActivityTier",
       "family": "WorldActors",
       "description": "How often the worker updates a world actor.",
-      "values": [
-        { "name": "EventDriven", "value": 1 },
-        { "name": "Dormant", "value": 2 },
-        { "name": "Active", "value": 3 }
-      ]
+      "values": [ { "name": "EventDriven", "value": 1 }, { "name": "Dormant", "value": 2 }, { "name": "Active", "value": 3 } ]
     },
     {
       "name": "WorldInteractionTargetKind",
       "family": "WorldActors",
       "description": "What a world interaction targets.",
-      "values": [
-        { "name": "WorldActor", "value": 1 },
-        { "name": "Corpse", "value": 2 }
-      ]
+      "values": [ { "name": "WorldActor", "value": 1 }, { "name": "Corpse", "value": 2 } ]
     },
     {
       "name": "WorldInteractionOperationKind",
@@ -333,6 +301,163 @@
         { "name": "RemoveInsurance", "value": 2 },
         { "name": "AcceptQuest", "value": 3 },
         { "name": "AbandonQuest", "value": 4 }
+      ]
+    }
+  ],
+  "structs": [
+    {
+      "name": "PlayerState",
+      "family": "Movement",
+      "description": "The authoritative movement state of one player.",
+      "fields": [
+        { "name": "PositionX", "type": "f32", "description": "World position on the x axis in meters." },
+        { "name": "PositionY", "type": "f32", "description": "World position on the y axis in meters." },
+        { "name": "PositionZ", "type": "f32", "description": "World position on the z axis in meters." },
+        { "name": "VelocityX", "type": "f32", "description": "Velocity on the x axis in meters per second." },
+        { "name": "VelocityY", "type": "f32", "description": "Velocity on the y axis in meters per second." },
+        { "name": "VelocityZ", "type": "f32", "description": "Velocity on the z axis in meters per second." },
+        { "name": "YawDegrees", "type": "f32", "description": "Facing around the vertical axis in degrees." },
+        {
+          "name": "Flags",
+          "type": "bits8",
+          "description": "Movement state bits.",
+          "bits": [
+            { "name": "IsGrounded", "description": "The player stands on walkable ground." },
+            { "name": "IsSprinting", "description": "The player moves at sprint speed." }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MovementSettings",
+      "family": "Movement",
+      "rules": true,
+      "description": "Movement and collision settings that client prediction shares with the worker.",
+      "fields": [
+        {
+          "name": "TickRateHz",
+          "type": "u16",
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Simulation ticks per second."
+        },
+        {
+          "name": "SnapshotRateHz",
+          "type": "u16",
+          "minimum": 1,
+          "description": "Snapshots per second; divides the tick rate."
+        },
+        {
+          "name": "WalkSpeed",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Walking speed in meters per second."
+        },
+        {
+          "name": "SprintSpeed",
+          "type": "f32",
+          "description": "Sprinting speed in meters per second; at least the walking speed."
+        },
+        {
+          "name": "RotationSpeedDegrees",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Turn rate in degrees per second."
+        },
+        {
+          "name": "Gravity",
+          "type": "f32",
+          "exclusiveMaximum": 0,
+          "description": "Vertical acceleration in meters per second squared."
+        },
+        {
+          "name": "MaximumFallSpeed",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Terminal fall speed in meters per second."
+        },
+        {
+          "name": "JumpVelocity",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Upward velocity of a jump in meters per second."
+        },
+        {
+          "name": "GroundedVerticalVelocity",
+          "type": "f32",
+          "maximum": 0,
+          "description": "Vertical velocity that keeps a grounded player on the ground."
+        },
+        { "name": "GroundHeight", "type": "f32", "description": "Height of the fallback ground plane in meters." },
+        {
+          "name": "MinimumX",
+          "type": "f32",
+          "description": "Western world bound in meters; below the eastern bound."
+        },
+        { "name": "MaximumX", "type": "f32", "description": "Eastern world bound in meters." },
+        {
+          "name": "MinimumZ",
+          "type": "f32",
+          "description": "Southern world bound in meters; below the northern bound."
+        },
+        { "name": "MaximumZ", "type": "f32", "description": "Northern world bound in meters." },
+        {
+          "name": "CharacterRadius",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Capsule radius in meters."
+        },
+        {
+          "name": "CharacterHeight",
+          "type": "f32",
+          "description": "Capsule height in meters; at least twice the radius."
+        },
+        {
+          "name": "StepHeight",
+          "type": "f32",
+          "minimum": 0,
+          "description": "Highest step in meters; below the capsule height."
+        },
+        {
+          "name": "MaximumSlopeDegrees",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 89,
+          "description": "Steepest walkable slope in degrees."
+        },
+        {
+          "name": "GroundSnapDistance",
+          "type": "f32",
+          "minimum": 0,
+          "description": "Distance in meters within which a player snaps to the ground."
+        },
+        {
+          "name": "MaximumSubstepDistance",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Longest collision substep in meters; at most the radius."
+        },
+        {
+          "name": "MaximumPenetrationIterations",
+          "type": "u8",
+          "minimum": 1,
+          "maximum": 16,
+          "description": "Collision depenetration passes per substep."
+        }
+      ]
+    },
+    {
+      "name": "MovementInput",
+      "family": "Movement",
+      "rules": true,
+      "description": "One tick of movement input. The move vector is at most one unit long.",
+      "fields": [
+        { "name": "InputSequence", "type": "u32", "description": "Increases by one with every input." },
+        { "name": "ClientTick", "type": "u32", "description": "The client simulation tick of the input." },
+        { "name": "MoveX", "type": "f32", "description": "Sideways axis of the move vector." },
+        { "name": "MoveY", "type": "f32", "description": "Forward axis of the move vector." },
+        { "name": "CameraYawDegrees", "type": "f32", "description": "Camera facing in degrees." },
+        { "name": "Buttons", "type": "MovementButtons", "description": "The held movement buttons." }
       ]
     }
   ],
@@ -414,8 +539,19 @@
       "direction": "clientToServer",
       "channel": "MovementInputChannel",
       "delivery": "sequenced",
-      "codec": "handWritten",
-      "description": "The newest movement inputs, oldest first."
+      "codec": "generated",
+      "description": "The newest movement inputs, oldest first.",
+      "api": "unwrap",
+      "fields": [
+        {
+          "name": "Inputs",
+          "type": "array",
+          "items": "MovementInput",
+          "minCount": 1,
+          "maxCount": "MaximumInputBatchSize",
+          "description": "The newest inputs, oldest first. Each input is sent in several batches."
+        }
+      ]
     },
     {
       "name": "SimulationSnapshot",
@@ -604,8 +740,20 @@
       "direction": "serverToClient",
       "channel": "UnreliableReceiveChannel",
       "delivery": "unreliable",
-      "codec": "handWritten",
-      "description": "The owner's authoritative state and input acknowledgement for reconciliation."
+      "codec": "generated",
+      "description": "The owner's authoritative state and input acknowledgement for reconciliation.",
+      "parameter": "snapshot",
+      "sizeConstant": "OwnerSimulationSnapshotPacketSize",
+      "fields": [
+        { "name": "SnapshotSequence", "type": "u32", "description": "Increases with every owner snapshot." },
+        { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the state." },
+        {
+          "name": "LastProcessedInputSequence",
+          "type": "u32",
+          "description": "The newest input sequence the worker applied."
+        },
+        { "name": "State", "type": "PlayerState", "description": "The owner's authoritative movement state." }
+      ]
     }
   ]
 }

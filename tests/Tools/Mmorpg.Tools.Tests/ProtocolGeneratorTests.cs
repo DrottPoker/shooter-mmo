@@ -180,6 +180,134 @@ public sealed class ProtocolGeneratorTests
     }
 
     [Fact]
+    public void GeneratedMessagesResolveTheirTypesAndSizes()
+    {
+        var model = ProtocolSchemaLoader.Load(GeneratedSchema().ToJsonString());
+
+        var message = Assert.Single(model.Messages);
+        Assert.Equal(MessageCodec.Generated, message.Codec);
+        Assert.Equal("snapshot", message.Parameter);
+        var points = Assert.IsType<ArrayWireType>(message.Fields[1].Type);
+        Assert.Same(model.Structs.Single(), Assert.IsType<StructWireType>(points.Element.Type).Definition);
+        Assert.Equal(new SizeRange(7 + 4 + 1 + 9 + 1, 7 + 4 + 1 + (4 * 9) + 1), WireSizes.OfMessage(message));
+        Assert.Equal(7 + 4 + 1 + 1, WireSizes.EmptyMessageSize(message));
+        Assert.Equal(SizeRange.Fixed(9), WireSizes.OfFields(model.Structs.Single().Fields));
+    }
+
+    [Fact]
+    public void GeneratedFamiliesContainModelsCodecsAndSizeConstants()
+    {
+        var model = ProtocolSchemaLoader.Load(GeneratedSchema().ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Contains("public sealed partial class RealtimePoint", family, StringComparison.Ordinal);
+        Assert.Contains("public sealed partial class RealtimeSnapshot", family, StringComparison.Ordinal);
+        Assert.Contains("public const int PointSize = 9;", family, StringComparison.Ordinal);
+        Assert.Contains("public const int EmptySnapshotSize = 13;", family, StringComparison.Ordinal);
+        Assert.Contains("public static byte[] EncodeSnapshot(RealtimeSnapshot snapshot)", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Sequence < 1", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Points.Length > MaximumThings", family, StringComparison.Ordinal);
+        Assert.Contains("return SatisfiesRules(value);", family, StringComparison.Ordinal);
+        Assert.Contains("if ((flags & ~0x01) != 0)", family, StringComparison.Ordinal);
+        Assert.Contains("private static bool IsDefined(RealtimeButtons value)", family, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("unknown field type", "$.messages[0].fields[0].type")]
+    [InlineData("rule that does not fit the type", "$.messages[0].fields[0].nonEmpty")]
+    [InlineData("bound outside the field type", "$.messages[0].fields[0].maximum")]
+    [InlineData("bound naming no limit", "$.messages[0].fields[0].minimum")]
+    [InlineData("lessThan naming a struct field", "$.messages[0].fields")]
+    [InlineData("array above 255 elements", "$.messages[0].fields[1].maxCount")]
+    [InlineData("distinctBy naming no field", "$.messages[0].fields[1].distinctBy")]
+    [InlineData("nine bits", "$.structs[0].fields[2].bits")]
+    [InlineData("duplicate field", "$.messages[0].fields")]
+    [InlineData("unwrap with two fields", "$.messages[0].api")]
+    [InlineData("unreliable message above its limit", "$.messages[0].fields")]
+    [InlineData("reliable message above the packet limit", "$.messages[0].runtimeSizeCheck")]
+    [InlineData("size constant on a variable message", "$.messages[0].sizeConstant")]
+    [InlineData("struct that contains itself", "$")]
+    [InlineData("unused struct", "$")]
+    [InlineData("size constant used twice", "$")]
+    public void InvalidGeneratedSchemasAreRejectedWithTheirPath(string mutation, string path)
+    {
+        var schema = GeneratedSchema();
+        var message = schema["messages"]![0]!.AsObject();
+        var fields = message["fields"]!.AsArray();
+        var structFields = schema["structs"]![0]!["fields"]!.AsArray();
+        switch (mutation)
+        {
+            case "unknown field type":
+                fields[0]!["type"] = "u24";
+                break;
+            case "rule that does not fit the type":
+                fields[0]!["nonEmpty"] = true;
+                break;
+            case "bound outside the field type":
+                fields[0]!["maximum"] = 70000;
+                fields[0]!["type"] = "u16";
+                break;
+            case "bound naming no limit":
+                fields[0]!["minimum"] = "MaximumMissing";
+                break;
+            case "lessThan naming a struct field":
+                fields[0]!["lessThan"] = "Points";
+                break;
+            case "array above 255 elements":
+                fields[1]!["maxCount"] = 256;
+                break;
+            case "distinctBy naming no field":
+                fields[1]!["distinctBy"] = "Z";
+                break;
+            case "nine bits":
+                var bits = structFields[2]!["bits"]!.AsArray();
+                for (var index = 0; index < 8; index++)
+                {
+                    bits.Add(new JsonObject { ["name"] = "Bit" + index });
+                }
+
+                break;
+            case "duplicate field":
+                fields.Add(fields[0]!.DeepClone());
+                break;
+            case "unwrap with two fields":
+                message["api"] = "unwrap";
+                break;
+            case "unreliable message above its limit":
+                fields[1]!["maxCount"] = 255;
+                schema["limits"]![0]!["value"] = 255;
+                fields[1]!["maxCount"] = "MaximumThings";
+                schema["protocol"]!["maximumUnreliablePacketSize"] = 100;
+                message.Remove("emptySizeConstant");
+                break;
+            case "reliable message above the packet limit":
+                message["delivery"] = "reliableOrdered";
+                schema["limits"]![0]!["value"] = 255;
+                schema["protocol"]!["maximumPacketSize"] = 1000;
+                schema["protocol"]!["maximumUnreliablePacketSize"] = 1000;
+                break;
+            case "size constant on a variable message":
+                message["sizeConstant"] = "SnapshotSize";
+                break;
+            case "struct that contains itself":
+                structFields.Add(new JsonObject { ["name"] = "Next", ["type"] = "Point" });
+                break;
+            case "unused struct":
+                var unused = schema["structs"]![0]!.DeepClone().AsObject();
+                unused["name"] = "Unused";
+                unused.Remove("sizeConstant");
+                schema["structs"]!.AsArray().Add(unused);
+                break;
+            case "size constant used twice":
+                message["emptySizeConstant"] = "PointSize";
+                break;
+        }
+
+        var exception = Assert.Throws<ProtocolSchemaException>(() => ProtocolSchemaLoader.Load(schema.ToJsonString()));
+        Assert.Equal(path, exception.Path);
+    }
+
+    [Fact]
     public void OptionsAcceptAnExplicitRootAndVerifyOnce()
     {
         Assert.True(ProtocolGeneratorOptions.TryParse(
@@ -235,6 +363,42 @@ public sealed class ProtocolGeneratorTests
               ]
             }
             """)!.AsObject();
+    }
+
+    // The minimal schema with one struct and one generated message that uses it.
+    private static JsonObject GeneratedSchema()
+    {
+        var schema = MinimalSchema();
+        schema["structs"] = JsonNode.Parse(
+            """
+            [
+              {
+                "name": "Point",
+                "family": "Input",
+                "description": "A point.",
+                "sizeConstant": "PointSize",
+                "fields": [
+                  { "name": "X", "type": "f32", "exclusiveMinimum": 0 },
+                  { "name": "Y", "type": "f32" },
+                  { "name": "Flags", "type": "bits8", "bits": [ { "name": "IsActive" } ] }
+                ]
+              }
+            ]
+            """);
+        var message = schema["messages"]![0]!.AsObject();
+        message["codec"] = "generated";
+        message["parameter"] = "snapshot";
+        message["rules"] = true;
+        message["emptySizeConstant"] = "EmptySnapshotSize";
+        message["fields"] = JsonNode.Parse(
+            """
+            [
+              { "name": "Sequence", "type": "u32", "minimum": 1 },
+              { "name": "Points", "type": "array", "items": "Point", "minCount": 1, "maxCount": "MaximumThings" },
+              { "name": "Held", "type": "Buttons" }
+            ]
+            """);
+        return schema;
     }
 
     // A throwaway repository that holds a copy of the real schema.

@@ -3,6 +3,7 @@
 // Change the schema and run the generator instead of editing this file.
 // </auto-generated>
 using System;
+using System.IO;
 
 namespace Mmorpg.GameProtocol
 {
@@ -16,5 +17,886 @@ namespace Mmorpg.GameProtocol
         Sprint = 1,
         Jump = 2,
         Aim = 4
+    }
+
+    /// <summary>
+    /// The authoritative movement state of one player.
+    /// </summary>
+    public sealed partial class RealtimePlayerState
+    {
+        public RealtimePlayerState(
+            float positionX,
+            float positionY,
+            float positionZ,
+            float velocityX,
+            float velocityY,
+            float velocityZ,
+            float yawDegrees,
+            bool isGrounded,
+            bool isSprinting)
+        {
+            PositionX = positionX;
+            PositionY = positionY;
+            PositionZ = positionZ;
+            VelocityX = velocityX;
+            VelocityY = velocityY;
+            VelocityZ = velocityZ;
+            YawDegrees = yawDegrees;
+            IsGrounded = isGrounded;
+            IsSprinting = isSprinting;
+        }
+
+        /// <summary>
+        /// World position on the x axis in meters.
+        /// </summary>
+        public float PositionX { get; }
+
+        /// <summary>
+        /// World position on the y axis in meters.
+        /// </summary>
+        public float PositionY { get; }
+
+        /// <summary>
+        /// World position on the z axis in meters.
+        /// </summary>
+        public float PositionZ { get; }
+
+        /// <summary>
+        /// Velocity on the x axis in meters per second.
+        /// </summary>
+        public float VelocityX { get; }
+
+        /// <summary>
+        /// Velocity on the y axis in meters per second.
+        /// </summary>
+        public float VelocityY { get; }
+
+        /// <summary>
+        /// Velocity on the z axis in meters per second.
+        /// </summary>
+        public float VelocityZ { get; }
+
+        /// <summary>
+        /// Facing around the vertical axis in degrees.
+        /// </summary>
+        public float YawDegrees { get; }
+
+        /// <summary>
+        /// The player stands on walkable ground.
+        /// </summary>
+        public bool IsGrounded { get; }
+
+        /// <summary>
+        /// The player moves at sprint speed.
+        /// </summary>
+        public bool IsSprinting { get; }
+    }
+
+    /// <summary>
+    /// Movement and collision settings that client prediction shares with the worker.
+    /// </summary>
+    public sealed partial class RealtimeMovementSettings
+    {
+        public RealtimeMovementSettings(
+            ushort tickRateHz,
+            ushort snapshotRateHz,
+            float walkSpeed,
+            float sprintSpeed,
+            float rotationSpeedDegrees,
+            float gravity,
+            float maximumFallSpeed,
+            float jumpVelocity,
+            float groundedVerticalVelocity,
+            float groundHeight,
+            float minimumX,
+            float maximumX,
+            float minimumZ,
+            float maximumZ,
+            float characterRadius,
+            float characterHeight,
+            float stepHeight,
+            float maximumSlopeDegrees,
+            float groundSnapDistance,
+            float maximumSubstepDistance,
+            byte maximumPenetrationIterations)
+        {
+            TickRateHz = tickRateHz;
+            SnapshotRateHz = snapshotRateHz;
+            WalkSpeed = walkSpeed;
+            SprintSpeed = sprintSpeed;
+            RotationSpeedDegrees = rotationSpeedDegrees;
+            Gravity = gravity;
+            MaximumFallSpeed = maximumFallSpeed;
+            JumpVelocity = jumpVelocity;
+            GroundedVerticalVelocity = groundedVerticalVelocity;
+            GroundHeight = groundHeight;
+            MinimumX = minimumX;
+            MaximumX = maximumX;
+            MinimumZ = minimumZ;
+            MaximumZ = maximumZ;
+            CharacterRadius = characterRadius;
+            CharacterHeight = characterHeight;
+            StepHeight = stepHeight;
+            MaximumSlopeDegrees = maximumSlopeDegrees;
+            GroundSnapDistance = groundSnapDistance;
+            MaximumSubstepDistance = maximumSubstepDistance;
+            MaximumPenetrationIterations = maximumPenetrationIterations;
+        }
+
+        /// <summary>
+        /// Simulation ticks per second.
+        /// </summary>
+        public ushort TickRateHz { get; }
+
+        /// <summary>
+        /// Snapshots per second; divides the tick rate.
+        /// </summary>
+        public ushort SnapshotRateHz { get; }
+
+        /// <summary>
+        /// Walking speed in meters per second.
+        /// </summary>
+        public float WalkSpeed { get; }
+
+        /// <summary>
+        /// Sprinting speed in meters per second; at least the walking speed.
+        /// </summary>
+        public float SprintSpeed { get; }
+
+        /// <summary>
+        /// Turn rate in degrees per second.
+        /// </summary>
+        public float RotationSpeedDegrees { get; }
+
+        /// <summary>
+        /// Vertical acceleration in meters per second squared.
+        /// </summary>
+        public float Gravity { get; }
+
+        /// <summary>
+        /// Terminal fall speed in meters per second.
+        /// </summary>
+        public float MaximumFallSpeed { get; }
+
+        /// <summary>
+        /// Upward velocity of a jump in meters per second.
+        /// </summary>
+        public float JumpVelocity { get; }
+
+        /// <summary>
+        /// Vertical velocity that keeps a grounded player on the ground.
+        /// </summary>
+        public float GroundedVerticalVelocity { get; }
+
+        /// <summary>
+        /// Height of the fallback ground plane in meters.
+        /// </summary>
+        public float GroundHeight { get; }
+
+        /// <summary>
+        /// Western world bound in meters; below the eastern bound.
+        /// </summary>
+        public float MinimumX { get; }
+
+        /// <summary>
+        /// Eastern world bound in meters.
+        /// </summary>
+        public float MaximumX { get; }
+
+        /// <summary>
+        /// Southern world bound in meters; below the northern bound.
+        /// </summary>
+        public float MinimumZ { get; }
+
+        /// <summary>
+        /// Northern world bound in meters.
+        /// </summary>
+        public float MaximumZ { get; }
+
+        /// <summary>
+        /// Capsule radius in meters.
+        /// </summary>
+        public float CharacterRadius { get; }
+
+        /// <summary>
+        /// Capsule height in meters; at least twice the radius.
+        /// </summary>
+        public float CharacterHeight { get; }
+
+        /// <summary>
+        /// Highest step in meters; below the capsule height.
+        /// </summary>
+        public float StepHeight { get; }
+
+        /// <summary>
+        /// Steepest walkable slope in degrees.
+        /// </summary>
+        public float MaximumSlopeDegrees { get; }
+
+        /// <summary>
+        /// Distance in meters within which a player snaps to the ground.
+        /// </summary>
+        public float GroundSnapDistance { get; }
+
+        /// <summary>
+        /// Longest collision substep in meters; at most the radius.
+        /// </summary>
+        public float MaximumSubstepDistance { get; }
+
+        /// <summary>
+        /// Collision depenetration passes per substep.
+        /// </summary>
+        public byte MaximumPenetrationIterations { get; }
+    }
+
+    /// <summary>
+    /// One tick of movement input. The move vector is at most one unit long.
+    /// </summary>
+    public sealed partial class RealtimeMovementInput
+    {
+        public RealtimeMovementInput(
+            uint inputSequence,
+            uint clientTick,
+            float moveX,
+            float moveY,
+            float cameraYawDegrees,
+            RealtimeMovementButtons buttons)
+        {
+            InputSequence = inputSequence;
+            ClientTick = clientTick;
+            MoveX = moveX;
+            MoveY = moveY;
+            CameraYawDegrees = cameraYawDegrees;
+            Buttons = buttons;
+        }
+
+        /// <summary>
+        /// Increases by one with every input.
+        /// </summary>
+        public uint InputSequence { get; }
+
+        /// <summary>
+        /// The client simulation tick of the input.
+        /// </summary>
+        public uint ClientTick { get; }
+
+        /// <summary>
+        /// Sideways axis of the move vector.
+        /// </summary>
+        public float MoveX { get; }
+
+        /// <summary>
+        /// Forward axis of the move vector.
+        /// </summary>
+        public float MoveY { get; }
+
+        /// <summary>
+        /// Camera facing in degrees.
+        /// </summary>
+        public float CameraYawDegrees { get; }
+
+        /// <summary>
+        /// The held movement buttons.
+        /// </summary>
+        public RealtimeMovementButtons Buttons { get; }
+    }
+
+    /// <summary>
+    /// The owner's authoritative state and input acknowledgement for reconciliation.
+    /// </summary>
+    public sealed partial class RealtimeOwnerSimulationSnapshot
+    {
+        public RealtimeOwnerSimulationSnapshot(
+            uint snapshotSequence,
+            uint serverTick,
+            uint lastProcessedInputSequence,
+            RealtimePlayerState state)
+        {
+            SnapshotSequence = snapshotSequence;
+            ServerTick = serverTick;
+            LastProcessedInputSequence = lastProcessedInputSequence;
+            State = state;
+        }
+
+        /// <summary>
+        /// Increases with every owner snapshot.
+        /// </summary>
+        public uint SnapshotSequence { get; }
+
+        /// <summary>
+        /// The worker simulation tick of the state.
+        /// </summary>
+        public uint ServerTick { get; }
+
+        /// <summary>
+        /// The newest input sequence the worker applied.
+        /// </summary>
+        public uint LastProcessedInputSequence { get; }
+
+        /// <summary>
+        /// The owner's authoritative movement state.
+        /// </summary>
+        public RealtimePlayerState State { get; }
+    }
+
+    // Encoding, decoding, and validation of the Movement family.
+    public static partial class RealtimeProtocol
+    {
+        /// <summary>
+        /// The size in bytes of every OwnerSimulationSnapshot packet, including the frame header.
+        /// </summary>
+        public const int OwnerSimulationSnapshotPacketSize = 48;
+
+        /// <summary>
+        /// The newest movement inputs, oldest first.
+        /// </summary>
+        public static byte[] EncodeMovementInputBatch(RealtimeMovementInput[] inputs)
+        {
+            if (!IsValidMovementInputBatch(inputs))
+            {
+                throw new ArgumentException("Movement input batch is invalid.", nameof(inputs));
+            }
+
+            return Encode(RealtimeMessageType.MovementInputBatch, writer => WriteMovementInputBatch(writer, inputs));
+        }
+
+        public static bool TryDecodeMovementInputBatch(byte[] data, out RealtimeMovementInput[] inputs, out string error)
+        {
+            inputs = null;
+            if (!TryCreateReader(data, RealtimeMessageType.MovementInputBatch, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadMovementInputBatch(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidMovementInputBatch(decoded))
+                {
+                    error = "Movement input batch is invalid.";
+                    return false;
+                }
+
+                inputs = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteMovementInputBatch(BinaryWriter writer, RealtimeMovementInput[] value)
+        {
+            writer.Write((byte)value.Length);
+            foreach (var item in value)
+            {
+                WriteMovementInput(writer, item);
+            }
+        }
+
+        private static bool TryReadMovementInputBatch(BinaryReader reader, out RealtimeMovementInput[] value, out string error)
+        {
+            value = null;
+            if (!TryReadByte(reader, out var inputsCount, out error))
+            {
+                return false;
+            }
+
+            if (inputsCount < 1 || inputsCount > MaximumInputBatchSize)
+            {
+                error = "Movement input batch inputs count is invalid.";
+                return false;
+            }
+
+            var inputs = new RealtimeMovementInput[inputsCount];
+            for (var index = 0; index < inputs.Length; index++)
+            {
+                if (!TryReadMovementInput(reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                inputs[index] = element;
+            }
+
+            value = inputs;
+            return true;
+        }
+
+        private static bool IsValidMovementInputBatch(RealtimeMovementInput[] value)
+        {
+            if (value == null
+                || value.Length < 1
+                || value.Length > MaximumInputBatchSize)
+            {
+                return false;
+            }
+
+            foreach (var item in value)
+            {
+                if (!IsValidMovementInput(item))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The owner's authoritative state and input acknowledgement for reconciliation.
+        /// </summary>
+        public static byte[] EncodeOwnerSimulationSnapshot(RealtimeOwnerSimulationSnapshot snapshot)
+        {
+            if (!IsValidOwnerSimulationSnapshot(snapshot))
+            {
+                throw new ArgumentException("Owner simulation snapshot is invalid.", nameof(snapshot));
+            }
+
+            return Encode(RealtimeMessageType.OwnerSimulationSnapshot, writer => WriteOwnerSimulationSnapshot(writer, snapshot));
+        }
+
+        public static bool TryDecodeOwnerSimulationSnapshot(byte[] data, out RealtimeOwnerSimulationSnapshot snapshot, out string error)
+        {
+            snapshot = null;
+            if (!TryCreateReader(data, RealtimeMessageType.OwnerSimulationSnapshot, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadOwnerSimulationSnapshot(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidOwnerSimulationSnapshot(decoded))
+                {
+                    error = "Owner simulation snapshot is invalid.";
+                    return false;
+                }
+
+                snapshot = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteOwnerSimulationSnapshot(BinaryWriter writer, RealtimeOwnerSimulationSnapshot value)
+        {
+            writer.Write(value.SnapshotSequence);
+            writer.Write(value.ServerTick);
+            writer.Write(value.LastProcessedInputSequence);
+            WritePlayerState(writer, value.State);
+        }
+
+        private static bool TryReadOwnerSimulationSnapshot(BinaryReader reader, out RealtimeOwnerSimulationSnapshot value, out string error)
+        {
+            value = null;
+            if (!TryReadUInt32(reader, out var snapshotSequence, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadUInt32(reader, out var serverTick, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadUInt32(reader, out var lastProcessedInputSequence, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadPlayerState(reader, out var state, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeOwnerSimulationSnapshot(snapshotSequence, serverTick, lastProcessedInputSequence, state);
+            return true;
+        }
+
+        private static bool IsValidOwnerSimulationSnapshot(RealtimeOwnerSimulationSnapshot value)
+        {
+            if (value == null
+                || !IsValidPlayerState(value.State))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WritePlayerState(BinaryWriter writer, RealtimePlayerState value)
+        {
+            if (!IsValidPlayerState(value))
+            {
+                throw new ArgumentException("Player state is invalid.", nameof(value));
+            }
+
+            writer.Write(value.PositionX);
+            writer.Write(value.PositionY);
+            writer.Write(value.PositionZ);
+            writer.Write(value.VelocityX);
+            writer.Write(value.VelocityY);
+            writer.Write(value.VelocityZ);
+            writer.Write(value.YawDegrees);
+            writer.Write((byte)((value.IsGrounded ? 1 : 0) | (value.IsSprinting ? 2 : 0)));
+        }
+
+        private static bool TryReadPlayerState(BinaryReader reader, out RealtimePlayerState value, out string error)
+        {
+            value = null;
+            if (!TryReadSingle(reader, out var positionX, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var positionY, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var positionZ, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var velocityX, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var velocityY, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var velocityZ, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var yawDegrees, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadByte(reader, out var flags, out error))
+            {
+                return false;
+            }
+
+            if ((flags & ~0x03) != 0)
+            {
+                error = "Player state flags has unknown bits.";
+                return false;
+            }
+
+            var decoded = new RealtimePlayerState(positionX, positionY, positionZ, velocityX, velocityY, velocityZ, yawDegrees, (flags & 0x01) != 0, (flags & 0x02) != 0);
+            if (!IsValidPlayerState(decoded))
+            {
+                error = "Player state is invalid.";
+                return false;
+            }
+
+            value = decoded;
+            return true;
+        }
+
+        private static bool IsValidPlayerState(RealtimePlayerState value)
+        {
+            if (value == null
+                || !IsFinite(value.PositionX)
+                || !IsFinite(value.PositionY)
+                || !IsFinite(value.PositionZ)
+                || !IsFinite(value.VelocityX)
+                || !IsFinite(value.VelocityY)
+                || !IsFinite(value.VelocityZ)
+                || !IsFinite(value.YawDegrees))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteMovementSettings(BinaryWriter writer, RealtimeMovementSettings value)
+        {
+            if (!IsValidMovementSettings(value))
+            {
+                throw new ArgumentException("Movement settings is invalid.", nameof(value));
+            }
+
+            writer.Write(value.TickRateHz);
+            writer.Write(value.SnapshotRateHz);
+            writer.Write(value.WalkSpeed);
+            writer.Write(value.SprintSpeed);
+            writer.Write(value.RotationSpeedDegrees);
+            writer.Write(value.Gravity);
+            writer.Write(value.MaximumFallSpeed);
+            writer.Write(value.JumpVelocity);
+            writer.Write(value.GroundedVerticalVelocity);
+            writer.Write(value.GroundHeight);
+            writer.Write(value.MinimumX);
+            writer.Write(value.MaximumX);
+            writer.Write(value.MinimumZ);
+            writer.Write(value.MaximumZ);
+            writer.Write(value.CharacterRadius);
+            writer.Write(value.CharacterHeight);
+            writer.Write(value.StepHeight);
+            writer.Write(value.MaximumSlopeDegrees);
+            writer.Write(value.GroundSnapDistance);
+            writer.Write(value.MaximumSubstepDistance);
+            writer.Write(value.MaximumPenetrationIterations);
+        }
+
+        private static bool TryReadMovementSettings(BinaryReader reader, out RealtimeMovementSettings value, out string error)
+        {
+            value = null;
+            if (!TryReadUInt16(reader, out var tickRateHz, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadUInt16(reader, out var snapshotRateHz, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var walkSpeed, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var sprintSpeed, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var rotationSpeedDegrees, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var gravity, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var maximumFallSpeed, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var jumpVelocity, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var groundedVerticalVelocity, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var groundHeight, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var minimumX, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var maximumX, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var minimumZ, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var maximumZ, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var characterRadius, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var characterHeight, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var stepHeight, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var maximumSlopeDegrees, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var groundSnapDistance, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var maximumSubstepDistance, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadByte(reader, out var maximumPenetrationIterations, out error))
+            {
+                return false;
+            }
+
+            var decoded = new RealtimeMovementSettings(tickRateHz, snapshotRateHz, walkSpeed, sprintSpeed, rotationSpeedDegrees, gravity, maximumFallSpeed, jumpVelocity, groundedVerticalVelocity, groundHeight, minimumX, maximumX, minimumZ, maximumZ, characterRadius, characterHeight, stepHeight, maximumSlopeDegrees, groundSnapDistance, maximumSubstepDistance, maximumPenetrationIterations);
+            if (!IsValidMovementSettings(decoded))
+            {
+                error = "Movement settings is invalid.";
+                return false;
+            }
+
+            value = decoded;
+            return true;
+        }
+
+        private static bool IsValidMovementSettings(RealtimeMovementSettings value)
+        {
+            if (value == null
+                || value.TickRateHz < 1
+                || value.TickRateHz > 120
+                || value.SnapshotRateHz < 1
+                || !IsFinite(value.WalkSpeed)
+                || value.WalkSpeed <= 0f
+                || !IsFinite(value.SprintSpeed)
+                || !IsFinite(value.RotationSpeedDegrees)
+                || value.RotationSpeedDegrees <= 0f
+                || !IsFinite(value.Gravity)
+                || value.Gravity >= 0f
+                || !IsFinite(value.MaximumFallSpeed)
+                || value.MaximumFallSpeed <= 0f
+                || !IsFinite(value.JumpVelocity)
+                || value.JumpVelocity <= 0f
+                || !IsFinite(value.GroundedVerticalVelocity)
+                || value.GroundedVerticalVelocity > 0f
+                || !IsFinite(value.GroundHeight)
+                || !IsFinite(value.MinimumX)
+                || !IsFinite(value.MaximumX)
+                || !IsFinite(value.MinimumZ)
+                || !IsFinite(value.MaximumZ)
+                || !IsFinite(value.CharacterRadius)
+                || value.CharacterRadius <= 0f
+                || !IsFinite(value.CharacterHeight)
+                || !IsFinite(value.StepHeight)
+                || value.StepHeight < 0f
+                || !IsFinite(value.MaximumSlopeDegrees)
+                || value.MaximumSlopeDegrees <= 0f
+                || value.MaximumSlopeDegrees >= 89f
+                || !IsFinite(value.GroundSnapDistance)
+                || value.GroundSnapDistance < 0f
+                || !IsFinite(value.MaximumSubstepDistance)
+                || value.MaximumSubstepDistance <= 0f
+                || value.MaximumPenetrationIterations < 1
+                || value.MaximumPenetrationIterations > 16)
+            {
+                return false;
+            }
+
+            return SatisfiesRules(value);
+        }
+
+        private static void WriteMovementInput(BinaryWriter writer, RealtimeMovementInput value)
+        {
+            if (!IsValidMovementInput(value))
+            {
+                throw new ArgumentException("Movement input is invalid.", nameof(value));
+            }
+
+            writer.Write(value.InputSequence);
+            writer.Write(value.ClientTick);
+            writer.Write(value.MoveX);
+            writer.Write(value.MoveY);
+            writer.Write(value.CameraYawDegrees);
+            writer.Write((byte)value.Buttons);
+        }
+
+        private static bool TryReadMovementInput(BinaryReader reader, out RealtimeMovementInput value, out string error)
+        {
+            value = null;
+            if (!TryReadUInt32(reader, out var inputSequence, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadUInt32(reader, out var clientTick, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var moveX, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var moveY, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadSingle(reader, out var cameraYawDegrees, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadByte(reader, out var buttonsByte, out error))
+            {
+                return false;
+            }
+
+            var buttons = (RealtimeMovementButtons)buttonsByte;
+
+            var decoded = new RealtimeMovementInput(inputSequence, clientTick, moveX, moveY, cameraYawDegrees, buttons);
+            if (!IsValidMovementInput(decoded))
+            {
+                error = "Movement input is invalid.";
+                return false;
+            }
+
+            value = decoded;
+            return true;
+        }
+
+        private static bool IsValidMovementInput(RealtimeMovementInput value)
+        {
+            if (value == null
+                || !IsFinite(value.MoveX)
+                || !IsFinite(value.MoveY)
+                || !IsFinite(value.CameraYawDegrees)
+                || !IsDefined(value.Buttons))
+            {
+                return false;
+            }
+
+            return SatisfiesRules(value);
+        }
+
+        private static bool IsDefined(RealtimeMovementButtons value)
+        {
+            return ((byte)value & ~0x07) == 0;
+        }
     }
 }

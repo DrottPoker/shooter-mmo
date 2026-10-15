@@ -315,18 +315,20 @@ for backend processes and tests.
 
 The protocol is described once in `src/Shared/GameProtocol/Schema~/realtime-protocol.json`.
 `tools/ProtocolGenerator` turns the schema into `Runtime/Generated`: the
-version, channels, limits, `RealtimeMessageType`, the message descriptors, and
-the protocol enums. [Realtime Protocol](REALTIME_PROTOCOL.md) describes the wire
+version, channels, limits, `RealtimeMessageType`, the message descriptors, the
+protocol enums, and the models, codecs, and validation of the generated
+families. [Realtime Protocol](REALTIME_PROTOCOL.md) describes the wire
 format, the schema, the descriptors, and the versioning rules.
 
 The static `RealtimeProtocol` facade is one partial class. `RealtimeProtocol.cs`
-holds the framing, error messages, and the primitive readers and writers. Each
-message family has its own folder with a message file and a codec file:
-`Session` (join, leave, disconnect), `Movement` (input, settings, owner
-snapshot), `Replication` (entity presence and simulation snapshots), `Items`,
-`Corpses`, and `WorldActors`. A new message gets its id, family, direction,
-channel, and delivery in the schema, and its model and codec in its family
-folder.
+holds the framing, error messages, and the primitive readers and writers. The
+message families are `Session` (join, leave, disconnect), `Movement` (input,
+settings, owner snapshot), `Replication` (entity presence and simulation
+snapshots), `Items`, `Corpses`, and `WorldActors`, each with its own folder. A
+generated family keeps only its hand-written cross-field rules there, and the
+generator writes its models and codecs; a family that is not generated yet
+keeps a message file and a codec file there. Which families are generated is
+listed in [Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
 
 Protocol version 14 includes:
 

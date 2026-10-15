@@ -53,25 +53,96 @@ The schema currently holds:
   `protocol` limits become public `RealtimeProtocol` constants; `private`
   limits stay inside `RealtimeProtocol`.
 - `enums`: every protocol enum with its family and byte values.
+- `structs`: value types that messages and other structs contain, such as
+  `PlayerState`.
 - `messages`: every message type with its id, family, direction, channel, and
-  delivery.
+  delivery. A message with `"codec": "generated"` also lists its fields, and
+  the generator writes its model class and codec. A message with
+  `"codec": "handWritten"` keeps its model and codec in its family folder.
 
 The generator owns `Runtime/Generated`. `RealtimeProtocol.Core.g.cs` holds
 `RealtimeMessageType`, the protocol constants, `RealtimeProtocolLimits`, and the
-message descriptors. One file per family holds that family's enums. The
-generator writes each `.meta` file itself with a GUID derived from the package
-path, so no Unity Editor step is needed and every machine gets the same GUID.
-Generated C# stays within C# 8 and .NET Standard 2.1, because the .NET project
-compiles it with C# 8, which Unity's C# 9 compiler also accepts.
+message descriptors. One file per family holds that family's enums, structs,
+generated messages, their `Encode` and `TryDecode` methods, and their
+validation. The generator writes each `.meta` file itself with a GUID derived
+from the package path, so no Unity Editor step is needed and every machine gets
+the same GUID. Generated C# stays within C# 8 and .NET Standard 2.1, because the
+.NET project compiles it with C# 8, which Unity's C# 9 compiler also accepts.
 
-The model classes and codecs are still written by hand in the family folders
-(`Session`, `Movement`, `Replication`, `Items`, `Corpses`, and `WorldActors`).
-Structural phase 2 moves them into the schema one family at a time.
+Structural phase 2 moves the families into the schema one at a time:
+
+| Family | Codec |
+| --- | --- |
+| `Movement` | Generated; `Movement/RealtimeProtocol.Movement.cs` holds its cross-field rules |
+| `Replication` | Hand-written |
+| `Items` | Hand-written |
+| `Session` | Hand-written |
+| `WorldActors` | Hand-written |
+| `Corpses` | Hand-written |
+
+Hand-written codecs call the generated struct helpers, such as
+`WritePlayerState` and `TryReadMovementSettings`, which keep the names the
+hand-written code used before.
 
 The quality gate, CI, and `ProtocolGeneratorTests` in `Mmorpg.Tools.Tests` all
 fail when a generated file is stale, missing, or not produced by the schema.
 The commands are in
 [Local Development](LOCAL_DEVELOPMENT.md#realtime-protocol-generation).
+
+## Fields, Structs, And Value Rules
+
+A generated message and a struct list their fields in wire order. The
+generated class takes them in the same order in its constructor and exposes
+each as a get-only property with the field's description.
+
+| `type` | C# type | Encoding |
+| --- | --- | --- |
+| `u8`, `u16`, `u32`, `u64` | `byte`, `ushort`, `uint`, `ulong` | Little-endian |
+| `i32`, `i64` | `int`, `long` | Little-endian |
+| `f32` | `float` | Always finite |
+| `bool` | `bool` | One byte |
+| `guid` | `Guid` | 16 bytes |
+| An enum name | The enum | One byte; the value must be defined, and a flags value may only combine defined bits |
+| A struct name | The struct class | The struct's fields |
+| `array` | An array of `items` | A `u8` count from `minCount` to `maxCount`, then the elements |
+| `bits8` | One `bool` property per entry in `bits` | One byte, lowest bit first; unknown bits are rejected |
+
+Value rules sit next to the type and apply both when encoding and when
+decoding:
+
+- `minimum` and `maximum` for integers and floats, inclusive. Integer bounds
+  may name a limit.
+- `exclusiveMinimum` and `exclusiveMaximum` for floats.
+- `nonEmpty` for a `guid` that must not be `Guid.Empty`.
+- `lessThan` for an integer that must be below another integer field.
+- `distinct` for an array of primitives or enums whose elements must differ,
+  and `distinctBy` for an array of structs whose elements must differ in one
+  field.
+
+Rules that compare fields in other ways, or need arithmetic, set
+`"rules": true` on the struct or message. Its generated validation then also
+calls a hand-written `SatisfiesRules` overload in the family folder, for
+example `Movement/RealtimeProtocol.Movement.cs`. A missing overload is a
+compile error. `SatisfiesRules` runs after every field rule passed, so it may
+rely on them.
+
+A message uses `"api": "unwrap"` when it has a single field and its encode and
+decode methods should take that value directly, as `MovementInputBatch` takes
+`RealtimeMovementInput[]`. `parameter` names the encode and decode parameter.
+
+`sizeConstant` on a fixed-size struct or message, and `emptySizeConstant` on a
+message with arrays, become public `RealtimeProtocol` constants such as
+`OwnerSimulationSnapshotPacketSize`, so code that budgets packets never repeats
+a size by hand.
+
+## Size Limits
+
+The generator computes the smallest and largest encoded size of every
+generated message from its schema. A message with unreliable delivery whose
+largest size exceeds 1,023 bytes fails generation, so snapshots provably fit.
+A reliable message whose largest size can exceed 1,200 bytes must set
+`"runtimeSizeCheck": true`, which makes the risk a visible decision; encoding
+such a packet then throws `InvalidOperationException` when it is too large.
 
 ## Message Descriptors
 

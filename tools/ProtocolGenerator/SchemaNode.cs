@@ -133,6 +133,58 @@ internal sealed class SchemaNode
         return Object(value, Child(name));
     }
 
+    public double? OptionalNumber(string name)
+    {
+        if (!TryRead(name, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var number) || !double.IsFinite(number))
+        {
+            throw new ProtocolSchemaException(Child(name), "must be a finite number.");
+        }
+
+        return number;
+    }
+
+    // A property that is either a string, returned, or an integer, returned in number.
+    public string? OptionalStringOrNull(string name, out long? number)
+    {
+        number = null;
+        if (!TryRead(name, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var integer))
+        {
+            number = integer;
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            return value.GetString();
+        }
+
+        throw new ProtocolSchemaException(Child(name), "must be an integer or the name of a limit.");
+    }
+
+    // Reads the property as an object when it is one; other kinds leave it for another reader.
+    public bool TryReadObject(string name, out SchemaNode node)
+    {
+        node = null!;
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        readProperties.Add(name);
+        node = Object(value, Child(name));
+        return true;
+    }
+
     // Marks a property as known without interpreting it, such as "$schema".
     public void Ignore(string name)
     {
