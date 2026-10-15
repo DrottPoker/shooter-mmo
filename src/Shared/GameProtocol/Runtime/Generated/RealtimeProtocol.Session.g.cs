@@ -31,9 +31,673 @@ namespace Mmorpg.GameProtocol
         public string Message { get; }
     }
 
+    /// <summary>
+    /// Accepts a join and carries the session, movement settings, and initial state.
+    /// </summary>
+    public sealed partial class RealtimeJoinAccepted
+    {
+        public RealtimeJoinAccepted(
+            string simulationSessionId,
+            string accountId,
+            string characterId,
+            string characterName,
+            string shardId,
+            string worldId,
+            ulong controlledEntityId,
+            string simulationRevision,
+            string collisionRevision,
+            string joinedAt,
+            string sessionExpiresAt,
+            bool isReconnect,
+            RealtimeCarryState carryState,
+            RealtimeMovementSettings movementSettings,
+            RealtimePlayerState initialPlayerState)
+        {
+            SimulationSessionId = simulationSessionId;
+            AccountId = accountId;
+            CharacterId = characterId;
+            CharacterName = characterName;
+            ShardId = shardId;
+            WorldId = worldId;
+            ControlledEntityId = controlledEntityId;
+            SimulationRevision = simulationRevision;
+            CollisionRevision = collisionRevision;
+            JoinedAt = joinedAt;
+            SessionExpiresAt = sessionExpiresAt;
+            IsReconnect = isReconnect;
+            CarryState = carryState;
+            MovementSettings = movementSettings;
+            InitialPlayerState = initialPlayerState;
+        }
+
+        /// <summary>
+        /// The simulation session.
+        /// </summary>
+        public string SimulationSessionId { get; }
+
+        /// <summary>
+        /// The account that joined.
+        /// </summary>
+        public string AccountId { get; }
+
+        /// <summary>
+        /// The character that joined.
+        /// </summary>
+        public string CharacterId { get; }
+
+        /// <summary>
+        /// The display name of the character.
+        /// </summary>
+        public string CharacterName { get; }
+
+        /// <summary>
+        /// The shard that hosts the session.
+        /// </summary>
+        public string ShardId { get; }
+
+        /// <summary>
+        /// The world the character is in.
+        /// </summary>
+        public string WorldId { get; }
+
+        /// <summary>
+        /// The entity the client controls.
+        /// </summary>
+        public ulong ControlledEntityId { get; }
+
+        /// <summary>
+        /// The simulation content revision of the worker.
+        /// </summary>
+        public string SimulationRevision { get; }
+
+        /// <summary>
+        /// The collision content revision of the worker.
+        /// </summary>
+        public string CollisionRevision { get; }
+
+        /// <summary>
+        /// When the session started, as an ISO 8601 timestamp.
+        /// </summary>
+        public string JoinedAt { get; }
+
+        /// <summary>
+        /// When the session expires, as an ISO 8601 timestamp.
+        /// </summary>
+        public string SessionExpiresAt { get; }
+
+        /// <summary>
+        /// Whether this join resumed an earlier session.
+        /// </summary>
+        public bool IsReconnect { get; }
+
+        /// <summary>
+        /// The committed carry state of the character.
+        /// </summary>
+        public RealtimeCarryState CarryState { get; }
+
+        /// <summary>
+        /// The movement settings the client must predict with.
+        /// </summary>
+        public RealtimeMovementSettings MovementSettings { get; }
+
+        /// <summary>
+        /// The authoritative state of the controlled entity at join.
+        /// </summary>
+        public RealtimePlayerState InitialPlayerState { get; }
+    }
+
     // Encoding, decoding, and validation of the Session family.
     public static partial class RealtimeProtocol
     {
+        /// <summary>
+        /// Asks to join a simulation session with a join ticket.
+        /// </summary>
+        public static byte[] EncodeJoinRequest(string joinTicket)
+        {
+            if (!IsValidJoinRequest(joinTicket))
+            {
+                throw new ArgumentException("Join request is invalid.", nameof(joinTicket));
+            }
+
+            return Encode(RealtimeMessageType.JoinRequest, writer => WriteJoinRequest(writer, joinTicket));
+        }
+
+        public static bool TryDecodeJoinRequest(byte[] data, out string joinTicket, out string error)
+        {
+            joinTicket = string.Empty;
+            if (!TryCreateReader(data, RealtimeMessageType.JoinRequest, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadJoinRequest(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidJoinRequest(decoded, decoding: true))
+                {
+                    error = "Join request is invalid.";
+                    return false;
+                }
+
+                joinTicket = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteJoinRequest(BinaryWriter writer, string value)
+        {
+            WriteString(writer, value, MaximumJoinTicketLength, "value");
+        }
+
+        private static bool TryReadJoinRequest(BinaryReader reader, out string value, out string error)
+        {
+            value = string.Empty;
+            if (!TryReadString(reader, MaximumJoinTicketLength, out var joinTicket, out error))
+            {
+                return false;
+            }
+
+            value = joinTicket;
+            return true;
+        }
+
+        private static bool IsValidJoinRequest(string value, bool decoding = false)
+        {
+            if (value == null
+                || (!decoding && string.IsNullOrWhiteSpace(value))
+                || value.Length > MaximumJoinTicketLength)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Accepts a join and carries the session, movement settings, and initial state.
+        /// </summary>
+        public static byte[] EncodeJoinAccepted(RealtimeJoinAccepted session)
+        {
+            if (!IsValidJoinAccepted(session))
+            {
+                throw new ArgumentException("Join accepted is invalid.", nameof(session));
+            }
+
+            return Encode(RealtimeMessageType.JoinAccepted, writer => WriteJoinAccepted(writer, session));
+        }
+
+        public static bool TryDecodeJoinAccepted(byte[] data, out RealtimeJoinAccepted session, out string error)
+        {
+            session = null;
+            if (!TryCreateReader(data, RealtimeMessageType.JoinAccepted, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadJoinAccepted(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidJoinAccepted(decoded, decoding: true))
+                {
+                    error = "Join accepted is invalid.";
+                    return false;
+                }
+
+                session = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteJoinAccepted(BinaryWriter writer, RealtimeJoinAccepted value)
+        {
+            WriteString(writer, value.SimulationSessionId, MaximumIdentifierLength, "value.SimulationSessionId");
+            WriteString(writer, value.AccountId, MaximumIdentifierLength, "value.AccountId");
+            WriteString(writer, value.CharacterId, MaximumIdentifierLength, "value.CharacterId");
+            WriteString(writer, value.CharacterName, MaximumNameLength, "value.CharacterName");
+            WriteString(writer, value.ShardId, MaximumIdentifierLength, "value.ShardId");
+            WriteString(writer, value.WorldId, MaximumIdentifierLength, "value.WorldId");
+            writer.Write(value.ControlledEntityId);
+            WriteString(writer, value.SimulationRevision, MaximumIdentifierLength, "value.SimulationRevision");
+            WriteString(writer, value.CollisionRevision, MaximumIdentifierLength, "value.CollisionRevision");
+            WriteString(writer, value.JoinedAt, MaximumTimestampLength, "value.JoinedAt");
+            WriteString(writer, value.SessionExpiresAt, MaximumTimestampLength, "value.SessionExpiresAt");
+            writer.Write(value.IsReconnect);
+            WriteCarryState(writer, value.CarryState);
+            WriteMovementSettings(writer, value.MovementSettings);
+            WritePlayerState(writer, value.InitialPlayerState);
+        }
+
+        private static bool TryReadJoinAccepted(BinaryReader reader, out RealtimeJoinAccepted value, out string error)
+        {
+            value = null;
+            if (!TryReadString(reader, MaximumIdentifierLength, out var simulationSessionId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumIdentifierLength, out var accountId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumIdentifierLength, out var characterId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumNameLength, out var characterName, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumIdentifierLength, out var shardId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumIdentifierLength, out var worldId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadUInt64(reader, out var controlledEntityId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumIdentifierLength, out var simulationRevision, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumIdentifierLength, out var collisionRevision, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumTimestampLength, out var joinedAt, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadString(reader, MaximumTimestampLength, out var sessionExpiresAt, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadBoolean(reader, out var isReconnect, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadCarryState(reader, out var carryState, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadMovementSettings(reader, out var movementSettings, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadPlayerState(reader, out var initialPlayerState, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeJoinAccepted(simulationSessionId, accountId, characterId, characterName, shardId, worldId, controlledEntityId, simulationRevision, collisionRevision, joinedAt, sessionExpiresAt, isReconnect, carryState, movementSettings, initialPlayerState);
+            return true;
+        }
+
+        private static bool IsValidJoinAccepted(RealtimeJoinAccepted value, bool decoding = false)
+        {
+            if (value == null
+                || value.SimulationSessionId == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.SimulationSessionId))
+                || value.SimulationSessionId.Length > MaximumIdentifierLength
+                || value.AccountId == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.AccountId))
+                || value.AccountId.Length > MaximumIdentifierLength
+                || value.CharacterId == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.CharacterId))
+                || value.CharacterId.Length > MaximumIdentifierLength
+                || value.CharacterName == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.CharacterName))
+                || value.CharacterName.Length > MaximumNameLength
+                || value.ShardId == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.ShardId))
+                || value.ShardId.Length > MaximumIdentifierLength
+                || value.WorldId == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.WorldId))
+                || value.WorldId.Length > MaximumIdentifierLength
+                || value.ControlledEntityId < 1
+                || value.SimulationRevision == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.SimulationRevision))
+                || value.SimulationRevision.Length > MaximumIdentifierLength
+                || value.CollisionRevision == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.CollisionRevision))
+                || value.CollisionRevision.Length > MaximumIdentifierLength
+                || value.JoinedAt == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.JoinedAt))
+                || value.JoinedAt.Length > MaximumTimestampLength
+                || value.SessionExpiresAt == null
+                || (!decoding && string.IsNullOrWhiteSpace(value.SessionExpiresAt))
+                || value.SessionExpiresAt.Length > MaximumTimestampLength
+                || !IsValidCarryState(value.CarryState)
+                || !IsValidMovementSettings(value.MovementSettings)
+                || !IsValidPlayerState(value.InitialPlayerState))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Rejects a join with a structured error.
+        /// </summary>
+        public static byte[] EncodeJoinRejected(string code, string message)
+        {
+            var rejection = new RealtimeError(code, message);
+            if (!IsValidJoinRejected(rejection))
+            {
+                throw new ArgumentException("Join rejected is invalid.", nameof(rejection));
+            }
+
+            return Encode(RealtimeMessageType.JoinRejected, writer => WriteJoinRejected(writer, rejection));
+        }
+
+        public static bool TryDecodeJoinRejected(byte[] data, out RealtimeError rejection, out string error)
+        {
+            rejection = null;
+            if (!TryCreateReader(data, RealtimeMessageType.JoinRejected, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadJoinRejected(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidJoinRejected(decoded, decoding: true))
+                {
+                    error = "Join rejected is invalid.";
+                    return false;
+                }
+
+                rejection = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteJoinRejected(BinaryWriter writer, RealtimeError value)
+        {
+            WriteError(writer, value);
+        }
+
+        private static bool TryReadJoinRejected(BinaryReader reader, out RealtimeError value, out string error)
+        {
+            value = null;
+            if (!TryReadError(reader, out var rejection, out error, acceptBlankText: true))
+            {
+                return false;
+            }
+
+            value = rejection;
+            return true;
+        }
+
+        private static bool IsValidJoinRejected(RealtimeError value, bool decoding = false)
+        {
+            if (!IsValidError(value, acceptBlankText: decoding))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Asks to leave the active simulation session.
+        /// </summary>
+        public static byte[] EncodeLeaveRequest(string simulationSessionId)
+        {
+            if (!IsValidLeaveRequest(simulationSessionId))
+            {
+                throw new ArgumentException("Leave request is invalid.", nameof(simulationSessionId));
+            }
+
+            return Encode(RealtimeMessageType.LeaveRequest, writer => WriteLeaveRequest(writer, simulationSessionId));
+        }
+
+        public static bool TryDecodeLeaveRequest(byte[] data, out string simulationSessionId, out string error)
+        {
+            simulationSessionId = string.Empty;
+            if (!TryCreateReader(data, RealtimeMessageType.LeaveRequest, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadLeaveRequest(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidLeaveRequest(decoded, decoding: true))
+                {
+                    error = "Leave request is invalid.";
+                    return false;
+                }
+
+                simulationSessionId = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteLeaveRequest(BinaryWriter writer, string value)
+        {
+            WriteString(writer, value, MaximumIdentifierLength, "value");
+        }
+
+        private static bool TryReadLeaveRequest(BinaryReader reader, out string value, out string error)
+        {
+            value = string.Empty;
+            if (!TryReadString(reader, MaximumIdentifierLength, out var simulationSessionId, out error))
+            {
+                return false;
+            }
+
+            value = simulationSessionId;
+            return true;
+        }
+
+        private static bool IsValidLeaveRequest(string value, bool decoding = false)
+        {
+            if (value == null
+                || (!decoding && string.IsNullOrWhiteSpace(value))
+                || value.Length > MaximumIdentifierLength)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Confirms a leave.
+        /// </summary>
+        public static byte[] EncodeLeaveAccepted()
+        {
+            return Encode(RealtimeMessageType.LeaveAccepted, _ => { });
+        }
+
+        public static bool TryDecodeLeaveAccepted(byte[] data, out string error)
+        {
+            if (!TryCreateReader(data, RealtimeMessageType.LeaveAccepted, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                return TryFinish(stream, out error);
+            }
+        }
+
+        /// <summary>
+        /// Rejects a leave with a structured error.
+        /// </summary>
+        public static byte[] EncodeLeaveRejected(string code, string message)
+        {
+            var rejection = new RealtimeError(code, message);
+            if (!IsValidLeaveRejected(rejection))
+            {
+                throw new ArgumentException("Leave rejected is invalid.", nameof(rejection));
+            }
+
+            return Encode(RealtimeMessageType.LeaveRejected, writer => WriteLeaveRejected(writer, rejection));
+        }
+
+        public static bool TryDecodeLeaveRejected(byte[] data, out RealtimeError rejection, out string error)
+        {
+            rejection = null;
+            if (!TryCreateReader(data, RealtimeMessageType.LeaveRejected, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadLeaveRejected(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidLeaveRejected(decoded, decoding: true))
+                {
+                    error = "Leave rejected is invalid.";
+                    return false;
+                }
+
+                rejection = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteLeaveRejected(BinaryWriter writer, RealtimeError value)
+        {
+            WriteError(writer, value);
+        }
+
+        private static bool TryReadLeaveRejected(BinaryReader reader, out RealtimeError value, out string error)
+        {
+            value = null;
+            if (!TryReadError(reader, out var rejection, out error, acceptBlankText: true))
+            {
+                return false;
+            }
+
+            value = rejection;
+            return true;
+        }
+
+        private static bool IsValidLeaveRejected(RealtimeError value, bool decoding = false)
+        {
+            if (!IsValidError(value, acceptBlankText: decoding))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Tells the client why the worker ends the connection.
+        /// </summary>
+        public static byte[] EncodeServerDisconnect(string code, string message)
+        {
+            var reason = new RealtimeError(code, message);
+            if (!IsValidServerDisconnect(reason))
+            {
+                throw new ArgumentException("Server disconnect is invalid.", nameof(reason));
+            }
+
+            return Encode(RealtimeMessageType.ServerDisconnect, writer => WriteServerDisconnect(writer, reason));
+        }
+
+        public static bool TryDecodeServerDisconnect(byte[] data, out RealtimeError reason, out string error)
+        {
+            reason = null;
+            if (!TryCreateReader(data, RealtimeMessageType.ServerDisconnect, out var stream, out var reader, out error))
+            {
+                return false;
+            }
+
+            using (stream)
+            using (reader)
+            {
+                if (!TryReadServerDisconnect(reader, out var decoded, out error) || !TryFinish(stream, out error))
+                {
+                    return false;
+                }
+
+                if (!IsValidServerDisconnect(decoded, decoding: true))
+                {
+                    error = "Server disconnect is invalid.";
+                    return false;
+                }
+
+                reason = decoded;
+                return true;
+            }
+        }
+
+        private static void WriteServerDisconnect(BinaryWriter writer, RealtimeError value)
+        {
+            WriteError(writer, value);
+        }
+
+        private static bool TryReadServerDisconnect(BinaryReader reader, out RealtimeError value, out string error)
+        {
+            value = null;
+            if (!TryReadError(reader, out var reason, out error, acceptBlankText: true))
+            {
+                return false;
+            }
+
+            value = reason;
+            return true;
+        }
+
+        private static bool IsValidServerDisconnect(RealtimeError value, bool decoding = false)
+        {
+            if (!IsValidError(value, acceptBlankText: decoding))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         private static void WriteError(BinaryWriter writer, RealtimeError value)
         {
             if (!IsValidError(value))
@@ -45,7 +709,7 @@ namespace Mmorpg.GameProtocol
             WriteString(writer, value.Message, MaximumErrorMessageLength, "value.Message");
         }
 
-        private static bool TryReadError(BinaryReader reader, out RealtimeError value, out string error)
+        private static bool TryReadError(BinaryReader reader, out RealtimeError value, out string error, bool acceptBlankText = false)
         {
             value = null;
             if (!TryReadString(reader, MaximumErrorCodeLength, out var code, out error))
@@ -59,7 +723,7 @@ namespace Mmorpg.GameProtocol
             }
 
             var decoded = new RealtimeError(code, message);
-            if (!IsValidError(decoded))
+            if (!IsValidError(decoded, acceptBlankText))
             {
                 error = "Error is invalid.";
                 return false;
@@ -69,12 +733,14 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
-        private static bool IsValidError(RealtimeError value)
+        private static bool IsValidError(RealtimeError value, bool acceptBlankText = false)
         {
             if (value == null
-                || string.IsNullOrWhiteSpace(value.Code)
+                || value.Code == null
+                || (!acceptBlankText && string.IsNullOrWhiteSpace(value.Code))
                 || value.Code.Length > MaximumErrorCodeLength
-                || string.IsNullOrWhiteSpace(value.Message)
+                || value.Message == null
+                || (!acceptBlankText && string.IsNullOrWhiteSpace(value.Message))
                 || value.Message.Length > MaximumErrorMessageLength)
             {
                 return false;

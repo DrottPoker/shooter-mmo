@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -76,7 +76,7 @@ Structural phase 2 moves the families into the schema one at a time:
 | `Movement` | Generated; `Movement/RealtimeProtocol.Movement.cs` holds its cross-field rules |
 | `Replication` | Generated; no hand-written rules |
 | `Items` | Generated; `Items/RealtimeProtocol.Items.cs` holds its cross-field rules |
-| `Session` | Hand-written |
+| `Session` | Generated; no hand-written rules |
 | `WorldActors` | Hand-written |
 | `Corpses` | Hand-written |
 
@@ -133,6 +133,19 @@ rely on them.
 A message uses `"api": "unwrap"` when it has a single field and its encode and
 decode methods should take that value directly, as `MovementInputBatch` takes
 `RealtimeMovementInput[]`. `parameter` names the encode and decode parameter.
+An unwrapped struct field may add `"encodeParameters": "expanded"`, so the
+encode method takes the struct's fields instead, as
+`EncodeJoinRejected(code, message)` builds the `RealtimeError` itself. A
+message with `"api": "empty"` has no fields: `EncodeLeaveAccepted()` takes
+nothing, and `TryDecodeLeaveAccepted` only reports whether the packet is valid.
+
+Text that the encoder refuses as empty or whitespace is still accepted by the
+decoder when its message field sets `"decodeBlank": "accept"`. On a struct
+field, such as the `Error` of `JoinRejected`, it applies to every text field of
+that struct, which may then contain no struct or array fields. The Session
+messages use it, so a peer that sends blank text still gets through decoding,
+and the receiving code decides what blank text means. `decodeBlank` belongs to
+message fields only, not to struct fields or variant fields.
 
 `sizeConstant` on a fixed-size struct or message, and `emptySizeConstant` on a
 message with arrays, become public `RealtimeProtocol` constants such as

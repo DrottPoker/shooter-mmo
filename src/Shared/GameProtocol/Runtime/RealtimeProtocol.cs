@@ -47,42 +47,6 @@ namespace Mmorpg.GameProtocol
             }
         }
 
-        private static byte[] EncodeError(RealtimeMessageType messageType, string code, string message)
-        {
-            return Encode(messageType, writer =>
-            {
-                WriteString(writer, code, MaximumErrorCodeLength, nameof(code));
-                WriteString(writer, message, MaximumErrorMessageLength, nameof(message));
-            });
-        }
-
-        private static bool TryDecodeError(
-            byte[] data,
-            RealtimeMessageType expectedType,
-            out RealtimeError realtimeError,
-            out string error)
-        {
-            realtimeError = null;
-            if (!TryCreateReader(data, expectedType, out var stream, out var reader, out error))
-            {
-                return false;
-            }
-
-            using (stream)
-            using (reader)
-            {
-                if (!TryReadString(reader, MaximumErrorCodeLength, out var code, out error)
-                    || !TryReadString(reader, MaximumErrorMessageLength, out var message, out error)
-                    || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                realtimeError = new RealtimeError(code, message);
-                return true;
-            }
-        }
-
         private static bool TryCreateReader(
             byte[] data,
             RealtimeMessageType expectedType,

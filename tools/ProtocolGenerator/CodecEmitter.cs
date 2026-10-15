@@ -71,9 +71,12 @@ internal static class CodecEmitter
         writer.Close();
     }
 
-    public static void EmitStructCodec(CSharpWriter writer, StructDefinition definition)
+    // A lenient struct is decoded somewhere with decodeBlank, so its reader and validation
+    // take acceptBlankText, which lets its text fields be empty or whitespace.
+    public static void EmitStructCodec(CSharpWriter writer, StructDefinition definition, bool lenient)
     {
         var display = CSharpNames.Display(definition.Name);
+        var leniency = lenient ? new Leniency(StructParameter, NestedStructs: false, AllText: true) : null;
         writer.Open($"private static void Write{definition.Name}(BinaryWriter writer, {definition.ClassName} value)");
         writer.Open($"if (!IsValid{definition.Name}(value))");
         writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")}, nameof(value));");
@@ -82,20 +85,41 @@ internal static class CodecEmitter
         EmitWrites(writer, definition.Fields, unwrap: false, union: null, display);
         writer.Close();
         writer.BlankLine();
-        EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, validate: true, union: null);
+        EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, validate: true, union: null, leniency);
         writer.BlankLine();
-        EmitIsValid(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, definition.Rules, union: null);
+        EmitIsValid(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, definition.Rules, union: null, leniency);
     }
 
     public static void EmitMessageCodec(CSharpWriter writer, MessageDefinition message)
     {
+        if (message.Api == MessageApi.Empty)
+        {
+            EmitEmptyMessageCodec(writer, message);
+            return;
+        }
+
         var unwrap = message.Api == MessageApi.Unwrap;
         var modelType = unwrap ? TypeName(message.Fields[0].Type) : message.ClassName;
         var parameter = message.Parameter;
         var display = CSharpNames.Display(message.Name);
         var invalid = CSharpWriter.Literal(display + " is invalid.");
+        var leniency = message.Fields.Any(field => field.AcceptBlankOnDecode)
+            ? new Leniency(MessageParameter, NestedStructs: true, AllText: false)
+            : null;
         writer.Summary(message.Description);
-        writer.Open($"public static byte[] Encode{message.Name}({modelType} {parameter})");
+        if (message.ExpandedEncode)
+        {
+            var structDefinition = ((StructWireType)message.Fields[0].Type).Definition;
+            var members = Members(structDefinition.Fields).ToArray();
+            var parameters = members.Select(member => $"{member.Type} {CSharpNames.Parameter(member.Name)}");
+            writer.Open($"public static byte[] Encode{message.Name}({string.Join(", ", parameters)})");
+            writer.Line($"var {parameter} = new {modelType}({string.Join(", ", members.Select(member => CSharpNames.Parameter(member.Name)))});");
+        }
+        else
+        {
+            writer.Open($"public static byte[] Encode{message.Name}({modelType} {parameter})");
+        }
+
         writer.Open($"if (!IsValid{message.Name}({parameter}))");
         writer.Line($"throw new ArgumentException({invalid}, nameof({parameter}));");
         writer.Close();
@@ -115,7 +139,7 @@ internal static class CodecEmitter
         writer.Line("return false;");
         writer.Close();
         writer.BlankLine();
-        writer.Open($"if (!IsValid{message.Name}(decoded))");
+        writer.Open($"if (!IsValid{message.Name}(decoded{(leniency is null ? string.Empty : $", {MessageParameter}: true")}))");
         writer.Line($"error = {invalid};");
         writer.Line("return false;");
         writer.Close();
@@ -129,9 +153,47 @@ internal static class CodecEmitter
         EmitWrites(writer, message.Fields, unwrap, message.Union, display);
         writer.Close();
         writer.BlankLine();
-        EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, validate: false, message.Union);
+        EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, validate: false, message.Union, leniency);
         writer.BlankLine();
-        EmitIsValid(writer, message.Name, modelType, message.Fields, unwrap, message.Rules, message.Union);
+        EmitIsValid(writer, message.Name, modelType, message.Fields, unwrap, message.Rules, message.Union, leniency);
+    }
+
+    private static void EmitEmptyMessageCodec(CSharpWriter writer, MessageDefinition message)
+    {
+        writer.Summary(message.Description);
+        writer.Open($"public static byte[] Encode{message.Name}()");
+        writer.Line($"return Encode(RealtimeMessageType.{message.Name}, _ => {{ }});");
+        writer.Close();
+        writer.BlankLine();
+        writer.Open($"public static bool TryDecode{message.Name}(byte[] data, out string error)");
+        writer.Open($"if (!TryCreateReader(data, RealtimeMessageType.{message.Name}, out var stream, out var reader, out error))");
+        writer.Line("return false;");
+        writer.Close();
+        writer.BlankLine();
+        writer.Line("using (stream)");
+        writer.Open("using (reader)");
+        writer.Line("return TryFinish(stream, out error);");
+        writer.Close();
+        writer.Close();
+    }
+
+    private const string StructParameter = "acceptBlankText";
+
+    private const string MessageParameter = "decoding";
+
+    // How validation relaxes text checks while decoding. Parameter names the bool that
+    // allows empty or whitespace text; NestedStructs passes it on to lenient struct fields,
+    // and AllText applies it to every text field instead of only decodeBlank fields.
+    private sealed record Leniency(string Parameter, bool NestedStructs, bool AllText);
+
+    // The structs that some decodeBlank field reads leniently.
+    public static ISet<StructDefinition> LenientStructs(ProtocolModel model)
+    {
+        var fields = model.Structs.SelectMany(definition => definition.Fields)
+            .Concat(model.Messages.Where(message => message.Codec == MessageCodec.Generated).SelectMany(message => message.Fields));
+        return fields.Where(field => field.AcceptBlankOnDecode && field.Type is StructWireType)
+            .Select(field => ((StructWireType)field.Type).Definition)
+            .ToHashSet();
     }
 
     public static void EmitIsDefined(CSharpWriter writer, EnumDefinition definition)
@@ -182,6 +244,11 @@ internal static class CodecEmitter
 
     private static string DefaultValue(string typeName)
     {
+        if (typeName == "string")
+        {
+            return "string.Empty";
+        }
+
         return typeName is "byte" or "ushort" or "uint" or "ulong" or "int" or "long" or "float" or "bool" or "Guid"
             ? "default"
             : "null";
@@ -429,9 +496,13 @@ internal static class CodecEmitter
         IReadOnlyList<FieldDefinition> fields,
         bool unwrap,
         bool validate,
-        UnionDefinition? union)
+        UnionDefinition? union,
+        Leniency? leniency)
     {
-        writer.Open($"private static bool TryRead{name}(BinaryReader reader, out {modelType} value, out string error)");
+        // A lenient struct reader takes the flag that its validation needs.
+        var structLeniency = validate && leniency is not null;
+        writer.Open($"private static bool TryRead{name}(BinaryReader reader, out {modelType} value, out string error"
+            + (structLeniency ? $", bool {leniency!.Parameter} = false)" : ")"));
         writer.Line($"value = {DefaultValue(modelType)};");
         var arguments = new List<string>();
         foreach (var field in fields)
@@ -464,7 +535,7 @@ internal static class CodecEmitter
                 continue;
             }
 
-            arguments.Add(EmitRead(writer, field.Type, local, fieldDisplay));
+            arguments.Add(EmitRead(writer, field.Type, local, fieldDisplay, lenient: field.AcceptBlankOnDecode));
         }
 
         if (union is not null)
@@ -496,7 +567,7 @@ internal static class CodecEmitter
         }
 
         writer.Line($"var decoded = {construction};");
-        writer.Open($"if (!IsValid{name}(decoded))");
+        writer.Open($"if (!IsValid{name}(decoded{(structLeniency ? ", " + leniency!.Parameter : string.Empty)}))");
         writer.Line($"error = {CSharpWriter.Literal(CSharpNames.Display(name) + " is invalid.")};");
         writer.Line("return false;");
         writer.Close();
@@ -572,7 +643,7 @@ internal static class CodecEmitter
     }
 
     // Reads one value into a new local and returns the expression that holds it.
-    private static string EmitRead(CSharpWriter writer, WireType type, string local, string display)
+    private static string EmitRead(CSharpWriter writer, WireType type, string local, string display, bool lenient = false)
     {
         switch (type)
         {
@@ -591,7 +662,7 @@ internal static class CodecEmitter
                 writer.BlankLine();
                 return local;
             case StructWireType structType:
-                writer.Open($"if (!TryRead{structType.Definition.Name}(reader, out var {local}, out error))");
+                writer.Open($"if (!TryRead{structType.Definition.Name}(reader, out var {local}, out error{(lenient ? ", " + StructParameter + ": true" : string.Empty)}))");
                 writer.Line("return false;");
                 writer.Close();
                 writer.BlankLine();
@@ -717,9 +788,11 @@ internal static class CodecEmitter
         IReadOnlyList<FieldDefinition> fields,
         bool unwrap,
         bool rules,
-        UnionDefinition? union)
+        UnionDefinition? union,
+        Leniency? leniency)
     {
-        writer.Open($"private static bool IsValid{name}({modelType} value)");
+        writer.Open($"private static bool IsValid{name}({modelType} value"
+            + (leniency is null ? ")" : $", bool {leniency.Parameter} = false)"));
         var conditions = new List<string>();
         if (!unwrap)
         {
@@ -738,7 +811,8 @@ internal static class CodecEmitter
                 continue;
             }
 
-            AddChecks(conditions, loops, writer, field.Type, field.Rules, expression);
+            var lenient = leniency is not null && (leniency.AllText || field.AcceptBlankOnDecode);
+            AddChecks(conditions, loops, writer, field.Type, field.Rules, expression, lenient ? leniency : null);
         }
 
         EmitChecks(writer, conditions, loops);
@@ -785,9 +859,10 @@ internal static class CodecEmitter
         CSharpWriter writer,
         WireType type,
         ValueRules rules,
-        string expression)
+        string expression,
+        Leniency? leniency = null)
     {
-        conditions.AddRange(Failures(type, rules, expression));
+        conditions.AddRange(Failures(type, rules, expression, leniency));
         if (type is ArrayWireType array)
         {
             AddArrayLoops(loops, writer, array, rules, expression);
@@ -812,7 +887,7 @@ internal static class CodecEmitter
     }
 
     // Expressions that are true when the value breaks a rule of its type.
-    private static IEnumerable<string> Failures(WireType type, ValueRules valueRules, string expression)
+    private static IEnumerable<string> Failures(WireType type, ValueRules valueRules, string expression, Leniency? leniency = null)
     {
         switch (type)
         {
@@ -867,7 +942,16 @@ internal static class CodecEmitter
                 yield return $"!IsDefined({expression})";
                 break;
             case StringWireType text:
-                yield return $"string.IsNullOrWhiteSpace({expression})";
+                if (leniency is null)
+                {
+                    yield return $"string.IsNullOrWhiteSpace({expression})";
+                }
+                else
+                {
+                    yield return $"{expression} == null";
+                    yield return $"(!{leniency.Parameter} && string.IsNullOrWhiteSpace({expression}))";
+                }
+
                 yield return $"{expression}.Length > {text.MaximumLength.Expression}";
                 if (valueRules.Format == StringFormat.Guid)
                 {
@@ -881,7 +965,8 @@ internal static class CodecEmitter
 
                 break;
             case StructWireType structType:
-                yield return $"!IsValid{structType.Definition.Name}({expression})";
+                var argument = leniency is { NestedStructs: true } ? $", {StructParameter}: {leniency.Parameter}" : string.Empty;
+                yield return $"!IsValid{structType.Definition.Name}({expression}{argument})";
                 break;
             case ArrayWireType array:
                 yield return $"{expression} == null";

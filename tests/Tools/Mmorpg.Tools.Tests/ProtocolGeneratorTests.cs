@@ -267,6 +267,89 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("|| (value.Origin != null && !IsValidPoint(value.Origin))", family, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void DecodeBlankRelaxesTextOnlyWhileDecoding()
+    {
+        var schema = GeneratedSchema();
+        schema["structs"]!.AsArray().Add(JsonNode.Parse(
+            """
+            {
+              "name": "Label",
+              "family": "Input",
+              "description": "A label.",
+              "fields": [ { "name": "Text", "type": "string", "maxLength": 8 } ]
+            }
+            """));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Note", "type": "string", "maxLength": 8, "decodeBlank": "accept" }"""));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Reason", "type": "Label", "decodeBlank": "accept" }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.True(model.Messages.Single().Fields[3].AcceptBlankOnDecode);
+        Assert.Contains("private static bool IsValidSnapshot(RealtimeSnapshot value, bool decoding = false)", family, StringComparison.Ordinal);
+        Assert.Contains("if (!IsValidSnapshot(decoded, decoding: true))", family, StringComparison.Ordinal);
+        Assert.Contains("|| (!decoding && string.IsNullOrWhiteSpace(value.Note))", family, StringComparison.Ordinal);
+        Assert.Contains("|| !IsValidLabel(value.Reason, acceptBlankText: decoding)", family, StringComparison.Ordinal);
+        Assert.Contains("TryReadLabel(reader, out var reason, out error, acceptBlankText: true)", family, StringComparison.Ordinal);
+        Assert.Contains(
+            "private static bool TryReadLabel(BinaryReader reader, out RealtimeLabel value, out string error, bool acceptBlankText = false)",
+            family,
+            StringComparison.Ordinal);
+        Assert.Contains("|| (!acceptBlankText && string.IsNullOrWhiteSpace(value.Text))", family, StringComparison.Ordinal);
+        Assert.Contains("private static bool IsValidPoint(RealtimePoint value)", family, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmptyAndExpandedMessagesTakeTheirOwnEncodeParameters()
+    {
+        var schema = MinimalSchema();
+        schema["structs"] = JsonNode.Parse(
+            """
+            [
+              {
+                "name": "Label",
+                "family": "Input",
+                "description": "A label.",
+                "fields": [
+                  { "name": "Code", "type": "string", "maxLength": 8 },
+                  { "name": "Text", "type": "string", "maxLength": 8 }
+                ]
+              }
+            ]
+            """);
+        var snapshot = schema["messages"]![0]!.AsObject();
+        snapshot["codec"] = "generated";
+        snapshot["api"] = "empty";
+        schema["messages"]!.AsArray().Add(JsonNode.Parse(
+            """
+            {
+              "name": "Rejected",
+              "id": 2,
+              "family": "Input",
+              "direction": "serverToClient",
+              "channel": "ControlChannel",
+              "delivery": "reliableOrdered",
+              "codec": "generated",
+              "description": "A rejection.",
+              "api": "unwrap",
+              "encodeParameters": "expanded",
+              "fields": [ { "name": "Reason", "type": "Label" } ]
+            }
+            """));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(SizeRange.Fixed(7), WireSizes.OfMessage(model.Messages[0]));
+        Assert.Contains("public static byte[] EncodeSnapshot()", family, StringComparison.Ordinal);
+        Assert.Contains("public static bool TryDecodeSnapshot(byte[] data, out string error)", family, StringComparison.Ordinal);
+        Assert.DoesNotContain("class RealtimeSnapshot", family, StringComparison.Ordinal);
+        Assert.Contains("public static byte[] EncodeRejected(string code, string text)", family, StringComparison.Ordinal);
+        Assert.Contains("var reason = new RealtimeLabel(code, text);", family, StringComparison.Ordinal);
+        Assert.Contains("public static bool TryDecodeRejected(byte[] data, out RealtimeLabel reason, out string error)", family, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("discriminator that is not an enum", "$.messages[0].variants.discriminator")]
     [InlineData("kind without a case", "$.messages[0].variants.cases")]
@@ -277,6 +360,7 @@ public sealed class ProtocolGeneratorTests
     [InlineData("default before a required parameter", "$.messages[0].variants.cases[0].fields")]
     [InlineData("condition on a non-struct field", "$.messages[0].fields[2].when")]
     [InlineData("condition on a missing bool", "$.messages[0].fields")]
+    [InlineData("decodeBlank on a variant field", "$.messages[0].variants.fields[2].decodeBlank")]
     public void InvalidVariantsAndConditionsAreRejectedWithTheirPath(string mutation, string path)
     {
         var schema = UnionSchema();
@@ -313,6 +397,10 @@ public sealed class ProtocolGeneratorTests
             case "condition on a missing bool":
                 message["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Note", "type": "Point", "when": "!Missing" }"""));
                 schema["structs"] = GeneratedSchema()["structs"]!.DeepClone();
+                break;
+            case "decodeBlank on a variant field":
+                variants["fields"]!.AsArray().Add(JsonNode.Parse(
+                    """{ "name": "Note", "type": "string", "maxLength": 4, "decodeBlank": "accept" }"""));
                 break;
         }
 
@@ -358,6 +446,12 @@ public sealed class ProtocolGeneratorTests
     [InlineData("struct that contains itself", "$")]
     [InlineData("unused struct", "$")]
     [InlineData("size constant used twice", "$")]
+    [InlineData("decodeBlank on a number", "$.messages[0].fields[0].decodeBlank")]
+    [InlineData("decodeBlank on a struct field", "$.structs[0].fields")]
+    [InlineData("decodeBlank on a struct with a nested struct", "$.messages[0].fields")]
+    [InlineData("expanded encode on a class message", "$.messages[0].encodeParameters")]
+    [InlineData("empty message with rules", "$.messages[0].api")]
+    [InlineData("empty message with fields", "$.messages[0].fields")]
     public void InvalidGeneratedSchemasAreRejectedWithTheirPath(string mutation, string path)
     {
         var schema = GeneratedSchema();
@@ -429,6 +523,29 @@ public sealed class ProtocolGeneratorTests
                 break;
             case "size constant used twice":
                 message["emptySizeConstant"] = "PointSize";
+                break;
+            case "decodeBlank on a number":
+                fields[0]!["decodeBlank"] = "accept";
+                break;
+            case "decodeBlank on a struct field":
+                structFields.Add(JsonNode.Parse("""{ "name": "Tag", "type": "string", "maxLength": 4, "decodeBlank": "accept" }"""));
+                break;
+            case "decodeBlank on a struct with a nested struct":
+                schema["structs"]!.AsArray().Add(JsonNode.Parse(
+                    """{ "name": "Wrapper", "family": "Input", "description": "A wrapper.", "fields": [ { "name": "Inner", "type": "Point" } ] }"""));
+                fields.Add(JsonNode.Parse("""{ "name": "Wrapped", "type": "Wrapper", "decodeBlank": "accept" }"""));
+                break;
+            case "expanded encode on a class message":
+                message["encodeParameters"] = "expanded";
+                break;
+            case "empty message with rules":
+                message["api"] = "empty";
+                break;
+            case "empty message with fields":
+                message["api"] = "empty";
+                message.Remove("rules");
+                message.Remove("parameter");
+                message.Remove("emptySizeConstant");
                 break;
         }
 

@@ -545,8 +545,19 @@
       "direction": "clientToServer",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Asks to join a simulation session with a join ticket."
+      "codec": "generated",
+      "description": "Asks to join a simulation session with a join ticket.",
+      "api": "unwrap",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "JoinTicket",
+          "type": "string",
+          "maxLength": "MaximumJoinTicketLength",
+          "decodeBlank": "accept",
+          "description": "The join ticket that GameService issued for this session."
+        }
+      ]
     },
     {
       "name": "JoinAccepted",
@@ -555,8 +566,100 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Accepts a join and carries the session, movement settings, and initial state."
+      "codec": "generated",
+      "description": "Accepts a join and carries the session, movement settings, and initial state.",
+      "parameter": "session",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "SimulationSessionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The simulation session."
+        },
+        {
+          "name": "AccountId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The account that joined."
+        },
+        {
+          "name": "CharacterId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The character that joined."
+        },
+        {
+          "name": "CharacterName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "decodeBlank": "accept",
+          "description": "The display name of the character."
+        },
+        {
+          "name": "ShardId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The shard that hosts the session."
+        },
+        {
+          "name": "WorldId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The world the character is in."
+        },
+        {
+          "name": "ControlledEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The entity the client controls."
+        },
+        {
+          "name": "SimulationRevision",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The simulation content revision of the worker."
+        },
+        {
+          "name": "CollisionRevision",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The collision content revision of the worker."
+        },
+        {
+          "name": "JoinedAt",
+          "type": "string",
+          "maxLength": "MaximumTimestampLength",
+          "decodeBlank": "accept",
+          "description": "When the session started, as an ISO 8601 timestamp."
+        },
+        {
+          "name": "SessionExpiresAt",
+          "type": "string",
+          "maxLength": "MaximumTimestampLength",
+          "decodeBlank": "accept",
+          "description": "When the session expires, as an ISO 8601 timestamp."
+        },
+        { "name": "IsReconnect", "type": "bool", "description": "Whether this join resumed an earlier session." },
+        { "name": "CarryState", "type": "CarryState", "description": "The committed carry state of the character." },
+        {
+          "name": "MovementSettings",
+          "type": "MovementSettings",
+          "description": "The movement settings the client must predict with."
+        },
+        {
+          "name": "InitialPlayerState",
+          "type": "PlayerState",
+          "description": "The authoritative state of the controlled entity at join."
+        }
+      ]
     },
     {
       "name": "JoinRejected",
@@ -565,8 +668,12 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Rejects a join with a structured error."
+      "codec": "generated",
+      "description": "Rejects a join with a structured error.",
+      "api": "unwrap",
+      "encodeParameters": "expanded",
+      "runtimeSizeCheck": true,
+      "fields": [ { "name": "Rejection", "type": "Error", "decodeBlank": "accept", "description": "Why the join failed." } ]
     },
     {
       "name": "LeaveRequest",
@@ -575,8 +682,18 @@
       "direction": "clientToServer",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Asks to leave the active simulation session."
+      "codec": "generated",
+      "description": "Asks to leave the active simulation session.",
+      "api": "unwrap",
+      "fields": [
+        {
+          "name": "SimulationSessionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "decodeBlank": "accept",
+          "description": "The simulation session to leave."
+        }
+      ]
     },
     {
       "name": "LeaveAccepted",
@@ -585,8 +702,9 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Confirms a leave."
+      "codec": "generated",
+      "description": "Confirms a leave.",
+      "api": "empty"
     },
     {
       "name": "LeaveRejected",
@@ -595,8 +713,12 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Rejects a leave with a structured error."
+      "codec": "generated",
+      "description": "Rejects a leave with a structured error.",
+      "api": "unwrap",
+      "encodeParameters": "expanded",
+      "runtimeSizeCheck": true,
+      "fields": [ { "name": "Rejection", "type": "Error", "decodeBlank": "accept", "description": "Why the leave failed." } ]
     },
     {
       "name": "ServerDisconnect",
@@ -605,8 +727,19 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Tells the client why the worker ends the connection."
+      "codec": "generated",
+      "description": "Tells the client why the worker ends the connection.",
+      "api": "unwrap",
+      "encodeParameters": "expanded",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "Reason",
+          "type": "Error",
+          "decodeBlank": "accept",
+          "description": "Why the worker ends the connection."
+        }
+      ]
     },
     {
       "name": "MovementInputBatch",

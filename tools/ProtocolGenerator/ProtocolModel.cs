@@ -181,6 +181,10 @@ public sealed record FieldDefinition(string Name, string? Description, WireType 
     public string? ConditionField { get; init; }
 
     public bool ConditionValue { get; init; }
+
+    // Decoding accepts empty or whitespace text in this string field, or in the string
+    // fields of this struct field. Encoding still rejects it.
+    public bool AcceptBlankOnDecode { get; init; }
 }
 
 // A message whose discriminator field decides which variant fields follow the common
@@ -270,7 +274,10 @@ public enum MessageApi
     Class,
 
     // The message has one field, and encode and decode use that field's value directly.
-    Unwrap
+    Unwrap,
+
+    // The message has no fields; encode takes nothing and decode only reports errors.
+    Empty
 }
 
 public sealed record MessageDefinition(
@@ -290,4 +297,8 @@ public sealed record MessageDefinition(
     string? EmptySizeConstant,
     bool RuntimeSizeCheck,
     IReadOnlyList<FieldDefinition> Fields,
-    UnionDefinition? Union = null);
+    UnionDefinition? Union = null)
+{
+    // An unwrapped struct whose encode method takes the struct's fields as parameters.
+    public bool ExpandedEncode { get; init; }
+}

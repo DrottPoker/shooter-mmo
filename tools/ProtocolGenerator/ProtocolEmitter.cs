@@ -129,10 +129,11 @@ public static class ProtocolEmitter
                 CodecEmitter.EmitMessageCodec(writer, message);
             }
 
+            var lenientStructs = CodecEmitter.LenientStructs(model);
             foreach (var definition in structs)
             {
                 writer.BlankLine();
-                CodecEmitter.EmitStructCodec(writer, definition);
+                CodecEmitter.EmitStructCodec(writer, definition, lenientStructs.Contains(definition));
             }
 
             foreach (var definition in checkedEnums)

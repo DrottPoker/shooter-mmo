@@ -222,6 +222,12 @@ public static partial class ProtocolSchemaLoader
         for (var index = 0; index < nodes.Count; index++)
         {
             structs[index].Fields.AddRange(ReadFields(nodes[index], scope));
+            var blank = structs[index].Fields.FirstOrDefault(field => field.AcceptBlankOnDecode);
+            if (blank is not null)
+            {
+                throw nodes[index].Error("fields", $"'{blank.Name}' cannot use decodeBlank, which applies to message fields only.");
+            }
+
             nodes[index].EnsureFullyRead();
         }
 
@@ -301,21 +307,41 @@ public static partial class ProtocolSchemaLoader
                 {
                     "class" => MessageApi.Class,
                     "unwrap" => MessageApi.Unwrap,
-                    _ => throw node.Error("api", "must be class or unwrap.")
+                    "empty" => MessageApi.Empty,
+                    _ => throw node.Error("api", "must be class, unwrap, or empty.")
                 };
-                var fields = ReadFields(node, scope);
+                var fields = api == MessageApi.Empty ? [] : ReadFields(node, scope);
+                EnsureFlatBlankStructs(node, fields);
                 if (api == MessageApi.Unwrap && (fields.Count != 1 || fields[0].Type is BitsWireType))
                 {
                     throw node.Error("api", "unwrap requires exactly one field that is not bits8.");
                 }
 
                 var union = node.TryReadObject("variants", out var variantsNode) ? ReadUnion(variantsNode, fields, scope) : null;
-                if (union is not null && api == MessageApi.Unwrap)
+                if (union is not null && api != MessageApi.Class)
                 {
-                    throw node.Error("api", "unwrap cannot have variants.");
+                    throw node.Error("api", "only a class message can have variants.");
                 }
 
-                var parameter = node.OptionalString("parameter")
+                var expandedEncode = (node.OptionalString("encodeParameters") ?? "value") switch
+                {
+                    "value" => false,
+                    "expanded" => true,
+                    _ => throw node.Error("encodeParameters", "must be value or expanded.")
+                };
+                if (expandedEncode && (api != MessageApi.Unwrap || fields[0].Type is not StructWireType))
+                {
+                    throw node.Error("encodeParameters", "expanded requires an unwrapped struct field.");
+                }
+
+                var rules = node.OptionalBoolean("rules", false);
+                var explicitParameter = node.OptionalString("parameter");
+                if (api == MessageApi.Empty && (rules || explicitParameter is not null))
+                {
+                    throw node.Error("api", "an empty message takes no rules or parameter.");
+                }
+
+                var parameter = explicitParameter
                     ?? CSharpNames.Camel(api == MessageApi.Unwrap ? fields[0].Name : name);
                 message = new MessageDefinition(
                     name,
@@ -329,12 +355,15 @@ public static partial class ProtocolSchemaLoader
                     api,
                     className,
                     parameter,
-                    node.OptionalBoolean("rules", false),
+                    rules,
                     OptionalMemberName(node, "sizeConstant"),
                     OptionalMemberName(node, "emptySizeConstant"),
                     node.OptionalBoolean("runtimeSizeCheck", false),
                     fields,
-                    union);
+                    union)
+                {
+                    ExpandedEncode = expandedEncode
+                };
                 CheckMessageSizes(node, message, scope);
             }
 
@@ -388,6 +417,20 @@ public static partial class ProtocolSchemaLoader
         return fields;
     }
 
+    // A struct read with decodeBlank relaxes its own text fields, so it must not nest
+    // structs or arrays that would still validate strictly.
+    private static void EnsureFlatBlankStructs(SchemaNode owner, IReadOnlyList<FieldDefinition> fields)
+    {
+        foreach (var field in fields.Where(field => field.AcceptBlankOnDecode && field.Type is StructWireType))
+        {
+            var definition = ((StructWireType)field.Type).Definition;
+            if (definition.Fields.Any(member => member.Type is StructWireType or ArrayWireType))
+            {
+                throw owner.Error("fields", $"'{field.Name}' uses decodeBlank, so struct '{definition.Name}' must not contain struct or array fields.");
+            }
+        }
+    }
+
     private static UnionDefinition ReadUnion(SchemaNode node, IReadOnlyList<FieldDefinition> commonFields, TypeScope scope)
     {
         var discriminatorName = RequireMemberName(node, "discriminator");
@@ -406,6 +449,11 @@ public static partial class ProtocolSchemaLoader
             if (field.Rules != ValueRules.None || field.Presence != FieldPresence.Always)
             {
                 throw fieldNode.Error("rules belong to the case entries, not to the variant field.");
+            }
+
+            if (field.AcceptBlankOnDecode)
+            {
+                throw fieldNode.Error("decodeBlank", "applies to common message fields only, not to variant fields.");
             }
 
             if (absentText is not null || (absentNumber is not null && !IsInteger(field.Type)))
@@ -611,6 +659,17 @@ public static partial class ProtocolSchemaLoader
             _ => scope.Resolve(node, "type", typeName)
         };
         var field = new FieldDefinition(name, description, type, ReadRules(node, type, scope));
+        var decodeBlank = node.OptionalString("decodeBlank");
+        if (decodeBlank is not null)
+        {
+            if (decodeBlank != "accept" || type is not (StringWireType or StructWireType))
+            {
+                throw node.Error("decodeBlank", "must be accept, on a string or struct field.");
+            }
+
+            field = field with { AcceptBlankOnDecode = true };
+        }
+
         var condition = node.OptionalString("when");
         if (condition is null)
         {

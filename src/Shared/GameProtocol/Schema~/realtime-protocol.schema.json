@@ -140,8 +140,12 @@
           },
           "description": { "$ref": "#/$defs/text" },
           "api": {
-            "description": "class: encode and decode a generated message class. unwrap: the message has one field, and encode and decode use its value directly.",
-            "enum": [ "class", "unwrap" ]
+            "description": "class: encode and decode a generated message class. unwrap: the message has one field, and encode and decode use its value directly. empty: the message has no fields.",
+            "enum": [ "class", "unwrap", "empty" ]
+          },
+          "encodeParameters": {
+            "description": "value: encode takes the unwrapped value. expanded: encode takes the fields of the unwrapped struct and builds it.",
+            "enum": [ "value", "expanded" ]
           },
           "parameter": {
             "description": "The parameter name of the encode and decode methods.",
@@ -168,12 +172,17 @@
           "variants": { "$ref": "#/$defs/variants" }
         },
         "if": { "properties": { "codec": { "const": "generated" } } },
-        "then": { "required": [ "fields" ] },
+        "then": {
+          "if": { "required": [ "api" ], "properties": { "api": { "const": "empty" } } },
+          "then": { "not": { "required": [ "fields" ] } },
+          "else": { "required": [ "fields" ] }
+        },
         "else": {
           "not": {
             "anyOf": [
               { "required": [ "fields" ] },
               { "required": [ "api" ] },
+              { "required": [ "encodeParameters" ] },
               { "required": [ "parameter" ] },
               { "required": [ "rules" ] },
               { "required": [ "sizeConstant" ] },
@@ -295,6 +304,10 @@
             "description": "A struct field written only while the named earlier bool field is true, or false with a leading !.",
             "type": "string",
             "pattern": "^!?[A-Z][A-Za-z0-9]*$"
+          },
+          "decodeBlank": {
+            "description": "On a message string or struct field: decoding accepts empty or whitespace text that encoding refuses.",
+            "const": "accept"
           },
           "absent": {
             "description": "In variants.fields only: the integer value in cases that do not carry the field.",
