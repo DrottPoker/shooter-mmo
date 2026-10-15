@@ -16,6 +16,7 @@
   </Folder>
   <Folder Name="/tests/">
     <File Path="tests/Directory.Build.props" />
+    <File Path="tests/README.md" />
   </Folder>
   <Folder Name="/tests/Testing/">
     <Project Path="tests/Testing/Mmorpg.Testing/Mmorpg.Testing.csproj" />
