@@ -19,8 +19,8 @@
       },
       "BCrypt.Net-Next": {
         "type": "Transitive",
-        "resolved": "4.0.3",
-        "contentHash": "W+U9WvmZQgi5cX6FS5GDtDoPzUCV4LkBLkywq/kRZhuDwcbavOzcDAr3LXJFqHUi952Yj3LEYoWW0jbEUQChsA=="
+        "resolved": "4.2.1",
+        "contentHash": "cJ1Zaad8sBSQJq3QBSPmFuLq0XDi9ys0Dk5S11gakZ2qdFWC1aaRLZ7sqOLQjGJYhgIK3LW3TixJswM6+CVbyw=="
       },
       "Dapper": {
         "type": "Transitive",
@@ -82,7 +82,7 @@
       "mmorpg.gameservice.accounts": {
         "type": "Project",
         "dependencies": {
-          "BCrypt.Net-Next": "[4.0.3, )",
+          "BCrypt.Net-Next": "[4.2.1, )",
           "Dapper": "[2.1.89, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Npgsql": "[10.0.3, )",
