@@ -15,10 +15,10 @@ internal sealed class ItemStackCommandHandler
         SplitItemStackCommand command,
         CancellationToken cancellationToken)
     {
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [command.DestinationContainerId],
             cancellationToken);
@@ -166,10 +166,10 @@ internal sealed class ItemStackCommandHandler
                 "A stack cannot merge into itself.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.SourceItemInstanceId, command.TargetItemInstanceId],
             [],
             cancellationToken);
@@ -288,10 +288,10 @@ internal sealed class ItemStackCommandHandler
         ConsumeItemQuantityCommand command,
         CancellationToken cancellationToken)
     {
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [],
             cancellationToken);

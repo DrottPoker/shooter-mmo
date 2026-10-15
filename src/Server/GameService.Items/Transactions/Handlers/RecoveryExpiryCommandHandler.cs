@@ -32,10 +32,10 @@ internal sealed class RecoveryExpiryCommandHandler
                 "The Recovery delivery no longer exists.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(preview.CharacterId, null)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             preview.Items.Select(item => item.ItemInstanceId),
             [preview.RecoveryStorageContainerId],
             cancellationToken);

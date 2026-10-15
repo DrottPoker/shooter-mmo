@@ -1,9 +1,0 @@
-using Mmorpg.GameService.Characters.Contracts;
-using Mmorpg.GameService.Placement.Contracts;
-
-namespace Mmorpg.GameService.Items.Transactions;
-
-// Other modules' contracts that an item transaction uses inside its own transaction.
-internal sealed record ItemTransactionDependencies(
-    ICharacterLocks CharacterLocks,
-    ISimulationPresence SimulationPresence);

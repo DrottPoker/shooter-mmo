@@ -57,7 +57,7 @@ internal sealed class CorpseLootCommandHandler
         CancellationToken cancellationToken)
     {
         CorpseItemTransfers.ValidateCorpseItemTransferCommand(command);
-        await context.LockCharacterStateForIdempotentEventAsync(
+        await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
         var corpse = await CorpseCustody.LockOpenCorpseAsync(
@@ -68,7 +68,7 @@ internal sealed class CorpseLootCommandHandler
         var itemIds = command.TargetItemInstanceId is null
             ? new[] { command.ItemInstanceId }
             : new[] { command.ItemInstanceId, command.TargetItemInstanceId.Value };
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             itemIds,
             [command.DestinationContainerId],
             cancellationToken);

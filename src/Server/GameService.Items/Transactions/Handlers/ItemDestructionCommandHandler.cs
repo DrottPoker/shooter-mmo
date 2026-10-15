@@ -20,10 +20,10 @@ internal sealed class ItemDestructionCommandHandler
                 "An item destruction reason is required.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [],
             cancellationToken);

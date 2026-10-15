@@ -5,8 +5,8 @@ namespace Mmorpg.Backend.Tests.Architecture;
 
 // Guards the item transaction kernel boundary described in docs/GAME_SERVICE_MODULES.md:
 // only the kernel ends transactions or touches the operation ledger, handlers are
-// stateless and sequential, take locks in the documented order, and reject only through
-// ItemTransactionContext.Reject.
+// stateless and sequential, take locks in the documented order, reject only through
+// ItemTransactionRejection, and only the listed types cross module boundaries.
 public sealed partial class ItemTransactionKernelBoundaryTests
 {
     private const string TransactionsPath = "GameService.Items/Transactions/";
@@ -123,6 +123,41 @@ public sealed partial class ItemTransactionKernelBoundaryTests
             + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
+    [Fact]
+    public void CrossModuleStatementsStayInTheirTransactionTypes()
+    {
+        var transactionFiles = GameServiceSourceMap.LoadSourceFiles()
+            .Where(file => file.RelativePath.StartsWith(TransactionsPath, StringComparison.Ordinal))
+            .ToArray();
+        var users = transactionFiles
+            .Where(file => CrossModulePattern().IsMatch(file.Text))
+            .Select(file => file.RelativePath)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(CrossModuleOwners.Order(StringComparer.Ordinal), users);
+    }
+
+    // The only item transaction types that use another module's contracts or SQL
+    // fragments, with the cross-module statements of docs/GAME_SERVICE_MODULES.md.
+    private static readonly string[] CrossModuleOwners =
+    [
+        // Composition only: passes the contracts to the types below.
+        "GameService.Items/Transactions/ItemTransactionService.cs",
+        // S32: the operation claim references the actor account and character.
+        "GameService.Items/Transactions/Kernel/ItemOperationLedger.cs",
+        // S22 to S25 and S29: live session and worker lease authority.
+        "GameService.Items/Transactions/Context/ItemSimulationAuthority.cs",
+        // S26 to S28: character locks and offline presence.
+        "GameService.Items/Transactions/Context/CharacterItemStateLocks.cs",
+        // S30: insurance charges the character wallet.
+        "GameService.Items/Transactions/Handlers/ItemPolicyCommandHandler.cs",
+        // S31: the account's active characters for a tier change.
+        "GameService.Items/Transactions/Handlers/SecureContainerTierCommandHandler.cs",
+        // S33: the dead character's name and Shard.
+        "GameService.Items/Transactions/Handlers/PlayerDeath/PlayerDeathCommandHandler.cs"
+    ];
+
     // The file that defines the single rejection throw, ItemTransactionRejection.
     private const string RejectionOwner = "GameService.Items/Transactions/ItemTransactionErrors.cs";
 
@@ -146,4 +181,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
 
     [GeneratedRegex(@"\b(?:LockDeathEventKeyAsync|pg_advisory_xact_lock|LockCharacterStatesAsync|LockCharacterStateForIdempotentEventAsync|LockOpenCorpseAsync|LockMutationScopeAsync)\b")]
     private static partial Regex LockCallPattern();
+
+    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement)\.Contracts")]
+    private static partial Regex CrossModulePattern();
 }

@@ -18,11 +18,11 @@ internal sealed class RecoveryDeliveryCommandHandler
         RecoveryDeliveries.ValidateRecoverySource(command.SourceKind, command.SourceEventId);
         RecoveryDeliveries.ValidateRecoveryTimeline(command.AvailableAt, command.ExpiresAt);
         var expectations = RecoveryDeliveries.ValidateDistinctItemExpectations(command.Items);
-        var states = await context.LockCharacterStatesAsync(
+        var states = await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
         var state = states[command.CharacterId];
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             expectations.Keys,
             [state.RecoveryStorageContainerId],
             cancellationToken);
@@ -206,7 +206,7 @@ internal sealed class RecoveryDeliveryCommandHandler
         CancellationToken cancellationToken)
     {
         var expectedItems = RecoveryDeliveries.ValidateDistinctItemExpectations(command.Items);
-        var states = await context.LockCharacterStatesAsync(
+        var states = await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
         var state = states[command.CharacterId];
@@ -222,7 +222,7 @@ internal sealed class RecoveryDeliveryCommandHandler
                 "The Recovery Storage delivery was not found.");
         }
 
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             preview.Items.Select(item => item.ItemInstanceId),
             [state.RecoveryStorageContainerId, command.DestinationContainerId],
             cancellationToken);

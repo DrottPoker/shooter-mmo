@@ -28,12 +28,12 @@ internal sealed class MobLootGrantCommandHandler
                 "The live Mob loot grant is incomplete or invalid.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(
                 command.CharacterId,
                 command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [],
             [command.DestinationContainerId],
             cancellationToken);

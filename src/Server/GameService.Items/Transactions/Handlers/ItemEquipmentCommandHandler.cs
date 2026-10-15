@@ -12,10 +12,10 @@ internal sealed class ItemEquipmentCommandHandler
         EquipItemCommand command,
         CancellationToken cancellationToken)
     {
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [],
             cancellationToken);
@@ -106,10 +106,10 @@ internal sealed class ItemEquipmentCommandHandler
         UnequipItemCommand command,
         CancellationToken cancellationToken)
     {
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [command.DestinationContainerId],
             cancellationToken);

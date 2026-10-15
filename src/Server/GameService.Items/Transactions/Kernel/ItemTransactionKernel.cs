@@ -15,7 +15,7 @@ internal sealed class ItemTransactionKernel(
     ItemTransactionTelemetry telemetry,
     ItemOperationLedger ledger,
     ItemSimulationAuthority simulationAuthority,
-    ItemTransactionDependencies dependencies)
+    CharacterItemStateLocks characterStateLocks)
 {
     private const string MutationSavepoint = "item_mutation";
 
@@ -128,7 +128,7 @@ internal sealed class ItemTransactionKernel(
                 request.Actor);
             var context = new ItemTransactionContext(
                 session,
-                dependencies,
+                characterStateLocks,
                 operationsMetrics);
             try
             {

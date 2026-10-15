@@ -27,7 +27,7 @@ internal sealed class PlayerDeathCommandHandler
         EnsureDeathAuthority(context);
         await DurableCorpseRecords.LockDeathEventKeyAsync(context, command.DeathEventId, cancellationToken);
 
-        var characterState = await context.LockCharacterStateForIdempotentEventAsync(
+        var characterState = await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
         var requestHash = CalculateDeathEventRequestHash(command);
@@ -180,7 +180,7 @@ internal sealed class PlayerDeathCommandHandler
             .Distinct()
             .Order()
             .ToArray();
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             sourceRows.Select(row => row.ItemInstanceId),
             sourceContainerIds,
             cancellationToken);

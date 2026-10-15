@@ -20,7 +20,7 @@ internal sealed class BagAggregateCommandHandler
                 "A Bag aggregate swap requires two distinct characters and Bag items.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [
                 new CharacterLockRequest(
                     command.FirstCharacterId,
@@ -30,7 +30,7 @@ internal sealed class BagAggregateCommandHandler
                     command.ExpectedSecondCharacterRevision)
             ],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.FirstBagItemInstanceId, command.SecondBagItemInstanceId],
             [],
             cancellationToken);

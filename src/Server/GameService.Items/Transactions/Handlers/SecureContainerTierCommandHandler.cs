@@ -77,7 +77,7 @@ internal sealed class SecureContainerTierCommandHandler
             suppliedCharacterRevisions.TryGetValue(candidate.CharacterId, out var revisions)
                 ? revisions[0]
                 : null));
-        var states = await context.LockCharacterStatesAsync(lockRequests, cancellationToken);
+        var states = await context.Locks.LockCharacterStatesAsync(lockRequests, cancellationToken);
         var entitlement = await context.Connection.QuerySingleOrDefaultAsync<SecureEntitlementRow>(
             new CommandDefinition(
                 """
@@ -171,7 +171,7 @@ internal sealed class SecureContainerTierCommandHandler
             states.Values.Select(state => state.SecureContainerId),
             tier.SlotCapacity,
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             overflowItems.Select(item => item.ItemInstanceId),
             allContainerIds,
             cancellationToken);

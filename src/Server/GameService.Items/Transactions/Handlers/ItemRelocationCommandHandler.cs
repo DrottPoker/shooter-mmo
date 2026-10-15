@@ -12,10 +12,10 @@ internal sealed class ItemRelocationCommandHandler
         RelocateItemCommand command,
         CancellationToken cancellationToken)
     {
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [command.DestinationContainerId],
             cancellationToken);
@@ -98,10 +98,10 @@ internal sealed class ItemRelocationCommandHandler
                 "An item cannot swap its container slot with itself.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.FirstItemInstanceId, command.SecondItemInstanceId],
             [],
             cancellationToken);

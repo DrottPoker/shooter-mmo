@@ -139,9 +139,10 @@ public sealed class ItemTransactionKernelTests
                 services.GetRequiredService<ICharacterLocks>(),
                 services.GetRequiredService<ISimulationSessionAuthority>(),
                 services.GetRequiredService<ISimulationWorkerAuthority>()),
-            new ItemTransactionDependencies(
+            new CharacterItemStateLocks(
                 services.GetRequiredService<ICharacterLocks>(),
-                services.GetRequiredService<ISimulationPresence>()));
+                services.GetRequiredService<ISimulationPresence>(),
+                null));
     }
 
     internal static ItemTransactionRequest<GrantItemCommand> Request()

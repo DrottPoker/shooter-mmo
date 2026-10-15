@@ -60,7 +60,7 @@ internal sealed class ItemTransactionService
             new ItemTransactionTelemetry(operationsMetrics, logger, httpContextAccessor),
             new ItemOperationLedger(dataSource),
             simulationAuthority,
-            new ItemTransactionDependencies(characterLocks, simulationPresence));
+            new CharacterItemStateLocks(characterLocks, simulationPresence, operationsMetrics));
     }
 
     public Task<ItemTransactionResult> ExecuteAsync(

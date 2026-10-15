@@ -26,10 +26,10 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
                 "Policy kind and source lineage are required.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [],
             cancellationToken);
@@ -179,10 +179,10 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
         {
             context.Authority.EnsureSystemAuthority();
         }
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.ItemInstanceId],
             [],
             cancellationToken);

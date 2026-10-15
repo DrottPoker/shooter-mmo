@@ -14,14 +14,14 @@ internal sealed class CorpseBagSwapCommandHandler
         CancellationToken cancellationToken)
     {
         ValidateCorpseBagCommand(command);
-        await context.LockCharacterStateForIdempotentEventAsync(
+        await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
         var corpse = await CorpseCustody.LockOpenCorpseAsync(
             context,
             command.CorpseId,
             cancellationToken);
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             [command.CorpseBagItemInstanceId, command.PlayerBagItemInstanceId],
             [command.CorpseBagContentsContainerId, command.PlayerBagContentsContainerId],
             cancellationToken);

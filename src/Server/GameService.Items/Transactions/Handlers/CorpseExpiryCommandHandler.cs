@@ -100,7 +100,7 @@ internal sealed class CorpseExpiryCommandHandler
                 new { ContainerIds = sectionContainerIds },
                 context.Transaction,
                 cancellationToken: cancellationToken))).ToArray();
-        await context.LockMutationScopeAsync(
+        await context.Locks.LockMutationScopeAsync(
             directItemIds,
             sectionContainerIds,
             cancellationToken);

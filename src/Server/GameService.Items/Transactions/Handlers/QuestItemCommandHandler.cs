@@ -26,7 +26,7 @@ internal sealed class QuestItemCommandHandler
                 "A quest grant id is required.");
         }
 
-        await context.LockCharacterStatesAsync(
+        await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
         var questGrantId = command.QuestGrantId.Trim();
@@ -40,7 +40,7 @@ internal sealed class QuestItemCommandHandler
             },
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
-        await context.LockMutationScopeAsync(itemIds, [], cancellationToken);
+        await context.Locks.LockMutationScopeAsync(itemIds, [], cancellationToken);
         itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
             QuestGrantItemIdsSql,
             new
