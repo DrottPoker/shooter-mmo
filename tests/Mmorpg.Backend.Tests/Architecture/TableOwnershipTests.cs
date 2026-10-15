@@ -63,8 +63,8 @@ public sealed partial class TableOwnershipTests
         "GameService/Database/Migrations/PlayerCorpsePersistenceMigration.cs",
         "GameService/Database/Migrations/PlayerDeathCarryOverflowMigration.cs",
         "GameService/Database/Migrations/ItemOperationsHardeningMigration.cs",
-        "GameService/Placement/Persistence/DevelopmentWorldIdentityMigration.cs",
-        "GameService/Placement/Persistence/WorkerSelectedWorldBindingMigration.cs",
+        "GameService.Placement/Persistence/DevelopmentWorldIdentityMigration.cs",
+        "GameService.Placement/Persistence/WorkerSelectedWorldBindingMigration.cs",
         "GameService/Database/Migrations/ReleaseRetryableOperationClaimsMigration.cs",
         "GameService/Database/Migrations/EquippedItemLookupIndexMigration.cs"
     };

@@ -287,4 +287,7 @@ intended differences:
   and `GameServiceSchema` merges the host list with every module's list by
   ordinal id and fails startup when the result does not start with the shipped
   history or repeats an id.
-- The Placement and Items extractions: in progress.
+- Placement extracted: `src/Server/GameService.Placement` builds
+  `Mmorpg.GameService.Placement`, which references Platform, Accounts,
+  Characters, `Mmorpg.Server.Common`, and `Mmorpg.WorldData`.
+- The Items extraction: in progress.

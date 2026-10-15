@@ -21,7 +21,7 @@ internal static class GameServiceSourceMap
         ("GameService.Platform/", Platform),
         ("GameService.Accounts/", Accounts),
         ("GameService.Characters/", Characters),
-        ("GameService/Placement/", Placement),
+        ("GameService.Placement/", Placement),
         ("GameService/Database/Migrations/", Items),
         ("GameService/Items/", Items),
         ("GameService/", Host)

@@ -5,6 +5,7 @@
     <Project Path="src/Server/GameService.Platform/Mmorpg.GameService.Platform.csproj" />
     <Project Path="src/Server/GameService.Accounts/Mmorpg.GameService.Accounts.csproj" />
     <Project Path="src/Server/GameService.Characters/Mmorpg.GameService.Characters.csproj" />
+    <Project Path="src/Server/GameService.Placement/Mmorpg.GameService.Placement.csproj" />
     <Project Path="src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj" />
   </Folder>
   <Folder Name="/src/Shared/">

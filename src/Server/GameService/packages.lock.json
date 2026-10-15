@@ -57,6 +57,18 @@
           "Npgsql": "[9.0.3, )"
         }
       },
+      "mmorpg.gameservice.placement": {
+        "type": "Project",
+        "dependencies": {
+          "Dapper": "[2.1.66, )",
+          "Mmorpg.GameService.Accounts": "[1.0.0, )",
+          "Mmorpg.GameService.Characters": "[1.0.0, )",
+          "Mmorpg.GameService.Platform": "[1.0.0, )",
+          "Mmorpg.Server.Common": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )",
+          "Npgsql": "[9.0.3, )"
+        }
+      },
       "mmorpg.gameservice.platform": {
         "type": "Project",
         "dependencies": {
