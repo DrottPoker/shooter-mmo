@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Dapper;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
@@ -67,14 +65,14 @@ internal sealed partial class ItemTransactionService
             var definition = await context.LoadDefinitionAsync(
                 loot.DefinitionId,
                 cancellationToken);
-            ValidateMobLootDefinition(definition, loot.Quantity);
+            MobLootRules.ValidateMobLootDefinition(definition, loot.Quantity);
             definitions.Add(definition);
         }
 
         var generalContainerId = Guid.NewGuid();
         var equipmentContainerId = Guid.NewGuid();
         var bagContainerId = Guid.NewGuid();
-        var expiryOperationId = CreateScopedGuid("mob-corpse-expiry", command.CorpseId);
+        var expiryOperationId = MobLootRules.CreateScopedGuid("mob-corpse-expiry", command.CorpseId);
         var corpseTimes = await DurableCorpseRecords.CreateDurableCorpseRecordAsync(
             context,
             command.CorpseId,
@@ -109,7 +107,7 @@ internal sealed partial class ItemTransactionService
         {
             var loot = command.Loot[index];
             var definition = definitions[index];
-            var itemInstanceId = CreateScopedGuid("mob-loot-item", loot.GrantId);
+            var itemInstanceId = MobLootRules.CreateScopedGuid("mob-loot-item", loot.GrantId);
             await context.Connection.ExecuteAsync(new CommandDefinition(
                 """
                 insert into item_instances (
@@ -171,7 +169,7 @@ internal sealed partial class ItemTransactionService
             || command.GrantId == Guid.Empty
             || command.GrantId != context.OperationId
             || command.SourceCorpseId == Guid.Empty
-            || !IsMobIdentifier(command.SourceActorDefinitionId)
+            || !MobLootRules.IsMobIdentifier(command.SourceActorDefinitionId)
             || command.CharacterId == Guid.Empty
             || command.ExpectedCharacterRevision < 0
             || command.DestinationContainerId == Guid.Empty
@@ -195,7 +193,7 @@ internal sealed partial class ItemTransactionService
         var definition = await context.LoadDefinitionAsync(
             command.DefinitionId,
             cancellationToken);
-        ValidateMobLootDefinition(definition, command.Quantity);
+        MobLootRules.ValidateMobLootDefinition(definition, command.Quantity);
         var destination = await context.LoadOwnedContainerAsync(
             command.DestinationContainerId,
             command.CharacterId,
@@ -215,7 +213,7 @@ internal sealed partial class ItemTransactionService
             null,
             false,
             cancellationToken);
-        var itemInstanceId = CreateScopedGuid("mob-loot-item", command.GrantId);
+        var itemInstanceId = MobLootRules.CreateScopedGuid("mob-loot-item", command.GrantId);
         await context.Connection.ExecuteAsync(new CommandDefinition(
             """
             insert into item_instances (
@@ -314,10 +312,10 @@ internal sealed partial class ItemTransactionService
         CreatePersistentMobCorpseCommand command)
     {
         if (command.CorpseId == Guid.Empty
-            || !IsMobIdentifier(command.WorkerId)
-            || !IsMobIdentifier(command.WorkerRuntimeId)
-            || !IsMobIdentifier(command.ShardId)
-            || !IsMobIdentifier(command.SourceActorDefinitionId)
+            || !MobLootRules.IsMobIdentifier(command.WorkerId)
+            || !MobLootRules.IsMobIdentifier(command.WorkerRuntimeId)
+            || !MobLootRules.IsMobIdentifier(command.ShardId)
+            || !MobLootRules.IsMobIdentifier(command.SourceActorDefinitionId)
             || string.IsNullOrWhiteSpace(command.SourceDisplayName)
             || command.SourceDisplayName.Length > 128
             || !string.Equals(
@@ -341,7 +339,7 @@ internal sealed partial class ItemTransactionService
             || command.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries
             || command.Loot.Any(loot =>
                 loot.GrantId == Guid.Empty
-                || !IsMobIdentifier(loot.DefinitionId)
+                || !MobLootRules.IsMobIdentifier(loot.DefinitionId)
                 || loot.Quantity <= 0)
             || command.Loot.Select(loot => loot.GrantId).Distinct().Count()
                 != command.Loot.Count)
@@ -350,39 +348,5 @@ internal sealed partial class ItemTransactionService
                 ItemTransactionErrorCodes.MobCorpseInvalid,
                 "The persistent Mob corpse command is incomplete or invalid.");
         }
-    }
-
-    private static void ValidateMobLootDefinition(
-        ResolvedItemDefinition definition,
-        int quantity)
-    {
-        if (quantity <= 0
-            || quantity > definition.RuntimeDefinition.MaximumStackSize
-            || definition.IsBag
-            || definition.RuntimeDefinition.DefaultPolicies.Length > 0)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.MobLootGrantInvalid,
-                "Mob loot must be transferable, policy-free, non-Bag item content within its stack limit.");
-        }
-    }
-
-    private static bool IsMobIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character)
-                || character is '-' or '_' or '.');
-    }
-
-    private static Guid CreateScopedGuid(string scope, Guid sourceId)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(
-            scope + ":" + sourceId.ToString("N")));
-        var bytes = hash[..16];
-        bytes[7] = (byte)((bytes[7] & 0x0f) | 0x50);
-        bytes[8] = (byte)((bytes[8] & 0x3f) | 0x80);
-        return new Guid(bytes);
     }
 }
