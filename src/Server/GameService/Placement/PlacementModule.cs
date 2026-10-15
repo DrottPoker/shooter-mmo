@@ -1,6 +1,7 @@
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Placement.Integration;
+using Mmorpg.GameService.Placement.Persistence;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
@@ -12,7 +13,7 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
 {
     public string Name => "Placement";
 
-    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+    public IReadOnlyList<DatabaseMigration> Migrations => PlacementSchemaMigrations.All;
 
     public void AddServices(IServiceCollection services)
     {

@@ -22,8 +22,6 @@ internal static class GameServiceSourceMap
         ("GameService.Accounts/", Accounts),
         ("GameService.Characters/", Characters),
         ("GameService/Placement/", Placement),
-        ("GameService/Database/Migrations/DevelopmentWorldIdentityMigration.cs", Placement),
-        ("GameService/Database/Migrations/WorkerSelectedWorldBindingMigration.cs", Placement),
         ("GameService/Database/Migrations/", Items),
         ("GameService/Items/", Items),
         ("GameService/", Host)

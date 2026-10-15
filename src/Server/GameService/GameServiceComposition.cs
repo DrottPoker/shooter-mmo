@@ -42,6 +42,13 @@ internal static class GameServiceComposition
         ];
     }
 
+    public static GameServiceSchema CreateSchema(GameServiceConfiguration configuration)
+    {
+        return GameServiceSchema.Create(
+            DatabaseInitializer.HostMigrations,
+            CreateModules(configuration));
+    }
+
     public static IServiceCollection AddGameService(
         this IServiceCollection services,
         GameServiceConfiguration configuration)
@@ -49,6 +56,7 @@ internal static class GameServiceComposition
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddGameServicePlatform(configuration.Platform);
+        services.AddSingleton(CreateSchema(configuration));
         services.AddSingleton<DatabaseInitializer>();
         services.AddSingleton<PostgresHealthProbe>();
         services.AddSingleton<GameServiceHealthService>();

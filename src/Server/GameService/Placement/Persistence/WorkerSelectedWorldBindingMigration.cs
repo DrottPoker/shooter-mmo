@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Database.Migrations;
+namespace Mmorpg.GameService.Placement.Persistence;
 
 public static class WorkerSelectedWorldBindingMigration
 {

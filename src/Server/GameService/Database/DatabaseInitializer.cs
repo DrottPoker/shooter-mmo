@@ -5,12 +5,14 @@ using Mmorpg.GameService.Platform.Database;
 namespace Mmorpg.GameService.Database;
 
 public sealed class DatabaseInitializer(
+    GameServiceSchema schema,
     DatabaseMigrationRunner migrationRunner,
     ItemCatalogSeeder itemCatalogSeeder,
     CharacterItemStateBootstrapper characterItemStateBootstrapper)
 {
-    // Ordered migration history. MigrationHistoryTests freezes ids, order, and SQL hashes.
-    internal static readonly IReadOnlyList<DatabaseMigration> Migrations =
+    // Migrations the host still owns. GameServiceSchema merges them with the module
+    // migrations, and MigrationHistoryTests freezes ids, order, and SQL hashes.
+    internal static readonly IReadOnlyList<DatabaseMigration> HostMigrations =
     [
         new("202607071600_auth_character_world_join", LegacyInitialAuthSchemaMigrationSql),
         new("202607101200_character_world_sessions", LegacySimulationSessionLeaseMigrationSql),
@@ -27,8 +29,6 @@ public sealed class DatabaseInitializer(
         new(PlayerCorpsePersistenceMigration.Id, PlayerCorpsePersistenceMigration.Sql),
         new(PlayerDeathCarryOverflowMigration.Id, PlayerDeathCarryOverflowMigration.Sql),
         new(ItemOperationsHardeningMigration.Id, ItemOperationsHardeningMigration.Sql),
-        new(DevelopmentWorldIdentityMigration.Id, DevelopmentWorldIdentityMigration.Sql),
-        new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql),
         new(
             ReleaseRetryableOperationClaimsMigration.Id,
             ReleaseRetryableOperationClaimsMigration.Sql),
@@ -37,7 +37,7 @@ public sealed class DatabaseInitializer(
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await migrationRunner.ApplyAsync(Migrations, cancellationToken);
+        await migrationRunner.ApplyAsync(schema.Migrations, cancellationToken);
         await itemCatalogSeeder.SeedAsync(cancellationToken);
         await characterItemStateBootstrapper.BackfillActiveCharactersAsync(cancellationToken);
     }

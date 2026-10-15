@@ -1,7 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.Backend.Tests.Integration;
+using Mmorpg.GameService;
+using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
+using Mmorpg.GameService.Platform.Database;
+using Mmorpg.GameService.Platform.Modules;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 
@@ -71,9 +77,71 @@ public sealed class MigrationHistoryTests
         Assert.Equal(Migrations().Select(migration => migration.Id), applied);
     }
 
+    [Fact]
+    public void SchemaRejectsDuplicateAndRewrittenHistory()
+    {
+        var duplicate = new TestModule(
+            [new DatabaseMigration("202607151200_item_persistence_foundation", "select 1;")]);
+        var beforeLastShipped = new TestModule(
+            [new DatabaseMigration("202610141900_inserted_into_history", "select 1;")]);
+
+        var duplicateError = Assert.Throws<InvalidOperationException>(
+            () => GameServiceSchema.Create(
+                DatabaseInitializer.HostMigrations,
+                [.. ProductionModules(), duplicate]));
+        var insertedError = Assert.Throws<InvalidOperationException>(
+            () => GameServiceSchema.Create(
+                DatabaseInitializer.HostMigrations,
+                [.. ProductionModules(), beforeLastShipped]));
+
+        Assert.Contains("defined more than once", duplicateError.Message, StringComparison.Ordinal);
+        Assert.Contains("cannot change", insertedError.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SchemaAcceptsMigrationsAfterTheShippedHistory()
+    {
+        var newer = new TestModule(
+            [new DatabaseMigration("202610160000_newer_than_history", "select 1;")]);
+
+        var schema = GameServiceSchema.Create(
+            DatabaseInitializer.HostMigrations,
+            [.. ProductionModules(), newer]);
+
+        Assert.Equal("202610160000_newer_than_history", schema.Migrations[^1].Id);
+    }
+
     private static IEnumerable<(string Id, string Sql)> Migrations()
     {
-        return DatabaseInitializer.Migrations.Select(migration => (migration.Id, migration.Sql));
+        return GameServiceComposition.CreateSchema(TestConfiguration())
+            .Migrations
+            .Select(migration => (migration.Id, migration.Sql));
+    }
+
+    private static IReadOnlyList<IGameServiceModule> ProductionModules()
+    {
+        return GameServiceComposition.CreateModules(TestConfiguration());
+    }
+
+    private static GameServiceConfiguration TestConfiguration()
+    {
+        return GameServiceTestComposition.CreateConfiguration(
+            "Host=localhost;Database=migration_history_test;Username=test;Password=test");
+    }
+
+    private sealed class TestModule(IReadOnlyList<DatabaseMigration> migrations) : IGameServiceModule
+    {
+        public string Name => "Test";
+
+        public IReadOnlyList<DatabaseMigration> Migrations { get; } = migrations;
+
+        public void AddServices(IServiceCollection services)
+        {
+        }
+
+        public void MapEndpoints(IEndpointRouteBuilder endpoints)
+        {
+        }
     }
 
     private static string Sha256(string value)

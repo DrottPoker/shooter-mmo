@@ -283,4 +283,8 @@ intended differences:
   `ISimulationWorkerAuthority`, and `ISimulationPresence` (S20 to S25, S27,
   S29). No GameService source reads, writes, or locks another module's table
   outside the frozen migrations.
-- Placement migrations and the Placement and Items extractions: in progress.
+- Placement migrations: done. `PlacementModule.Migrations` owns #14 and #15,
+  and `GameServiceSchema` merges the host list with every module's list by
+  ordinal id and fails startup when the result does not start with the shipped
+  history or repeats an id.
+- The Placement and Items extractions: in progress.
