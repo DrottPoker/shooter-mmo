@@ -218,6 +218,14 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `src/Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
+The static `RealtimeProtocol` facade is one partial class. `RealtimeProtocol.cs`
+holds the version, channels, framing, error messages, and the primitive readers
+and writers. Each message family has its own folder with a message file and a
+codec file: `Session` (join, leave, disconnect), `Movement` (input, settings,
+owner snapshot), `Replication` (entity presence and simulation snapshots),
+`Items`, `Corpses`, and `WorldActors`. A new message belongs to one family folder
+and adds its type to `RealtimeMessageType` in the core file.
+
 Protocol version 14 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
