@@ -48,11 +48,11 @@ internal sealed class ItemGrantCommandHandler
         {
             if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
             {
-                context.EnsureQuestNpcAccess();
+                context.Authority.EnsureQuestNpcAccess();
             }
             else
             {
-                context.EnsureSystemAuthority();
+                context.Authority.EnsureSystemAuthority();
             }
 
             if (!string.Equals(

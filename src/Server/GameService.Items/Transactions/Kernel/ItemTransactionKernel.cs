@@ -131,7 +131,7 @@ internal sealed class ItemTransactionKernel(
                 operationsMetrics);
             try
             {
-                context.EnsureActorIsValid();
+                ItemActorAuthority.EnsureValid(session.Actor);
                 await context.ValidateLiveAuthorityAsync(
                     actorCharacterId,
                     cancellationToken);

@@ -12,7 +12,7 @@ internal sealed class RecoveryExpiryCommandHandler
         ExpireRecoveryDeliveryCommand command,
         CancellationToken cancellationToken)
     {
-        context.EnsureSystemAuthority();
+        context.Authority.EnsureSystemAuthority();
         if (command.RecoveryDeliveryId == Guid.Empty)
         {
             ItemTransactionContext.Reject(

@@ -13,11 +13,11 @@ internal sealed class QuestItemCommandHandler
     {
         if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
         {
-            context.EnsureQuestNpcAccess();
+            context.Authority.EnsureQuestNpcAccess();
         }
         else
         {
-            context.EnsureSystemAuthority();
+            context.Authority.EnsureSystemAuthority();
         }
         if (string.IsNullOrWhiteSpace(command.QuestGrantId))
         {

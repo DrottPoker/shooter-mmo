@@ -21,7 +21,7 @@ internal sealed class SecureContainerTierCommandHandler
                 "An account id and Secure Container tier id are required.");
         }
 
-        context.EnsureAccountAuthority(command.AccountId);
+        context.Authority.EnsureAccountAuthority(command.AccountId);
         await context.Connection.ExecuteAsync(new CommandDefinition(
             """
             select pg_advisory_xact_lock(

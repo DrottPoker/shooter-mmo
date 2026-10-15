@@ -14,7 +14,7 @@ internal sealed class RecoveryDeliveryCommandHandler
         AddRecoveryDeliveryCommand command,
         CancellationToken cancellationToken)
     {
-        context.EnsureSystemAuthority();
+        context.Authority.EnsureSystemAuthority();
         RecoveryDeliveries.ValidateRecoverySource(command.SourceKind, command.SourceEventId);
         RecoveryDeliveries.ValidateRecoveryTimeline(command.AvailableAt, command.ExpiresAt);
         var expectations = RecoveryDeliveries.ValidateDistinctItemExpectations(command.Items);

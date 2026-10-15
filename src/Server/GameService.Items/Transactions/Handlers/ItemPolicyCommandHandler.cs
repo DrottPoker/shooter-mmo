@@ -44,7 +44,7 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
         {
             if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
             {
-                context.EnsureInsuranceNpcAccess();
+                context.Authority.EnsureInsuranceNpcAccess();
                 if (command.Price <= 0
                     || !string.Equals(
                         command.SourceKind.Trim(),
@@ -58,7 +58,7 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
             }
             else
             {
-                context.EnsureSystemAuthority();
+                context.Authority.EnsureSystemAuthority();
                 if (command.Price != 0)
                 {
                     ItemTransactionContext.Reject(
@@ -85,7 +85,7 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
         }
         else
         {
-            context.EnsureSystemAuthority();
+            context.Authority.EnsureSystemAuthority();
             if (command.Price != 0)
             {
                 ItemTransactionContext.Reject(
@@ -173,11 +173,11 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
     {
         if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
         {
-            context.EnsureInsuranceNpcAccess();
+            context.Authority.EnsureInsuranceNpcAccess();
         }
         else
         {
-            context.EnsureSystemAuthority();
+            context.Authority.EnsureSystemAuthority();
         }
         await context.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],

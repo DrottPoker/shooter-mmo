@@ -11,7 +11,7 @@ internal sealed class CorpseExpiryCommandHandler
         ExpireCorpseCommand command,
         CancellationToken cancellationToken)
     {
-        context.EnsureSystemAuthority();
+        context.Authority.EnsureSystemAuthority();
         if (command.CorpseId == Guid.Empty)
         {
             ItemTransactionContext.Reject(

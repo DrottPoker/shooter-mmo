@@ -15,7 +15,7 @@ internal sealed class MobCorpseCommandHandler
         CancellationToken cancellationToken)
     {
         ValidatePersistentMobCorpseCommand(command);
-        context.EnsureSystemAuthority();
+        context.Authority.EnsureSystemAuthority();
         await context.ValidateSimulationWorkerServiceAuthorityAsync(
             command.WorkerId,
             command.WorkerRuntimeId,
