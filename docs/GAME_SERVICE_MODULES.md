@@ -212,9 +212,8 @@ Items. R is read, W is write, and L is lock.
 | S40 | Baseline migrations #1 and #6 | mixed DDL | R4, frozen |
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
-and `update` on owned tables. Foreign access that has not moved behind a
-contract yet is listed in the test, and every listed entry must still exist, so
-the list only shrinks.
+and `update` on owned tables and fails on any foreign table outside the frozen
+migrations.
 
 ## Guard Tests
 
@@ -223,8 +222,11 @@ the list only shrinks.
 | `MigrationHistoryTests` | Migration ids, order, SQL hashes, and the ids recorded by a fresh database |
 | `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis` and `Mmorpg.GameService.Items` meters and every `auth_service.*` instrument |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
-| `NamespaceBoundaryTests` | Namespace references only point down the dependency order |
+| `NamespaceBoundaryTests` | A module references other modules only through lower modules' `Contracts` namespaces and Platform |
 | `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata |
+| `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |
+| `ModulePublicSurfaceTests` | Each module's exported types and Platform's internal middleware |
+| `ModuleCompositionTests` | Exactly one implementation of every SPI and contract, from its owner module, and startup failure for a missing or duplicate SPI |
 
 ## Accepted Behavior Changes
 

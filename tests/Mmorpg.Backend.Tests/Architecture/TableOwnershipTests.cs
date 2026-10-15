@@ -69,30 +69,17 @@ public sealed partial class TableOwnershipTests
         "GameService.Items/Persistence/EquippedItemLookupIndexMigration.cs"
     };
 
-    // Foreign table access that still has to move behind an owner contract. The ids
-    // refer to the cross-module statement list in docs/GAME_SERVICE_MODULES.md. Every
-    // entry must still exist, so the list can only shrink.
-    private static readonly IReadOnlySet<string> PendingForeignAccess = new HashSet<string>(StringComparer.Ordinal)
-    {
-    };
-
     [Fact]
     public void ModulesOnlyTouchForeignTablesThroughOwnerContracts()
     {
-        var found = FindForeignAccess();
-        var pending = PendingForeignAccess.Select(StripStatementIds).ToHashSet(StringComparer.Ordinal);
-
-        var unexpected = found.Where(access => !pending.Contains(access)).ToArray();
-        var resolved = pending.Where(access => !found.Contains(access)).ToArray();
+        var found = FindForeignAccess()
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
         Assert.True(
-            unexpected.Length == 0,
-            "Foreign table access must go through the owner module's contract:"
-            + Environment.NewLine + string.Join(Environment.NewLine, unexpected));
-        Assert.True(
-            resolved.Length == 0,
-            "Remove resolved entries from the pending foreign access list:"
-            + Environment.NewLine + string.Join(Environment.NewLine, resolved));
+            found.Length == 0,
+            "Foreign table access must go through the owner module's contract or SQL fragment:"
+            + Environment.NewLine + string.Join(Environment.NewLine, found));
     }
 
     [Fact]
@@ -134,12 +121,6 @@ public sealed partial class TableOwnershipTests
                     && !string.Equals(owner, file.Module, StringComparison.Ordinal))
                 .Select(table => $"{file.RelativePath} -> {table}"))
             .ToHashSet(StringComparer.Ordinal);
-    }
-
-    private static string StripStatementIds(string entry)
-    {
-        var index = entry.IndexOf(" (", StringComparison.Ordinal);
-        return index < 0 ? entry : entry[..index];
     }
 
     // Common table expressions and set-returning functions that follow from, join,
