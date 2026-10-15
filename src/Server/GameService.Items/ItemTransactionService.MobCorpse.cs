@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.GameService.Items;
@@ -11,11 +12,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<CreatePersistentMobCorpseCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.CreatePersistentMobCorpse,
             null,
-            ExecuteCreatePersistentMobCorpseAsync,
+            new DelegateItemCommandHandler<CreatePersistentMobCorpseCommand>(ExecuteCreatePersistentMobCorpseAsync),
             cancellationToken);
     }
 
@@ -23,11 +24,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<GrantMobLootCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.GrantMobLoot,
             request.Command.CharacterId,
-            ExecuteGrantMobLootAsync,
+            new DelegateItemCommandHandler<GrantMobLootCommand>(ExecuteGrantMobLootAsync),
             cancellationToken);
     }
 

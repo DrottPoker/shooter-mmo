@@ -20,11 +20,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<ProcessPlayerDeathCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.ProcessPlayerDeath,
             request.Command.CharacterId,
-            ExecuteProcessPlayerDeathAsync,
+            new DelegateItemCommandHandler<ProcessPlayerDeathCommand>(ExecuteProcessPlayerDeathAsync),
             cancellationToken);
     }
 
@@ -32,11 +32,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<ExpireCorpseCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.ExpireCorpse,
             null,
-            ExecuteExpireCorpseAsync,
+            new DelegateItemCommandHandler<ExpireCorpseCommand>(ExecuteExpireCorpseAsync),
             cancellationToken);
     }
 

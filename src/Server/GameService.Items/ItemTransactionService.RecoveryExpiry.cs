@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Items.Transactions;
 
 namespace Mmorpg.GameService.Items;
 
@@ -8,11 +9,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<ExpireRecoveryDeliveryCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.ExpireRecoveryDelivery,
             null,
-            ExecuteExpireRecoveryDeliveryAsync,
+            new DelegateItemCommandHandler<ExpireRecoveryDeliveryCommand>(ExecuteExpireRecoveryDeliveryAsync),
             cancellationToken);
     }
 

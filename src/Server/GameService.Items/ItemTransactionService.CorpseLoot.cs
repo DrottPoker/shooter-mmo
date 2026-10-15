@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
@@ -9,11 +10,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<LootCorpseItemCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.LootCorpseItem,
             request.Command.CharacterId,
-            ExecuteLootCorpseItemAsync,
+            new DelegateItemCommandHandler<LootCorpseItemCommand>(ExecuteLootCorpseItemAsync),
             cancellationToken);
     }
 
@@ -21,11 +22,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<LootCorpsePartialStackCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.LootCorpsePartialStack,
             request.Command.CharacterId,
-            ExecuteLootCorpsePartialStackAsync,
+            new DelegateItemCommandHandler<LootCorpsePartialStackCommand>(ExecuteLootCorpsePartialStackAsync),
             cancellationToken);
     }
 
@@ -33,11 +34,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<DepositCorpseItemCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.DepositCorpseItem,
             request.Command.CharacterId,
-            ExecuteDepositCorpseItemAsync,
+            new DelegateItemCommandHandler<DepositCorpseItemCommand>(ExecuteDepositCorpseItemAsync),
             cancellationToken);
     }
 
@@ -45,11 +46,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<DepositCorpsePartialStackCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.DepositCorpsePartialStack,
             request.Command.CharacterId,
-            ExecuteDepositCorpsePartialStackAsync,
+            new DelegateItemCommandHandler<DepositCorpsePartialStackCommand>(ExecuteDepositCorpsePartialStackAsync),
             cancellationToken);
     }
 
@@ -57,11 +58,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<MoveCorpseItemCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.MoveCorpseItem,
             request.Command.CharacterId,
-            ExecuteMoveCorpseItemAsync,
+            new DelegateItemCommandHandler<MoveCorpseItemCommand>(ExecuteMoveCorpseItemAsync),
             cancellationToken);
     }
 
@@ -69,11 +70,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<MoveCorpsePartialStackCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.MoveCorpsePartialStack,
             request.Command.CharacterId,
-            ExecuteMoveCorpsePartialStackAsync,
+            new DelegateItemCommandHandler<MoveCorpsePartialStackCommand>(ExecuteMoveCorpsePartialStackAsync),
             cancellationToken);
     }
 
@@ -81,11 +82,11 @@ internal sealed partial class ItemTransactionService
         ItemTransactionRequest<SwapCorpseBagCommand> request,
         CancellationToken cancellationToken)
     {
-        return ExecuteInternalAsync(
+        return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.SwapCorpseBag,
             request.Command.CharacterId,
-            ExecuteSwapCorpseBagAsync,
+            new DelegateItemCommandHandler<SwapCorpseBagCommand>(ExecuteSwapCorpseBagAsync),
             cancellationToken);
     }
 
