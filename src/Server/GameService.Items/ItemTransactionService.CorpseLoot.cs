@@ -1005,8 +1005,8 @@ internal sealed partial class ItemTransactionService
                 "The equipped player Bag aggregate changed before the swap committed.");
         }
 
-        await EnsureBagAggregateTransferAllowedAsync(context, corpseBag, cancellationToken);
-        await EnsureBagAggregateTransferAllowedAsync(context, playerBag, cancellationToken);
+        await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, corpseBag, cancellationToken);
+        await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, playerBag, cancellationToken);
 
         var corpseBagBefore = await context.CaptureItemStateJsonAsync(
             corpseBag.ItemInstanceId,
