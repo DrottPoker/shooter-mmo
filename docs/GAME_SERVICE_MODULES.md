@@ -289,5 +289,8 @@ intended differences:
   history or repeats an id.
 - Placement extracted: `src/Server/GameService.Placement` builds
   `Mmorpg.GameService.Placement`, which references Platform, Accounts,
-  Characters, `Mmorpg.Server.Common`, and `Mmorpg.WorldData`.
+  Characters, `Mmorpg.Server.Common`, and `Mmorpg.WorldData`. Only
+  `PlacementModule`, its options with the topology, World catalog, and
+  Development bot options, and `Placement.Contracts` are public. The host
+  seeds the topology through `PlacementModule.SeedTopologyAsync`.
 - The Items extraction: in progress.

@@ -6,7 +6,7 @@ namespace Mmorpg.GameService.Placement.Integration;
 
 // Ends simulation access in the same transaction that ends the account session, so a
 // replaced or revoked session can never keep a simulation lease or a join ticket.
-public sealed class SimulationAccountSessionLifecycleHandler : IAccountSessionLifecycleHandler
+internal sealed class SimulationAccountSessionLifecycleHandler : IAccountSessionLifecycleHandler
 {
     public async Task OnSessionsReplacedAsync(
         PostgresTransactionScope scope,

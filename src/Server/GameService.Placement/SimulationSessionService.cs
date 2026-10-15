@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class SimulationSessionService(
+internal sealed class SimulationSessionService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
     ISimulationCharacterStateProvider characterStateProvider)

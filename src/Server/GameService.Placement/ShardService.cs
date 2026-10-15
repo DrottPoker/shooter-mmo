@@ -9,7 +9,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class ShardService(
+internal sealed class ShardService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
     IAccountLocks accountLocks,

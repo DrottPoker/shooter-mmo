@@ -5,7 +5,7 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class SimulationSessionAuthority(PlacementModuleOptions options)
+internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
     : ISimulationSessionAuthority
 {
     public async Task<LiveSimulationSession?> LockForItemMutationAsync(

@@ -2,7 +2,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class DevelopmentSimulationBotTicketService(
+internal sealed class DevelopmentSimulationBotTicketService(
     DevelopmentSimulationBotPlacementService placementService,
     DevelopmentSimulationBotAuthority authority)
 {

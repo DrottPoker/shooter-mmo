@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class SimulationWorkerAuthority(PlacementModuleOptions options)
+internal sealed class SimulationWorkerAuthority(PlacementModuleOptions options)
     : ISimulationWorkerAuthority
 {
     public async Task<SimulationWorkerRuntime?> GetRuntimeAsync(

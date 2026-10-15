@@ -5,7 +5,7 @@ using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Placement;
 
-public static class DevelopmentSimulationBotEndpoints
+internal static class DevelopmentSimulationBotEndpoints
 {
     public static IEndpointRouteBuilder MapDevelopmentSimulationBotEndpoints(
         this IEndpointRouteBuilder app,

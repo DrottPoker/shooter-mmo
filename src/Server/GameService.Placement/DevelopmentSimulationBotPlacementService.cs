@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class DevelopmentSimulationBotPlacementService(
+internal sealed class DevelopmentSimulationBotPlacementService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options)
 {

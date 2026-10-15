@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Placement.Persistence;
 
-public static class WorkerSelectedWorldBindingMigration
+internal static class WorkerSelectedWorldBindingMigration
 {
     public const string Id = "202607191200_worker_selected_world_binding";
 

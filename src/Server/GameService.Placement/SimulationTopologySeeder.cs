@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class SimulationTopologySeeder(
+internal sealed class SimulationTopologySeeder(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
     ILogger<SimulationTopologySeeder> logger)

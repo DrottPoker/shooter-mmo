@@ -4,7 +4,7 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class DevelopmentSimulationBotAuthority(
+internal sealed class DevelopmentSimulationBotAuthority(
     DevelopmentSimulationBotOptions options,
     TimeProvider timeProvider)
 {

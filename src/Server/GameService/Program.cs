@@ -46,8 +46,7 @@ if (configuration.Platform.RunMigrationsOnStartup)
 {
     var initializer = app.Services.GetRequiredService<DatabaseInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);
-    var topologySeeder = app.Services.GetRequiredService<SimulationTopologySeeder>();
-    await topologySeeder.SeedAsync(CancellationToken.None);
+    await PlacementModule.SeedTopologyAsync(app.Services, CancellationToken.None);
 }
 
 if (PhaseNineDevelopmentFixtureCommand.TryParse(

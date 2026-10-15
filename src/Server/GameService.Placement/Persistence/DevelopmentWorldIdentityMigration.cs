@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Placement.Persistence;
 
-public static class DevelopmentWorldIdentityMigration
+internal static class DevelopmentWorldIdentityMigration
 {
     public const string Id = "202607182100_development_world_identity";
 

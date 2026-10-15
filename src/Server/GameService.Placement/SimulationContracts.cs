@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Placement;
 
-public sealed record ShardResponse(
+internal sealed record ShardResponse(
     string Id,
     string DisplayName,
     string WorldId,
@@ -12,7 +12,7 @@ public sealed record ShardResponse(
     int ActivePlayers,
     int Capacity);
 
-public sealed record SimulationEndpointResponse(
+internal sealed record SimulationEndpointResponse(
     string WorkerId,
     string RuntimeId,
     string Host,
@@ -21,7 +21,7 @@ public sealed record SimulationEndpointResponse(
     string SimulationRevision,
     string CollisionRevision);
 
-public sealed record SimulationWorkerHeartbeatRequest(
+internal sealed record SimulationWorkerHeartbeatRequest(
     string? FleetId,
     string? NodeId,
     string? ShardId,
@@ -36,7 +36,7 @@ public sealed record SimulationWorkerHeartbeatRequest(
     string? SimulationRevision,
     string? CollisionRevision);
 
-public sealed record SimulationWorkerHeartbeatResponse(
+internal sealed record SimulationWorkerHeartbeatResponse(
     string WorkerId,
     string RuntimeId,
     string FleetId,
@@ -53,16 +53,16 @@ public sealed record SimulationWorkerHeartbeatResponse(
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 
-public sealed record SimulationWorkerOfflineRequest(string? RuntimeId);
+internal sealed record SimulationWorkerOfflineRequest(string? RuntimeId);
 
-public sealed record SimulationWorkerOfflineResponse(
+internal sealed record SimulationWorkerOfflineResponse(
     string WorkerId,
     string RuntimeId,
     DateTime OfflineAt);
 
-public sealed record JoinShardRequest(Guid CharacterId);
+internal sealed record JoinShardRequest(Guid CharacterId);
 
-public sealed record JoinShardResponse(
+internal sealed record JoinShardResponse(
     ShardResponse Shard,
     SimulationEndpointResponse Endpoint,
     Guid CharacterId,
@@ -70,13 +70,13 @@ public sealed record JoinShardResponse(
     DateTime ExpiresAt,
     bool IsReconnect);
 
-public sealed record ConsumeSimulationJoinTicketRequest(
+internal sealed record ConsumeSimulationJoinTicketRequest(
     string? Ticket,
     string? WorkerId,
     string? RuntimeId,
     string? ShardId);
 
-public sealed record ConsumedSimulationJoinTicketResponse(
+internal sealed record ConsumedSimulationJoinTicketResponse(
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
@@ -99,11 +99,11 @@ public sealed record ConsumedSimulationJoinTicketResponse(
     public long SessionLeaseDurationMilliseconds { get; init; }
 }
 
-public sealed record SimulationSessionCredentialRequest(
+internal sealed record SimulationSessionCredentialRequest(
     string? WorkerRuntimeId,
     string? SessionToken);
 
-public sealed record SimulationSessionLeaseResponse(
+internal sealed record SimulationSessionLeaseResponse(
     Guid SimulationSessionId,
     Guid CharacterId,
     string ShardId,

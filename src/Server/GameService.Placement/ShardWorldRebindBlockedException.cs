@@ -1,6 +1,6 @@
 namespace Mmorpg.GameService.Placement;
 
-public sealed class ShardWorldRebindBlockedException : InvalidOperationException
+internal sealed class ShardWorldRebindBlockedException : InvalidOperationException
 {
     public ShardWorldRebindBlockedException(
         string shardId,

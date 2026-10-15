@@ -36,6 +36,16 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
         services.AddScoped<DevelopmentSimulationBotTicketService>();
     }
 
+    // Ensures the configured World definitions, Fleets, Nodes, and Shards exist. The host
+    // runs it after the database initializer and before it accepts requests.
+    public static Task SeedTopologyAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        return services.GetRequiredService<SimulationTopologySeeder>().SeedAsync(cancellationToken);
+    }
+
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         endpoints.MapSimulationEndpoints();

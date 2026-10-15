@@ -6,7 +6,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class SimulationWorkerRegistryService(
+internal sealed class SimulationWorkerRegistryService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
     IShardWorldLocalStateProbe shardWorldLocalStateProbe)

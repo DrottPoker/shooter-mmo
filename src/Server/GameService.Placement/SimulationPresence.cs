@@ -4,7 +4,7 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Placement;
 
-public sealed class SimulationPresence : ISimulationPresence
+internal sealed class SimulationPresence : ISimulationPresence
 {
     public Task<Guid?> FindActiveCharacterAsync(
         PostgresTransactionScope scope,

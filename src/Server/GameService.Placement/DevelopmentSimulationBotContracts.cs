@@ -1,11 +1,11 @@
 namespace Mmorpg.GameService.Placement;
 
-public sealed record DevelopmentSimulationBotTicketRequest(
+internal sealed record DevelopmentSimulationBotTicketRequest(
     Guid BotInstanceId,
     int BotIndex,
     string? ShardId);
 
-public sealed record DevelopmentSimulationBotTicketResponse(
+internal sealed record DevelopmentSimulationBotTicketResponse(
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
@@ -15,7 +15,7 @@ public sealed record DevelopmentSimulationBotTicketResponse(
     string JoinTicket,
     DateTime ExpiresAt);
 
-public sealed record DevelopmentSimulationBotPlacement(
+internal sealed record DevelopmentSimulationBotPlacement(
     string ShardId,
     string WorldId,
     string WorkerId,
@@ -30,13 +30,13 @@ public sealed record DevelopmentSimulationBotPlacement(
     string SimulationRevision,
     string CollisionRevision);
 
-public sealed record DevelopmentSimulationBotAuthoritySnapshot(
+internal sealed record DevelopmentSimulationBotAuthoritySnapshot(
     int Identities,
     int PendingTickets,
     int ActiveSessions,
     int ReleasedOrExpiredSessions);
 
-public sealed record DevelopmentSimulationBotReservation(
+internal sealed record DevelopmentSimulationBotReservation(
     string WorkerId,
     string WorkerRuntimeId,
     int ActiveSessions,
