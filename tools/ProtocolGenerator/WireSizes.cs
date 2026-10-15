@@ -43,11 +43,16 @@ public static class WireSizes
         return fields.Aggregate(SizeRange.Fixed(0), (total, field) => total + OfField(field));
     }
 
-    // A conditional field may be absent.
+    // A conditional field may be absent, and an optional field may be only its bool.
     public static SizeRange OfField(FieldDefinition field)
     {
         var size = Of(field.Type);
-        return field.Presence == FieldPresence.Conditional ? new SizeRange(0, size.Maximum) : size;
+        return field.Presence switch
+        {
+            FieldPresence.Conditional => new SizeRange(0, size.Maximum),
+            FieldPresence.Optional => new SizeRange(1, 1 + size.Maximum),
+            _ => size
+        };
     }
 
     // The whole packet, including the frame header and the smallest and largest case.
@@ -77,7 +82,7 @@ public static class WireSizes
     // The packet size when every top-level array is empty.
     public static long EmptyMessageSize(MessageDefinition message)
     {
-        return FrameHeaderSize + message.Fields.Sum(field => field.Type is ArrayWireType ? 1 : Of(field.Type).Minimum);
+        return FrameHeaderSize + message.Fields.Sum(field => field.Type is ArrayWireType ? 1 : OfField(field).Minimum);
     }
 
     public static int PrimitiveSize(PrimitiveKind kind)

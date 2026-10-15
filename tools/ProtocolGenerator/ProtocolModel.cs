@@ -172,7 +172,11 @@ public enum FieldPresence
     Always,
 
     // Written only while the bool field named by ConditionField has ConditionValue.
-    Conditional
+    Conditional,
+
+    // Written after its own bool, which is true when the value is present: a struct that
+    // is not null, or text that is not empty or whitespace. Absent text reads as empty.
+    Optional
 }
 
 public sealed record FieldDefinition(string Name, string? Description, WireType Type, ValueRules Rules)

@@ -165,7 +165,7 @@
             "$ref": "#/$defs/name"
           },
           "runtimeSizeCheck": {
-            "description": "Required when a reliable message can exceed the packet limit; encoding then throws InvalidOperationException for an oversized packet.",
+            "description": "Required exactly when a reliable message can exceed the packet limit; encoding then throws InvalidOperationException for an oversized packet.",
             "type": "boolean"
           },
           "fields": { "$ref": "#/$defs/fields" },
@@ -300,6 +300,10 @@
           "exclusiveMaximum": { "type": "number" },
           "nonEmpty": { "type": "boolean" },
           "lessThan": { "$ref": "#/$defs/name" },
+          "optional": {
+            "description": "A struct or string written after its own bool, which is true when the value is present: a struct that is not null, or text that is not empty or whitespace.",
+            "type": "boolean"
+          },
           "when": {
             "description": "A struct field written only while the named earlier bool field is true, or false with a leading !.",
             "type": "string",
@@ -310,7 +314,7 @@
             "enum": [ "allow", "acceptOnDecode" ]
           },
           "nullAsEmpty": {
-            "description": "The constructor turns null into an empty string or array. Needs blank allow on a string, and no minCount on an array.",
+            "description": "The constructor turns null into an empty string or array. Needs an optional string or blank allow on a string, and no minCount on an array.",
             "type": "boolean"
           },
           "absent": {

@@ -325,11 +325,10 @@ holds the framing, error messages, and the primitive readers and writers. The
 message families are `Session` (join, leave, disconnect), `Movement` (input,
 settings, owner snapshot), `Replication` (entity presence and simulation
 snapshots), `Items`, `Corpses`, and `WorldActors`. The generator writes the
-models and codecs of a generated family, which keeps a folder only for its
-hand-written cross-field rules, as `Movement`, `Items`, and `WorldActors` do;
-`Session` and `Replication` need none. A family that is not generated yet keeps
-a message file and a codec file in its own folder. Which families are generated
-is listed in [Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
+models and codecs of every family. A family keeps a folder only for its
+hand-written cross-field rules, as `Movement`, `Items`, `Corpses`, and
+`WorldActors` do; `Session` and `Replication` need none. The list is in
+[Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
 
 Protocol version 14 includes:
 

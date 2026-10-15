@@ -398,6 +398,29 @@ internal static class CodecEmitter
         };
     }
 
+    private static string Absence(WireType type, string expression)
+    {
+        return type switch
+        {
+            PrimitiveType { Kind: PrimitiveKind.Guid } => $"{expression} == Guid.Empty",
+            PrimitiveType { Kind: PrimitiveKind.Bool } => "!" + expression,
+            PrimitiveType => $"{expression} == 0",
+            StringWireType => $"string.IsNullOrWhiteSpace({expression})",
+            _ => $"{expression} == null"
+        };
+    }
+
+    // True when a value differs from the absent value of its variant field.
+    private static string Differs(WireType type, string expression, string absentValue)
+    {
+        return type switch
+        {
+            ArrayWireType => $"{expression}.Length != 0",
+            StructWireType => $"{expression} != null",
+            _ => $"{expression} != {absentValue}"
+        };
+    }
+
     private static void OpenCaseLabels(CSharpWriter writer, UnionCase unionCase, string enumClass)
     {
         for (var index = 0; index < unionCase.Kinds.Count - 1; index++)
@@ -427,6 +450,17 @@ internal static class CodecEmitter
             if (field.Presence == FieldPresence.Conditional)
             {
                 writer.Open($"if ({Condition(field, "value.")})");
+                EmitWrite(writer, field.Type, "value." + field.Name);
+                writer.Close();
+                continue;
+            }
+
+            if (field.Presence == FieldPresence.Optional)
+            {
+                var flag = "has" + field.Name;
+                writer.Line($"var {flag} = {Presence(field.Type, "value." + field.Name)};");
+                writer.Line($"writer.Write({flag});");
+                writer.Open($"if ({flag})");
                 EmitWrite(writer, field.Type, "value." + field.Name);
                 writer.Close();
                 continue;
@@ -547,6 +581,19 @@ internal static class CodecEmitter
                 writer.Line($"{TypeName(field.Type)} {local} = null;");
                 var conditionLocal = CSharpNames.Local(field.ConditionField!);
                 writer.Open($"if ({(field.ConditionValue ? string.Empty : "!")}{conditionLocal})");
+                EmitReadInto(writer, field.Type, local, fieldDisplay);
+                writer.Close();
+                writer.BlankLine();
+                arguments.Add(local);
+                continue;
+            }
+
+            if (field.Presence == FieldPresence.Optional)
+            {
+                var flag = "has" + field.Name;
+                EmitPrimitiveRead(writer, "Boolean", flag);
+                writer.Line($"{TypeName(field.Type)} {local} = {(field.Type is StringWireType ? "string.Empty" : "null")};");
+                writer.Open($"if ({flag})");
                 EmitReadInto(writer, field.Type, local, fieldDisplay);
                 writer.Close();
                 writer.BlankLine();
@@ -835,6 +882,22 @@ internal static class CodecEmitter
                 continue;
             }
 
+            if (field.Presence == FieldPresence.Optional)
+            {
+                // Absent text is empty, and present text may be whitespace that encodes as absent.
+                if (field.Type is StructWireType optionalStruct)
+                {
+                    conditions.Add($"({expression} != null && !IsValid{optionalStruct.Definition.Name}({expression}))");
+                }
+                else
+                {
+                    conditions.Add($"{expression} == null");
+                    conditions.Add($"{expression}.Length > {((StringWireType)field.Type).MaximumLength.Expression}");
+                }
+
+                continue;
+            }
+
             var lenient = leniency is not null && (leniency.AllText || field.AcceptBlankOnDecode);
             AddChecks(conditions, loops, writer, field.Type, field.Rules, expression, lenient ? leniency : null);
         }
@@ -859,6 +922,24 @@ internal static class CodecEmitter
                     }
 
                     AddChecks(caseConditions, caseLoops, writer, entry.Field.Type, entry.Field.Rules, expression);
+                }
+
+                // An absent group writes none of its fields, so they must hold their absent values.
+                foreach (var group in unionCase.Entries.OfType<UnionGroupEntry>())
+                {
+                    var presenceType = group.Fields.Single(member => member.Field.Name == group.PresenceField).Field.Type;
+                    var others = group.Fields
+                        .Where(member => member.Field.Name != group.PresenceField && member.FixedValue is null)
+                        .Select(member => Differs(
+                            member.Field.Type,
+                            "value." + member.Field.Name,
+                            union.Pool.Single(pool => pool.Field.Name == member.Field.Name).AbsentValue))
+                        .ToArray();
+                    if (others.Length > 0)
+                    {
+                        var differs = others.Length == 1 ? others[0] : "(" + string.Join(" || ", others) + ")";
+                        caseConditions.Add($"({Absence(presenceType, "value." + group.PresenceField)} && {differs})");
+                    }
                 }
 
                 EmitChecks(writer, caseConditions, caseLoops);

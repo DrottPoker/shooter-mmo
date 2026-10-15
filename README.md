@@ -272,7 +272,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `src/Server/GameService.Items` | Item catalog, item state and transactions, corpses, death loot, Recovery, policies, expiry, maintenance, and item development tools |
 | `src/Server/SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `src/Server/Common` | Framework-neutral helpers shared by the server processes |
-| `src/Shared/GameProtocol` | Local Unity package containing the realtime protocol: the schema in `Schema~`, the code generated from it in `Runtime/Generated`, and the hand-written family codecs |
+| `src/Shared/GameProtocol` | Local Unity package containing the realtime protocol: the schema in `Schema~`, the code generated from it in `Runtime/Generated`, and the hand-written cross-field rules of each family |
 | `src/Shared/GameSimulation` | Local Unity package containing shared simulation source |
 | `content` | Authored game content: item and actor catalogs with one file per definition, and per-World manifests, spawns, and collision sources |
 | `src/Shared/WorldData` | Local Unity package with shared domain rules and compilers, the Unity content tools, and the deterministic `Generated` data compiled from `content` |

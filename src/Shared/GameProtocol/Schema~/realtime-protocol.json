@@ -566,6 +566,92 @@
           "description": "The capability revision an action must expect."
         }
       ]
+    },
+    {
+      "name": "CorpsePresence",
+      "family": "Corpses",
+      "description": "A corpse near the character, as the world shows it before it is opened.",
+      "fields": [
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
+        { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
+        { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        {
+          "name": "ExpiresAtUnixMilliseconds",
+          "type": "i64",
+          "minimum": 1,
+          "description": "When the corpse decays."
+        },
+        { "name": "IsEmpty", "type": "bool", "description": "Whether the corpse holds no items." },
+        {
+          "name": "SourceDisplayName",
+          "type": "string",
+          "maxLength": "MaximumCorpseSourceNameLength",
+          "description": "The name of whoever left the corpse."
+        },
+        {
+          "name": "PresentationKey",
+          "type": "string",
+          "maxLength": "MaximumCorpsePresentationKeyLength",
+          "description": "The presentation the client renders."
+        }
+      ]
+    },
+    {
+      "name": "CorpseItem",
+      "family": "Corpses",
+      "description": "An item in a corpse slot.",
+      "rules": true,
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        {
+          "name": "DefinitionId",
+          "type": "string",
+          "maxLength": "MaximumDefinitionIdLength",
+          "description": "The item definition."
+        },
+        { "name": "Quantity", "type": "i32", "minimum": 1, "description": "The stack quantity." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The item revision." },
+        { "name": "BagContentsContainerId", "type": "guid", "description": "The contents of a bag item, or empty." },
+        {
+          "name": "BagContentsRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The bag contents revision, or 0 without contents."
+        }
+      ]
+    },
+    {
+      "name": "CorpseSlot",
+      "family": "Corpses",
+      "description": "One slot of a corpse section and the item in it.",
+      "fields": [
+        { "name": "SlotIndex", "type": "i32", "minimum": 0, "description": "The slot within its section." },
+        {
+          "name": "SlotKind",
+          "type": "string",
+          "maxLength": "MaximumCorpseSlotKindLength",
+          "description": "The kind of slot."
+        },
+        {
+          "name": "AcceptedTags",
+          "type": "array",
+          "items": { "type": "string", "maxLength": "MaximumSlotTagLength" },
+          "maxCount": "MaximumSlotTags",
+          "distinct": true,
+          "nullAsEmpty": true,
+          "description": "The item tags the slot accepts."
+        },
+        {
+          "name": "EquipmentSlotId",
+          "type": "string",
+          "maxLength": "MaximumEquipmentSlotIdLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The equipment slot, in the equipment section only."
+        },
+        { "name": "Item", "type": "CorpseItem", "optional": true, "description": "The item in the slot, or null." }
+      ]
     }
   ],
   "messages": [
@@ -1096,8 +1182,35 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "One chunk of the corpses near the recipient."
+      "codec": "generated",
+      "description": "One chunk of the corpses near the recipient.",
+      "parameter": "chunk",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "SnapshotSequence", "type": "u32", "description": "The snapshot this chunk belongs to." },
+        {
+          "name": "ChunkIndex",
+          "type": "u16",
+          "lessThan": "ChunkCount",
+          "description": "The position of this chunk in the snapshot."
+        },
+        {
+          "name": "ChunkCount",
+          "type": "u16",
+          "minimum": 1,
+          "maximum": "MaximumCorpseChunkCount",
+          "description": "The number of chunks in the snapshot."
+        },
+        {
+          "name": "Corpses",
+          "type": "array",
+          "items": "CorpsePresence",
+          "maxCount": "MaximumCorpsePresencePerChunk",
+          "distinctBy": "CorpseId",
+          "nullAsEmpty": true,
+          "description": "The corpses in this chunk."
+        }
+      ]
     },
     {
       "name": "CorpseInteractionIntent",
@@ -1106,8 +1219,146 @@
       "direction": "clientToServer",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Asks for one operation on a corpse."
+      "codec": "generated",
+      "description": "Asks for one operation on a corpse.",
+      "parameter": "intent",
+      "rules": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "Identifies the operation and its result."
+        },
+        { "name": "OperationKind", "type": "CorpseInteractionKind", "description": "The operation." },
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        {
+          "name": "ExpectedCorpseRevision",
+          "type": "i64",
+          "description": "The corpse revision the client saw, or -1 for Open."
+        }
+      ],
+      "variants": {
+        "discriminator": "OperationKind",
+        "fields": [
+          {
+            "name": "ItemInstanceId",
+            "type": "guid",
+            "description": "The item that moves, or the corpse bag of a bag swap."
+          },
+          { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
+          { "name": "Quantity", "type": "i32", "description": "The quantity a partial stack moves." },
+          { "name": "DestinationContainerId", "type": "guid", "description": "The container the item moves into." },
+          {
+            "name": "ExpectedDestinationContainerRevision",
+            "type": "i64",
+            "description": "The destination container revision the client saw."
+          },
+          { "name": "DestinationSlotIndex", "type": "i32", "absent": -1, "description": "The destination slot." },
+          {
+            "name": "TargetItemInstanceId",
+            "type": "guid",
+            "description": "The stack the item merges into, or empty."
+          },
+          {
+            "name": "ExpectedTargetItemRevision",
+            "type": "i64",
+            "description": "The target stack revision the client saw."
+          },
+          {
+            "name": "CorpseBagContentsContainerId",
+            "type": "guid",
+            "description": "The contents of the corpse bag."
+          },
+          {
+            "name": "ExpectedCorpseBagContentsRevision",
+            "type": "i64",
+            "description": "The corpse bag contents revision the client saw."
+          },
+          { "name": "PlayerBagItemInstanceId", "type": "guid", "description": "The bag of the character." },
+          {
+            "name": "ExpectedPlayerBagRevision",
+            "type": "i64",
+            "description": "The character bag revision the client saw."
+          },
+          {
+            "name": "PlayerBagContentsContainerId",
+            "type": "guid",
+            "description": "The contents of the character bag."
+          },
+          {
+            "name": "ExpectedPlayerBagContentsRevision",
+            "type": "i64",
+            "description": "The character bag contents revision the client saw."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "Open", "factory": "CreateOpen" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "fixed": -1 } ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "Close", "factory": "CreateClose" }, { "kind": "Refresh", "factory": "CreateRefresh" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": []
+          },
+          {
+            "kinds": [
+              { "kind": "LootItem", "factory": "CreateLootItem" },
+              { "kind": "DepositItem", "factory": "CreateDepositItem" },
+              { "kind": "MoveItem", "factory": "CreateMoveItem" }
+            ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "Quantity", "fixed": 0 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "ExpectedDestinationContainerRevision", "minimum": 0 },
+              { "field": "DestinationSlotIndex", "minimum": 0 },
+              {
+                "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
+                "presence": "TargetItemInstanceId"
+              }
+            ]
+          },
+          {
+            "kinds": [
+              { "kind": "LootPartialStack", "factory": "CreateLootPartialStack" },
+              { "kind": "DepositPartialStack", "factory": "CreateDepositPartialStack" },
+              { "kind": "MovePartialStack", "factory": "CreateMovePartialStack" }
+            ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "Quantity", "minimum": 1 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "ExpectedDestinationContainerRevision", "minimum": 0 },
+              { "field": "DestinationSlotIndex", "minimum": 0 },
+              {
+                "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
+                "presence": "TargetItemInstanceId"
+              }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "SwapBag", "factory": "CreateSwapBag" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "corpseBagItemInstanceId" },
+              { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedCorpseBagRevision" },
+              { "field": "CorpseBagContentsContainerId", "nonEmpty": true },
+              { "field": "ExpectedCorpseBagContentsRevision", "minimum": 0 },
+              { "field": "PlayerBagItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedPlayerBagRevision", "minimum": 0 },
+              { "field": "PlayerBagContentsContainerId", "nonEmpty": true },
+              { "field": "ExpectedPlayerBagContentsRevision", "minimum": 0 }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "CorpseInteractionResult",
@@ -1116,8 +1367,33 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "The committed or rejected outcome of a corpse operation."
+      "codec": "generated",
+      "description": "The committed or rejected outcome of a corpse operation.",
+      "parameter": "result",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The operation this answers." },
+        { "name": "OperationKind", "type": "CorpseInteractionKind", "description": "The operation." },
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the operation committed." },
+        {
+          "name": "RequiresCorpseRefresh",
+          "type": "bool",
+          "description": "Whether the client must refresh the corpse view."
+        },
+        {
+          "name": "RequiresInventoryRefresh",
+          "type": "bool",
+          "description": "Whether the client must refresh its inventory."
+        },
+        {
+          "name": "CarryState",
+          "type": "CarryState",
+          "description": "The committed carry state after the operation."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." }
+      ]
     },
     {
       "name": "CorpseViewStateChunk",
@@ -1126,8 +1402,90 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "One chunk of the open corpse view."
+      "codec": "generated",
+      "description": "One chunk of the open corpse view.",
+      "parameter": "chunk",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "UpdateId", "type": "guid", "nonEmpty": true, "description": "The update this chunk belongs to." },
+        {
+          "name": "UpdateKind",
+          "type": "CorpseViewUpdateKind",
+          "description": "Whether the update replaces the view or applies a delta."
+        },
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        {
+          "name": "BaseRevision",
+          "type": "i64",
+          "minimum": -1,
+          "description": "The revision a delta applies to, or -1 for a snapshot."
+        },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The corpse revision after the update." },
+        {
+          "name": "ExpiresAtUnixMilliseconds",
+          "type": "i64",
+          "minimum": 1,
+          "description": "When the corpse decays."
+        },
+        {
+          "name": "SourceDisplayName",
+          "type": "string",
+          "maxLength": "MaximumCorpseSourceNameLength",
+          "description": "The name of whoever left the corpse."
+        },
+        {
+          "name": "PresentationKey",
+          "type": "string",
+          "maxLength": "MaximumCorpsePresentationKeyLength",
+          "description": "The presentation the client renders."
+        },
+        {
+          "name": "ChunkIndex",
+          "type": "u16",
+          "lessThan": "ChunkCount",
+          "description": "The position of this chunk in the update."
+        },
+        {
+          "name": "ChunkCount",
+          "type": "u16",
+          "minimum": 1,
+          "maximum": "MaximumCorpseChunkCount",
+          "description": "The number of chunks in the update."
+        },
+        {
+          "name": "SectionKind",
+          "type": "string",
+          "maxLength": "MaximumCorpseSectionKindLength",
+          "oneOf": [ "general_inventory", "equipment", "bag" ],
+          "description": "The corpse section this chunk describes."
+        },
+        {
+          "name": "ContainerId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The container behind the section."
+        },
+        { "name": "ContainerRevision", "type": "i64", "minimum": 0, "description": "The container revision." },
+        { "name": "ReplaceSection", "type": "bool", "description": "Whether the chunk replaces the whole section." },
+        {
+          "name": "SectionSlotCapacity",
+          "type": "i32",
+          "minimum": 1,
+          "maximum": "MaximumCorpseSectionSlotCapacity",
+          "description": "The number of slots in the section."
+        },
+        { "name": "SlotOffset", "type": "i32", "minimum": 0, "description": "The first slot this chunk covers." },
+        {
+          "name": "Slots",
+          "type": "array",
+          "items": "CorpseSlot",
+          "maxCount": "MaximumCorpseViewSlotsPerChunk",
+          "distinctBy": "SlotIndex",
+          "nullAsEmpty": true,
+          "description": "The slots in this chunk."
+        }
+      ]
     },
     {
       "name": "CorpseViewClosed",
@@ -1136,8 +1494,27 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "The worker closed the open corpse view."
+      "codec": "generated",
+      "description": "The worker closed the open corpse view.",
+      "parameter": "closed",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse whose view closed." },
+        {
+          "name": "Code",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "blank": "acceptOnDecode",
+          "description": "A stable code for why the view closed."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumErrorMessageLength",
+          "blank": "acceptOnDecode",
+          "description": "A human-readable explanation."
+        }
+      ]
     },
     {
       "name": "WorldActorSpawn",

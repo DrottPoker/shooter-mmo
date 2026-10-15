@@ -234,6 +234,48 @@ public sealed class ProtocolGeneratorTests
     }
 
     [Fact]
+    public void OptionalFieldsWriteTheirOwnPresenceFlag()
+    {
+        var schema = GeneratedSchema();
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse(
+            """{ "name": "Label", "type": "string", "maxLength": 8, "optional": true, "nullAsEmpty": true }"""));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Origin", "type": "Point", "optional": true }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(
+            new SizeRange(7 + 4 + 1 + 9 + 1 + 1 + 1, 7 + 4 + 1 + (4 * 9) + 1 + 1 + 2 + (3 * 8) + 1 + 9),
+            WireSizes.OfMessage(model.Messages.Single()));
+        Assert.Contains("Label = label ?? string.Empty;", family, StringComparison.Ordinal);
+        Assert.Contains("var hasLabel = !string.IsNullOrWhiteSpace(value.Label);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.Write(hasLabel);", family, StringComparison.Ordinal);
+        Assert.Contains("var hasOrigin = value.Origin != null;", family, StringComparison.Ordinal);
+        Assert.Contains("string label = string.Empty;", family, StringComparison.Ordinal);
+        Assert.Contains("RealtimePoint origin = null;", family, StringComparison.Ordinal);
+        Assert.Contains("TryReadString(reader, 8, out label, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Label == null", family, StringComparison.Ordinal);
+        Assert.DoesNotContain("|| string.IsNullOrWhiteSpace(value.Label)", family, StringComparison.Ordinal);
+        Assert.Contains("|| (value.Origin != null && !IsValidPoint(value.Origin))", family, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AbsentGroupsRequireAbsentFieldsAndVariantStructsCountAsUsed()
+    {
+        var schema = UnionSchema();
+        schema["structs"] = GeneratedSchema()["structs"]!.DeepClone();
+        var variants = schema["messages"]![0]!["variants"]!;
+        variants["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Weight", "type": "i64" }"""));
+        variants["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Origin", "type": "Point" }"""));
+        variants["cases"]![0]!["fields"]!.AsArray().Insert(0, JsonNode.Parse("""{ "field": "Origin" }"""));
+        variants["cases"]![1]!["fields"]![0]!["group"]!.AsArray().Add(JsonNode.Parse("""{ "field": "Weight", "minimum": 0 }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Contains("|| (value.Target == Guid.Empty && value.Weight != 0)", family, StringComparison.Ordinal);
+        Assert.Contains("private static bool IsValidPoint(RealtimePoint value)", family, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void VariantsGenerateFactoriesAndPerCaseCodecs()
     {
         var model = ProtocolSchemaLoader.Load(UnionSchema().ToJsonString());
@@ -474,6 +516,9 @@ public sealed class ProtocolGeneratorTests
     [InlineData("unknown blank value", "$.messages[0].fields[0].blank")]
     [InlineData("nullAsEmpty on required text", "$.messages[0].fields[3].nullAsEmpty")]
     [InlineData("nullAsEmpty on an array with minCount", "$.messages[0].fields[1].nullAsEmpty")]
+    [InlineData("optional number", "$.messages[0].fields[0].optional")]
+    [InlineData("optional with a condition", "$.messages[0].fields[4].when")]
+    [InlineData("runtime size check on a small message", "$.messages[0].runtimeSizeCheck")]
     [InlineData("expanded encode on a class message", "$.messages[0].encodeParameters")]
     [InlineData("empty message with rules", "$.messages[0].api")]
     [InlineData("empty message with fields", "$.messages[0].fields")]
@@ -575,6 +620,17 @@ public sealed class ProtocolGeneratorTests
                 break;
             case "nullAsEmpty on an array with minCount":
                 fields[1]!["nullAsEmpty"] = true;
+                break;
+            case "optional number":
+                fields[0]!["optional"] = true;
+                break;
+            case "optional with a condition":
+                fields.Add(JsonNode.Parse("""{ "name": "Failed", "type": "bool" }"""));
+                fields.Add(JsonNode.Parse("""{ "name": "Origin", "type": "Point", "optional": true, "when": "Failed" }"""));
+                break;
+            case "runtime size check on a small message":
+                message["delivery"] = "reliableOrdered";
+                message["runtimeSizeCheck"] = true;
                 break;
             case "expanded encode on a class message":
                 message["encodeParameters"] = "expanded";

@@ -69,21 +69,19 @@ from the package path, so no Unity Editor step is needed and every machine gets
 the same GUID. Generated C# stays within C# 8 and .NET Standard 2.1, because the
 .NET project compiles it with C# 8, which Unity's C# 9 compiler also accepts.
 
-Structural phase 2 moves the families into the schema one at a time:
+Every family is generated from the schema. A family folder holds only what the
+schema cannot say:
 
-| Family | Codec |
+| Family | Hand-written part |
 | --- | --- |
-| `Movement` | Generated; `Movement/RealtimeProtocol.Movement.cs` holds its cross-field rules |
-| `Replication` | Generated; no hand-written rules |
-| `Items` | Generated; `Items/RealtimeProtocol.Items.cs` holds its cross-field rules |
-| `Session` | Generated; no hand-written rules |
-| `WorldActors` | Generated; `WorldActors/RealtimeProtocol.WorldActors.cs` holds its cross-field rules |
-| `Corpses` | Hand-written |
+| `Session` | None |
+| `Movement` | `Movement/RealtimeProtocol.Movement.cs`: cross-field rules |
+| `Replication` | None |
+| `Items` | `Items/RealtimeProtocol.Items.cs`: cross-field rules |
+| `Corpses` | `Corpses/RealtimeProtocol.Corpses.cs`: cross-field rules and the shorter `RealtimeCorpseSlot` constructors |
+| `WorldActors` | `WorldActors/RealtimeProtocol.WorldActors.cs`: cross-field rules |
 
-Hand-written codecs call the generated struct helpers, such as
-`WritePlayerState`, `TryReadMovementSettings`, and `WriteCarryState`, which
-keep the names the hand-written code used before. `RealtimeError` is the
-generated `Error` struct of the `Session` family.
+`RealtimeError` is the generated `Error` struct of the `Session` family.
 
 The quality gate, CI, and `ProtocolGeneratorTests` in `Mmorpg.Tools.Tests` all
 fail when a generated file is stale, missing, or not produced by the schema.
@@ -150,9 +148,16 @@ Text must not be empty or whitespace unless its field sets `blank`:
   contain no struct or array fields. It belongs to message fields only, not to
   struct fields or variant fields.
 
+`"optional": true` writes a struct or string field after its own `bool`, which
+is true when the value is present: a struct that is not null, or text that is
+not empty or whitespace. An absent struct reads as null and absent text as an
+empty string. `RealtimeCorpseSlot` carries its equipment slot and its item this
+way.
+
 `"nullAsEmpty": true` makes the constructor turn a null argument into an empty
 string or array, as `RealtimeWorldInteractionOpened` does for its capabilities.
-It needs `"blank": "allow"` on a string and no `minCount` on an array.
+It needs an optional string or `"blank": "allow"` on a string, and no
+`minCount` on an array.
 
 `sizeConstant` on a fixed-size struct or message, and `emptySizeConstant` on a
 message with arrays, become public `RealtimeProtocol` constants such as
@@ -184,7 +189,8 @@ A message whose fields depend on a kind, such as `ItemOperationIntent`, lists
   fixed value whatever the wire carries; factories leave it out.
 - A `group` entry is written as a `bool` that is true when its `presence`
   field differs from its absent value, followed by the group's fields only
-  when it is true.
+  when it is true. While the presence field is absent, the other group fields
+  must hold their absent values too, because encoding would drop them.
 
 The generated class has an internal constructor for the decoder and one public
 factory per kind, so a variant can only be built with its own fields.
@@ -196,7 +202,8 @@ generated message from its schema. A message with unreliable delivery whose
 largest size exceeds 1,023 bytes fails generation, so snapshots provably fit.
 A reliable message whose largest size can exceed 1,200 bytes must set
 `"runtimeSizeCheck": true`, which makes the risk a visible decision; encoding
-such a packet then throws `InvalidOperationException` when it is too large.
+such a packet then throws `InvalidOperationException` when it is too large. A
+message that cannot exceed the limit must not set it.
 Text counts as up to three UTF-8 bytes per allowed UTF-16 character, the most
 any character encodes to.
 

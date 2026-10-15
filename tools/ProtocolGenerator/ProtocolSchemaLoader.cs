@@ -673,11 +673,25 @@ public static partial class ProtocolSchemaLoader
                 throw node.Error("blank", "must be allow on a string field, or acceptOnDecode on a string or struct field.");
         }
 
+        if (node.OptionalBoolean("optional", false))
+        {
+            if (field.Type is not (StringWireType { AllowBlank: false } or StructWireType)
+                || field.AcceptBlankOnDecode
+                || field.Rules.Format != StringFormat.Any
+                || field.Rules.OneOf is not null)
+            {
+                throw node.Error("optional", "applies to a struct, or to a string without blank, format, or oneOf.");
+            }
+
+            field = field with { Presence = FieldPresence.Optional };
+        }
+
         if (node.OptionalBoolean("nullAsEmpty", false))
         {
-            if (field.Type is not (StringWireType { AllowBlank: true } or ArrayWireType { MinimumCount: 0 }))
+            var optionalText = field.Type is StringWireType && field.Presence == FieldPresence.Optional;
+            if (!optionalText && field.Type is not (StringWireType { AllowBlank: true } or ArrayWireType { MinimumCount: 0 }))
             {
-                throw node.Error("nullAsEmpty", "applies to a string that allows blank text or an array without minCount.");
+                throw node.Error("nullAsEmpty", "applies to an optional string, a string that allows blank text, or an array without minCount.");
             }
 
             field = field with { NullAsEmpty = true };
@@ -689,9 +703,9 @@ public static partial class ProtocolSchemaLoader
             return field;
         }
 
-        if (type is not StructWireType)
+        if (type is not StructWireType || field.Presence == FieldPresence.Optional)
         {
-            throw node.Error("when", "applies to struct fields only.");
+            throw node.Error("when", "applies to struct fields that are not optional.");
         }
 
         var conditionValue = !condition.StartsWith('!');
@@ -867,6 +881,14 @@ public static partial class ProtocolSchemaLoader
                 $"must be true: the message can reach {size.Maximum} bytes, above the packet limit of {scope.MaximumPacketSize}.");
         }
 
+        if (message.RuntimeSizeCheck
+            && (message.Delivery == MessageDelivery.Unreliable || size.Maximum <= scope.MaximumPacketSize))
+        {
+            throw node.Error(
+                "runtimeSizeCheck",
+                $"is only for a reliable message that can exceed the packet limit; this one reaches at most {size.Maximum} bytes.");
+        }
+
         if (message.SizeConstant is not null && !size.IsFixed)
         {
             throw node.Error("sizeConstant", "requires a message with a fixed size.");
@@ -928,7 +950,8 @@ public static partial class ProtocolSchemaLoader
         var used = new HashSet<StructDefinition>();
         foreach (var message in model.Messages)
         {
-            foreach (var field in message.Fields)
+            var variantFields = message.Union?.Pool.Select(pool => pool.Field) ?? [];
+            foreach (var field in message.Fields.Concat(variantFields))
             {
                 CollectStructs(field.Type, used);
             }
