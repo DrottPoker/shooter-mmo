@@ -5,7 +5,7 @@ using Mmorpg.GameService.Testing;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.Integration.Tests;
 
 public sealed class MobCorpseLifecycleIntegrationTests
 {

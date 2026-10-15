@@ -10,7 +10,7 @@ using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.Integration.Tests;
 
 public sealed class AuthSimulationFlowIntegrationTests
 {

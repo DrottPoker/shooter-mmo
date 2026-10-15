@@ -1,4 +1,4 @@
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Integration.Tests;
 
 public sealed class TestBuildOutputTests
 {
