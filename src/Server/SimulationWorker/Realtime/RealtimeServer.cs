@@ -115,10 +115,13 @@ internal sealed class RealtimeServer(
     }
 
     // The order is part of the shutdown contract: the transport stops first, so no event
-    // can register state while the stores are cleared.
+    // can register state, and in-flight operations finish before the stores are cleared,
+    // so a late join or release cannot register state after the clear. Their completions
+    // are never finalized.
     private async Task ShutdownAsync()
     {
         transport.Stop();
+        await operationTracker.WaitForAllAsync();
         peers.Clear();
         presence.Clear();
         connectionBindings.Clear();
@@ -132,7 +135,6 @@ internal sealed class RealtimeServer(
         networkMetrics.SetActivePeers(0);
         networkMetrics.SetActiveEntities(0);
         networkMetrics.SetPeerPopulation(0, 0, 0);
-        await operationTracker.WaitForAllAsync();
         logger.LogInformation("[SIMULATION] Realtime transport stopped.");
     }
 }

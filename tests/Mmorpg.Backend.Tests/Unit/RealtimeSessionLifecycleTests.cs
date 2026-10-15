@@ -294,9 +294,9 @@ public sealed class RealtimeSessionLifecycleTests
         Assert.Equal(0, metrics.ActivePeers);
         Assert.Equal(0, metrics.ActiveEntities);
         Assert.Equal(0, metrics.ActiveRealPlayers);
-        // Latent issue: the stores are cleared before in-flight operations finish, so the
-        // late join registers its carry state again after the clear.
-        Assert.True(harness.CarryStateStore.TryGet(
+        // In-flight operations finish before the stores are cleared, so a late join cannot
+        // leave carry state behind.
+        Assert.False(harness.CarryStateStore.TryGet(
             character.CharacterId,
             character.SimulationSessionId,
             out _));
