@@ -1,6 +1,6 @@
 using Mmorpg.GameService.Characters;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.GameService.Characters.Tests;
 
 public sealed class CharacterValidationTests
 {
