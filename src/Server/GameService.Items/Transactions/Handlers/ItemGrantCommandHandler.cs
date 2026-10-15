@@ -21,8 +21,14 @@ internal sealed class ItemGrantCommandHandler
             cancellationToken);
 
         var definition = await context.State.LoadDefinitionAsync(command.DefinitionId, cancellationToken);
-        if (command.Quantity <= 0
-            || command.Quantity > definition.RuntimeDefinition.MaximumStackSize)
+        if (command.Quantity <= 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemQuantityChanged,
+                "A grant quantity must be positive.");
+        }
+
+        if (command.Quantity > definition.RuntimeDefinition.MaximumStackSize)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStackLimitExceeded,
