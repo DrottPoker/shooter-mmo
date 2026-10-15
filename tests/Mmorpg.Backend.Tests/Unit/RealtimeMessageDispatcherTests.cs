@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using LiteNetLib;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -393,44 +392,5 @@ public sealed class RealtimeMessageDispatcherTests
 
             return $"reject:{rejection.Code}";
         }
-    }
-
-    private sealed class RecordingPeerDirectory : IRealtimePeerDirectory
-    {
-        public Dictionary<int, RecordingPeerConnection> Peers { get; } = [];
-
-        public bool TryGetConnectedPeer(
-            int peerId,
-            [NotNullWhen(true)] out IRealtimePeerConnection? peer)
-        {
-            peer = Peers.TryGetValue(peerId, out var connection) ? connection : null;
-            return peer is not null;
-        }
-
-        public void DisconnectPeer(IRealtimePeerConnection peer)
-        {
-            Peers.Remove(peer.Id);
-        }
-    }
-}
-
-internal sealed record RecordedPeerSend(byte[] Data, DeliveryMethod Delivery);
-
-internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
-{
-    public int Id { get; } = id;
-
-    public List<RecordedPeerSend> Sent { get; } = [];
-
-    public int QueuedReliablePackets { get; set; }
-
-    public void Send(byte[] data, DeliveryMethod deliveryMethod)
-    {
-        Sent.Add(new RecordedPeerSend(data, deliveryMethod));
-    }
-
-    public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
-    {
-        return QueuedReliablePackets;
     }
 }
