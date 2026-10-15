@@ -810,7 +810,10 @@ identities.
 The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
 latency and outcome, lock wait, conflict, stale revision, timeout, death
 partition, policy action, cleanup, corpse count, and Recovery backlog
-measurements. The meter `Mmorpg.SimulationWorker.Corpses` separates active
+measurements. The transaction counter and duration carry the outcome
+`committed`, `rejected`, `failed` for a transaction that threw, or `cancelled`
+when the caller cancelled it; the periodic totals count only committed and
+rejected transactions. The meter `Mmorpg.SimulationWorker.Corpses` separates active
 live and durable counts by the fixed `persistence` dimension. Neither meter uses
 item, account, character, operation, corpse, session, actor, or runtime ids as
 labels.

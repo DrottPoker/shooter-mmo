@@ -81,8 +81,11 @@ internal sealed class ItemTransactionTelemetry(
         Exception exception,
         string operationKind,
         Guid operationId,
+        TimeSpan duration,
+        bool cancelled,
         string correlationId)
     {
+        operationsMetrics?.RecordFailedTransaction(operationKind, duration, cancelled);
         logger?.LogError(
             exception,
             "Item transaction {OperationKind} {OperationId} failed unexpectedly for correlation {CorrelationId}.",

@@ -115,7 +115,7 @@ public sealed class ItemTransactionTelemetryTests
     }
 
     [Fact]
-    public async Task UnexpectedFailureLogsErrorAndRethrowsWithoutTransactionMetrics()
+    public async Task UnexpectedFailureLogsErrorAndRethrows()
     {
         var logger = new StructuredLogger<ItemTransactionService>();
         using var metrics = new ItemOperationsMetrics();

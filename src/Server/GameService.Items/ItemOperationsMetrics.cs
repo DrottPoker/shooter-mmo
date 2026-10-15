@@ -135,6 +135,27 @@ internal sealed class ItemOperationsMetrics : IDisposable
         }
     }
 
+    // A transaction that threw instead of returning a result. It counts under the
+    // transaction counter and duration with outcome "failed", or "cancelled" when the
+    // caller cancelled it, and not in the committed and rejected totals.
+    public void RecordFailedTransaction(
+        string operationKind,
+        TimeSpan duration,
+        bool cancelled)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationKind);
+        var metricOperationKind = KnownOperationKinds.Contains(operationKind)
+            ? operationKind
+            : "unknown";
+        var tags = new TagList
+        {
+            { "operation.kind", metricOperationKind },
+            { "outcome", cancelled ? "cancelled" : "failed" }
+        };
+        transactionLatency.Record(Math.Max(0d, duration.TotalMilliseconds), tags);
+        transactionCounter.Add(1, tags);
+    }
+
     public void RecordLockWait(string scope, TimeSpan duration)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scope);

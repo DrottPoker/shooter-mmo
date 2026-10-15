@@ -53,6 +53,8 @@ internal sealed class ItemTransactionKernel(
                 exception,
                 operationKind,
                 request.OperationId,
+                Stopwatch.GetElapsedTime(started),
+                exception is OperationCanceledException && cancellationToken.IsCancellationRequested,
                 correlationId);
             throw;
         }
