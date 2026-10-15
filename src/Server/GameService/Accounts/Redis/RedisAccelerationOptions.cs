@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Redis;
+namespace Mmorpg.GameService.Accounts.Redis;
 
 public sealed record RedisAccelerationOptions(
     bool Enabled,

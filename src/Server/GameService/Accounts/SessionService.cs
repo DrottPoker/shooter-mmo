@@ -1,14 +1,17 @@
 using Dapper;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Accounts.Redis;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
-using Mmorpg.GameService.Redis;
 using Npgsql;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public sealed class SessionService(
     NpgsqlDataSource dataSource,
     AccountsModuleOptions options,
+    IAccountSessionLifecycleHandler lifecycleHandler,
     IAccountSessionCache? configuredSessionCache = null,
     RedisAccelerationMetrics? redisMetrics = null)
 {
@@ -115,31 +118,10 @@ public sealed class SessionService(
             transaction,
             cancellationToken: cancellationToken));
 
-        const string releaseSimulationSessionsSql = """
-            update character_simulation_sessions
-            set released_at = coalesce(released_at, now())
-            where account_id = @AccountId
-              and released_at is null;
-            """;
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            releaseSimulationSessionsSql,
-            new { AccountId = accountId },
-            transaction,
-            cancellationToken: cancellationToken));
-
-        const string revokeTicketsSql = """
-            update simulation_join_tickets
-            set consumed_at = now()
-            where account_id = @AccountId
-              and consumed_at is null;
-            """;
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            revokeTicketsSql,
-            new { AccountId = accountId },
-            transaction,
-            cancellationToken: cancellationToken));
+        await lifecycleHandler.OnSessionsReplacedAsync(
+            new PostgresTransactionScope(connection, transaction),
+            new AccountSessionsReplaced(accountId),
+            cancellationToken);
 
         var session = await CreateSessionAsync(
             connection,
@@ -316,29 +298,10 @@ public sealed class SessionService(
             return ServiceResult<bool>.Ok(true);
         }
 
-        const string releaseSimulationSessionsSql = """
-            update character_simulation_sessions
-            set released_at = coalesce(released_at, now())
-            where account_session_id = @SessionId and released_at is null;
-            """;
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            releaseSimulationSessionsSql,
-            new { SessionId = sessionId },
-            transaction,
-            cancellationToken: cancellationToken));
-
-        const string revokeTicketsSql = """
-            update simulation_join_tickets
-            set consumed_at = now()
-            where account_session_id = @SessionId and consumed_at is null;
-            """;
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            revokeTicketsSql,
-            new { SessionId = sessionId },
-            transaction,
-            cancellationToken: cancellationToken));
+        await lifecycleHandler.OnSessionRevokedAsync(
+            new PostgresTransactionScope(connection, transaction),
+            new AccountSessionRevoked(accountId, sessionId, revocationReason),
+            cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<bool>.Ok(true);

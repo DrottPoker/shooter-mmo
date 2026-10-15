@@ -1,5 +1,6 @@
 using Dapper;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
@@ -9,6 +10,7 @@ namespace Mmorpg.GameService.Simulation;
 public sealed class ShardService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
+    IAccountLocks accountLocks,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
@@ -116,9 +118,8 @@ public sealed class ShardService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        await LockAccountAsync(
-            connection,
-            transaction,
+        await accountLocks.LockForUpdateAsync(
+            new PostgresTransactionScope(connection, transaction),
             account.AccountId,
             cancellationToken);
 
@@ -301,9 +302,8 @@ public sealed class ShardService(
             return InvalidTicket();
         }
 
-        await LockAccountAsync(
-            connection,
-            transaction,
+        await accountLocks.LockForUpdateAsync(
+            new PostgresTransactionScope(connection, transaction),
             ticketOwner.AccountId,
             cancellationToken);
 
@@ -695,19 +695,6 @@ public sealed class ShardService(
         return lockedCharacterId is not null;
     }
 
-    private static async Task LockAccountAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid accountId,
-        CancellationToken cancellationToken)
-    {
-        await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(
-            "select id from accounts where id = @AccountId for update;",
-            new { AccountId = accountId },
-            transaction,
-            cancellationToken: cancellationToken));
-    }
-
     private static async Task LockCharacterAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -745,7 +732,7 @@ public sealed class ShardService(
         string ticketHash,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        var sql = $"""
             select ticket.id as "TicketId",
                    ticket.account_id as "AccountId",
                    ticket.account_session_id as "AccountSessionId",
@@ -766,14 +753,7 @@ public sealed class ShardService(
               and ticket.expires_at > clock_timestamp()
               and ticket.simulation_worker_id is not null
               and ticket.worker_runtime_id is not null
-              and (
-                  ticket.account_session_id is null
-                  or exists (
-                      select 1
-                      from account_sessions account_session
-                      where account_session.id = ticket.account_session_id
-                        and account_session.revoked_at is null
-                        and account_session.expires_at > now()))
+              and {AccountsSql.IsActiveOrUnboundSession("ticket.account_session_id")}
             for update of ticket;
             """;
 

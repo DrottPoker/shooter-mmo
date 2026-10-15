@@ -1,4 +1,6 @@
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.Backend.Tests.Unit;
@@ -24,6 +26,7 @@ public sealed class SessionServiceCacheTests
                 5,
                 TimeSpan.FromSeconds(60),
                 new SimulationWorkerCredentials([], null)),
+            new UnusedSessionLifecycleHandler(),
             cache);
 
         var result = await service.ResolveTokenAsync(
@@ -34,6 +37,26 @@ public sealed class SessionServiceCacheTests
         Assert.Equal(accountId, result.Account.AccountId);
         Assert.Equal(sessionId, result.Account.SessionId);
         Assert.Equal(1, cache.Reads);
+    }
+
+    // Resolving a token never changes sessions, so the lifecycle SPI is never called.
+    private sealed class UnusedSessionLifecycleHandler : IAccountSessionLifecycleHandler
+    {
+        public Task OnSessionsReplacedAsync(
+            PostgresTransactionScope scope,
+            AccountSessionsReplaced sessionsReplaced,
+            CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("Token resolution must not replace sessions.");
+        }
+
+        public Task OnSessionRevokedAsync(
+            PostgresTransactionScope scope,
+            AccountSessionRevoked sessionRevoked,
+            CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("Token resolution must not revoke sessions.");
+        }
     }
 
     private sealed class HitSessionCache(AccountSessionCacheEntry entry) : IAccountSessionCache

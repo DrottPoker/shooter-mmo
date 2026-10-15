@@ -1,6 +1,5 @@
 using System.Data;
 using Dapper;
-using Mmorpg.GameService.Auth;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.GameService.Simulation;

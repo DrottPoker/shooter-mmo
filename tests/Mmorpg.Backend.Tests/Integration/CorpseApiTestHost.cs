@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Http;
 

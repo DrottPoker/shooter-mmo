@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
@@ -19,6 +20,7 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
         services.AddSingleton(options.Worlds);
         services.AddSingleton(options.DevelopmentSimulationBots);
         services.AddSingleton(options.WorkerLeasePolicy);
+        services.AddSingleton<IAccountSessionLifecycleHandler, SimulationAccountSessionLifecycleHandler>();
         services.AddSingleton<DevelopmentSimulationBotAuthority>();
         services.AddSingleton<SimulationTopologySeeder>();
         services.AddScoped<ShardService>();

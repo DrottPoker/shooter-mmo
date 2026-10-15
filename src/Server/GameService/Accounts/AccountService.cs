@@ -3,7 +3,7 @@ using Dapper;
 using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public sealed class AccountService(
     NpgsqlDataSource dataSource,

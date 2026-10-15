@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
+using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Redis;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 

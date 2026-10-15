@@ -1,6 +1,6 @@
 using System.Net.Mail;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public static class AccountValidation
 {

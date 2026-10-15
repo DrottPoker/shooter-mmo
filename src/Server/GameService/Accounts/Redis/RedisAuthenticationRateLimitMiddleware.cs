@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.RateLimiting;
-using Mmorpg.GameService.Auth;
 
-namespace Mmorpg.GameService.Redis;
+namespace Mmorpg.GameService.Accounts.Redis;
 
 public sealed class RedisAuthenticationRateLimitMiddleware(
     RequestDelegate next,

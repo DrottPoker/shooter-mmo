@@ -2,7 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
@@ -370,7 +370,7 @@ public sealed partial class CorpseService
     {
         var row = await connection.QuerySingleOrDefaultAsync<CorpseReadAuthorityRow>(
             new CommandDefinition(
-                """
+                $"""
                 select
                     session.account_id as "AccountId",
                     session.character_id as "CharacterId",
@@ -380,14 +380,7 @@ public sealed partial class CorpseService
                     session.session_token_hash as "SessionTokenHash",
                     session.released_at is null
                         and session.expires_at > now()
-                        and (
-                            session.account_session_id is null
-                            or exists (
-                                select 1
-                                from account_sessions account_session
-                                where account_session.id = session.account_session_id
-                                  and account_session.revoked_at is null
-                                  and account_session.expires_at > now())) as "SessionIsActive",
+                        and {AccountsSql.IsActiveOrUnboundSession("session.account_session_id")} as "SessionIsActive",
                     worker.is_online
                         and worker.last_heartbeat_at is not null
                         and worker.last_heartbeat_at > now()

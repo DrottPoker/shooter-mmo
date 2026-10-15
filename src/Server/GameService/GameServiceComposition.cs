@@ -1,4 +1,5 @@
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
@@ -15,6 +16,13 @@ namespace Mmorpg.GameService;
 // health services in one place, so Program.cs and the tests build the same graph.
 internal static class GameServiceComposition
 {
+    // Module SPIs that run inside a caller's transaction. Each needs exactly one
+    // implementation, because a missing one would silently skip required work.
+    private static readonly Type[] SingleImplementationSpis =
+    [
+        typeof(IAccountSessionLifecycleHandler)
+    ];
+
     // Modules in dependency order. Services register and routes map in this order.
     public static IReadOnlyList<IGameServiceModule> CreateModules(
         GameServiceConfiguration configuration)
@@ -44,7 +52,28 @@ internal static class GameServiceComposition
             module.AddServices(services);
         }
 
+        ValidateSpis(services);
         return services;
+    }
+
+    public static void ValidateSpis(IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var errors = SingleImplementationSpis
+            .Select(spi => (
+                Spi: spi,
+                Count: services.Count(descriptor => descriptor.ServiceType == spi)))
+            .Where(entry => entry.Count != 1)
+            .Select(entry =>
+                $"- {entry.Spi.FullName} has {entry.Count} implementations, but exactly one is required.")
+            .ToArray();
+        if (errors.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "GameService module composition is invalid:" + Environment.NewLine
+                + string.Join(Environment.NewLine, errors));
+        }
     }
 
     // UseRouting stays implicit, so WebApplication inserts it first and the endpoint is

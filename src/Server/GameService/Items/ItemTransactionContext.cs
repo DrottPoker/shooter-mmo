@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Dapper;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 
@@ -139,7 +140,7 @@ internal sealed class ItemTransactionContext(
 
         var session = await Connection.QuerySingleOrDefaultAsync<LiveSimulationSessionRow>(
             new CommandDefinition(
-                """
+                $"""
                 select
                     simulation_session.account_id as "AccountId",
                     simulation_session.character_id as "CharacterId",
@@ -149,14 +150,7 @@ internal sealed class ItemTransactionContext(
                     simulation_session.session_token_hash as "SessionTokenHash",
                     simulation_session.released_at is null
                         and simulation_session.expires_at > now()
-                        and (
-                            simulation_session.account_session_id is null
-                            or exists (
-                                select 1
-                                from account_sessions account_session
-                                where account_session.id = simulation_session.account_session_id
-                                  and account_session.revoked_at is null
-                                  and account_session.expires_at > now())) as "IsActive"
+                        and {AccountsSql.IsActiveOrUnboundSession("simulation_session.account_session_id")} as "IsActive"
                 from character_simulation_sessions simulation_session
                 where simulation_session.id = @SimulationSessionId
                 for update of simulation_session;

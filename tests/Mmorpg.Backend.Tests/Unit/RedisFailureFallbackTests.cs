@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Platform.Redis;
 using Mmorpg.GameService.Platform.Security;
-using Mmorpg.GameService.Redis;
 using Mmorpg.Server.Common.Networking;
 
 namespace Mmorpg.Backend.Tests.Unit;

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
@@ -624,7 +625,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(pendingTicket.Value!.IsReconnect);
 
         var secondLogin = await context.AccountService.LoginAsync(
-            new Mmorpg.GameService.Auth.LoginAccountRequest("integration_player", "TestPass123!"),
+            new Mmorpg.GameService.Accounts.LoginAccountRequest("integration_player", "TestPass123!"),
             CancellationToken.None);
         Assert.True(secondLogin.Succeeded, secondLogin.Error?.Message);
 
@@ -638,7 +639,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.False(replacedHeartbeat.Succeeded);
         Assert.Equal(
-            Mmorpg.GameService.Auth.AccountSessionErrorCode.SessionReplaced,
+            Mmorpg.GameService.Accounts.Contracts.AccountSessionErrorCode.SessionReplaced,
             replacedHeartbeat.Error!.Code);
 
         var replacementAccount = await context.SessionService.AuthenticateTokenAsync(
@@ -662,10 +663,10 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var logins = await Task.WhenAll(
             context.AccountService.LoginAsync(
-                new Mmorpg.GameService.Auth.LoginAccountRequest("integration_player", "TestPass123!"),
+                new Mmorpg.GameService.Accounts.LoginAccountRequest("integration_player", "TestPass123!"),
                 CancellationToken.None),
             context.AccountService.LoginAsync(
-                new Mmorpg.GameService.Auth.LoginAccountRequest("integration_player", "TestPass123!"),
+                new Mmorpg.GameService.Accounts.LoginAccountRequest("integration_player", "TestPass123!"),
                 CancellationToken.None));
 
         Assert.All(logins, login => Assert.True(login.Succeeded, login.Error?.Message));

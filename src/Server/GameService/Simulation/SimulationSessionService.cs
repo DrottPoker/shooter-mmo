@@ -1,5 +1,5 @@
 using Dapper;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Npgsql;
@@ -25,7 +25,7 @@ public sealed class SimulationSessionService(
         var sessionTokenHash = TokenGenerator.HashToken(request.SessionToken!.Trim());
         var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
 
-        const string sql = """
+        var sql = $"""
             with refreshed_session as (
                 update character_simulation_sessions
                 set last_heartbeat_at = clock_timestamp(),
@@ -36,14 +36,7 @@ public sealed class SimulationSessionService(
                   and session_token_hash = @SessionTokenHash
                   and released_at is null
                   and expires_at > now()
-                  and (
-                      account_session_id is null
-                      or exists (
-                          select 1
-                          from account_sessions
-                          where id = character_simulation_sessions.account_session_id
-                            and revoked_at is null
-                            and expires_at > now()))
+                  and {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")}
                 returning id,
                           character_id,
                           shard_id,
@@ -87,11 +80,9 @@ public sealed class SimulationSessionService(
             });
         }
 
-        const string revocationReasonSql = """
-            select account_session.revocation_reason
+        var revocationReasonSql = $"""
+            select {AccountsSql.RevocationReasonOf("simulation_session.account_session_id")}
             from character_simulation_sessions simulation_session
-            left join account_sessions account_session
-              on account_session.id = simulation_session.account_session_id
             where simulation_session.id = @SimulationSessionId
               and simulation_session.simulation_worker_id = @WorkerId
               and simulation_session.worker_runtime_id = @WorkerRuntimeId

@@ -257,4 +257,9 @@ intended differences:
   the migration runner, platform options, and `IGameServiceModule`. Each module
   implements `IGameServiceModule`, and the host composes them in dependency
   order.
+- Accounts untangled: done. Placement implements `IAccountSessionLifecycleHandler`
+  (S1 to S4), character creation and joins lock accounts through `IAccountLocks`
+  (S5, S7), and Placement and Items read account sessions through `AccountsSql`
+  (S10, S12, S13, S21, S23). The composition requires exactly one
+  implementation of every SPI.
 - The Accounts, Characters, Placement, and Items extractions: in progress.

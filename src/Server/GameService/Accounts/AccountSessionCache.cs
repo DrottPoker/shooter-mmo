@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public enum AccountSessionCacheLookupStatus
 {

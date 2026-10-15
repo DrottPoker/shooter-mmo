@@ -1,7 +1,8 @@
 using System.Security.Claims;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Http;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public static class AccountEndpoints
 {

@@ -1,7 +1,7 @@
+using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Platform.Configuration;
-using Mmorpg.GameService.Redis;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public sealed record AccountsModuleOptions(
     TimeSpan SessionLifetime,

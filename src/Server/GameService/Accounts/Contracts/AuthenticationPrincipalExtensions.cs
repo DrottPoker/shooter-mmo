@@ -1,6 +1,6 @@
 using System.Security.Claims;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts.Contracts;
 
 public static class AuthenticationPrincipalExtensions
 {

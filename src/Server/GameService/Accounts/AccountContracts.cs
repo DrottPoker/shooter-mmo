@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public sealed record RegisterAccountRequest(string? Email, string? Username, string? Password);
 

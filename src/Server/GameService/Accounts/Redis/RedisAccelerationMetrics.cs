@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 
-namespace Mmorpg.GameService.Redis;
+namespace Mmorpg.GameService.Accounts.Redis;
 
 public sealed record RedisAccelerationMetricsSnapshot(
     long SessionCacheHits,

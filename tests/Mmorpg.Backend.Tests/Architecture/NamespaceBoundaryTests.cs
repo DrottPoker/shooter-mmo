@@ -9,8 +9,7 @@ public sealed partial class NamespaceBoundaryTests
     // Namespaces mapped to the module that owns them.
     private static readonly (string Namespace, string Module)[] NamespaceRules =
     [
-        ("Mmorpg.GameService.Auth", GameServiceSourceMap.Accounts),
-        ("Mmorpg.GameService.Redis", GameServiceSourceMap.Accounts),
+        ("Mmorpg.GameService.Accounts", GameServiceSourceMap.Accounts),
         ("Mmorpg.GameService.Platform", GameServiceSourceMap.Platform),
         ("Mmorpg.GameService.Characters", GameServiceSourceMap.Characters),
         ("Mmorpg.GameService.Simulation", GameServiceSourceMap.Placement),

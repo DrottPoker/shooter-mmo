@@ -4,7 +4,7 @@ using System.Text;
 using Mmorpg.GameService.Platform.Redis;
 using StackExchange.Redis;
 
-namespace Mmorpg.GameService.Redis;
+namespace Mmorpg.GameService.Accounts.Redis;
 
 public sealed record RedisRateLimitDecision(
     bool Available,

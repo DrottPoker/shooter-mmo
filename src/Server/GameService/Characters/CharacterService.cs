@@ -1,5 +1,7 @@
 using Dapper;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
@@ -8,6 +10,7 @@ namespace Mmorpg.GameService.Characters;
 public sealed class CharacterService(
     NpgsqlDataSource dataSource,
     CharactersModuleOptions options,
+    IAccountLocks accountLocks,
     CharacterItemStateBootstrapper itemStateBootstrapper)
 {
     public async Task<ServiceResult<IReadOnlyCollection<CharacterResponse>>> ListAsync(
@@ -48,21 +51,8 @@ public sealed class CharacterService(
 
         try
         {
-            const string lockAccountSql = """
-                select id
-                from accounts
-                where id = @AccountId
-                for update;
-                """;
-
-            var lockedAccountId = await connection.QuerySingleOrDefaultAsync<Guid?>(
-                new CommandDefinition(
-                    lockAccountSql,
-                    new { AccountId = accountId },
-                    transaction,
-                    cancellationToken: cancellationToken));
-
-            if (lockedAccountId is null)
+            var scope = new PostgresTransactionScope(connection, transaction);
+            if (!await accountLocks.LockForUpdateAsync(scope, accountId, cancellationToken))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return ServiceResult<CharacterResponse>.NotFound("account_not_found", "Account was not found.");

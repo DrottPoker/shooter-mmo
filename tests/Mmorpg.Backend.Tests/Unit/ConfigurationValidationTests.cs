@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
+using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Redis;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;

@@ -1,9 +1,8 @@
 using System.Text.Json;
-using Mmorpg.GameService.Auth;
 using Mmorpg.GameService.Platform.Redis;
 using StackExchange.Redis;
 
-namespace Mmorpg.GameService.Redis;
+namespace Mmorpg.GameService.Accounts.Redis;
 
 public sealed class RedisAccountSessionCache(
     IRedisConnectionProvider connectionProvider,

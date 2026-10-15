@@ -2,8 +2,9 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Mmorpg.GameService.Accounts.Contracts;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Accounts;
 
 public sealed class AccountSessionAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,

@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Simulation;
