@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.WorldData.Content
 {
@@ -38,6 +39,16 @@ namespace Mmorpg.WorldData.Content
         public const int MaximumDefinitionIdLength = 128;
 
         private const string DefinitionFileExtension = ".json";
+
+        // Every World directory holds these authored files. The SimulationWorker needs the
+        // manifest and the data compiled from the other two at startup.
+        public static readonly IReadOnlyList<string> RequiredWorldFileNames = Array.AsReadOnly(
+            new[]
+            {
+                WorldManifestFormat.FileName,
+                ActorSpawnsFileName,
+                CollisionSourceFileName
+            });
 
         private static readonly HashSet<string> ReservedFileNames = new HashSet<string>(
             new[]
@@ -245,24 +256,40 @@ namespace Mmorpg.WorldData.Content
             return files.OrderBy(file => file.Id, StringComparer.Ordinal).ToArray();
         }
 
-        // Lists world ids below a world root whose directory contains the given file.
-        public static string[] ListWorldIds(string worldsDirectory, string requiredFileName)
+        // Lists world ids below a world root in id order. Every directory except hidden ones
+        // is a World and must contain every required World file, so an incomplete World
+        // fails instead of dropping out of compilation silently.
+        public static string[] ListWorldIds(string worldsDirectory)
         {
             if (!Directory.Exists(worldsDirectory))
             {
                 return Array.Empty<string>();
             }
 
-            return Directory.EnumerateDirectories(worldsDirectory)
-                .Select(Path.GetFileName)
-                .Where(name => !name.StartsWith(".", StringComparison.Ordinal))
-                .Where(name => File.Exists(Path.Combine(
-                    worldsDirectory,
-                    name,
-                    requiredFileName)))
-                .Select(RequireWorldId)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
+            var worldIds = new List<string>();
+            foreach (var directory in Directory.EnumerateDirectories(worldsDirectory))
+            {
+                var name = Path.GetFileName(directory);
+                if (name.StartsWith(".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var worldId = RequireWorldId(name);
+                foreach (var fileName in RequiredWorldFileNames)
+                {
+                    if (!File.Exists(Path.Combine(directory, fileName)))
+                    {
+                        throw new InvalidDataException(
+                            "World '" + worldId + "' at '" + directory + "' is missing "
+                            + fileName + ".");
+                    }
+                }
+
+                worldIds.Add(worldId);
+            }
+
+            return worldIds.OrderBy(worldId => worldId, StringComparer.Ordinal).ToArray();
         }
 
         public static bool IsValidWorldId(string worldId)

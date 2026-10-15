@@ -31,6 +31,10 @@ change different definitions without merge conflicts in one large file.
   a Windows device name such as `con` or `nul` before the first dot.
 - A definitions directory contains only `<id>.json` files. Hidden files are
   ignored; any other file or subdirectory fails compilation.
+- Every directory below `worlds/` except hidden ones is a World and must contain
+  `world.json`, `actor-spawns.json`, and `collision.json`. Both World compilers
+  fail on an incomplete World instead of skipping it, because the
+  SimulationWorker cannot start a World without all three.
 - `actor-spawns.json` must declare the `worldId` of its directory, and the World
   directory name must equal the manifest `worldId`.
 - Every compiler parses strictly: unknown properties, duplicate properties,

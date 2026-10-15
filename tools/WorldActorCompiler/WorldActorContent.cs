@@ -56,9 +56,7 @@ public static class WorldActorContent
 
     public static string[] ListWorldIds(string contentRoot)
     {
-        return ContentLayout.ListWorldIds(
-            ContentLayout.WorldsDirectory(contentRoot),
-            ContentLayout.ActorSpawnsFileName);
+        return ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(contentRoot));
     }
 
     private static WorldActorAuthoringEntry LoadDefinition(ContentDefinitionFile file)

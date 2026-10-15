@@ -214,18 +214,38 @@ namespace Mmorpg.WorldData.Editor.Actors
                     WriteText(Path.Combine(contentRoot, file.Key), file.Value);
                 }
 
-                var worldIds = ContentLayout.ListWorldIds(
-                        ContentLayout.WorldsDirectory(paths.ContentRoot),
-                        ContentLayout.ActorSpawnsFileName)
-                    .Concat(new[] { paths.WorldId })
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(worldId => worldId, StringComparer.Ordinal)
-                    .ToArray();
-                foreach (var worldId in worldIds.Where(worldId => worldId != paths.WorldId))
+                string[] worldIds;
+                try
                 {
-                    WriteText(
-                        ContentLayout.ActorSpawnsPath(contentRoot, worldId),
-                        File.ReadAllText(ContentLayout.ActorSpawnsPath(paths.ContentRoot, worldId)));
+                    worldIds = ContentLayout.ListWorldIds(
+                        ContentLayout.WorldsDirectory(paths.ContentRoot));
+                }
+                catch (InvalidDataException exception)
+                {
+                    return WorldActorEditorValidationResult.Failed(exception.Message);
+                }
+
+                if (!worldIds.Contains(paths.WorldId, StringComparer.Ordinal))
+                {
+                    return WorldActorEditorValidationResult.Failed(
+                        "World '" + paths.WorldId + "' does not exist below '"
+                        + ContentLayout.WorldsDirectory(paths.ContentRoot) + "'.");
+                }
+
+                // The compiler only accepts complete Worlds, so every committed World file is
+                // copied except the edited spawns, which come from the workspace.
+                foreach (var worldId in worldIds)
+                {
+                    foreach (var fileName in ContentLayout.RequiredWorldFileNames)
+                    {
+                        if (worldId == paths.WorldId
+                            && fileName == ContentLayout.ActorSpawnsFileName)
+                        {
+                            continue;
+                        }
+
+                        CopyWorldFile(paths.ContentRoot, contentRoot, worldId, fileName);
+                    }
                 }
 
                 var compilerResult = compilerRunner.Compile(contentRoot, generatedRoot);
@@ -458,6 +478,21 @@ namespace Mmorpg.WorldData.Editor.Actors
                 throw new FileNotFoundException(
                     "World actor content file is missing.", path);
             }
+        }
+
+        private static void CopyWorldFile(
+            string sourceContentRoot,
+            string targetContentRoot,
+            string worldId,
+            string fileName)
+        {
+            var target = Path.Combine(
+                ContentLayout.WorldDirectory(targetContentRoot, worldId),
+                fileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(target));
+            File.Copy(
+                Path.Combine(ContentLayout.WorldDirectory(sourceContentRoot, worldId), fileName),
+                target);
         }
 
         private static void WriteText(string path, string value)

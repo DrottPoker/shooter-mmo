@@ -4,6 +4,7 @@ using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.Tools.Tests;
 
@@ -107,12 +108,46 @@ public sealed class ContentPipelineTests
     }
 
     [Fact]
-    public void WorldsAreListedOnlyWhenTheyContainTheRequestedFile()
+    public void WorldsAreListedInIdOrderAndHiddenDirectoriesAreIgnored()
     {
+        using var worlds = TemporaryContent.CopyOf(RepositoryPaths.Worlds);
+        Directory.CreateDirectory(Path.Combine(worlds.Path, ".staging"));
+
         Assert.Equal(
             ["development-world-1", "development-world-2"],
-            ContentLayout.ListWorldIds(RepositoryPaths.Worlds, ContentLayout.ActorSpawnsFileName));
-        Assert.Empty(ContentLayout.ListWorldIds(RepositoryPaths.Worlds, "missing.json"));
+            ContentLayout.ListWorldIds(worlds.Path));
+        Assert.Equal(
+            ContentLayout.ListWorldIds(RepositoryPaths.Worlds),
+            WorldActorContent.ListWorldIds(RepositoryPaths.Content));
+    }
+
+    // Both World compilers list Worlds this way, so neither can skip an incomplete World
+    // that the SimulationWorker would then fail to load.
+    [Theory]
+    [InlineData(WorldManifestFormat.FileName)]
+    [InlineData(ContentLayout.ActorSpawnsFileName)]
+    [InlineData(ContentLayout.CollisionSourceFileName)]
+    public void AWorldWithoutARequiredFileFailsTheListing(string fileName)
+    {
+        Assert.Contains(fileName, ContentLayout.RequiredWorldFileNames);
+        using var content = TemporaryContent.CopyOf(RepositoryPaths.Content);
+        File.Delete(Path.Combine(
+            ContentLayout.WorldDirectory(content.Path, "development-world-2"),
+            fileName));
+
+        var exception = Assert.Throws<InvalidDataException>(
+            () => WorldActorContent.ListWorldIds(content.Path));
+
+        Assert.Contains("'development-world-2'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(fileName, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AMissingWorldRootListsNoWorlds()
+    {
+        using var content = TemporaryContent.Empty();
+
+        Assert.Empty(ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(content.Path)));
     }
 
     [Fact]

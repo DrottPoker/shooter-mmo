@@ -44,7 +44,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var worldsDirectory = ContentLayout.WorldsDirectory(
                 RepositoryLayout.ContentRoot(RepositoryLayout.FindRoot()));
             var manifests = ContentLayout
-                .ListWorldIds(worldsDirectory, WorldManifestFormat.FileName)
+                .ListWorldIds(worldsDirectory)
                 .Select(worldId => File.ReadAllText(Path.Combine(
                     worldsDirectory,
                     worldId,

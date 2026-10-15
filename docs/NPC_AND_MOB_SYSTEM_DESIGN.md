@@ -168,11 +168,12 @@ The same compiler and validation rules must be consumed by:
 - Continuous integration.
 
 The command-line entry point is `tools/WorldActorCompiler`. By default it
-compiles the repository actor catalog against every World that has
-`actor-spawns.json`. `--content-root` and `--generated-root` point it at other
+compiles the repository actor catalog against every World below
+`content/worlds` and fails when a World lacks `world.json`, `actor-spawns.json`,
+or `collision.json`. `--content-root` and `--generated-root` point it at other
 directories for isolated tests and for Unity Editor validation. `--verify`
 compiles in memory and fails when committed runtime output is missing, differs,
-or exists for a World without spawn content, without rewriting anything.
+or exists for a World that no longer exists, without rewriting anything.
 
 Compilation produces a complete actor-content revision and stable structural
 fingerprints. Equivalent canonical input produces byte-for-byte equivalent

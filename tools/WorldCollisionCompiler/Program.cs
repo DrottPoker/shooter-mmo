@@ -20,13 +20,11 @@ var jsonOptions = new JsonSerializerOptions
 try
 {
     var worldIds = ContentLayout.ListWorldIds(
-        ContentLayout.WorldsDirectory(options!.ContentRoot),
-        ContentLayout.CollisionSourceFileName);
+        ContentLayout.WorldsDirectory(options!.ContentRoot));
     if (worldIds.Length == 0)
     {
         throw new InvalidDataException(
-            $"No World below '{ContentLayout.WorldsDirectory(options.ContentRoot)}' has "
-            + $"{ContentLayout.CollisionSourceFileName}.");
+            $"No World exists below '{ContentLayout.WorldsDirectory(options.ContentRoot)}'.");
     }
 
     foreach (var worldId in worldIds)

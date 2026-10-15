@@ -56,7 +56,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(actual[file.Key], Is.EqualTo(file.Value), file.Key);
             }
 
-            foreach (var worldId in SpawnWorldIds(paths.ContentRoot))
+            foreach (var worldId in WorldIds(paths.ContentRoot))
             {
                 var spawnPath = ContentLayout.ActorSpawnsPath(paths.ContentRoot, worldId);
                 var text = ReadNormalized(spawnPath);
@@ -140,7 +140,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(File.Exists(addedPath), Is.False);
                 var verifyAfterRemoval = service.VerifyCanonical();
                 Assert.That(verifyAfterRemoval.Success, Is.True, verifyAfterRemoval.Output);
-                foreach (var worldId in SpawnWorldIds(repositoryPaths.ContentRoot))
+                foreach (var worldId in WorldIds(repositoryPaths.ContentRoot))
                 {
                     Assert.That(
                         ReadNormalized(ContentLayout.GeneratedWorldActorsPath(
@@ -282,11 +282,16 @@ namespace Mmorpg.Client.Tests.EditMode
                         Path.GetRelativePath(source.ActorsDirectory, path))));
             }
 
-            foreach (var worldId in SpawnWorldIds(source.ContentRoot))
+            foreach (var worldId in WorldIds(source.ContentRoot))
             {
-                files.Add(new KeyValuePair<string, string>(
-                    ContentLayout.ActorSpawnsPath(source.ContentRoot, worldId),
-                    ContentLayout.ActorSpawnsPath(target.ContentRoot, worldId)));
+                // The compiler only accepts complete Worlds.
+                foreach (var fileName in ContentLayout.RequiredWorldFileNames)
+                {
+                    files.Add(new KeyValuePair<string, string>(
+                        Path.Combine(ContentLayout.WorldDirectory(source.ContentRoot, worldId), fileName),
+                        Path.Combine(ContentLayout.WorldDirectory(target.ContentRoot, worldId), fileName)));
+                }
+
                 files.Add(new KeyValuePair<string, string>(
                     ContentLayout.GeneratedWorldActorsPath(source.GeneratedRoot, worldId),
                     ContentLayout.GeneratedWorldActorsPath(target.GeneratedRoot, worldId)));
@@ -299,11 +304,9 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        private static string[] SpawnWorldIds(string contentRoot)
+        private static string[] WorldIds(string contentRoot)
         {
-            return ContentLayout.ListWorldIds(
-                ContentLayout.WorldsDirectory(contentRoot),
-                ContentLayout.ActorSpawnsFileName);
+            return ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(contentRoot));
         }
 
         private static string ReadNormalized(string path)

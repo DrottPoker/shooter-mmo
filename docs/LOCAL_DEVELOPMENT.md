@@ -928,8 +928,9 @@ definitions and seven runtime instances. The compiler reads
 `content/actors/definitions`, and every `content/worlds/<WorldId>/actor-spawns.json`,
 and writes `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 Verify mode performs no write and fails if authoring, runtime JSON, references,
-bounds, transforms, fingerprints, ordering, or the complete revision diverge, or
-if generated actor data exists for a World without spawn content.
+bounds, transforms, fingerprints, ordering, or the complete revision diverge, if
+a World directory lacks `world.json`, `actor-spawns.json`, or `collision.json`,
+or if generated actor data exists for a World that no longer exists.
 
 Run the focused backend actor and protocol coverage, then the complete Unity
 workflow:
@@ -1952,9 +1953,12 @@ before changing a shard:
   scene, bounds, spawn, and item service points.
 - Provide `content/worlds/<WorldId>/collision.json` and its compiled collision
   data below `src/Shared/WorldData/Generated/Resources/WorldCollision/<WorldId>`.
-- Provide `content/worlds/<WorldId>/actor-spawns.json` and its compiled
-  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json` when the
-  World uses actor content. Shared actor definitions remain under
+- Provide `content/worlds/<WorldId>/actor-spawns.json` with at least one spawn
+  and its compiled
+  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`. The
+  SimulationWorker loads runtime actor data for every World, and both World
+  compilers reject a World directory that lacks `world.json`,
+  `actor-spawns.json`, or `collision.json`. Shared actor definitions remain under
   `content/actors`.
 - Add the authored Unity scene to the client build and map its `WorldId` in
   `Assets/Resources/Worlds/world-scene-catalog.json`.

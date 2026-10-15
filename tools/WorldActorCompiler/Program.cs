@@ -18,8 +18,7 @@ try
     if (worldIds.Length == 0)
     {
         throw new InvalidDataException(
-            $"No World below '{ContentLayout.WorldsDirectory(contentRoot)}' has "
-            + $"{ContentLayout.ActorSpawnsFileName}.");
+            $"No World exists below '{ContentLayout.WorldsDirectory(contentRoot)}'.");
     }
 
     foreach (var worldId in worldIds)
