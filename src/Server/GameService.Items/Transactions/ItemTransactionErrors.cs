@@ -45,6 +45,7 @@ internal static class ItemTransactionErrorCodes
     public const string WrongSimulationWorker = "wrong_simulation_worker";
     public const string WorkerRuntimeChanged = "worker_runtime_changed";
     public const string SimulationSessionInvalid = "simulation_session_invalid";
+    public const string SimulationOperationInvalid = "item_simulation_operation_invalid";
 }
 
 internal sealed class ItemTransactionRejectedException(

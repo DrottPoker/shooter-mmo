@@ -107,7 +107,7 @@ internal static class CorpseItemTransfers
             || command.ExpectedTargetItemRevision < 0)
         {
             ItemTransactionContext.Reject(
-                ItemApiErrorCodes.SimulationOperationInvalid,
+                ItemTransactionErrorCodes.SimulationOperationInvalid,
                 "The corpse loot command is incomplete or invalid.");
         }
     }

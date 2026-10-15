@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 
 namespace Mmorpg.Backend.Tests.Unit;
@@ -80,6 +81,26 @@ public sealed class ItemCommandValidationTests
             Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(fingerprint))),
             PlayerDeathCommandHandler.CalculateDeathEventRequestHash(command));
+    }
+
+    [Fact]
+    public void InvalidCorpseItemTransferKeepsItsWireCode()
+    {
+        var exception = Assert.Throws<ItemTransactionRejectedException>(
+            () => CorpseItemTransfers.ValidateCorpseItemTransferCommand(new CorpseItemTransferCommand(
+                Guid.Empty,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                0,
+                null,
+                Guid.NewGuid(),
+                0,
+                0,
+                null,
+                null)));
+
+        Assert.Equal("item_simulation_operation_invalid", exception.Code);
+        Assert.Equal("The corpse loot command is incomplete or invalid.", exception.Message);
     }
 
     private static ProcessPlayerDeathCommand Death()

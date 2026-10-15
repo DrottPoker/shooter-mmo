@@ -3,7 +3,8 @@ namespace Mmorpg.GameService.Items;
 internal static class ItemApiErrorCodes
 {
     public const string OperationIdRequired = "item_operation_id_required";
-    public const string SimulationOperationInvalid = "item_simulation_operation_invalid";
+    // The kernel rejects invalid corpse transfer commands with the same code.
+    public const string SimulationOperationInvalid = ItemTransactionErrorCodes.SimulationOperationInvalid;
     public const string SecureTierRequestInvalid = "item_secure_tier_request_invalid";
 }
 

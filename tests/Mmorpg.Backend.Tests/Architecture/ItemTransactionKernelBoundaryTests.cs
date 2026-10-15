@@ -124,6 +124,21 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     }
 
     [Fact]
+    public void TransactionCodeRejectsOnlyWithTransactionErrorCodes()
+    {
+        var violations = GameServiceSourceMap.LoadSourceFiles()
+            .Where(file => file.RelativePath.StartsWith(TransactionsPath, StringComparison.Ordinal)
+                && file.Text.Contains("ItemApiErrorCodes", StringComparison.Ordinal))
+            .Select(file => file.RelativePath)
+            .ToArray();
+
+        Assert.True(
+            violations.Length == 0,
+            "The transaction kernel owns its error codes and never uses the HTTP API codes:"
+            + Environment.NewLine + string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
     public void CrossModuleStatementsStayInTheirTransactionTypes()
     {
         var transactionFiles = GameServiceSourceMap.LoadSourceFiles()
