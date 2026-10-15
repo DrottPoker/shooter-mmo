@@ -67,6 +67,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly RealtimeCompletionProcessor completionProcessor;
     private readonly RealtimeSimulationClock clock = new();
     private readonly EntityPresenceReplicator presence;
+    private readonly CarryStateSynchronizer carrySync;
     private NetManager? server;
     private uint snapshotSequence;
     private uint corpsePresenceSequence;
@@ -151,6 +152,11 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             interestManager,
             networkMetrics,
             clock);
+        carrySync = new CarryStateSynchronizer(
+            carryStateStore,
+            connectionBindings,
+            peerRegistry,
+            sender);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -1168,7 +1174,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                     completed.Session.CharacterId,
                     out var entity))
             {
-                ApplyLatestCarryState(entity!);
+                carrySync.ApplyLatest(entity!);
             }
         }
 
@@ -1316,7 +1322,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 completed.Session.CharacterId,
                 out var entity))
         {
-            ApplyLatestCarryState(entity!);
+            carrySync.ApplyLatest(entity!);
         }
 
         SendWorldInteractionResult(peer, completed.Result);
@@ -1696,7 +1702,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 session.CharacterId,
                 out var entity))
         {
-            ApplyLatestCarryState(entity!);
+            carrySync.ApplyLatest(entity!);
         }
 
         return true;
@@ -1951,7 +1957,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             entityRegistry.CopyPlayersTo(playerBuffer);
             foreach (var entity in playerBuffer)
             {
-                ApplyLatestCarryState(entity);
+                carrySync.ApplyLatest(entity);
                 entity.Movement.SimulateTick();
             }
             performanceMetrics.RecordMovementSimulation(
@@ -2187,33 +2193,6 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             performanceMetrics.RecordSnapshotBroadcast(
                 Stopwatch.GetElapsedTime(broadcastStarted));
         }
-    }
-
-    private void ApplyLatestCarryState(PlayerSimulationEntity entity)
-    {
-        if (!carryStateStore.TryGet(
-                entity.Session.CharacterId,
-                entity.Session.SimulationSessionId,
-                out var carryState)
-            || !entity.Movement.ApplyCarryState(carryState!))
-        {
-            return;
-        }
-
-        if (!connectionBindings.TryGetConnectionId(
-                entity.NetworkEntityId,
-                out var connectionId)
-            || !peerRegistry.TryGetContext(connectionId, out var context)
-            || context.Session?.SimulationSessionId != entity.Session.SimulationSessionId
-            || !peerRegistry.TryGetCurrentPeer(context, out var peer))
-        {
-            return;
-        }
-
-        sender.SendControl(
-            peer,
-            RealtimeProtocol.EncodeCarryStateChanged(
-                RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState)));
     }
 
     private void BroadcastCorpsePresence()
