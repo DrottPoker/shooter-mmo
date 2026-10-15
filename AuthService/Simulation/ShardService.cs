@@ -9,7 +9,8 @@ namespace AuthService.Simulation;
 public sealed class ShardService(
     NpgsqlDataSource dataSource,
     IConfiguration configuration,
-    AuthServiceConfig config)
+    AuthServiceConfig config,
+    DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
         CancellationToken cancellationToken)
@@ -198,6 +199,7 @@ public sealed class ShardService(
                 transaction,
                 normalizedShardId,
                 (int)config.SimulationWorkerHeartbeatTimeout.TotalSeconds,
+                developmentBotAuthority?.CaptureReservations() ?? [],
                 cancellationToken)
             : await SelectReconnectPlacementAsync(
                 connection,
@@ -473,11 +475,14 @@ public sealed class ShardService(
             cancellationToken: cancellationToken));
     }
 
+    // Development bot reservations exist only in AuthService memory, so they are joined
+    // in as parameters and count against capacity like database sessions and tickets.
     private static async Task<PlacementRow?> SelectPlacementAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string shardId,
         int heartbeatTimeoutSeconds,
+        IReadOnlyList<DevelopmentSimulationBotReservation> botReservations,
         CancellationToken cancellationToken)
     {
         const string sql = """
@@ -493,7 +498,9 @@ public sealed class ShardService(
                    worker.host as "Host",
                    worker.udp_port as "UdpPort",
                    worker.max_connections as "Capacity",
-                   greatest(worker.active_connections, session_usage.active_players)
+                   greatest(
+                       worker.active_connections,
+                       session_usage.active_players + bot_usage.active_sessions)
                        as "ActivePlayers",
                    worker.protocol_version as "ProtocolVersion",
                    worker.simulation_revision as "SimulationRevision",
@@ -525,10 +532,25 @@ public sealed class ShardService(
                   and pending_ticket.simulation_session_id is null
                   and pending_ticket.expires_at > now()
             ) ticket_usage
+            cross join lateral (
+                select coalesce(sum(bot.active_sessions), 0)::integer as active_sessions,
+                       coalesce(sum(bot.pending_tickets), 0)::integer as pending_tickets
+                from unnest(
+                    @BotWorkerIds::text[],
+                    @BotRuntimeIds::text[],
+                    @BotActiveSessions::integer[],
+                    @BotPendingTickets::integer[])
+                    as bot(worker_id, runtime_id, active_sessions, pending_tickets)
+                where bot.worker_id = worker.id
+                  and bot.runtime_id = worker.runtime_id
+            ) bot_usage
             where shard.id = @ShardId
               and shard.is_enabled
-              and greatest(worker.active_connections, session_usage.active_players)
+              and greatest(
+                      worker.active_connections,
+                      session_usage.active_players + bot_usage.active_sessions)
                   + ticket_usage.pending_tickets
+                  + bot_usage.pending_tickets
                   < worker.max_connections
             order by (
                 worker.active_connections::numeric
@@ -540,7 +562,15 @@ public sealed class ShardService(
 
         var placement = await connection.QuerySingleOrDefaultAsync<PlacementRow>(new CommandDefinition(
             sql,
-            new { ShardId = shardId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
+            new
+            {
+                ShardId = shardId,
+                HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds,
+                BotWorkerIds = botReservations.Select(value => value.WorkerId).ToArray(),
+                BotRuntimeIds = botReservations.Select(value => value.WorkerRuntimeId).ToArray(),
+                BotActiveSessions = botReservations.Select(value => value.ActiveSessions).ToArray(),
+                BotPendingTickets = botReservations.Select(value => value.PendingTickets).ToArray()
+            },
             transaction,
             cancellationToken: cancellationToken));
         if (placement is null)

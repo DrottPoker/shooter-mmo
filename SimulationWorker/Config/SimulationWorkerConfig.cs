@@ -34,6 +34,10 @@ public sealed record SimulationWorkerConfig(
 {
     public int SimulationSessionHeartbeatMaxConcurrency { get; init; } = 8;
 
+    // How long a new runtime keeps retrying while a previous runtime's registry lease
+    // is still live, before it concludes that another live runtime owns the worker id.
+    public TimeSpan RegistryAcquireTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
     public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
 
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
@@ -242,6 +246,13 @@ public sealed record SimulationWorkerConfig(
                 configuration["SIMULATION_WORKER_REGISTRY_HEARTBEAT_SECONDS"]),
             "SimulationWorker:RegistryHeartbeatSeconds",
             errors);
+        var registryAcquireTimeoutSeconds = string.IsNullOrWhiteSpace(
+                section["RegistryAcquireTimeoutSeconds"])
+            ? 120
+            : PositiveInt(
+                section["RegistryAcquireTimeoutSeconds"],
+                "SimulationWorker:RegistryAcquireTimeoutSeconds",
+                errors);
         var networkMetricsLogSeconds = PositiveInt(
             section["NetworkMetricsLogSeconds"],
             "SimulationWorker:NetworkMetricsLogSeconds",
@@ -379,6 +390,13 @@ public sealed record SimulationWorkerConfig(
         if (sessionHeartbeatMaxConcurrency > 128)
         {
             errors.Add("SimulationWorker:SimulationSessionHeartbeatMaxConcurrency must not exceed 128.");
+        }
+
+        if (registryAcquireTimeoutSeconds <= registryHeartbeatSeconds
+            || registryAcquireTimeoutSeconds > 3_600)
+        {
+            errors.Add(
+                "SimulationWorker:RegistryAcquireTimeoutSeconds must be longer than RegistryHeartbeatSeconds and must not exceed 3600.");
         }
 
         if (networkMetricsLogSeconds > 3_600)
@@ -554,6 +572,7 @@ public sealed record SimulationWorkerConfig(
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds))
         {
             SimulationSessionHeartbeatMaxConcurrency = sessionHeartbeatMaxConcurrency,
+            RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,

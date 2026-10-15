@@ -197,7 +197,10 @@ Join placement:
 6. Selects the assigned worker only when its heartbeat is fresh and it has room.
    Capacity uses the greater of worker-reported connections and authoritative
    unexpired simulation sessions, then adds pending tickets in PostgreSQL.
-   A reconnect ticket for an already counted session is not added again.
+   A reconnect ticket for an already counted session is not added again. In
+   Development, the in-memory sessions and pending tickets of synthetic bots
+   are joined into the same query, so players and bots never reserve the same
+   connections.
 7. Re-reads the assignment after locking the worker, so a worker that moved to
    another Shard in the meantime is never placed.
 8. Stores a hash of a new ticket bound to shard, worker, runtime, character, and

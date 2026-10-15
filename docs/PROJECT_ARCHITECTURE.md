@@ -719,7 +719,13 @@ Heartbeat processing is transactional:
 6. A newer runtime may replace an older live runtime for the same worker id.
    Any runtime may replace one that is offline or past the heartbeat timeout,
    because start times reported by different hosts are not comparable. A start
-   time more than ten minutes in the future is rejected.
+   time more than ten minutes in the future is rejected. A replacement runtime
+   that has never owned the worker id treats `worker_runtime_changed` as "not
+   yet", keeps retrying while its transport rejects every connection, and takes
+   over once the previous lease expires. It stops only if another runtime stays
+   live beyond `RegistryAcquireTimeoutSeconds` (default 120). A runtime that has
+   owned the worker id and then receives `worker_runtime_changed` has lost
+   authority and stops at once.
 7. The exact active SimulationAssignment is created or retained.
 
 SimulationWorker renews a local registration lease from successful heartbeat

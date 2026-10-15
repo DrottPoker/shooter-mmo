@@ -152,6 +152,36 @@ public sealed class DevelopmentSimulationBotAuthorityTests
     }
 
     [Fact]
+    public void ReservationsGroupPendingTicketsAndActiveSessionsPerRuntime()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var first = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1"),
+            CreatePlacement());
+        var second = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 2, "local-shard-1"),
+            CreatePlacement());
+        Assert.True(first.Succeeded && second.Succeeded);
+        Assert.True(authority.TryConsumeTicket(
+            new ConsumeSimulationJoinTicketRequest(
+                first.Value!.JoinTicket,
+                "worker-1",
+                "runtime-1",
+                "local-shard-1"),
+            out var consumed));
+        Assert.True(consumed.Succeeded);
+
+        var reservation = Assert.Single(authority.CaptureReservations());
+
+        Assert.Equal("worker-1", reservation.WorkerId);
+        Assert.Equal("runtime-1", reservation.WorkerRuntimeId);
+        Assert.Equal(1, reservation.ActiveSessions);
+        Assert.Equal(1, reservation.PendingTickets);
+    }
+
+    [Fact]
     public void WorkerConnectionCapacityRejectsAdditionalBotTicket()
     {
         var authority = new DevelopmentSimulationBotAuthority(

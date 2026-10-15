@@ -74,7 +74,6 @@ public sealed class SimulationWorkerHeartbeatServiceTests
     }
 
     [Theory]
-    [InlineData("worker_runtime_changed")]
     [InlineData("simulation_world_not_found")]
     [InlineData("shard_world_rebind_blocked")]
     public async Task DefinitiveAuthorityFailureStopsTheWorkerImmediately(string errorCode)
@@ -111,6 +110,95 @@ public sealed class SimulationWorkerHeartbeatServiceTests
         Assert.True(applicationLifetime.ApplicationStopping.IsCancellationRequested);
 
         await service.StopAsync(timeout.Token);
+    }
+
+    [Fact]
+    public async Task ReplacementRuntimeWaitsForThePreviousLeaseAndThenRegisters()
+    {
+        // The previous runtime's lease is still live for the first three heartbeats.
+        var handler = new ScriptedRegistryHandler(attempt =>
+            attempt <= 3 ? "worker_runtime_changed" : null);
+        var harness = CreateHarness(handler, TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        await harness.Service.StartAsync(timeout.Token);
+        harness.Readiness.MarkListening(harness.Config.UdpPort);
+        await handler.Succeeded.Task.WaitAsync(timeout.Token);
+
+        Assert.True(SpinWait.SpinUntil(() => harness.Lease.IsValid, TimeSpan.FromSeconds(1)));
+        Assert.False(harness.Lifetime.ApplicationStopping.IsCancellationRequested);
+        Assert.True(handler.Attempts >= 4);
+
+        await harness.Service.StopAsync(timeout.Token);
+        harness.Service.Dispose();
+    }
+
+    [Fact]
+    public async Task RuntimeThatOwnedTheWorkerStopsWhenAnotherRuntimeTakesOver()
+    {
+        var handler = new ScriptedRegistryHandler(attempt =>
+            attempt == 1 ? null : "worker_runtime_changed");
+        var harness = CreateHarness(handler, TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        await harness.Service.StartAsync(timeout.Token);
+        harness.Readiness.MarkListening(harness.Config.UdpPort);
+        await harness.Lifetime.StopRequested.Task.WaitAsync(timeout.Token);
+
+        Assert.Equal(2, handler.Attempts);
+        Assert.False(harness.Lease.HasLease);
+
+        await harness.Service.StopAsync(timeout.Token);
+        harness.Service.Dispose();
+    }
+
+    [Fact]
+    public async Task ReplacementRuntimeStopsWhenAnotherRuntimeStaysLiveBeyondTheAcquireTimeout()
+    {
+        var handler = new ScriptedRegistryHandler(_ => "worker_runtime_changed");
+        var harness = CreateHarness(handler, TimeSpan.FromMilliseconds(200));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        await harness.Service.StartAsync(timeout.Token);
+        harness.Readiness.MarkListening(harness.Config.UdpPort);
+        await harness.Lifetime.StopRequested.Task.WaitAsync(timeout.Token);
+
+        Assert.True(handler.Attempts >= 2);
+        Assert.False(harness.Lease.HasLease);
+
+        await harness.Service.StopAsync(timeout.Token);
+        harness.Service.Dispose();
+    }
+
+    private static HeartbeatHarness CreateHarness(
+        HttpMessageHandler handler,
+        TimeSpan acquireTimeout)
+    {
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://auth-service.test")
+        };
+        var config = CreateConfig() with
+        {
+            RegistryHeartbeatInterval = TimeSpan.FromMilliseconds(20),
+            RegistryAcquireTimeout = acquireTimeout
+        };
+        var readiness = new RealtimeTransportReadiness();
+        var lease = new SimulationWorkerRegistrationLease(TimeProvider.System);
+        var lifetime = new TestHostApplicationLifetime();
+        var service = new SimulationWorkerHeartbeatService(
+            new AuthServiceClient(httpClient),
+            config,
+            new SimulationWorkerIdentity(
+                "replacement-worker-runtime",
+                DateTime.UtcNow.AddMinutes(-5)),
+            new ActiveSimulationSessionStore(),
+            readiness,
+            CollisionTestWorldFactory.Create(),
+            NullLogger<SimulationWorkerHeartbeatService>.Instance,
+            lease,
+            lifetime);
+        return new HeartbeatHarness(service, config, readiness, lease, lifetime);
     }
 
     private static SimulationWorkerConfig CreateConfig()
@@ -245,6 +333,80 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     detail = "The worker cannot own the requested shard and World binding."
                 })
             });
+        }
+    }
+
+    private sealed record HeartbeatHarness(
+        SimulationWorkerHeartbeatService Service,
+        SimulationWorkerConfig Config,
+        RealtimeTransportReadiness Readiness,
+        SimulationWorkerRegistrationLease Lease,
+        TestHostApplicationLifetime Lifetime);
+
+    // Answers each heartbeat with the scripted error code, or success when it is null.
+    private sealed class ScriptedRegistryHandler(Func<int, string?> errorForAttempt)
+        : HttpMessageHandler
+    {
+        private int attempts;
+
+        public int Attempts => Volatile.Read(ref attempts);
+
+        public TaskCompletionSource Succeeded { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (!request.RequestUri!.AbsolutePath.EndsWith("/heartbeat", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.Conflict)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        code = "worker_runtime_changed",
+                        detail = "A different runtime currently owns this simulation worker identity."
+                    })
+                };
+            }
+
+            var attempt = Interlocked.Increment(ref attempts);
+            var errorCode = errorForAttempt(attempt);
+            if (errorCode is not null)
+            {
+                return new HttpResponseMessage(HttpStatusCode.Conflict)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        code = errorCode,
+                        detail = "Another live runtime currently owns this simulation worker identity."
+                    })
+                };
+            }
+
+            var heartbeat = await request.Content!.ReadFromJsonAsync<SimulationWorkerHeartbeatRequest>(
+                cancellationToken);
+            var now = DateTime.UtcNow;
+            Succeeded.TrySetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new SimulationWorkerHeartbeatResponse(
+                    "local-simulation-worker-1",
+                    heartbeat!.RuntimeId,
+                    heartbeat.FleetId,
+                    heartbeat.NodeId,
+                    heartbeat.ShardId,
+                    "development-world-1",
+                    heartbeat.Host,
+                    heartbeat.UdpPort,
+                    heartbeat.MaxConnections,
+                    heartbeat.ActiveConnections,
+                    heartbeat.ProtocolVersion,
+                    heartbeat.SimulationRevision,
+                    heartbeat.CollisionRevision,
+                    now,
+                    now.AddSeconds(30)))
+            };
         }
     }
 

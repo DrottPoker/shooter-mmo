@@ -35,3 +35,9 @@ public sealed record DevelopmentSimulationBotAuthoritySnapshot(
     int PendingTickets,
     int ActiveSessions,
     int ReleasedOrExpiredSessions);
+
+public sealed record DevelopmentSimulationBotReservation(
+    string WorkerId,
+    string WorkerRuntimeId,
+    int ActiveSessions,
+    int PendingTickets);

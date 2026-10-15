@@ -369,6 +369,7 @@ public sealed class ConfigurationValidationTests
         settings["SimulationWorker:InterestManagement:CellSize"] = "1";
         settings["SimulationWorker:InterestManagement:ExitRadius"] = "100";
         settings["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "17";
+        settings["SimulationWorker:RegistryAcquireTimeoutSeconds"] = "10";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
@@ -379,6 +380,9 @@ public sealed class ConfigurationValidationTests
         Assert.Contains("aggregate snapshot quota exceeds", exception.Message);
         Assert.Contains("no more than 64 searched cells", exception.Message);
         Assert.Contains("UnloadRadiusChunks must not exceed 16", exception.Message);
+        Assert.Contains(
+            "RegistryAcquireTimeoutSeconds must be longer than RegistryHeartbeatSeconds",
+            exception.Message);
     }
 
     [Fact]

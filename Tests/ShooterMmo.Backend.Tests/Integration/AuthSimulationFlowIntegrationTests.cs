@@ -339,6 +339,71 @@ public sealed class AuthSimulationFlowIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task PlayerPlacementCountsDevelopmentBotReservations()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                MaxConnections = 3,
+                ActiveConnections = 0
+            },
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        var botAuthority = new DevelopmentSimulationBotAuthority(
+            new DevelopmentSimulationBotOptions(
+                true,
+                new string('s', 32),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30),
+                "Active Bot",
+                1),
+            TimeProvider.System);
+        var shardService = new ShardService(
+            context.DataSource,
+            context.Configuration,
+            context.AuthServiceConfig,
+            botAuthority);
+        var botPlacement = await new DevelopmentSimulationBotPlacementService(
+                context.DataSource,
+                context.AuthServiceConfig)
+            .SelectPlacementAsync(LocalShardId, CancellationToken.None);
+        Assert.NotNull(botPlacement);
+
+        // Two bots reserve two of the three connections before either one connects.
+        for (var botIndex = 1; botIndex <= 2; botIndex++)
+        {
+            var botTicket = botAuthority.IssueTicket(
+                new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), botIndex, LocalShardId),
+                botPlacement);
+            Assert.True(botTicket.Succeeded, botTicket.Error?.Message);
+        }
+
+        var firstPlayer = await context.RegisterPlayerAsync();
+        var firstJoin = await shardService.CreateJoinTicketAsync(
+            firstPlayer.Account,
+            LocalShardId,
+            new JoinShardRequest(firstPlayer.Character.Id),
+            CancellationToken.None);
+        Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
+
+        var secondPlayer = await context.RegisterPlayerAsync(
+            "bot-capacity@example.com",
+            "bot_capacity",
+            "Bot Capacity");
+        var secondJoin = await shardService.CreateJoinTicketAsync(
+            secondPlayer.Account,
+            LocalShardId,
+            new JoinShardRequest(secondPlayer.Character.Id),
+            CancellationToken.None);
+
+        Assert.False(secondJoin.Succeeded);
+        Assert.Equal("shard_unavailable", secondJoin.Error!.Code);
+    }
+
+    [PostgresIntegrationFact]
     public async Task PlacementUsesAuthoritativeSessionsWithoutWaitingForWorkerHeartbeat()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync(

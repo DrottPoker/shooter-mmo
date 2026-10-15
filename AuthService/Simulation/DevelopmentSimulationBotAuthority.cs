@@ -258,6 +258,32 @@ public sealed class DevelopmentSimulationBotAuthority(
             out result);
     }
 
+    // Bot tickets and sessions live only in this process, so player placement reads them
+    // here; otherwise both paths could reserve the same worker connections.
+    public IReadOnlyList<DevelopmentSimulationBotReservation> CaptureReservations()
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        lock (gate)
+        {
+            Cleanup(now);
+            var pending = pendingTickets.Values
+                .Where(ticket => ticket.ExpiresAt > now)
+                .Select(ticket => (ticket.WorkerId, ticket.WorkerRuntimeId, Session: 0, Ticket: 1));
+            var active = sessions.Values
+                .Where(session => session.ReleasedAt is null && session.ExpiresAt > now)
+                .Select(session => (session.WorkerId, session.WorkerRuntimeId, Session: 1, Ticket: 0));
+            return pending
+                .Concat(active)
+                .GroupBy(entry => (entry.WorkerId, entry.WorkerRuntimeId))
+                .Select(group => new DevelopmentSimulationBotReservation(
+                    group.Key.WorkerId,
+                    group.Key.WorkerRuntimeId,
+                    group.Sum(entry => entry.Session),
+                    group.Sum(entry => entry.Ticket)))
+                .ToArray();
+        }
+    }
+
     public DevelopmentSimulationBotAuthoritySnapshot CaptureSnapshot()
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
