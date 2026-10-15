@@ -121,7 +121,7 @@ at the same time.
 
 ## Topology Bootstrap
 
-`GameService/Config/appsettings.json` owns the checked-in topology bootstrap:
+`src/Server/GameService/Config/appsettings.json` owns the checked-in topology bootstrap:
 
 - World definitions.
 - Fleets with display names and region codes.
@@ -331,7 +331,7 @@ instances for `development-world-1`, and seven prepared spawn instances for
 `development-world-2`.
 
 - Neutral actor and spawn JSON is compiled deterministically by
-  `Tools/WorldActorCompiler` into one revisioned runtime manifest.
+  `tools/WorldActorCompiler` into one revisioned runtime manifest.
 - Stable definition and spawn ids never substitute for fresh worker-runtime
   actor ids or shared nonzero network entity ids.
 - Assignment activation reconstructs ordinary actors from compiled WorldData.
@@ -392,9 +392,9 @@ corpse view.
 
 ## Collision Data And Streaming
 
-- Each `WorldData/Worlds/<WorldId>/Authoring/collision.json` contains neutral
+- Each `src/Shared/WorldData/Worlds/<WorldId>/Authoring/collision.json` contains neutral
   collision source for that World.
-- `Tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest.
+- `tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest.
 - Each chunk has a SHA-256 checksum.
 - The manifest has a deterministic complete collision revision.
 - SimulationWorker validates format, World id, checksums, coordinates, and
@@ -434,14 +434,14 @@ boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
 concurrent inspection, and authoritative looting:
 
-- `WorldData/Shared/Authoring/Items/core.item-catalog.json` is the strict neutral
+- `src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json` is the strict neutral
   authoring source.
-- `Tools/ItemCatalogCompiler` rejects unknown or duplicate JSON properties,
+- `tools/ItemCatalogCompiler` rejects unknown or duplicate JSON properties,
   missing values, invalid identifiers and references, duplicate ids and Bag
   slots, negative or decimal weights, invalid stack limits, and impossible Bag,
   equipment, policy, or Secure Container combinations.
 - The compiler emits sorted deterministic runtime content under
-  `WorldData/Shared/Runtime/Items`, including one catalog revision and structural
+  `src/Shared/WorldData/Shared/Runtime/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
 - The checked-in development catalog has nine representative definitions, all
   canonical equipment slots, the medical, material, and ammunition tags, one
@@ -910,7 +910,7 @@ service's `Config` folder. The ignored root `.env` contains local credentials
 and connection strings, not worker topology or World selection. Explicit
 environment variables and command-line options have higher precedence.
 
-SimulationWorker requires one valid `WorldData/Worlds/<WorldId>/world.json` for
+SimulationWorker requires one valid `src/Shared/WorldData/Worlds/<WorldId>/world.json` for
 its configured `WorldId`. The manifest supplies the client scene, movement
 bounds, authoritative spawn, and bank, Recovery Storage, and insurance service
 points. Actor and collision data resolve below the same World directory. This

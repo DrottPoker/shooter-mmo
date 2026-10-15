@@ -1,17 +1,23 @@
 <Solution>
-  <Folder Name="/Shared/">
-    <Project Path="Shared/DotNet/GameProtocol/Mmorpg.GameProtocol.csproj" />
-    <Project Path="Shared/DotNet/GameSimulation/Mmorpg.GameSimulation.csproj" />
-    <Project Path="Shared/DotNet/WorldData/Mmorpg.WorldData.csproj" />
-    <Project Path="Shared/Mmorpg.Server.Common.csproj" />
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/Common/Mmorpg.Server.Common.csproj" />
+    <Project Path="src/Server/GameService/Mmorpg.GameService.csproj" />
+    <Project Path="src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj" />
   </Folder>
-  <Project Path="GameService/Mmorpg.GameService.csproj" />
-  <Project Path="SimulationWorker/Mmorpg.SimulationWorker.csproj" />
-  <Project Path="Tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj" />
-  <Project Path="Tools/StackStressGenerator/Mmorpg.Tools.StackStressGenerator.csproj" />
-  <Project Path="Tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj" />
-  <Project Path="Tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
-  <Project Path="Tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
-  <Project Path="Tools/WorldActorCompiler/Mmorpg.Tools.WorldActorCompiler.csproj" />
-  <Project Path="Tools/WorldCollisionCompiler/Mmorpg.Tools.WorldCollisionCompiler.csproj" />
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/DotNet/GameProtocol/Mmorpg.GameProtocol.csproj" />
+    <Project Path="src/Shared/DotNet/GameSimulation/Mmorpg.GameSimulation.csproj" />
+    <Project Path="src/Shared/DotNet/WorldData/Mmorpg.WorldData.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
+    <Project Path="tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <Project Path="tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj" />
+    <Project Path="tools/StackStressGenerator/Mmorpg.Tools.StackStressGenerator.csproj" />
+    <Project Path="tools/WorldActorCompiler/Mmorpg.Tools.WorldActorCompiler.csproj" />
+    <Project Path="tools/WorldCollisionCompiler/Mmorpg.Tools.WorldCollisionCompiler.csproj" />
+  </Folder>
 </Solution>

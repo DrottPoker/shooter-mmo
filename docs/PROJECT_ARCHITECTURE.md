@@ -159,7 +159,7 @@ relationship.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
 
 Feature folders remain inside the service that owns them. Configuration lives
-under `GameService/Config`.
+under `src/Server/GameService/Config`.
 
 GameService owns one bounded Npgsql pool per process. The checked-in
 `Database:MaximumPoolSize` is `64`, leaving connection headroom on a default
@@ -191,9 +191,9 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - Position-driven world collision chunk streaming.
 - Fail-fast configuration and collision validation.
 
-Configuration lives under `SimulationWorker/Config`. A process receives its
+Configuration lives under `src/Server/SimulationWorker/Config`. A process receives its
 worker, Fleet, Node, Shard, and desired World identity through validated
-configuration. `WorldData/Worlds/<WorldId>/world.json` owns map-local identity,
+configuration. `src/Shared/WorldData/Worlds/<WorldId>/world.json` owns map-local identity,
 client scene, movement bounds, authoritative spawn, and item service
 coordinates. Selecting `SimulationWorker:WorldId` loads that self-contained
 World directory, including collision and actor runtime content. Shared movement
@@ -213,8 +213,8 @@ It must not become a dumping ground for feature logic.
 
 ### GameProtocol
 
-`GameProtocol/Runtime` is a local Unity package and the single source for the
-binary realtime contract. `Shared/DotNet/GameProtocol` compiles the same files
+`src/Shared/GameProtocol/Runtime` is a local Unity package and the single source for the
+binary realtime contract. `src/Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
 Protocol version 14 includes:
@@ -275,8 +275,8 @@ prove the bounded tier or add spatial, frequency, or byte-budget degradation.
 
 ### GameSimulation
 
-`GameSimulation/Runtime` is the shared fixed-step simulation source. Unity uses
-it directly as a local package and `Shared/DotNet/GameSimulation` compiles it
+`src/Shared/GameSimulation/Runtime` is the shared fixed-step simulation source. Unity uses
+it directly as a local package and `src/Shared/DotNet/GameSimulation` compiles it
 for SimulationWorker.
 
 It owns movement integration, carry-state encumbrance, sprint restrictions,
@@ -291,32 +291,32 @@ transport, database, or presentation dependency.
 ### WorldData
 
 `WorldData` is shared content, so it correctly remains at repository root.
-`WorldData/Shared` contains global catalogs and domain rules.
-`WorldData/Worlds/<WorldId>` is a self-contained map package with a canonical
+`src/Shared/WorldData/Shared` contains global catalogs and domain rules.
+`src/Shared/WorldData/Worlds/<WorldId>` is a self-contained map package with a canonical
 `world.json`, collision and actor authoring, deterministic actor runtime, and
 compiled checksummed collision chunks. A shard references one World and its
 worker loads that directory.
 
-`Tools/WorldCollisionCompiler` builds and verifies the same data consumed by
+`tools/WorldCollisionCompiler` builds and verifies the same data consumed by
 SimulationWorker and Unity. Static collision is deterministic and shared.
 Dynamic collision uses a mutable spatial hash behind the same collision-query
 interface, leaving room for doors, lifts, and other server-owned objects.
 
-`WorldData/Shared/Authoring/Items` owns the strict neutral item catalog source,
-and `WorldData/Shared/Runtime/Items` contains its deterministic compiled form. The catalog
+`src/Shared/WorldData/Shared/Authoring/Items` owns the strict neutral item catalog source,
+and `src/Shared/WorldData/Shared/Runtime/Items` contains its deterministic compiled form. The catalog
 has stable identities, one complete revision, per-definition and per-tier
 structural fingerprints, and no Shard identity. Framework-neutral catalog and
 pure rule source is compiled for Unity by the `Mmorpg.WorldData` assembly and
-for .NET tooling and tests through `Shared/DotNet/WorldData`. Neither compilation
+for .NET tooling and tests through `src/Shared/DotNet/WorldData`. Neither compilation
 target becomes an authority. GameService validates and mirrors the compiled
 catalog at startup. Future mutation paths must still reapply the authoritative
 rules before committing durable item state.
 
 Neutral actor definitions live below
-`WorldData/Shared/Authoring/Actors`. Each World owns its spawn authoring at
-`WorldData/Worlds/<WorldId>/Authoring/actor-spawns.json` and deterministic
-runtime content at `WorldData/Worlds/<WorldId>/Runtime/world-actors.json`.
-`Tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
+`src/Shared/WorldData/Shared/Authoring/Actors`. Each World owns its spawn authoring at
+`src/Shared/WorldData/Worlds/<WorldId>/Authoring/actor-spawns.json` and deterministic
+runtime content at `src/Shared/WorldData/Worlds/<WorldId>/Runtime/world-actors.json`.
+`tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
 and tests use the same framework-neutral compiler and runtime validator. Unity
 scene authoring imports and exports that content but does not replace it as the
 source consumed by SimulationWorker.
@@ -330,7 +330,7 @@ immutable shared movement state and applies the same multiplier and sprint
 threshold in SimulationWorker and Unity prediction. These rules have
 no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.
 
-`WorldData/Editor/Items` contains the Editor-only `Mmorpg.WorldData.Editor`
+`src/Shared/WorldData/Editor/Items` contains the Editor-only `Mmorpg.WorldData.Editor`
 assembly and the canonical `MMORPG > Tools > Item Catalog` window. It edits
 the neutral authoring JSON and invokes the same strict .NET compiler used by CI.
 Runtime WorldData assemblies do not reference `UnityEditor`.
@@ -358,7 +358,7 @@ it never owns item custody or applies an optimistic mutation.
 
 ### Unity Client
 
-`shooter-mmorpg-unity-client` owns presentation, input, prediction,
+`src/Client` owns presentation, input, prediction,
 reconciliation, interpolation, scene transitions, HTTP serialization, and the
 persistent UDP client. It never owns authoritative gameplay state. See
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
@@ -370,7 +370,7 @@ and metrics.
 
 ### Tests And Tools
 
-`Tests/Mmorpg.Backend.Tests` contains unit, socket-level, and isolated
+`tests/Mmorpg.Backend.Tests` contains unit, socket-level, and isolated
 PostgreSQL integration tests. Unity tests live inside the Unity project. `Tools`
 contains repository-wide verification, collision and item content builds, and
 external stress tools. `StackStressGenerator` has a worker-only mode with an
@@ -806,7 +806,7 @@ revision, and collision revision.
 ### Worker Registration
 
 1. SimulationWorker validates config and loads
-   `WorldData/Worlds/<WorldId>/world.json`, actor runtime, and collision runtime.
+   `src/Shared/WorldData/Worlds/<WorldId>/world.json`, actor runtime, and collision runtime.
 2. It binds UDP and reports transport readiness.
 3. It sends worker, runtime, topology, desired World, endpoint, capacity,
    protocol, simulation, and collision metadata to GameService.
@@ -970,10 +970,10 @@ combat producer pending
 
 ## Configuration Ownership
 
-- `GameService/Config` owns GameService defaults and topology bootstrap.
-- `SimulationWorker/Config` owns worker identity, endpoint, networking,
+- `src/Server/GameService/Config` owns GameService defaults and topology bootstrap.
+- `src/Server/SimulationWorker/Config` owns worker identity, endpoint, networking,
   simulation, collision streaming, quotas, and interest settings.
-- `shooter-mmorpg-unity-client/Assets/Resources/Config` owns runtime Unity
+- `src/Client/Assets/Resources/Config` owns runtime Unity
   endpoint and timeout configuration.
 - The ignored root `.env` owns local secrets and machine overrides.
 - `.env.example` is the committed environment contract.

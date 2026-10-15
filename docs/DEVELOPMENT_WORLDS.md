@@ -85,7 +85,7 @@ if no URP Pipeline Asset were active.
 The checked-in editor builder reproduces the complete environment without
 touching `Gameplay`, actor authoring, or actor runtime content.
 
-1. Open `shooter-mmorpg-unity-client` in Unity and allow asset import to finish.
+1. Open `src/Client` in Unity and allow asset import to finish.
 2. Open `Assets/Scenes/DevelopmentWorld2.unity`.
 3. To restore the complete checked-in layout, select `MMORPG > Tools >
    Development Worlds > Rebuild Development World 2 Environment` and confirm
@@ -101,8 +101,8 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    Scene`.
 7. Confirm the Console reports a successful bake for
     `development-world-2`. The bake must create
-    `WorldData/Worlds/development-world-2/Authoring/collision.json` and
-    `WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2`.
+    `src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json` and
+    `src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2`.
 8. Keep `DevelopmentWorld2` enabled in `File > Build Profiles`, after
    `LoginMenu` and `CharacterSelect`.
 
@@ -116,13 +116,13 @@ World IDs.
 From the repository root, verify the new collision outputs:
 
 ```powershell
-dotnet run --project Tools/WorldCollisionCompiler `
+dotnet run --project tools/WorldCollisionCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Worlds/development-world-2/Authoring/collision.json `
-  WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
+  src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json `
+  src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
   --verify
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Expected result: the collision verifier reports `development-world-2` with 86

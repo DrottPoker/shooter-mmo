@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\WorldData\Runtime\ItemDomain\**\*.cs"
+             Link="Runtime\ItemDomain\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\WorldData\Runtime\ActorDomain\**\*.cs"
+             Link="Runtime\ActorDomain\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\WorldData\Runtime\WorldDomain\**\*.cs"
+             Link="Runtime\WorldDomain\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

@@ -4,7 +4,7 @@ Last updated: 2026-07-19
 
 ## Purpose
 
-`Tools/StackStressGenerator` is the repeatable load harness for the realtime
+`tools/StackStressGenerator` is the repeatable load harness for the realtime
 stack. It has two explicit modes so SimulationWorker capacity can be measured
 separately from account, placement, session, GameService, and PostgreSQL load.
 
@@ -185,7 +185,7 @@ GameService, PostgreSQL, Redis, and Unity are not required.
 In the first PowerShell terminal, start the generator:
 
 ```powershell
-dotnet run --project Tools/StackStressGenerator `
+dotnet run --project tools/StackStressGenerator `
   --configuration Release `
   --no-build `
   -- `
@@ -206,7 +206,7 @@ start the worker. The following metrics override is also useful:
 
 ```powershell
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile
+dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result:
@@ -260,7 +260,7 @@ $env:DevelopmentSimulationBots__Enabled = "false"
 $env:RateLimiting__Authentication__PermitLimit = "100000"
 $env:RateLimiting__Authentication__WindowSeconds = "60"
 $env:ASPNETCORE_URLS = "http://127.0.0.1:5500"
-dotnet run --project GameService --configuration Release --no-build --no-launch-profile
+dotnet run --project src/Server/GameService --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result: migrations complete and GameService listens on
@@ -290,7 +290,7 @@ $env:SIMULATION_WORKER_ADVERTISED_HOST = "127.0.0.1"
 $env:SIMULATION_WORKER_ADVERTISED_UDP_PORT = "27025"
 $env:SIMULATION_WORLD_ID = "development-world-2"
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project SimulationWorker --configuration Release --no-build --no-launch-profile
+dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
 Expected result: the worker registers `local-shard-1` and
@@ -309,7 +309,7 @@ environment instead of passing it as an argument:
 
 ```powershell
 $env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
-dotnet run --project Tools/StackStressGenerator `
+dotnet run --project tools/StackStressGenerator `
   --configuration Release `
   --no-build `
   -- `
@@ -346,7 +346,7 @@ one explicit workload in terminal 3. This example runs the complete mixed path:
 ```powershell
 $env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
 $env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
-dotnet run --project Tools/StackStressGenerator `
+dotnet run --project tools/StackStressGenerator `
   --configuration Release `
   --no-build `
   -- `
@@ -690,7 +690,7 @@ Distributed load generation and remote service targets are not implemented.
 List every supported option:
 
 ```powershell
-dotnet run --project Tools/StackStressGenerator -- --help
+dotnet run --project tools/StackStressGenerator -- --help
 ```
 
 Important mode-specific options are:

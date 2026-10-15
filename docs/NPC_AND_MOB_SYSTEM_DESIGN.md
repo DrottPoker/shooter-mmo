@@ -28,8 +28,8 @@ AI, Mob loot generation, final actor art, or final interaction UI.
 
 The implemented foundation includes:
 
-- Strict shared actor definitions in `WorldData/Shared/Authoring/Actors`,
-  per-World spawn authoring under `WorldData/Worlds/<WorldId>/Authoring`, and
+- Strict shared actor definitions in `src/Shared/WorldData/Shared/Authoring/Actors`,
+  per-World spawn authoring under `src/Shared/WorldData/Worlds/<WorldId>/Authoring`, and
   deterministic runtime actor content in each World's `Runtime` directory.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
@@ -142,7 +142,7 @@ capability composition.
 Neutral actor authoring belongs under:
 
 ```text
-WorldData/
+src/Shared/WorldData/
   Authoring/
     Actors/
     ActorSpawns/
@@ -162,7 +162,7 @@ The same compiler and validation rules must be consumed by:
 - Backend unit and content tests.
 - Continuous integration.
 
-The command-line entry point is `Tools/WorldActorCompiler`. Its default mode
+The command-line entry point is `tools/WorldActorCompiler`. Its default mode
 loads the committed canonical actor and spawn manifests, while explicit source
 and output arguments support isolated tests. `--verify` compiles in memory and
 fails when committed runtime output is missing or differs without rewriting it.
@@ -623,7 +623,7 @@ Phase 12 requires automated coverage for:
 
 Implementation must also pass locked dependency restore, dependency policy,
 formatter verification, the existing item-catalog and collision verification,
-`Tools/WorldActorCompiler --verify`, the complete Release build, every backend
+`tools/WorldActorCompiler --verify`, the complete Release build, every backend
 test including isolated PostgreSQL integration tests, and all Unity EditMode and
 PlayMode tests.
 

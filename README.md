@@ -174,11 +174,11 @@ docker compose up -d --wait
 Run the two backend processes in separate PowerShell terminals:
 
 ```powershell
-dotnet run --project GameService
+dotnet run --project src/Server/GameService
 ```
 
 ```powershell
-dotnet run --project SimulationWorker
+dotnet run --project src/Server/SimulationWorker
 ```
 
 Expected result:
@@ -189,7 +189,7 @@ Expected result:
   receives assignment to `local-shard-1`.
 - `GET http://localhost:5000/api/shards` reports the local shard online.
 
-Open `shooter-mmorpg-unity-client` in Unity and enter Play Mode from
+Open `src/Client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
 The original focused test map is `development-world-1`. The larger greybox map
@@ -208,36 +208,36 @@ Run from the repository root:
 
 ```powershell
 dotnet restore Mmorpg.slnx --locked-mode
-& ./Tools/Verify-DependencyPolicy.ps1
+& ./tools/Verify-DependencyPolicy.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
-dotnet run --project Tools/ItemCatalogCompiler `
+dotnet run --project tools/ItemCatalogCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Shared/Authoring/Items/core.item-catalog.json `
-  WorldData/Shared/Runtime/Items/core.item-catalog.json `
+  src/Shared/WorldData/Shared/Authoring/Items/core.item-catalog.json `
+  src/Shared/WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
 dotnet test Mmorpg.slnx --configuration Release --no-build
-dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Worlds/development-world-1/Authoring/collision.json `
-  WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1 `
+dotnet run --project tools/WorldCollisionCompiler -- `
+  src/Shared/WorldData/Worlds/development-world-1/Authoring/collision.json `
+  src/Shared/WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1 `
   --verify
-dotnet run --project Tools/WorldCollisionCompiler -- `
-  WorldData/Worlds/development-world-2/Authoring/collision.json `
-  WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
+dotnet run --project tools/WorldCollisionCompiler -- `
+  src/Shared/WorldData/Worlds/development-world-2/Authoring/collision.json `
+  src/Shared/WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
   --verify
-dotnet run --project Tools/WorldActorCompiler `
+dotnet run --project tools/WorldActorCompiler `
   --configuration Release `
   --no-build -- `
   --verify
-dotnet run --project Tools/WorldActorCompiler `
+dotnet run --project tools/WorldActorCompiler `
   --configuration Release `
   --no-build -- `
-  WorldData/Shared/Authoring/Actors/core.world-actors.json `
-  WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
-  WorldData/Worlds/development-world-2/Runtime/world-actors.json `
+  src/Shared/WorldData/Shared/Authoring/Actors/core.world-actors.json `
+  src/Shared/WorldData/Worlds/development-world-2/Authoring/actor-spawns.json `
+  src/Shared/WorldData/Worlds/development-world-2/Runtime/world-actors.json `
   --verify
-powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
 Start the isolated PostgreSQL and Redis test containers before running
@@ -268,15 +268,16 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `GameService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
-| `SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
-| `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
-| `GameProtocol` | Local Unity package containing protocol source |
-| `GameSimulation` | Local Unity package containing shared simulation source |
-| `WorldData` | Shared catalogs and domain rules plus self-contained `Worlds/<WorldId>` manifests, authoring, actor runtime, and checksummed collision data |
-| `Tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
-| `Tests` | Backend unit, realtime, and PostgreSQL integration tests |
-| `shooter-mmorpg-unity-client` | Unity project and Unity tests |
+| `src/Server/GameService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
+| `src/Server/SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
+| `src/Server/Common` | Framework-neutral helpers shared by the server processes |
+| `src/Shared/GameProtocol` | Local Unity package containing protocol source |
+| `src/Shared/GameSimulation` | Local Unity package containing shared simulation source |
+| `src/Shared/WorldData` | Local Unity package with shared catalogs and domain rules, content tools, and self-contained `Worlds/<WorldId>` manifests, authoring, actor runtime, and checksummed collision data |
+| `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
+| `src/Client` | Unity project and Unity tests |
+| `tools` | Verification, content compilers, stress benchmark, shared headless bot client, and active bot population |
+| `tests` | Backend unit, realtime, and PostgreSQL integration tests |
 | `docs` | Architecture, implemented features, setup, and product references |
 
 Repository-wide Compose, SDK, solution, build, and environment contracts remain

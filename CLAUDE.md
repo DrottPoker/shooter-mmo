@@ -15,13 +15,13 @@ only adds the workflow notes that a coding agent needs to verify its own work.
   in `README.md`. A full run takes about six to seven minutes, so run it in the
   background. Never print `.env` values.
 - Local stack for manual or end-to-end tests: `docker compose up -d --wait`,
-  then `dotnet run --project GameService` and
-  `dotnet run --project SimulationWorker` as background processes. Stop both
+  then `dotnet run --project src/Server/GameService` and
+  `dotnet run --project src/Server/SimulationWorker` as background processes. Stop both
   processes when finished.
 
 ## Unity Editor
 
-The Unity project in `shooter-mmorpg-unity-client` includes the Pipeline
+The Unity project in `src/Client` includes the Pipeline
 package, so a running Editor can be driven with the `unity` CLI. Setup and
 security rules are in `docs/LOCAL_DEVELOPMENT.md` under Unity Editor Automation
 With Unity CLI.
@@ -38,6 +38,6 @@ With Unity CLI.
 - `capture_game_view` and `capture_scene_view` always save below `Assets/`.
   Move the image out and delete the created folder and `.meta` file afterwards,
   so no screenshot reaches Git.
-- The headless `Tools/Run-UnityTests.ps1` cannot run while the Editor has the
+- The headless `tools/Run-UnityTests.ps1` cannot run while the Editor has the
   project open. Use the live Editor commands above instead.
 - Exit Play Mode with `unity command editor_stop` before finishing.

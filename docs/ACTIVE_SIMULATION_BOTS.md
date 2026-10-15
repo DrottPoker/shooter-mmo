@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Purpose
 
-`Tools/ActiveSimulationBots` is a long-running local development population
+`tools/ActiveSimulationBots` is a long-running local development population
 driver. It keeps configurable headless bots connected to the real GameService
 and SimulationWorker while a Unity player can use the same shard. The bots use
 the normal LiteNetLib UDP connection, one-time join ticket, server-provided
@@ -61,7 +61,7 @@ connections absorb that overlap.
 ## Configuration
 
 Authority controls live in
-`GameService/Config/appsettings.Development.json`:
+`src/Server/GameService/Config/appsettings.Development.json`:
 
 | Setting | Default | Behavior |
 | --- | ---: | --- |
@@ -72,7 +72,7 @@ Authority controls live in
 | `ReservedPlayerConnections` | `8` | Worker connections bots never use, so real local players can still join |
 
 Population and behavior controls live in
-`Tools/ActiveSimulationBots/appsettings.json`:
+`tools/ActiveSimulationBots/appsettings.json`:
 
 | Setting | Default | Behavior |
 | --- | ---: | --- |
@@ -106,7 +106,7 @@ capacity admission but cannot be reached.
 For example:
 
 ```powershell
-dotnet run --project Tools/ActiveSimulationBots -- `
+dotnet run --project tools/ActiveSimulationBots -- `
   --ActiveSimulationBots:MinimumActiveBots 10 `
   --ActiveSimulationBots:MaximumActiveBots 25
 ```
@@ -130,17 +130,17 @@ docker compose up -d --wait
 ```
 
 ```powershell
-dotnet run --project GameService
+dotnet run --project src/Server/GameService
 ```
 
 ```powershell
-dotnet run --project SimulationWorker
+dotnet run --project src/Server/SimulationWorker
 ```
 
 Then start the active population:
 
 ```powershell
-dotnet run --project Tools/ActiveSimulationBots --configuration Release
+dotnet run --project tools/ActiveSimulationBots --configuration Release
 ```
 
 Expected result:
@@ -184,7 +184,7 @@ required.
 
 1. Start GameService, SimulationWorker, and ActiveSimulationBots as described
    above.
-2. Open `shooter-mmorpg-unity-client` in Unity.
+2. Open `src/Client` in Unity.
 3. Enter Play Mode from `Assets/Scenes/LoginMenu.unity`.
 4. Log in with a normal account, select a character, and join
    `local-shard-1`.

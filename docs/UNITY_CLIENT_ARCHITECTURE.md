@@ -15,7 +15,7 @@ runtime claim.
 
 ## Project Boundary
 
-The Unity project lives in `shooter-mmorpg-unity-client` and targets Unity
+The Unity project lives in `src/Client` and targets Unity
 6000.5.4f1. Runtime code is compiled into `Mmorpg.Client`. EditMode and
 PlayMode tests use separate assemblies.
 
@@ -249,7 +249,7 @@ The join response must also match the client's compiled movement-simulation
 revision and baked collision revision. Either mismatch aborts activation with a
 structured client error.
 
-`GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
+`src/Shared/GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
 installed from OpenUPM. The runtime assembly references both by assembly name.
 LiteNetLib is pinned to version 2.1.4 in both the project manifest and package
 lock. Unity displays a missing-signature warning because the scoped third-party
