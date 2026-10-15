@@ -7,23 +7,23 @@
         "resolved": "2.1.4",
         "contentHash": "KWlxvMw3Urpqj9joD96LRiK+LC62pQNs/zkXRJc+rHnxgkGp+vV703xzDrxRmv+V1YhCFfIGzs5nrVWtREIlyA=="
       },
-      "shootermmo.gameprotocol": {
+      "mmorpg.gameprotocol": {
         "type": "Project"
       },
-      "shootermmo.shared": {
+      "mmorpg.server.common": {
         "type": "Project",
         "dependencies": {
-          "ShooterMmo.WorldData": "[1.0.0, )"
+          "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
-      "shootermmo.tools.simulationbotclient": {
+      "mmorpg.tools.simulationbotclient": {
         "type": "Project",
         "dependencies": {
           "LiteNetLib": "[2.1.4, )",
-          "ShooterMmo.GameProtocol": "[1.0.0, )"
+          "Mmorpg.GameProtocol": "[1.0.0, )"
         }
       },
-      "shootermmo.worlddata": {
+      "mmorpg.worlddata": {
         "type": "Project"
       }
     }

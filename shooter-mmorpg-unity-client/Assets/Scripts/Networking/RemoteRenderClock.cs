@@ -1,6 +1,6 @@
 using System;
 
-namespace ShooterMmo.Networking
+namespace Mmorpg.Client.Networking
 {
     public sealed class RemoteRenderClock
     {

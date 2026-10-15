@@ -1,7 +1,7 @@
-using ShooterMmo.GameSimulation;
-using SimulationWorker.Auth;
+using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.GameServiceApi;
 
-namespace SimulationWorker.Sessions;
+namespace Mmorpg.SimulationWorker.Sessions;
 
 public sealed record ActiveSimulationSession(
     Guid SimulationSessionId,

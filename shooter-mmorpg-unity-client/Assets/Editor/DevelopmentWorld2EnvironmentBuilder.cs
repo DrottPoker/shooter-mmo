@@ -1,17 +1,17 @@
 using System;
-using ShooterMmo.Collision;
+using Mmorpg.Client.Collision;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Editor
+namespace Mmorpg.Client.Editor
 {
     public static class DevelopmentWorld2EnvironmentBuilder
     {
         public const string MenuPath =
-            "Shooter MMO/Tools/Development Worlds/Rebuild Development World 2 Environment";
+            "MMORPG/Tools/Development Worlds/Rebuild Development World 2 Environment";
         private const string ScenePath = "Assets/Scenes/DevelopmentWorld2.unity";
         private const string MaterialDirectory =
             "Assets/Art/Materials/DevelopmentWorld2";

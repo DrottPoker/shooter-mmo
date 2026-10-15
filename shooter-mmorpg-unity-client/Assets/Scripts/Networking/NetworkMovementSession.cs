@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using ShooterMmo.Collision;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
+using Mmorpg.Client.Collision;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
-namespace ShooterMmo.Networking
+namespace Mmorpg.Client.Networking
 {
     public sealed class NetworkMovementSession
     {

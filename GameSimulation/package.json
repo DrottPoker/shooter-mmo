@@ -1,13 +1,13 @@
 {
-  "name": "com.shootermmo.game-simulation",
+  "name": "com.mmorpg.game-simulation",
   "version": "0.3.0",
-  "displayName": "Shooter MMO Game Simulation",
+  "displayName": "MMORPG Game Simulation",
   "description": "Deterministic fixed-step gameplay simulation shared by SimulationWorker and Unity.",
   "unity": "6000.0",
   "dependencies": {
-    "com.shootermmo.world-data": "0.4.0"
+    "com.mmorpg.world-data": "0.4.0"
   },
   "author": {
-    "name": "Shooter MMO"
+    "name": "MMORPG"
   }
 }

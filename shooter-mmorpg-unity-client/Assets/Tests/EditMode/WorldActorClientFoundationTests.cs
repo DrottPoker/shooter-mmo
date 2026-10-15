@@ -1,11 +1,11 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Items;
-using ShooterMmo.WorldActors;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Items;
+using Mmorpg.Client.WorldActors;
 using UnityEngine;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class WorldActorClientFoundationTests
     {

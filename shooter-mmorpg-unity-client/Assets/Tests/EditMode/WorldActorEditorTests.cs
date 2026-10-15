@@ -1,9 +1,9 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.WorldData.Actors;
-using ShooterMmo.WorldData.Editor.Actors;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Editor.Actors;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class WorldActorEditorTests
     {
@@ -47,14 +47,14 @@ namespace ShooterMmo.Tests.EditMode
         }
 
         [Test]
-        public void ContentToolsRemainUnderShooterMmoToolsMenu()
+        public void ContentToolsRemainUnderTheSharedToolsMenu()
         {
             Assert.That(
                 WorldActorStudioWindow.MenuPath,
-                Is.EqualTo("Shooter MMO/Tools/Content/Actor Studio"));
+                Is.EqualTo("MMORPG/Tools/Content/Actor Studio"));
             Assert.That(
                 WorldActorSpawnAuthoringWindow.MenuPath,
-                Is.EqualTo("Shooter MMO/Tools/Content/Spawn Authoring"));
+                Is.EqualTo("MMORPG/Tools/Content/Spawn Authoring"));
         }
 
         [Test]

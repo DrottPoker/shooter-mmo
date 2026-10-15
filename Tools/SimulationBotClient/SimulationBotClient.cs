@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Net;
 using LiteNetLib;
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace ShooterMmo.Tools.SimulationBotClient;
+namespace Mmorpg.Tools.SimulationBotClient;
 
 public sealed class SimulationBotClient : IDisposable
 {

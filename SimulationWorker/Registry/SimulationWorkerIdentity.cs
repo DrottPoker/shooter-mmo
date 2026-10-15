@@ -1,4 +1,4 @@
-namespace SimulationWorker.Registry;
+namespace Mmorpg.SimulationWorker.Registry;
 
 public sealed record SimulationWorkerIdentity(string RuntimeId, DateTime StartedAt)
 {

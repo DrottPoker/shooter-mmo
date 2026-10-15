@@ -6,7 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace ShooterMmo.WorldData.Items
+namespace Mmorpg.WorldData.Items
 {
     public sealed class ItemCatalogValidationException : Exception
     {

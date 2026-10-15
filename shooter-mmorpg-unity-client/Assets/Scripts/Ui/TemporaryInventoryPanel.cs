@@ -2,16 +2,16 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using ShooterMmo.Gameplay;
-using ShooterMmo.Items;
-using ShooterMmo.WorldData.Items;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public enum InventoryPanelMode
     {
@@ -85,13 +85,13 @@ namespace ShooterMmo.Ui
 
         private void Start()
         {
-            controller = ShooterMmoClientBootstrap.InventoryController;
+            controller = ClientBootstrap.InventoryController;
             if (controller != null)
             {
                 controller.State.Changed += Rebuild;
             }
 
-            corpseController = ShooterMmoClientBootstrap.CorpseController;
+            corpseController = ClientBootstrap.CorpseController;
             if (corpseController != null)
             {
                 corpseController.State.Changed += OnCorpseStateChanged;
@@ -185,7 +185,7 @@ namespace ShooterMmo.Ui
 
             if (value)
             {
-                controller = controller ?? ShooterMmoClientBootstrap.InventoryController;
+                controller = controller ?? ClientBootstrap.InventoryController;
                 controller?.EnsureFullState();
                 Rebuild();
             }
@@ -622,7 +622,7 @@ namespace ShooterMmo.Ui
 
         private void DrawCorpse(Transform parent, InventoryClientState inventoryState)
         {
-            corpseController = corpseController ?? ShooterMmoClientBootstrap.CorpseController;
+            corpseController = corpseController ?? ClientBootstrap.CorpseController;
             if (corpseController == null)
             {
                 CreateMessage(parent, "Corpse interaction state is unavailable.", ErrorColor);

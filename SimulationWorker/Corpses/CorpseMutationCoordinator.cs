@@ -1,4 +1,4 @@
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed class CorpseMutationCoordinator
 {

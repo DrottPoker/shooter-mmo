@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace ShooterMmo.GameProtocol
+namespace Mmorpg.GameProtocol
 {
     public enum RealtimeCorpseInteractionKind : byte
     {

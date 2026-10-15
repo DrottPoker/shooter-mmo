@@ -2,13 +2,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using LiteNetLib;
-using ShooterMmo.Api;
-using ShooterMmo.Diagnostics;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Diagnostics;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 using UnityEngine;
 
-namespace ShooterMmo.Networking
+namespace Mmorpg.Client.Networking
 {
     public enum RealtimeConnectionState
     {
@@ -290,7 +290,7 @@ namespace ShooterMmo.Networking
             ConnectedHost = placement.endpoint.host.Trim();
             ConnectedPort = placement.endpoint.udpPort;
             pendingJoinTicket = placement.joinTicket.Trim();
-            client.DisconnectTimeout = ShooterMmoClientSession.RealtimeTimeoutSeconds * 1000;
+            client.DisconnectTimeout = ClientSession.RealtimeTimeoutSeconds * 1000;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Opening UDP connection to SimulationWorker '" + placement.endpoint.workerId
@@ -311,7 +311,7 @@ namespace ShooterMmo.Networking
                 {
                     transportStarted = true;
                     State = RealtimeConnectionState.Connecting;
-                    operationDeadline = Time.realtimeSinceStartup + ShooterMmoClientSession.RealtimeTimeoutSeconds;
+                    operationDeadline = Time.realtimeSinceStartup + ClientSession.RealtimeTimeoutSeconds;
                     client.Connect(ConnectedHost, ConnectedPort, RealtimeProtocol.ConnectionKey);
                 }
             }
@@ -387,7 +387,7 @@ namespace ShooterMmo.Networking
             operationError = null;
             leaveAccepted = false;
             State = RealtimeConnectionState.Leaving;
-            operationDeadline = Time.realtimeSinceStartup + ShooterMmoClientSession.RealtimeTimeoutSeconds;
+            operationDeadline = Time.realtimeSinceStartup + ClientSession.RealtimeTimeoutSeconds;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Requesting a graceful leave for simulation session '" + simulationSessionId.Trim() + "'.");
@@ -815,7 +815,7 @@ namespace ShooterMmo.Networking
             {
                 FailProtocol(
                     "placement_mismatch",
-                    "SimulationWorker accepted the join with topology or compatibility metadata that does not match the AuthService placement.");
+                    "SimulationWorker accepted the join with topology or compatibility metadata that does not match the GameService placement.");
                 return;
             }
 

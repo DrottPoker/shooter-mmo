@@ -1,16 +1,16 @@
 using System.Collections;
-using ShooterMmo.Api;
-using ShooterMmo.Diagnostics;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Diagnostics;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public sealed class LoginMenuPanel : MonoBehaviour
     {
         private readonly ClientOperationState operationState = new ClientOperationState();
 
-        private ShooterMmoApiClient apiClient;
+        private ApiClient apiClient;
         private string email = "player@example.com";
         private string username = "player_one";
         private string password = "TestPass123!";
@@ -24,7 +24,7 @@ namespace ShooterMmo.Ui
 
         private void Awake()
         {
-            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+            apiClient = new ApiClient(ClientSession.RequestTimeoutSeconds);
         }
 
         private void OnGUI()
@@ -33,9 +33,9 @@ namespace ShooterMmo.Ui
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
 
             GUILayout.Label("Connections");
-            GUILayout.Label("Auth Service: " + ShooterMmoClientSession.AuthServiceBaseUrl);
-            GUILayout.Label("Request Timeout: " + ShooterMmoClientSession.RequestTimeoutSeconds + " seconds");
-            GUILayout.Label("Realtime Timeout: " + ShooterMmoClientSession.RealtimeTimeoutSeconds + " seconds");
+            GUILayout.Label("Game Service: " + ClientSession.GameServiceBaseUrl);
+            GUILayout.Label("Request Timeout: " + ClientSession.RequestTimeoutSeconds + " seconds");
+            GUILayout.Label("Realtime Timeout: " + ClientSession.RealtimeTimeoutSeconds + " seconds");
 
             GUILayout.Space(12f);
             GUILayout.Label("Account");
@@ -79,7 +79,7 @@ namespace ShooterMmo.Ui
             };
 
             yield return apiClient.Register(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
+                ClientSession.GameServiceBaseUrl,
                 request,
                 response => OnAuthSuccess(response, "registered and logged in"),
                 error => SetError("Registration", error));
@@ -98,7 +98,7 @@ namespace ShooterMmo.Ui
             };
 
             yield return apiClient.Login(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
+                ClientSession.GameServiceBaseUrl,
                 request,
                 response => OnAuthSuccess(response, "logged in"),
                 error => SetError("Login", error));
@@ -122,18 +122,18 @@ namespace ShooterMmo.Ui
 
         private void OnAuthSuccess(AuthResponse response, string action)
         {
-            ShooterMmoClientSession.Auth = response;
-            ShooterMmoClientSession.SelectedCharacter = null;
-            ShooterMmoClientSession.SelectedShard = null;
-            ShooterMmoClientSession.ActiveSimulationSession = null;
+            ClientSession.Auth = response;
+            ClientSession.SelectedCharacter = null;
+            ClientSession.SelectedShard = null;
+            ClientSession.ActiveSimulationSession = null;
             status = "Authenticated as " + response.username + ".";
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "Account '" + response.username + "' (" + response.accountId + ") " + action + ".");
-            SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+            SceneManager.LoadScene(SceneNames.CharacterSelect);
         }
 
-        private void SetError(string operation, ShooterMmoApiError error)
+        private void SetError(string operation, ApiError error)
         {
             status = "Error: " + error.ToDisplayMessage();
             ClientLog.Error(ClientLogCategory.Auth, operation + " failed: " + error.ToDisplayMessage());

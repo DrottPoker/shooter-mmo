@@ -1,7 +1,7 @@
-using SimulationWorker.Realtime;
-using SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.Sessions;
 
-namespace SimulationWorker.Entities;
+namespace Mmorpg.SimulationWorker.Entities;
 
 public sealed class SimulationEntityRegistry
 {

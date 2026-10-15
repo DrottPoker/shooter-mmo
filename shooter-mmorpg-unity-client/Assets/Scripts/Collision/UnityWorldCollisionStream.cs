@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 using UnityEngine;
 
-namespace ShooterMmo.Collision
+namespace Mmorpg.Client.Collision
 {
     public sealed class UnityWorldCollisionStream
     {

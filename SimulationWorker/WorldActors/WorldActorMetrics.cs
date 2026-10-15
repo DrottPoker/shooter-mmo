@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed record WorldActorMetricsSnapshot(
     long NpcPopulation,
@@ -14,7 +14,7 @@ public sealed record WorldActorMetricsSnapshot(
 
 public sealed class WorldActorMetrics : IDisposable
 {
-    public const string MeterName = "ShooterMmo.SimulationWorker.WorldActors";
+    public const string MeterName = "Mmorpg.SimulationWorker.WorldActors";
 
     private readonly Meter meter = new(MeterName);
     private readonly Histogram<double> interactionLatency;

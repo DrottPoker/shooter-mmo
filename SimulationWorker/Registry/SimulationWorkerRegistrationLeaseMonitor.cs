@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace SimulationWorker.Registry;
+namespace Mmorpg.SimulationWorker.Registry;
 
 public sealed class SimulationWorkerRegistrationLeaseMonitor(
     SimulationWorkerRegistrationLease registrationLease,

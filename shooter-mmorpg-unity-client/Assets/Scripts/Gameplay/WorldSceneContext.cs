@@ -1,12 +1,12 @@
 using System.Collections.Generic;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Networking;
-using ShooterMmo.Worlds;
+using Mmorpg.GameSimulation;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Networking;
+using Mmorpg.Client.Worlds;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Gameplay
+namespace Mmorpg.Client.Gameplay
 {
     [DisallowMultipleComponent]
     public sealed class WorldSceneContext : MonoBehaviour
@@ -29,14 +29,14 @@ namespace ShooterMmo.Gameplay
                 return;
             }
 
-            if (ShooterMmoClientSession.ActiveSimulationSession == null)
+            if (ClientSession.ActiveSimulationSession == null)
             {
                 enabled = false;
                 return;
             }
 
             if (!WorldSceneCatalog.TryResolveScene(
-                    ShooterMmoClientSession.ActiveSimulationSession.worldId,
+                    ClientSession.ActiveSimulationSession.worldId,
                     out var expectedSceneName,
                     out var sceneError))
             {
@@ -57,14 +57,14 @@ namespace ShooterMmo.Gameplay
                 Debug.LogError(
                     "WorldSceneContext cannot activate because scene '" + activeSceneName
                     + "' does not match joined world '"
-                    + ShooterMmoClientSession.ActiveSimulationSession.worldId
+                    + ClientSession.ActiveSimulationSession.worldId
                     + "', which requires scene '" + expectedSceneName + "'.",
                     this);
                 enabled = false;
                 return;
             }
 
-            simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            simulationClient = ClientBootstrap.SimulationClient;
             if (simulationClient == null
                 || !simulationClient.IsJoined
                 || simulationClient.MovementSession == null)

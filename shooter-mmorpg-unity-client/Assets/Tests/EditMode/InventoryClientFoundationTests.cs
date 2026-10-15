@@ -1,13 +1,13 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.Api;
-using ShooterMmo.Config;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Items;
-using ShooterMmo.WorldData.Items.Presentation;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Config;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class InventoryClientFoundationTests
     {
@@ -17,7 +17,7 @@ namespace ShooterMmo.Tests.EditMode
         public void SetUp()
         {
             ItemPresentationCatalogLoader.ResetCache();
-            var config = ShooterMmoClientConfig.Load();
+            var config = ClientConfig.Load();
             Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
             Assert.That(
                 ClientItemCatalog.TryLoad(
@@ -37,7 +37,7 @@ namespace ShooterMmo.Tests.EditMode
         [Test]
         public void CatalogLoadsGameplayAndPresentationOnceByDefinitionId()
         {
-            var config = ShooterMmoClientConfig.Load();
+            var config = ClientConfig.Load();
 
             Assert.That(
                 ClientItemCatalog.TryLoad(

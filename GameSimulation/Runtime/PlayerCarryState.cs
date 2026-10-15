@@ -1,7 +1,7 @@
 using System;
-using ShooterMmo.WorldData.Items;
+using Mmorpg.WorldData.Items;
 
-namespace ShooterMmo.GameSimulation
+namespace Mmorpg.GameSimulation
 {
     public sealed class PlayerCarryState : IEquatable<PlayerCarryState>
     {

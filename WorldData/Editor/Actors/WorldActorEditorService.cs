@@ -4,10 +4,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.WorldData.Actors;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Actors
+namespace Mmorpg.WorldData.Editor.Actors
 {
     public sealed class WorldActorEditorPaths
     {
@@ -62,7 +62,7 @@ namespace ShooterMmo.WorldData.Editor.Actors
                     repositoryRoot,
                     "Tools",
                     "WorldActorCompiler",
-                    "WorldActorCompiler.csproj"));
+                    "Mmorpg.Tools.WorldActorCompiler.csproj"));
         }
     }
 
@@ -341,7 +341,7 @@ namespace ShooterMmo.WorldData.Editor.Actors
 
             var temporaryDirectory = Path.Combine(
                 Path.GetTempPath(),
-                "ShooterMmo.WorldActors." + Guid.NewGuid().ToString("N"));
+                "Mmorpg.Client.WorldActors." + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporaryDirectory);
             try
             {

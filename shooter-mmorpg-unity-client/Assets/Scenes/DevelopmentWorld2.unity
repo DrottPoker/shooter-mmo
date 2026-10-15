@@ -2401,8 +2401,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
   m_CustomShadowLayers: 0
@@ -9737,8 +9737,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9d10a789e0394d01af935990f9876366, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: ShooterMmo.Runtime::ShooterMmo.Gameplay.WorldSceneContext
+  m_Name: 
+  m_EditorClassIdentifier: Mmorpg.Client::Mmorpg.Client.Gameplay.WorldSceneContext
   localPlayerPrefab: {fileID: 2243737688916317055, guid: 684d5c14307e78540b9c75d12b7787a9, type: 3}
   playerSpawnPoint: {fileID: 1202275090}
   remotePlayerPrefab: {fileID: 3979586188178329462, guid: 6ac7fc2d1b4699a4785304bbe10cc4a0, type: 3}
@@ -10768,7 +10768,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 505d4f04af74465493293f990ef218b5, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: ShooterMmo.Runtime::ShooterMmo.Collision.WorldCollisionAuthoring
+  m_EditorClassIdentifier: Mmorpg.Client::Mmorpg.Client.Collision.WorldCollisionAuthoring
   worldId: development-world-2
   chunkSize: 32
   collisionRoot: {fileID: 2039433802}

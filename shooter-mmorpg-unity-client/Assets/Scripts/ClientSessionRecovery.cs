@@ -1,14 +1,14 @@
-using ShooterMmo.Api;
-using ShooterMmo.Diagnostics;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Diagnostics;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo
+namespace Mmorpg.Client
 {
     public static class ClientSessionRecovery
     {
         public const string AccountSessionReplacedCode = "account_session_replaced";
 
-        public static bool ReturnToLoginIfUnauthorized(ShooterMmoApiError error)
+        public static bool ReturnToLoginIfUnauthorized(ApiError error)
         {
             if (error == null || !error.IsUnauthorized)
             {
@@ -26,15 +26,15 @@ namespace ShooterMmo
                         + error.ToDisplayMessage()
                     : "The account session is no longer authorized. Clearing local session state and returning to LoginMenu. "
                         + error.ToDisplayMessage());
-            if (ShooterMmoClientBootstrap.SimulationClient != null)
+            if (ClientBootstrap.SimulationClient != null)
             {
-                ShooterMmoClientBootstrap.SimulationClient.Abort();
+                ClientBootstrap.SimulationClient.Abort();
             }
 
-            ShooterMmoClientSession.Clear();
-            if (SceneManager.GetActiveScene().name != ShooterMmoSceneNames.LoginMenu)
+            ClientSession.Clear();
+            if (SceneManager.GetActiveScene().name != SceneNames.LoginMenu)
             {
-                SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
+                SceneManager.LoadScene(SceneNames.LoginMenu);
             }
 
             return true;

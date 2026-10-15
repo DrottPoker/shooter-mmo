@@ -1,11 +1,11 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Shared.Networking;
-using ShooterMmo.Shared.Worlds;
-using ShooterMmo.WorldData.Worlds;
+using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Networking;
+using Mmorpg.Server.Common.Worlds;
+using Mmorpg.WorldData.Worlds;
 
-namespace SimulationWorker.Config;
+namespace Mmorpg.SimulationWorker.Config;
 
 public sealed record SimulationWorkerConfig(
     string SimulationWorkerId,
@@ -24,9 +24,9 @@ public sealed record SimulationWorkerConfig(
     TimeSpan MovementInputSilenceTimeout,
     MovementSimulationSettings MovementSimulation,
     MovementSpawnConfig MovementSpawn,
-    Uri AuthServiceBaseUrl,
-    TimeSpan AuthServiceTimeout,
-    string AuthServiceSecret,
+    Uri GameServiceBaseUrl,
+    TimeSpan GameServiceTimeout,
+    string GameServiceSecret,
     TimeSpan SimulationSessionHeartbeatInterval,
     TimeSpan RegistryHeartbeatInterval,
     string RedisConnectionString,
@@ -82,13 +82,13 @@ public sealed record SimulationWorkerConfig(
             First(section["WorldId"], configuration["SIMULATION_WORLD_ID"]),
             "SimulationWorker:WorldId",
             errors);
-        var authServiceUrl = Require(
-            First(section["AuthServiceBaseUrl"], configuration["AUTH_SERVICE_BASE_URL"]),
-            "SimulationWorker:AuthServiceBaseUrl",
+        var gameServiceUrl = Require(
+            First(section["GameServiceBaseUrl"], configuration["GAME_SERVICE_BASE_URL"]),
+            "SimulationWorker:GameServiceBaseUrl",
             errors);
-        var authServiceSecret = Require(
-            First(section["AuthServiceSecret"], configuration["SIMULATION_WORKER_SERVICE_SECRET"]),
-            "SimulationWorker:AuthServiceSecret",
+        var gameServiceSecret = Require(
+            First(section["GameServiceSecret"], configuration["SIMULATION_WORKER_SERVICE_SECRET"]),
+            "SimulationWorker:GameServiceSecret",
             errors);
         var worldDataPath = Require(
             First(
@@ -229,8 +229,8 @@ public sealed record SimulationWorkerConfig(
         var spawnZ = worldManifest?.spawn.z ?? 0f;
         var spawnYaw = worldManifest?.spawn.yawDegrees ?? 0f;
         var authTimeoutSeconds = PositiveInt(
-            First(section["AuthServiceTimeoutSeconds"], configuration["AUTH_SERVICE_TIMEOUT_SECONDS"]),
-            "SimulationWorker:AuthServiceTimeoutSeconds",
+            First(section["GameServiceTimeoutSeconds"], configuration["GAME_SERVICE_TIMEOUT_SECONDS"]),
+            "SimulationWorker:GameServiceTimeoutSeconds",
             errors);
         var sessionHeartbeatSeconds = PositiveInt(
             First(section["SimulationSessionHeartbeatSeconds"], configuration["SIMULATION_SESSION_HEARTBEAT_SECONDS"]),
@@ -514,24 +514,24 @@ public sealed record SimulationWorkerConfig(
             errors.Add("The selected World manifest spawn must be inside its movement bounds.");
         }
 
-        var parsedAuthServiceUrl = ParseHttpUri(authServiceUrl, "SimulationWorker:AuthServiceBaseUrl", errors);
+        var parsedGameServiceUrl = ParseHttpUri(gameServiceUrl, "SimulationWorker:GameServiceBaseUrl", errors);
 
-        if (authServiceSecret is not null && authServiceSecret.Length < 32)
+        if (gameServiceSecret is not null && gameServiceSecret.Length < 32)
         {
-            errors.Add("SimulationWorker:AuthServiceSecret must be at least 32 characters.");
+            errors.Add("SimulationWorker:GameServiceSecret must be at least 32 characters.");
         }
-        else if (authServiceSecret is not null
-            && authServiceSecret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase))
+        else if (gameServiceSecret is not null
+            && gameServiceSecret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase))
         {
             // Every secret placeholder in .env.example starts with this prefix.
-            errors.Add("SimulationWorker:AuthServiceSecret still has the .env.example placeholder value.");
+            errors.Add("SimulationWorker:GameServiceSecret still has the .env.example placeholder value.");
         }
 
         if (redis is not null)
         {
             try
             {
-                ShooterMmo.Shared.Networking.RedisConnectionString.ParseRequiredEndpoint(redis);
+                Mmorpg.Server.Common.Networking.RedisConnectionString.ParseRequiredEndpoint(redis);
             }
             catch (InvalidOperationException exception)
             {
@@ -563,9 +563,9 @@ public sealed record SimulationWorkerConfig(
             TimeSpan.FromMilliseconds(movementInputSilenceTimeoutMilliseconds),
             movementSimulation!,
             new MovementSpawnConfig(spawnX, spawnY, spawnZ, spawnYaw),
-            parsedAuthServiceUrl!,
+            parsedGameServiceUrl!,
             TimeSpan.FromSeconds(authTimeoutSeconds),
-            authServiceSecret!,
+            gameServiceSecret!,
             TimeSpan.FromSeconds(sessionHeartbeatSeconds),
             TimeSpan.FromSeconds(registryHeartbeatSeconds),
             redis!,

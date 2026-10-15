@@ -1,9 +1,9 @@
 using System.Diagnostics;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Tools.SimulationBotClient;
-using HeadlessSimulationBotClient = ShooterMmo.Tools.SimulationBotClient.SimulationBotClient;
+using Mmorpg.GameProtocol;
+using Mmorpg.Tools.SimulationBotClient;
+using HeadlessSimulationBotClient = Mmorpg.Tools.SimulationBotClient.SimulationBotClient;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public enum StressBotState
 {

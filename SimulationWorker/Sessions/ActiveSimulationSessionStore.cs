@@ -1,6 +1,6 @@
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 
-namespace SimulationWorker.Sessions;
+namespace Mmorpg.SimulationWorker.Sessions;
 
 public sealed class ActiveSimulationSessionStore
 {

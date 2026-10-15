@@ -1,7 +1,7 @@
-using ShooterMmo.GameSimulation;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed class WorldActorLineOfSightService(ICollisionWorld collisionWorld)
 {

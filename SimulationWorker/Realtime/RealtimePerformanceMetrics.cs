@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public sealed record RealtimeDurationSummary(
     long Samples,
@@ -40,7 +40,7 @@ public sealed record RealtimePerformanceMetricsSnapshot(
 
 public sealed class RealtimePerformanceMetrics : IDisposable
 {
-    public const string MeterName = "ShooterMmo.SimulationWorker.Performance";
+    public const string MeterName = "Mmorpg.SimulationWorker.Performance";
 
     private readonly Meter meter = new(MeterName);
     private readonly Histogram<double> networkPollHistogram;

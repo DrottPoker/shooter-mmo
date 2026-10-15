@@ -1,6 +1,6 @@
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 internal sealed record SnapshotPacketBatch(
     IReadOnlyList<byte[]> Packets,

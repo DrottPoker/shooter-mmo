@@ -1,17 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Gameplay;
-using ShooterMmo.Items;
-using ShooterMmo.WorldData.Items;
-using ShooterMmo.WorldActors;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Items;
+using Mmorpg.Client.WorldActors;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     [DisallowMultipleComponent]
     public sealed class TemporaryWorldInteractionPanel : MonoBehaviour
@@ -30,8 +30,8 @@ namespace ShooterMmo.Ui
 
         private void Start()
         {
-            interactionController = ShooterMmoClientBootstrap.WorldInteractionController;
-            inventoryController = ShooterMmoClientBootstrap.InventoryController;
+            interactionController = ClientBootstrap.WorldInteractionController;
+            inventoryController = ClientBootstrap.InventoryController;
             targetingController = FindAnyObjectByType<WorldInteractionTargetingController>();
             if (interactionController != null)
             {

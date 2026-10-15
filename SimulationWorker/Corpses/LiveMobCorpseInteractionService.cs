@@ -1,13 +1,13 @@
-using ShooterMmo.GameProtocol;
-using SimulationWorker.Auth;
-using SimulationWorker.Items;
-using SimulationWorker.Sessions;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Sessions;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed class LiveMobCorpseInteractionService(
     LiveMobCorpseStore corpseStore,
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     CarryStateStore carryStateStore)
 {
     public Task<SimulationCorpseInteractionResult> OpenAsync(
@@ -118,7 +118,7 @@ public sealed class LiveMobCorpseInteractionService(
         }
 
         // The session object is the join-time snapshot; carry changes after the join
-        // are only in the carry store, and AuthService rejects any stale revision.
+        // are only in the carry store, and GameService rejects any stale revision.
         if (!carryStateStore.TryGet(
                 session.CharacterId,
                 session.SimulationSessionId,
@@ -131,7 +131,7 @@ public sealed class LiveMobCorpseInteractionService(
                 requiresInventoryRefresh: true);
         }
 
-        var response = await authServiceClient.GrantLiveMobLootAsync(
+        var response = await gameServiceClient.GrantLiveMobLootAsync(
             session.SimulationSessionId,
             new SimulationMobLootGrantRequest(
                 lootEntry.GrantId,
@@ -168,7 +168,7 @@ public sealed class LiveMobCorpseInteractionService(
         RealtimeCorpseInteractionIntent intent,
         SimulationWorkerErrorResponse error)
     {
-        var requiresRefresh = AuthServiceOutcome.IsUncertain(error.Code)
+        var requiresRefresh = GameServiceOutcome.IsUncertain(error.Code)
             || error.Code is "item_state_conflict"
             or "item_operation_conflict"
             or "item_slot_occupied"

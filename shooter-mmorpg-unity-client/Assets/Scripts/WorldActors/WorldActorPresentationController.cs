@@ -1,16 +1,16 @@
 using System.Collections.Generic;
 using System.Linq;
-using ShooterMmo.Diagnostics;
-using ShooterMmo.GameProtocol;
+using Mmorpg.Client.Diagnostics;
+using Mmorpg.GameProtocol;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     [DisallowMultipleComponent]
     public sealed class WorldActorPresentationController : MonoBehaviour
     {
         public const string RegistryResourcePath =
-            "ShooterMmo/WorldActors/WorldActorPresentationRegistry";
+            "WorldActors/WorldActorPresentationRegistry";
 
         private readonly Dictionary<ulong, WorldActorView> presentations =
             new Dictionary<ulong, WorldActorView>();
@@ -27,7 +27,7 @@ namespace ShooterMmo.WorldActors
 
         private void Start()
         {
-            actorController = ShooterMmoClientBootstrap.WorldActorController;
+            actorController = ClientBootstrap.WorldActorController;
             presentationRegistry = Resources.Load<WorldActorPresentationRegistry>(
                 RegistryResourcePath);
             if (presentationRegistry == null)

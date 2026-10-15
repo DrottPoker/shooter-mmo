@@ -1,14 +1,14 @@
 using System;
 using System.Linq;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.WorldData.Actors;
 using UnityEditor;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Actors
+namespace Mmorpg.WorldData.Editor.Actors
 {
     public sealed class WorldActorSpawnAuthoringWindow : EditorWindow
     {
-        public const string MenuPath = "Shooter MMO/Tools/Content/Spawn Authoring";
+        public const string MenuPath = "MMORPG/Tools/Content/Spawn Authoring";
 
         private enum SpawnTab
         {
@@ -485,7 +485,7 @@ namespace ShooterMmo.WorldData.Editor.Actors
         private static GameObject ResolvePresentationPrefab(string presentationArchetypeId)
         {
             const string canonicalPath =
-                "Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset";
+                "Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset";
             var registryPaths = new[] { canonicalPath }
                 .Concat(AssetDatabase.FindAssets("t:WorldActorPresentationRegistry")
                     .Select(AssetDatabase.GUIDToAssetPath))

@@ -1,6 +1,6 @@
 using System;
 
-namespace ShooterMmo.GameSimulation
+namespace Mmorpg.GameSimulation
 {
     [Flags]
     public enum PlayerMovementButtons : byte

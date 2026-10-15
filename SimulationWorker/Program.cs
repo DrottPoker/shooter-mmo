@@ -2,19 +2,19 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Shared.Configuration;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
-using SimulationWorker.Corpses;
-using SimulationWorker.Entities;
-using SimulationWorker.Health;
-using SimulationWorker.Items;
-using SimulationWorker.Realtime;
-using SimulationWorker.Registry;
-using SimulationWorker.Sessions;
-using SimulationWorker.WorldActors;
-using SimulationWorker.WorldCollision;
+using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Configuration;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Corpses;
+using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Health;
+using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.SimulationWorker.WorldCollision;
 
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
@@ -109,12 +109,12 @@ builder.Services.AddSingleton(new SimulationInterestManager(config.InterestManag
 builder.Services.AddSingleton<RealtimeNetworkMetrics>();
 builder.Services.AddSingleton<RealtimePerformanceMetrics>();
 builder.Services.AddSingleton(SimulationWorkerIdentity.Create());
-builder.Services.AddTransient<AuthServiceAuthenticationHandler>();
-builder.Services.AddHttpClient<AuthServiceClient>(httpClient =>
+builder.Services.AddTransient<GameServiceAuthenticationHandler>();
+builder.Services.AddHttpClient<GameServiceClient>(httpClient =>
 {
-    httpClient.BaseAddress = config.AuthServiceBaseUrl;
-    httpClient.Timeout = config.AuthServiceTimeout;
-}).AddHttpMessageHandler<AuthServiceAuthenticationHandler>();
+    httpClient.BaseAddress = config.GameServiceBaseUrl;
+    httpClient.Timeout = config.GameServiceTimeout;
+}).AddHttpMessageHandler<GameServiceAuthenticationHandler>();
 builder.Services.AddSingleton<SimulationJoinService>();
 builder.Services.AddSingleton<SimulationSessionReleaseService>();
 builder.Services.AddSingleton<SimulationWorkerHealthService>();

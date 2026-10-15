@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public sealed class TokenBucket
 {

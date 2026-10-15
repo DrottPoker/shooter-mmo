@@ -1,7 +1,7 @@
-using ShooterMmo.GameProtocol;
-using SimulationWorker.Auth;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.GameServiceApi;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public static class CorpseRealtimePacketBuilder
 {

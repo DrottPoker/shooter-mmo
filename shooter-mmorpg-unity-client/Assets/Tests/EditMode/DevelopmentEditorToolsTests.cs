@@ -1,10 +1,10 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.Editor;
-using ShooterMmo.Worlds;
-using ShooterMmo.WorldData.Editor.Items;
+using Mmorpg.Client.Editor;
+using Mmorpg.Client.Worlds;
+using Mmorpg.WorldData.Editor.Items;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class DevelopmentEditorToolsTests
     {
@@ -13,16 +13,16 @@ namespace ShooterMmo.Tests.EditMode
         {
             Assert.That(
                 InventoryItemGrantWindow.MenuPath,
-                Does.StartWith("Shooter MMO/Tools/"));
+                Does.StartWith("MMORPG/Tools/"));
             Assert.That(
                 WorldCollisionBaker.MenuPath,
-                Does.StartWith("Shooter MMO/Tools/"));
+                Does.StartWith("MMORPG/Tools/"));
             Assert.That(
                 WorldCollisionBaker.BakeBuildWorldScenesMenuPath,
-                Does.StartWith("Shooter MMO/Tools/"));
+                Does.StartWith("MMORPG/Tools/"));
             Assert.That(
                 ItemCatalogEditorWindow.MenuPath,
-                Does.StartWith("Shooter MMO/Tools/"));
+                Does.StartWith("MMORPG/Tools/"));
         }
 
         [Test]
@@ -50,7 +50,7 @@ namespace ShooterMmo.Tests.EditMode
         public void ItemToolProtocolParsesResponseAmongDotnetLogs()
         {
             const string output = "info: startup\n"
-                + "SHOOTER_MMO_DEV_ITEMS_JSON:{\"success\":true,\"message\":\"Loaded.\","
+                + "MMORPG_DEV_ITEMS_JSON:{\"success\":true,\"message\":\"Loaded.\","
                 + "\"data\":{\"characters\":[{\"characterId\":\"character-1\","
                 + "\"characterName\":\"Hero\",\"accountUsername\":\"player\","
                 + "\"isOnline\":false,\"itemCount\":0,\"recoveryDeliveryCount\":0,"
@@ -83,13 +83,13 @@ namespace ShooterMmo.Tests.EditMode
         public void ItemToolProtocolRejectsMissingMachineReadableResponse()
         {
             var parsed = DevelopmentItemToolCli.TryParseResponse(
-                "dotnet failed before AuthService started",
+                "dotnet failed before GameService started",
                 out var response,
                 out var error);
 
             Assert.That(parsed, Is.False);
             Assert.That(response, Is.Null);
-            Assert.That(error, Does.Contain("dotnet build ShooterMmo.slnx"));
+            Assert.That(error, Does.Contain("dotnet build Mmorpg.slnx"));
         }
     }
 }

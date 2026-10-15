@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public static class TemporaryPanelStyles
     {

@@ -1,10 +1,10 @@
 using System;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Items;
-using ShooterMmo.Networking;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Items;
+using Mmorpg.Client.Networking;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     public sealed class WorldInteractionClientState
     {
@@ -196,7 +196,7 @@ namespace ShooterMmo.WorldActors
 
             if (simulationClient.MovementSession == null
                 || !Guid.TryParse(
-                    ShooterMmoClientSession.ActiveSimulationSession?.simulationSessionId,
+                    ClientSession.ActiveSimulationSession?.simulationSessionId,
                     out var simulationSessionId))
             {
                 error = "The active simulation session is unavailable.";
@@ -245,7 +245,7 @@ namespace ShooterMmo.WorldActors
             }
 
             if (!Guid.TryParse(
-                    ShooterMmoClientSession.ActiveSimulationSession?.simulationSessionId,
+                    ClientSession.ActiveSimulationSession?.simulationSessionId,
                     out var simulationSessionId))
             {
                 error = "The active simulation session is unavailable.";
@@ -340,7 +340,7 @@ namespace ShooterMmo.WorldActors
             }
 
             if (!Guid.TryParse(
-                    ShooterMmoClientSession.ActiveSimulationSession?.simulationSessionId,
+                    ClientSession.ActiveSimulationSession?.simulationSessionId,
                     out var simulationSessionId))
             {
                 error = "The active simulation session is unavailable.";
@@ -428,7 +428,7 @@ namespace ShooterMmo.WorldActors
 
             if (result.Succeeded && result.ItemStateRevision > 0)
             {
-                ShooterMmoClientBootstrap.InventoryController?.EnsureFullState(
+                ClientBootstrap.InventoryController?.EnsureFullState(
                     result.ItemStateRevision);
             }
         }

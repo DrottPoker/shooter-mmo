@@ -1,7 +1,7 @@
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public sealed class AuthoritativePlayerMovement(
     PlayerMovementState initialState,

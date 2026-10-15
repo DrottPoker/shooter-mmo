@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace ShooterMmo.Gameplay
+namespace Mmorpg.Client.Gameplay
 {
     [DisallowMultipleComponent]
     public sealed class CrosshairController : MonoBehaviour

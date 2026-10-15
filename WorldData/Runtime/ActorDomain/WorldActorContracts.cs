@@ -1,6 +1,6 @@
 using System;
 
-namespace ShooterMmo.WorldData.Actors
+namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {

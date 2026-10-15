@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public readonly record struct RealtimeNetworkMetricsSnapshot(
     long ActivePeers,
@@ -23,7 +23,7 @@ public readonly record struct RealtimeNetworkMetricsSnapshot(
 
 public sealed class RealtimeNetworkMetrics : IDisposable
 {
-    public const string MeterName = "ShooterMmo.SimulationWorker.Realtime";
+    public const string MeterName = "Mmorpg.SimulationWorker.Realtime";
 
     private readonly Meter meter = new(MeterName);
     private long activePeers;

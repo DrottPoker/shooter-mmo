@@ -1,4 +1,4 @@
-namespace SimulationWorker.Sessions;
+namespace Mmorpg.SimulationWorker.Sessions;
 
 public static class BoundedAsync
 {

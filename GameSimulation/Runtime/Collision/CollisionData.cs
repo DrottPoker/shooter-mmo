@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace ShooterMmo.GameSimulation
+namespace Mmorpg.GameSimulation
 {
     // Shared simulation math rounds every float intermediate with an explicit (float)
     // cast. Mono evaluates float expressions in double precision and rounds only

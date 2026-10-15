@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
 {
@@ -15,7 +15,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private readonly ConcurrentDictionary<int, ActiveAccountSession> activeAccountSessions = [];
     private readonly object workerGate = new();
     private readonly string password;
-    private StressProcessSampler? authServiceProcessSampler;
+    private StressProcessSampler? gameServiceProcessSampler;
     private StressWorkerRegistration? worker;
     private int registeredBots;
     private int fixtureAccounts;
@@ -76,7 +76,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 }
 
                 lastFailure = selectedShard is null
-                    ? $"Shard '{options.ShardId}' was not returned by AuthService."
+                    ? $"Shard '{options.ShardId}' was not returned by GameService."
                     : $"Shard '{options.ShardId}' is not online with available capacity.";
             }
             catch (FullStackApiException exception)
@@ -102,8 +102,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
 
         await postgresSampler.InitializeAsync(cancellationToken);
-        authServiceProcessSampler = StressProcessSampler.TryAttach("AuthService");
-        authServiceProcessSampler?.Sample();
+        gameServiceProcessSampler = StressProcessSampler.TryAttach("GameService");
+        gameServiceProcessSampler?.Sample();
 
         Console.WriteLine(
             $"Full stack is ready for shard {selectedShard.Id}, World {selectedShard.WorldId}, capacity {selectedShard.Capacity}, and disposable database {options.ConfirmedDisposableDatabase}.");
@@ -283,12 +283,12 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             lootHotspotCorpseId is not null,
             cancellationToken);
         await postgresSampler.SampleAsync(cancellationToken);
-        authServiceProcessSampler?.Sample();
+        gameServiceProcessSampler?.Sample();
     }
 
     public async Task SampleAsync(CancellationToken cancellationToken)
     {
-        authServiceProcessSampler?.Sample();
+        gameServiceProcessSampler?.Sample();
         await postgresSampler.SampleAsync(cancellationToken);
     }
 
@@ -380,7 +380,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
 
     public void MarkSteadyState()
     {
-        authServiceProcessSampler?.MarkSteadyState();
+        gameServiceProcessSampler?.MarkSteadyState();
     }
 
     public StressProviderReport CaptureReport()
@@ -405,13 +405,13 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 Volatile.Read(ref loggedOutBots),
                 lootHotspotCorpseId,
                 metrics.Capture()),
-            authServiceProcessSampler?.CreateSummary(),
+            gameServiceProcessSampler?.CreateSummary(),
             postgresSampler.CreateSummary());
     }
 
     public async ValueTask DisposeAsync()
     {
-        authServiceProcessSampler?.Dispose();
+        gameServiceProcessSampler?.Dispose();
         concurrency.Dispose();
         httpClient.Dispose();
         await postgresSampler.DisposeAsync();
@@ -432,7 +432,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         {
             throw new FullStackApiException(
                 "invalid_join_response",
-                "AuthService returned a join response that does not match the expected character, shard, World, or worker.",
+                "GameService returned a join response that does not match the expected character, shard, World, or worker.",
                 0);
         }
     }
@@ -453,7 +453,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             {
                 throw new FullStackApiException(
                     "worker_placement_changed",
-                    "AuthService changed worker runtime placement during the stress run.",
+                    "GameService changed worker runtime placement during the stress run.",
                     0);
             }
 

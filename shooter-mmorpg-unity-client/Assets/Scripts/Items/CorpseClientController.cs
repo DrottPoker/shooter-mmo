@@ -1,9 +1,9 @@
 using System;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Networking;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Networking;
 using UnityEngine;
 
-namespace ShooterMmo.Items
+namespace Mmorpg.Client.Items
 {
     [DisallowMultipleComponent]
     public sealed class CorpseClientController : MonoBehaviour

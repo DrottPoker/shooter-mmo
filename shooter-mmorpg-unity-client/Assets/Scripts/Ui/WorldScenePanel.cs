@@ -1,13 +1,13 @@
 using System;
 using System.Collections;
-using ShooterMmo.Gameplay;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Networking;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Networking;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public sealed class WorldScenePanel : MonoBehaviour
     {
@@ -26,22 +26,22 @@ namespace ShooterMmo.Ui
         private void Start()
         {
             FindLocalPlayerComponents();
-            if (ShooterMmoClientSession.ActiveSimulationSession == null)
+            if (ClientSession.ActiveSimulationSession == null)
             {
 #if UNITY_EDITOR
                 status = "No active simulation session. Local player is not spawned.";
                 return;
 #else
-                SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+                SceneManager.LoadScene(SceneNames.CharacterSelect);
                 return;
 #endif
             }
 
-            if (ShooterMmoClientBootstrap.SimulationClient == null
-                || !ShooterMmoClientBootstrap.SimulationClient.IsJoined)
+            if (ClientBootstrap.SimulationClient == null
+                || !ClientBootstrap.SimulationClient.IsJoined)
             {
-                ShooterMmoClientSession.ActiveSimulationSession = null;
-                SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+                ClientSession.ActiveSimulationSession = null;
+                SceneManager.LoadScene(SceneNames.CharacterSelect);
             }
         }
 
@@ -58,7 +58,7 @@ namespace ShooterMmo.Ui
                 isVisible = !isVisible;
             }
 
-            var client = ShooterMmoClientBootstrap.SimulationClient;
+            var client = ClientBootstrap.SimulationClient;
             if (client == null)
             {
                 telemetry.ResetNetwork();
@@ -138,8 +138,8 @@ namespace ShooterMmo.Ui
         private void DrawConnectionSection()
         {
             DrawSectionHeader("Connection");
-            var session = ShooterMmoClientSession.ActiveSimulationSession;
-            var client = ShooterMmoClientBootstrap.SimulationClient;
+            var session = ClientSession.ActiveSimulationSession;
+            var client = ClientBootstrap.SimulationClient;
             if (session == null || client == null)
             {
                 DrawMetric("State", "No local simulation session", WorldDebugHealth.Unavailable);
@@ -197,7 +197,7 @@ namespace ShooterMmo.Ui
         private void DrawPredictionSection()
         {
             DrawSectionHeader("Client Prediction");
-            var client = ShooterMmoClientBootstrap.SimulationClient;
+            var client = ClientBootstrap.SimulationClient;
             if (client == null
                 || client.MovementSession == null
                 || localPlayerController == null)
@@ -251,7 +251,7 @@ namespace ShooterMmo.Ui
         private void DrawNetworkSection()
         {
             DrawSectionHeader("Observed Realtime Network");
-            var client = ShooterMmoClientBootstrap.SimulationClient;
+            var client = ClientBootstrap.SimulationClient;
             if (client == null || client.MovementSession == null)
             {
                 DrawMetric("Network", "Unavailable", WorldDebugHealth.Unavailable);
@@ -358,12 +358,12 @@ namespace ShooterMmo.Ui
 
         private IEnumerator LeaveShardRoutine()
         {
-            var session = ShooterMmoClientSession.ActiveSimulationSession;
-            var simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            var session = ClientSession.ActiveSimulationSession;
+            var simulationClient = ClientBootstrap.SimulationClient;
             if (session == null || simulationClient == null)
             {
-                ShooterMmoClientSession.ActiveSimulationSession = null;
-                SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+                ClientSession.ActiveSimulationSession = null;
+                SceneManager.LoadScene(SceneNames.CharacterSelect);
                 yield break;
             }
 
@@ -382,9 +382,9 @@ namespace ShooterMmo.Ui
                 }
             }
 
-            ShooterMmoClientSession.ActiveSimulationSession = null;
+            ClientSession.ActiveSimulationSession = null;
             status = "Left shard.";
-            SceneManager.LoadScene(ShooterMmoSceneNames.CharacterSelect);
+            SceneManager.LoadScene(SceneNames.CharacterSelect);
         }
 
         private void SetError(RealtimeClientError error)

@@ -1,8 +1,8 @@
 using System;
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     public interface IWorldInteractionTarget
     {

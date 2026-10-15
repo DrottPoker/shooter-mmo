@@ -1,0 +1,29 @@
+{
+  "name": "Mmorpg.Client.EditModeTests",
+  "rootNamespace": "Mmorpg.Client.Tests.EditMode",
+  "references": [
+    "Mmorpg.Client",
+    "Unity.InputSystem",
+    "Mmorpg.GameSimulation",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.WorldData",
+    "Mmorpg.WorldData.Client",
+    "Mmorpg.WorldData.Editor",
+    "Mmorpg.WorldData.Actors.Editor",
+    "Mmorpg.Client.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

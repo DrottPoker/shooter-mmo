@@ -1,11 +1,11 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.Ui;
+using Mmorpg.Client.Ui;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class InventoryDragDropTests
     {

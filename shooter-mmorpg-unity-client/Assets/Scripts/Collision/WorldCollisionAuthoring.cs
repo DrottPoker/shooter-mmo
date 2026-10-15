@@ -1,7 +1,7 @@
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 using UnityEngine;
 
-namespace ShooterMmo.Collision
+namespace Mmorpg.Client.Collision
 {
     [DisallowMultipleComponent]
     public sealed class WorldCollisionAuthoring : MonoBehaviour

@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public enum InventoryDragPayloadKind
     {

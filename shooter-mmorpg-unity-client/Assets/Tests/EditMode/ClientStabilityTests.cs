@@ -1,12 +1,12 @@
 using NUnit.Framework;
-using ShooterMmo.Api;
-using ShooterMmo.Config;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Diagnostics;
-using ShooterMmo.Networking;
-using ShooterMmo.Ui;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Config;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Networking;
+using Mmorpg.Client.Ui;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class ClientStabilityTests
     {
@@ -32,7 +32,7 @@ namespace ShooterMmo.Tests.EditMode
             const string json =
                 "{\"status\":401,\"detail\":\"Session expired.\",\"code\":\"invalid_session_token\",\"correlationId\":\"corr-1\"}";
 
-            var error = ShooterMmoApiClient.ParseHttpError(401, json, "fallback");
+            var error = ApiClient.ParseHttpError(401, json, "fallback");
 
             Assert.That(error.IsUnauthorized, Is.True);
             Assert.That(error.Code, Is.EqualTo("invalid_session_token"));
@@ -46,7 +46,7 @@ namespace ShooterMmo.Tests.EditMode
             const string json =
                 "{\"status\":401,\"detail\":\"This account logged in from another client.\",\"code\":\"account_session_replaced\"}";
 
-            var error = ShooterMmoApiClient.ParseHttpError(401, json, "fallback");
+            var error = ApiClient.ParseHttpError(401, json, "fallback");
 
             Assert.That(error.IsUnauthorized, Is.True);
             Assert.That(error.Code, Is.EqualTo(ClientSessionRecovery.AccountSessionReplacedCode));
@@ -102,9 +102,9 @@ namespace ShooterMmo.Tests.EditMode
         [Test]
         public void ResourcesContainsClientEndpointConfiguration()
         {
-            var config = ShooterMmoClientConfig.Load();
+            var config = ClientConfig.Load();
 
-            Assert.That(config.AuthServiceBaseUrl, Is.EqualTo("http://localhost:5000"));
+            Assert.That(config.GameServiceBaseUrl, Is.EqualTo("http://localhost:5000"));
             Assert.That(config.RequestTimeoutSeconds, Is.EqualTo(10));
             Assert.That(config.RealtimeTimeoutSeconds, Is.EqualTo(10));
             Assert.That(config.SessionValidationIntervalSeconds, Is.EqualTo(5));

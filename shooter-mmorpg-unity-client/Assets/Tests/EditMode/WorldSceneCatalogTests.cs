@@ -1,12 +1,12 @@
 using System;
 using System.Linq;
 using NUnit.Framework;
-using ShooterMmo.WorldData.Worlds;
-using ShooterMmo.Worlds;
+using Mmorpg.WorldData.Worlds;
+using Mmorpg.Client.Worlds;
 using UnityEditor;
 using UnityEngine;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class WorldSceneCatalogTests
     {
@@ -39,7 +39,7 @@ namespace ShooterMmo.Tests.EditMode
         [Test]
         public void CheckedInCatalogMatchesEveryCanonicalWorldManifest()
         {
-            const string worldsRoot = "Packages/com.shootermmo.world-data/Worlds";
+            const string worldsRoot = "Packages/com.mmorpg.world-data/Worlds";
             var manifests = AssetDatabase
                 .FindAssets("t:TextAsset", new[] { worldsRoot })
                 .Select(AssetDatabase.GUIDToAssetPath)

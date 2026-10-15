@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Net;
-using SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 // Limits remote peers that have not joined yet, so one host cannot fill every slot or
 // reset its per-peer quotas by reconnecting. Loopback peers are local development bots

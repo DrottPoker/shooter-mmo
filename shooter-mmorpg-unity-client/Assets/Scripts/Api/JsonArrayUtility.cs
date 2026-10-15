@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace ShooterMmo.Api
+namespace Mmorpg.Client.Api
 {
     public static class JsonArrayUtility
     {

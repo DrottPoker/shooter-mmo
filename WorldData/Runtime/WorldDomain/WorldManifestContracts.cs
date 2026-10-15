@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace ShooterMmo.WorldData.Worlds
+namespace Mmorpg.WorldData.Worlds
 {
     public static class WorldManifestFormat
     {

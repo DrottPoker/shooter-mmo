@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.WorldData.Actors;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Actors
+namespace Mmorpg.WorldData.Editor.Actors
 {
     [Serializable]
     public sealed class WorldActorEditorCatalog

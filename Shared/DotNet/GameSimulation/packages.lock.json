@@ -2,7 +2,7 @@
   "version": 1,
   "dependencies": {
     ".NETStandard,Version=v2.1": {
-      "shootermmo.worlddata": {
+      "mmorpg.worlddata": {
         "type": "Project"
       }
     }

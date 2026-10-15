@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
-using ShooterMmo.Shared.Health;
+using Mmorpg.Server.Common.Health;
 
-namespace SimulationWorker.Health;
+namespace Mmorpg.SimulationWorker.Health;
 
 public static class UdpPortHealthProbe
 {

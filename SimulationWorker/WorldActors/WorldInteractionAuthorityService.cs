@@ -1,11 +1,11 @@
 using System.Diagnostics;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Config;
-using SimulationWorker.Entities;
-using SimulationWorker.Sessions;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed record WorldInteractionAuthorityResult(
     RealtimeWorldInteractionOpened? Opened,

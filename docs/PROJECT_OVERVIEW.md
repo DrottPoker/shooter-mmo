@@ -2,9 +2,9 @@
 
 Last updated: 2026-10-12
 
-## What Shooter MMO Is
+## What MMORPG Is
 
-Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
+MMORPG is an early classless, profession-driven, open-world MMORPG with a
 World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
 combat, defined in [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
 That direction replaces the earlier modern third-person shooter direction and is
@@ -15,10 +15,10 @@ systems are added.
 
 The current playable flow is intentionally small:
 
-1. A player registers or logs in through AuthService.
+1. A player registers or logs in through GameService.
 2. The player creates and selects a character.
 3. The client lists logical shards and selects one.
-4. AuthService places the character on the healthy SimulationWorker assigned to
+4. GameService places the character on the healthy SimulationWorker assigned to
    that shard and returns a short-lived ticket plus its UDP endpoint.
 5. Unity resolves the accepted World through its scene catalog, connects through
    LiteNetLib, presents the ticket, and enters that authored World scene.
@@ -49,7 +49,7 @@ The runtime topology uses these terms:
 | World | Shared content and data consumed by one or more shards |
 
 A shard references one World at a time, but that binding may be changed between
-worker process generations. AuthService accepts the change only while the shard
+worker process generations. GameService accepts the change only while the shard
 is offline and has no pending join, active simulation session, or open durable
 corpse state. Runtime World changes are not supported.
 
@@ -60,7 +60,7 @@ scaling. They are not implemented and are not faked in the current runtime.
 
 - **Unity client** owns presentation, input, prediction, reconciliation, remote
   interpolation, scene flow, and temporary UI.
-- **AuthService** owns accounts, account sessions, characters, topology,
+- **GameService** owns accounts, account sessions, characters, topology,
   SimulationWorker registration, shard discovery, placement, join tickets, and
   global character simulation-session leases. It also owns the PostgreSQL item
   schema, catalog mirror, character item-state bootstrap, and authenticated
@@ -73,7 +73,7 @@ scaling. They are not implemented and are not faked in the current runtime.
   tickets, session leases, mirrored item definitions, and the item custody
   foundation.
 - **Redis** accelerates account-session validation, coordinates authentication
-  rate limits across AuthService replicas, and remains an operational readiness
+  rate limits across GameService replicas, and remains an operational readiness
   dependency. PostgreSQL remains the durable authority and Redis owns no
   gameplay, inventory, or economy state.
 - **GameProtocol** is the versioned binary contract shared by Unity and
@@ -101,7 +101,7 @@ The repository currently supports:
 - Worker runtime generations, exact-runtime service authentication, heartbeat
   leases, graceful offline registration, and stale-worker failover.
 - Split-brain protection that stops a worker after its local registration lease
-  expires or AuthService rejects its authority.
+  expires or GameService rejects its authority.
 - Capacity-aware shard placement that exposes a worker endpoint only in the
   short-lived join response.
 - Join tickets bound to an exact character, shard, worker, and worker runtime.
@@ -141,7 +141,7 @@ The repository currently supports:
   bank, Secure Container, and Recovery Storage identities.
 - Authenticated item-state, bank, and Recovery Storage reads plus a neutral
   item catalog with revision ETag validation and no client presentation assets.
-- An internal AuthService item transaction kernel that owns idempotency,
+- An internal GameService item transaction kernel that owns idempotency,
   authorization context, optimistic revisions, stable row locking, slot and Bag
   validation, prospective weight, carried-state updates, and audit.
 - Offline-safe account item operations for relocation, split, merge,
@@ -202,8 +202,8 @@ WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors
   changing these ownership rules.
 
 The permanent Editor workflows live at
-`Shooter MMO > Tools > Content > Actor Studio` and
-`Shooter MMO > Tools > Content > Spawn Authoring`. Phase 12 stops before vendor
+`MMORPG > Tools > Content > Actor Studio` and
+`MMORPG > Tools > Content > Spawn Authoring`. Phase 12 stops before vendor
 transactions, quest progression, crafting, combat AI, Mob loot, and Mob corpse
 production. See
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
@@ -213,7 +213,7 @@ production. See
 Phases 1 through 15 of the durable item and inventory plan are implemented. The
 repository has the neutral WorldData catalog, deterministic runtime content,
 structural change detection, strict shared validation, pure rules, a custom
-Unity authoring and bake window, and a transactional AuthService PostgreSQL
+Unity authoring and bake window, and a transactional GameService PostgreSQL
 mirror. The schema now represents item location, containers, slots, equipment,
 policies, recovery, operations, and audit. Every active character receives
 empty permanent inventory, bank, Secure Container, and Recovery Storage state
@@ -221,7 +221,7 @@ with base carry capacity `200`. Account-authenticated reads expose the current
 catalog, one coherent owned-character snapshot, and focused bank and Recovery
 Storage views.
 
-AuthService now also has one internal transaction kernel for grants, relocation,
+GameService now also has one internal transaction kernel for grants, relocation,
 equipment, stack changes, ordinary container-slot swaps, consumption,
 destruction, complete Bag swaps, Recovery
 deliveries and claims, and Secure Container tier changes. It commits item,

@@ -1,6 +1,6 @@
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed class StressInventoryState
 {

@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace ShooterMmo.GameProtocol
+namespace Mmorpg.GameProtocol
 {
     public enum RealtimeMessageType : byte
     {
@@ -836,7 +836,7 @@ namespace ShooterMmo.GameProtocol
         public const byte ChannelCount = 2;
 
         public const ushort Version = 14;
-        public const string ConnectionKey = "ShooterMmo.Realtime.v8";
+        public const string ConnectionKey = "Mmorpg.Realtime.v8";
         public const int MaximumPacketSize = 1200;
 
         public static byte[] EncodeJoinRequest(string joinTicket)

@@ -1,9 +1,9 @@
 using System.Text.Json;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Shared.Worlds;
-using SimulationWorker.Config;
+using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Worlds;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.WorldCollision;
+namespace Mmorpg.SimulationWorker.WorldCollision;
 
 public static class WorldCollisionLoader
 {

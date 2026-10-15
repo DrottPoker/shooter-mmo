@@ -1,7 +1,7 @@
-using ShooterMmo.Gameplay;
+using Mmorpg.Client.Gameplay;
 using UnityEngine;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     [DisallowMultipleComponent]
     public sealed class CrosshairPanel : MonoBehaviour

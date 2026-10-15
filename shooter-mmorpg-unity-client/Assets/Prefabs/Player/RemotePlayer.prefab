@@ -167,7 +167,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5a0e9359537248b7b64a25b5b163d541, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: ShooterMmo.Runtime::ShooterMmo.Gameplay.RemotePlayerView
+  m_EditorClassIdentifier: Mmorpg.Client::Mmorpg.Client.Gameplay.RemotePlayerView
 --- !u!1 &3992363880722295293
 GameObject:
   m_ObjectHideFlags: 0

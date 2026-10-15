@@ -1,6 +1,6 @@
-using SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public readonly record struct SimulationInterestEntity(ulong EntityId, float X, float Z);
 

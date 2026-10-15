@@ -7,11 +7,11 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace ShooterMmo.Editor
+namespace Mmorpg.Client.Editor
 {
     public sealed class InventoryItemGrantWindow : EditorWindow
     {
-        public const string MenuPath = "Shooter MMO/Tools/Inventory Item Grants";
+        public const string MenuPath = "MMORPG/Tools/Inventory Item Grants";
 
         private static readonly string[] DestinationLabels =
         {
@@ -79,7 +79,7 @@ namespace ShooterMmo.Editor
             scroll = EditorGUILayout.BeginScrollView(scroll);
             EditorGUILayout.Space(6f);
             EditorGUILayout.HelpBox(
-                "This Development-only tool sends grants through AuthService and "
+                "This Development-only tool sends grants through GameService and "
                     + "ItemTransactionService. It never writes directly to PostgreSQL. "
                     + "Item grants and corpse fixture sources must be offline.",
                 MessageType.Info);
@@ -115,7 +115,7 @@ namespace ShooterMmo.Editor
             EditorGUI.EndDisabledGroup();
             GUILayout.FlexibleSpace();
             GUILayout.Label(
-                activeProcess == null ? "Local Development" : "AuthService command running...",
+                activeProcess == null ? "Local Development" : "GameService command running...",
                 EditorStyles.miniLabel);
             EditorGUILayout.EndHorizontal();
         }
@@ -376,7 +376,7 @@ namespace ShooterMmo.Editor
             catch (Exception exception)
             {
                 SetStatus(
-                    "Could not start AuthService: " + exception.Message,
+                    "Could not start GameService: " + exception.Message,
                     MessageType.Error);
             }
         }
@@ -469,7 +469,7 @@ namespace ShooterMmo.Editor
 
     public static class DevelopmentItemToolCli
     {
-        public const string ResponsePrefix = "SHOOTER_MMO_DEV_ITEMS_JSON:";
+        public const string ResponsePrefix = "MMORPG_DEV_ITEMS_JSON:";
 
         public static bool TryParseResponse(
             string output,
@@ -483,8 +483,8 @@ namespace ShooterMmo.Editor
                 .LastOrDefault(line => line.StartsWith(ResponsePrefix, StringComparison.Ordinal));
             if (string.IsNullOrWhiteSpace(responseLine))
             {
-                error = "AuthService did not return a development item response. "
-                    + "Build the Release solution once with 'dotnet build ShooterMmo.slnx "
+                error = "GameService did not return a development item response. "
+                    + "Build the Release solution once with 'dotnet build Mmorpg.slnx "
                     + "--configuration Release', then retry.";
                 return false;
             }
@@ -496,7 +496,7 @@ namespace ShooterMmo.Editor
                 if (response == null || string.IsNullOrWhiteSpace(response.message))
                 {
                     response = null;
-                    error = "AuthService returned an invalid development item response.";
+                    error = "GameService returned an invalid development item response.";
                     return false;
                 }
 
@@ -504,7 +504,7 @@ namespace ShooterMmo.Editor
             }
             catch (Exception exception)
             {
-                error = "Could not parse the AuthService development item response: "
+                error = "Could not parse the GameService development item response: "
                     + exception.Message;
                 return false;
             }
@@ -537,8 +537,8 @@ namespace ShooterMmo.Editor
             IReadOnlyList<string> commandArguments)
         {
             // The built assembly runs inside this one dotnet process. 'dotnet run' would
-            // start AuthService as a child that survives a cancel or timeout.
-            var arguments = new List<string> { FindAuthServiceAssembly(repositoryRoot) };
+            // start GameService as a child that survives a cancel or timeout.
+            var arguments = new List<string> { FindGameServiceAssembly(repositoryRoot) };
             arguments.AddRange(commandArguments);
             var startInfo = new ProcessStartInfo
             {
@@ -562,12 +562,12 @@ namespace ShooterMmo.Editor
             return new DevelopmentItemToolCliProcess(process);
         }
 
-        internal static string FindAuthServiceAssembly(string repositoryRoot)
+        internal static string FindGameServiceAssembly(string repositoryRoot)
         {
-            var releaseDirectory = Path.Combine(repositoryRoot, "AuthService", "bin", "Release");
+            var releaseDirectory = Path.Combine(repositoryRoot, "GameService", "bin", "Release");
             var assemblyPath = Directory.Exists(releaseDirectory)
                 ? Directory.GetDirectories(releaseDirectory)
-                    .Select(directory => Path.Combine(directory, "AuthService.dll"))
+                    .Select(directory => Path.Combine(directory, "GameService.dll"))
                     .Where(File.Exists)
                     .OrderByDescending(File.GetLastWriteTimeUtc)
                     .FirstOrDefault()
@@ -575,8 +575,8 @@ namespace ShooterMmo.Editor
             if (assemblyPath == null)
             {
                 throw new FileNotFoundException(
-                    "AuthService has no Release build. Build the Release solution once with "
-                        + "'dotnet build ShooterMmo.slnx --configuration Release', then retry.",
+                    "GameService has no Release build. Build the Release solution once with "
+                        + "'dotnet build Mmorpg.slnx --configuration Release', then retry.",
                     releaseDirectory);
             }
 
@@ -591,7 +591,7 @@ namespace ShooterMmo.Editor
             error = string.Empty;
             if (completed)
             {
-                error = "The AuthService development item command has already completed.";
+                error = "The GameService development item command has already completed.";
                 return true;
             }
 
@@ -605,7 +605,7 @@ namespace ShooterMmo.Editor
             {
                 process.Kill();
                 completed = true;
-                error = "The AuthService development item command timed out after 60 seconds.";
+                error = "The GameService development item command timed out after 60 seconds.";
                 return true;
             }
 

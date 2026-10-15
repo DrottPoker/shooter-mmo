@@ -5,7 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace ShooterMmo.WorldData.Actors
+namespace Mmorpg.WorldData.Actors
 {
     public sealed class WorldActorValidationException : Exception
     {

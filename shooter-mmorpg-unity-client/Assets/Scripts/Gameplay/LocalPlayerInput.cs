@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-namespace ShooterMmo.Gameplay
+namespace Mmorpg.Client.Gameplay
 {
     [DefaultExecutionOrder(-100)]
     [DisallowMultipleComponent]

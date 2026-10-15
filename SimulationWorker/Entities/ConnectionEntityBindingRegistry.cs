@@ -1,4 +1,4 @@
-namespace SimulationWorker.Entities;
+namespace Mmorpg.SimulationWorker.Entities;
 
 public sealed class ConnectionEntityBindingRegistry
 {

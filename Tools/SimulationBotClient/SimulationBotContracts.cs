@@ -1,6 +1,6 @@
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace ShooterMmo.Tools.SimulationBotClient;
+namespace Mmorpg.Tools.SimulationBotClient;
 
 public enum SimulationBotClientState
 {

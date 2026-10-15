@@ -1,4 +1,4 @@
-namespace ShooterMmo.Shared.Networking;
+namespace Mmorpg.Server.Common.Networking;
 
 public sealed record ServiceEndpoint(string Host, int Port)
 {

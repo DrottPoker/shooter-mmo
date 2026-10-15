@@ -6,7 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace ShooterMmo.GameSimulation
+namespace Mmorpg.GameSimulation
 {
     [Serializable]
     public sealed class CollisionWorldAuthoringDocument

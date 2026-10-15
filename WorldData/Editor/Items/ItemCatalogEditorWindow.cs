@@ -2,16 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using ShooterMmo.WorldData.Items;
-using ShooterMmo.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEditor;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Items
+namespace Mmorpg.WorldData.Editor.Items
 {
     public sealed class ItemCatalogEditorWindow : EditorWindow
     {
-        public const string MenuPath = "Shooter MMO/Tools/Item Catalog";
+        public const string MenuPath = "MMORPG/Tools/Item Catalog";
 
         private const float CatalogListWidth = 290f;
 
@@ -625,7 +625,7 @@ namespace ShooterMmo.WorldData.Editor.Items
                 "Confirm Structural Item Changes",
                 "The following changes can affect future persistent item state:\n\n"
                     + string.Join("\n", structuralChanges)
-                    + "\n\nAuthService now rejects startup when live item instances depend "
+                    + "\n\nGameService now rejects startup when live item instances depend "
                     + "on an incompatible structural change. Such changes require an "
                     + "explicit data migration. Confirm that these changes are intentional before "
                     + action + ".",

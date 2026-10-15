@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/Shared/">
+    <Project Path="Shared/DotNet/GameProtocol/Mmorpg.GameProtocol.csproj" />
+    <Project Path="Shared/DotNet/GameSimulation/Mmorpg.GameSimulation.csproj" />
+    <Project Path="Shared/DotNet/WorldData/Mmorpg.WorldData.csproj" />
+    <Project Path="Shared/Mmorpg.Server.Common.csproj" />
+  </Folder>
+  <Project Path="GameService/Mmorpg.GameService.csproj" />
+  <Project Path="SimulationWorker/Mmorpg.SimulationWorker.csproj" />
+  <Project Path="Tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj" />
+  <Project Path="Tools/StackStressGenerator/Mmorpg.Tools.StackStressGenerator.csproj" />
+  <Project Path="Tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj" />
+  <Project Path="Tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
+  <Project Path="Tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+  <Project Path="Tools/WorldActorCompiler/Mmorpg.Tools.WorldActorCompiler.csproj" />
+  <Project Path="Tools/WorldCollisionCompiler/Mmorpg.Tools.WorldCollisionCompiler.csproj" />
+</Solution>

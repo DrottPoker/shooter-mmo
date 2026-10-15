@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public enum StressRunMode
 {
@@ -73,7 +73,7 @@ public sealed record StressGeneratorOptions(
         }
         var authorityKey = mode == StressRunMode.WorkerOnly
             ? "authority-url"
-            : "auth-service-url";
+            : "game-service-url";
         var authorityUrl = ParseHttpUri(
             Get(
                 values,
@@ -224,7 +224,7 @@ public sealed record StressGeneratorOptions(
           --mode <worker-only|full-stack>   Run mode. Default: worker-only
           --workload <profile>              lifecycle, inventory, loot-hotspot, or mixed-gameplay. Default: lifecycle
           --authority-url <url>             Loopback authority URL. Default: http://127.0.0.1:5099
-          --auth-service-url <url>          Full-stack AuthService URL. Default: http://127.0.0.1:5000
+          --game-service-url <url>          Full-stack GameService URL. Default: http://127.0.0.1:5000
           --postgres-connection-string <cs> Full-stack metrics and safety connection. Prefer STACK_STRESS_POSTGRES.
           --confirm-disposable-database <n> Exact disposable database name required by full-stack mode.
           --run-id <id>                     Short identifier used in durable stress identities.
@@ -291,7 +291,7 @@ public sealed record StressGeneratorOptions(
             "mode",
             "workload",
             "authority-url",
-            "auth-service-url",
+            "game-service-url",
             "postgres-connection-string",
             "confirm-disposable-database",
             "run-id",

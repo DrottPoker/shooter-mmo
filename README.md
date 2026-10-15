@@ -1,6 +1,6 @@
-# Shooter MMO
+# MMORPG
 
-Shooter MMO is an early classless, profession-driven, open-world MMORPG with a
+MMORPG is an early classless, profession-driven, open-world MMORPG with a
 World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
 combat. That direction is defined in
 [Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md) and is not
@@ -31,7 +31,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 
 ## Current Foundation
 
-- ASP.NET Core AuthService with PostgreSQL authority.
+- ASP.NET Core GameService with PostgreSQL authority.
 - Headless .NET SimulationWorker with LiteNetLib UDP.
 - Explicit World, Fleet, Node, Shard, Worker, runtime, and assignment records.
 - Guarded offline Shard-to-World rebinding plus World-keyed worker content and
@@ -64,7 +64,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Account-authenticated conditionally cached item catalog, complete item-state,
   focused bank and Recovery Storage reads, and offline-safe item mutation APIs
   with stable Problem Details codes.
-- One internal AuthService item transaction kernel with canonical idempotency,
+- One internal GameService item transaction kernel with canonical idempotency,
   stable PostgreSQL lock order, optimistic revisions, atomic item and Bag
   commands, Recovery deliveries, Secure Container tier changes, carried-state
   recomputation, policy lifecycle, quest-grant cleanup, and relational audit.
@@ -123,7 +123,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 Phases 1 through 15 of the slot-based item and world-actor foundation are
 implemented. Shared content, pure rules, Unity authoring, deterministic baking,
 the transactional PostgreSQL catalog mirror, constrained custody schema, and
-complete empty character item-state bootstrap now exist. AuthService exposes
+complete empty character item-state bootstrap now exist. GameService exposes
 revision-cached catalog reads, owned item-state, bank and Recovery Storage reads, and
 account-authenticated offline mutation routes. The same transaction kernel owns
 policy records, insurance removal, quest-grant cleanup, Secure Container tier
@@ -132,7 +132,7 @@ characters now mutate through an exact-session, exact-worker SimulationWorker
 boundary with live service access and committed carry propagation. Unity now
 loads and reconciles authoritative item snapshots through a persistent client
 controller and presents the first temporary but complete uGUI inventory loop.
-Carry state drives shared authoritative and predicted movement. AuthService now
+Carry state drives shared authoritative and predicted movement. GameService now
 owns durable player-death partition, corpse custody, Recovery policy results,
 absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
@@ -174,7 +174,7 @@ docker compose up -d --wait
 Run the two backend processes in separate PowerShell terminals:
 
 ```powershell
-dotnet run --project AuthService
+dotnet run --project GameService
 ```
 
 ```powershell
@@ -183,7 +183,7 @@ dotnet run --project SimulationWorker
 
 Expected result:
 
-- AuthService listens on `http://localhost:5000`.
+- GameService listens on `http://localhost:5000`.
 - SimulationWorker binds UDP `27015`, registers
   `local-simulation-worker-1`, loads the committed world-actor revision, and
   receives assignment to `local-shard-1`.
@@ -198,7 +198,7 @@ is `development-world-2`; its layout and Unity workflow are defined in
 bound to Development World 2 for broader gameplay testing. Switching either
 direction remains a separate offline operational step.
 
-AuthService and SimulationWorker load the root `.env` for local development.
+GameService and SimulationWorker load the root `.env` for local development.
 Real environment variables and command-line values override it. Never commit
 `.env`.
 
@@ -207,24 +207,24 @@ Real environment variables and command-line values override it. Never commit
 Run from the repository root:
 
 ```powershell
-dotnet restore ShooterMmo.slnx --locked-mode
+dotnet restore Mmorpg.slnx --locked-mode
 & ./Tools/Verify-DependencyPolicy.ps1
-dotnet format ShooterMmo.slnx --verify-no-changes --no-restore
-dotnet build ShooterMmo.slnx --configuration Release --no-restore
+dotnet format Mmorpg.slnx --verify-no-changes --no-restore
+dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet run --project Tools/ItemCatalogCompiler `
   --configuration Release `
   --no-build -- `
   WorldData/Shared/Authoring/Items/core.item-catalog.json `
   WorldData/Shared/Runtime/Items/core.item-catalog.json `
   --verify
-dotnet test ShooterMmo.slnx --configuration Release --no-build
+dotnet test Mmorpg.slnx --configuration Release --no-build
 dotnet run --project Tools/WorldCollisionCompiler -- `
   WorldData/Worlds/development-world-1/Authoring/collision.json `
-  WorldData/Worlds/development-world-1/Runtime/Resources/ShooterMmo/WorldCollision/development-world-1 `
+  WorldData/Worlds/development-world-1/Runtime/Resources/WorldCollision/development-world-1 `
   --verify
 dotnet run --project Tools/WorldCollisionCompiler -- `
   WorldData/Worlds/development-world-2/Authoring/collision.json `
-  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
+  WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
   --verify
 dotnet run --project Tools/WorldActorCompiler `
   --configuration Release `
@@ -245,11 +245,11 @@ integration tests:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
-$env:SHOOTER_MMO_TEST_POSTGRES = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_POSTGRES=*" }).Split("=", 2)[1]
-$env:SHOOTER_MMO_TEST_REDIS = (Get-Content .env | Where-Object { $_ -like "SHOOTER_MMO_TEST_REDIS=*" }).Split("=", 2)[1]
-dotnet test ShooterMmo.slnx --configuration Release
+$env:MMORPG_TEST_POSTGRES = (Get-Content .env | Where-Object { $_ -like "MMORPG_TEST_POSTGRES=*" }).Split("=", 2)[1]
+$env:MMORPG_TEST_REDIS = (Get-Content .env | Where-Object { $_ -like "MMORPG_TEST_REDIS=*" }).Split("=", 2)[1]
+dotnet test Mmorpg.slnx --configuration Release
 docker compose -f docker-compose.test.yml down
-Remove-Item Env:SHOOTER_MMO_TEST_POSTGRES, Env:SHOOTER_MMO_TEST_REDIS
+Remove-Item Env:MMORPG_TEST_POSTGRES, Env:MMORPG_TEST_REDIS
 ```
 
 Expected result: every test passes and none is skipped. The full run takes about
@@ -268,7 +268,7 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 | Path | Responsibility |
 | --- | --- |
-| `AuthService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
+| `GameService` | Identity, characters, topology, placement, tickets, sessions, item and corpse persistence, policy-safe APIs, internal item transactions, expiry, HTTP, and owned config |
 | `SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `Shared` | Framework-neutral backend helpers and .NET shared-source adapters |
 | `GameProtocol` | Local Unity package containing protocol source |

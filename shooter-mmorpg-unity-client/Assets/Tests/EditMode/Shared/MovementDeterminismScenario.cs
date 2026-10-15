@@ -3,9 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 
-namespace ShooterMmo.SharedTests
+namespace Mmorpg.SharedTests
 {
     // Compiled into both the Unity EditMode tests and the .NET backend tests, so the
     // client and server runtimes run the exact same movement scenario.

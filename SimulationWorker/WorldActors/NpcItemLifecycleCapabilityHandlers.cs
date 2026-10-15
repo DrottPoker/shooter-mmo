@@ -1,11 +1,11 @@
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Auth;
-using SimulationWorker.Items;
-using SimulationWorker.Sessions;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed class InsuranceWorldActorCapabilityHandler(
     NpcItemLifecycleCapabilityExecutor executor) : IWorldActorCapabilityHandler
@@ -53,7 +53,7 @@ public sealed class QuestTurnInWorldActorCapabilityHandler : IWorldActorCapabili
 }
 
 public sealed class NpcItemLifecycleCapabilityExecutor(
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     CarryStateStore carryStateStore,
     ActiveSimulationSessionStore sessionStore)
 {
@@ -128,7 +128,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 : intent.DestinationSlotIndex,
             InteractionSessionId: intent.InteractionSessionId,
             CapabilityId: intent.CapabilityId);
-        var result = await authServiceClient.MutateSimulationItemsAsync(
+        var result = await gameServiceClient.MutateSimulationItemsAsync(
             session.SimulationSessionId,
             request,
             cancellationToken);

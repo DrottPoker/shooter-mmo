@@ -307,23 +307,23 @@
         "resolved": "10.0.9",
         "contentHash": "s2PcxHK4IYQ6gmD3VSBkym9tWGkFisKjcjWBdl7a+n4Yy66ae4beJ1ZdjDp060SSll4W3Rt4H2LW87dWckv+QQ=="
       },
-      "shootermmo.gameprotocol": {
+      "mmorpg.gameprotocol": {
         "type": "Project"
       },
-      "shootermmo.gamesimulation": {
+      "mmorpg.gamesimulation": {
         "type": "Project",
         "dependencies": {
-          "ShooterMmo.WorldData": "[1.0.0, )"
+          "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
-      "shootermmo.shared": {
+      "mmorpg.server.common": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Configuration": "[10.0.9, )",
-          "ShooterMmo.WorldData": "[1.0.0, )"
+          "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
-      "shootermmo.worlddata": {
+      "mmorpg.worlddata": {
         "type": "Project"
       }
     }

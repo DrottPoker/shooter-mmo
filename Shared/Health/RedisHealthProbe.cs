@@ -1,8 +1,8 @@
 using System.Net.Sockets;
 using System.Text;
-using ShooterMmo.Shared.Networking;
+using Mmorpg.Server.Common.Networking;
 
-namespace ShooterMmo.Shared.Health;
+namespace Mmorpg.Server.Common.Health;
 
 public static class RedisHealthProbe
 {

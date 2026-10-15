@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ShooterMmo.WorldData.Worlds;
+using Mmorpg.WorldData.Worlds;
 
-namespace ShooterMmo.Shared.Worlds;
+namespace Mmorpg.Server.Common.Worlds;
 
 public static class WorldManifestFileStore
 {
@@ -83,7 +83,6 @@ public static class WorldManifestFileStore
             ResolveWorldDirectory(configuredRootPath, worldId),
             "Runtime",
             "Resources",
-            "ShooterMmo",
             "WorldCollision",
             worldId);
     }

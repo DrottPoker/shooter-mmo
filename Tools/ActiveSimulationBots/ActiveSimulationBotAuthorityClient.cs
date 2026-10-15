@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 
-namespace ShooterMmo.Tools.ActiveSimulationBots;
+namespace Mmorpg.Tools.ActiveSimulationBots;
 
 public sealed class ActiveSimulationBotAuthorityClient(
     HttpClient httpClient,
@@ -26,7 +26,7 @@ public sealed class ActiveSimulationBotAuthorityClient(
                 options: JsonOptions)
         };
         request.Headers.TryAddWithoutValidation(
-            AuthServiceHeaderNames.ActiveSimulationBotsKey,
+            GameServiceHeaderNames.ActiveSimulationBotsKey,
             options.AuthoritySecret);
 
         try
@@ -50,7 +50,7 @@ public sealed class ActiveSimulationBotAuthorityClient(
                     ? ActiveSimulationBotTicketResult.Failure(
                         (int)response.StatusCode,
                         "invalid_authority_response",
-                        "AuthService returned an empty development bot ticket response.")
+                        "GameService returned an empty development bot ticket response.")
                     : ActiveSimulationBotTicketResult.Success(ticket);
             }
 
@@ -59,14 +59,14 @@ public sealed class ActiveSimulationBotAuthorityClient(
                 (int)response.StatusCode,
                 problem?.Code ?? "development_bot_ticket_failed",
                 problem?.Detail
-                    ?? $"AuthService returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+                    ?? $"GameService returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return ActiveSimulationBotTicketResult.Failure(
                 0,
                 "authority_timeout",
-                "AuthService did not issue a development bot ticket before the HTTP timeout.");
+                "GameService did not issue a development bot ticket before the HTTP timeout.");
         }
         catch (HttpRequestException exception)
         {
@@ -94,7 +94,7 @@ public sealed class ActiveSimulationBotAuthorityClient(
     }
 }
 
-internal static class AuthServiceHeaderNames
+internal static class GameServiceHeaderNames
 {
     public const string ActiveSimulationBotsKey = "X-Active-Simulation-Bots-Key";
 }

@@ -7,7 +7,7 @@ Status: Canonical design, Phase 12 foundation implemented
 ## Purpose
 
 This document is the canonical product and architecture design for scalable
-world actors, NPCs, Mobs, actor spawning, and player interaction in Shooter MMO.
+world actors, NPCs, Mobs, actor spawning, and player interaction in MMORPG.
 It locks the foundation needed before vendor, quest, crafting, insurance, combat,
 and Mob-loot features are connected.
 
@@ -53,7 +53,7 @@ The implemented foundation includes:
 Phase 13 replaces the insurance, quest-offer, and quest-turn-in deferred slots
 with explicit handlers. Insurance and quest item lifecycle actions reuse the
 same validated interaction session and dispatch contract before crossing the
-service-authenticated AuthService boundary. Quest progression and completion
+service-authenticated GameService boundary. Quest progression and completion
 remain unavailable.
 
 Phase 14 adds the Mob corpse lifecycle boundary without adding combat. Mob
@@ -68,7 +68,7 @@ Phase 15 validates this foundation at operational scale without changing its
 ownership. Automated load coverage schedules `2,000` event-driven NPCs and
 `2,000` centrally scheduled active or dormant Mobs, then opens `128` concurrent
 NPC interactions through independent player leases. The existing
-`ShooterMmo.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
+`Mmorpg.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
 event-driven, dormant, active, and interaction measurements. No actor receives
 an independent background task or durable row.
 
@@ -116,7 +116,7 @@ capability composition.
    new runtime actor subclass.
 5. SimulationWorker owns live actor state, interaction authority, interest, and
    runtime identity for its assigned Shard.
-6. AuthService remains the authority for global durable mutations invoked by a
+6. GameService remains the authority for global durable mutations invoked by a
    future capability, including items, currency, quests, policies, and durable
    progression.
 7. Unity sends advisory target and action intents. It never proves range, line
@@ -230,8 +230,8 @@ internally, but availability and its expected revision remain session-scoped.
 
 Phase 12 proves composition and discovery. Phase 13 registers insurance and
 quest item-lifecycle handlers that bridge the already validated interaction
-session to AuthService. The worker passes exact session, worker runtime, Shard,
-interaction session, capability, operation, and revision identity. AuthService
+session to GameService. The worker passes exact session, worker runtime, Shard,
+interaction session, capability, operation, and revision identity. GameService
 then commits the server-owned price, policy, or grant-lineage transaction. The
 handler does not repeat target, range, line-of-sight, or capability discovery
 logic.
@@ -480,12 +480,12 @@ behavior through the existing input and UI coordination foundation.
 
 ## Unity Editor Authoring UX
 
-All project-specific Editor tools remain below `Shooter MMO > Tools`.
+All project-specific Editor tools remain below `MMORPG > Tools`.
 
 Phase 12 adds:
 
-- `Shooter MMO > Tools > Content > Actor Studio`.
-- `Shooter MMO > Tools > Content > Spawn Authoring`.
+- `MMORPG > Tools > Content > Actor Studio`.
+- `MMORPG > Tools > Content > Spawn Authoring`.
 
 Actor Studio supports:
 

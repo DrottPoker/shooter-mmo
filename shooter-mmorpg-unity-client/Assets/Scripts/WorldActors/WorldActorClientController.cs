@@ -1,9 +1,9 @@
 using System;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Networking;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Networking;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     [DisallowMultipleComponent]
     public sealed class WorldActorClientController : MonoBehaviour

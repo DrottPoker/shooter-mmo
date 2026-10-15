@@ -1,9 +1,9 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.WorldData.Worlds;
+using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Worlds;
 
-namespace SimulationWorker.Config;
+namespace Mmorpg.SimulationWorker.Config;
 
 public enum ItemServiceKind
 {

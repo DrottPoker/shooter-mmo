@@ -1,3 +1,3 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("ShooterMmo.EditModeTests")]
+[assembly: InternalsVisibleTo("Mmorpg.Client.EditModeTests")]

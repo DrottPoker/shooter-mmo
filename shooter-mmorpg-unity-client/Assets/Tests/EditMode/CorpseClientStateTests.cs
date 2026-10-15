@@ -1,10 +1,10 @@
 using System;
 using System.Linq;
 using NUnit.Framework;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Items;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Items;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class CorpseClientStateTests
     {

@@ -3,15 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using ShooterMmo.Collision;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Worlds;
+using Mmorpg.Client.Collision;
+using Mmorpg.GameSimulation;
+using Mmorpg.Client.Worlds;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Editor
+namespace Mmorpg.Client.Editor
 {
     public sealed class WorldSceneBakePlan
     {
@@ -28,9 +28,9 @@ namespace ShooterMmo.Editor
 
     public static class WorldCollisionBaker
     {
-        public const string MenuPath = "Shooter MMO/Tools/World Collision/Bake Open Scene";
+        public const string MenuPath = "MMORPG/Tools/World Collision/Bake Open Scene";
         public const string BakeBuildWorldScenesMenuPath =
-            "Shooter MMO/Tools/World Collision/Bake Build World Scenes";
+            "MMORPG/Tools/World Collision/Bake Build World Scenes";
 
         [MenuItem(MenuPath)]
         public static void BakeOpenScene()
@@ -296,7 +296,6 @@ namespace ShooterMmo.Editor
                 worldDirectory,
                 "Runtime",
                 "Resources",
-                "ShooterMmo",
                 "WorldCollision",
                 result.Manifest.WorldId);
             Directory.CreateDirectory(authoringDirectory);

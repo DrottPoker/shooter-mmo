@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed class FullStackStressClient(
     HttpClient httpClient,
@@ -205,7 +205,7 @@ public sealed class FullStackStressClient(
                 var problem = await TryReadProblemAsync(response, cancellationToken);
                 var code = problem?.Code ?? $"http_{statusCode}";
                 var message = problem?.Detail
-                    ?? $"AuthService returned HTTP {statusCode} {response.ReasonPhrase}.";
+                    ?? $"GameService returned HTTP {statusCode} {response.ReasonPhrase}.";
                 metrics.Record(operation, ElapsedMilliseconds(started), statusCode, code);
                 throw new FullStackApiException(code, message, statusCode);
             }
@@ -226,7 +226,7 @@ public sealed class FullStackStressClient(
                     "invalid_response");
                 throw new FullStackApiException(
                     "invalid_response",
-                    $"AuthService returned invalid JSON: {exception.Message}",
+                    $"GameService returned invalid JSON: {exception.Message}",
                     statusCode);
             }
 
@@ -239,7 +239,7 @@ public sealed class FullStackStressClient(
                     "invalid_response");
                 throw new FullStackApiException(
                     "invalid_response",
-                    "AuthService returned an empty JSON response.",
+                    "GameService returned an empty JSON response.",
                     statusCode);
             }
 
@@ -251,7 +251,7 @@ public sealed class FullStackStressClient(
             metrics.Record(operation, ElapsedMilliseconds(started), 0, "http_timeout");
             throw new FullStackApiException(
                 "http_timeout",
-                $"AuthService did not complete {operation} before the HTTP timeout.",
+                $"GameService did not complete {operation} before the HTTP timeout.",
                 0);
         }
         catch (HttpRequestException exception)
@@ -286,7 +286,7 @@ public sealed class FullStackStressClient(
                 var problem = await TryReadProblemAsync(response, cancellationToken);
                 var code = problem?.Code ?? $"http_{statusCode}";
                 var message = problem?.Detail
-                    ?? $"AuthService returned HTTP {statusCode} {response.ReasonPhrase}.";
+                    ?? $"GameService returned HTTP {statusCode} {response.ReasonPhrase}.";
                 metrics.Record(operation, ElapsedMilliseconds(started), statusCode, code);
                 throw new FullStackApiException(code, message, statusCode);
             }
@@ -298,7 +298,7 @@ public sealed class FullStackStressClient(
             metrics.Record(operation, ElapsedMilliseconds(started), 0, "http_timeout");
             throw new FullStackApiException(
                 "http_timeout",
-                $"AuthService did not complete {operation} before the HTTP timeout.",
+                $"GameService did not complete {operation} before the HTTP timeout.",
                 0);
         }
         catch (HttpRequestException exception)

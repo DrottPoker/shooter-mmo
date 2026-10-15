@@ -2,15 +2,15 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ShooterMmo.GameSimulation;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
-using SimulationWorker.Items;
+using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Items;
 
-namespace SimulationWorker.Sessions;
+namespace Mmorpg.SimulationWorker.Sessions;
 
 public sealed class SimulationSessionHeartbeatService(
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
     CarryStateStore carryStateStore,
@@ -82,7 +82,7 @@ public sealed class SimulationSessionHeartbeatService(
         try
         {
             var requestedAt = DateTime.UtcNow;
-            var result = await authServiceClient.HeartbeatSimulationSessionAsync(
+            var result = await gameServiceClient.HeartbeatSimulationSessionAsync(
                 session.SimulationSessionId,
                 session.WorkerRuntimeId,
                 session.SimulationSessionToken,
@@ -116,7 +116,7 @@ public sealed class SimulationSessionHeartbeatService(
                         session.SimulationSessionId,
                         session.SimulationSessionToken,
                         "carry_state_conflict",
-                        "AuthService returned conflicting carry state for one item-state revision.");
+                        "GameService returned conflicting carry state for one item-state revision.");
                     if (invalidated)
                     {
                         carryStateStore.Remove(
@@ -125,7 +125,7 @@ public sealed class SimulationSessionHeartbeatService(
                     }
 
                     logger.LogError(
-                        "Invalidated simulation session {SimulationSessionId} because AuthService returned conflicting carry state revision {ItemStateRevision}.",
+                        "Invalidated simulation session {SimulationSessionId} because GameService returned conflicting carry state revision {ItemStateRevision}.",
                         session.SimulationSessionId,
                         carryState.ItemStateRevision);
                     return;
@@ -172,7 +172,7 @@ public sealed class SimulationSessionHeartbeatService(
                 }
 
                 logger.LogWarning(
-                    "Invalidated simulation session {SimulationSessionId} with code {Code} after AuthService returned {StatusCode}.",
+                    "Invalidated simulation session {SimulationSessionId} with code {Code} after GameService returned {StatusCode}.",
                     session.SimulationSessionId,
                     code,
                     result.StatusCode);

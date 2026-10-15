@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.WorldData.Actors;
 
-namespace ShooterMmo.Tools.WorldActorCompiler;
+namespace Mmorpg.Tools.WorldActorCompiler;
 
 public static class WorldActorJson
 {

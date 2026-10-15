@@ -1,8 +1,8 @@
-using ShooterMmo.GameProtocol;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Entities;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 internal static class WorldActorProtocolMapper
 {

@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
-using ShooterMmo.Tools.StackStressGenerator;
+using Mmorpg.Tools.StackStressGenerator;
 
 public static class Program
 {
@@ -120,7 +120,7 @@ public static class Program
     {
         Console.WriteLine($"Stress authority listening at {options.AuthorityUrl}.");
         Console.WriteLine("Start SimulationWorker in a separate PowerShell terminal with:");
-        Console.WriteLine($"$env:AUTH_SERVICE_BASE_URL='{options.AuthorityUrl}'");
+        Console.WriteLine($"$env:GAME_SERVICE_BASE_URL='{options.AuthorityUrl}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_SERVICE_SECRET='{options.WorkerSecret}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_MAX_CONNECTIONS='{Math.Max(100, options.BotCount)}'");
         Console.WriteLine($"$env:SIMULATION_WORLD_ID='{options.WorldId}'");
@@ -147,7 +147,7 @@ public static class Program
         }
 
         WriteProcessSummary("Worker", report.WorkerProcess);
-        WriteProcessSummary("AuthService", report.AuthServiceProcess);
+        WriteProcessSummary("GameService", report.GameServiceProcess);
         WriteProcessSummary("Generator", report.GeneratorProcess);
 
         if (report.FullStack is not null)

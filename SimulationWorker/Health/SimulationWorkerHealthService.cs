@@ -1,11 +1,11 @@
-using ShooterMmo.Shared.Health;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
+using Mmorpg.Server.Common.Health;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
 
-namespace SimulationWorker.Health;
+namespace Mmorpg.SimulationWorker.Health;
 
 public sealed class SimulationWorkerHealthService(
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     SimulationWorkerConfig config)
 {
     public async Task<ServiceHealth> CheckReadinessAsync(CancellationToken cancellationToken)
@@ -14,8 +14,8 @@ public sealed class SimulationWorkerHealthService(
             config.RedisConnectionString,
             config.HealthCheckTimeout,
             cancellationToken);
-        var authServiceTask = authServiceClient.CheckReadinessAsync(cancellationToken);
-        var remoteDependencies = await Task.WhenAll(redisTask, authServiceTask);
+        var gameServiceTask = gameServiceClient.CheckReadinessAsync(cancellationToken);
+        var remoteDependencies = await Task.WhenAll(redisTask, gameServiceTask);
         var dependencies = remoteDependencies
             .Append(UdpPortHealthProbe.CheckAvailable(config.UdpPort))
             .ToArray();

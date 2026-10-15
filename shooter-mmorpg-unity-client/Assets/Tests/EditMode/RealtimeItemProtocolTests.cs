@@ -1,8 +1,8 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class RealtimeItemProtocolTests
     {

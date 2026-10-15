@@ -1,5 +1,5 @@
 using System.Text.Json;
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 
 if (args.Length is < 2 or > 3)
 {

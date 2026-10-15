@@ -1,23 +1,23 @@
 using System.Collections;
 using System.Linq;
 using NUnit.Framework;
-using ShooterMmo.Gameplay;
-using ShooterMmo.Items;
-using ShooterMmo.Networking;
-using ShooterMmo.Ui;
-using ShooterMmo.WorldActors;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Items;
+using Mmorpg.Client.Networking;
+using Mmorpg.Client.Ui;
+using Mmorpg.Client.WorldActors;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
-namespace ShooterMmo.Tests.PlayMode
+namespace Mmorpg.Client.Tests.PlayMode
 {
     public sealed class ClientBootstrapPlayModeTests
     {
         [UnityTest]
         public IEnumerator LoadingLoginSceneCreatesTheRuntimeLoginPanel()
         {
-            var loadOperation = SceneManager.LoadSceneAsync(ShooterMmoSceneNames.LoginMenu);
+            var loadOperation = SceneManager.LoadSceneAsync(SceneNames.LoginMenu);
             Assert.That(loadOperation, Is.Not.Null);
 
             while (!loadOperation.isDone)
@@ -27,23 +27,23 @@ namespace ShooterMmo.Tests.PlayMode
 
             yield return null;
 
-            Assert.That(Object.FindAnyObjectByType<ShooterMmoClientBootstrap>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<ClientBootstrap>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<RealtimeSimulationClient>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<InventoryClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<CorpseClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldActorClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldInteractionClientController>(), Is.Not.Null);
-            Assert.That(ShooterMmoClientBootstrap.InventoryController.IsInitialized, Is.True);
-            Assert.That(ShooterMmoClientBootstrap.CorpseController, Is.Not.Null);
+            Assert.That(ClientBootstrap.InventoryController.IsInitialized, Is.True);
+            Assert.That(ClientBootstrap.CorpseController, Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
         }
 
         [UnityTest]
         public IEnumerator LoadingWorldSceneWithoutJoinedSessionDoesNotSpawnLocalPlayer()
         {
-            ShooterMmoClientSession.Clear();
+            ClientSession.Clear();
             var loadOperation = SceneManager.LoadSceneAsync(
-                ShooterMmoSceneNames.DevelopmentWorld1);
+                SceneNames.DevelopmentWorld1);
             Assert.That(loadOperation, Is.Not.Null);
 
             while (!loadOperation.isDone)

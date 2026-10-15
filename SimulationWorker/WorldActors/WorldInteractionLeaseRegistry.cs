@@ -1,6 +1,6 @@
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed record WorldInteractionLease(
     int PeerId,

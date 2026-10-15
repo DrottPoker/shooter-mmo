@@ -1,9 +1,9 @@
 using System;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Items;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Items;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     [DisallowMultipleComponent]
     public sealed class CorpseInteractionTarget : MonoBehaviour, IWorldInteractionTarget

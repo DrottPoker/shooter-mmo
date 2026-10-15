@@ -1,5 +1,5 @@
-using ShooterMmo.Shared.Configuration;
-using ShooterMmo.Tools.ActiveSimulationBots;
+using Mmorpg.Server.Common.Configuration;
+using Mmorpg.Tools.ActiveSimulationBots;
 
 var configuration = new ConfigurationManager();
 configuration

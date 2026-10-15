@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using ShooterMmo.Tools.SimulationBotClient;
-using HeadlessSimulationBotClient = ShooterMmo.Tools.SimulationBotClient.SimulationBotClient;
+using Mmorpg.Tools.SimulationBotClient;
+using HeadlessSimulationBotClient = Mmorpg.Tools.SimulationBotClient.SimulationBotClient;
 
-namespace ShooterMmo.Tools.ActiveSimulationBots;
+namespace Mmorpg.Tools.ActiveSimulationBots;
 
 public sealed class ActiveSimulationBotCoordinator(
     ActiveSimulationBotOptions options,

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace ShooterMmo.Worlds
+namespace Mmorpg.Client.Worlds
 {
     [Serializable]
     public sealed class WorldSceneCatalogDocument

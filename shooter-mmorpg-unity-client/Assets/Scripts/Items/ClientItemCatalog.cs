@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using ShooterMmo.WorldData.Items;
-using ShooterMmo.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
-namespace ShooterMmo.Items
+namespace Mmorpg.Client.Items
 {
     public sealed class ClientItemCatalog
     {

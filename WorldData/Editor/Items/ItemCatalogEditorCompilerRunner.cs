@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 
-namespace ShooterMmo.WorldData.Editor.Items
+namespace Mmorpg.WorldData.Editor.Items
 {
     public sealed class ItemCatalogCompilerRunResult
     {

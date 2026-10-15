@@ -1,6 +1,6 @@
-using SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.Items;
+namespace Mmorpg.SimulationWorker.Items;
 
 public sealed class ItemInteractionAccessService
 {

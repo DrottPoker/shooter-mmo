@@ -1,4 +1,4 @@
-namespace ShooterMmo.Networking
+namespace Mmorpg.Client.Networking
 {
     public enum RealtimeClientErrorKind
     {

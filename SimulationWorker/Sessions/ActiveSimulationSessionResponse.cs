@@ -1,4 +1,4 @@
-namespace SimulationWorker.Sessions;
+namespace Mmorpg.SimulationWorker.Sessions;
 
 public sealed record ActiveSimulationSessionResponse(
     Guid SimulationSessionId,

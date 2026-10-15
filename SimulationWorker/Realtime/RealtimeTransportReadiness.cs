@@ -1,4 +1,4 @@
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public sealed class RealtimeTransportReadiness
 {

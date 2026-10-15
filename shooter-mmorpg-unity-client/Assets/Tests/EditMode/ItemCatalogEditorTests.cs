@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
-using ShooterMmo.WorldData.Editor.Items;
-using ShooterMmo.WorldData.Items;
-using ShooterMmo.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Editor.Items;
+using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEditor.Compilation;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class ItemCatalogEditorTests
     {
@@ -333,8 +333,8 @@ namespace ShooterMmo.Tests.EditMode
         {
             var runtimeAssemblyNames = new[]
             {
-                "ShooterMmo.WorldData",
-                "ShooterMmo.WorldData.Client"
+                "Mmorpg.WorldData",
+                "Mmorpg.WorldData.Client"
             };
             foreach (var assemblyName in runtimeAssemblyNames)
             {
@@ -582,7 +582,7 @@ namespace ShooterMmo.Tests.EditMode
         {
             var path = Path.Combine(
                 Path.GetTempPath(),
-                "ShooterMmoItemCatalogTests",
+                "MmorpgItemCatalogTests",
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(path);
             return path;

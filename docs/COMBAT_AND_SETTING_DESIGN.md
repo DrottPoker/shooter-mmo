@@ -647,7 +647,7 @@ This section is a planning aid. None of it is implemented.
 Expected to carry over largely unchanged:
 
 - Accounts, characters, topology, placement, join tickets, and simulation
-  session leases in AuthService.
+  session leases in GameService.
 - The item catalog, slot inventory, Bags, carry weight and encumbrance, death
   partition, corpses, insurance, and Recovery Storage.
 - World actors, NPC and Mob definitions, and authoritative interaction sessions.

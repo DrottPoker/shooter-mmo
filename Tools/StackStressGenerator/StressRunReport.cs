@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed record StressLatencySummary(
     long Samples,
@@ -102,7 +102,7 @@ public sealed record StressRunReport(
     StressRunConfiguration Configuration,
     StressWorkerRegistration? Worker,
     StressProcessSummary? WorkerProcess,
-    StressProcessSummary? AuthServiceProcess,
+    StressProcessSummary? GameServiceProcess,
     StressProcessSummary? GeneratorProcess,
     StressPostgresSummary? Postgres,
     StressFullStackSummary? FullStack,
@@ -177,7 +177,7 @@ public sealed record StressRunReport(
                 options.Seed),
             providerReport.Worker ?? target.Worker,
             workerProcess,
-            providerReport.AuthServiceProcess,
+            providerReport.GameServiceProcess,
             generatorProcess,
             providerReport.Postgres,
             providerReport.FullStack,

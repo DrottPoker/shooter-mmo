@@ -1,18 +1,18 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
-using SimulationWorker.Realtime;
-using SimulationWorker.Sessions;
-using SimulationWorker.WorldCollision;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldCollision;
 
-namespace SimulationWorker.Registry;
+namespace Mmorpg.SimulationWorker.Registry;
 
 public sealed class SimulationWorkerHeartbeatService(
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
     ActiveSimulationSessionStore sessionStore,
@@ -49,8 +49,8 @@ public sealed class SimulationWorkerHeartbeatService(
             return;
         }
 
-        using var timeout = new CancellationTokenSource(config.AuthServiceTimeout);
-        var result = await authServiceClient.MarkSimulationWorkerOfflineAsync(
+        using var timeout = new CancellationTokenSource(config.GameServiceTimeout);
+        var result = await gameServiceClient.MarkSimulationWorkerOfflineAsync(
             config.SimulationWorkerId,
             identity.RuntimeId,
             timeout.Token);
@@ -79,7 +79,7 @@ public sealed class SimulationWorkerHeartbeatService(
     {
         registrationAttempted = true;
         var renewalStart = registrationLease?.CaptureRenewalStart();
-        var result = await authServiceClient.HeartbeatSimulationWorkerAsync(
+        var result = await gameServiceClient.HeartbeatSimulationWorkerAsync(
             config.SimulationWorkerId,
             new SimulationWorkerHeartbeatRequest(
                 config.FleetId,

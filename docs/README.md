@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-15
 
-This directory is the documentation entry point for Shooter MMO. Each active
+This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
 operations, and future design do not drift into duplicate descriptions.
 
@@ -20,7 +20,7 @@ operations, and future design do not drift into duplicate descriptions.
 6. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
    instructions.
 7. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
-   and full-stack AuthService, PostgreSQL, and SimulationWorker load testing.
+   and full-stack GameService, PostgreSQL, and SimulationWorker load testing.
 8. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
    bot population that can share the real shard with a Unity player.
 9. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their

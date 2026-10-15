@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed record StressPostgresSummary(
     string Database,
@@ -147,7 +147,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         if (accountsTable is null)
         {
             throw new InvalidOperationException(
-                "The disposable database has not been initialized by AuthService.");
+                "The disposable database has not been initialized by GameService.");
         }
 
         await using var accountsCommand = connection.CreateCommand();
@@ -262,7 +262,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         if (actualAccountCount != expectedAccountCount)
         {
             throw new InvalidOperationException(
-                $"The observed PostgreSQL database contains {actualAccountCount} accounts after the run, expected {expectedAccountCount}. AuthService may be using a different database.");
+                $"The observed PostgreSQL database contains {actualAccountCount} accounts after the run, expected {expectedAccountCount}. GameService may be using a different database.");
         }
     }
 

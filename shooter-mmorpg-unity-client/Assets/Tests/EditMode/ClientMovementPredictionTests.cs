@@ -1,11 +1,11 @@
 using System;
 using NUnit.Framework;
-using ShooterMmo.Collision;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Networking;
+using Mmorpg.Client.Collision;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
+using Mmorpg.Client.Networking;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class ClientMovementPredictionTests
     {

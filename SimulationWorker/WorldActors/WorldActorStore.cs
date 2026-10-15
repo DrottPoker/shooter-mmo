@@ -1,7 +1,7 @@
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed class WorldActorRuntimeState
 {

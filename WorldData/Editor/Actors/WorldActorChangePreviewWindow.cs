@@ -2,7 +2,7 @@ using System;
 using UnityEditor;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Actors
+namespace Mmorpg.WorldData.Editor.Actors
 {
     public sealed class WorldActorChangePreviewWindow : EditorWindow
     {

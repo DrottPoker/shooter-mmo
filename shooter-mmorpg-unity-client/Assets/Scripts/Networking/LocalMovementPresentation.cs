@@ -1,6 +1,6 @@
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 
-namespace ShooterMmo.Networking
+namespace Mmorpg.Client.Networking
 {
     internal sealed class LocalMovementPresentation
     {

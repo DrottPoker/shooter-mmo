@@ -1,8 +1,8 @@
 using NUnit.Framework;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.SharedTests;
+using Mmorpg.GameSimulation;
+using Mmorpg.SharedTests;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class MovementDeterminismTests
     {

@@ -17,7 +17,7 @@ the shard is fully offline and drained.
 | `development-world-2` | `DevelopmentWorld2` | Expanded gameplay greybox | X/Z `-254` to `254` | `(0, 0, -16)` |
 
 The checked-in SimulationWorker configuration requests `development-world-2`
-for `local-shard-1` during broader gameplay testing. AuthService accepts and
+for `local-shard-1` during broader gameplay testing. GameService accepts and
 persists that binding only when the shard is offline and drained. Both Worlds
 remain reusable content.
 
@@ -87,7 +87,7 @@ touching `Gameplay`, actor authoring, or actor runtime content.
 
 1. Open `shooter-mmorpg-unity-client` in Unity and allow asset import to finish.
 2. Open `Assets/Scenes/DevelopmentWorld2.unity`.
-3. To restore the complete checked-in layout, select `Shooter MMO > Tools >
+3. To restore the complete checked-in layout, select `MMORPG > Tools >
    Development Worlds > Rebuild Development World 2 Environment` and confirm
    `Rebuild`. This intentionally replaces every child under `Environment`. If
    an open scene has unsaved changes, Unity first asks whether to save them,
@@ -97,12 +97,12 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    route surfaces and cyan guides must remain collider-free.
 5. Keep `PlayerSpawn`, all service markers, the guard marker, the wolf spawn
    guide, and the documented wolf patrol points free of blocking geometry.
-6. Save the scene. Select `Shooter MMO > Tools > World Collision > Bake Open
+6. Save the scene. Select `MMORPG > Tools > World Collision > Bake Open
    Scene`.
 7. Confirm the Console reports a successful bake for
     `development-world-2`. The bake must create
     `WorldData/Worlds/development-world-2/Authoring/collision.json` and
-    `WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2`.
+    `WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2`.
 8. Keep `DevelopmentWorld2` enabled in `File > Build Profiles`, after
    `LoginMenu` and `CharacterSelect`.
 
@@ -120,7 +120,7 @@ dotnet run --project Tools/WorldCollisionCompiler `
   --configuration Release `
   --no-build -- `
   WorldData/Worlds/development-world-2/Authoring/collision.json `
-  WorldData/Worlds/development-world-2/Runtime/Resources/ShooterMmo/WorldCollision/development-world-2 `
+  WorldData/Worlds/development-world-2/Runtime/Resources/WorldCollision/development-world-2 `
   --verify
 powershell -ExecutionPolicy Bypass -File Tools/Run-UnityTests.ps1
 ```
@@ -132,5 +132,5 @@ catalog-to-Build Profiles mapping before writing collision output.
 
 The authored baseline has passed review. The local worker configuration now
 requests Development World 2 for `local-shard-1`. Future changes between
-development Worlds remain separate offline operational steps that AuthService
+development Worlds remain separate offline operational steps that GameService
 validates and commits on the replacement worker's first heartbeat.

@@ -5,11 +5,11 @@ using System.Linq;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Xml;
-using ShooterMmo.WorldData.Items;
-using ShooterMmo.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Items
+namespace Mmorpg.WorldData.Editor.Items
 {
     [Serializable]
     public sealed class ItemCatalogEditorIdentity

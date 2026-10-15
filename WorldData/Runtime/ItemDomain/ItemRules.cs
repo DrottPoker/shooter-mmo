@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 
-namespace ShooterMmo.WorldData.Items
+namespace Mmorpg.WorldData.Items
 {
     public sealed class ItemStackState
     {

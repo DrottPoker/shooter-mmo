@@ -2,9 +2,9 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public sealed class RealtimeMetricsReporterService(
     RealtimeNetworkMetrics metrics,

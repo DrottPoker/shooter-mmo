@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using ShooterMmo.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Items
+namespace Mmorpg.WorldData.Editor.Items
 {
     public sealed class ItemCatalogEditorPaths
     {
@@ -64,7 +64,7 @@ namespace ShooterMmo.WorldData.Editor.Items
                     repositoryRoot,
                     "Tools",
                     "ItemCatalogCompiler",
-                    "ItemCatalogCompiler.csproj"));
+                    "Mmorpg.Tools.ItemCatalogCompiler.csproj"));
         }
     }
 
@@ -463,7 +463,7 @@ namespace ShooterMmo.WorldData.Editor.Items
         {
             var directory = Path.Combine(
                 Path.GetTempPath(),
-                "ShooterMmoItemCatalogEditor",
+                "MmorpgItemCatalogEditor",
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             return directory;
@@ -478,7 +478,7 @@ namespace ShooterMmo.WorldData.Editor.Items
 
             var expectedRoot = Path.GetFullPath(Path.Combine(
                 Path.GetTempPath(),
-                "ShooterMmoItemCatalogEditor"));
+                "MmorpgItemCatalogEditor"));
             var resolved = Path.GetFullPath(directory);
             if (!resolved.StartsWith(expectedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             {

@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using ShooterMmo.Api;
-using ShooterMmo.WorldData.Items;
+using Mmorpg.Client.Api;
+using Mmorpg.WorldData.Items;
 
-namespace ShooterMmo.Items
+namespace Mmorpg.Client.Items
 {
     public enum InventoryClientStatus
     {

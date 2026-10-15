@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace ShooterMmo.Tools.ActiveSimulationBots;
+namespace Mmorpg.Tools.ActiveSimulationBots;
 
 public sealed record ActiveSimulationBotOptions(
     Uri AuthorityUrl,

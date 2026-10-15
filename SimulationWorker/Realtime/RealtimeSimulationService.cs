@@ -3,19 +3,19 @@ using System.Diagnostics;
 using LiteNetLib;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
-using SimulationWorker.Corpses;
-using SimulationWorker.Entities;
-using SimulationWorker.Items;
-using SimulationWorker.Registry;
-using SimulationWorker.Sessions;
-using SimulationWorker.WorldActors;
-using SimulationWorker.WorldCollision;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Corpses;
+using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.SimulationWorker.WorldCollision;
 
-namespace SimulationWorker.Realtime;
+namespace Mmorpg.SimulationWorker.Realtime;
 
 public sealed class RealtimeSimulationService(
     SimulationWorkerConfig config,
@@ -807,7 +807,7 @@ public sealed class RealtimeSimulationService(
                         intent,
                         isLiveMobCorpse),
                 _ => throw new InvalidOperationException(
-                    "The queued corpse operation is not supported by AuthService.")
+                    "The queued corpse operation is not supported by GameService.")
             };
             completedOperations.Enqueue(new CorpseOperationCompleted(
                 context,

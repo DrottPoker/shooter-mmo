@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
-namespace ShooterMmo.WorldData.Actors
+namespace Mmorpg.WorldData.Actors
 {
     public static partial class WorldActorCompiler
     {

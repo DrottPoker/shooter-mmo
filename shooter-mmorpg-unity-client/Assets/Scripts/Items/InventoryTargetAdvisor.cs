@@ -1,8 +1,8 @@
 using System;
 using System.Linq;
-using ShooterMmo.WorldData.Items;
+using Mmorpg.WorldData.Items;
 
-namespace ShooterMmo.Items
+namespace Mmorpg.Client.Items
 {
     public static class InventoryTargetAdvisor
     {

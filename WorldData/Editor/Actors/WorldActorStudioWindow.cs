@@ -1,14 +1,14 @@
 using System;
 using System.Linq;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.WorldData.Actors;
 using UnityEditor;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Editor.Actors
+namespace Mmorpg.WorldData.Editor.Actors
 {
     public sealed class WorldActorStudioWindow : EditorWindow
     {
-        public const string MenuPath = "Shooter MMO/Tools/Content/Actor Studio";
+        public const string MenuPath = "MMORPG/Tools/Content/Actor Studio";
 
         private static readonly string[] ActorKinds =
         {
@@ -435,7 +435,7 @@ namespace ShooterMmo.WorldData.Editor.Actors
         private static ScriptableObject FindPresentationRegistry()
         {
             const string registryPath =
-                "Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset";
+                "Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset";
             return AssetDatabase.LoadAssetAtPath<ScriptableObject>(registryPath);
         }
 
@@ -457,12 +457,12 @@ namespace ShooterMmo.WorldData.Editor.Actors
                 return null;
             }
 
-            EnsureAssetFolder("Assets/Resources", "ShooterMmo");
-            EnsureAssetFolder("Assets/Resources/ShooterMmo", "WorldActors");
+            EnsureAssetFolder("Assets", "Resources");
+            EnsureAssetFolder("Assets/Resources", "WorldActors");
             var registry = ScriptableObject.CreateInstance(registryType);
             AssetDatabase.CreateAsset(
                 registry,
-                "Assets/Resources/ShooterMmo/WorldActors/WorldActorPresentationRegistry.asset");
+                "Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset");
             AssetDatabase.SaveAssets();
             Selection.activeObject = registry;
             return registry;

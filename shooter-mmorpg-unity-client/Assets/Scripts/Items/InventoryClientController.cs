@@ -1,12 +1,12 @@
 using System;
 using System.Collections;
-using ShooterMmo.Api;
-using ShooterMmo.Diagnostics;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Networking;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Diagnostics;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Networking;
 using UnityEngine;
 
-namespace ShooterMmo.Items
+namespace Mmorpg.Client.Items
 {
     public sealed class InventoryPendingOperation
     {
@@ -110,7 +110,7 @@ namespace ShooterMmo.Items
         private readonly InventoryOperationJournal operationJournal =
             new InventoryOperationJournal();
 
-        private ShooterMmoApiClient apiClient;
+        private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
         private Coroutine refreshCoroutine;
         private InventoryRefreshScope? queuedRefreshScope;
@@ -134,7 +134,7 @@ namespace ShooterMmo.Items
         }
 
         public void Initialize(
-            ShooterMmoApiClient client,
+            ApiClient client,
             RealtimeSimulationClient realtimeClient,
             TextAsset gameplayCatalog)
         {
@@ -618,8 +618,8 @@ namespace ShooterMmo.Items
                     break;
                 }
 
-                var token = ShooterMmoClientSession.SessionToken;
-                ShooterMmoApiError apiError = null;
+                var token = ClientSession.SessionToken;
+                ApiError apiError = null;
                 InventorySnapshotApplyResult applyResult;
                 long receivedRevision;
 
@@ -628,7 +628,7 @@ namespace ShooterMmo.Items
                     CharacterBankSnapshotResponse response = null;
                     var mapError = string.Empty;
                     yield return apiClient.GetCharacterBank(
-                        ShooterMmoClientSession.AuthServiceBaseUrl,
+                        ClientSession.GameServiceBaseUrl,
                         token,
                         characterId.ToString(),
                         value => response = value,
@@ -655,7 +655,7 @@ namespace ShooterMmo.Items
                     CharacterRecoverySnapshotResponse response = null;
                     var mapError = string.Empty;
                     yield return apiClient.GetCharacterRecovery(
-                        ShooterMmoClientSession.AuthServiceBaseUrl,
+                        ClientSession.GameServiceBaseUrl,
                         token,
                         characterId.ToString(),
                         value => response = value,
@@ -682,7 +682,7 @@ namespace ShooterMmo.Items
                     CharacterInventorySnapshotResponse response = null;
                     var mapError = string.Empty;
                     yield return apiClient.GetCharacterInventory(
-                        ShooterMmoClientSession.AuthServiceBaseUrl,
+                        ClientSession.GameServiceBaseUrl,
                         token,
                         characterId.ToString(),
                         value => response = value,
@@ -839,8 +839,8 @@ namespace ShooterMmo.Items
 
         private bool ObserveSessionIdentity()
         {
-            var accountId = ShooterMmoClientSession.Auth?.accountId ?? string.Empty;
-            var characterId = ShooterMmoClientSession.SelectedCharacter?.id ?? string.Empty;
+            var accountId = ClientSession.Auth?.accountId ?? string.Empty;
+            var characterId = ClientSession.SelectedCharacter?.id ?? string.Empty;
             if (string.Equals(accountId, observedAccountId, StringComparison.Ordinal)
                 && string.Equals(characterId, observedCharacterId, StringComparison.Ordinal))
             {
@@ -865,7 +865,7 @@ namespace ShooterMmo.Items
         private bool TryGetSelectedCharacterId(out Guid characterId)
         {
             return Guid.TryParse(
-                    ShooterMmoClientSession.SelectedCharacter?.id,
+                    ClientSession.SelectedCharacter?.id,
                     out characterId)
                 && characterId != Guid.Empty;
         }
@@ -914,10 +914,10 @@ namespace ShooterMmo.Items
             BeginRefresh(scope, operationRefresh, minimumRevision);
         }
 
-        private static ShooterMmoApiError InvalidResponse(string message)
+        private static ApiError InvalidResponse(string message)
         {
-            return new ShooterMmoApiError(
-                ShooterMmoApiErrorKind.InvalidResponse,
+            return new ApiError(
+                ApiErrorKind.InvalidResponse,
                 0,
                 "invalid_inventory_response",
                 message,

@@ -1,4 +1,4 @@
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public interface IStressAdmissionProvider : IAsyncDisposable
 {
@@ -31,7 +31,7 @@ public sealed record StressProviderReport(
     StressWorkerRegistration? Worker,
     StressAuthorityCounters? Authority,
     StressFullStackSummary? FullStack,
-    StressProcessSummary? AuthServiceProcess,
+    StressProcessSummary? GameServiceProcess,
     StressPostgresSummary? Postgres);
 
 public sealed class WorkerOnlyStressAdmissionProvider(

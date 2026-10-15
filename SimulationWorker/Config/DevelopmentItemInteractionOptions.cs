@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace SimulationWorker.Config;
+namespace Mmorpg.SimulationWorker.Config;
 
 public sealed record DevelopmentItemInteractionOptions(
     bool GlobalBankAndRecoveryAccess)

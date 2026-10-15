@@ -1,6 +1,6 @@
-using SimulationWorker.Auth;
+using Mmorpg.SimulationWorker.GameServiceApi;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public interface ICorpseRuntimePresence
 {

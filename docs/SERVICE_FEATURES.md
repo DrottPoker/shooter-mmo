@@ -13,7 +13,7 @@ specification. Player-facing behavior belongs in [Game Features](GAME_FEATURES.m
 The implemented topology is:
 
 ```text
-Global AuthService and PostgreSQL
+Global GameService and PostgreSQL
   Fleet
     Node
       SimulationWorker logical id
@@ -29,7 +29,7 @@ copies. World identifies shared content.
 The current runtime permits one active worker per shard and one active shard per
 worker. Zone and layer partitioning are not implemented.
 
-## AuthService HTTP Surface
+## GameService HTTP Surface
 
 | Route | Authority | Behavior |
 | --- | --- | --- |
@@ -69,11 +69,11 @@ worker. Zone and layer partitioning are not implemented.
 The public shard list never exposes a SimulationWorker host, port, or runtime id.
 That endpoint appears only in a successful short-lived placement response.
 
-The development bot route is absent unless AuthService runs in `Development`
+The development bot route is absent unless GameService runs in `Development`
 with `DevelopmentSimulationBots:Enabled=true`. It also requires loopback and a
 separate secret. Its identities, tickets, and sessions remain in memory and are
 never durable account or character data. SimulationWorker uses the same worker
-service routes for real and bot credentials; AuthService routes recognized bot
+service routes for real and bot credentials; GameService routes recognized bot
 credentials to the in-memory authority and every other request to the existing
 PostgreSQL services.
 
@@ -121,7 +121,7 @@ at the same time.
 
 ## Topology Bootstrap
 
-`AuthService/Config/appsettings.json` owns the checked-in topology bootstrap:
+`GameService/Config/appsettings.json` owns the checked-in topology bootstrap:
 
 - World definitions.
 - Fleets with display names and region codes.
@@ -135,7 +135,7 @@ It does not manufacture online workers. A seeded shard remains offline until a
 valid heartbeat and active assignment exist.
 
 A shard is rebound to another World when a worker heartbeat proposes a different
-configured `WorldId`. AuthService locks the shard row and refuses the change while
+configured `WorldId`. GameService locks the shard row and refuses the change while
 a healthy assignment, pending unexpired join ticket, active unexpired simulation
 session, or open durable corpse still references the shard. A worker that stopped heartbeating is treated as gone once the heartbeat timeout
 passes. Its pending tickets and simulation sessions are released before the
@@ -158,7 +158,7 @@ Each SimulationWorker has:
 - Protocol, simulation, and collision revisions.
 - A process start timestamp.
 
-AuthService validates identifiers, topology consistency, endpoint metadata,
+GameService validates identifiers, topology consistency, endpoint metadata,
 capacity, revisions, and service identity. The heartbeat transaction locks the
 target shard and applies these rules:
 
@@ -240,9 +240,9 @@ Simulation session properties:
   local lease is removed, preventing concurrent leaves from being misreported as
   revoked sessions.
 
-The worker also enforces cached lease expiry locally so an AuthService outage
+The worker also enforces cached lease expiry locally so an GameService outage
 cannot leave a connected player active forever. The local deadline is the
-request send time plus the lease duration that AuthService returns, so it does
+request send time plus the lease duration that GameService returns, so it does
 not depend on the database clock.
 
 ## Realtime UDP Transport
@@ -360,9 +360,9 @@ instances for `development-world-1`, and seven prepared spawn instances for
   are revalidated at 5 Hz and close on target invalidation, range, line of
   sight, disconnect, or assignment lifecycle changes.
 - Corpse views use the same target and lease registry while retaining the
-  complete protocol-v11 corpse state and AuthService transaction authority.
+  complete protocol-v11 corpse state and GameService transaction authority.
 - Mutations for the same corpse pass through one worker-local coordinator
-  before AuthService, while different corpses remain parallel. Open and refresh
+  before GameService, while different corpses remain parallel. Open and refresh
   state targets only the requester. Committed deltas are encoded once and reuse
   the same immutable packet bytes for every viewer.
 
@@ -452,11 +452,11 @@ concurrent inspection, and authoritative looting:
   non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
   stack weight, base character capacity `200`, exact 140 percent admission, and
   the fixed-point linear encumbrance multiplier.
-- `Shooter MMO > Tools > Item Catalog` edits definitions through an Editor-only
+- `MMORPG > Tools > Item Catalog` edits definitions through an Editor-only
   assembly, invokes the strict shared compiler, shows display-only and structural
   changes, locks baked ids, and writes authoring plus deterministic bake output
   transactionally.
-- `Shooter MMO > Tools > Inventory Item Grants` lists initialized local
+- `MMORPG > Tools > Inventory Item Grants` lists initialized local
   characters and active definitions, grants individual stacks, and applies
   deterministic inventory, equipment, stack, encumbrance, Secure Container, and
   Recovery packages. It can also seed an empty offline character and submit the
@@ -468,7 +468,7 @@ concurrent inspection, and authoritative looting:
   stable definition ids to optional icons, localization keys, fallback text,
   and optional prefab presentation keys with its own deterministic revision
   tied to the exact gameplay catalog revision.
-- AuthService bundles the checked-in runtime gameplay catalog, revalidates its
+- GameService bundles the checked-in runtime gameplay catalog, revalidates its
   revision and structural fingerprints, then mirrors the full relational
   definition structure in one advisory-locked PostgreSQL transaction before
   accepting traffic.
@@ -537,7 +537,7 @@ concurrent inspection, and authoritative looting:
   character's carried containers and equipped Bag, and the death partition
   selects its source items the same way. A partial index on
   `item_instances(equipped_character_id, equipment_slot_id)` supports both.
-- AuthService startup bootstraps only characters that have no item state, each
+- GameService startup bootstraps only characters that have no item state, each
   in its own short transaction, and then recomputes carry state in batches of
   500 rows that it locks first, so a concurrent item transaction can never be
   overwritten with a stale weight and startup scales with the number of
@@ -597,7 +597,7 @@ concurrent inspection, and authoritative looting:
   `item_offline_access_required` without partial mutation.
 - Character-specific reads and writes return `Cache-Control: no-store` and
   `Pragma: no-cache`. Domain failures use RFC Problem Details with stable `code`
-  values. AuthService never returns icon bytes, Unity references, or client
+  values. GameService never returns icon bytes, Unity references, or client
   presentation entries.
 - Admission returns one item-state-row-fenced carry tuple with the accepted
   session lease. Heartbeat returns the current committed tuple with the renewed
@@ -634,7 +634,7 @@ concurrent inspection, and authoritative looting:
   boundary, but no insurance purchase operation exists yet.
 - The worker service-authenticated endpoint carries the exact account,
   character, simulation session token, worker id, runtime id, and Shard. The
-  authenticated worker id must match the body. AuthService locks and validates
+  authenticated worker id must match the body. GameService locks and validates
   the character, item state, active simulation session, active account session,
   online worker runtime, and current assignment inside the same transaction
   that calls `ItemTransactionService`.
@@ -671,7 +671,7 @@ concurrent inspection, and authoritative looting:
   containers, and marks the corpse expired. Empty player corpses are not closed
   early.
 - After obtaining a current registration lease, SimulationWorker restores only
-  open, unexpired corpses for its exact runtime and Shard assignment. AuthService
+  open, unexpired corpses for its exact runtime and Shard assignment. GameService
   returns database time with the snapshot. The worker advances that time with a
   monotonic clock and retains the generic loot-crate presentation key without
   owning or copying item custody.
@@ -679,7 +679,7 @@ concurrent inspection, and authoritative looting:
   range. One player can inspect one corpse at a time, while any number of
   players may inspect the same corpse. The worker revalidates its authoritative
   three-dimensional position and cached absolute lifetime before every open,
-  refresh, or mutation. AuthService repeats exact-session, Shard, and lifetime
+  refresh, or mutation. GameService repeats exact-session, Shard, and lifetime
   authority inside the transaction boundary.
 - Corpse reads use short read-only snapshots. Full and partial transfers,
   internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
@@ -701,7 +701,7 @@ concurrent inspection, and authoritative looting:
   every reservation of the old peer first.
   Expiry, invalidation, and missing-corpse results close affected views with
   stable codes, while stale item or quantity conflicts trigger refresh.
-- SimulationWorker updates its carry-state store only from committed AuthService
+- SimulationWorker updates its carry-state store only from committed GameService
   results. A newer tuple is sent reliably before it affects movement. Conflicting
   same-revision data or stale live authority causes a targeted refresh response
   or safe disconnect.
@@ -733,7 +733,7 @@ concurrent inspection, and authoritative looting:
   environment-specific Development configuration can explicitly grant global
   Bank and Recovery access for local item testing. Enabling that option outside
   Development is rejected at startup, and insurance access remains proximity
-  based. Every mutation still requires the joined worker path and AuthService's
+  based. Every mutation still requires the joined worker path and GameService's
   exact session, runtime, assignment, transaction, item-rule, and capacity
   validation.
 - Gameplay and presentation catalogs load once and must share a source revision.
@@ -753,7 +753,7 @@ concurrent inspection, and authoritative looting:
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
-AuthService exposes authenticated owned-character reads, offline account item
+GameService exposes authenticated owned-character reads, offline account item
 write routes, and one service-authenticated active-session item route. It exposes
 no development grant route. The one-shot Phase 9 fixture is a guarded local
 process command rather than a remotely callable service. SimulationWorker has no
@@ -776,17 +776,17 @@ control, spawn, despawn, and leave traffic does not consume this snapshot
 budget.
 
 Session heartbeats use bounded concurrency so one worker cannot create an
-unbounded AuthService request fan-out. HTTP calls map timeout, connection,
+unbounded GameService request fan-out. HTTP calls map timeout, connection,
 invalid-response, authentication, and domain failures to structured results.
 `auth_service_timeout` and `auth_service_unavailable` are unknown outcomes,
-because AuthService may have committed the operation before the response was
+because GameService may have committed the operation before the response was
 lost, so item, corpse, and live Mob loot results with those codes always ask the
 client to refresh. Live Mob loot claims send the current committed item-state
 revision from the carry store, not the revision from the time of the join.
 
 ## Metrics And Logs
 
-The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
+The meter `Mmorpg.SimulationWorker.Realtime` exposes:
 
 - Active peers and entities.
 - Joined real players, joined synthetic bots, and unauthenticated peers as
@@ -798,24 +798,24 @@ The meter `ShooterMmo.SimulationWorker.Realtime` exposes:
 - Spawn and despawn packet counts.
 - Snapshot entity record counts.
 
-The meter `ShooterMmo.SimulationWorker.WorldActors` exposes low-cardinality NPC
+The meter `Mmorpg.SimulationWorker.WorldActors` exposes low-cardinality NPC
 and Mob population, event-driven, dormant, and active tier population, active
 interaction count, accepted and rejected interaction totals, and interaction
 latency. It does not label actor, spawn, player, character, session, or entity
 identities.
 
-The meter `ShooterMmo.AuthService.Items` exposes low-cardinality transaction
+The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
 latency and outcome, lock wait, conflict, stale revision, timeout, death
 partition, policy action, cleanup, corpse count, and Recovery backlog
-measurements. The meter `ShooterMmo.SimulationWorker.Corpses` separates active
+measurements. The meter `Mmorpg.SimulationWorker.Corpses` separates active
 live and durable counts by the fixed `persistence` dimension. Neither meter uses
 item, account, character, operation, corpse, session, actor, or runtime ids as
 labels.
 
-SimulationWorker supplies a bounded `X-Correlation-ID` on AuthService requests.
+SimulationWorker supplies a bounded `X-Correlation-ID` on GameService requests.
 Item transaction logs include correlation and operation ids, classify expected
 contention below warning, promote significant lifecycle commits, and exclude
-credentials, tokens, and command bodies. Periodic AuthService summaries report
+credentials, tokens, and command bodies. Periodic GameService summaries report
 cumulative transaction, contention, lifecycle, corpse, Recovery, and cleanup
 counts.
 
@@ -826,7 +826,7 @@ set, packet and payload rates, snapshot
 drops, quota rejections, and the sample window. Metrics deliberately avoid
 account, character, session, entity, and peer identifiers as labels.
 
-The performance meter `ShooterMmo.SimulationWorker.Performance` records network
+The performance meter `Mmorpg.SimulationWorker.Performance` records network
 poll, completed-operation, join-queue-delay, join-finalization, simulation-tick,
 tick-lag, collision-streaming, movement, interest, and snapshot-broadcast
 durations plus fixed-tick resynchronizations. The periodic metrics log reports
@@ -842,7 +842,7 @@ These operational values remain server-side. They are not added to the realtime
 gameplay protocol and are not broadcast to Unity clients. The Unity F2 panel
 derives its values only from local rendering, prediction, and received traffic.
 
-SimulationWorker filters routine successful `AuthServiceClient` HTTP pipeline
+SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
 messages below `Warning`. Domain failures and HTTP warnings remain visible, but
 high-frequency bot heartbeat and release requests do not drown out worker
 status, performance, lifecycle, or error logs.
@@ -874,7 +874,7 @@ Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
 
 ### Redis Account-session Acceleration
 
-AuthService uses Redis as a bounded cache-aside accelerator for successful
+GameService uses Redis as a bounded cache-aside accelerator for successful
 account-session validation. Token hashes, never bearer tokens, identify cache
 entries. Every entry expires no later than both the configured cache TTL and the
 durable PostgreSQL session expiry. A cache miss, corrupt value, tombstone, or
@@ -882,7 +882,7 @@ Redis read failure falls back to PostgreSQL.
 
 Logout, manual revocation, and login replacement write a session-id tombstone
 before committing the PostgreSQL revocation, then delete the cached token key.
-The tombstone lives at least as long as any token cache entry. If AuthService
+The tombstone lives at least as long as any token cache entry. If GameService
 cannot store the required tombstone, it returns
 `503 session_cache_invalidation_unavailable` and does not commit the durable
 revocation. This prevents a successfully revoked session from remaining usable
@@ -898,11 +898,11 @@ the configured metrics interval.
 
 ## Health And Configuration
 
-AuthService liveness confirms the process loop. Readiness runs PostgreSQL
+GameService liveness confirms the process loop. Readiness runs PostgreSQL
 `select 1` and Redis `PING` within configured timeouts and returns HTTP 503 if an
 obligatory dependency fails.
 
-SimulationWorker `--health-check-only` checks AuthService readiness, Redis, and
+SimulationWorker `--health-check-only` checks GameService readiness, Redis, and
 UDP port availability and exits 0 only when all checks pass.
 
 All application settings fail fast. Checked-in non-secret defaults live in each
@@ -918,9 +918,9 @@ prevents a shard restart on another World from silently retaining coordinates
 from the previous map. Missing manifests, invalid bounds, out-of-bounds spawns,
 invalid service points, or invalid runtime content fail before UDP admission.
 
-AuthService seeds World definitions from those manifests but does not select a
+GameService seeds World definitions from those manifests but does not select a
 World for a shard. The worker proposes its desired `WorldId` in the heartbeat.
-AuthService validates that the World exists and atomically persists a first
+GameService validates that the World exists and atomically persists a first
 binding or safe offline rebind while preserving assignment, ticket, session,
 corpse, Fleet, and runtime-fencing boundaries. Unknown Worlds and blocked
 rebinds are definitive worker authority failures.
@@ -929,7 +929,7 @@ rebinds are definitive worker authority failures.
 and HTTP request sizes, metrics and maintenance intervals, cleanup batch size,
 and audit plus closed-corpse retention. Lock timeout cannot exceed transaction
 timeout, and closed-corpse retention cannot be shorter than operation audit
-retention. Invalid values stop AuthService at startup.
+retention. Invalid values stop GameService at startup.
 
 ## Persistence And Migrations
 

@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     [Serializable]
     public sealed class WorldActorPresentationEntry
@@ -12,7 +12,7 @@ namespace ShooterMmo.WorldActors
 
     [CreateAssetMenu(
         fileName = "WorldActorPresentationRegistry",
-        menuName = "Shooter MMO/World Actor Presentation Registry")]
+        menuName = "MMORPG/World Actor Presentation Registry")]
     public sealed class WorldActorPresentationRegistry : ScriptableObject
     {
         [SerializeField]

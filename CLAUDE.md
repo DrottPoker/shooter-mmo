@@ -11,11 +11,11 @@ only adds the workflow notes that a coding agent needs to verify its own work.
 - Backend quality gate: the command list in `README.md` under Standard Quality
   Checks. Run it from the repository root. The build must stay at zero warnings.
 - Integration tests: start `docker-compose.test.yml` and set
-  `SHOOTER_MMO_TEST_POSTGRES` and `SHOOTER_MMO_TEST_REDIS` from `.env`, as shown
+  `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` from `.env`, as shown
   in `README.md`. A full run takes about six to seven minutes, so run it in the
   background. Never print `.env` values.
 - Local stack for manual or end-to-end tests: `docker compose up -d --wait`,
-  then `dotnet run --project AuthService` and
+  then `dotnet run --project GameService` and
   `dotnet run --project SimulationWorker` as background processes. Stop both
   processes when finished.
 

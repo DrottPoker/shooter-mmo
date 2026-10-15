@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace ShooterMmo.GameSimulation
+namespace Mmorpg.GameSimulation
 {
     public readonly struct CollisionChunkCoordinate : IEquatable<CollisionChunkCoordinate>
     {

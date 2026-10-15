@@ -1,4 +1,4 @@
-namespace ShooterMmo.GameSimulation
+namespace Mmorpg.GameSimulation
 {
     public static class GameSimulationCompatibility
     {

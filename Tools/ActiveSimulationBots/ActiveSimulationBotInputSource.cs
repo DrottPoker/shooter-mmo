@@ -1,7 +1,7 @@
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Tools.SimulationBotClient;
+using Mmorpg.GameProtocol;
+using Mmorpg.Tools.SimulationBotClient;
 
-namespace ShooterMmo.Tools.ActiveSimulationBots;
+namespace Mmorpg.Tools.ActiveSimulationBots;
 
 public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
 {

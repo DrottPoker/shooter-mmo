@@ -1,9 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public static class WorldActorLoader
 {

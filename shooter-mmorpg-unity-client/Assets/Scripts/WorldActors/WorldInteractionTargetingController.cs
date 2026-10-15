@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using ShooterMmo.Diagnostics;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.Gameplay;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.Client.Diagnostics;
+using Mmorpg.GameProtocol;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.WorldData.Actors;
 using UnityEngine;
 
-namespace ShooterMmo.WorldActors
+namespace Mmorpg.Client.WorldActors
 {
     public readonly struct WorldInteractionTargetCandidate
     {
@@ -42,7 +42,7 @@ namespace ShooterMmo.WorldActors
 
         private void Start()
         {
-            interactionController = ShooterMmoClientBootstrap.WorldInteractionController;
+            interactionController = ClientBootstrap.WorldInteractionController;
             FindLocalPlayer();
         }
 
@@ -77,7 +77,7 @@ namespace ShooterMmo.WorldActors
             if (CurrentTarget.TargetKind
                 == RealtimeWorldInteractionTargetKind.WorldActor)
             {
-                var actors = ShooterMmoClientBootstrap.WorldActorController;
+                var actors = ClientBootstrap.WorldActorController;
                 if (actors != null
                     && actors.State.TryGet(CurrentTarget.TargetEntityId, out var actor))
                 {

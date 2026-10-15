@@ -1,6 +1,6 @@
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 
-namespace SimulationWorker.Items;
+namespace Mmorpg.SimulationWorker.Items;
 
 public sealed class CarryStateStore
 {

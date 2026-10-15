@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace ShooterMmo.GameProtocol
+namespace Mmorpg.GameProtocol
 {
     public enum RealtimeWorldActorKind : byte
     {

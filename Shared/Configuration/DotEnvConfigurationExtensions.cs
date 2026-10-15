@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Configuration;
 
-namespace ShooterMmo.Shared.Configuration;
+namespace Mmorpg.Server.Common.Configuration;
 
 public static class DotEnvConfigurationExtensions
 {
     // Marks the repository root. A .env file is only loaded at or below this root.
-    private const string RepositoryRootMarker = "ShooterMmo.slnx";
+    private const string RepositoryRootMarker = "Mmorpg.slnx";
 
     public static IConfigurationBuilder AddOptionalDotEnvFile(
         this IConfigurationBuilder configuration,

@@ -1,7 +1,7 @@
-using ShooterMmo.GameProtocol;
-using SimulationWorker.Auth;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.GameServiceApi;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 // Decides which corpse view chunks reach the requesting peer and the other viewers after
 // an authoritative corpse result, so a peer that opens a corpse always starts from a full

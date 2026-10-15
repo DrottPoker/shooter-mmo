@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed record CorpseRuntimeMetricsSnapshot(
     long DurableCorpses,
@@ -8,7 +8,7 @@ public sealed record CorpseRuntimeMetricsSnapshot(
 
 public sealed class CorpseRuntimeMetrics : IDisposable
 {
-    public const string MeterName = "ShooterMmo.SimulationWorker.Corpses";
+    public const string MeterName = "Mmorpg.SimulationWorker.Corpses";
 
     private readonly Meter meter = new(MeterName);
     private long durableCorpses;

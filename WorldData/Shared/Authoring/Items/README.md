@@ -56,16 +56,16 @@ not affect the result.
 - Display-only changes alter the catalog revision but do not alter an item's
   structural fingerprint.
 
-AuthService now mirrors these fingerprints into PostgreSQL. A structural change
+GameService now mirrors these fingerprints into PostgreSQL. A structural change
 is accepted automatically only when no live item instance or affected Secure
-Container entitlement references it. Otherwise AuthService rejects startup
+Container entitlement references it. Otherwise GameService rejects startup
 until an explicit data migration makes the persistent state compatible.
 Regenerating runtime JSON is never sufficient authorization to invalidate live
 state.
 
 ## Unity Editor Workflow
 
-Open `Shooter MMO > Tools > Item Catalog` in the Unity project. The Editor-only
+Open `MMORPG > Tools > Item Catalog` in the Unity project. The Editor-only
 tool provides a searchable definition list with a category filter, create and
 duplicate actions, every gameplay field in this contract, Bag slot editing, and
 the separate client presentation mapping.

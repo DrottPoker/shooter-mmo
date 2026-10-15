@@ -1,8 +1,8 @@
-using ShooterMmo.GameProtocol;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Sessions;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public interface IWorldActorCapabilityAvailabilityPolicy
 {

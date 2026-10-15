@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using ShooterMmo.Api;
+using Mmorpg.Client.Api;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class JsonArrayUtilityTests
     {

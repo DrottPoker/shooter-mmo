@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public enum WorldDebugHealth
     {

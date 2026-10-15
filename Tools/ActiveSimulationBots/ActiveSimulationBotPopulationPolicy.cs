@@ -1,4 +1,4 @@
-namespace ShooterMmo.Tools.ActiveSimulationBots;
+namespace Mmorpg.Tools.ActiveSimulationBots;
 
 public static class ActiveSimulationBotPopulationPolicy
 {

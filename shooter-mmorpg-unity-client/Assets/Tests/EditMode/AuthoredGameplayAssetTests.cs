@@ -1,12 +1,12 @@
 using System.Linq;
 using NUnit.Framework;
-using ShooterMmo.Collision;
-using ShooterMmo.Config;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Gameplay;
-using ShooterMmo.WorldActors;
-using ShooterMmo.WorldData.Actors;
-using ShooterMmo.WorldData.Editor.Actors;
+using Mmorpg.Client.Collision;
+using Mmorpg.Client.Config;
+using Mmorpg.GameSimulation;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.WorldActors;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Editor.Actors;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,7 +14,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Tests.EditMode
+namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class AuthoredGameplayAssetTests
     {
@@ -73,7 +73,7 @@ namespace ShooterMmo.Tests.EditMode
         [Test]
         public void ClientConfigReferencesBundledGameplayCatalog()
         {
-            var config = ShooterMmoClientConfig.Load();
+            var config = ClientConfig.Load();
 
             Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
             Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"catalogId\""));

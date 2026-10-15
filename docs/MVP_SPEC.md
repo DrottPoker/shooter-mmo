@@ -1,10 +1,10 @@
-# Shooter MMO MVP Spec
+# MMORPG MVP Spec
 
 Last updated: 2026-10-12
 
 ## Purpose
 
-This document defines the current MVP direction for Shooter MMO.
+This document defines the current MVP direction for MMORPG.
 
 The spec is a working agreement, not a permanent design lock. Decisions can
 change when implementation, playtesting, or better design ideas expose a better
@@ -404,7 +404,7 @@ Recommended first gathering loop:
 - Equip a tool in the tool slot.
 - Interact with a resource node in the Open Risk Rule Area.
 - SimulationWorker validates the required tool and live interaction.
-- AuthService grants a resource item transactionally into a compatible slot when
+- GameService grants a resource item transactionally into a compatible slot when
   capacity and weight allow it.
 - Resource can be sold to the NPC vendor.
 
@@ -444,7 +444,7 @@ loot is destroyed with audit records.
 The intended architecture remains:
 
 - Unity client.
-- ASP.NET Core AuthService for global durable services and HTTP APIs.
+- ASP.NET Core GameService for global durable services and HTTP APIs.
 - Headless .NET SimulationWorker for authoritative Shard simulation.
 - LiteNetLib UDP for gameplay networking.
 - PostgreSQL as the persistent source of truth.
@@ -454,7 +454,7 @@ The intended architecture remains:
 
 Planned item service split:
 
-- AuthService owns item definitions mirrored from shared content, item
+- GameService owns item definitions mirrored from shared content, item
   instances, policies, slot and equipment assignments, bank, Secure Container,
   Recovery Storage, durable player corpse custody, audit, and all durable item
   transactions.
@@ -463,14 +463,14 @@ Planned item service split:
   corpse presentation, one-active-interaction enforcement, and authoritative
   encumbrance when those planned systems are implemented.
 - While a character is active, SimulationWorker requests durable mutations over
-  a service-authenticated AuthService boundary fenced to exact session, worker,
+  a service-authenticated GameService boundary fenced to exact session, worker,
   runtime, character, and Shard.
 - SimulationWorker never writes item tables directly.
 - Unity sends intents and displays committed state.
 
 Current implementation note:
 
-- AuthService currently stores identity, topology, exact-runtime join tickets,
+- GameService currently stores identity, topology, exact-runtime join tickets,
   global simulation-session leases, the relational item catalog mirror, and
   complete empty per-character item-state and container identities in
   PostgreSQL.
@@ -491,7 +491,7 @@ Current implementation note:
   owned-character inventory reads. Queries use coherent PostgreSQL read-only
   snapshots and return definition ids instead of repeated definitions or client
   presentation data.
-- Item-plan Phase 5 adds the internal AuthService transaction kernel. Its typed
+- Item-plan Phase 5 adds the internal GameService transaction kernel. Its typed
   commands atomically create and mutate durable item instances, equipment, Bag
   aggregates, Recovery deliveries, Secure Container tiers, carried state,
   revisions, idempotency results, and audit rows under canonical PostgreSQL

@@ -1,18 +1,18 @@
 using System.Collections;
-using ShooterMmo.Api;
-using ShooterMmo.Diagnostics;
-using ShooterMmo.Networking;
-using ShooterMmo.Worlds;
+using Mmorpg.Client.Api;
+using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Networking;
+using Mmorpg.Client.Worlds;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace ShooterMmo.Ui
+namespace Mmorpg.Client.Ui
 {
     public sealed class CharacterSelectPanel : MonoBehaviour
     {
         private readonly ClientOperationState operationState = new ClientOperationState();
 
-        private ShooterMmoApiClient apiClient;
+        private ApiClient apiClient;
         private string characterName = "Hero One";
         private string status = "Select or create a character, then join a shard.";
         private CharacterResponse[] characters = new CharacterResponse[0];
@@ -29,7 +29,7 @@ namespace ShooterMmo.Ui
 
         private void Awake()
         {
-            apiClient = new ShooterMmoApiClient(ShooterMmoClientSession.RequestTimeoutSeconds);
+            apiClient = new ApiClient(ClientSession.RequestTimeoutSeconds);
         }
 
         private void Start()
@@ -64,8 +64,8 @@ namespace ShooterMmo.Ui
         private void DrawAccountSection()
         {
             GUILayout.Label("Account");
-            GUILayout.Label(ShooterMmoClientSession.Auth != null
-                ? "Signed in: " + ShooterMmoClientSession.Auth.username
+            GUILayout.Label(ClientSession.Auth != null
+                ? "Signed in: " + ClientSession.Auth.username
                 : "Not signed in.");
 
             if (GUILayout.Button("Back To Login", GUILayout.Height(32f)))
@@ -78,17 +78,17 @@ namespace ShooterMmo.Ui
 
         private IEnumerator LogoutRoutine()
         {
-            var account = ShooterMmoClientSession.Auth;
+            var account = ClientSession.Auth;
             var accountName = account != null ? account.username : "unknown";
             var accountId = account != null ? account.accountId : "unknown";
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "Logging out account '" + accountName + "' (" + accountId + ").");
 
-            ShooterMmoApiError error = null;
+            ApiError error = null;
             yield return apiClient.Logout(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
-                ShooterMmoClientSession.SessionToken,
+                ClientSession.GameServiceBaseUrl,
+                ClientSession.SessionToken,
                 () => { },
                 value => error = value);
 
@@ -101,8 +101,8 @@ namespace ShooterMmo.Ui
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "Account '" + accountName + "' logged out and its current session was revoked.");
-            ShooterMmoClientSession.Clear();
-            SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
+            ClientSession.Clear();
+            SceneManager.LoadScene(SceneNames.LoginMenu);
         }
 
         private void DrawCharacterSection()
@@ -132,7 +132,7 @@ namespace ShooterMmo.Ui
                 }
 
                 selectedCharacterIndex = GUILayout.SelectionGrid(selectedCharacterIndex, labels, 1);
-                ShooterMmoClientSession.SelectedCharacter = characters[selectedCharacterIndex];
+                ClientSession.SelectedCharacter = characters[selectedCharacterIndex];
             }
             else
             {
@@ -173,7 +173,7 @@ namespace ShooterMmo.Ui
                 }
 
                 selectedShardIndex = GUILayout.SelectionGrid(selectedShardIndex, labels, 1);
-                ShooterMmoClientSession.SelectedShard = shards[selectedShardIndex];
+                ClientSession.SelectedShard = shards[selectedShardIndex];
             }
             else
             {
@@ -184,7 +184,7 @@ namespace ShooterMmo.Ui
         private IEnumerator LoadSelectionRoutine()
         {
             yield return RefreshCharactersRoutine();
-            if (operationStepFailed || !ShooterMmoClientSession.IsAuthenticated)
+            if (operationStepFailed || !ClientSession.IsAuthenticated)
             {
                 yield break;
             }
@@ -201,12 +201,12 @@ namespace ShooterMmo.Ui
             }
 
             CharacterResponse createdCharacter = null;
-            ShooterMmoApiError error = null;
+            ApiError error = null;
             var request = new CreateCharacterRequest { name = characterName };
 
             yield return apiClient.CreateCharacter(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
-                ShooterMmoClientSession.SessionToken,
+                ClientSession.GameServiceBaseUrl,
+                ClientSession.SessionToken,
                 request,
                 result => createdCharacter = result,
                 result => error = result);
@@ -228,10 +228,10 @@ namespace ShooterMmo.Ui
             }
 
             CharacterResponse[] result = null;
-            ShooterMmoApiError error = null;
+            ApiError error = null;
             yield return apiClient.GetCharacters(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
-                ShooterMmoClientSession.SessionToken,
+                ClientSession.GameServiceBaseUrl,
+                ClientSession.SessionToken,
                 value => result = value,
                 value => error = value);
 
@@ -242,7 +242,7 @@ namespace ShooterMmo.Ui
 
             characters = result ?? new CharacterResponse[0];
             selectedCharacterIndex = Mathf.Clamp(selectedCharacterIndex, 0, Mathf.Max(0, characters.Length - 1));
-            ShooterMmoClientSession.SelectedCharacter = characters.Length > 0
+            ClientSession.SelectedCharacter = characters.Length > 0
                 ? characters[selectedCharacterIndex]
                 : null;
             status = "Loaded " + characters.Length + " characters.";
@@ -251,9 +251,9 @@ namespace ShooterMmo.Ui
         private IEnumerator RefreshShardsRoutine()
         {
             ShardResponse[] result = null;
-            ShooterMmoApiError error = null;
+            ApiError error = null;
             yield return apiClient.GetShards(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
+                ClientSession.GameServiceBaseUrl,
                 value => result = value,
                 value => error = value);
 
@@ -264,7 +264,7 @@ namespace ShooterMmo.Ui
 
             shards = result ?? new ShardResponse[0];
             selectedShardIndex = Mathf.Clamp(selectedShardIndex, 0, Mathf.Max(0, shards.Length - 1));
-            ShooterMmoClientSession.SelectedShard = shards.Length > 0
+            ClientSession.SelectedShard = shards.Length > 0
                 ? shards[selectedShardIndex]
                 : null;
             status = "Loaded " + shards.Length + " shards.";
@@ -310,18 +310,18 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            ShooterMmoClientSession.SelectedCharacter = character;
-            ShooterMmoClientSession.SelectedShard = shard;
+            ClientSession.SelectedCharacter = character;
+            ClientSession.SelectedShard = shard;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Character '" + character.name + "' (" + character.id + ") is requesting access to shard '"
                 + shard.id + "'.");
 
             JoinShardResponse joinTicket = null;
-            ShooterMmoApiError error = null;
+            ApiError error = null;
             yield return apiClient.CreateJoinTicket(
-                ShooterMmoClientSession.AuthServiceBaseUrl,
-                ShooterMmoClientSession.SessionToken,
+                ClientSession.GameServiceBaseUrl,
+                ClientSession.SessionToken,
                 shard.id,
                 new JoinShardRequest { characterId = character.id },
                 result => joinTicket = result,
@@ -335,7 +335,7 @@ namespace ShooterMmo.Ui
             if (joinTicket == null || joinTicket.shard == null)
             {
                 status = "Cannot join " + shard.displayName
-                    + ": AuthService returned incomplete placement data.";
+                    + ": GameService returned incomplete placement data.";
                 ClientLog.Error(ClientLogCategory.Client, status);
                 yield break;
             }
@@ -358,14 +358,14 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            ShooterMmoClientSession.SelectedShard = joinTicket.shard;
+            ClientSession.SelectedShard = joinTicket.shard;
 
             ClientLog.Info(
                 ClientLogCategory.Auth,
-                "AuthService issued a short-lived join ticket for character '" + character.name
+                "GameService issued a short-lived join ticket for character '" + character.name
                 + "' on shard '" + shard.id + "'.");
 
-            var simulationClient = ShooterMmoClientBootstrap.SimulationClient;
+            var simulationClient = ClientBootstrap.SimulationClient;
             if (simulationClient == null)
             {
                 ClientLog.Error(
@@ -390,7 +390,7 @@ namespace ShooterMmo.Ui
                 yield break;
             }
 
-            ShooterMmoClientSession.ActiveSimulationSession = activeSession;
+            ClientSession.ActiveSimulationSession = activeSession;
             status = "Joined shard " + activeSession.shardId + " as " + activeSession.characterName + ".";
             SceneManager.LoadScene(worldSceneName);
         }
@@ -414,17 +414,17 @@ namespace ShooterMmo.Ui
 
         private bool EnsureAuthenticated()
         {
-            if (ShooterMmoClientSession.IsAuthenticated)
+            if (ClientSession.IsAuthenticated)
             {
                 return true;
             }
 
-            ShooterMmoClientSession.Clear();
-            SceneManager.LoadScene(ShooterMmoSceneNames.LoginMenu);
+            ClientSession.Clear();
+            SceneManager.LoadScene(SceneNames.LoginMenu);
             return false;
         }
 
-        private bool HandleError(ShooterMmoApiError error)
+        private bool HandleError(ApiError error)
         {
             if (error == null)
             {

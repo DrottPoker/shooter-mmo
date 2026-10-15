@@ -1,7 +1,7 @@
-using ShooterMmo.GameSimulation;
-using SimulationWorker.Config;
+using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
 
-namespace SimulationWorker.WorldCollision;
+namespace Mmorpg.SimulationWorker.WorldCollision;
 
 public sealed record WorldCollisionChunkSource(
     int X,

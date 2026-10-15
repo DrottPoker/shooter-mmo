@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace ShooterMmo.Gameplay
+namespace Mmorpg.Client.Gameplay
 {
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Camera))]

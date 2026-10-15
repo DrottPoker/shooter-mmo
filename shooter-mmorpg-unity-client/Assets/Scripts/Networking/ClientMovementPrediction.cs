@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
-namespace ShooterMmo.Networking
+namespace Mmorpg.Client.Networking
 {
     internal readonly struct MovementReconciliation
     {

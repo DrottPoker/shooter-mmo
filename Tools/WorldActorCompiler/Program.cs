@@ -1,5 +1,5 @@
-using ShooterMmo.Tools.WorldActorCompiler;
-using ShooterMmo.WorldData.Actors;
+using Mmorpg.Tools.WorldActorCompiler;
+using Mmorpg.WorldData.Actors;
 
 if (!TryResolveArguments(
         args,
@@ -156,7 +156,7 @@ static string FindRepositoryRoot(string startPath)
     var current = new DirectoryInfo(Path.GetFullPath(startPath));
     while (current != null)
     {
-        if (File.Exists(Path.Combine(current.FullName, "ShooterMmo.slnx")))
+        if (File.Exists(Path.Combine(current.FullName, "Mmorpg.slnx")))
         {
             return current.FullName;
         }

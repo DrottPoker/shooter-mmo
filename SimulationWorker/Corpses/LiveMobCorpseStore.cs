@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Auth;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed record LiveMobCorpseLootEntry(
     Guid LootEntryId,

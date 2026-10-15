@@ -1,11 +1,11 @@
-using ShooterMmo.GameProtocol;
-using SimulationWorker.Auth;
-using SimulationWorker.Sessions;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Sessions;
 
-namespace SimulationWorker.Items;
+namespace Mmorpg.SimulationWorker.Items;
 
 public sealed class SimulationItemInteractionService(
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     ItemInteractionAccessService accessService)
 {
     public async Task<SimulationItemInteractionResult> ExecuteAsync(
@@ -29,7 +29,7 @@ public sealed class SimulationItemInteractionService(
 
         var access = accessService.Evaluate(positionX, positionY, positionZ);
         var request = CreateRequest(session, intent, access);
-        var result = await authServiceClient.MutateSimulationItemsAsync(
+        var result = await gameServiceClient.MutateSimulationItemsAsync(
             session.SimulationSessionId,
             request,
             cancellationToken);
@@ -120,7 +120,7 @@ public sealed class SimulationItemInteractionService(
 
     private static bool RequiresInventoryRefresh(string code)
     {
-        return AuthServiceOutcome.IsUncertain(code)
+        return GameServiceOutcome.IsUncertain(code)
             || code is "item_state_conflict"
             or "item_operation_conflict"
             or "item_quantity_changed"

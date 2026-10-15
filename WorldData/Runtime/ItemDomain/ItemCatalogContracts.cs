@@ -1,6 +1,6 @@
 using System;
 
-namespace ShooterMmo.WorldData.Items
+namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {

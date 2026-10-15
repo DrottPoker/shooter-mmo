@@ -1,12 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
-using ShooterMmo.WorldData.Actors;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
-using SimulationWorker.Registry;
-using SimulationWorker.WorldActors;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.WorldData.Actors;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed record MobCorpseLootSeed(string DefinitionId, int Quantity);
 
@@ -42,7 +42,7 @@ public sealed class MobCorpseLifecycleService(
     WorldActorStore actorStore,
     LiveMobCorpseStore liveCorpseStore,
     DurableCorpseStore durableCorpseStore,
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
     TimeProvider timeProvider)
@@ -128,7 +128,7 @@ public sealed class MobCorpseLifecycleService(
 
         var halfYawRadians = actor.YawDegrees * Math.PI / 360d;
         var operationId = CreateScopedGuid("mob-corpse-create", request.DeathEventId);
-        var durableResult = await authServiceClient.CreatePersistentMobCorpseAsync(
+        var durableResult = await gameServiceClient.CreatePersistentMobCorpseAsync(
             new CreatePersistentMobCorpseRequest(
                 operationId,
                 corpseId,

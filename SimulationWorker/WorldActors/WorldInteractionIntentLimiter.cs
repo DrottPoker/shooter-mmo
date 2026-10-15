@@ -1,6 +1,6 @@
-using SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.Realtime;
 
-namespace SimulationWorker.WorldActors;
+namespace Mmorpg.SimulationWorker.WorldActors;
 
 public sealed class WorldInteractionIntentLimiter
 {

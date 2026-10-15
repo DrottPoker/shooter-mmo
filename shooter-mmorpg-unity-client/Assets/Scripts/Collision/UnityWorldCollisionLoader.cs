@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using ShooterMmo.GameSimulation;
+using Mmorpg.GameSimulation;
 using UnityEngine;
 
-namespace ShooterMmo.Collision
+namespace Mmorpg.Client.Collision
 {
     public static class UnityWorldCollisionLoader
     {
-        private const string ResourceRoot = "ShooterMmo/WorldCollision/";
+        private const string ResourceRoot = "WorldCollision/";
         private const int DefaultLoadRadiusChunks = 2;
         private const int DefaultUnloadRadiusChunks = 3;
 

@@ -7,21 +7,21 @@
       "dependencies": {},
       "url": "https://package.openupm.com"
     },
-    "com.shootermmo.game-protocol": {
+    "com.mmorpg.game-protocol": {
       "version": "file:../../GameProtocol/",
       "depth": 0,
       "source": "local",
       "dependencies": {}
     },
-    "com.shootermmo.game-simulation": {
+    "com.mmorpg.game-simulation": {
       "version": "file:../../GameSimulation/",
       "depth": 0,
       "source": "local",
       "dependencies": {
-        "com.shootermmo.world-data": "0.4.0"
+        "com.mmorpg.world-data": "0.4.0"
       }
     },
-    "com.shootermmo.world-data": {
+    "com.mmorpg.world-data": {
       "version": "file:../../WorldData/",
       "depth": 0,
       "source": "local",

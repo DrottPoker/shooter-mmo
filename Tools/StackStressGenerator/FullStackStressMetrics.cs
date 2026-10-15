@@ -1,4 +1,4 @@
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed record StressHttpOperationSummary(
     long Requests,

@@ -1,4 +1,4 @@
-namespace ShooterMmo.Shared.Health;
+namespace Mmorpg.Server.Common.Health;
 
 public sealed record DependencyHealth(
     string Name,

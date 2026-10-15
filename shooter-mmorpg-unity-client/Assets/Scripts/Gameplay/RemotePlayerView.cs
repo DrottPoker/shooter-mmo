@@ -1,9 +1,9 @@
-using ShooterMmo.GameProtocol;
-using ShooterMmo.GameSimulation;
-using ShooterMmo.Networking;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
+using Mmorpg.Client.Networking;
 using UnityEngine;
 
-namespace ShooterMmo.Gameplay
+namespace Mmorpg.Client.Gameplay
 {
     [DisallowMultipleComponent]
     public sealed class RemotePlayerView : MonoBehaviour

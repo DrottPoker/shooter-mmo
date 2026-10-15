@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace ShooterMmo.Tools.StackStressGenerator;
+namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed class StressRunCoordinator(
     StressGeneratorOptions options,

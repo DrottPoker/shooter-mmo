@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 
-namespace ShooterMmo.WorldData.Items.Presentation
+namespace Mmorpg.WorldData.Items.Presentation
 {
     public static class ItemPresentationCatalogFormat
     {

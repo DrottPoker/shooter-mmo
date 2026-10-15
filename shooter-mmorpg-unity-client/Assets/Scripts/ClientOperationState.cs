@@ -1,4 +1,4 @@
-namespace ShooterMmo
+namespace Mmorpg.Client
 {
     public enum ClientOperation
     {

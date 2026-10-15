@@ -1,5 +1,5 @@
-using ShooterMmo.Tools.ItemCatalogCompiler;
-using ShooterMmo.WorldData.Items;
+using Mmorpg.Tools.ItemCatalogCompiler;
+using Mmorpg.WorldData.Items;
 
 if (args.Length is < 2 or > 3)
 {

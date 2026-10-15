@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ShooterMmo.WorldData.Items;
+using Mmorpg.WorldData.Items;
 
-namespace ShooterMmo.Tools.ItemCatalogCompiler;
+namespace Mmorpg.Tools.ItemCatalogCompiler;
 
 public static class ItemCatalogJson
 {

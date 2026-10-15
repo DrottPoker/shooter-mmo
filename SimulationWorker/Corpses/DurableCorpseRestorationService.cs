@@ -1,13 +1,13 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using SimulationWorker.Auth;
-using SimulationWorker.Config;
-using SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Registry;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed class DurableCorpseRestorationService(
-    AuthServiceClient authServiceClient,
+    GameServiceClient gameServiceClient,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
     SimulationWorkerRegistrationLease registrationLease,
@@ -27,7 +27,7 @@ public sealed class DurableCorpseRestorationService(
         var restoredOnce = false;
         while (!stoppingToken.IsCancellationRequested)
         {
-            var result = await authServiceClient.RestoreDurableCorpsesAsync(
+            var result = await gameServiceClient.RestoreDurableCorpsesAsync(
                 config.SimulationWorkerId,
                 identity.RuntimeId,
                 config.ShardId,

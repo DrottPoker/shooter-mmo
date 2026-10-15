@@ -1,10 +1,10 @@
-using ShooterMmo.GameProtocol;
-using SimulationWorker.Auth;
-using SimulationWorker.Sessions;
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Sessions;
 
-namespace SimulationWorker.Corpses;
+namespace Mmorpg.SimulationWorker.Corpses;
 
-public sealed class SimulationCorpseInteractionService(AuthServiceClient authServiceClient)
+public sealed class SimulationCorpseInteractionService(GameServiceClient gameServiceClient)
 {
     public async Task<SimulationCorpseInteractionResult> OpenAsync(
         ActiveSimulationSession session,
@@ -28,7 +28,7 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken);
-        var response = await authServiceClient.OpenCorpseAsync(
+        var response = await gameServiceClient.OpenCorpseAsync(
             session.SimulationSessionId,
             intent.CorpseId,
             request,
@@ -54,7 +54,7 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
         }
 
         var request = CreateMutationRequest(session, intent);
-        var response = await authServiceClient.MutateCorpseAsync(
+        var response = await gameServiceClient.MutateCorpseAsync(
             session.SimulationSessionId,
             intent.CorpseId,
             request,
@@ -143,7 +143,7 @@ public sealed class SimulationCorpseInteractionService(AuthServiceClient authSer
 
     private static bool RequiresCorpseRefresh(string code)
     {
-        return AuthServiceOutcome.IsUncertain(code)
+        return GameServiceOutcome.IsUncertain(code)
             || code is "item_already_looted"
             or "item_quantity_changed"
             or "bag_state_changed"

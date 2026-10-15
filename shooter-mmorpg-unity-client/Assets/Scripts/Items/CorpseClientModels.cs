@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ShooterMmo.GameProtocol;
+using Mmorpg.GameProtocol;
 
-namespace ShooterMmo.Items
+namespace Mmorpg.Client.Items
 {
     public enum CorpseClientStatus
     {

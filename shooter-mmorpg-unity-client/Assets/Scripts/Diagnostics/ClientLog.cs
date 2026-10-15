@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace ShooterMmo.Diagnostics
+namespace Mmorpg.Client.Diagnostics
 {
     public enum ClientLogCategory
     {

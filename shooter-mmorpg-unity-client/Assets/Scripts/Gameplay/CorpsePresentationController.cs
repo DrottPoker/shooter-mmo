@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ShooterMmo.Items;
-using ShooterMmo.WorldActors;
+using Mmorpg.Client.Items;
+using Mmorpg.Client.WorldActors;
 using UnityEngine;
 
-namespace ShooterMmo.Gameplay
+namespace Mmorpg.Client.Gameplay
 {
     [DisallowMultipleComponent]
     public sealed class CorpsePresentationController : MonoBehaviour
@@ -40,7 +40,7 @@ namespace ShooterMmo.Gameplay
 
         private void BindController()
         {
-            var candidate = ShooterMmoClientBootstrap.CorpseController;
+            var candidate = ClientBootstrap.CorpseController;
             if (candidate == null || ReferenceEquals(candidate, controller))
             {
                 return;

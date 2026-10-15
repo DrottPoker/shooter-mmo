@@ -1,0 +1,19 @@
+{
+  "name": "Mmorpg.WorldData.Editor",
+  "rootNamespace": "Mmorpg.WorldData.Editor",
+  "references": [
+    "Mmorpg.WorldData",
+    "Mmorpg.WorldData.Client"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
