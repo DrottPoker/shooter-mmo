@@ -233,6 +233,93 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("|| (value.Section != \"bag\" && value.Section != \"equipment\")", family, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void VariantsGenerateFactoriesAndPerCaseCodecs()
+    {
+        var model = ProtocolSchemaLoader.Load(UnionSchema().ToJsonString());
+        var message = model.Messages.Single();
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(new SizeRange(7 + 16 + 1 + 1, 7 + 16 + 1 + 1 + 16), WireSizes.OfMessage(message));
+        Assert.Contains("internal RealtimeSnapshot(", family, StringComparison.Ordinal);
+        Assert.Contains("public static RealtimeSnapshot CreateCount(", family, StringComparison.Ordinal);
+        Assert.Contains("int amount = -1)", family, StringComparison.Ordinal);
+        Assert.Contains("RealtimeSlot.Count,", family, StringComparison.Ordinal);
+        Assert.Contains("case RealtimeSlot.Target:", family, StringComparison.Ordinal);
+        Assert.Contains("var hasTarget = value.Target != Guid.Empty;", family, StringComparison.Ordinal);
+        Assert.Contains("error = \"Snapshot kind is invalid.\";", family, StringComparison.Ordinal);
+        Assert.Contains("if (value.Amount < 0)", family, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConditionalFieldsAreWrittenReadAndValidatedByTheirCondition()
+    {
+        var schema = GeneratedSchema();
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Failed", "type": "bool" }"""));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Origin", "type": "Point", "when": "Failed" }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(7 + 4 + 1 + 9 + 1 + 1, WireSizes.OfMessage(model.Messages.Single()).Minimum);
+        Assert.Contains("RealtimePoint origin = null;", family, StringComparison.Ordinal);
+        Assert.Contains("if (failed)", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Failed != (value.Origin != null)", family, StringComparison.Ordinal);
+        Assert.Contains("|| (value.Origin != null && !IsValidPoint(value.Origin))", family, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("discriminator that is not an enum", "$.messages[0].variants.discriminator")]
+    [InlineData("kind without a case", "$.messages[0].variants.cases")]
+    [InlineData("factory used twice", "$.messages[0].variants.cases[1].kinds[0].factory")]
+    [InlineData("rule on a variant field", "$.messages[0].variants.fields[0]")]
+    [InlineData("variant field in no case", "$.messages[0].variants.fields")]
+    [InlineData("fixed guid that is not empty", "$.messages[0].variants.cases[1].fields[0].group[0].fixed")]
+    [InlineData("default before a required parameter", "$.messages[0].variants.cases[0].fields")]
+    [InlineData("condition on a non-struct field", "$.messages[0].fields[2].when")]
+    [InlineData("condition on a missing bool", "$.messages[0].fields")]
+    public void InvalidVariantsAndConditionsAreRejectedWithTheirPath(string mutation, string path)
+    {
+        var schema = UnionSchema();
+        var message = schema["messages"]![0]!.AsObject();
+        var variants = message["variants"]!.AsObject();
+        var cases = variants["cases"]!.AsArray();
+        switch (mutation)
+        {
+            case "discriminator that is not an enum":
+                variants["discriminator"] = "Id";
+                break;
+            case "kind without a case":
+                cases.RemoveAt(1);
+                variants["fields"]!.AsArray().RemoveAt(1);
+                break;
+            case "factory used twice":
+                cases[1]!["kinds"]![0]!["factory"] = "CreateCount";
+                break;
+            case "rule on a variant field":
+                variants["fields"]![0]!["minimum"] = 0;
+                break;
+            case "variant field in no case":
+                variants["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Unused", "type": "u8" }"""));
+                break;
+            case "fixed guid that is not empty":
+                cases[1]!["fields"]![0]!["group"]![0]!["fixed"] = "zero";
+                break;
+            case "default before a required parameter":
+                cases[0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "field": "Target" }"""));
+                break;
+            case "condition on a non-struct field":
+                message["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Note", "type": "u8", "when": "Id" }"""));
+                break;
+            case "condition on a missing bool":
+                message["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Note", "type": "Point", "when": "!Missing" }"""));
+                schema["structs"] = GeneratedSchema()["structs"]!.DeepClone();
+                break;
+        }
+
+        var exception = Assert.Throws<ProtocolSchemaException>(() => ProtocolSchemaLoader.Load(schema.ToJsonString()));
+        Assert.Equal(path, exception.Path);
+    }
+
     [Theory]
     [InlineData("string without a maximum length", "$.messages[0].fields[3].maxLength")]
     [InlineData("string array without an items object", "$.messages[0].fields[3].items")]
@@ -439,6 +526,52 @@ public sealed class ProtocolGeneratorTests
               { "name": "Points", "type": "array", "items": "Point", "minCount": 1, "maxCount": "MaximumThings" },
               { "name": "Held", "type": "Buttons" }
             ]
+            """);
+        return schema;
+    }
+
+    // The minimal schema with one generated message whose Kind field selects its variant.
+    private static JsonObject UnionSchema()
+    {
+        var schema = MinimalSchema();
+        schema["enums"]!.AsArray().Add(JsonNode.Parse(
+            """
+            {
+              "name": "Slot",
+              "family": "Input",
+              "description": "A slot.",
+              "values": [ { "name": "Count", "value": 1 }, { "name": "Target", "value": 2 } ]
+            }
+            """));
+        var message = schema["messages"]![0]!.AsObject();
+        message["codec"] = "generated";
+        message["parameter"] = "snapshot";
+        message["fields"] = JsonNode.Parse(
+            """
+            [
+              { "name": "Id", "type": "guid", "nonEmpty": true },
+              { "name": "Kind", "type": "Slot" }
+            ]
+            """);
+        message["variants"] = JsonNode.Parse(
+            """
+            {
+              "discriminator": "Kind",
+              "fields": [
+                { "name": "Amount", "type": "i32", "absent": -1 },
+                { "name": "Target", "type": "guid" }
+              ],
+              "cases": [
+                {
+                  "kinds": [ { "kind": "Count", "factory": "CreateCount" } ],
+                  "fields": [ { "field": "Amount", "minimum": 0, "parameterDefault": -1 } ]
+                },
+                {
+                  "kinds": [ { "kind": "Target", "factory": "CreateTarget" } ],
+                  "fields": [ { "group": [ { "field": "Target" } ], "presence": "Target" } ]
+                }
+              ]
+            }
             """);
         return schema;
     }

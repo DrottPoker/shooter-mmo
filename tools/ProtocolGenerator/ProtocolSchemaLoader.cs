@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -308,6 +309,12 @@ public static partial class ProtocolSchemaLoader
                     throw node.Error("api", "unwrap requires exactly one field that is not bits8.");
                 }
 
+                var union = node.TryReadObject("variants", out var variantsNode) ? ReadUnion(variantsNode, fields, scope) : null;
+                if (union is not null && api == MessageApi.Unwrap)
+                {
+                    throw node.Error("api", "unwrap cannot have variants.");
+                }
+
                 var parameter = node.OptionalString("parameter")
                     ?? CSharpNames.Camel(api == MessageApi.Unwrap ? fields[0].Name : name);
                 message = new MessageDefinition(
@@ -326,7 +333,8 @@ public static partial class ProtocolSchemaLoader
                     OptionalMemberName(node, "sizeConstant"),
                     OptionalMemberName(node, "emptySizeConstant"),
                     node.OptionalBoolean("runtimeSizeCheck", false),
-                    fields);
+                    fields,
+                    union);
                 CheckMessageSizes(node, message, scope);
             }
 
@@ -357,6 +365,17 @@ public static partial class ProtocolSchemaLoader
             ? bits.Bits.Select(bit => bit.Name)
             : [field.Name]);
         EnsureUnique(owner, "fields", memberNames);
+        for (var index = 0; index < fields.Count; index++)
+        {
+            var field = fields[index];
+            if (field.Presence == FieldPresence.Conditional
+                && !fields.Take(index).Any(candidate => candidate.Name == field.ConditionField
+                    && candidate.Type is PrimitiveType { Kind: PrimitiveKind.Bool }))
+            {
+                throw owner.Error("fields", $"'{field.Name}' must depend on an earlier bool field, not '{field.ConditionField}'.");
+            }
+        }
+
         foreach (var field in fields.Where(field => field.Rules.LessThan is not null))
         {
             var target = fields.FirstOrDefault(candidate => candidate.Name == field.Rules.LessThan);
@@ -367,6 +386,217 @@ public static partial class ProtocolSchemaLoader
         }
 
         return fields;
+    }
+
+    private static UnionDefinition ReadUnion(SchemaNode node, IReadOnlyList<FieldDefinition> commonFields, TypeScope scope)
+    {
+        var discriminatorName = RequireMemberName(node, "discriminator");
+        var discriminator = commonFields.FirstOrDefault(field => field.Name == discriminatorName);
+        if (discriminator?.Type is not EnumWireType discriminatorType)
+        {
+            throw node.Error("discriminator", $"must name an enum field among the common fields, not '{discriminatorName}'.");
+        }
+
+        var pool = new List<UnionPoolField>();
+        foreach (var fieldNode in node.RequiredObjects("fields"))
+        {
+            var absentText = fieldNode.OptionalStringOrNull("absent", out var absentNumber);
+            var field = ReadField(fieldNode, scope);
+            fieldNode.EnsureFullyRead();
+            if (field.Rules != ValueRules.None || field.Presence != FieldPresence.Always)
+            {
+                throw fieldNode.Error("rules belong to the case entries, not to the variant field.");
+            }
+
+            if (absentText is not null || (absentNumber is not null && !IsInteger(field.Type)))
+            {
+                throw fieldNode.Error("absent", "must be an integer for an integer field.");
+            }
+
+            pool.Add(new UnionPoolField(
+                field,
+                absentNumber?.ToString(CultureInfo.InvariantCulture) ?? AbsentValue(field.Type)));
+        }
+
+        EnsureUnique(node, "fields", pool.Select(field => field.Field.Name).Concat(commonFields.Select(field => field.Name)));
+        var cases = new List<UnionCase>();
+        var coveredKinds = new HashSet<string>(StringComparer.Ordinal);
+        var factories = new HashSet<string>(StringComparer.Ordinal);
+        var usedPoolFields = new HashSet<string>(StringComparer.Ordinal);
+        var poolFields = pool.Select(field => field.Field).ToArray();
+        var overridableFields = commonFields.Where(field => field.Name != discriminatorName).ToArray();
+        foreach (var caseNode in node.RequiredObjects("cases"))
+        {
+            var kinds = new List<UnionKind>();
+            foreach (var kindNode in caseNode.RequiredObjects("kinds"))
+            {
+                var kindName = RequireMemberName(kindNode, "kind");
+                var value = discriminatorType.Definition.Values.FirstOrDefault(candidate => candidate.Name == kindName)
+                    ?? throw kindNode.Error("kind", $"'{kindName}' is not a value of {discriminatorType.Definition.Name}.");
+                if (!coveredKinds.Add(kindName))
+                {
+                    throw kindNode.Error("kind", $"'{kindName}' has more than one case.");
+                }
+
+                var factory = RequireMemberName(kindNode, "factory");
+                if (!factories.Add(factory))
+                {
+                    throw kindNode.Error("factory", $"'{factory}' is used more than once.");
+                }
+
+                kinds.Add(new UnionKind(value, factory));
+                kindNode.EnsureFullyRead();
+            }
+
+            var overrides = (caseNode.OptionalObjects("common") ?? [])
+                .Select(entryNode => ReadUnionEntry(entryNode, overridableFields, scope))
+                .ToArray();
+            if (overrides.Any(entry => entry.ParameterDefault is not null || entry.ParameterName is not null))
+            {
+                throw caseNode.Error("common", "common fields keep their parameter names and have no defaults.");
+            }
+
+            var entries = new List<UnionEntry>();
+            foreach (var entryNode in caseNode.RequiredObjects("fields"))
+            {
+                if (!entryNode.Has("group"))
+                {
+                    entries.Add(ReadUnionEntry(entryNode, poolFields, scope));
+                    continue;
+                }
+
+                var presence = RequireMemberName(entryNode, "presence");
+                var members = entryNode.RequiredObjects("group")
+                    .Select(memberNode => ReadUnionEntry(memberNode, poolFields, scope))
+                    .ToArray();
+                if (members.All(member => member.Field.Name != presence) || members.Any(member => member.FixedValue is not null))
+                {
+                    throw entryNode.Error("presence", "must name a group member, and group members cannot be fixed.");
+                }
+
+                entries.Add(new UnionGroupEntry(presence, members));
+                entryNode.EnsureFullyRead();
+            }
+
+            var caseFields = entries.SelectMany(entry => entry is UnionGroupEntry group ? group.Fields : [(UnionFieldEntry)entry])
+                .ToArray();
+            EnsureUnique(caseNode, "fields", caseFields.Select(entry => entry.Field.Name));
+            EnsureUnique(caseNode, "common", overrides.Select(entry => entry.Field.Name));
+            usedPoolFields.UnionWith(caseFields.Select(entry => entry.Field.Name));
+            var parameterFields = caseFields.Where(entry => entry.FixedValue is null).ToArray();
+            var firstDefault = Array.FindIndex(parameterFields, entry => entry.ParameterDefault is not null);
+            if (firstDefault >= 0 && parameterFields.Skip(firstDefault).Any(entry => entry.ParameterDefault is null))
+            {
+                throw caseNode.Error("fields", "parameters with a default must come after every parameter without one.");
+            }
+
+            EnsureUnique(
+                caseNode,
+                "fields",
+                overrides.Where(entry => entry.FixedValue is null)
+                    .Concat(parameterFields)
+                    .Select(entry => entry.ParameterName ?? CSharpNames.Parameter(entry.Field.Name)));
+            cases.Add(new UnionCase(kinds, entries, overrides));
+            caseNode.EnsureFullyRead();
+        }
+
+        var uncovered = discriminatorType.Definition.Values.FirstOrDefault(value => !coveredKinds.Contains(value.Name));
+        if (uncovered is not null)
+        {
+            throw node.Error("cases", $"{discriminatorType.Definition.Name}.{uncovered.Name} has no case.");
+        }
+
+        var unused = pool.FirstOrDefault(field => !usedPoolFields.Contains(field.Field.Name));
+        if (unused is not null)
+        {
+            throw node.Error("fields", $"'{unused.Field.Name}' is in no case.");
+        }
+
+        return new UnionDefinition(discriminatorName, pool, cases);
+    }
+
+    private static UnionFieldEntry ReadUnionEntry(SchemaNode node, IReadOnlyList<FieldDefinition> fields, TypeScope scope)
+    {
+        var name = RequireMemberName(node, "field");
+        var field = fields.FirstOrDefault(candidate => candidate.Name == name)
+            ?? throw node.Error("field", $"'{name}' is not a field that this case may use.");
+        var rules = ReadRules(node, field.Type, scope);
+        var fixedText = node.OptionalStringOrNull("fixed", out var fixedNumber);
+        string? fixedValue = null;
+        if (fixedNumber is not null && IsInteger(field.Type))
+        {
+            fixedValue = fixedNumber.Value.ToString(CultureInfo.InvariantCulture);
+        }
+        else if (fixedText == "empty" && field.Type is PrimitiveType { Kind: PrimitiveKind.Guid })
+        {
+            fixedValue = "Guid.Empty";
+        }
+        else if (fixedText is not null || fixedNumber is not null)
+        {
+            throw node.Error("fixed", "must be an integer for an integer field, or \"empty\" for a guid.");
+        }
+
+        var parameterName = node.OptionalString("parameter");
+        if (parameterName is not null && !CSharpNames.IsParameterName(parameterName))
+        {
+            throw node.Error("parameter", "must be a camelCase C# identifier.");
+        }
+
+        var parameterDefault = ReadParameterDefault(node, field.Type);
+        if (fixedValue is not null && (parameterName is not null || parameterDefault is not null || rules != ValueRules.None))
+        {
+            throw node.Error("fixed", "a fixed field has no rules, parameter, or default.");
+        }
+
+        node.EnsureFullyRead();
+        return new UnionFieldEntry(field with { Rules = rules }, fixedValue, parameterName, parameterDefault);
+    }
+
+    // A factory parameter default: an integer, "default", or the name of an enum value.
+    private static string? ReadParameterDefault(SchemaNode node, WireType type)
+    {
+        var text = node.OptionalStringOrNull("parameterDefault", out var number);
+        if (number is not null && IsInteger(type))
+        {
+            return number.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (text == "default")
+        {
+            return "default";
+        }
+
+        if (text is not null && type is EnumWireType enumType && enumType.Definition.Values.Any(value => value.Name == text))
+        {
+            return enumType.Definition.ClassName + "." + text;
+        }
+
+        if (text is null && number is null)
+        {
+            return null;
+        }
+
+        throw node.Error("parameterDefault", "must be an integer, \"default\", or a value of the field's enum.");
+    }
+
+    private static bool IsInteger(WireType type)
+    {
+        return type is PrimitiveType { Kind: not (PrimitiveKind.F32 or PrimitiveKind.Bool or PrimitiveKind.Guid) };
+    }
+
+    // The C# value a variant field has in cases that do not carry it.
+    private static string AbsentValue(WireType type)
+    {
+        return type switch
+        {
+            PrimitiveType { Kind: PrimitiveKind.Guid } => "Guid.Empty",
+            PrimitiveType { Kind: PrimitiveKind.Bool } => "false",
+            PrimitiveType => "0",
+            EnumWireType => "default",
+            StringWireType => "string.Empty",
+            ArrayWireType array => $"Array.Empty<{CodecEmitter.TypeName(array.Element.Type)}>()",
+            _ => "null"
+        };
     }
 
     private static FieldDefinition ReadField(SchemaNode node, TypeScope scope)
@@ -380,7 +610,25 @@ public static partial class ProtocolSchemaLoader
             "bits8" => ReadBits(node),
             _ => scope.Resolve(node, "type", typeName)
         };
-        return new FieldDefinition(name, description, type, ReadRules(node, type, scope));
+        var field = new FieldDefinition(name, description, type, ReadRules(node, type, scope));
+        var condition = node.OptionalString("when");
+        if (condition is null)
+        {
+            return field;
+        }
+
+        if (type is not StructWireType)
+        {
+            throw node.Error("when", "applies to struct fields only.");
+        }
+
+        var conditionValue = !condition.StartsWith('!');
+        return field with
+        {
+            Presence = FieldPresence.Conditional,
+            ConditionField = conditionValue ? condition : condition[1..],
+            ConditionValue = conditionValue
+        };
     }
 
     private static ArrayWireType ReadArray(SchemaNode node, TypeScope scope)

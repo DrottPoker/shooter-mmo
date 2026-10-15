@@ -474,6 +474,67 @@
         },
         { "name": "State", "type": "PlayerState", "description": "The entity's authoritative movement state." }
       ]
+    },
+    {
+      "name": "Error",
+      "family": "Session",
+      "description": "A structured error: a stable code for programs and a message for people.",
+      "fields": [
+        {
+          "name": "Code",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "A stable, machine-readable code."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumErrorMessageLength",
+          "description": "A human-readable explanation."
+        }
+      ]
+    },
+    {
+      "name": "CarryState",
+      "family": "Items",
+      "description": "The committed carry weight of a character. Weight above the capacity is valid: death can leave an involuntary overflow.",
+      "fields": [
+        {
+          "name": "ItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The committed item-state revision of the character."
+        },
+        { "name": "CarriedWeight", "type": "i64", "minimum": 0, "description": "The carried weight in grams." },
+        { "name": "CarryCapacity", "type": "i64", "minimum": 1, "description": "The carry capacity in grams." }
+      ]
+    },
+    {
+      "name": "ItemRevisionExpectation",
+      "family": "Items",
+      "description": "An item and the revision the client expects it to have.",
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The expected item revision." }
+      ]
+    },
+    {
+      "name": "ItemRevision",
+      "family": "Items",
+      "description": "An item and the revision an operation committed.",
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The committed item revision." }
+      ]
+    },
+    {
+      "name": "ContainerRevision",
+      "family": "Items",
+      "description": "A container and the revision an operation committed.",
+      "fields": [
+        { "name": "ContainerId", "type": "guid", "nonEmpty": true, "description": "The container." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The committed container revision." }
+      ]
     }
   ],
   "messages": [
@@ -667,8 +728,10 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "A newer committed carry state."
+      "codec": "generated",
+      "description": "A newer committed carry state.",
+      "api": "unwrap",
+      "fields": [ { "name": "CarryState", "type": "CarryState", "description": "The newer committed carry state." } ]
     },
     {
       "name": "ItemOperationIntent",
@@ -677,8 +740,133 @@
       "direction": "clientToServer",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "Asks for one in-world item operation."
+      "codec": "generated",
+      "description": "Asks for one in-world item operation.",
+      "parameter": "intent",
+      "rules": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "Identifies the operation and its result."
+        },
+        { "name": "OperationKind", "type": "ItemOperationKind", "description": "The operation." },
+        {
+          "name": "ExpectedCharacterRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The character item-state revision the client saw."
+        }
+      ],
+      "variants": {
+        "discriminator": "OperationKind",
+        "fields": [
+          { "name": "ItemInstanceId", "type": "guid", "description": "The item the operation moves or changes." },
+          { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
+          { "name": "TargetItemInstanceId", "type": "guid", "description": "The second item of a merge or swap." },
+          {
+            "name": "ExpectedTargetItemRevision",
+            "type": "i64",
+            "description": "The second item's revision the client saw."
+          },
+          { "name": "DestinationContainerId", "type": "guid", "description": "The container the item moves into." },
+          {
+            "name": "DestinationSlotIndex",
+            "type": "i32",
+            "absent": -1,
+            "description": "The destination slot, or -1 for any free slot."
+          },
+          { "name": "Quantity", "type": "i32", "description": "The quantity that a split moves." },
+          {
+            "name": "EquipmentSlotId",
+            "type": "string",
+            "maxLength": "MaximumEquipmentSlotIdLength",
+            "description": "The canonical equipment slot that the item is equipped into."
+          },
+          {
+            "name": "RecoveryDeliveryId",
+            "type": "guid",
+            "description": "The Recovery delivery that a claim takes items from."
+          },
+          {
+            "name": "ExpectedRecoveryDeliveryRevision",
+            "type": "i64",
+            "description": "The delivery revision the client saw."
+          },
+          {
+            "name": "Items",
+            "type": "array",
+            "items": "ItemRevisionExpectation",
+            "minCount": 1,
+            "maxCount": "MaximumItemOperationItems",
+            "description": "The claimed items and their expected revisions."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [
+              { "kind": "Relocate", "factory": "CreateRelocate" },
+              { "kind": "Unequip", "factory": "CreateUnequip" }
+            ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "DestinationSlotIndex", "minimum": -1, "parameterDefault": -1 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "Equip", "factory": "CreateEquip" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "EquipmentSlotId" }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "SplitStack", "factory": "CreateSplitStack" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "Quantity", "minimum": 1 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "DestinationSlotIndex", "minimum": -1, "parameterDefault": -1 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "MergeStacks", "factory": "CreateMergeStacks" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "sourceItemInstanceId" },
+              { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedSourceItemRevision" },
+              { "field": "TargetItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedTargetItemRevision", "minimum": 0 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "SwapContainerItems", "factory": "CreateSwapContainerItems" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "firstItemInstanceId" },
+              { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedFirstItemRevision" },
+              { "field": "TargetItemInstanceId", "nonEmpty": true, "parameter": "secondItemInstanceId" },
+              { "field": "ExpectedTargetItemRevision", "minimum": 0, "parameter": "expectedSecondItemRevision" }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "Destroy", "factory": "CreateDestroy" } ],
+            "fields": [ { "field": "ItemInstanceId", "nonEmpty": true }, { "field": "ExpectedItemRevision", "minimum": 0 } ]
+          },
+          {
+            "kinds": [ { "kind": "ClaimRecoveryDelivery", "factory": "CreateClaimRecoveryDelivery" } ],
+            "fields": [
+              { "field": "RecoveryDeliveryId", "nonEmpty": true },
+              { "field": "ExpectedRecoveryDeliveryRevision", "minimum": 0 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "Items" }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "ItemOperationResult",
@@ -687,8 +875,53 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "codec": "handWritten",
-      "description": "The committed or rejected outcome of an item operation."
+      "codec": "generated",
+      "description": "The committed or rejected outcome of an item operation.",
+      "parameter": "result",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The operation that this result answers."
+        },
+        { "name": "OperationKind", "type": "ItemOperationKind", "description": "The kind of the operation." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the operation committed." },
+        {
+          "name": "RequiresInventoryRefresh",
+          "type": "bool",
+          "description": "Whether the client must reload its inventory."
+        },
+        {
+          "name": "CarryState",
+          "type": "CarryState",
+          "description": "The committed carry state after the operation."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." },
+        {
+          "name": "ItemRevisions",
+          "type": "array",
+          "items": "ItemRevision",
+          "maxCount": "MaximumItemResultItemRevisions",
+          "description": "The committed item revisions; empty when the operation failed."
+        },
+        {
+          "name": "ContainerRevisions",
+          "type": "array",
+          "items": "ContainerRevision",
+          "maxCount": "MaximumItemResultContainerRevisions",
+          "description": "The committed container revisions; empty when the operation failed."
+        },
+        {
+          "name": "RecoveryDeliveryIds",
+          "type": "array",
+          "items": { "type": "guid", "nonEmpty": true },
+          "maxCount": "MaximumItemResultRecoveryDeliveries",
+          "description": "The Recovery deliveries the operation changed; empty when the operation failed."
+        }
+      ]
     },
     {
       "name": "CorpsePresenceSnapshotChunk",

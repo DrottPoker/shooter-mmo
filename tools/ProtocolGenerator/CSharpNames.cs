@@ -37,6 +37,14 @@ public static class CSharpNames
         return Keywords.Contains(name) ? "@" + name : name;
     }
 
+    public static bool IsParameterName(string name)
+    {
+        return name.Length > 0
+            && char.IsLower(name[0])
+            && name.All(char.IsAsciiLetterOrDigit)
+            && !Keywords.Contains(name);
+    }
+
     // A local variable that never collides with a generated name.
     public static string Local(string pascalName)
     {

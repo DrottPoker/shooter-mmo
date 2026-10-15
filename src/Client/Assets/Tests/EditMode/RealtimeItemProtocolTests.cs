@@ -43,8 +43,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeItemOperationKind.Destroy,
                 true,
                 false,
-                null,
                 new RealtimeCarryState(8, 0, 200),
+                null,
                 Array.Empty<RealtimeItemRevision>(),
                 new[] { new RealtimeContainerRevision(Guid.NewGuid(), 4) },
                 Array.Empty<Guid>());

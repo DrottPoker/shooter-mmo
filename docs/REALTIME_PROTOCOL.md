@@ -75,14 +75,15 @@ Structural phase 2 moves the families into the schema one at a time:
 | --- | --- |
 | `Movement` | Generated; `Movement/RealtimeProtocol.Movement.cs` holds its cross-field rules |
 | `Replication` | Generated; no hand-written rules |
-| `Items` | Hand-written |
+| `Items` | Generated; `Items/RealtimeProtocol.Items.cs` holds its cross-field rules |
 | `Session` | Hand-written |
 | `WorldActors` | Hand-written |
 | `Corpses` | Hand-written |
 
 Hand-written codecs call the generated struct helpers, such as
-`WritePlayerState` and `TryReadMovementSettings`, which keep the names the
-hand-written code used before.
+`WritePlayerState`, `TryReadMovementSettings`, and `WriteCarryState`, which
+keep the names the hand-written code used before. `RealtimeError` is the
+generated `Error` struct of the `Session` family.
 
 The quality gate, CI, and `ProtocolGeneratorTests` in `Mmorpg.Tools.Tests` all
 fail when a generated file is stale, missing, or not produced by the schema.
@@ -137,6 +138,36 @@ decode methods should take that value directly, as `MovementInputBatch` takes
 message with arrays, become public `RealtimeProtocol` constants such as
 `OwnerSimulationSnapshotPacketSize`, so code that budgets packets never repeats
 a size by hand.
+
+## Variants And Conditional Fields
+
+A field with `"when": "!Succeeded"` is a struct that is written only while the
+named earlier `bool` field is false, or true without the `!`. Its property is
+null otherwise, and validation requires exactly that. The item, corpse, and
+world interaction results carry their `Error` this way.
+
+A message whose fields depend on a kind, such as `ItemOperationIntent`, lists
+`variants`:
+
+- `discriminator` names the enum field among the message fields that selects a
+  case. Every enum value must belong to exactly one case.
+- `fields` lists every variant field once, with its type and description. A
+  field gets its rules in each case, and `absent` sets the integer value it has
+  in cases that do not carry it. Other types use `Guid.Empty`, `0`, an empty
+  string, an empty array, or null.
+- Each case lists its `kinds`, each with the name of its factory method, and
+  the variant fields it writes after the common fields, in wire order, with
+  their rules. `parameter` renames a factory parameter and `parameterDefault`
+  gives it a default.
+- `common` entries apply rules to the message fields in one case. A `fixed`
+  entry is written as the model value, which must equal it, and decoded as the
+  fixed value whatever the wire carries; factories leave it out.
+- A `group` entry is written as a `bool` that is true when its `presence`
+  field differs from its absent value, followed by the group's fields only
+  when it is true.
+
+The generated class has an internal constructor for the decoder and one public
+factory per kind, so a variant can only be built with its own fields.
 
 ## Size Limits
 

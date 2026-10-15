@@ -5,7 +5,7 @@
   "description": "Editor support for realtime-protocol.json. tools/ProtocolGenerator validates the same rules and more, such as unique message ids and sizes.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["description", "protocol", "limits", "enums", "messages"],
+  "required": [ "description", "protocol", "limits", "enums", "messages" ],
   "properties": {
     "$schema": { "type": "string" },
     "description": { "$ref": "#/$defs/text" },
@@ -40,7 +40,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "id", "description"],
+            "required": [ "name", "id", "description" ],
             "properties": {
               "name": { "$ref": "#/$defs/name" },
               "id": { "type": "integer", "minimum": 0, "maximum": 254 },
@@ -55,13 +55,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "value", "visibility", "description"],
+        "required": [ "name", "value", "visibility", "description" ],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
           "value": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "visibility": {
             "description": "public: a RealtimeProtocolLimits constant for content compilers. protocol: a public RealtimeProtocol constant. private: a private RealtimeProtocol constant.",
-            "enum": ["public", "protocol", "private"]
+            "enum": [ "public", "protocol", "private" ]
           },
           "description": { "$ref": "#/$defs/text" }
         }
@@ -72,7 +72,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "family", "description", "values"],
+        "required": [ "name", "family", "description", "values" ],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
           "family": { "$ref": "#/$defs/name" },
@@ -84,7 +84,7 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["name", "value"],
+              "required": [ "name", "value" ],
               "properties": {
                 "name": { "$ref": "#/$defs/name" },
                 "value": { "type": "integer", "minimum": 0, "maximum": 255 },
@@ -100,7 +100,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "family", "description", "fields"],
+        "required": [ "name", "family", "description", "fields" ],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
           "family": { "$ref": "#/$defs/name" },
@@ -121,7 +121,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "id", "family", "direction", "channel", "delivery", "codec", "description"],
+        "required": [ "name", "id", "family", "direction", "channel", "delivery", "codec", "description" ],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
           "id": {
@@ -131,17 +131,17 @@
             "maximum": 255
           },
           "family": { "$ref": "#/$defs/name" },
-          "direction": { "enum": ["clientToServer", "serverToClient"] },
+          "direction": { "enum": [ "clientToServer", "serverToClient" ] },
           "channel": { "$ref": "#/$defs/name" },
-          "delivery": { "enum": ["reliableOrdered", "sequenced", "unreliable"] },
+          "delivery": { "enum": [ "reliableOrdered", "sequenced", "unreliable" ] },
           "codec": {
             "description": "handWritten: the family folder still encodes and decodes the message by hand. generated: the generator writes the model and the codec from fields.",
-            "enum": ["handWritten", "generated"]
+            "enum": [ "handWritten", "generated" ]
           },
           "description": { "$ref": "#/$defs/text" },
           "api": {
             "description": "class: encode and decode a generated message class. unwrap: the message has one field, and encode and decode use its value directly.",
-            "enum": ["class", "unwrap"]
+            "enum": [ "class", "unwrap" ]
           },
           "parameter": {
             "description": "The parameter name of the encode and decode methods.",
@@ -164,20 +164,22 @@
             "description": "Required when a reliable message can exceed the packet limit; encoding then throws InvalidOperationException for an oversized packet.",
             "type": "boolean"
           },
-          "fields": { "$ref": "#/$defs/fields" }
+          "fields": { "$ref": "#/$defs/fields" },
+          "variants": { "$ref": "#/$defs/variants" }
         },
         "if": { "properties": { "codec": { "const": "generated" } } },
-        "then": { "required": ["fields"] },
+        "then": { "required": [ "fields" ] },
         "else": {
           "not": {
             "anyOf": [
-              { "required": ["fields"] },
-              { "required": ["api"] },
-              { "required": ["parameter"] },
-              { "required": ["rules"] },
-              { "required": ["sizeConstant"] },
-              { "required": ["emptySizeConstant"] },
-              { "required": ["runtimeSizeCheck"] }
+              { "required": [ "fields" ] },
+              { "required": [ "api" ] },
+              { "required": [ "parameter" ] },
+              { "required": [ "rules" ] },
+              { "required": [ "sizeConstant" ] },
+              { "required": [ "emptySizeConstant" ] },
+              { "required": [ "runtimeSizeCheck" ] },
+              { "required": [ "variants" ] }
             ]
           }
         },
@@ -186,11 +188,86 @@
     }
   },
   "$defs": {
+    "caseEntry": {
+      "description": "A field in one case of a message with variants, with its rules in that case.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [ "field" ],
+      "properties": {
+        "field": { "$ref": "#/$defs/name" },
+        "minimum": { "$ref": "#/$defs/bound" },
+        "maximum": { "$ref": "#/$defs/bound" },
+        "exclusiveMinimum": { "type": "number" },
+        "exclusiveMaximum": { "type": "number" },
+        "nonEmpty": { "type": "boolean" },
+        "lessThan": { "$ref": "#/$defs/name" },
+        "format": { "enum": [ "any", "guid" ] },
+        "oneOf": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "fixed": {
+          "description": "Encoded as the model value, which must equal it, and decoded as this value whatever the wire carries: an integer, or empty for a guid.",
+          "anyOf": [ { "type": "integer" }, { "const": "empty" } ]
+        },
+        "parameter": { "description": "The factory parameter name.", "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "parameterDefault": {
+          "description": "The factory parameter default: an integer, default, or the name of an enum value.",
+          "anyOf": [ { "type": "integer" }, { "type": "string" } ]
+        }
+      }
+    },
+    "variants": {
+      "description": "The discriminator field selects a case, and the case's fields follow the common fields on the wire.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [ "discriminator", "fields", "cases" ],
+      "properties": {
+        "discriminator": { "$ref": "#/$defs/name" },
+        "fields": { "$ref": "#/$defs/fields" },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [ "kinds", "fields" ],
+            "properties": {
+              "kinds": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [ "kind", "factory" ],
+                  "properties": { "kind": { "$ref": "#/$defs/name" }, "factory": { "$ref": "#/$defs/name" } }
+                }
+              },
+              "common": { "type": "array", "items": { "$ref": "#/$defs/caseEntry" } },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    { "$ref": "#/$defs/caseEntry" },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [ "group", "presence" ],
+                      "properties": {
+                        "group": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/caseEntry" } },
+                        "presence": { "$ref": "#/$defs/name" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
     "text": { "type": "string", "minLength": 1 },
     "bound": {
       "description": "A number, or the name of a limit for integer fields.",
-      "anyOf": [{ "type": "number" }, { "$ref": "#/$defs/name" }]
+      "anyOf": [ { "type": "number" }, { "$ref": "#/$defs/name" } ]
     },
     "type": {
       "description": "u8, u16, u32, u64, i32, i64, f32, bool, guid, string, array, bits8, or the name of an enum or struct.",
@@ -203,7 +280,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "type"],
+        "required": [ "name", "type" ],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
           "description": { "$ref": "#/$defs/text" },
@@ -214,12 +291,26 @@
           "exclusiveMaximum": { "type": "number" },
           "nonEmpty": { "type": "boolean" },
           "lessThan": { "$ref": "#/$defs/name" },
+          "when": {
+            "description": "A struct field written only while the named earlier bool field is true, or false with a leading !.",
+            "type": "string",
+            "pattern": "^!?[A-Z][A-Za-z0-9]*$"
+          },
+          "absent": {
+            "description": "In variants.fields only: the integer value in cases that do not carry the field.",
+            "type": "integer"
+          },
           "maxLength": {
             "description": "The most UTF-16 characters of a string: a number or the name of a limit.",
             "$ref": "#/$defs/bound"
           },
-          "format": { "description": "guid: the text must be a GUID that Guid.TryParse accepts.", "enum": ["any", "guid"] },
-          "oneOf": { "description": "The only allowed values of a string.", "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "format": { "description": "guid: the text must be a GUID that Guid.TryParse accepts.", "enum": [ "any", "guid" ] },
+          "oneOf": {
+            "description": "The only allowed values of a string.",
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          },
           "items": {
             "description": "The element type of an array, or an object with the type and its value rules.",
             "anyOf": [
@@ -227,7 +318,7 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["type"],
+                "required": [ "type" ],
                 "properties": {
                   "type": { "$ref": "#/$defs/type" },
                   "minimum": { "$ref": "#/$defs/bound" },
@@ -236,7 +327,7 @@
                   "exclusiveMaximum": { "type": "number" },
                   "nonEmpty": { "type": "boolean" },
                   "maxLength": { "$ref": "#/$defs/bound" },
-                  "format": { "enum": ["any", "guid"] },
+                  "format": { "enum": [ "any", "guid" ] },
                   "oneOf": { "type": "array", "minItems": 1, "items": { "type": "string" } }
                 }
               }
@@ -254,11 +345,8 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["name"],
-              "properties": {
-                "name": { "$ref": "#/$defs/name" },
-                "description": { "$ref": "#/$defs/text" }
-              }
+              "required": [ "name" ],
+              "properties": { "name": { "$ref": "#/$defs/name" }, "description": { "$ref": "#/$defs/text" } }
             }
           }
         }

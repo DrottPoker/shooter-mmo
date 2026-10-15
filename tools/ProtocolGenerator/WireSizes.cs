@@ -40,13 +40,38 @@ public static class WireSizes
 
     public static SizeRange OfFields(IEnumerable<FieldDefinition> fields)
     {
-        return fields.Aggregate(SizeRange.Fixed(0), (total, field) => total + Of(field.Type));
+        return fields.Aggregate(SizeRange.Fixed(0), (total, field) => total + OfField(field));
     }
 
-    // The whole packet, including the frame header.
+    // A conditional field may be absent.
+    public static SizeRange OfField(FieldDefinition field)
+    {
+        var size = Of(field.Type);
+        return field.Presence == FieldPresence.Conditional ? new SizeRange(0, size.Maximum) : size;
+    }
+
+    // The whole packet, including the frame header and the smallest and largest case.
     public static SizeRange OfMessage(MessageDefinition message)
     {
-        return SizeRange.Fixed(FrameHeaderSize) + OfFields(message.Fields);
+        var size = SizeRange.Fixed(FrameHeaderSize) + OfFields(message.Fields);
+        if (message.Union is null)
+        {
+            return size;
+        }
+
+        var cases = message.Union.Cases.Select(unionCase => OfEntries(unionCase.Entries)).ToArray();
+        return size + new SizeRange(cases.Min(range => range.Minimum), cases.Max(range => range.Maximum));
+    }
+
+    // A group is a bool, then its fields when present.
+    private static SizeRange OfEntries(IEnumerable<UnionEntry> entries)
+    {
+        return entries.Aggregate(SizeRange.Fixed(0), (total, entry) => total + entry switch
+        {
+            UnionFieldEntry field => Of(field.Field.Type),
+            UnionGroupEntry group => new SizeRange(1, 1 + group.Fields.Sum(member => Of(member.Field.Type).Maximum)),
+            _ => throw new InvalidOperationException($"Unknown entry {entry}.")
+        });
     }
 
     // The packet size when every top-level array is empty.

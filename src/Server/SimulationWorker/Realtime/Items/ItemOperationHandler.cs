@@ -227,10 +227,10 @@ internal sealed class ItemOperationHandler(
             result.Intent.OperationKind,
             result.Succeeded,
             requiresInventoryRefresh,
+            RealtimeStateMapper.ToRealtimeCarryState(carryState!),
             result.Succeeded
                 ? null
                 : new RealtimeError(result.Error!.Code, result.Error.Message),
-            RealtimeStateMapper.ToRealtimeCarryState(carryState!),
             result.Succeeded
                 ? transaction!.ItemRevisions
                     .Select(revision => new RealtimeItemRevision(

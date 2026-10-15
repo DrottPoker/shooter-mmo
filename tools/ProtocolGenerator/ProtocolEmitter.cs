@@ -107,7 +107,14 @@ public static class ProtocolEmitter
         foreach (var message in messages.Where(message => message.Api == MessageApi.Class))
         {
             writer.BlankLine();
-            CodecEmitter.EmitModel(writer, message.ClassName, message.Description, message.Fields);
+            if (message.Union is null)
+            {
+                CodecEmitter.EmitModel(writer, message.ClassName, message.Description, message.Fields);
+            }
+            else
+            {
+                CodecEmitter.EmitUnionModel(writer, message);
+            }
         }
 
         if (hasCodec)

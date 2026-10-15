@@ -164,7 +164,55 @@ public enum StringFormat
 
 public sealed record ElementDefinition(WireType Type, ValueRules Rules);
 
-public sealed record FieldDefinition(string Name, string? Description, WireType Type, ValueRules Rules);
+// How a field reaches the wire.
+public enum FieldPresence
+{
+    // Always written.
+    Always,
+
+    // Written only while the bool field named by ConditionField has ConditionValue.
+    Conditional
+}
+
+public sealed record FieldDefinition(string Name, string? Description, WireType Type, ValueRules Rules)
+{
+    public FieldPresence Presence { get; init; } = FieldPresence.Always;
+
+    public string? ConditionField { get; init; }
+
+    public bool ConditionValue { get; init; }
+}
+
+// A message whose discriminator field decides which variant fields follow the common
+// fields on the wire. Each case has factory methods, one per discriminator value.
+public sealed record UnionDefinition(
+    string Discriminator,
+    IReadOnlyList<UnionPoolField> Pool,
+    IReadOnlyList<UnionCase> Cases);
+
+// A variant field and the C# value it has in cases that do not carry it.
+public sealed record UnionPoolField(FieldDefinition Field, string AbsentValue);
+
+public sealed record UnionCase(
+    IReadOnlyList<UnionKind> Kinds,
+    IReadOnlyList<UnionEntry> Entries,
+    IReadOnlyList<UnionFieldEntry> CommonOverrides);
+
+public sealed record UnionKind(EnumValueDefinition Value, string Factory);
+
+public abstract record UnionEntry;
+
+// A field in one case: its rules there, and optionally a fixed value. A fixed field is
+// written as the model value, which must equal it, and decoded as the fixed value
+// whatever the wire carries. Factories leave fixed fields out.
+public sealed record UnionFieldEntry(
+    FieldDefinition Field,
+    string? FixedValue,
+    string? ParameterName,
+    string? ParameterDefault) : UnionEntry;
+
+// Fields behind a bool that is true when the presence field differs from its absent value.
+public sealed record UnionGroupEntry(string PresenceField, IReadOnlyList<UnionFieldEntry> Fields) : UnionEntry;
 
 public sealed class StructDefinition
 {
@@ -241,4 +289,5 @@ public sealed record MessageDefinition(
     string? SizeConstant,
     string? EmptySizeConstant,
     bool RuntimeSizeCheck,
-    IReadOnlyList<FieldDefinition> Fields);
+    IReadOnlyList<FieldDefinition> Fields,
+    UnionDefinition? Union = null);

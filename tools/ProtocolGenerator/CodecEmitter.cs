@@ -42,24 +42,30 @@ internal static class CodecEmitter
         var members = Members(fields).ToArray();
         writer.Summary(description);
         writer.Open($"public sealed partial class {className}");
-        writer.Line($"public {className}(");
-        for (var index = 0; index < members.Length - 1; index++)
-        {
-            writer.Line($"    {members[index].Type} {CSharpNames.Parameter(members[index].Name)},");
-        }
-
-        writer.Open($"    {members[^1].Type} {CSharpNames.Parameter(members[^1].Name)})");
-        foreach (var member in members)
-        {
-            writer.Line($"{member.Name} = {CSharpNames.Parameter(member.Name)};");
-        }
-
+        EmitConstructor(writer, "public", className, members);
+        EmitProperties(writer, members);
         writer.Close();
-        foreach (var member in members)
+    }
+
+    // A message with variants: an internal constructor for the decoder and one factory per
+    // discriminator value.
+    public static void EmitUnionModel(CSharpWriter writer, MessageDefinition message)
+    {
+        var union = message.Union!;
+        var members = Members(message.Fields)
+            .Concat(union.Pool.Select(pool => new Member(pool.Field.Name, TypeName(pool.Field.Type), pool.Field.Description)))
+            .ToArray();
+        writer.Summary(message.Description);
+        writer.Open($"public sealed partial class {message.ClassName}");
+        EmitConstructor(writer, "internal", message.ClassName, members);
+        EmitProperties(writer, members);
+        foreach (var unionCase in union.Cases)
         {
-            writer.BlankLine();
-            writer.Summary(member.Description);
-            writer.Line($"public {member.Type} {member.Name} {{ get; }}");
+            foreach (var kind in unionCase.Kinds)
+            {
+                writer.BlankLine();
+                EmitFactory(writer, message, unionCase, kind);
+            }
         }
 
         writer.Close();
@@ -73,12 +79,12 @@ internal static class CodecEmitter
         writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")}, nameof(value));");
         writer.Close();
         writer.BlankLine();
-        EmitWrites(writer, definition.Fields, unwrap: false);
+        EmitWrites(writer, definition.Fields, unwrap: false, union: null, display);
         writer.Close();
         writer.BlankLine();
-        EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, validate: true);
+        EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, validate: true, union: null);
         writer.BlankLine();
-        EmitIsValid(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, definition.Rules);
+        EmitIsValid(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, definition.Rules, union: null);
     }
 
     public static void EmitMessageCodec(CSharpWriter writer, MessageDefinition message)
@@ -86,7 +92,8 @@ internal static class CodecEmitter
         var unwrap = message.Api == MessageApi.Unwrap;
         var modelType = unwrap ? TypeName(message.Fields[0].Type) : message.ClassName;
         var parameter = message.Parameter;
-        var invalid = CSharpWriter.Literal(CSharpNames.Display(message.Name) + " is invalid.");
+        var display = CSharpNames.Display(message.Name);
+        var invalid = CSharpWriter.Literal(display + " is invalid.");
         writer.Summary(message.Description);
         writer.Open($"public static byte[] Encode{message.Name}({modelType} {parameter})");
         writer.Open($"if (!IsValid{message.Name}({parameter}))");
@@ -119,12 +126,12 @@ internal static class CodecEmitter
         writer.Close();
         writer.BlankLine();
         writer.Open($"private static void Write{message.Name}(BinaryWriter writer, {modelType} value)");
-        EmitWrites(writer, message.Fields, unwrap);
+        EmitWrites(writer, message.Fields, unwrap, message.Union, display);
         writer.Close();
         writer.BlankLine();
-        EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, validate: false);
+        EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, validate: false, message.Union);
         writer.BlankLine();
-        EmitIsValid(writer, message.Name, modelType, message.Fields, unwrap, message.Rules);
+        EmitIsValid(writer, message.Name, modelType, message.Fields, unwrap, message.Rules, message.Union);
     }
 
     public static void EmitIsDefined(CSharpWriter writer, EnumDefinition definition)
@@ -155,9 +162,11 @@ internal static class CodecEmitter
     // The enums that generated validation checks, so their IsDefined helpers are emitted.
     public static IEnumerable<EnumDefinition> CheckedEnums(ProtocolModel model)
     {
+        var messages = model.Messages.Where(message => message.Codec == MessageCodec.Generated).ToArray();
         var fields = model.Structs.SelectMany(definition => definition.Fields)
-            .Concat(model.Messages.Where(message => message.Codec == MessageCodec.Generated)
-                .SelectMany(message => message.Fields));
+            .Concat(messages.SelectMany(message => message.Fields))
+            .Concat(messages.Where(message => message.Union is not null)
+                .SelectMany(message => message.Union!.Pool.Select(pool => pool.Field)));
         return fields.SelectMany(field => EnumsOf(field.Type)).Distinct();
     }
 
@@ -199,7 +208,126 @@ internal static class CodecEmitter
         }
     }
 
-    private static void EmitWrites(CSharpWriter writer, IReadOnlyList<FieldDefinition> fields, bool unwrap)
+    private static void EmitConstructor(CSharpWriter writer, string access, string className, IReadOnlyList<Member> members)
+    {
+        writer.Line($"{access} {className}(");
+        for (var index = 0; index < members.Count - 1; index++)
+        {
+            writer.Line($"    {members[index].Type} {CSharpNames.Parameter(members[index].Name)},");
+        }
+
+        writer.Open($"    {members[^1].Type} {CSharpNames.Parameter(members[^1].Name)})");
+        foreach (var member in members)
+        {
+            writer.Line($"{member.Name} = {CSharpNames.Parameter(member.Name)};");
+        }
+
+        writer.Close();
+    }
+
+    private static void EmitProperties(CSharpWriter writer, IEnumerable<Member> members)
+    {
+        foreach (var member in members)
+        {
+            writer.BlankLine();
+            writer.Summary(member.Description);
+            writer.Line($"public {member.Type} {member.Name} {{ get; }}");
+        }
+    }
+
+    private static void EmitFactory(CSharpWriter writer, MessageDefinition message, UnionCase unionCase, UnionKind kind)
+    {
+        var union = message.Union!;
+        var entries = CaseFields(unionCase).ToDictionary(entry => entry.Field.Name);
+        var overrides = unionCase.CommonOverrides.ToDictionary(entry => entry.Field.Name);
+        var parameters = new List<string>();
+        var arguments = new List<string>();
+        foreach (var field in message.Fields)
+        {
+            if (field.Name == union.Discriminator)
+            {
+                arguments.Add($"{TypeName(field.Type)}.{kind.Value.Name}");
+            }
+            else if (overrides.TryGetValue(field.Name, out var fixedField) && fixedField.FixedValue is not null)
+            {
+                arguments.Add(fixedField.FixedValue);
+            }
+            else
+            {
+                parameters.Add($"{TypeName(field.Type)} {CSharpNames.Parameter(field.Name)}");
+                arguments.Add(CSharpNames.Parameter(field.Name));
+            }
+        }
+
+        foreach (var entry in CaseFields(unionCase).Where(entry => entry.FixedValue is null))
+        {
+            var name = entry.ParameterName ?? CSharpNames.Parameter(entry.Field.Name);
+            var defaultValue = entry.ParameterDefault is null ? string.Empty : " = " + entry.ParameterDefault;
+            parameters.Add($"{TypeName(entry.Field.Type)} {name}{defaultValue}");
+        }
+
+        foreach (var pool in union.Pool)
+        {
+            arguments.Add(entries.TryGetValue(pool.Field.Name, out var entry)
+                ? entry.FixedValue ?? entry.ParameterName ?? CSharpNames.Parameter(pool.Field.Name)
+                : pool.AbsentValue);
+        }
+
+        writer.Line($"public static {message.ClassName} {kind.Factory}(");
+        for (var index = 0; index < parameters.Count - 1; index++)
+        {
+            writer.Line($"    {parameters[index]},");
+        }
+
+        writer.Open($"    {parameters[^1]})");
+        writer.Line($"return new {message.ClassName}(");
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            writer.Line($"    {arguments[index]}{(index + 1 < arguments.Count ? "," : ");")}");
+        }
+
+        writer.Close();
+    }
+
+    private static IEnumerable<UnionFieldEntry> CaseFields(UnionCase unionCase)
+    {
+        return unionCase.Entries.SelectMany(entry => entry is UnionGroupEntry group ? group.Fields : [(UnionFieldEntry)entry]);
+    }
+
+    private static string Condition(FieldDefinition field, string prefix)
+    {
+        return (field.ConditionValue ? string.Empty : "!") + prefix + field.ConditionField;
+    }
+
+    // True when a group's presence field holds a value other than its absent value.
+    private static string Presence(WireType type, string expression)
+    {
+        return type switch
+        {
+            PrimitiveType { Kind: PrimitiveKind.Guid } => $"{expression} != Guid.Empty",
+            PrimitiveType { Kind: PrimitiveKind.Bool } => expression,
+            PrimitiveType => $"{expression} != 0",
+            StringWireType => $"!string.IsNullOrWhiteSpace({expression})",
+            _ => $"{expression} != null"
+        };
+    }
+
+    private static void OpenCaseLabels(CSharpWriter writer, UnionCase unionCase, string enumClass)
+    {
+        for (var index = 0; index < unionCase.Kinds.Count - 1; index++)
+        {
+            writer.Line($"case {enumClass}.{unionCase.Kinds[index].Value.Name}:");
+        }
+
+        writer.Open($"case {enumClass}.{unionCase.Kinds[^1].Value.Name}:");
+    }
+
+    private static void EmitWrites(
+        CSharpWriter writer,
+        IReadOnlyList<FieldDefinition> fields,
+        bool unwrap,
+        UnionDefinition? union,
+        string display)
     {
         foreach (var field in fields)
         {
@@ -210,8 +338,58 @@ internal static class CodecEmitter
                 continue;
             }
 
+            if (field.Presence == FieldPresence.Conditional)
+            {
+                writer.Open($"if ({Condition(field, "value.")})");
+                EmitWrite(writer, field.Type, "value." + field.Name);
+                writer.Close();
+                continue;
+            }
+
             EmitWrite(writer, field.Type, unwrap ? "value" : "value." + field.Name);
         }
+
+        if (union is null)
+        {
+            return;
+        }
+
+        var enumClass = TypeName(fields.Single(field => field.Name == union.Discriminator).Type);
+        writer.BlankLine();
+        writer.Open($"switch (value.{union.Discriminator})");
+        foreach (var unionCase in union.Cases)
+        {
+            OpenCaseLabels(writer, unionCase, enumClass);
+            foreach (var entry in unionCase.Entries)
+            {
+                if (entry is UnionGroupEntry group)
+                {
+                    var presenceType = group.Fields.Single(member => member.Field.Name == group.PresenceField).Field.Type;
+                    var flag = "has" + group.PresenceField;
+                    writer.Line($"var {flag} = {Presence(presenceType, "value." + group.PresenceField)};");
+                    writer.Line($"writer.Write({flag});");
+                    writer.Open($"if ({flag})");
+                    foreach (var member in group.Fields)
+                    {
+                        EmitWrite(writer, member.Field.Type, "value." + member.Field.Name);
+                    }
+
+                    writer.Close();
+                    continue;
+                }
+
+                var field = (UnionFieldEntry)entry;
+                EmitWrite(writer, field.Field.Type, "value." + field.Field.Name);
+            }
+
+            writer.Line("break;");
+            writer.Close();
+        }
+
+        writer.Open("default:");
+        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")}, nameof(value));");
+        writer.Close();
+        writer.Close();
     }
 
     private static void EmitWrite(CSharpWriter writer, WireType type, string expression)
@@ -250,7 +428,8 @@ internal static class CodecEmitter
         string modelType,
         IReadOnlyList<FieldDefinition> fields,
         bool unwrap,
-        bool validate)
+        bool validate,
+        UnionDefinition? union)
     {
         writer.Open($"private static bool TryRead{name}(BinaryReader reader, out {modelType} value, out string error)");
         writer.Line($"value = {DefaultValue(modelType)};");
@@ -258,7 +437,7 @@ internal static class CodecEmitter
         foreach (var field in fields)
         {
             var local = CSharpNames.Local(field.Name);
-            var fieldDisplay = CSharpNames.Display(name) + " " + CSharpNames.Display(field.Name).ToLowerInvariant();
+            var fieldDisplay = FieldDisplay(name, field.Name);
             if (field.Type is BitsWireType bits)
             {
                 EmitPrimitiveRead(writer, "Byte", local);
@@ -273,7 +452,25 @@ internal static class CodecEmitter
                 continue;
             }
 
+            if (field.Presence == FieldPresence.Conditional)
+            {
+                writer.Line($"{TypeName(field.Type)} {local} = null;");
+                var conditionLocal = CSharpNames.Local(field.ConditionField!);
+                writer.Open($"if ({(field.ConditionValue ? string.Empty : "!")}{conditionLocal})");
+                EmitReadInto(writer, field.Type, local, fieldDisplay);
+                writer.Close();
+                writer.BlankLine();
+                arguments.Add(local);
+                continue;
+            }
+
             arguments.Add(EmitRead(writer, field.Type, local, fieldDisplay));
+        }
+
+        if (union is not null)
+        {
+            EmitUnionReads(writer, name, fields, union);
+            arguments.AddRange(union.Pool.Select(pool => CSharpNames.Local(pool.Field.Name)));
         }
 
         if (fields.Count == 0)
@@ -304,10 +501,74 @@ internal static class CodecEmitter
         writer.Line("return false;");
         writer.Close();
         writer.BlankLine();
-
         writer.Line("value = decoded;");
         writer.Line("return true;");
         writer.Close();
+    }
+
+    private static void EmitUnionReads(CSharpWriter writer, string name, IReadOnlyList<FieldDefinition> fields, UnionDefinition union)
+    {
+        foreach (var pool in union.Pool)
+        {
+            writer.Line($"{TypeName(pool.Field.Type)} {CSharpNames.Local(pool.Field.Name)} = {pool.AbsentValue};");
+        }
+
+        writer.BlankLine();
+        var enumClass = TypeName(fields.Single(field => field.Name == union.Discriminator).Type);
+        writer.Open($"switch ({CSharpNames.Local(union.Discriminator)})");
+        foreach (var unionCase in union.Cases)
+        {
+            OpenCaseLabels(writer, unionCase, enumClass);
+            foreach (var fixedField in unionCase.CommonOverrides.Where(entry => entry.FixedValue is not null))
+            {
+                writer.Line($"{CSharpNames.Local(fixedField.Field.Name)} = {fixedField.FixedValue};");
+                writer.BlankLine();
+            }
+
+            foreach (var entry in unionCase.Entries)
+            {
+                if (entry is UnionGroupEntry group)
+                {
+                    var flag = "has" + group.PresenceField;
+                    EmitPrimitiveRead(writer, "Boolean", flag);
+                    writer.Open($"if ({flag})");
+                    foreach (var member in group.Fields)
+                    {
+                        EmitReadInto(writer, member.Field.Type, CSharpNames.Local(member.Field.Name), FieldDisplay(name, member.Field.Name));
+                    }
+
+                    writer.Close();
+                    writer.BlankLine();
+                    continue;
+                }
+
+                var field = (UnionFieldEntry)entry;
+                if (field.FixedValue is not null)
+                {
+                    EmitDiscardRead(writer, field.Field.Type);
+                    writer.Line($"{CSharpNames.Local(field.Field.Name)} = {field.FixedValue};");
+                    writer.BlankLine();
+                    continue;
+                }
+
+                EmitReadInto(writer, field.Field.Type, CSharpNames.Local(field.Field.Name), FieldDisplay(name, field.Field.Name));
+            }
+
+            writer.Line("break;");
+            writer.Close();
+        }
+
+        writer.Open("default:");
+        writer.Line($"error = {CSharpWriter.Literal(FieldDisplay(name, union.Discriminator) + " is invalid.")};");
+        writer.Line("return false;");
+        writer.Close();
+        writer.Close();
+        writer.BlankLine();
+    }
+
+    private static string FieldDisplay(string owner, string field)
+    {
+        return CSharpNames.Display(owner) + " " + CSharpNames.Display(field).ToLowerInvariant();
     }
 
     // Reads one value into a new local and returns the expression that holds it.
@@ -336,29 +597,86 @@ internal static class CodecEmitter
                 writer.BlankLine();
                 return local;
             case ArrayWireType array:
-                EmitPrimitiveRead(writer, "Byte", local + "Count");
-                var conditions = new List<string>();
-                if (array.MinimumCount > 0)
-                {
-                    conditions.Add($"{local}Count < {array.MinimumCount}");
-                }
-
-                conditions.Add($"{local}Count > {array.MaximumCount.Expression}");
-                writer.Open($"if ({string.Join(" || ", conditions)})");
-                writer.Line($"error = {CSharpWriter.Literal(display + " count is invalid.")};");
-                writer.Line("return false;");
-                writer.Close();
-                writer.BlankLine();
+                EmitArrayCount(writer, array, local, display);
                 writer.Line($"var {local} = new {ArrayAllocation(array, local + "Count")};");
-                writer.Open($"for (var index = 0; index < {local}.Length; index++)");
-                var element = EmitRead(writer, array.Element.Type, "element", display);
-                writer.Line($"{local}[index] = {element};");
-                writer.Close();
-                writer.BlankLine();
+                EmitArrayElements(writer, array, local, display);
                 return local;
             default:
                 throw new InvalidOperationException($"Type {type} cannot be read.");
         }
+    }
+
+    // Reads one value into an existing local.
+    private static void EmitReadInto(CSharpWriter writer, WireType type, string target, string display)
+    {
+        switch (type)
+        {
+            case PrimitiveType primitive:
+                writer.Open($"if (!TryRead{ReaderSuffix(primitive.Kind)}(reader, out {target}, out error))");
+                break;
+            case StringWireType text:
+                writer.Open($"if (!TryReadString(reader, {text.MaximumLength.Expression}, out {target}, out error))");
+                break;
+            case EnumWireType enumType:
+                EmitPrimitiveRead(writer, "Byte", target + "Byte");
+                writer.Line($"{target} = ({enumType.Definition.ClassName}){target}Byte;");
+                writer.BlankLine();
+                return;
+            case StructWireType structType:
+                writer.Open($"if (!TryRead{structType.Definition.Name}(reader, out {target}, out error))");
+                break;
+            case ArrayWireType array:
+                EmitArrayCount(writer, array, target, display);
+                writer.Line($"{target} = new {ArrayAllocation(array, target + "Count")};");
+                EmitArrayElements(writer, array, target, display);
+                return;
+            default:
+                throw new InvalidOperationException($"Type {type} cannot be read.");
+        }
+
+        writer.Line("return false;");
+        writer.Close();
+        writer.BlankLine();
+    }
+
+    // Reads a fixed variant field whose value the decoder replaces.
+    private static void EmitDiscardRead(CSharpWriter writer, WireType type)
+    {
+        var call = type switch
+        {
+            PrimitiveType primitive => $"TryRead{ReaderSuffix(primitive.Kind)}(reader, out _, out error)",
+            _ => throw new InvalidOperationException($"Fixed fields of type {type} are not supported.")
+        };
+        writer.Open($"if (!{call})");
+        writer.Line("return false;");
+        writer.Close();
+        writer.BlankLine();
+    }
+
+    private static void EmitArrayCount(CSharpWriter writer, ArrayWireType array, string local, string display)
+    {
+        EmitPrimitiveRead(writer, "Byte", local + "Count");
+        var conditions = new List<string>();
+        if (array.MinimumCount > 0)
+        {
+            conditions.Add($"{local}Count < {array.MinimumCount}");
+        }
+
+        conditions.Add($"{local}Count > {array.MaximumCount.Expression}");
+        writer.Open($"if ({string.Join(" || ", conditions)})");
+        writer.Line($"error = {CSharpWriter.Literal(display + " count is invalid.")};");
+        writer.Line("return false;");
+        writer.Close();
+        writer.BlankLine();
+    }
+
+    private static void EmitArrayElements(CSharpWriter writer, ArrayWireType array, string local, string display)
+    {
+        writer.Open($"for (var index = 0; index < {local}.Length; index++)");
+        var element = EmitRead(writer, array.Element.Type, "element", display);
+        writer.Line($"{local}[index] = {element};");
+        writer.Close();
+        writer.BlankLine();
     }
 
     private static string ArrayAllocation(ArrayWireType array, string count)
@@ -398,7 +716,8 @@ internal static class CodecEmitter
         string modelType,
         IReadOnlyList<FieldDefinition> fields,
         bool unwrap,
-        bool rules)
+        bool rules,
+        UnionDefinition? union)
     {
         writer.Open($"private static bool IsValid{name}({modelType} value)");
         var conditions = new List<string>();
@@ -411,13 +730,72 @@ internal static class CodecEmitter
         foreach (var field in fields)
         {
             var expression = unwrap ? "value" : "value." + field.Name;
-            conditions.AddRange(Failures(field.Type, field.Rules, expression));
-            if (field.Type is ArrayWireType array)
+            if (field.Presence == FieldPresence.Conditional)
             {
-                AddArrayLoops(loops, writer, array, field.Rules, expression);
+                var structName = ((StructWireType)field.Type).Definition.Name;
+                conditions.Add($"{Condition(field, "value.")} != ({expression} != null)");
+                conditions.Add($"({expression} != null && !IsValid{structName}({expression}))");
+                continue;
             }
+
+            AddChecks(conditions, loops, writer, field.Type, field.Rules, expression);
         }
 
+        EmitChecks(writer, conditions, loops);
+        if (union is not null)
+        {
+            var enumClass = TypeName(fields.Single(field => field.Name == union.Discriminator).Type);
+            writer.Open($"switch (value.{union.Discriminator})");
+            foreach (var unionCase in union.Cases)
+            {
+                OpenCaseLabels(writer, unionCase, enumClass);
+                var caseConditions = new List<string>();
+                var caseLoops = new List<Action>();
+                foreach (var entry in unionCase.CommonOverrides.Concat(CaseFields(unionCase)))
+                {
+                    var expression = "value." + entry.Field.Name;
+                    if (entry.FixedValue is not null)
+                    {
+                        caseConditions.Add($"{expression} != {entry.FixedValue}");
+                        continue;
+                    }
+
+                    AddChecks(caseConditions, caseLoops, writer, entry.Field.Type, entry.Field.Rules, expression);
+                }
+
+                EmitChecks(writer, caseConditions, caseLoops);
+                writer.Line("break;");
+                writer.Close();
+            }
+
+            writer.Open("default:");
+            writer.Line("return false;");
+            writer.Close();
+            writer.Close();
+            writer.BlankLine();
+        }
+
+        writer.Line(rules ? "return SatisfiesRules(value);" : "return true;");
+        writer.Close();
+    }
+
+    private static void AddChecks(
+        List<string> conditions,
+        List<Action> loops,
+        CSharpWriter writer,
+        WireType type,
+        ValueRules rules,
+        string expression)
+    {
+        conditions.AddRange(Failures(type, rules, expression));
+        if (type is ArrayWireType array)
+        {
+            AddArrayLoops(loops, writer, array, rules, expression);
+        }
+    }
+
+    private static void EmitChecks(CSharpWriter writer, IReadOnlyList<string> conditions, IReadOnlyList<Action> loops)
+    {
         if (conditions.Count > 0)
         {
             OpenCondition(writer, conditions);
@@ -431,9 +809,6 @@ internal static class CodecEmitter
             loop();
             writer.BlankLine();
         }
-
-        writer.Line(rules ? "return SatisfiesRules(value);" : "return true;");
-        writer.Close();
     }
 
     // Expressions that are true when the value breaks a rule of its type.

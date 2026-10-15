@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace Mmorpg.GameProtocol
@@ -845,6 +846,27 @@ namespace Mmorpg.GameProtocol
                 closed = new RealtimeCorpseViewClosed(corpseId, code, message);
                 return true;
             }
+        }
+
+        // An item id and its revision, as corpse intents carry them.
+        private static void WriteItemExpectation(
+            BinaryWriter writer,
+            Guid itemInstanceId,
+            long revision)
+        {
+            WriteGuid(writer, itemInstanceId);
+            writer.Write(revision);
+        }
+
+        private static bool TryReadItemExpectation(
+            BinaryReader reader,
+            out Guid itemInstanceId,
+            out long revision,
+            out string error)
+        {
+            revision = 0;
+            return TryReadGuid(reader, out itemInstanceId, out error)
+                && TryReadInt64(reader, out revision, out error);
         }
 
         private static bool IsValidCorpsePresenceChunk(

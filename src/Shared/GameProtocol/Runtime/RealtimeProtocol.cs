@@ -4,19 +4,6 @@ using System.Text;
 
 namespace Mmorpg.GameProtocol
 {
-    public sealed class RealtimeError
-    {
-        public RealtimeError(string code, string message)
-        {
-            Code = code;
-            Message = message;
-        }
-
-        public string Code { get; }
-
-        public string Message { get; }
-    }
-
     // Framing and the primitive readers and writers shared by every message family. The
     // version, limits, and message types are generated from the schema in Schema~, and
     // each family keeps its messages and its codec in its own folder.
