@@ -8,8 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.Backend.Tests.Integration;
 

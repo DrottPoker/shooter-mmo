@@ -3,8 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Auth;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
-using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Simulation;
 
 namespace Mmorpg.Backend.Tests.Integration;

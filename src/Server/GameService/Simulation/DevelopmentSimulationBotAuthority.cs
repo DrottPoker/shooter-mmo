@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Platform.Http;
+using Mmorpg.GameService.Platform.Security;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Simulation;

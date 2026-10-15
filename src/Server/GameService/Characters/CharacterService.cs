@@ -1,6 +1,6 @@
 using Dapper;
-using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
 namespace Mmorpg.GameService.Characters;

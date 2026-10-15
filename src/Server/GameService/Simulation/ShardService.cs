@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Platform.Http;
+using Mmorpg.GameService.Platform.Security;
 using Npgsql;
 
 namespace Mmorpg.GameService.Simulation;

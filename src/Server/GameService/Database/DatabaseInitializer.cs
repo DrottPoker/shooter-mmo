@@ -1,18 +1,14 @@
-using Dapper;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Items;
-using Npgsql;
+using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Database;
 
 public sealed class DatabaseInitializer(
-    NpgsqlDataSource dataSource,
+    DatabaseMigrationRunner migrationRunner,
     ItemCatalogSeeder itemCatalogSeeder,
-    CharacterItemStateBootstrapper characterItemStateBootstrapper,
-    ILogger<DatabaseInitializer> logger)
+    CharacterItemStateBootstrapper characterItemStateBootstrapper)
 {
-    private const long MigrationLockId = 7_104_202_607_071_600;
-
     // Ordered migration history. MigrationHistoryTests freezes ids, order, and SQL hashes.
     internal static readonly IReadOnlyList<DatabaseMigration> Migrations =
     [
@@ -41,98 +37,9 @@ public sealed class DatabaseInitializer(
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
-        {
-            await EnsureMigrationTableAsync(connection, cancellationToken);
-
-            foreach (var migration in Migrations)
-            {
-                await ApplyMigrationAsync(connection, migration, cancellationToken);
-            }
-        }
-
+        await migrationRunner.ApplyAsync(Migrations, cancellationToken);
         await itemCatalogSeeder.SeedAsync(cancellationToken);
         await characterItemStateBootstrapper.BackfillActiveCharactersAsync(cancellationToken);
-    }
-
-    private static async Task EnsureMigrationTableAsync(
-        NpgsqlConnection connection,
-        CancellationToken cancellationToken)
-    {
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                "select pg_advisory_xact_lock(@MigrationLockId);",
-                new { MigrationLockId },
-                transaction,
-                cancellationToken: cancellationToken));
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                create table if not exists schema_migrations (
-                    id text primary key,
-                    applied_at timestamptz not null default now()
-                );
-                """,
-                transaction: transaction,
-                cancellationToken: cancellationToken));
-            await transaction.CommitAsync(cancellationToken);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
-    }
-
-    private async Task ApplyMigrationAsync(
-        NpgsqlConnection connection,
-        DatabaseMigration migration,
-        CancellationToken cancellationToken)
-    {
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                "select pg_advisory_xact_lock(@MigrationLockId);",
-                new { MigrationLockId },
-                transaction: transaction,
-                cancellationToken: cancellationToken));
-
-            var alreadyApplied = await connection.ExecuteScalarAsync<bool>(
-                new CommandDefinition(
-                    "select exists (select 1 from schema_migrations where id = @MigrationId);",
-                    new { MigrationId = migration.Id },
-                    transaction,
-                    cancellationToken: cancellationToken));
-
-            if (alreadyApplied)
-            {
-                await transaction.CommitAsync(cancellationToken);
-                return;
-            }
-
-            await connection.ExecuteAsync(new CommandDefinition(
-                migration.Sql,
-                transaction: transaction,
-                cancellationToken: cancellationToken));
-
-            await connection.ExecuteAsync(new CommandDefinition(
-                "insert into schema_migrations (id) values (@MigrationId);",
-                new { MigrationId = migration.Id },
-                transaction,
-                cancellationToken: cancellationToken));
-
-            await transaction.CommitAsync(cancellationToken);
-            logger.LogInformation("Applied database migration {MigrationId}.", migration.Id);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
     }
 
     private const string LegacyInitialAuthSchemaMigrationSql = """
@@ -740,6 +647,4 @@ public sealed class DatabaseInitializer(
             on character_simulation_sessions(account_id)
             where released_at is null;
         """;
-
-    internal sealed record DatabaseMigration(string Id, string Sql);
 }

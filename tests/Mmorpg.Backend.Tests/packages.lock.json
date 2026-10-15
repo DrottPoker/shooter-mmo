@@ -216,8 +216,18 @@
         "dependencies": {
           "BCrypt.Net-Next": "[4.0.3, )",
           "Dapper": "[2.1.66, )",
+          "Mmorpg.GameService.Platform": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.WorldData": "[1.0.0, )",
+          "Npgsql": "[9.0.3, )",
+          "StackExchange.Redis": "[3.0.17, )"
+        }
+      },
+      "mmorpg.gameservice.platform": {
+        "type": "Project",
+        "dependencies": {
+          "Dapper": "[2.1.66, )",
+          "Mmorpg.Server.Common": "[1.0.0, )",
           "Npgsql": "[9.0.3, )",
           "StackExchange.Redis": "[3.0.17, )"
         }

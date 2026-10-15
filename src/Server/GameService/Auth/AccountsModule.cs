@@ -1,19 +1,23 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
+using Mmorpg.GameService.Platform.Database;
+using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.GameService.Redis;
 
 namespace Mmorpg.GameService.Auth;
 
-// Accounts module composition: account and worker authentication, policies,
-// login and registration rate limits, and Redis session acceleration.
-public static class AccountsModuleRegistration
+// Accounts: account and worker authentication, policies, login and registration rate
+// limits, and Redis session acceleration.
+public sealed class AccountsModule(AccountsModuleOptions options) : IGameServiceModule
 {
-    public static IServiceCollection AddAccountsModule(
-        this IServiceCollection services,
-        AccountsModuleOptions options)
+    public string Name => "Accounts";
+
+    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+
+    public void AddServices(IServiceCollection services)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton(options);
         services.AddSingleton(options.RedisAcceleration);
@@ -32,14 +36,14 @@ public static class AccountsModuleRegistration
             .AddScheme<AuthenticationSchemeOptions, SimulationWorkerAuthenticationHandler>(
                 AuthenticationConstants.SimulationWorkerScheme,
                 _ => { });
-        services.AddAuthorization(options =>
+        services.AddAuthorization(authorizationOptions =>
         {
-            options.AddPolicy(AuthenticationConstants.AccountSessionPolicy, policy =>
+            authorizationOptions.AddPolicy(AuthenticationConstants.AccountSessionPolicy, policy =>
             {
                 policy.AddAuthenticationSchemes(AuthenticationConstants.AccountSessionScheme);
                 policy.RequireAuthenticatedUser();
             });
-            options.AddPolicy(AuthenticationConstants.SimulationWorkerPolicy, policy =>
+            authorizationOptions.AddPolicy(AuthenticationConstants.SimulationWorkerPolicy, policy =>
             {
                 policy.AddAuthenticationSchemes(AuthenticationConstants.SimulationWorkerScheme);
                 policy.RequireAuthenticatedUser();
@@ -69,30 +73,26 @@ public static class AccountsModuleRegistration
                     .ExecuteAsync(context.HttpContext);
             };
 
-            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "login", options);
-            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "register", options);
+            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "login");
+            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "register");
         });
+    }
 
-        return services;
+    public void MapEndpoints(IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapAccountEndpoints();
     }
 
     // Runs before the in-process rate limiter so login and registration share one
     // distributed window across GameService replicas.
-    public static IApplicationBuilder UseDistributedAuthenticationRateLimiting(
-        this IApplicationBuilder app)
+    public static void UseDistributedAuthenticationRateLimiting(IApplicationBuilder app)
     {
-        return app.UseMiddleware<RedisAuthenticationRateLimitMiddleware>();
+        app.UseMiddleware<RedisAuthenticationRateLimitMiddleware>();
     }
 
-    public static IEndpointRouteBuilder MapAccountsModule(this IEndpointRouteBuilder app)
-    {
-        return app.MapAccountEndpoints();
-    }
-
-    private static void AddAuthenticationRateLimitPolicy(
+    private void AddAuthenticationRateLimitPolicy(
         RateLimiterOptions rateLimiterOptions,
-        string policyName,
-        AccountsModuleOptions options)
+        string policyName)
     {
         rateLimiterOptions.AddPolicy(policyName, httpContext =>
         {

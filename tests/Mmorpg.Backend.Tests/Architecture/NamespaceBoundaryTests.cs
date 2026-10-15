@@ -11,7 +11,6 @@ public sealed partial class NamespaceBoundaryTests
     [
         ("Mmorpg.GameService.Auth", GameServiceSourceMap.Accounts),
         ("Mmorpg.GameService.Redis", GameServiceSourceMap.Accounts),
-        ("Mmorpg.GameService.Http", GameServiceSourceMap.Platform),
         ("Mmorpg.GameService.Platform", GameServiceSourceMap.Platform),
         ("Mmorpg.GameService.Characters", GameServiceSourceMap.Characters),
         ("Mmorpg.GameService.Simulation", GameServiceSourceMap.Placement),

@@ -252,5 +252,9 @@ intended differences:
   `GameServiceTestComposition` builds the production graph with a test-owned
   data source, Redis acceleration disabled, and no module background services.
 - Options split: done.
-- The Platform project and the Accounts, Characters, Placement, and Items
-  extractions: in progress.
+- Platform project: done. `Mmorpg.GameService.Platform` holds the Problem
+  Details pipeline, token hashing, the Redis connection, the transaction scope,
+  the migration runner, platform options, and `IGameServiceModule`. Each module
+  implements `IGameServiceModule`, and the host composes them in dependency
+  order.
+- The Accounts, Characters, Placement, and Items extractions: in progress.

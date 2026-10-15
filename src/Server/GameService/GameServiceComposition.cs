@@ -3,12 +3,11 @@ using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Health;
-using Mmorpg.GameService.Http;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Platform.Configuration;
-using Mmorpg.GameService.Redis;
+using Mmorpg.GameService.Platform;
+using Mmorpg.GameService.Platform.Http;
+using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.GameService.Simulation;
-using Npgsql;
 
 namespace Mmorpg.GameService;
 
@@ -16,28 +15,35 @@ namespace Mmorpg.GameService;
 // health services in one place, so Program.cs and the tests build the same graph.
 internal static class GameServiceComposition
 {
+    // Modules in dependency order. Services register and routes map in this order.
+    public static IReadOnlyList<IGameServiceModule> CreateModules(
+        GameServiceConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        return
+        [
+            new AccountsModule(configuration.Accounts),
+            new CharactersModule(configuration.Characters),
+            new PlacementModule(configuration.Placement),
+            new ItemsModule(configuration.Items)
+        ];
+    }
+
     public static IServiceCollection AddGameService(
         this IServiceCollection services,
         GameServiceConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        var platform = configuration.Platform;
 
-        services.AddSingleton(_ => NpgsqlDataSource.Create(platform.PostgresConnectionString));
-        services.AddSingleton(platform);
-        services.AddSingleton<IRedisConnectionProvider, RedisConnectionProvider>();
-        services.AddSingleton(TimeProvider.System);
-        services.AddHttpContextAccessor();
-        services.AddApiProblemDetails();
-
+        services.AddGameServicePlatform(configuration.Platform);
         services.AddSingleton<DatabaseInitializer>();
         services.AddSingleton<PostgresHealthProbe>();
         services.AddSingleton<GameServiceHealthService>();
+        foreach (var module in CreateModules(configuration))
+        {
+            module.AddServices(services);
+        }
 
-        services.AddAccountsModule(configuration.Accounts);
-        services.AddCharactersModule(configuration.Characters);
-        services.AddPlacementModule(configuration.Placement);
-        services.AddItemsModule(configuration.Items);
         return services;
     }
 
@@ -46,7 +52,7 @@ internal static class GameServiceComposition
     public static WebApplication UseGameServicePipeline(this WebApplication app)
     {
         app.UseApiPipeline();
-        app.UseDistributedAuthenticationRateLimiting();
+        AccountsModule.UseDistributedAuthenticationRateLimiting(app);
         app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
@@ -60,10 +66,11 @@ internal static class GameServiceComposition
         ArgumentNullException.ThrowIfNull(configuration);
 
         app.MapGameServiceHealthEndpoints();
-        app.MapAccountsModule();
-        app.MapCharactersModule();
-        app.MapPlacementModule(configuration.Placement);
-        app.MapItemsModule(configuration.Items);
+        foreach (var module in CreateModules(configuration))
+        {
+            module.MapEndpoints(app);
+        }
+
         return app;
     }
 }

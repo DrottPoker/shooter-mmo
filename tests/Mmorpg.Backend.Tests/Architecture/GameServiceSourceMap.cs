@@ -18,27 +18,28 @@ internal static class GameServiceSourceMap
     // Ordered by specificity: the first matching prefix decides the module.
     private static readonly (string Prefix, string Module)[] PathRules =
     [
+        ("GameService.Platform/", Platform),
         ("GameService/Auth/TokenGenerator.cs", Platform),
         ("GameService/Auth/", Accounts),
         ("GameService/Redis/RedisConnectionProvider.cs", Platform),
         ("GameService/Redis/", Accounts),
-        ("GameService/Http/", Platform),
         ("GameService/Characters/", Characters),
         ("GameService/Simulation/", Placement),
         ("GameService/Database/Migrations/DevelopmentWorldIdentityMigration.cs", Placement),
         ("GameService/Database/Migrations/WorkerSelectedWorldBindingMigration.cs", Placement),
         ("GameService/Database/Migrations/", Items),
         ("GameService/Items/", Items),
-        ("GameService/Platform/", Platform),
         ("GameService/", Host)
     ];
 
     public static string ServerRoot { get; } = Path.Combine(RepositoryPaths.Root, "src", "Server");
 
+    // The host project and every GameService module project next to it.
     public static IReadOnlyList<SourceFile> LoadSourceFiles()
     {
         return Directory
-            .EnumerateFiles(Path.Combine(ServerRoot, "GameService"), "*.cs", SearchOption.AllDirectories)
+            .EnumerateDirectories(ServerRoot, "GameService*")
+            .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
             .Select(path => Path.GetRelativePath(ServerRoot, path).Replace('\\', '/'))
             .Where(path => !path.Contains("/bin/", StringComparison.Ordinal)
                 && !path.Contains("/obj/", StringComparison.Ordinal))

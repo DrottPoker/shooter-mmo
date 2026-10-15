@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Mmorpg.GameService.Auth;
+namespace Mmorpg.GameService.Platform.Security;
 
 public static class TokenGenerator
 {

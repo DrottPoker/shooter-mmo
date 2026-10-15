@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Mmorpg.GameService.Platform.Redis;
 using StackExchange.Redis;
 
 namespace Mmorpg.GameService.Redis;

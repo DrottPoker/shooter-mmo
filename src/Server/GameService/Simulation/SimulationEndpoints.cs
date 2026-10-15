@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using Mmorpg.GameService.Auth;
-using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Simulation;
 

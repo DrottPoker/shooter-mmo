@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Http;
+namespace Mmorpg.GameService.Platform.Http;
 
 public sealed record ServiceResult<T>(T? Value, ErrorResponse? Error, int StatusCode)
 {

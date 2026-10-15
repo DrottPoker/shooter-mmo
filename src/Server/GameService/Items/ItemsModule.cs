@@ -1,14 +1,19 @@
+using Mmorpg.GameService.Platform.Database;
+using Mmorpg.GameService.Platform.Modules;
+
 namespace Mmorpg.GameService.Items;
 
-// Items module composition: the item catalog, item state and transactions, corpses,
-// policies, item operations maintenance, and the item development tools.
-public static class ItemsModuleRegistration
+// Items: the item catalog, item state and transactions, corpses, policies, item
+// operations maintenance, and the item development tools.
+public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 {
-    public static IServiceCollection AddItemsModule(
-        this IServiceCollection services,
-        ItemsModuleOptions options)
+    public string Name => "Items";
+
+    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+
+    public void AddServices(IServiceCollection services)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton(options);
         services.AddSingleton(options.StackStressFixtures);
@@ -33,19 +38,13 @@ public static class ItemsModuleRegistration
         services.AddHostedService<CorpseExpiryHostedService>();
         services.AddHostedService<ItemOperationsMetricsReporterService>();
         services.AddHostedService<ItemOperationsMaintenanceHostedService>();
-        return services;
     }
 
-    public static IEndpointRouteBuilder MapItemsModule(
-        this IEndpointRouteBuilder app,
-        ItemsModuleOptions options)
+    public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        ArgumentNullException.ThrowIfNull(options);
-
-        app.MapItemEndpoints();
-        app.MapSimulationItemEndpoints();
-        app.MapCorpseEndpoints();
-        app.MapStackStressFixtureEndpoints(options.StackStressFixtures);
-        return app;
+        endpoints.MapItemEndpoints();
+        endpoints.MapSimulationItemEndpoints();
+        endpoints.MapCorpseEndpoints();
+        endpoints.MapStackStressFixtureEndpoints(options.StackStressFixtures);
     }
 }

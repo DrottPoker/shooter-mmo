@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Http;
+namespace Mmorpg.GameService.Platform.Http;
 
 using Microsoft.AspNetCore.WebUtilities;
 

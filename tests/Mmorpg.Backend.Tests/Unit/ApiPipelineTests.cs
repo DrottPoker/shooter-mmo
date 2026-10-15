@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
 namespace Mmorpg.Backend.Tests.Unit;

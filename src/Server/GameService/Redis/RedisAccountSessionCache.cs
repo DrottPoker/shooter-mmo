@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Mmorpg.GameService.Auth;
+using Mmorpg.GameService.Platform.Redis;
 using StackExchange.Redis;
 
 namespace Mmorpg.GameService.Redis;

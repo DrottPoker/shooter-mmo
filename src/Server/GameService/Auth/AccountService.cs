@@ -1,6 +1,6 @@
 using BCrypt.Net;
 using Dapper;
-using Mmorpg.GameService.Http;
+using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
 namespace Mmorpg.GameService.Auth;

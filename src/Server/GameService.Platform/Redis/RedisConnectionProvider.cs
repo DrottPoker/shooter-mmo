@@ -1,7 +1,7 @@
 using Mmorpg.GameService.Platform.Configuration;
 using StackExchange.Redis;
 
-namespace Mmorpg.GameService.Redis;
+namespace Mmorpg.GameService.Platform.Redis;
 
 public interface IRedisConnectionProvider
 {

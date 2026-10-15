@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
+    <ProjectReference Include="..\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
     <ProjectReference Include="..\..\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
   </ItemGroup>
 

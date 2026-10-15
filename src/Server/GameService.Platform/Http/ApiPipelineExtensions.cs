@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
-namespace Mmorpg.GameService.Http;
+namespace Mmorpg.GameService.Platform.Http;
 
 public static class ApiPipelineExtensions
 {
