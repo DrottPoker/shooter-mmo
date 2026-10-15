@@ -13,7 +13,8 @@ public sealed class DatabaseInitializer(
 {
     private const long MigrationLockId = 7_104_202_607_071_600;
 
-    private static readonly IReadOnlyCollection<DatabaseMigration> Migrations =
+    // Ordered migration history. MigrationHistoryTests freezes ids, order, and SQL hashes.
+    internal static readonly IReadOnlyList<DatabaseMigration> Migrations =
     [
         new("202607071600_auth_character_world_join", LegacyInitialAuthSchemaMigrationSql),
         new("202607101200_character_world_sessions", LegacySimulationSessionLeaseMigrationSql),
@@ -740,5 +741,5 @@ public sealed class DatabaseInitializer(
             where released_at is null;
         """;
 
-    private sealed record DatabaseMigration(string Id, string Sql);
+    internal sealed record DatabaseMigration(string Id, string Sql);
 }
