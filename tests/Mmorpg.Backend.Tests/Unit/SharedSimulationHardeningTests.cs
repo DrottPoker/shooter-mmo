@@ -2,6 +2,7 @@ using System.Text.Json;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SharedTests;
+using Mmorpg.Testing;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 

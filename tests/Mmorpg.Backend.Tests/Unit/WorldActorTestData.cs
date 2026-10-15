@@ -1,3 +1,4 @@
+using Mmorpg.Testing;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;

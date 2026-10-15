@@ -9,6 +9,7 @@ using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 

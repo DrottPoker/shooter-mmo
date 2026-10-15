@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Mmorpg.GameService.Items;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration;
 

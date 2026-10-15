@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Architecture;
 

@@ -9,6 +9,7 @@ using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Worlds;
+using Mmorpg.Testing;
 using Npgsql;
 
 namespace Mmorpg.Backend.Tests.Integration;

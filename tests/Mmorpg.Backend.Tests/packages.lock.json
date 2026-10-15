@@ -297,6 +297,14 @@
           "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
+      "mmorpg.testing": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )",
+          "xunit.v3.assert": "[3.2.2, )",
+          "xunit.v3.extensibility.core": "[3.2.2, )"
+        }
+      },
       "mmorpg.tools.activesimulationbots": {
         "type": "Project",
         "dependencies": {

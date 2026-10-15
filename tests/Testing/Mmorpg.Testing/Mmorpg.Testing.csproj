@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
+  </ItemGroup>
+</Project>

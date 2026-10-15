@@ -5,6 +5,7 @@ using Mmorpg.GameService.Items;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.Testing;
 using Npgsql;
 
 namespace Mmorpg.Backend.Tests.Unit;

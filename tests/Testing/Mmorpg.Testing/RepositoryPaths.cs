@@ -1,9 +1,9 @@
 using Mmorpg.WorldData.Content;
 
-namespace Mmorpg.Backend.Tests;
+namespace Mmorpg.Testing;
 
 // Repository locations for tests that read authored content and generated World data.
-internal static class RepositoryPaths
+public static class RepositoryPaths
 {
     public static string Root { get; } = ContentLayout.FindRepositoryRoot(AppContext.BaseDirectory);
 

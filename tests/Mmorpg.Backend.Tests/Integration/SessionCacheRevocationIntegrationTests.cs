@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration;
 

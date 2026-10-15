@@ -18,6 +18,9 @@
     <File Path="tests/Directory.Build.props" />
     <Project Path="tests/Mmorpg.Backend.Tests/Mmorpg.Backend.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/Testing/">
+    <Project Path="tests/Testing/Mmorpg.Testing/Mmorpg.Testing.csproj" />
+  </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
     <Project Path="tools/ContentPipeline/Mmorpg.Tools.ContentPipeline.csproj" />

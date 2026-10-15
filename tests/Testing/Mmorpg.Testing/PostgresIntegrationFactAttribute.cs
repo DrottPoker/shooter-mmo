@@ -1,20 +1,20 @@
 using System.Runtime.CompilerServices;
 
-namespace Mmorpg.Backend.Tests.Integration;
+namespace Mmorpg.Testing;
 
 [AttributeUsage(AttributeTargets.Method)]
-public sealed class RedisIntegrationFactAttribute : FactAttribute
+public sealed class PostgresIntegrationFactAttribute : FactAttribute
 {
-    public const string ConnectionStringVariable = "MMORPG_TEST_REDIS";
+    public const string ConnectionStringVariable = "MMORPG_TEST_POSTGRES";
 
-    public RedisIntegrationFactAttribute(
+    public PostgresIntegrationFactAttribute(
         [CallerFilePath] string? sourceFilePath = null,
         [CallerLineNumber] int sourceLineNumber = -1)
         : base(sourceFilePath, sourceLineNumber)
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ConnectionStringVariable)))
         {
-            Skip = $"Set {ConnectionStringVariable} to a dedicated Redis test instance.";
+            Skip = $"Set {ConnectionStringVariable} to a dedicated PostgreSQL test database.";
         }
     }
 }

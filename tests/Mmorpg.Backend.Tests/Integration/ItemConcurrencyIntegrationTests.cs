@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Items;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Integration;
 

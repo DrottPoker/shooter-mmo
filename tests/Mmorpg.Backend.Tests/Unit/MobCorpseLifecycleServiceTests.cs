@@ -6,6 +6,7 @@ using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

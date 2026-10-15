@@ -1,3 +1,5 @@
+using Mmorpg.Testing;
+
 namespace Mmorpg.Backend.Tests.Architecture;
 
 // Maps every GameService source file to the module that owns it, so the architecture

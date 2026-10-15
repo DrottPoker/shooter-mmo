@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Backend.Tests.Integration;

@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.Testing;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

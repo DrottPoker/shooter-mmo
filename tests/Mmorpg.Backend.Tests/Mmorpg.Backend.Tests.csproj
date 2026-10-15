@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\tools\ItemCatalogCompiler\Mmorpg.Tools.ItemCatalogCompiler.csproj" />
     <ProjectReference Include="..\..\tools\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />
     <ProjectReference Include="..\..\tools\SimulationBotClient\Mmorpg.Tools.SimulationBotClient.csproj" />
+    <ProjectReference Include="..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

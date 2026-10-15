@@ -1,3 +1,4 @@
+using Mmorpg.Testing;
 using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.Tools.WorldActorCompiler;

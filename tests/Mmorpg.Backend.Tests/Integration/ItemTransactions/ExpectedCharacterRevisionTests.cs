@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Items;
+using Mmorpg.Testing;
 using static Mmorpg.Backend.Tests.Integration.ItemTransactions.ItemScenarioWorld;
 
 namespace Mmorpg.Backend.Tests.Integration.ItemTransactions;
