@@ -70,6 +70,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
     private readonly CarryStateSynchronizer carrySync;
     private readonly SessionAuthorityOperations sessionOperations;
     private readonly RealtimeSessionTeardown teardown;
+    private readonly AuthorityOperationScheduler authorityScheduler;
     private NetManager? server;
     private uint snapshotSequence;
     private uint corpsePresenceSequence;
@@ -174,6 +175,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             connectionBindings,
             entityRegistry,
             networkMetrics);
+        authorityScheduler = new AuthorityOperationScheduler(peerRegistry);
         dispatcher = new RealtimeMessageDispatcher(
             peerRegistry,
             sender,
@@ -504,8 +506,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             return;
         }
 
-        context.AuthorityOperationQueue.Enqueue(new QueuedItemOperation(intent));
-        StartNextAuthorityOperation(context);
+        authorityScheduler.Enqueue(context, new QueuedItemOperation(this, intent));
     }
 
     private void HandleCorpseInteractionIntent(in RealtimeInboundMessage message)
@@ -561,8 +562,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             return;
         }
 
-        context.AuthorityOperationQueue.Enqueue(new QueuedCorpseOperation(intent));
-        StartNextAuthorityOperation(context);
+        authorityScheduler.Enqueue(context, new QueuedCorpseOperation(this, intent));
     }
 
     private void HandleWorldInteractionIntent(in RealtimeInboundMessage message)
@@ -633,9 +633,9 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             return;
         }
 
-        context.AuthorityOperationQueue.Enqueue(
-            new QueuedWorldInteractionOperation(intent));
-        StartNextAuthorityOperation(context);
+        authorityScheduler.Enqueue(
+            context,
+            new QueuedWorldInteractionOperation(this, intent));
     }
 
     private void HandleLeaveRequest(in RealtimeInboundMessage message)
@@ -1178,52 +1178,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
             completed.Session,
             completed.Result,
             requiresRefresh);
-        StartNextAuthorityOperation(completed.Context);
-    }
-
-    private void StartNextAuthorityOperation(RealtimePeerContext context)
-    {
-        if (context.AuthorityOperationInFlight
-            || context.AuthorityOperationQueue.Count == 0
-            || context.Session is null
-            || !peerRegistry.TryGetBoundPlayer(context, out var entity))
-        {
-            return;
-        }
-
-        var operation = context.AuthorityOperationQueue.Dequeue();
-        var state = entity.Movement.State;
-        context.AuthorityOperationInFlight = true;
-        switch (operation)
-        {
-            case QueuedItemOperation itemOperation:
-                operationTracker.Track(CompleteItemOperationAsync(
-                    context,
-                    context.Session,
-                    itemOperation.Intent,
-                    state.PositionX,
-                    state.PositionY,
-                    state.PositionZ));
-                break;
-            case QueuedCorpseOperation corpseOperation:
-                StartCorpseOperation(
-                    context,
-                    context.Session,
-                    corpseOperation.Intent,
-                    state.PositionX,
-                    state.PositionY,
-                    state.PositionZ);
-                break;
-            case QueuedWorldInteractionOperation worldInteractionOperation:
-                ProcessWorldInteractionOperation(
-                    context,
-                    entity,
-                    worldInteractionOperation.Intent);
-                break;
-            default:
-                throw new InvalidOperationException(
-                    "The queued authority operation type is not supported.");
-        }
+        authorityScheduler.StartNext(completed.Context);
     }
 
     private void ProcessWorldInteractionOperation(
@@ -1321,7 +1276,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         }
 
         SendWorldInteractionResult(peer, completed.Result);
-        StartNextAuthorityOperation(completed.Context);
+        authorityScheduler.StartNext(completed.Context);
     }
 
     private void SendWorldInteractionResult(
@@ -1569,7 +1524,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 }
             }
 
-            StartNextAuthorityOperation(completed.Context);
+            authorityScheduler.StartNext(completed.Context);
             return;
         }
 
@@ -1589,7 +1544,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                     completed.Result.Intent.CorpseId,
                     "corpse_view_closed",
                     "The corpse view was closed.")));
-            StartNextAuthorityOperation(completed.Context);
+            authorityScheduler.StartNext(completed.Context);
             return;
         }
 
@@ -1613,7 +1568,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 "corpse_invalidated",
                 "The corpse is no longer available.",
                 removeFromStore: true);
-            StartNextAuthorityOperation(completed.Context);
+            authorityScheduler.StartNext(completed.Context);
             return;
         }
 
@@ -1646,7 +1601,7 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
                 distribution.RequesterReceivesViewerChunks ? null : completed.Context.PeerId);
         }
 
-        StartNextAuthorityOperation(completed.Context);
+        authorityScheduler.StartNext(completed.Context);
     }
 
     private bool TryApplyCorpseCarryState(
@@ -2460,6 +2415,60 @@ public sealed class RealtimeSimulationService : BackgroundService, IRealtimeComp
         public void DisconnectPeer(IRealtimePeerConnection peer)
         {
             owner.server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
+        }
+    }
+
+    private sealed record QueuedItemOperation(
+        RealtimeSimulationService Owner,
+        RealtimeItemOperationIntent Intent) : IRealtimeAuthorityOperation
+    {
+        public void Start(
+            RealtimePeerContext context,
+            PlayerSimulationEntity entity,
+            PlayerMovementState state)
+        {
+            Owner.operationTracker.Track(Owner.CompleteItemOperationAsync(
+                context,
+                context.Session!,
+                Intent,
+                state.PositionX,
+                state.PositionY,
+                state.PositionZ));
+        }
+    }
+
+    private sealed record QueuedCorpseOperation(
+        RealtimeSimulationService Owner,
+        RealtimeCorpseInteractionIntent Intent) : IRealtimeAuthorityOperation
+    {
+        public void Start(
+            RealtimePeerContext context,
+            PlayerSimulationEntity entity,
+            PlayerMovementState state)
+        {
+            Owner.StartCorpseOperation(
+                context,
+                context.Session!,
+                Intent,
+                state.PositionX,
+                state.PositionY,
+                state.PositionZ);
+        }
+    }
+
+    private sealed record QueuedWorldInteractionOperation(
+        RealtimeSimulationService Owner,
+        RealtimeWorldInteractionIntent Intent) : IRealtimeAuthorityOperation
+    {
+        public void Start(
+            RealtimePeerContext context,
+            PlayerSimulationEntity entity,
+            PlayerMovementState state)
+        {
+            Owner.ProcessWorldInteractionOperation(
+                context,
+                entity,
+                Intent);
         }
     }
 }

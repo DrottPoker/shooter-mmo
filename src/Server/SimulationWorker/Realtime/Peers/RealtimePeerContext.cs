@@ -28,7 +28,7 @@ internal sealed class RealtimePeerContext(
 
     public ActiveSimulationSession? Session { get; set; }
 
-    public Queue<QueuedAuthorityOperation> AuthorityOperationQueue { get; } = new();
+    public Queue<IRealtimeAuthorityOperation> AuthorityOperationQueue { get; } = new();
 
     public bool AuthorityOperationInFlight { get; set; }
 
