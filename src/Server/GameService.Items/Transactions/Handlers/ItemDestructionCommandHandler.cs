@@ -69,7 +69,7 @@ internal sealed class ItemDestructionCommandHandler
                 "A non-empty Bag cannot be destroyed.");
         }
 
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -100,12 +100,12 @@ internal sealed class ItemDestructionCommandHandler
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "item_destroyed",
             item.ItemInstanceId,
             beforeState,
             null);
-        context.TouchContainer(item.ContainerId);
-        context.TouchCharacter(command.CharacterId);
+        context.Journal.TouchContainer(item.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
     }
 }

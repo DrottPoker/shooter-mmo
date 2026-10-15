@@ -111,19 +111,19 @@ internal sealed class MobCorpseCommandHandler
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            var afterState = await context.CaptureItemStateJsonAsync(
+            var afterState = await context.Journal.CaptureItemStateJsonAsync(
                 itemInstanceId,
                 cancellationToken);
-            context.AddItemAudit(
+            context.Journal.AddItemAudit(
                 "persistent_mob_loot_materialized",
                 itemInstanceId,
                 null,
                 afterState);
-            context.IncludeResultItem(itemInstanceId);
+            context.Journal.IncludeResultItem(itemInstanceId);
         }
 
-        context.TouchContainer(generalContainerId);
-        context.AddMetadataAudit(
+        context.Journal.TouchContainer(generalContainerId);
+        context.Journal.AddMetadataAudit(
             "persistent_mob_corpse_created",
             null,
             new

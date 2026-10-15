@@ -273,8 +273,8 @@ internal sealed class CorpseLootCommandHandler
         }
 
         await CorpseCustody.AdvanceCorpseRevisionAsync(context, corpse, cancellationToken);
-        context.TouchContainer(source.ContainerId);
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
+        context.Journal.TouchContainer(source.ContainerId);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
     }
 }

@@ -118,13 +118,13 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
                     "The character does not have enough currency for this insurance policy.");
             }
 
-            context.AddMetadataAudit(
+            context.Journal.AddMetadataAudit(
                 "item_insurance_currency_charged",
                 new { command.CharacterId, Currency = debit.Before },
                 new { command.CharacterId, Currency = debit.After, command.Price });
         }
 
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -157,13 +157,13 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit("item_policy_applied", item.ItemInstanceId, beforeState, afterState);
-        context.TouchContainer(item.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(item.ItemInstanceId);
+        context.Journal.AddItemAudit("item_policy_applied", item.ItemInstanceId, beforeState, afterState);
+        context.Journal.TouchContainer(item.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 
     public async Task ExecuteAsync(
@@ -202,7 +202,7 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
                 "The item does not have active insurance.");
         }
 
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -225,12 +225,12 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit("item_insurance_removed", item.ItemInstanceId, beforeState, afterState);
-        context.TouchContainer(item.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(item.ItemInstanceId);
+        context.Journal.AddItemAudit("item_insurance_removed", item.ItemInstanceId, beforeState, afterState);
+        context.Journal.TouchContainer(item.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 }

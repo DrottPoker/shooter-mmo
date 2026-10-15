@@ -63,7 +63,7 @@ internal sealed class ItemStackCommandHandler
             false,
             cancellationToken);
         var policies = await context.State.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
-        var beforeSource = await context.CaptureItemStateJsonAsync(
+        var beforeSource = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
         var splitItemInstanceId = Guid.NewGuid();
@@ -131,27 +131,27 @@ internal sealed class ItemStackCommandHandler
                 cancellationToken: cancellationToken));
         }
 
-        var afterSource = await context.CaptureItemStateJsonAsync(
+        var afterSource = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        var afterSplit = await context.CaptureItemStateJsonAsync(
+        var afterSplit = await context.Journal.CaptureItemStateJsonAsync(
             splitItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "stack_split_source",
             source.ItemInstanceId,
             beforeSource,
             afterSource);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "stack_split_created",
             splitItemInstanceId,
             null,
             afterSplit);
-        context.TouchContainer(source.ContainerId);
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(source.ItemInstanceId);
-        context.IncludeResultItem(splitItemInstanceId);
+        context.Journal.TouchContainer(source.ContainerId);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(splitItemInstanceId);
     }
 
     public async Task ExecuteAsync(
@@ -239,10 +239,10 @@ internal sealed class ItemStackCommandHandler
                     : "The item stacks have incompatible definition or policy state.");
         }
 
-        var beforeSource = await context.CaptureItemStateJsonAsync(
+        var beforeSource = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        var beforeTarget = await context.CaptureItemStateJsonAsync(
+        var beforeTarget = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -264,23 +264,23 @@ internal sealed class ItemStackCommandHandler
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var afterTarget = await context.CaptureItemStateJsonAsync(
+        var afterTarget = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "stack_merge_target",
             target.ItemInstanceId,
             beforeTarget,
             afterTarget);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "stack_merge_source_removed",
             source.ItemInstanceId,
             beforeSource,
             null);
-        context.TouchContainer(source.ContainerId);
-        context.TouchContainer(target.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(target.ItemInstanceId);
+        context.Journal.TouchContainer(source.ContainerId);
+        context.Journal.TouchContainer(target.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(target.ItemInstanceId);
     }
 
     public async Task ExecuteAsync(
@@ -322,7 +322,7 @@ internal sealed class ItemStackCommandHandler
                 "The consume quantity exceeds the current item quantity.");
         }
 
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
         if (command.Quantity == item.Quantity)
@@ -332,7 +332,7 @@ internal sealed class ItemStackCommandHandler
                 new { item.ItemInstanceId },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.AddItemAudit(
+            context.Journal.AddItemAudit(
                 "item_consumed",
                 item.ItemInstanceId,
                 beforeState,
@@ -351,18 +351,18 @@ internal sealed class ItemStackCommandHandler
                 new { command.Quantity, item.ItemInstanceId },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            var afterState = await context.CaptureItemStateJsonAsync(
+            var afterState = await context.Journal.CaptureItemStateJsonAsync(
                 item.ItemInstanceId,
                 cancellationToken);
-            context.AddItemAudit(
+            context.Journal.AddItemAudit(
                 "item_quantity_consumed",
                 item.ItemInstanceId,
                 beforeState,
                 afterState);
-            context.IncludeResultItem(item.ItemInstanceId);
+            context.Journal.IncludeResultItem(item.ItemInstanceId);
         }
 
-        context.TouchContainer(item.ContainerId);
-        context.TouchCharacter(command.CharacterId);
+        context.Journal.TouchContainer(item.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
     }
 }

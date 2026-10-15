@@ -44,7 +44,7 @@ internal sealed class PlayerDeathCommandHandler
                     "The death event id was already used with different authoritative death data.");
             }
 
-            context.AddMetadataAudit(
+            context.Journal.AddMetadataAudit(
                 "death_event_replayed",
                 new
                 {
@@ -71,7 +71,7 @@ internal sealed class PlayerDeathCommandHandler
                 "The character item state changed before the death event committed.");
         }
 
-        context.AllowInvoluntaryDeathHardCapOverflow();
+        context.Journal.AllowInvoluntaryDeathHardCapOverflow();
 
         var character = await context.Connection.QuerySingleOrDefaultAsync<CharacterDeathSourceRow>(
             new CommandDefinition(
@@ -209,7 +209,7 @@ internal sealed class PlayerDeathCommandHandler
                 item,
                 definition,
                 capabilities.DeathDisposition,
-                await context.CaptureItemStateJsonAsync(item.ItemInstanceId, cancellationToken)));
+                await context.Journal.CaptureItemStateJsonAsync(item.ItemInstanceId, cancellationToken)));
         }
 
         var equippedBag = partitionItems.SingleOrDefault(item => item.IsEquippedBag);
@@ -325,12 +325,12 @@ internal sealed class PlayerDeathCommandHandler
             context.Transaction,
             cancellationToken: cancellationToken));
 
-        context.TouchContainer(characterState.PermanentInventoryContainerId);
-        context.TouchContainer(generalContainerId);
-        context.TouchContainer(equipmentContainerId);
-        context.TouchContainer(bagContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.AddMetadataAudit(
+        context.Journal.TouchContainer(characterState.PermanentInventoryContainerId);
+        context.Journal.TouchContainer(generalContainerId);
+        context.Journal.TouchContainer(equipmentContainerId);
+        context.Journal.TouchContainer(bagContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.AddMetadataAudit(
             "player_death_partitioned",
             new
             {

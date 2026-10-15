@@ -153,8 +153,8 @@ internal sealed class SecureContainerTierCommandHandler
                 command.AccountId,
                 entitlement.TierId,
                 entitlement.Revision);
-            context.AddMetadataAudit("secure_tier_unchanged", unchanged, unchanged);
-            context.SetSecureContainerEntitlementRevision(entitlement.Revision);
+            context.Journal.AddMetadataAudit("secure_tier_unchanged", unchanged, unchanged);
+            context.Journal.SetSecureContainerEntitlementRevision(entitlement.Revision);
             return;
         }
 
@@ -263,7 +263,7 @@ internal sealed class SecureContainerTierCommandHandler
                         state.CharacterId,
                         overflow.Revision,
                         cancellationToken);
-                    var beforeState = await context.CaptureItemStateJsonAsync(
+                    var beforeState = await context.Journal.CaptureItemStateJsonAsync(
                         item.ItemInstanceId,
                         cancellationToken);
                     await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -294,19 +294,19 @@ internal sealed class SecureContainerTierCommandHandler
                         },
                         context.Transaction,
                         cancellationToken: cancellationToken));
-                    var afterState = await context.CaptureItemStateJsonAsync(
+                    var afterState = await context.Journal.CaptureItemStateJsonAsync(
                         item.ItemInstanceId,
                         cancellationToken);
-                    context.AddItemAudit(
+                    context.Journal.AddItemAudit(
                         "secure_capacity_reduction_recovery",
                         item.ItemInstanceId,
                         beforeState,
                         afterState);
-                    context.IncludeResultItem(item.ItemInstanceId);
+                    context.Journal.IncludeResultItem(item.ItemInstanceId);
                 }
 
-                context.TouchContainer(recoveryContainer.ContainerId);
-                context.AddRecoveryDelivery(deliveryId);
+                context.Journal.TouchContainer(recoveryContainer.ContainerId);
+                context.Journal.AddRecoveryDelivery(deliveryId);
             }
 
             await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -333,19 +333,19 @@ internal sealed class SecureContainerTierCommandHandler
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.TouchContainer(secureContainer.ContainerId);
-            context.TouchCharacter(state.CharacterId);
+            context.Journal.TouchContainer(secureContainer.ContainerId);
+            context.Journal.TouchCharacter(state.CharacterId);
         }
 
         var entitlementAfter = new SecureEntitlementAuditState(
             command.AccountId,
             tier.TierId,
             entitlementRevision);
-        context.AddMetadataAudit(
+        context.Journal.AddMetadataAudit(
             "secure_tier_changed",
             entitlementBefore,
             entitlementAfter);
-        context.SetSecureContainerEntitlementRevision(entitlementRevision);
+        context.Journal.SetSecureContainerEntitlementRevision(entitlementRevision);
     }
 
     private static async Task<SecureOverflowItem[]> LoadSecureOverflowItemsAsync(

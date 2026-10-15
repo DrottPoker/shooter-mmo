@@ -53,8 +53,8 @@ internal static class DeathCustodyTransfers
                     item,
                     "death_partitioned_to_corpse_bag",
                     cancellationToken);
-                context.TouchContainer(item.Source.ContainerId);
-                context.IncludeResultItem(item.Item.ItemInstanceId);
+                context.Journal.TouchContainer(item.Source.ContainerId);
+                context.Journal.IncludeResultItem(item.Item.ItemInstanceId);
                 return;
             }
         }
@@ -83,9 +83,9 @@ internal static class DeathCustodyTransfers
             item,
             "death_partitioned_to_corpse",
             cancellationToken);
-        context.TouchContainer(item.Source.ContainerId);
-        context.TouchContainer(destinationContainerId);
-        context.IncludeResultItem(item.Item.ItemInstanceId);
+        context.Journal.TouchContainer(item.Source.ContainerId);
+        context.Journal.TouchContainer(destinationContainerId);
+        context.Journal.IncludeResultItem(item.Item.ItemInstanceId);
     }
 
     internal static async Task AddDeathRecoveryDeliveriesAsync(
@@ -139,7 +139,7 @@ internal static class DeathCustodyTransfers
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.AddRecoveryDelivery(deliveryId);
+            context.Journal.AddRecoveryDelivery(deliveryId);
 
             var orderedGroupItems = group.Items
                 .OrderBy(item => item.Item.ItemInstanceId)
@@ -244,7 +244,7 @@ internal static class DeathCustodyTransfers
                     new { ContainerId = bagContentsId },
                     context.Transaction,
                     cancellationToken: cancellationToken));
-                context.TouchContainer(bagContentsId);
+                context.Journal.TouchContainer(bagContentsId);
             }
 
             await RecordDeathItemAuditAsync(
@@ -254,9 +254,9 @@ internal static class DeathCustodyTransfers
                     ? "death_recovered_insured"
                     : "death_recovered_protected",
                 cancellationToken);
-            context.TouchContainer(item.Source.ContainerId);
-            context.TouchContainer(recoveryStorageContainerId);
-            context.IncludeResultItem(item.Item.ItemInstanceId);
+            context.Journal.TouchContainer(item.Source.ContainerId);
+            context.Journal.TouchContainer(recoveryStorageContainerId);
+            context.Journal.IncludeResultItem(item.Item.ItemInstanceId);
         }
     }
 
@@ -266,10 +266,10 @@ internal static class DeathCustodyTransfers
         string changeKind,
         CancellationToken cancellationToken)
     {
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             item.Item.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             changeKind,
             item.Item.ItemInstanceId,
             item.BeforeState,

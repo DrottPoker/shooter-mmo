@@ -301,7 +301,7 @@ internal sealed class CorpseInternalMoveCommandHandler
             corpse,
             "corpse_internal_transfer_revision_advanced",
             cancellationToken);
-        context.TouchContainer(sourceContainer.ContainerId);
-        context.TouchContainer(destination.ContainerId);
+        context.Journal.TouchContainer(sourceContainer.ContainerId);
+        context.Journal.TouchContainer(destination.ContainerId);
     }
 }

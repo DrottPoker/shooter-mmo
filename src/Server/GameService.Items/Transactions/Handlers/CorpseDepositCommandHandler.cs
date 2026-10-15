@@ -291,8 +291,8 @@ internal sealed class CorpseDepositCommandHandler
             corpse,
             "corpse_deposit_revision_advanced",
             cancellationToken);
-        context.TouchContainer(sourceContainer.ContainerId);
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
+        context.Journal.TouchContainer(sourceContainer.ContainerId);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
     }
 }

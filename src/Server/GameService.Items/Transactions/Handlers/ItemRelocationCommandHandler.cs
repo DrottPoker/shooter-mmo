@@ -52,7 +52,7 @@ internal sealed class ItemRelocationCommandHandler
             item.IsBag ? item.ItemInstanceId : null,
             false,
             cancellationToken);
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
 
@@ -76,14 +76,14 @@ internal sealed class ItemRelocationCommandHandler
             context.Transaction,
             cancellationToken: cancellationToken));
 
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit("item_relocated", item.ItemInstanceId, beforeState, afterState);
-        context.TouchContainer(item.ContainerId);
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(item.ItemInstanceId);
+        context.Journal.AddItemAudit("item_relocated", item.ItemInstanceId, beforeState, afterState);
+        context.Journal.TouchContainer(item.ContainerId);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 
     public async Task ExecuteAsync(
@@ -179,10 +179,10 @@ internal sealed class ItemRelocationCommandHandler
             cancellationToken,
             firstItem.ItemInstanceId);
 
-        var firstBeforeState = await context.CaptureItemStateJsonAsync(
+        var firstBeforeState = await context.Journal.CaptureItemStateJsonAsync(
             firstItem.ItemInstanceId,
             cancellationToken);
-        var secondBeforeState = await context.CaptureItemStateJsonAsync(
+        var secondBeforeState = await context.Journal.CaptureItemStateJsonAsync(
             secondItem.ItemInstanceId,
             cancellationToken);
 
@@ -222,26 +222,26 @@ internal sealed class ItemRelocationCommandHandler
             context.Transaction,
             cancellationToken: cancellationToken));
 
-        var firstAfterState = await context.CaptureItemStateJsonAsync(
+        var firstAfterState = await context.Journal.CaptureItemStateJsonAsync(
             firstItem.ItemInstanceId,
             cancellationToken);
-        var secondAfterState = await context.CaptureItemStateJsonAsync(
+        var secondAfterState = await context.Journal.CaptureItemStateJsonAsync(
             secondItem.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "container_items_swapped",
             firstItem.ItemInstanceId,
             firstBeforeState,
             firstAfterState);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "container_items_swapped",
             secondItem.ItemInstanceId,
             secondBeforeState,
             secondAfterState);
-        context.TouchContainer(firstContainer.ContainerId);
-        context.TouchContainer(secondContainer.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(firstItem.ItemInstanceId);
-        context.IncludeResultItem(secondItem.ItemInstanceId);
+        context.Journal.TouchContainer(firstContainer.ContainerId);
+        context.Journal.TouchContainer(secondContainer.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(firstItem.ItemInstanceId);
+        context.Journal.IncludeResultItem(secondItem.ItemInstanceId);
     }
 }

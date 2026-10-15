@@ -31,7 +31,7 @@ internal static class CorpseCustodyWrites
         string auditKind,
         CancellationToken cancellationToken)
     {
-        var before = await context.CaptureItemStateJsonAsync(
+        var before = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -53,15 +53,15 @@ internal static class CorpseCustodyWrites
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var after = await context.CaptureItemStateJsonAsync(
+        var after = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             auditKind,
             source.ItemInstanceId,
             before,
             after);
-        context.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
     }
 
     public static async Task SplitCorpseQuantityAsync(
@@ -96,7 +96,7 @@ internal static class CorpseCustodyWrites
         string createdAuditKind,
         CancellationToken cancellationToken)
     {
-        var sourceBefore = await context.CaptureItemStateJsonAsync(
+        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
         var createdItemId = Guid.NewGuid();
@@ -165,24 +165,24 @@ internal static class CorpseCustodyWrites
                 cancellationToken: cancellationToken));
         }
 
-        var sourceAfter = await context.CaptureItemStateJsonAsync(
+        var sourceAfter = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        var createdAfter = await context.CaptureItemStateJsonAsync(
+        var createdAfter = await context.Journal.CaptureItemStateJsonAsync(
             createdItemId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             sourceAuditKind,
             source.ItemInstanceId,
             sourceBefore,
             sourceAfter);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             createdAuditKind,
             createdItemId,
             null,
             createdAfter);
-        context.IncludeResultItem(source.ItemInstanceId);
-        context.IncludeResultItem(createdItemId);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(createdItemId);
     }
 
     public static async Task MergeCorpseQuantityAsync(
@@ -214,10 +214,10 @@ internal static class CorpseCustodyWrites
         string targetAuditKind,
         CancellationToken cancellationToken)
     {
-        var sourceBefore = await context.CaptureItemStateJsonAsync(
+        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        var targetBefore = await context.CaptureItemStateJsonAsync(
+        var targetBefore = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
         if (isPartial)
@@ -269,27 +269,27 @@ internal static class CorpseCustodyWrites
         }
 
         var sourceAfter = isPartial
-            ? await context.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken)
+            ? await context.Journal.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken)
             : null;
-        var targetAfter = await context.CaptureItemStateJsonAsync(
+        var targetAfter = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             isPartial ? sourceAuditKind : sourceAuditKind + "_removed",
             source.ItemInstanceId,
             sourceBefore,
             sourceAfter);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             targetAuditKind,
             target.ItemInstanceId,
             targetBefore,
             targetAfter);
         if (isPartial)
         {
-            context.IncludeResultItem(source.ItemInstanceId);
+            context.Journal.IncludeResultItem(source.ItemInstanceId);
         }
 
-        context.IncludeResultItem(target.ItemInstanceId);
+        context.Journal.IncludeResultItem(target.ItemInstanceId);
     }
 
     public static async Task SwapCorpseContainerItemsAsync(
@@ -310,10 +310,10 @@ internal static class CorpseCustodyWrites
                 "Both swapped items must remain in their expected container slots.");
         }
 
-        var sourceBefore = await context.CaptureItemStateJsonAsync(
+        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        var targetBefore = await context.CaptureItemStateJsonAsync(
+        var targetBefore = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -346,23 +346,23 @@ internal static class CorpseCustodyWrites
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var sourceAfter = await context.CaptureItemStateJsonAsync(
+        var sourceAfter = await context.Journal.CaptureItemStateJsonAsync(
             source.ItemInstanceId,
             cancellationToken);
-        var targetAfter = await context.CaptureItemStateJsonAsync(
+        var targetAfter = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             sourceAuditKind,
             source.ItemInstanceId,
             sourceBefore,
             sourceAfter);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             targetAuditKind,
             target.ItemInstanceId,
             targetBefore,
             targetAfter);
-        context.IncludeResultItem(source.ItemInstanceId);
-        context.IncludeResultItem(target.ItemInstanceId);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(target.ItemInstanceId);
     }
 }

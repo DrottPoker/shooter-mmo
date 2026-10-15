@@ -15,14 +15,6 @@ namespace Mmorpg.GameService.Items.Transactions;
 // transaction-local timeouts are set; it never commits or rolls back.
 internal sealed class ItemTransactionContext
 {
-    private static readonly JsonSerializerOptions AuditJsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly HashSet<Guid> touchedCharacterIds = [];
-    private readonly HashSet<Guid> touchedContainerIds = [];
-    private readonly HashSet<Guid> resultItemIds = [];
-    private readonly List<ItemAuditChange> auditChanges = [];
-    private readonly List<Guid> recoveryDeliveryIds = [];
-    private long? secureContainerEntitlementRevision;
-    private bool allowInvoluntaryHardCapOverflow;
     private readonly ItemTransactionDependencies dependencies;
     private readonly ItemOperationsMetrics? operationsMetrics;
 
@@ -36,6 +28,7 @@ internal sealed class ItemTransactionContext
         this.operationsMetrics = operationsMetrics;
         Authority = new ItemActorAuthority(session.Actor);
         State = new ItemStateReader(session, Authority);
+        Journal = new ItemChangeJournal(session, State);
     }
 
     public ItemTransactionSession Session { get; }
@@ -56,6 +49,8 @@ internal sealed class ItemTransactionContext
     public ItemActorAuthority Authority { get; }
 
     public ItemStateReader State { get; }
+
+    public ItemChangeJournal Journal { get; }
 
     public async Task ValidateLiveAuthorityAsync(
         Guid? actorCharacterId,
@@ -804,122 +799,17 @@ internal sealed class ItemTransactionContext
         }
     }
 
-    public async Task<string?> CaptureItemStateJsonAsync(
-        Guid itemInstanceId,
-        CancellationToken cancellationToken)
-    {
-        var item = await State.LoadItemAsync(itemInstanceId, cancellationToken);
-        if (item is null)
-        {
-            return null;
-        }
-
-        var policies = await State.LoadPoliciesAsync(itemInstanceId, cancellationToken);
-        var state = new ItemAuditState(
-            item.ItemInstanceId,
-            item.DefinitionId,
-            item.Quantity,
-            item.Revision,
-            item.ContainerId,
-            item.ContainerSlotIndex,
-            item.EquippedCharacterId,
-            item.EquipmentSlotId,
-            policies.Select(policy => new ItemPolicyAuditState(
-                policy.PolicyKind,
-                policy.Status,
-                policy.SourceKind,
-                policy.SourceId,
-                policy.Revision)).ToArray());
-        return JsonSerializer.Serialize(state, AuditJsonOptions);
-    }
-
-    public void AddItemAudit(
-        string changeKind,
-        Guid itemInstanceId,
-        string? beforeState,
-        string? afterState)
-    {
-        if (beforeState is null && afterState is null)
-        {
-            throw new InvalidOperationException("An item audit change requires before or after state.");
-        }
-
-        auditChanges.Add(new ItemAuditChange(
-            changeKind,
-            afterState is null ? null : itemInstanceId,
-            beforeState,
-            afterState));
-    }
-
-    public void AddMetadataAudit(
-        string changeKind,
-        object? beforeState,
-        object? afterState)
-    {
-        if (beforeState is null && afterState is null)
-        {
-            throw new InvalidOperationException("A metadata audit change requires before or after state.");
-        }
-
-        auditChanges.Add(new ItemAuditChange(
-            changeKind,
-            null,
-            beforeState is null ? null : JsonSerializer.Serialize(beforeState, AuditJsonOptions),
-            afterState is null ? null : JsonSerializer.Serialize(afterState, AuditJsonOptions)));
-    }
-
-    public void TouchCharacter(Guid characterId)
-    {
-        touchedCharacterIds.Add(characterId);
-    }
-
-    public void TouchContainer(Guid? containerId)
-    {
-        if (containerId is not null)
-        {
-            touchedContainerIds.Add(containerId.Value);
-        }
-    }
-
-    public void IncludeResultItem(Guid itemInstanceId)
-    {
-        resultItemIds.Add(itemInstanceId);
-    }
-
-    public void AddRecoveryDelivery(Guid recoveryDeliveryId)
-    {
-        recoveryDeliveryIds.Add(recoveryDeliveryId);
-    }
-
-    public void SetSecureContainerEntitlementRevision(long revision)
-    {
-        secureContainerEntitlementRevision = revision;
-    }
-
-    public void AllowInvoluntaryDeathHardCapOverflow()
-    {
-        if (!string.Equals(
-                OperationKind,
-                ItemOperationKinds.ProcessPlayerDeath,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "Only player death may permit involuntary carry overflow.");
-        }
-
-        allowInvoluntaryHardCapOverflow = true;
-    }
-
     public async Task<ItemTransactionResult> FinalizeSuccessAsync(
         CancellationToken cancellationToken)
     {
-        if (auditChanges.Count == 0)
+        var journal = Journal;
+        if (journal.AuditChanges.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Item operation '{OperationKind}' produced no audit changes.");
         }
 
-        var containerIds = touchedContainerIds.Order().ToArray();
+        var containerIds = journal.TouchedContainerIds.Order().ToArray();
         if (containerIds.Length > 0)
         {
             await Connection.ExecuteAsync(new CommandDefinition(
@@ -951,7 +841,7 @@ internal sealed class ItemTransactionContext
                     cancellationToken: cancellationToken))).ToArray();
 
         var characterResults = new List<ItemTransactionCharacterRevision>();
-        foreach (var characterId in touchedCharacterIds.Order())
+        foreach (var characterId in journal.TouchedCharacterIds.Order())
         {
             var carry = await CalculateCarryStateAsync(characterId, cancellationToken);
             var previousCarry = await Connection.QuerySingleAsync<CharacterCarryResult>(
@@ -967,7 +857,7 @@ internal sealed class ItemTransactionContext
                     new { CharacterId = characterId },
                     Transaction,
                     cancellationToken: cancellationToken));
-            if (!allowInvoluntaryHardCapOverflow
+            if (!journal.AllowsInvoluntaryHardCapOverflow
                 && !EncumbranceRules.IsAllowedVoluntaryTransition(
                     previousCarry.CarriedWeight,
                     previousCarry.CarryCapacity,
@@ -1008,7 +898,7 @@ internal sealed class ItemTransactionContext
                 state.CarryCapacity));
         }
 
-        var resultItems = resultItemIds.Count == 0
+        var resultItems = journal.ResultItemIds.Count == 0
             ? []
             : (await Connection.QueryAsync<ItemTransactionItemRevision>(new CommandDefinition(
                 """
@@ -1019,13 +909,13 @@ internal sealed class ItemTransactionContext
                 where id = any(@ItemIds)
                 order by id;
                 """,
-                new { ItemIds = resultItemIds.Order().ToArray() },
+                new { ItemIds = journal.ResultItemIds.Order().ToArray() },
                 Transaction,
                 cancellationToken: cancellationToken))).ToArray();
 
-        for (var index = 0; index < auditChanges.Count; index++)
+        for (var index = 0; index < journal.AuditChanges.Count; index++)
         {
-            var change = auditChanges[index];
+            var change = journal.AuditChanges[index];
             await Connection.ExecuteAsync(new CommandDefinition(
                 """
                 insert into item_operation_changes (
@@ -1064,8 +954,8 @@ internal sealed class ItemTransactionContext
             characterResults,
             containerResults,
             resultItems,
-            recoveryDeliveryIds.Order().ToArray(),
-            secureContainerEntitlementRevision);
+            journal.RecoveryDeliveryIds.Order().ToArray(),
+            journal.SecureContainerEntitlementRevision);
     }
 
     [DoesNotReturn]
@@ -1186,30 +1076,6 @@ internal sealed class ItemTransactionContext
 
         return BagDestinationKind.SecureContainerSlot;
     }
-
-    private sealed record ItemAuditChange(
-        string ChangeKind,
-        Guid? ItemInstanceId,
-        string? BeforeState,
-        string? AfterState);
-
-    private sealed record ItemAuditState(
-        Guid ItemInstanceId,
-        string DefinitionId,
-        int Quantity,
-        long Revision,
-        Guid? ContainerId,
-        int? ContainerSlotIndex,
-        Guid? EquippedCharacterId,
-        string? EquipmentSlotId,
-        IReadOnlyList<ItemPolicyAuditState> Policies);
-
-    private sealed record ItemPolicyAuditState(
-        string PolicyKind,
-        string Status,
-        string SourceKind,
-        string SourceId,
-        long Revision);
 
     private sealed class LockDiscoveryRow
     {

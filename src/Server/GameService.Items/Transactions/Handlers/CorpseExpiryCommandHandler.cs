@@ -58,7 +58,7 @@ internal sealed class CorpseExpiryCommandHandler
                     "The corpse was closed by another lifecycle operation.");
             }
 
-            context.AddMetadataAudit(
+            context.Journal.AddMetadataAudit(
                 "corpse_expiry_replayed",
                 new { command.CorpseId, corpse.ClosedAt },
                 new { command.CorpseId, corpse.ClosedAt });
@@ -136,7 +136,7 @@ internal sealed class CorpseExpiryCommandHandler
 
         foreach (var item in expiringItems)
         {
-            var beforeState = await context.CaptureItemStateJsonAsync(
+            var beforeState = await context.Journal.CaptureItemStateJsonAsync(
                 item.ItemInstanceId,
                 cancellationToken);
             await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -163,7 +163,7 @@ internal sealed class CorpseExpiryCommandHandler
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.AddItemAudit(
+            context.Journal.AddItemAudit(
                 "corpse_item_expired",
                 item.ItemInstanceId,
                 beforeState,
@@ -202,7 +202,7 @@ internal sealed class CorpseExpiryCommandHandler
             new { command.CorpseId },
             context.Transaction,
             cancellationToken: cancellationToken));
-        context.AddMetadataAudit(
+        context.Journal.AddMetadataAudit(
             "corpse_expired",
             new
             {

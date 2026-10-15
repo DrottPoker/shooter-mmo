@@ -55,10 +55,10 @@ internal sealed class BagAggregateCommandHandler
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, firstBag, cancellationToken);
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, secondBag, cancellationToken);
 
-        var beforeFirst = await context.CaptureItemStateJsonAsync(
+        var beforeFirst = await context.Journal.CaptureItemStateJsonAsync(
             firstBag.ItemInstanceId,
             cancellationToken);
-        var beforeSecond = await context.CaptureItemStateJsonAsync(
+        var beforeSecond = await context.Journal.CaptureItemStateJsonAsync(
             secondBag.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -83,27 +83,27 @@ internal sealed class BagAggregateCommandHandler
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var afterFirst = await context.CaptureItemStateJsonAsync(
+        var afterFirst = await context.Journal.CaptureItemStateJsonAsync(
             firstBag.ItemInstanceId,
             cancellationToken);
-        var afterSecond = await context.CaptureItemStateJsonAsync(
+        var afterSecond = await context.Journal.CaptureItemStateJsonAsync(
             secondBag.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "bag_aggregate_swapped",
             firstBag.ItemInstanceId,
             beforeFirst,
             afterFirst);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "bag_aggregate_swapped",
             secondBag.ItemInstanceId,
             beforeSecond,
             afterSecond);
-        context.TouchContainer(firstBag.BagContentsContainerId);
-        context.TouchContainer(secondBag.BagContentsContainerId);
-        context.TouchCharacter(command.FirstCharacterId);
-        context.TouchCharacter(command.SecondCharacterId);
-        context.IncludeResultItem(firstBag.ItemInstanceId);
-        context.IncludeResultItem(secondBag.ItemInstanceId);
+        context.Journal.TouchContainer(firstBag.BagContentsContainerId);
+        context.Journal.TouchContainer(secondBag.BagContentsContainerId);
+        context.Journal.TouchCharacter(command.FirstCharacterId);
+        context.Journal.TouchCharacter(command.SecondCharacterId);
+        context.Journal.IncludeResultItem(firstBag.ItemInstanceId);
+        context.Journal.IncludeResultItem(secondBag.ItemInstanceId);
     }
 }

@@ -55,7 +55,7 @@ internal sealed class QuestItemCommandHandler
         if (itemIds.Length == 0)
         {
             var unchanged = new { QuestGrantId = questGrantId, RemovedItemCount = 0 };
-            context.AddMetadataAudit("quest_items_already_absent", unchanged, unchanged);
+            context.Journal.AddMetadataAudit("quest_items_already_absent", unchanged, unchanged);
             return;
         }
 
@@ -64,7 +64,7 @@ internal sealed class QuestItemCommandHandler
             var item = await context.State.LoadItemAsync(itemInstanceId, cancellationToken)
                 ?? throw new InvalidOperationException(
                     $"Quest item '{itemInstanceId}' disappeared while its owner was locked.");
-            var beforeState = await context.CaptureItemStateJsonAsync(
+            var beforeState = await context.Journal.CaptureItemStateJsonAsync(
                 item.ItemInstanceId,
                 cancellationToken);
             await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -121,11 +121,11 @@ internal sealed class QuestItemCommandHandler
                     cancellationToken: cancellationToken));
             }
 
-            context.AddItemAudit("quest_item_removed", item.ItemInstanceId, beforeState, null);
-            context.TouchContainer(item.ContainerId);
+            context.Journal.AddItemAudit("quest_item_removed", item.ItemInstanceId, beforeState, null);
+            context.Journal.TouchContainer(item.ContainerId);
         }
 
-        context.TouchCharacter(command.CharacterId);
+        context.Journal.TouchCharacter(command.CharacterId);
     }
 
     private const string QuestGrantItemIdsSql =

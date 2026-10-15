@@ -47,7 +47,7 @@ internal sealed class ItemEquipmentCommandHandler
             definition,
             bagHasContents,
             cancellationToken);
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
 
@@ -89,16 +89,16 @@ internal sealed class ItemEquipmentCommandHandler
                 new { ContainerId = item.BagContentsContainerId.Value },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.TouchContainer(item.BagContentsContainerId);
+            context.Journal.TouchContainer(item.BagContentsContainerId);
         }
 
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit("item_equipped", item.ItemInstanceId, beforeState, afterState);
-        context.TouchContainer(item.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(item.ItemInstanceId);
+        context.Journal.AddItemAudit("item_equipped", item.ItemInstanceId, beforeState, afterState);
+        context.Journal.TouchContainer(item.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 
     public async Task ExecuteAsync(
@@ -139,7 +139,7 @@ internal sealed class ItemEquipmentCommandHandler
             item.IsBag ? item.ItemInstanceId : null,
             false,
             cancellationToken);
-        var beforeState = await context.CaptureItemStateJsonAsync(
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
 
@@ -175,15 +175,15 @@ internal sealed class ItemEquipmentCommandHandler
                 new { ContainerId = item.BagContentsContainerId.Value },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.TouchContainer(item.BagContentsContainerId);
+            context.Journal.TouchContainer(item.BagContentsContainerId);
         }
 
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit("item_unequipped", item.ItemInstanceId, beforeState, afterState);
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(item.ItemInstanceId);
+        context.Journal.AddItemAudit("item_unequipped", item.ItemInstanceId, beforeState, afterState);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 }

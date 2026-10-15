@@ -138,7 +138,7 @@ internal static class CorpseCustody
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-        context.AddMetadataAudit(
+        context.Journal.AddMetadataAudit(
             auditKind,
             new { corpse.CorpseId, corpse.Revision },
             new { corpse.CorpseId, Revision = nextRevision });

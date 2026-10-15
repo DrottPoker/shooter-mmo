@@ -72,10 +72,10 @@ internal sealed class CorpseBagSwapCommandHandler
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, corpseBag, cancellationToken);
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, playerBag, cancellationToken);
 
-        var corpseBagBefore = await context.CaptureItemStateJsonAsync(
+        var corpseBagBefore = await context.Journal.CaptureItemStateJsonAsync(
             corpseBag.ItemInstanceId,
             cancellationToken);
-        var playerBagBefore = await context.CaptureItemStateJsonAsync(
+        var playerBagBefore = await context.Journal.CaptureItemStateJsonAsync(
             playerBag.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -122,29 +122,29 @@ internal sealed class CorpseBagSwapCommandHandler
             context.Transaction,
             cancellationToken: cancellationToken));
 
-        var corpseBagAfter = await context.CaptureItemStateJsonAsync(
+        var corpseBagAfter = await context.Journal.CaptureItemStateJsonAsync(
             corpseBag.ItemInstanceId,
             cancellationToken);
-        var playerBagAfter = await context.CaptureItemStateJsonAsync(
+        var playerBagAfter = await context.Journal.CaptureItemStateJsonAsync(
             playerBag.ItemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "corpse_bag_swapped_to_character",
             corpseBag.ItemInstanceId,
             corpseBagBefore,
             corpseBagAfter);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "character_bag_swapped_to_corpse",
             playerBag.ItemInstanceId,
             playerBagBefore,
             playerBagAfter);
         await CorpseCustody.AdvanceCorpseRevisionAsync(context, corpse, cancellationToken);
-        context.TouchContainer(sections.EquipmentContainerId);
-        context.TouchContainer(corpseBag.BagContentsContainerId);
-        context.TouchContainer(playerBag.BagContentsContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(corpseBag.ItemInstanceId);
-        context.IncludeResultItem(playerBag.ItemInstanceId);
+        context.Journal.TouchContainer(sections.EquipmentContainerId);
+        context.Journal.TouchContainer(corpseBag.BagContentsContainerId);
+        context.Journal.TouchContainer(playerBag.BagContentsContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(corpseBag.ItemInstanceId);
+        context.Journal.IncludeResultItem(playerBag.ItemInstanceId);
     }
 
     private static async Task<CorpseBagSectionRow> LoadCorpseBagSectionAsync(

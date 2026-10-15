@@ -105,11 +105,11 @@ internal sealed class ItemGrantCommandHandler
                     cancellationToken: cancellationToken));
             if (existingQuestItemId is not null)
             {
-                context.AddMetadataAudit(
+                context.Journal.AddMetadataAudit(
                     "quest_grant_already_satisfied",
                     new { QuestGrantId = policySourceId, ItemInstanceId = existingQuestItemId },
                     new { QuestGrantId = policySourceId, ItemInstanceId = existingQuestItemId });
-                context.IncludeResultItem(existingQuestItemId.Value);
+                context.Journal.IncludeResultItem(existingQuestItemId.Value);
                 return;
             }
         }
@@ -238,12 +238,12 @@ internal sealed class ItemGrantCommandHandler
                 cancellationToken: cancellationToken));
         }
 
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             itemInstanceId,
             cancellationToken);
-        context.AddItemAudit("item_granted", itemInstanceId, null, afterState);
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(itemInstanceId);
+        context.Journal.AddItemAudit("item_granted", itemInstanceId, null, afterState);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(itemInstanceId);
     }
 }

@@ -83,7 +83,7 @@ internal sealed class RecoveryExpiryCommandHandler
                     "Recovery expiry cannot destroy a Bag aggregate with child items.");
             }
 
-            var beforeState = await context.CaptureItemStateJsonAsync(
+            var beforeState = await context.Journal.CaptureItemStateJsonAsync(
                 item.ItemInstanceId,
                 cancellationToken);
             await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -124,7 +124,7 @@ internal sealed class RecoveryExpiryCommandHandler
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
-            context.AddItemAudit(
+            context.Journal.AddItemAudit(
                 "recovery_delivery_expired",
                 item.ItemInstanceId,
                 beforeState,
@@ -136,9 +136,9 @@ internal sealed class RecoveryExpiryCommandHandler
             new { DeliveryId = delivery.DeliveryId },
             context.Transaction,
             cancellationToken: cancellationToken));
-        context.TouchContainer(delivery.RecoveryStorageContainerId);
-        context.TouchCharacter(delivery.CharacterId);
-        context.AddMetadataAudit(
+        context.Journal.TouchContainer(delivery.RecoveryStorageContainerId);
+        context.Journal.TouchCharacter(delivery.CharacterId);
+        context.Journal.AddMetadataAudit(
             "recovery_delivery_expired",
             new
             {

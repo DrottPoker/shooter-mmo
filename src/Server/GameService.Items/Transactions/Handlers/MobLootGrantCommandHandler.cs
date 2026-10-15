@@ -86,15 +86,15 @@ internal sealed class MobLootGrantCommandHandler
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var afterState = await context.CaptureItemStateJsonAsync(
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
             itemInstanceId,
             cancellationToken);
-        context.AddItemAudit(
+        context.Journal.AddItemAudit(
             "live_mob_loot_granted",
             itemInstanceId,
             null,
             afterState);
-        context.AddMetadataAudit(
+        context.Journal.AddMetadataAudit(
             "live_mob_loot_grant_committed",
             null,
             new
@@ -105,8 +105,8 @@ internal sealed class MobLootGrantCommandHandler
                 command.CharacterId,
                 ItemInstanceId = itemInstanceId
             });
-        context.TouchContainer(destination.ContainerId);
-        context.TouchCharacter(command.CharacterId);
-        context.IncludeResultItem(itemInstanceId);
+        context.Journal.TouchContainer(destination.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(itemInstanceId);
     }
 }
