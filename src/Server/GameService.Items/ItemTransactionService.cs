@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
@@ -22,6 +23,7 @@ internal sealed partial class ItemTransactionService(
     ILogger<ItemTransactionService>? logger = null,
     IHttpContextAccessor? httpContextAccessor = null)
 {
+    private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
     private readonly ItemTransactionKernel kernel = new(
         dataSource,
         itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),
