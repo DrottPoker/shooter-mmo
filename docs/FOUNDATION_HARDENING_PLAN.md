@@ -50,8 +50,8 @@ current tests do not exercise.
 ## Progress
 
 As of 2026-10-15 every P0 and P1 finding and decisions D1 to D3 are done, and
-the P2 pass is in progress, one verified group per commit. 73 findings are fixed
-and 1 P2 finding remains open. F74 was found and fixed during the pass.
+the P2 pass is in progress, one verified group per commit. All 74 findings are
+fixed, including F74, which was found and fixed during the pass.
 The full verification after the P1 pass passed: 503 of 503 backend tests
 including PostgreSQL and Redis integration, 106 Unity EditMode and 2 PlayMode
 tests, and an end-to-end login, join, graceful leave, and rejoin in Development
@@ -151,7 +151,7 @@ reproduction.
 | F66 | Repository | A Unity crash-recovery scene is tracked in `Assets/_Recovery`. | `shooter-mmorpg-unity-client/Assets/_Recovery/` | Fixed |
 | F67 | Unity settings | The project-wide Input System actions setting points to a missing asset. | `ProjectSettings/EditorBuildSettings.asset` | Fixed |
 | F68 | Unity packages | Template packages without any use are installed: AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting. | `Packages/manifest.json` | Fixed |
-| F69 | Test build | AuthService and SimulationWorker copy conflicting `appsettings.json` files into the test output. Latent: tests read configuration from repository paths. Kept open because the fix needs private MSBuild items. | `Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj` | Open |
+| F69 | Test build | AuthService and SimulationWorker copy conflicting `appsettings.json` files into the test output. Latent: tests read configuration from repository paths. Fixed with the public `CopyConflictingTransitiveContent` property and empty placeholders that the test project owns. | `Tests/ShooterMmo.Backend.Tests/ShooterMmo.Backend.Tests.csproj` | Fixed |
 | F70 | Build | The .NET GameProtocol adapter lists source files explicitly, so a new protocol file is silently missing from the server. | `Shared/DotNet/GameProtocol/ShooterMmo.GameProtocol.csproj` | Fixed |
 | F71 | Repository | `.gitattributes` does not mark collision chunk `.bytes` files as binary. | `.gitattributes` | Fixed |
 | F72 | Documentation | Drift: protocol version `11` and `13` instead of `14`, the .NET SDK requirement, the missing Development Worlds index entry, the outdated one-time scene authoring steps, the PowerShell 7 requirement, the password hasher and revocation reason, the topology and rebind description, and the release fallback description. | `docs/` | Fixed |

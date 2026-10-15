@@ -94,6 +94,13 @@ Expected result:
   [Standard Quality Checks](../README.md#standard-quality-checks) for the full
   integration run with both test containers.
 
+Tests read configuration and content from repository paths, never from their
+output folder. AuthService, SimulationWorker, and ActiveSimulationBots all ship
+appsettings files at the same output paths, so the test project sets
+`CopyConflictingTransitiveContent` to `false` and owns empty `{}` placeholders
+under `Tests/ShooterMmo.Backend.Tests/TestOutput` for those paths. A test fails
+if a service copy ever replaces a placeholder.
+
 NuGet and GitHub Actions updates are proposed monthly by Dependabot against
 `development`. Unity Package Manager updates remain explicit because Dependabot
 does not own `Packages/manifest.json`. Update Unity packages in a focused branch,
