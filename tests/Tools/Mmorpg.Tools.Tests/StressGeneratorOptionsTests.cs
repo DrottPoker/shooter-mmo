@@ -1,6 +1,6 @@
 using Mmorpg.Tools.StackStressGenerator;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Tools.Tests;
 
 public sealed class StressGeneratorOptionsTests
 {

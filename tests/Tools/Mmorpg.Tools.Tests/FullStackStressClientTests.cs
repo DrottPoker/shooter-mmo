@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Mmorpg.Tools.StackStressGenerator;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Tools.Tests;
 
 public sealed class FullStackStressClientTests
 {

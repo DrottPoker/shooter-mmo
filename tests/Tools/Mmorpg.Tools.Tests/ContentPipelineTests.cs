@@ -5,7 +5,7 @@ using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Content;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Tools.Tests;
 
 public sealed class ContentPipelineTests
 {

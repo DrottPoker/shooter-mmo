@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Mmorpg.Tools.ActiveSimulationBots;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Tools.Tests;
 
 public sealed class ActiveSimulationBotOptionsTests
 {
