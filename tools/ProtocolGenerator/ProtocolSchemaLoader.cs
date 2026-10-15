@@ -272,100 +272,69 @@ public static partial class ProtocolSchemaLoader
                 "unreliable" => MessageDelivery.Unreliable,
                 _ => throw node.Error("delivery", "must be reliableOrdered, sequenced, or unreliable.")
             };
-            var codec = node.RequiredString("codec") switch
-            {
-                "handWritten" => MessageCodec.HandWritten,
-                "generated" => MessageCodec.Generated,
-                _ => throw node.Error("codec", "must be handWritten or generated.")
-            };
             var messageDescription = node.RequiredString("description");
             var className = ClassPrefix + name;
-            MessageDefinition message;
-            if (codec == MessageCodec.HandWritten)
+            var api = (node.OptionalString("api") ?? "class") switch
             {
-                message = new MessageDefinition(
-                    name,
-                    (byte)id,
-                    family,
-                    direction,
-                    channel,
-                    delivery,
-                    codec,
-                    messageDescription,
-                    MessageApi.Class,
-                    className,
-                    CSharpNames.Camel(name),
-                    false,
-                    null,
-                    null,
-                    false,
-                    []);
-            }
-            else
+                "class" => MessageApi.Class,
+                "unwrap" => MessageApi.Unwrap,
+                "empty" => MessageApi.Empty,
+                _ => throw node.Error("api", "must be class, unwrap, or empty.")
+            };
+            var fields = api == MessageApi.Empty ? [] : ReadFields(node, scope);
+            EnsureFlatBlankStructs(node, fields);
+            if (api == MessageApi.Unwrap && (fields.Count != 1 || fields[0].Type is BitsWireType))
             {
-                var api = (node.OptionalString("api") ?? "class") switch
-                {
-                    "class" => MessageApi.Class,
-                    "unwrap" => MessageApi.Unwrap,
-                    "empty" => MessageApi.Empty,
-                    _ => throw node.Error("api", "must be class, unwrap, or empty.")
-                };
-                var fields = api == MessageApi.Empty ? [] : ReadFields(node, scope);
-                EnsureFlatBlankStructs(node, fields);
-                if (api == MessageApi.Unwrap && (fields.Count != 1 || fields[0].Type is BitsWireType))
-                {
-                    throw node.Error("api", "unwrap requires exactly one field that is not bits8.");
-                }
-
-                var union = node.TryReadObject("variants", out var variantsNode) ? ReadUnion(variantsNode, fields, scope) : null;
-                if (union is not null && api != MessageApi.Class)
-                {
-                    throw node.Error("api", "only a class message can have variants.");
-                }
-
-                var expandedEncode = (node.OptionalString("encodeParameters") ?? "value") switch
-                {
-                    "value" => false,
-                    "expanded" => true,
-                    _ => throw node.Error("encodeParameters", "must be value or expanded.")
-                };
-                if (expandedEncode && (api != MessageApi.Unwrap || fields[0].Type is not StructWireType))
-                {
-                    throw node.Error("encodeParameters", "expanded requires an unwrapped struct field.");
-                }
-
-                var rules = node.OptionalBoolean("rules", false);
-                var explicitParameter = node.OptionalString("parameter");
-                if (api == MessageApi.Empty && (rules || explicitParameter is not null))
-                {
-                    throw node.Error("api", "an empty message takes no rules or parameter.");
-                }
-
-                var parameter = explicitParameter
-                    ?? CSharpNames.Camel(api == MessageApi.Unwrap ? fields[0].Name : name);
-                message = new MessageDefinition(
-                    name,
-                    (byte)id,
-                    family,
-                    direction,
-                    channel,
-                    delivery,
-                    codec,
-                    messageDescription,
-                    api,
-                    className,
-                    parameter,
-                    rules,
-                    OptionalMemberName(node, "sizeConstant"),
-                    OptionalMemberName(node, "emptySizeConstant"),
-                    node.OptionalBoolean("runtimeSizeCheck", false),
-                    fields,
-                    union)
-                {
-                    ExpandedEncode = expandedEncode
-                };
-                CheckMessageSizes(node, message, scope);
+                throw node.Error("api", "unwrap requires exactly one field that is not bits8.");
             }
+
+            var union = node.TryReadObject("variants", out var variantsNode) ? ReadUnion(variantsNode, fields, scope) : null;
+            if (union is not null && api != MessageApi.Class)
+            {
+                throw node.Error("api", "only a class message can have variants.");
+            }
+
+            var expandedEncode = (node.OptionalString("encodeParameters") ?? "value") switch
+            {
+                "value" => false,
+                "expanded" => true,
+                _ => throw node.Error("encodeParameters", "must be value or expanded.")
+            };
+            if (expandedEncode && (api != MessageApi.Unwrap || fields[0].Type is not StructWireType))
+            {
+                throw node.Error("encodeParameters", "expanded requires an unwrapped struct field.");
+            }
+
+            var rules = node.OptionalBoolean("rules", false);
+            var explicitParameter = node.OptionalString("parameter");
+            if (api == MessageApi.Empty && (rules || explicitParameter is not null))
+            {
+                throw node.Error("api", "an empty message takes no rules or parameter.");
+            }
+
+            var parameter = explicitParameter
+                ?? CSharpNames.Camel(api == MessageApi.Unwrap ? fields[0].Name : name);
+            var message = new MessageDefinition(
+                name,
+                (byte)id,
+                family,
+                direction,
+                channel,
+                delivery,
+                messageDescription,
+                api,
+                className,
+                parameter,
+                rules,
+                OptionalMemberName(node, "sizeConstant"),
+                OptionalMemberName(node, "emptySizeConstant"),
+                node.OptionalBoolean("runtimeSizeCheck", false),
+                fields,
+                union)
+            {
+                ExpandedEncode = expandedEncode
+            };
+            CheckMessageSizes(node, message, scope);
 
             messages.Add(message);
             node.EnsureFullyRead();
@@ -940,13 +909,6 @@ public static partial class ProtocolSchemaLoader
             }
         }
 
-        // Hand-written codecs may use any struct, so unused structs are only known once every
-        // message is generated.
-        if (model.Messages.Any(message => message.Codec == MessageCodec.HandWritten))
-        {
-            return;
-        }
-
         var used = new HashSet<StructDefinition>();
         foreach (var message in model.Messages)
         {
@@ -960,7 +922,7 @@ public static partial class ProtocolSchemaLoader
         var unused = model.Structs.FirstOrDefault(definition => !used.Contains(definition));
         if (unused is not null)
         {
-            throw new ProtocolSchemaException("$", $"struct '{unused.Name}' is not used by any generated message.");
+            throw new ProtocolSchemaException("$", $"struct '{unused.Name}' is not used by any message.");
         }
     }
 

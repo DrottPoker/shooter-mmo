@@ -267,15 +267,6 @@ public enum MessageDelivery
     Unreliable = 3
 }
 
-public enum MessageCodec
-{
-    // The codec is still written by hand in the family folder.
-    HandWritten,
-
-    // The generator writes the model and the codec.
-    Generated
-}
-
 public enum MessageApi
 {
     // Encode and decode a generated message class.
@@ -295,7 +286,6 @@ public sealed record MessageDefinition(
     MessageDirection Direction,
     ChannelDefinition Channel,
     MessageDelivery Delivery,
-    MessageCodec Codec,
     string Description,
     MessageApi Api,
     string ClassName,

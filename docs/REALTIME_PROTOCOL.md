@@ -55,10 +55,8 @@ The schema currently holds:
 - `enums`: every protocol enum with its family and byte values.
 - `structs`: value types that messages and other structs contain, such as
   `PlayerState`.
-- `messages`: every message type with its id, family, direction, channel, and
-  delivery. A message with `"codec": "generated"` also lists its fields, and
-  the generator writes its model class and codec. A message with
-  `"codec": "handWritten"` keeps its model and codec in its family folder.
+- `messages`: every message type with its id, family, direction, channel,
+  delivery, and fields. The generator writes its model class and its codec.
 
 The generator owns `Runtime/Generated`. `RealtimeProtocol.Core.g.cs` holds
 `RealtimeMessageType`, the protocol constants, `RealtimeProtocolLimits`, and the
@@ -263,6 +261,19 @@ only on a worker with its own version.
   member.
 - The connection key stays `Mmorpg.Realtime.v8`, so a version mismatch is
   reported as a clear protocol error instead of a refused connection.
+
+`Schema~/realtime-protocol.lock.json` enforces the first rule. It records the
+SHA-256 fingerprint of the wire contract of every version: the magic, the
+connection key, the packet limits, the channel count, every limit value, and
+for every message its id, direction, channel, delivery, field types and order,
+value rules, presence, blank handling, variants, and whether a hand-written
+rules overload takes part. Names, descriptions, and options that only shape the
+C# API are left out, so a rename needs no new version. Generation fails when
+the contract of a locked version changes, records a new entry when
+`protocol.version` grows, and refuses a version below the newest locked one, so
+a version number is never reused. The fingerprint cannot see inside a
+hand-written `SatisfiesRules` overload: a change there that alters what a peer
+accepts needs a version bump by hand.
 
 ## Golden Tests
 

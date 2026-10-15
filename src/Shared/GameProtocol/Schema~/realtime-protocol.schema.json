@@ -121,7 +121,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": [ "name", "id", "family", "direction", "channel", "delivery", "codec", "description" ],
+        "required": [ "name", "id", "family", "direction", "channel", "delivery", "description" ],
         "properties": {
           "name": { "$ref": "#/$defs/name" },
           "id": {
@@ -134,13 +134,9 @@
           "direction": { "enum": [ "clientToServer", "serverToClient" ] },
           "channel": { "$ref": "#/$defs/name" },
           "delivery": { "enum": [ "reliableOrdered", "sequenced", "unreliable" ] },
-          "codec": {
-            "description": "handWritten: the family folder still encodes and decodes the message by hand. generated: the generator writes the model and the codec from fields.",
-            "enum": [ "handWritten", "generated" ]
-          },
           "description": { "$ref": "#/$defs/text" },
           "api": {
-            "description": "class: encode and decode a generated message class. unwrap: the message has one field, and encode and decode use its value directly. empty: the message has no fields.",
+            "description": "class: encode and decode a generated message class (the default). unwrap: the message has one field, and encode and decode use its value directly. empty: the message has no fields.",
             "enum": [ "class", "unwrap", "empty" ]
           },
           "encodeParameters": {
@@ -171,27 +167,9 @@
           "fields": { "$ref": "#/$defs/fields" },
           "variants": { "$ref": "#/$defs/variants" }
         },
-        "if": { "properties": { "codec": { "const": "generated" } } },
-        "then": {
-          "if": { "required": [ "api" ], "properties": { "api": { "const": "empty" } } },
-          "then": { "not": { "required": [ "fields" ] } },
-          "else": { "required": [ "fields" ] }
-        },
-        "else": {
-          "not": {
-            "anyOf": [
-              { "required": [ "fields" ] },
-              { "required": [ "api" ] },
-              { "required": [ "encodeParameters" ] },
-              { "required": [ "parameter" ] },
-              { "required": [ "rules" ] },
-              { "required": [ "sizeConstant" ] },
-              { "required": [ "emptySizeConstant" ] },
-              { "required": [ "runtimeSizeCheck" ] },
-              { "required": [ "variants" ] }
-            ]
-          }
-        },
+        "if": { "required": [ "api" ], "properties": { "api": { "const": "empty" } } },
+        "then": { "not": { "required": [ "fields" ] } },
+        "else": { "required": [ "fields" ] },
         "unevaluatedProperties": false
       }
     }

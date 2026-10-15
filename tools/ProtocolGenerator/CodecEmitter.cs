@@ -2,10 +2,8 @@ using System.Globalization;
 
 namespace Mmorpg.Tools.ProtocolGenerator;
 
-// Emits model classes, codecs, and validation for structs and generated messages. The
-// codecs use the BinaryWriter and BinaryReader helpers of the hand-written RealtimeProtocol
-// core, and struct helpers keep the Write, TryRead, and IsValid names that hand-written
-// family codecs call.
+// Emits model classes, codecs, and validation for structs and messages. The codecs use the
+// BinaryWriter and BinaryReader helpers of the hand-written RealtimeProtocol core.
 internal static class CodecEmitter
 {
     public static string TypeName(WireType type)
@@ -190,7 +188,7 @@ internal static class CodecEmitter
     public static ISet<StructDefinition> LenientStructs(ProtocolModel model)
     {
         var fields = model.Structs.SelectMany(definition => definition.Fields)
-            .Concat(model.Messages.Where(message => message.Codec == MessageCodec.Generated).SelectMany(message => message.Fields));
+            .Concat(model.Messages.SelectMany(message => message.Fields));
         return fields.Where(field => field.AcceptBlankOnDecode && field.Type is StructWireType)
             .Select(field => ((StructWireType)field.Type).Definition)
             .ToHashSet();
@@ -224,11 +222,9 @@ internal static class CodecEmitter
     // The enums that generated validation checks, so their IsDefined helpers are emitted.
     public static IEnumerable<EnumDefinition> CheckedEnums(ProtocolModel model)
     {
-        var messages = model.Messages.Where(message => message.Codec == MessageCodec.Generated).ToArray();
         var fields = model.Structs.SelectMany(definition => definition.Fields)
-            .Concat(messages.SelectMany(message => message.Fields))
-            .Concat(messages.Where(message => message.Union is not null)
-                .SelectMany(message => message.Union!.Pool.Select(pool => pool.Field)));
+            .Concat(model.Messages.SelectMany(message => message.Fields))
+            .Concat(model.Messages.SelectMany(message => message.Union?.Pool.Select(pool => pool.Field) ?? []));
         return fields.SelectMany(field => EnumsOf(field.Type)).Distinct();
     }
 

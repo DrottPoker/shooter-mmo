@@ -13,6 +13,9 @@ public static class ProtocolLayout
 
     public const string SchemaPath = PackageDirectory + "/Schema~/realtime-protocol.json";
 
+    // The wire fingerprint of every protocol version. The generator owns it next to the schema.
+    public const string LockPath = PackageDirectory + "/Schema~/realtime-protocol.lock.json";
+
     // Generated C# below the package runtime folder. The generator owns this folder: it
     // writes every file in it and removes files it no longer produces.
     public const string GeneratedDirectory = PackageDirectory + "/Runtime/Generated";

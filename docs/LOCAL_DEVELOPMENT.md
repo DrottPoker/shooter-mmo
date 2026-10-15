@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Requirements
 
@@ -138,7 +138,13 @@ Expected result: both commands report realtime protocol version 14 with 27
 messages. The first command rewrites only changed files and removes files that
 the schema no longer produces. The second fails and names the file when a
 generated file is stale, missing, or not produced by the schema. Commit the
-schema, the generated `.cs` files, and their `.meta` files together. No Unity
+schema, `realtime-protocol.lock.json`, the generated `.cs` files, and their
+`.meta` files together.
+
+When generation reports that the wire contract of protocol version 14 changed,
+the schema change alters bytes or acceptance. Increase `protocol.version` in
+the schema and generate again; the lock then records the new version next to
+the old ones. No Unity
 Editor step is required: the generator writes the `.meta` files with stable
 GUIDs, and Unity compiles the new code when it next refreshes.
 

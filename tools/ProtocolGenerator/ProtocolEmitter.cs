@@ -16,7 +16,7 @@ public static class ProtocolEmitter
         {
             (CoreFileName, EmitCore(model))
         };
-        foreach (var family in model.Families.Where(family => HasGeneratedContent(model, family)))
+        foreach (var family in model.Families)
         {
             files.Add(($"RealtimeProtocol.{family}.g.cs", EmitFamily(model, family)));
         }
@@ -72,23 +72,11 @@ public static class ProtocolEmitter
         return FinishFile(writer);
     }
 
-    private static bool HasGeneratedContent(ProtocolModel model, string family)
-    {
-        return model.Enums.Any(definition => definition.Family == family)
-            || model.Structs.Any(definition => definition.Family == family)
-            || GeneratedMessages(model, family).Any();
-    }
-
-    private static IEnumerable<MessageDefinition> GeneratedMessages(ProtocolModel model, string family)
-    {
-        return model.Messages.Where(message => message.Family == family && message.Codec == MessageCodec.Generated);
-    }
-
     private static string EmitFamily(ProtocolModel model, string family)
     {
         var enums = model.Enums.Where(definition => definition.Family == family).ToArray();
         var structs = model.Structs.Where(definition => definition.Family == family).ToArray();
-        var messages = GeneratedMessages(model, family).ToArray();
+        var messages = model.Messages.Where(message => message.Family == family).ToArray();
         var checkedEnums = CodecEmitter.CheckedEnums(model).Where(definition => definition.Family == family).ToArray();
         var hasCodec = structs.Length > 0 || messages.Length > 0 || checkedEnums.Length > 0;
         var writer = StartFile(model, usesSystem: hasCodec || enums.Any(definition => definition.Flags), usesIo: hasCodec);

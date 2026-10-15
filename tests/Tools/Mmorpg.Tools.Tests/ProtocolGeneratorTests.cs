@@ -81,6 +81,78 @@ public sealed class ProtocolGeneratorTests
     }
 
     [Fact]
+    public void TheWireFingerprintIgnoresNamesAndDescriptionsButNotTheContract()
+    {
+        var fingerprint = ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(GeneratedSchema().ToJsonString()));
+
+        var renamed = GeneratedSchema();
+        renamed["messages"]![0]!["fields"]![2]!["name"] = "Pressed";
+        renamed["messages"]![0]!["description"] = "Another description.";
+        renamed["structs"]![0]!["fields"]![0]!["name"] = "Left";
+        Assert.Equal(fingerprint, ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(renamed.ToJsonString())));
+
+        var changedRule = GeneratedSchema();
+        changedRule["messages"]![0]!["fields"]![0]!["minimum"] = 2;
+        Assert.NotEqual(fingerprint, ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(changedRule.ToJsonString())));
+
+        var changedLimit = GeneratedSchema();
+        changedLimit["limits"]![0]!["value"] = 3;
+        Assert.NotEqual(fingerprint, ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(changedLimit.ToJsonString())));
+
+        var reordered = GeneratedSchema();
+        var fields = reordered["messages"]![0]!["fields"]!.AsArray();
+        var held = fields[2]!;
+        fields.RemoveAt(2);
+        fields.Insert(0, held);
+        Assert.NotEqual(fingerprint, ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(reordered.ToJsonString())));
+    }
+
+    [Fact]
+    public void TheVersionLockRejectsAChangedContractUntilTheVersionGrows()
+    {
+        using var repository = new TemporaryRepository();
+        var generate = ProtocolGeneratorOptions.Create(repository.Root, verifyOnly: false);
+        var verify = ProtocolGeneratorOptions.Create(repository.Root, verifyOnly: true);
+        ProtocolGeneration.Run(generate);
+        var lockPath = ProtocolLayout.Resolve(repository.Root, ProtocolLayout.LockPath);
+        Assert.Equal(new[] { 14 }, ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys);
+
+        repository.EditSchema(schema => schema["protocol"]!["connectionKey"] = "Mmorpg.Realtime.v9");
+        var changed = Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(generate));
+        Assert.Contains("Increase protocol.version", changed.Message, StringComparison.Ordinal);
+
+        repository.EditSchema(schema => schema["protocol"]!["version"] = 15);
+        Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(verify));
+        ProtocolGeneration.Run(generate);
+        ProtocolGeneration.Run(verify);
+        Assert.Equal(new[] { 14, 15 }, ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys);
+
+        repository.EditSchema(schema => schema["protocol"]!["version"] = 13);
+        var lower = Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(generate));
+        Assert.Contains("versions only grow", lower.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{ "versions": [ { "version": 14 } ] }""")]
+    [InlineData("""{ "versions": [ { "version": 0, "fingerprint": "00" } ] }""")]
+    [InlineData("""{ "versions": [ { "version": 14, "fingerprint": "ABCDEF" } ] }""")]
+    [InlineData("""{ "versions": [], "unknown": true }""")]
+    [InlineData("not json")]
+    public void InvalidVersionLocksAreRejected(string content)
+    {
+        Assert.Throws<InvalidDataException>(() => ProtocolVersionLock.Update(content, 14, new string('0', 64)));
+    }
+
+    [Fact]
+    public void TheVersionLockRejectsADuplicateVersion()
+    {
+        var entry = $$"""{ "version": 14, "fingerprint": "{{new string('a', 64)}}" }""";
+        var content = $$"""{ "versions": [ {{entry}}, {{entry}} ] }""";
+
+        Assert.Throws<InvalidDataException>(() => ProtocolVersionLock.Update(content, 14, new string('a', 64)));
+    }
+
+    [Fact]
     public void TheMinimalSchemaLoads()
     {
         var model = ProtocolSchemaLoader.Load(MinimalSchema().ToJsonString());
@@ -92,7 +164,7 @@ public sealed class ProtocolGeneratorTests
 
     [Theory]
     [InlineData("unknown root property", "$.unknown")]
-    [InlineData("unknown message property", "$.messages[0].fields")]
+    [InlineData("unknown message property", "$.messages[0].codec")]
     [InlineData("missing description", "$.description")]
     [InlineData("version zero", "$.protocol.version")]
     [InlineData("magic without hex prefix", "$.protocol.magic")]
@@ -121,7 +193,7 @@ public sealed class ProtocolGeneratorTests
                 schema["unknown"] = true;
                 break;
             case "unknown message property":
-                message["fields"] = new JsonArray();
+                message["codec"] = "generated";
                 break;
             case "missing description":
                 schema.Remove("description");
@@ -185,7 +257,6 @@ public sealed class ProtocolGeneratorTests
         var model = ProtocolSchemaLoader.Load(GeneratedSchema().ToJsonString());
 
         var message = Assert.Single(model.Messages);
-        Assert.Equal(MessageCodec.Generated, message.Codec);
         Assert.Equal("snapshot", message.Parameter);
         var points = Assert.IsType<ArrayWireType>(message.Fields[1].Type);
         Assert.Same(model.Structs.Single(), Assert.IsType<StructWireType>(points.Element.Type).Definition);
@@ -383,8 +454,8 @@ public sealed class ProtocolGeneratorTests
             ]
             """);
         var snapshot = schema["messages"]![0]!.AsObject();
-        snapshot["codec"] = "generated";
         snapshot["api"] = "empty";
+        snapshot.Remove("fields");
         schema["messages"]!.AsArray().Add(JsonNode.Parse(
             """
             {
@@ -394,7 +465,6 @@ public sealed class ProtocolGeneratorTests
               "direction": "serverToClient",
               "channel": "ControlChannel",
               "delivery": "reliableOrdered",
-              "codec": "generated",
               "description": "A rejection.",
               "api": "unwrap",
               "encodeParameters": "expanded",
@@ -700,7 +770,7 @@ public sealed class ProtocolGeneratorTests
                   "direction": "serverToClient",
                   "channel": "ControlChannel",
                   "delivery": "unreliable",
-                  "codec": "handWritten",
+                  "fields": [ { "name": "Sequence", "type": "u32" } ],
                   "description": "A snapshot."
                 }
               ]
@@ -729,7 +799,6 @@ public sealed class ProtocolGeneratorTests
             ]
             """);
         var message = schema["messages"]![0]!.AsObject();
-        message["codec"] = "generated";
         message["parameter"] = "snapshot";
         message["rules"] = true;
         message["emptySizeConstant"] = "EmptySnapshotSize";
@@ -758,7 +827,6 @@ public sealed class ProtocolGeneratorTests
             }
             """));
         var message = schema["messages"]![0]!.AsObject();
-        message["codec"] = "generated";
         message["parameter"] = "snapshot";
         message["fields"] = JsonNode.Parse(
             """
@@ -805,6 +873,14 @@ public sealed class ProtocolGeneratorTests
         public string Root { get; }
 
         public string GeneratedDirectory { get; }
+
+        public void EditSchema(Action<JsonObject> edit)
+        {
+            var path = ProtocolLayout.Resolve(Root, ProtocolLayout.SchemaPath);
+            var schema = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            edit(schema);
+            File.WriteAllText(path, schema.ToJsonString());
+        }
 
         public void Dispose()
         {

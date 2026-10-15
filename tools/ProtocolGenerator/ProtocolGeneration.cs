@@ -7,8 +7,8 @@ public sealed record GeneratedProtocolFile(string RelativePath, string Content);
 
 public sealed record ProtocolGenerationResult(ProtocolModel Model, IReadOnlyList<GeneratedProtocolFile> Files);
 
-// Loads the schema, generates the C# files and their Unity .meta files, and writes them,
-// or in verify mode proves that the committed files match.
+// Loads the schema, checks its version against the lock, generates the C# files and their
+// Unity .meta files, and writes them, or in verify mode proves that the committed files match.
 public static class ProtocolGeneration
 {
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
@@ -44,8 +44,14 @@ public static class ProtocolGeneration
         }
 
         var model = ProtocolSchemaLoader.Load(File.ReadAllText(schemaPath));
+        var lockPath = ProtocolLayout.Resolve(repositoryRoot, ProtocolLayout.LockPath);
+        var lockContent = ProtocolVersionLock.Update(
+            File.Exists(lockPath) ? NormalizeLineEndings(File.ReadAllText(lockPath)) : null,
+            model.Version,
+            ProtocolFingerprint.Compute(model));
         var files = new List<GeneratedProtocolFile>
         {
+            new(ProtocolLayout.LockPath, lockContent),
             new(ProtocolLayout.GeneratedDirectory + ".meta", FolderMeta(ProtocolLayout.GeneratedDirectory))
         };
         foreach (var (fileName, content) in ProtocolEmitter.Emit(model))
