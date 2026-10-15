@@ -8,6 +8,7 @@ using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.Testing.Content;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

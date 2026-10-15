@@ -1,4 +1,5 @@
 using Mmorpg.GameSimulation;
+using Mmorpg.Testing.Content;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

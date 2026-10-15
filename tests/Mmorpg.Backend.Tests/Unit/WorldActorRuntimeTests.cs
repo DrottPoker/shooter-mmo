@@ -5,6 +5,7 @@ using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.Backend.Tests.Unit;

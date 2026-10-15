@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tool-backed content loaders, kept apart from Mmorpg.Testing so the GameService test
+       projects do not reference the content tools. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Mmorpg.Testing\Mmorpg.Testing.csproj" />
+    <ProjectReference Include="..\..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
+    <ProjectReference Include="..\..\..\src\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
+    <ProjectReference Include="..\..\..\tools\ItemCatalogCompiler\Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <ProjectReference Include="..\..\..\tools\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />
+  </ItemGroup>
+</Project>

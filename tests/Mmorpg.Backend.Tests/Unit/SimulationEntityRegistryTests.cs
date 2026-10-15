@@ -3,6 +3,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.Testing.Content;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

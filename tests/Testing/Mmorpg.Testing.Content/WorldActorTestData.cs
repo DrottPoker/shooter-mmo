@@ -3,9 +3,9 @@ using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Testing.Content;
 
-internal static class WorldActorTestData
+public static class WorldActorTestData
 {
     public static string ActorsDirectory => ContentLayout.ActorsDirectory(RepositoryPaths.Content);
 

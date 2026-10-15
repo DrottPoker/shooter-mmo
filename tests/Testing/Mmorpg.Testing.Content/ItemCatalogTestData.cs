@@ -3,9 +3,9 @@ using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Testing.Content;
 
-internal static class ItemCatalogTestData
+public static class ItemCatalogTestData
 {
     public static string ItemsDirectory => ContentLayout.ItemsDirectory(RepositoryPaths.Content);
 

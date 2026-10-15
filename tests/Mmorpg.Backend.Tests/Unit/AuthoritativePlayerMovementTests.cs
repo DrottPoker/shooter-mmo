@@ -1,6 +1,7 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.Testing.Content;
 
 namespace Mmorpg.Backend.Tests.Unit;
 

@@ -1,8 +1,8 @@
 using Mmorpg.GameSimulation;
 
-namespace Mmorpg.Backend.Tests.Unit;
+namespace Mmorpg.Testing.Content;
 
-internal static class CollisionTestWorldFactory
+public static class CollisionTestWorldFactory
 {
     public static ChunkedStaticCollisionWorld Create()
     {

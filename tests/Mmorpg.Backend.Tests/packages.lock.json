@@ -306,6 +306,18 @@
           "xunit.v3.extensibility.core": "[3.2.2, )"
         }
       },
+      "mmorpg.testing.content": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.GameSimulation": "[1.0.0, )",
+          "Mmorpg.Testing": "[1.0.0, )",
+          "Mmorpg.Tools.ItemCatalogCompiler": "[1.0.0, )",
+          "Mmorpg.Tools.WorldActorCompiler": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )",
+          "xunit.v3.assert": "[3.2.2, )",
+          "xunit.v3.extensibility.core": "[3.2.2, )"
+        }
+      },
       "mmorpg.tools.activesimulationbots": {
         "type": "Project",
         "dependencies": {

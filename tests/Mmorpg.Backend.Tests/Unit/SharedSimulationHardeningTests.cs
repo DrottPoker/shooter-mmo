@@ -3,6 +3,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SharedTests;
 using Mmorpg.Testing;
+using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
