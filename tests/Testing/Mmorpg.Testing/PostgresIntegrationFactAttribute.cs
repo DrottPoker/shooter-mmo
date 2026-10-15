@@ -1,9 +1,10 @@
 using System.Runtime.CompilerServices;
+using Xunit.v3;
 
 namespace Mmorpg.Testing;
 
 [AttributeUsage(AttributeTargets.Method)]
-public sealed class PostgresIntegrationFactAttribute : FactAttribute
+public sealed class PostgresIntegrationFactAttribute : FactAttribute, ITraitAttribute
 {
     public const string ConnectionStringVariable = PostgresTestDatabase.ConnectionStringVariable;
 
@@ -16,5 +17,15 @@ public sealed class PostgresIntegrationFactAttribute : FactAttribute
         {
             Skip = $"Set {ConnectionStringVariable} to a dedicated PostgreSQL test database.";
         }
+    }
+
+    // Lets filters select or exclude every infrastructure test without a class-level trait.
+    public IReadOnlyCollection<KeyValuePair<string, string>> GetTraits()
+    {
+        return
+        [
+            new(TestCategories.Category, TestCategories.Integration),
+            new(TestCategories.Infrastructure, TestCategories.Postgres)
+        ];
     }
 }
