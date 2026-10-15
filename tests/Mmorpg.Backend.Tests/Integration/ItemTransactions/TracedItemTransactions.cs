@@ -31,8 +31,7 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
         this.context = context;
         Recorder = new SqlTraceRecorder();
         loggerFactory = SqlTraceRecorder.CreateLoggerFactory(Recorder);
-        dataSource = new NpgsqlDataSourceBuilder(Environment.GetEnvironmentVariable(
-                PostgresIntegrationFactAttribute.ConnectionStringVariable))
+        dataSource = new NpgsqlDataSourceBuilder(context.ConnectionString)
             .UseLoggerFactory(loggerFactory)
             .Build();
         Service = options is null

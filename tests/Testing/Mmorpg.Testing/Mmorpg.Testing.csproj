@@ -2,4 +2,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
 </Project>

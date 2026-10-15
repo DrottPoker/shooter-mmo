@@ -60,6 +60,10 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public NpgsqlDataSource DataSource { get; }
 
+    // The full connection string of this test assembly's database, for tests that build
+    // their own data source. DataSource.ConnectionString omits the password.
+    public string ConnectionString => GameServiceConfiguration.Platform.PostgresConnectionString;
+
     // The production service graph, built by GameServiceTestComposition.
     public IServiceProvider Services { get; }
 
@@ -109,16 +113,12 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         bool initializeDatabase = true,
         bool heartbeatSeedShard = true)
     {
-        var connectionString = Environment.GetEnvironmentVariable(
-            PostgresIntegrationFactAttribute.ConnectionStringVariable)!;
-
-        EnsureDedicatedTestDatabase(connectionString);
-
+        var connectionString = await PostgresTestDatabase.GetConnectionStringAsync();
         var dataSource = NpgsqlDataSource.Create(connectionString);
 
         try
         {
-            await ResetPublicSchemaAsync(dataSource);
+            await PostgresTestDatabase.ResetPublicSchemaAsync(dataSource);
 
             var configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
@@ -268,25 +268,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         await scope.DisposeAsync();
         await serviceProvider.DisposeAsync();
         await DataSource.DisposeAsync();
-    }
-
-    private static void EnsureDedicatedTestDatabase(string connectionString)
-    {
-        var builder = new NpgsqlConnectionStringBuilder(connectionString);
-        if (string.IsNullOrWhiteSpace(builder.Database)
-            || !builder.Database.Contains("test", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "The PostgreSQL integration connection must target a database whose name contains 'test'.");
-        }
-    }
-
-    private static async Task ResetPublicSchemaAsync(NpgsqlDataSource dataSource)
-    {
-        await using var command = dataSource.CreateCommand(
-            "drop schema if exists public cascade; create schema public;");
-
-        await command.ExecuteNonQueryAsync();
     }
 }
 

@@ -301,6 +301,7 @@
         "type": "Project",
         "dependencies": {
           "Mmorpg.WorldData": "[1.0.0, )",
+          "Npgsql": "[9.0.3, )",
           "xunit.v3.assert": "[3.2.2, )",
           "xunit.v3.extensibility.core": "[3.2.2, )"
         }

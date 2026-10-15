@@ -5,7 +5,7 @@ namespace Mmorpg.Testing;
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class PostgresIntegrationFactAttribute : FactAttribute
 {
-    public const string ConnectionStringVariable = "MMORPG_TEST_POSTGRES";
+    public const string ConnectionStringVariable = PostgresTestDatabase.ConnectionStringVariable;
 
     public PostgresIntegrationFactAttribute(
         [CallerFilePath] string? sourceFilePath = null,
