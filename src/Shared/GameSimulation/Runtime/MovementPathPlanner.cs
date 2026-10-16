@@ -621,14 +621,13 @@ namespace Mmorpg.GameSimulation
                     (float)(root.Y + clearanceHeight),
                     (float)(root.Z + clearanceRadius)));
             queryBuffer.Clear();
-            collisionWorld.QueryBoxes(bounds, CollisionLayers.CharacterMovement, queryBuffer);
-            for (var index = 0; index < queryBuffer.Boxes.Count; index++)
+            collisionWorld.QueryShapes(bounds, CollisionLayers.CharacterMovement, queryBuffer);
+            for (var index = 0; index < queryBuffer.Shapes.Count; index++)
             {
-                if (CollisionMath.TryGetCapsuleBoxPenetration(
+                if (queryBuffer.Shapes[index].TryGetCapsulePenetration(
                         root,
                         clearanceRadius,
                         clearanceHeight,
-                        queryBuffer.Boxes[index],
                         out _,
                         out var depth)
                     && depth > HeightEpsilon * 0.1f)

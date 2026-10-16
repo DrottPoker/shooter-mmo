@@ -10,9 +10,10 @@ namespace Mmorpg.GameSimulation
     // .NET. See the movement determinism golden test.
     public static class CollisionDataFormat
     {
-        public const ushort Version = 1;
+        // Version 2 adds one-sided triangles from meshes and heightfields next to boxes.
+        public const ushort Version = 2;
         public const uint ChunkMagic = 0x4C434D53;
-        public const int MaximumBoxesPerChunk = 1_000_000;
+        public const int MaximumShapesPerChunk = 1_000_000;
 
         // A chunk file is its manifest resource name plus this extension, on disk and as
         // the end of its Unity Addressables address.
@@ -25,7 +26,7 @@ namespace Mmorpg.GameSimulation
         public const float MinimumChunkSize = 1f;
         public const float MaximumChunkSize = 4096f;
         public const int MaximumChunkCoordinate = 1 << 24;
-        public const int MaximumChunksPerBox = 65_536;
+        public const int MaximumChunksPerShape = 65_536;
 
         public static bool IsValidChunkSize(float chunkSize)
         {
@@ -138,6 +139,14 @@ namespace Mmorpg.GameSimulation
                 + (float)(left.Z * right.Z));
         }
 
+        public static SimulationVector3 Cross(SimulationVector3 left, SimulationVector3 right)
+        {
+            return new SimulationVector3(
+                (float)((float)(left.Y * right.Z) - (float)(left.Z * right.Y)),
+                (float)((float)(left.Z * right.X) - (float)(left.X * right.Z)),
+                (float)((float)(left.X * right.Y) - (float)(left.Y * right.X)));
+        }
+
         public SimulationVector3 Normalized()
         {
             var length = Length;
@@ -231,10 +240,10 @@ namespace Mmorpg.GameSimulation
         {
             var quaternion = Normalized();
             var vector = new SimulationVector3(quaternion.X, quaternion.Y, quaternion.Z);
-            var twiceCross = Cross(vector, value) * 2f;
+            var twiceCross = SimulationVector3.Cross(vector, value) * 2f;
             var scaled = twiceCross * quaternion.W;
             var rotated = value + scaled;
-            return rotated + Cross(vector, twiceCross);
+            return rotated + SimulationVector3.Cross(vector, twiceCross);
         }
 
         public SimulationVector3 InverseRotate(SimulationVector3 value)
@@ -254,14 +263,6 @@ namespace Mmorpg.GameSimulation
                 && IsFinite(value.Y)
                 && IsFinite(value.Z)
                 && IsFinite(value.W);
-        }
-
-        private static SimulationVector3 Cross(SimulationVector3 left, SimulationVector3 right)
-        {
-            return new SimulationVector3(
-                (float)((float)(left.Y * right.Z) - (float)(left.Z * right.Y)),
-                (float)((float)(left.Z * right.X) - (float)(left.X * right.Z)),
-                (float)((float)(left.X * right.Y) - (float)(left.Y * right.X)));
         }
 
         private static bool IsFinite(float value)
@@ -308,14 +309,11 @@ namespace Mmorpg.GameSimulation
         }
     }
 
-    public sealed class CollisionBox
+    // A static or dynamic collision primitive. A query that reaches the same shape
+    // through several chunks returns it once, by its stable id.
+    public abstract class CollisionShape
     {
-        public CollisionBox(
-            ulong stableId,
-            uint layerMask,
-            SimulationVector3 center,
-            SimulationVector3 halfExtents,
-            SimulationQuaternion rotation)
+        private protected CollisionShape(ulong stableId, uint layerMask)
         {
             if (stableId == 0)
             {
@@ -327,6 +325,53 @@ namespace Mmorpg.GameSimulation
                 throw new ArgumentOutOfRangeException(nameof(layerMask));
             }
 
+            StableId = stableId;
+            LayerMask = layerMask;
+        }
+
+        public ulong StableId { get; }
+
+        public uint LayerMask { get; }
+
+        public CollisionAabb Bounds { get; private set; }
+
+        // Finds where a ray enters the shape. A ray that starts inside never enters.
+        public abstract bool TryRaycast(
+            SimulationVector3 origin,
+            SimulationVector3 direction,
+            float maximumDistance,
+            out CollisionRayHit hit);
+
+        // Measures how far a vertical capsule standing on the root position overlaps the
+        // shape and the direction that separates them.
+        public abstract bool TryGetCapsulePenetration(
+            SimulationVector3 rootPosition,
+            float radius,
+            float height,
+            out SimulationVector3 normal,
+            out float depth);
+
+        private protected void SetBounds(CollisionAabb bounds, string shapeName)
+        {
+            if (!CollisionDataFormat.IsWithinWorldLimits(bounds))
+            {
+                throw new ArgumentException(shapeName + " lies outside the supported world limits.");
+            }
+
+            Bounds = bounds;
+        }
+    }
+
+    public sealed class CollisionBox : CollisionShape
+    {
+        public CollisionBox(
+            ulong stableId,
+            uint layerMask,
+            SimulationVector3 center,
+            SimulationVector3 halfExtents,
+            SimulationQuaternion rotation)
+            : base(stableId, layerMask)
+        {
             if (!SimulationVector3.IsFinite(center)
                 || !SimulationVector3.IsFinite(halfExtents)
                 || halfExtents.X <= 0f
@@ -341,21 +386,11 @@ namespace Mmorpg.GameSimulation
                 throw new ArgumentException("Collision box rotation is invalid.", nameof(rotation));
             }
 
-            StableId = stableId;
-            LayerMask = layerMask;
             Center = center;
             HalfExtents = halfExtents;
             Rotation = rotation.Normalized();
-            Bounds = CalculateBounds(center, halfExtents, Rotation);
-            if (!CollisionDataFormat.IsWithinWorldLimits(Bounds))
-            {
-                throw new ArgumentException("Collision box lies outside the supported world limits.");
-            }
+            SetBounds(CalculateBounds(center, halfExtents, Rotation), "Collision box");
         }
-
-        public ulong StableId { get; }
-
-        public uint LayerMask { get; }
 
         public SimulationVector3 Center { get; }
 
@@ -363,7 +398,30 @@ namespace Mmorpg.GameSimulation
 
         public SimulationQuaternion Rotation { get; }
 
-        public CollisionAabb Bounds { get; }
+        public override bool TryRaycast(
+            SimulationVector3 origin,
+            SimulationVector3 direction,
+            float maximumDistance,
+            out CollisionRayHit hit)
+        {
+            return CollisionMath.TryRaycastBox(origin, direction, maximumDistance, this, out hit);
+        }
+
+        public override bool TryGetCapsulePenetration(
+            SimulationVector3 rootPosition,
+            float radius,
+            float height,
+            out SimulationVector3 normal,
+            out float depth)
+        {
+            return CollisionMath.TryGetCapsuleBoxPenetration(
+                rootPosition,
+                radius,
+                height,
+                this,
+                out normal,
+                out depth);
+        }
 
         private static CollisionAabb CalculateBounds(
             SimulationVector3 center,
@@ -418,36 +476,37 @@ namespace Mmorpg.GameSimulation
 
     public sealed class CollisionQueryBuffer
     {
-        private readonly List<CollisionBox> boxes = new List<CollisionBox>();
+        private readonly List<CollisionShape> shapes = new List<CollisionShape>();
         private readonly HashSet<ulong> stableIds = new HashSet<ulong>();
 
-        public IReadOnlyList<CollisionBox> Boxes
+        public IReadOnlyList<CollisionShape> Shapes
         {
-            get { return boxes; }
+            get { return shapes; }
         }
 
         public void Clear()
         {
-            boxes.Clear();
+            shapes.Clear();
             stableIds.Clear();
         }
 
-        internal void Add(CollisionBox box)
+        internal void Add(CollisionShape shape)
         {
-            if (stableIds.Add(box.StableId))
+            if (stableIds.Add(shape.StableId))
             {
-                boxes.Add(box);
+                shapes.Add(shape);
             }
         }
 
         internal void SortByStableId()
         {
-            boxes.Sort((left, right) => left.StableId.CompareTo(right.StableId));
+            shapes.Sort((left, right) => left.StableId.CompareTo(right.StableId));
         }
     }
 
     public interface ICollisionWorld
     {
-        void QueryBoxes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer);
+        // Adds every shape whose bounds intersect the query bounds on the layer mask.
+        void QueryShapes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer);
     }
 }

@@ -210,13 +210,13 @@ public sealed class AuthoritativePlayerMovementTests
 
         public int ObservedBufferCount => observedBuffers.Count;
 
-        public void QueryBoxes(
+        public void QueryShapes(
             CollisionAabb bounds,
             uint layerMask,
             CollisionQueryBuffer buffer)
         {
             observedBuffers.Add(buffer);
-            inner.QueryBoxes(bounds, layerMask, buffer);
+            inner.QueryShapes(bounds, layerMask, buffer);
         }
 
         public void ResetObservedBuffers()

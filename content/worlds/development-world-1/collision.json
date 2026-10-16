@@ -1,5 +1,5 @@
 {
-    "FormatVersion": 1,
+    "FormatVersion": 2,
     "WorldId": "development-world-1",
     "ChunkSize": 32.0,
     "Boxes": [
@@ -198,5 +198,7 @@
             "RotationZ": 0.0,
             "RotationW": 1.0
         }
-    ]
+    ],
+    "Meshes": [],
+    "Heightfields": []
 }

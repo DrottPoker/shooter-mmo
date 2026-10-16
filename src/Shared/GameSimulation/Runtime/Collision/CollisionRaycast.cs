@@ -4,7 +4,7 @@ namespace Mmorpg.GameSimulation
 {
     public static class CollisionRaycast
     {
-        // Finds the nearest box a ray enters. Equal distances keep the lower stable id.
+        // Finds the nearest shape a ray enters. Equal distances keep the lower stable id.
         public static bool TryRaycast(
             ICollisionWorld collisionWorld,
             SimulationVector3 origin,
@@ -45,18 +45,17 @@ namespace Mmorpg.GameSimulation
                 SimulationVector3.Min(origin, end),
                 SimulationVector3.Max(origin, end)).Expanded(0.001f);
             queryBuffer.Clear();
-            collisionWorld.QueryBoxes(bounds, layerMask, queryBuffer);
+            collisionWorld.QueryShapes(bounds, layerMask, queryBuffer);
             queryBuffer.SortByStableId();
 
             var found = false;
-            for (var index = 0; index < queryBuffer.Boxes.Count; index++)
+            for (var index = 0; index < queryBuffer.Shapes.Count; index++)
             {
-                // A ray that starts inside a box has no entry face and is ignored there.
-                if (!CollisionMath.TryRaycastBox(
+                // A ray that starts inside a box or on a triangle has no entry and is ignored.
+                if (!queryBuffer.Shapes[index].TryRaycast(
                         origin,
                         normalizedDirection,
                         maximumDistance,
-                        queryBuffer.Boxes[index],
                         out var candidate)
                     || candidate.Distance <= 0f
                     || (found && candidate.Distance >= hit.Distance))

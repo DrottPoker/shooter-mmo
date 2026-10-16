@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Editor
 {
-    public static class DevelopmentWorld2EnvironmentBuilder
+    public static partial class DevelopmentWorld2EnvironmentBuilder
     {
         public const string MenuPath =
             "MMORPG/Tools/Development Worlds/Rebuild Development World 2 Environment";
@@ -79,6 +79,7 @@ namespace Mmorpg.Client.Editor
             BuildEastSightline(environment.transform, palette);
             BuildSouthwestWilderness(environment.transform, palette);
             BuildSoutheastExpansion(environment.transform, palette);
+            BuildHighlands(environment.transform, palette);
             BuildRouteGuides(environment.transform, palette);
 
             SetStaticRecursively(environment);
@@ -93,7 +94,11 @@ namespace Mmorpg.Client.Editor
             Debug.Log(
                 "[DEVELOPMENT WORLD 2] Rebuilt the environment with "
                 + environment.GetComponentsInChildren<BoxCollider>(true).Length
-                + " authoritative collision boxes. Actor content was not changed.");
+                + " authoritative collision boxes, "
+                + environment.GetComponentsInChildren<MeshCollider>(true).Length
+                + " collision meshes, and "
+                + environment.GetComponentsInChildren<TerrainCollider>(true).Length
+                + " terrains. Actor content was not changed.");
         }
 
         public static void RefreshMaterialsForAutomation()
@@ -525,6 +530,9 @@ namespace Mmorpg.Client.Editor
                 Quaternion.Euler(0f, -45f, 0f));
             CreateBox(routes, "CentralToSoutheastRoute", new Vector3(57f, 0.01f, -57f),
                 new Vector3(12f, 0.02f, 96f), palette.Road, false,
+                Quaternion.Euler(0f, 45f, 0f));
+            CreateBox(routes, "CentralToHighlandsRoute", new Vector3(64f, 0.01f, 64f),
+                new Vector3(12f, 0.02f, 90f), palette.Road, false,
                 Quaternion.Euler(0f, 45f, 0f));
         }
 

@@ -7,16 +7,48 @@ namespace Mmorpg.GameSimulation
 {
     public sealed class CollisionChunk
     {
+        // Small chunks are scanned directly. Larger chunks, such as terrain with thousands
+        // of triangles, index their shapes in a planar grid of roughly IndexCellSize cells.
+        private const int LinearScanShapeLimit = 32;
+        private const float IndexCellSize = 2f;
+        private const int MaximumIndexCellsPerSide = 64;
+
+        private readonly CollisionShape[] shapes;
+        private readonly int[][] indexCells;
+        private readonly int indexCellsPerSide;
+        private readonly float indexCellSize;
+
         public CollisionChunk(
             int x,
             int z,
             CollisionAabb bounds,
-            IReadOnlyList<CollisionBox> boxes)
+            IReadOnlyList<CollisionShape> shapes)
         {
+            if (shapes == null)
+            {
+                throw new ArgumentNullException(nameof(shapes));
+            }
+
             X = x;
             Z = z;
             Bounds = bounds;
-            Boxes = boxes ?? throw new ArgumentNullException(nameof(boxes));
+            this.shapes = shapes.ToArray();
+            if (this.shapes.Any(shape => shape == null))
+            {
+                throw new ArgumentException("Collision chunk shapes must not be null.", nameof(shapes));
+            }
+
+            if (this.shapes.Length > LinearScanShapeLimit)
+            {
+                var width = Math.Max(
+                    (float)(bounds.Maximum.X - bounds.Minimum.X),
+                    (float)(bounds.Maximum.Z - bounds.Minimum.Z));
+                indexCellsPerSide = Math.Max(
+                    1,
+                    Math.Min(MaximumIndexCellsPerSide, (int)Math.Ceiling((float)(width / IndexCellSize))));
+                indexCellSize = (float)(width / indexCellsPerSide);
+                indexCells = BuildIndex();
+            }
         }
 
         public int X { get; }
@@ -25,9 +57,118 @@ namespace Mmorpg.GameSimulation
 
         public CollisionAabb Bounds { get; }
 
-        public IReadOnlyList<CollisionBox> Boxes { get; }
+        public IReadOnlyList<CollisionShape> Shapes
+        {
+            get { return shapes; }
+        }
+
+        internal void Query(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
+        {
+            if (!Bounds.Intersects(bounds))
+            {
+                return;
+            }
+
+            if (indexCells == null)
+            {
+                for (var index = 0; index < shapes.Length; index++)
+                {
+                    AddIfIntersecting(shapes[index], bounds, layerMask, buffer);
+                }
+
+                return;
+            }
+
+            GetCellRange(bounds, out var minimumX, out var maximumX, out var minimumZ, out var maximumZ);
+            for (var cellZ = minimumZ; cellZ <= maximumZ; cellZ++)
+            {
+                for (var cellX = minimumX; cellX <= maximumX; cellX++)
+                {
+                    var cell = indexCells[(cellZ * indexCellsPerSide) + cellX];
+                    for (var index = 0; index < cell.Length; index++)
+                    {
+                        AddIfIntersecting(shapes[cell[index]], bounds, layerMask, buffer);
+                    }
+                }
+            }
+        }
+
+        private static void AddIfIntersecting(
+            CollisionShape shape,
+            CollisionAabb bounds,
+            uint layerMask,
+            CollisionQueryBuffer buffer)
+        {
+            if ((shape.LayerMask & layerMask) != 0 && shape.Bounds.Intersects(bounds))
+            {
+                buffer.Add(shape);
+            }
+        }
+
+        private int[][] BuildIndex()
+        {
+            var cells = new List<int>[indexCellsPerSide * indexCellsPerSide];
+            for (var shapeIndex = 0; shapeIndex < shapes.Length; shapeIndex++)
+            {
+                GetCellRange(
+                    shapes[shapeIndex].Bounds,
+                    out var minimumX,
+                    out var maximumX,
+                    out var minimumZ,
+                    out var maximumZ);
+                for (var cellZ = minimumZ; cellZ <= maximumZ; cellZ++)
+                {
+                    for (var cellX = minimumX; cellX <= maximumX; cellX++)
+                    {
+                        var cellIndex = (cellZ * indexCellsPerSide) + cellX;
+                        if (cells[cellIndex] == null)
+                        {
+                            cells[cellIndex] = new List<int>();
+                        }
+
+                        cells[cellIndex].Add(shapeIndex);
+                    }
+                }
+            }
+
+            var result = new int[cells.Length][];
+            for (var index = 0; index < cells.Length; index++)
+            {
+                result[index] = cells[index] == null ? Array.Empty<int>() : cells[index].ToArray();
+            }
+
+            return result;
+        }
+
+        // Bounds outside the chunk clamp to its edge cells, so a shape that only grazes
+        // the chunk is still found.
+        private void GetCellRange(
+            CollisionAabb bounds,
+            out int minimumX,
+            out int maximumX,
+            out int minimumZ,
+            out int maximumZ)
+        {
+            minimumX = CellCoordinate(bounds.Minimum.X, Bounds.Minimum.X);
+            maximumX = CellCoordinate(bounds.Maximum.X, Bounds.Minimum.X);
+            minimumZ = CellCoordinate(bounds.Minimum.Z, Bounds.Minimum.Z);
+            maximumZ = CellCoordinate(bounds.Maximum.Z, Bounds.Minimum.Z);
+        }
+
+        private int CellCoordinate(float position, float origin)
+        {
+            var cell = Math.Floor((float)((float)(position - origin) / indexCellSize));
+            if (double.IsNaN(cell) || cell < 0d)
+            {
+                return 0;
+            }
+
+            return cell >= indexCellsPerSide ? indexCellsPerSide - 1 : (int)cell;
+        }
     }
 
+    // Version 2 layout after the header: the box count and boxes, then the triangle count
+    // and triangles. Each list is ordered by stable id.
     public static class CollisionChunkCodec
     {
         public static byte[] Encode(CollisionChunk chunk)
@@ -37,9 +178,18 @@ namespace Mmorpg.GameSimulation
                 throw new ArgumentNullException(nameof(chunk));
             }
 
-            if (chunk.Boxes.Count > CollisionDataFormat.MaximumBoxesPerChunk)
+            if (chunk.Shapes.Count > CollisionDataFormat.MaximumShapesPerChunk)
             {
-                throw new ArgumentException("Collision chunk contains too many boxes.", nameof(chunk));
+                throw new ArgumentException("Collision chunk contains too many shapes.", nameof(chunk));
+            }
+
+            var boxes = chunk.Shapes.OfType<CollisionBox>().OrderBy(box => box.StableId).ToArray();
+            var triangles = chunk.Shapes.OfType<CollisionTriangle>()
+                .OrderBy(triangle => triangle.StableId)
+                .ToArray();
+            if (boxes.Length + triangles.Length != chunk.Shapes.Count)
+            {
+                throw new ArgumentException("Collision chunk contains an unsupported shape.", nameof(chunk));
             }
 
             using (var stream = new MemoryStream())
@@ -51,9 +201,8 @@ namespace Mmorpg.GameSimulation
                 writer.Write(chunk.Z);
                 WriteVector(writer, chunk.Bounds.Minimum);
                 WriteVector(writer, chunk.Bounds.Maximum);
-                writer.Write(chunk.Boxes.Count);
-
-                foreach (var box in chunk.Boxes.OrderBy(value => value.StableId))
+                writer.Write(boxes.Length);
+                foreach (var box in boxes)
                 {
                     writer.Write(box.StableId);
                     writer.Write(box.LayerMask);
@@ -63,6 +212,16 @@ namespace Mmorpg.GameSimulation
                     writer.Write(box.Rotation.Y);
                     writer.Write(box.Rotation.Z);
                     writer.Write(box.Rotation.W);
+                }
+
+                writer.Write(triangles.Length);
+                foreach (var triangle in triangles)
+                {
+                    writer.Write(triangle.StableId);
+                    writer.Write(triangle.LayerMask);
+                    WriteVector(writer, triangle.A);
+                    WriteVector(writer, triangle.B);
+                    WriteVector(writer, triangle.C);
                 }
 
                 writer.Flush();
@@ -97,16 +256,11 @@ namespace Mmorpg.GameSimulation
                     var minimum = ReadVector(reader);
                     var maximum = ReadVector(reader);
                     var bounds = new CollisionAabb(minimum, maximum);
-                    var count = reader.ReadInt32();
-                    if (count < 0 || count > CollisionDataFormat.MaximumBoxesPerChunk)
+                    var boxCount = ReadCount(reader, 0);
+                    var shapes = new List<CollisionShape>(boxCount);
+                    for (var index = 0; index < boxCount; index++)
                     {
-                        throw new InvalidDataException("Collision chunk box count is invalid.");
-                    }
-
-                    var boxes = new CollisionBox[count];
-                    for (var index = 0; index < count; index++)
-                    {
-                        boxes[index] = new CollisionBox(
+                        shapes.Add(new CollisionBox(
                             reader.ReadUInt64(),
                             reader.ReadUInt32(),
                             ReadVector(reader),
@@ -115,7 +269,18 @@ namespace Mmorpg.GameSimulation
                                 reader.ReadSingle(),
                                 reader.ReadSingle(),
                                 reader.ReadSingle(),
-                                reader.ReadSingle()));
+                                reader.ReadSingle())));
+                    }
+
+                    var triangleCount = ReadCount(reader, boxCount);
+                    for (var index = 0; index < triangleCount; index++)
+                    {
+                        shapes.Add(new CollisionTriangle(
+                            reader.ReadUInt64(),
+                            reader.ReadUInt32(),
+                            ReadVector(reader),
+                            ReadVector(reader),
+                            ReadVector(reader)));
                     }
 
                     if (stream.Position != stream.Length)
@@ -123,7 +288,7 @@ namespace Mmorpg.GameSimulation
                         throw new InvalidDataException("Collision chunk contains trailing data.");
                     }
 
-                    return new CollisionChunk(x, z, bounds, boxes);
+                    return new CollisionChunk(x, z, bounds, shapes);
                 }
             }
             catch (EndOfStreamException exception)
@@ -134,6 +299,17 @@ namespace Mmorpg.GameSimulation
             {
                 throw new InvalidDataException("Collision chunk contains invalid geometry.", exception);
             }
+        }
+
+        private static int ReadCount(BinaryReader reader, int previousCount)
+        {
+            var count = reader.ReadInt32();
+            if (count < 0 || count > CollisionDataFormat.MaximumShapesPerChunk - previousCount)
+            {
+                throw new InvalidDataException("Collision chunk shape count is invalid.");
+            }
+
+            return count;
         }
 
         private static void WriteVector(BinaryWriter writer, SimulationVector3 value)

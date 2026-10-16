@@ -872,7 +872,7 @@ public sealed class WorldActorRuntimeTests
 
     private sealed class EmptyCollisionWorld : ICollisionWorld
     {
-        public void QueryBoxes(
+        public void QueryShapes(
             CollisionAabb bounds,
             uint layerMask,
             CollisionQueryBuffer buffer)

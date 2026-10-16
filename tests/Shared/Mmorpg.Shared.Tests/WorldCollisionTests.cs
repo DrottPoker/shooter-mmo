@@ -31,7 +31,7 @@ public sealed class WorldCollisionTests
         {
             Assert.Equal(chunk.ManifestEntry.Sha256, CollisionWorldCompiler.ComputeSha256Hex(chunk.Data));
             var decoded = CollisionChunkCodec.Decode(chunk.Data);
-            Assert.Contains(decoded.Boxes, box =>
+            Assert.Contains(decoded.Shapes, box =>
                 box.StableId == CollisionWorldCompiler.StableIdFromPath("Test/Ground"));
         });
     }
@@ -305,23 +305,23 @@ public sealed class WorldCollisionTests
         var box = Box("Dynamic/Door", 1f, 1f, 1f, 0.5f, 1f, 0.5f).ToCollisionBox();
         world.Upsert(box);
         var buffer = new CollisionQueryBuffer();
-        world.QueryBoxes(
+        world.QueryShapes(
             new CollisionAabb(
                 new SimulationVector3(0f, 0f, 0f),
                 new SimulationVector3(2f, 2f, 2f)),
             CollisionLayers.CharacterMovement,
             buffer);
-        Assert.Single(buffer.Boxes);
+        Assert.Single(buffer.Shapes);
 
         world.Upsert(Box("Dynamic/Door", 20f, 1f, 20f, 0.5f, 1f, 0.5f).ToCollisionBox());
         buffer.Clear();
-        world.QueryBoxes(
+        world.QueryShapes(
             new CollisionAabb(
                 new SimulationVector3(0f, 0f, 0f),
                 new SimulationVector3(2f, 2f, 2f)),
             CollisionLayers.CharacterMovement,
             buffer);
-        Assert.Empty(buffer.Boxes);
+        Assert.Empty(buffer.Shapes);
 
         Assert.True(world.Remove(box.StableId));
         Assert.Equal(0, world.Count);
@@ -346,13 +346,13 @@ public sealed class WorldCollisionTests
         var buffer = new CollisionQueryBuffer();
 
         Assert.True(world.UnloadChunk(0, 0));
-        world.QueryBoxes(queryBounds, CollisionLayers.CharacterMovement, buffer);
-        Assert.Empty(buffer.Boxes);
+        world.QueryShapes(queryBounds, CollisionLayers.CharacterMovement, buffer);
+        Assert.Empty(buffer.Shapes);
 
         Assert.True(world.TryLoadChunk(positiveChunk));
         buffer.Clear();
-        world.QueryBoxes(queryBounds, CollisionLayers.CharacterMovement, buffer);
-        Assert.Single(buffer.Boxes);
+        world.QueryShapes(queryBounds, CollisionLayers.CharacterMovement, buffer);
+        Assert.Single(buffer.Shapes);
     }
 
     // Every tick names the same one-waypoint path, so the character keeps walking to it.

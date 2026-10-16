@@ -28,7 +28,11 @@ namespace Mmorpg.Client.Tests.EditMode
             "Assets/Scenes/DevelopmentWorld2.unity";
         private const string DevelopmentWorld2MaterialDirectory =
             "Assets/Art/Materials/DevelopmentWorld2";
-        private const int DevelopmentWorld2CollisionBoxCount = 106;
+        private const int DevelopmentWorld2CollisionBoxCount = 112;
+
+        // 128 by 128 terrain cells less 60 portal holes, two triangles each, plus the 14
+        // quads of the tunnel arch.
+        private const int DevelopmentWorld2CollisionTriangleCount = ((128 * 128) - 60) * 2 + 28;
 
         [Test]
         public void PlayerControlsDefinesRequiredGameplayActions()
@@ -408,9 +412,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(FindGameObject(scene, "WolfSpawnAreaGuide"), Is.Not.Null);
                 var colliders = environment.GetComponentsInChildren<Collider>(true);
                 Assert.That(
-                    colliders,
+                    colliders.OfType<BoxCollider>().ToArray(),
                     Has.Length.EqualTo(DevelopmentWorld2CollisionBoxCount));
-                Assert.That(colliders.All(collider => collider is BoxCollider), Is.True);
+                var tunnel = colliders.OfType<MeshCollider>().Single();
+                Assert.That(tunnel.convex, Is.False);
+                var terrain = colliders.OfType<TerrainCollider>().Single();
+                Assert.That(terrain.transform.position, Is.EqualTo(new Vector3(96f, 0f, 96f)));
+                Assert.That(terrain.terrainData.size, Is.EqualTo(new Vector3(128f, 40f, 128f)));
+                Assert.That(colliders, Has.Length.EqualTo(DevelopmentWorld2CollisionBoxCount + 2));
                 Assert.That(colliders.All(collider => !collider.isTrigger), Is.True);
                 Assert.That(environment.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
                 Assert.That(environment.GetComponentsInChildren<Transform>(true)
@@ -515,17 +524,17 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(collisionWorld.ChunkCount, Is.EqualTo(4));
             Assert.That(collisionWorld.Revision, Is.Not.Empty);
             var buffer = new CollisionQueryBuffer();
-            collisionWorld.QueryBoxes(
+            collisionWorld.QueryShapes(
                 new CollisionAabb(
                     new SimulationVector3(-16f, -2f, -16f),
                     new SimulationVector3(16f, 5f, 16f)),
                 CollisionLayers.CharacterMovement,
                 buffer);
-            Assert.That(buffer.Boxes, Has.Count.EqualTo(13));
+            Assert.That(buffer.Shapes, Has.Count.EqualTo(13));
         }
 
         [Test]
-        public void BakedDevelopmentWorldTwoCollisionLoadsAllAuthoredBoxes()
+        public void BakedDevelopmentWorldTwoCollisionLoadsAllAuthoredShapes()
         {
             var loaded = UnityWorldCollisionLoader.TryLoad(
                 "development-world-2",
@@ -536,15 +545,73 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(collisionWorld.ChunkCount, Is.EqualTo(256));
             Assert.That(collisionWorld.Revision, Is.Not.Empty);
             var buffer = new CollisionQueryBuffer();
-            collisionWorld.QueryBoxes(
+            collisionWorld.QueryShapes(
                 new CollisionAabb(
                     new SimulationVector3(-256f, -2f, -256f),
-                    new SimulationVector3(256f, 8f, 256f)),
+                    new SimulationVector3(256f, 64f, 256f)),
                 CollisionLayers.CharacterMovement,
                 buffer);
             Assert.That(
-                buffer.Boxes,
-                Has.Count.EqualTo(DevelopmentWorld2CollisionBoxCount));
+                buffer.Shapes.OfType<CollisionBox>().Count(),
+                Is.EqualTo(DevelopmentWorld2CollisionBoxCount));
+            Assert.That(
+                buffer.Shapes.OfType<CollisionTriangle>().Count(),
+                Is.EqualTo(DevelopmentWorld2CollisionTriangleCount));
+        }
+
+        // Guards the terrain bake mapping: the baked surface must match the Unity Terrain at
+        // every heightmap sample away from the tunnel portals.
+        [Test]
+        public void BakedHighlandsCollisionMatchesTheTerrainAtItsSamples()
+        {
+            var scene = SceneManager.GetSceneByPath(DevelopmentWorld2ScenePath);
+            var openedForTest = !scene.IsValid() || !scene.isLoaded;
+            if (openedForTest)
+            {
+                scene = EditorSceneManager.OpenScene(
+                    DevelopmentWorld2ScenePath,
+                    OpenSceneMode.Additive);
+            }
+
+            try
+            {
+                var terrain = FindGameObject(scene, "HighlandsTerrain").GetComponent<Terrain>();
+                Assert.That(UnityWorldCollisionLoader.TryLoad(
+                    "development-world-2",
+                    out var collisionWorld,
+                    out var error), Is.True, error);
+                var buffer = new CollisionQueryBuffer();
+                var origin = terrain.transform.position;
+                for (var z = 0; z <= 128; z += 7)
+                {
+                    for (var x = 0; x <= 128; x += 5)
+                    {
+                        if (x >= 45 && x <= 55)
+                        {
+                            continue;
+                        }
+
+                        var point = new Vector3(origin.x + x, 0f, origin.z + z);
+                        var expected = origin.y + terrain.SampleHeight(point);
+                        Assert.That(CollisionRaycast.TryRaycast(
+                            collisionWorld,
+                            new SimulationVector3(point.x, 100f, point.z),
+                            new SimulationVector3(0f, -1f, 0f),
+                            200f,
+                            CollisionLayers.CharacterMovement,
+                            buffer,
+                            out var hit), Is.True, point.ToString());
+                        Assert.That(hit.Point.Y, Is.EqualTo(expected).Within(0.001f), point.ToString());
+                    }
+                }
+            }
+            finally
+            {
+                if (openedForTest)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
         }
 
         private static void AssertClearOfEnvironmentObstacles(
@@ -555,6 +622,18 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 if (collider.name == "Ground")
                 {
+                    continue;
+                }
+
+                // ClosestPoint supports only primitive and convex colliders, so terrains
+                // and meshes must keep the position outside their bounds instead.
+                if (collider is TerrainCollider || (collider is MeshCollider mesh && !mesh.convex))
+                {
+                    Assert.That(
+                        collider.bounds.Contains(point),
+                        Is.False,
+                        "Protected gameplay position " + point + " lies within the bounds of "
+                        + collider.name + ".");
                     continue;
                 }
 

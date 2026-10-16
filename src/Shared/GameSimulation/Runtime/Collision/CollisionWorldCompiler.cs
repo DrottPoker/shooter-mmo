@@ -15,6 +15,8 @@ namespace Mmorpg.GameSimulation
         public string WorldId;
         public float ChunkSize;
         public CollisionBoxAuthoringEntry[] Boxes;
+        public CollisionMeshAuthoringEntry[] Meshes;
+        public CollisionHeightfieldAuthoringEntry[] Heightfields;
     }
 
     [Serializable]
@@ -36,9 +38,7 @@ namespace Mmorpg.GameSimulation
 
         public CollisionBox ToCollisionBox()
         {
-            var stableId = string.IsNullOrWhiteSpace(StableId)
-                ? CollisionWorldCompiler.StableIdFromPath(SourcePath)
-                : ParseStableId(StableId);
+            var stableId = CollisionWorldCompiler.ResolveStableId(StableId, SourcePath);
 
             return new CollisionBox(
                 stableId,
@@ -60,23 +60,274 @@ namespace Mmorpg.GameSimulation
 
         private static float CanonicalizeZero(float value)
         {
-            return value == 0f ? 0f : value;
+            return CollisionWorldCompiler.CanonicalizeZero(value);
         }
+    }
 
-        private static ulong ParseStableId(string value)
+    // A triangle mesh in world space, baked from a non-convex MeshCollider.
+    [Serializable]
+    public sealed class CollisionMeshAuthoringEntry
+    {
+        public string StableId;
+        public string SourcePath;
+        public uint LayerMask;
+
+        // World positions as little-endian float32 x, y, z values, base64 encoded.
+        public string Vertices;
+
+        // Vertex index triples as little-endian int32 values, base64 encoded. Each
+        // triangle faces the side from which its vertices run clockwise.
+        public string Triangles;
+
+        // Degenerate triangles have no front and are skipped.
+        public IEnumerable<CollisionTriangle> ToCollisionTriangles()
         {
-            if (!ulong.TryParse(
-                value,
-                NumberStyles.HexNumber,
-                CultureInfo.InvariantCulture,
-                out var stableId)
-                || stableId == 0)
+            var stableId = CollisionWorldCompiler.ResolveStableId(StableId, SourcePath);
+            var vertices = CollisionAuthoringEncoding.DecodeFloats(Vertices);
+            var indices = CollisionAuthoringEncoding.DecodeInts(Triangles);
+            if (vertices.Length == 0 || vertices.Length % 3 != 0)
             {
                 throw new InvalidDataException(
-                    "Collision authoring stable id is not a hexadecimal unsigned integer.");
+                    "Collision mesh '" + SourcePath + "' must contain whole vertex positions.");
             }
 
-            return stableId;
+            if (indices.Length == 0 || indices.Length % 3 != 0)
+            {
+                throw new InvalidDataException(
+                    "Collision mesh '" + SourcePath + "' must contain whole triangles.");
+            }
+
+            var vertexCount = vertices.Length / 3;
+            var triangles = new List<CollisionTriangle>(indices.Length / 3);
+            for (var triangle = 0; triangle < indices.Length / 3; triangle++)
+            {
+                var a = ReadVertex(vertices, indices[triangle * 3], vertexCount);
+                var b = ReadVertex(vertices, indices[(triangle * 3) + 1], vertexCount);
+                var c = ReadVertex(vertices, indices[(triangle * 3) + 2], vertexCount);
+                if (!CollisionTriangle.TryCalculateNormal(a, b, c, out _))
+                {
+                    continue;
+                }
+
+                triangles.Add(new CollisionTriangle(
+                    CollisionWorldCompiler.TriangleStableId(stableId, triangle),
+                    LayerMask,
+                    a,
+                    b,
+                    c));
+            }
+
+            return triangles;
+        }
+
+        private SimulationVector3 ReadVertex(float[] vertices, int index, int vertexCount)
+        {
+            if (index < 0 || index >= vertexCount)
+            {
+                throw new InvalidDataException(
+                    "Collision mesh '" + SourcePath + "' references a missing vertex.");
+            }
+
+            return new SimulationVector3(
+                CollisionWorldCompiler.CanonicalizeZero(vertices[index * 3]),
+                CollisionWorldCompiler.CanonicalizeZero(vertices[(index * 3) + 1]),
+                CollisionWorldCompiler.CanonicalizeZero(vertices[(index * 3) + 2]));
+        }
+    }
+
+    // A regular grid of world heights, baked from a TerrainCollider. Each cell becomes two
+    // triangles that face up, split along the diagonal from its lowest to its highest
+    // sample coordinates.
+    [Serializable]
+    public sealed class CollisionHeightfieldAuthoringEntry
+    {
+        public string StableId;
+        public string SourcePath;
+        public uint LayerMask;
+        public float OriginX;
+        public float OriginZ;
+        public float SpacingX;
+        public float SpacingZ;
+        public int SamplesX;
+        public int SamplesZ;
+
+        // World heights as little-endian float32 values, base64 encoded. Each row holds
+        // SamplesX samples along +X, and rows follow along +Z.
+        public string Heights;
+
+        // One byte per cell in the same row order, base64 encoded, where 1 removes the
+        // cell. Empty when the heightfield has no holes.
+        public string Holes;
+
+        public IEnumerable<CollisionTriangle> ToCollisionTriangles()
+        {
+            var stableId = CollisionWorldCompiler.ResolveStableId(StableId, SourcePath);
+            if (SamplesX < 2
+                || SamplesZ < 2
+                || (long)SamplesX * SamplesZ > CollisionDataFormat.MaximumShapesPerChunk
+                || !IsPositiveFinite(SpacingX)
+                || !IsPositiveFinite(SpacingZ)
+                || !IsFinite(OriginX)
+                || !IsFinite(OriginZ))
+            {
+                throw new InvalidDataException(
+                    "Collision heightfield '" + SourcePath + "' has an invalid grid.");
+            }
+
+            var heights = CollisionAuthoringEncoding.DecodeFloats(Heights);
+            if (heights.Length != SamplesX * SamplesZ || heights.Any(height => !IsFinite(height)))
+            {
+                throw new InvalidDataException(
+                    "Collision heightfield '" + SourcePath + "' must contain one finite height per sample.");
+            }
+
+            var cellsX = SamplesX - 1;
+            var cellsZ = SamplesZ - 1;
+            var holes = CollisionAuthoringEncoding.DecodeBytes(Holes);
+            if (holes.Length != 0 && holes.Length != cellsX * cellsZ)
+            {
+                throw new InvalidDataException(
+                    "Collision heightfield '" + SourcePath + "' must contain one hole flag per cell.");
+            }
+
+            var triangles = new List<CollisionTriangle>(cellsX * cellsZ * 2);
+            for (var cellZ = 0; cellZ < cellsZ; cellZ++)
+            {
+                for (var cellX = 0; cellX < cellsX; cellX++)
+                {
+                    var cell = (cellZ * cellsX) + cellX;
+                    if (holes.Length != 0 && holes[cell] != 0)
+                    {
+                        continue;
+                    }
+
+                    var lowLow = Sample(heights, cellX, cellZ);
+                    var highLow = Sample(heights, cellX + 1, cellZ);
+                    var lowHigh = Sample(heights, cellX, cellZ + 1);
+                    var highHigh = Sample(heights, cellX + 1, cellZ + 1);
+                    triangles.Add(new CollisionTriangle(
+                        CollisionWorldCompiler.TriangleStableId(stableId, cell * 2),
+                        LayerMask,
+                        lowLow,
+                        lowHigh,
+                        highHigh));
+                    triangles.Add(new CollisionTriangle(
+                        CollisionWorldCompiler.TriangleStableId(stableId, (cell * 2) + 1),
+                        LayerMask,
+                        lowLow,
+                        highHigh,
+                        highLow));
+                }
+            }
+
+            return triangles;
+        }
+
+        private SimulationVector3 Sample(float[] heights, int sampleX, int sampleZ)
+        {
+            return new SimulationVector3(
+                CollisionWorldCompiler.CanonicalizeZero((float)(OriginX + (float)(sampleX * SpacingX))),
+                CollisionWorldCompiler.CanonicalizeZero(heights[(sampleZ * SamplesX) + sampleX]),
+                CollisionWorldCompiler.CanonicalizeZero((float)(OriginZ + (float)(sampleZ * SpacingZ))));
+        }
+
+        private static bool IsPositiveFinite(float value)
+        {
+            return IsFinite(value) && value > 0f;
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+    }
+
+    // Packs large numeric arrays into compact, exact base64 strings for authoring JSON.
+    public static class CollisionAuthoringEncoding
+    {
+        public static string EncodeFloats(IReadOnlyList<float> values)
+        {
+            var bytes = new byte[values.Count * 4];
+            for (var index = 0; index < values.Count; index++)
+            {
+                WriteInt32(bytes, index * 4, BitConverter.SingleToInt32Bits(values[index]));
+            }
+
+            return Convert.ToBase64String(bytes);
+        }
+
+        public static string EncodeInts(IReadOnlyList<int> values)
+        {
+            var bytes = new byte[values.Count * 4];
+            for (var index = 0; index < values.Count; index++)
+            {
+                WriteInt32(bytes, index * 4, values[index]);
+            }
+
+            return Convert.ToBase64String(bytes);
+        }
+
+        public static string EncodeBytes(IReadOnlyList<byte> values)
+        {
+            return values.Count == 0 ? string.Empty : Convert.ToBase64String(values.ToArray());
+        }
+
+        public static float[] DecodeFloats(string value)
+        {
+            var ints = DecodeInts(value);
+            var floats = new float[ints.Length];
+            for (var index = 0; index < ints.Length; index++)
+            {
+                floats[index] = BitConverter.Int32BitsToSingle(ints[index]);
+            }
+
+            return floats;
+        }
+
+        public static int[] DecodeInts(string value)
+        {
+            var bytes = DecodeBytes(value);
+            if (bytes.Length % 4 != 0)
+            {
+                throw new InvalidDataException("Collision authoring array is not whole 32-bit values.");
+            }
+
+            var values = new int[bytes.Length / 4];
+            for (var index = 0; index < values.Length; index++)
+            {
+                var offset = index * 4;
+                values[index] = bytes[offset]
+                    | (bytes[offset + 1] << 8)
+                    | (bytes[offset + 2] << 16)
+                    | (bytes[offset + 3] << 24);
+            }
+
+            return values;
+        }
+
+        public static byte[] DecodeBytes(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return Array.Empty<byte>();
+            }
+
+            try
+            {
+                return Convert.FromBase64String(value);
+            }
+            catch (FormatException exception)
+            {
+                throw new InvalidDataException("Collision authoring array is not valid base64.", exception);
+            }
+        }
+
+        private static void WriteInt32(byte[] bytes, int offset, int value)
+        {
+            bytes[offset] = (byte)value;
+            bytes[offset + 1] = (byte)(value >> 8);
+            bytes[offset + 2] = (byte)(value >> 16);
+            bytes[offset + 3] = (byte)(value >> 24);
         }
     }
 
@@ -134,37 +385,60 @@ namespace Mmorpg.GameSimulation
                 throw new InvalidDataException("Collision authoring chunk size is invalid.");
             }
 
-            if (authoring.Boxes == null || authoring.Boxes.Length == 0)
+            var shapes = new List<CollisionShape>();
+            foreach (var box in authoring.Boxes ?? Array.Empty<CollisionBoxAuthoringEntry>())
             {
-                throw new InvalidDataException("Collision authoring must contain at least one box.");
+                shapes.Add(box.ToCollisionBox());
             }
 
-            var boxes = authoring.Boxes.Select(entry => entry.ToCollisionBox()).ToArray();
-            if (boxes.Select(box => box.StableId).Distinct().Count() != boxes.Length)
+            foreach (var mesh in authoring.Meshes ?? Array.Empty<CollisionMeshAuthoringEntry>())
+            {
+                shapes.AddRange(mesh.ToCollisionTriangles());
+            }
+
+            foreach (var heightfield in authoring.Heightfields
+                ?? Array.Empty<CollisionHeightfieldAuthoringEntry>())
+            {
+                shapes.AddRange(heightfield.ToCollisionTriangles());
+            }
+
+            if (shapes.Count == 0)
+            {
+                throw new InvalidDataException("Collision authoring must contain at least one shape.");
+            }
+
+            if (shapes.Select(shape => shape.StableId).Distinct().Count() != shapes.Count)
             {
                 throw new InvalidDataException("Collision authoring contains duplicate stable ids.");
             }
 
-            var boxesByChunk = new Dictionary<long, List<CollisionBox>>();
-            foreach (var box in boxes)
+            var shapesByChunk = new Dictionary<long, List<CollisionShape>>();
+            foreach (var shape in shapes)
             {
                 var minimumX = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    box.Bounds.Minimum.X,
+                    shape.Bounds.Minimum.X,
                     authoring.ChunkSize);
-                var maximumX = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    (float)(box.Bounds.Maximum.X - ChunkMaximumEpsilon),
-                    authoring.ChunkSize);
+                // A shape that ends on a chunk edge stays out of the next chunk, and a
+                // flat shape lying on a chunk edge, such as a wall triangle, still gets
+                // the chunk that starts there.
+                var maximumX = Math.Max(
+                    minimumX,
+                    ChunkedStaticCollisionWorld.ToChunkCoordinate(
+                        (float)(shape.Bounds.Maximum.X - ChunkMaximumEpsilon),
+                        authoring.ChunkSize));
                 var minimumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    box.Bounds.Minimum.Z,
+                    shape.Bounds.Minimum.Z,
                     authoring.ChunkSize);
-                var maximumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
-                    (float)(box.Bounds.Maximum.Z - ChunkMaximumEpsilon),
-                    authoring.ChunkSize);
+                var maximumZ = Math.Max(
+                    minimumZ,
+                    ChunkedStaticCollisionWorld.ToChunkCoordinate(
+                        (float)(shape.Bounds.Maximum.Z - ChunkMaximumEpsilon),
+                        authoring.ChunkSize));
                 if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
-                    > CollisionDataFormat.MaximumChunksPerBox)
+                    > CollisionDataFormat.MaximumChunksPerShape)
                 {
                     throw new InvalidDataException(
-                        "Collision box '" + box.StableId + "' spans too many chunks.");
+                        "Collision shape '" + shape.StableId + "' spans too many chunks.");
                 }
 
                 for (var z = minimumZ; z <= maximumZ; z++)
@@ -172,19 +446,19 @@ namespace Mmorpg.GameSimulation
                     for (var x = minimumX; x <= maximumX; x++)
                     {
                         var key = ChunkedStaticCollisionWorld.ChunkKey(x, z);
-                        if (!boxesByChunk.TryGetValue(key, out var chunkBoxes))
+                        if (!shapesByChunk.TryGetValue(key, out var chunkShapes))
                         {
-                            chunkBoxes = new List<CollisionBox>();
-                            boxesByChunk.Add(key, chunkBoxes);
+                            chunkShapes = new List<CollisionShape>();
+                            shapesByChunk.Add(key, chunkShapes);
                         }
 
-                        chunkBoxes.Add(box);
+                        chunkShapes.Add(shape);
                     }
                 }
             }
 
             var compiledChunks = new List<CompiledCollisionChunk>();
-            foreach (var pair in boxesByChunk.OrderBy(value => value.Key))
+            foreach (var pair in shapesByChunk.OrderBy(value => value.Key))
             {
                 DecodeChunkKey(pair.Key, out var x, out var z);
                 var minimumX = (float)(x * authoring.ChunkSize);
@@ -240,6 +514,53 @@ namespace Mmorpg.GameSimulation
 
                 return builder.ToString();
             }
+        }
+
+        public static ulong ResolveStableId(string stableId, string sourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(stableId))
+            {
+                return StableIdFromPath(sourcePath);
+            }
+
+            if (!ulong.TryParse(
+                stableId,
+                NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture,
+                out var parsed)
+                || parsed == 0)
+            {
+                throw new InvalidDataException(
+                    "Collision authoring stable id is not a hexadecimal unsigned integer.");
+            }
+
+            return parsed;
+        }
+
+        // A triangle id hashes its source entry id with its index in that entry.
+        public static ulong TriangleStableId(ulong sourceStableId, int triangleIndex)
+        {
+            const ulong prime = 1099511628211UL;
+            var result = 14695981039346656037UL;
+            for (var shift = 0; shift < 64; shift += 8)
+            {
+                result ^= (sourceStableId >> shift) & 0xffUL;
+                result *= prime;
+            }
+
+            for (var shift = 0; shift < 32; shift += 8)
+            {
+                result ^= ((ulong)(uint)triangleIndex >> shift) & 0xffUL;
+                result *= prime;
+            }
+
+            return result == 0 ? 1UL : result;
+        }
+
+        // Unity and .NET can disagree on the sign of zero, so both bake positive zero.
+        public static float CanonicalizeZero(float value)
+        {
+            return value == 0f ? 0f : value;
         }
 
         public static ulong StableIdFromPath(string sourcePath)
