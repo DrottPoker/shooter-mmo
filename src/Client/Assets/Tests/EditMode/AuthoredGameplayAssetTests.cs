@@ -28,7 +28,7 @@ namespace Mmorpg.Client.Tests.EditMode
             "Assets/Scenes/DevelopmentWorld2.unity";
         private const string DevelopmentWorld2MaterialDirectory =
             "Assets/Art/Materials/DevelopmentWorld2";
-        private const int DevelopmentWorld2CollisionBoxCount = 86;
+        private const int DevelopmentWorld2CollisionBoxCount = 106;
 
         [Test]
         public void PlayerControlsDefinesRequiredGameplayActions()

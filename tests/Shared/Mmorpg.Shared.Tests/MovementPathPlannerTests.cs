@@ -146,6 +146,34 @@ public sealed class MovementPathPlannerTests
         Assert.InRange(final.PositionX, 21f, 22f);
     }
 
+    // Each start is on the ground beside the structure, so the route must find the ramp
+    // or the foot of the observation steps instead of walking straight at a wall.
+    [Theory]
+    [InlineData("west platform", -12f, 66f, -30f, 4f, 101f)]
+    [InlineData("east platform", 12f, 95f, 30f, 6f, 139f)]
+    [InlineData("observation bridge", 8f, 110f, 0f, 8f, 153f)]
+    [InlineData("observation deck", -8f, 112f, 0f, 8f, 172f)]
+    public void DevelopmentWorld2NorthCourseIsReachableByWalking(
+        string target,
+        float startX,
+        float startZ,
+        float destinationX,
+        float destinationY,
+        float destinationZ)
+    {
+        var world = DevelopmentWorld2.Value;
+        var settings = DevelopmentWorld2Settings();
+        var start = new SimulationVector3(startX, 0f, startZ);
+
+        var plan = new MovementPathPlanner(world, settings, MovementPathPlannerSettings.Default)
+            .Plan(start, new SimulationVector3(destinationX, destinationY, destinationZ));
+
+        Assert.True(plan.Status == MovementPathPlanStatus.Reached, $"The {target} plan ended as {plan.Status}.");
+        Assert.False(plan.IsTruncated);
+        var final = AssertFollowsToTheEnd(world, settings, start, plan);
+        Assert.Equal(destinationY, final.PositionY, 2);
+    }
+
     [Fact]
     public void PlannerSettingsRejectInvalidValues()
     {

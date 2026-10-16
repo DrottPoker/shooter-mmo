@@ -15,6 +15,14 @@ namespace Mmorpg.Client.Editor
         private const string ScenePath = "Assets/Scenes/DevelopmentWorld2.unity";
         private const string MaterialDirectory =
             "Assets/Art/Materials/DevelopmentWorld2";
+        private const float RampSlopeDegrees = 10f;
+        private const float RampThickness = 0.6f;
+        private const float RampBurialDepth = 0.1f;
+        private const float ObservationDeckHeight = 8f;
+        private const float ObservationBridgeStartZ = 140f;
+
+        // 25 steps of 0.32 m with 1 m treads, below the 0.35 m movement step height.
+        private const int ObservationStepCount = 25;
 
         [MenuItem(MenuPath)]
         public static void RebuildFromMenu()
@@ -317,39 +325,33 @@ namespace Mmorpg.Client.Editor
             CreateBox(traversal, "EastApproachWall", new Vector3(18f, 1.5f, 62f),
                 new Vector3(28f, 3f, 2f), palette.Structure);
 
+            // Every height change on the course is walkable: ramps end flush with their
+            // platform, and each observation step rises less than the 0.35 m step height.
             CreateBox(traversal, "WestPlatform", new Vector3(-30f, 2f, 101f),
                 new Vector3(24f, 4f, 24f), palette.Structure);
-            CreateBox(
-                traversal,
-                "WestPlatformRamp",
-                new Vector3(-30f, 2f, 82f),
-                new Vector3(8f, 0.6f, 24f),
-                palette.Cover,
-                true,
-                Quaternion.Euler(-10f, 0f, 0f));
+            CreateRamp(traversal, "WestPlatformRamp", -30f, 8f, 89f, 4f, palette.Cover);
             CreateBox(traversal, "EastPlatform", new Vector3(30f, 3f, 139f),
                 new Vector3(24f, 6f, 24f), palette.Structure);
-            CreateBox(
-                traversal,
-                "EastPlatformRamp",
-                new Vector3(30f, 3f, 116f),
-                new Vector3(8f, 0.6f, 34f),
-                palette.Cover,
-                true,
-                Quaternion.Euler(-10f, 0f, 0f));
-            CreateBox(traversal, "NorthObservationDeck", new Vector3(0f, 4f, 176f),
-                new Vector3(22f, 8f, 22f), palette.Structure);
-            CreateBox(traversal, "ObservationDeckBridge", new Vector3(0f, 4.4f, 153f),
-                new Vector3(8f, 0.8f, 26f), palette.Cover);
+            CreateRamp(traversal, "EastPlatformRamp", 30f, 8f, 127f, 6f, palette.Cover);
 
-            for (var index = 0; index < 5; index++)
+            // The steps climb to the bridge, which runs level onto the deck.
+            CreateBox(traversal, "NorthObservationDeck",
+                new Vector3(0f, ObservationDeckHeight * 0.5f, 176f),
+                new Vector3(22f, ObservationDeckHeight, 22f), palette.Structure);
+            CreateBox(traversal, "ObservationDeckBridge",
+                new Vector3(0f, ObservationDeckHeight - 0.4f, 153f),
+                new Vector3(8f, 0.8f, 26f), palette.Cover);
+            for (var index = 0; index < ObservationStepCount; index++)
             {
-                var stepHeight = 0.4f * (index + 1);
+                var stepTop = ObservationDeckHeight * (index + 1) / ObservationStepCount;
                 CreateBox(
                     traversal,
                     "ObservationStep" + (index + 1).ToString("00"),
-                    new Vector3(0f, stepHeight * 0.5f, 126f + (index * 2f)),
-                    new Vector3(7f, stepHeight, 2f),
+                    new Vector3(
+                        0f,
+                        stepTop * 0.5f,
+                        ObservationBridgeStartZ - ObservationStepCount + index + 0.5f),
+                    new Vector3(7f, stepTop, 1f),
                     palette.Cover);
             }
 
@@ -540,6 +542,34 @@ namespace Mmorpg.Client.Editor
                 scale ?? new Vector3(4f, 0.04f, 4f),
                 material,
                 false);
+        }
+
+        // Creates a ramp rising along +Z whose top surface starts just below the ground
+        // and ends exactly at the top edge of the platform face it leads onto.
+        private static void CreateRamp(
+            Transform parent,
+            string name,
+            float centerX,
+            float width,
+            float platformFaceZ,
+            float platformTop,
+            Material material)
+        {
+            var slope = RampSlopeDegrees * Mathf.Deg2Rad;
+            var rise = platformTop + RampBurialDepth;
+            var surfaceCenter = new Vector3(
+                centerX,
+                platformTop - (rise * 0.5f),
+                platformFaceZ - (rise * 0.5f / Mathf.Tan(slope)));
+            var surfaceNormal = new Vector3(0f, Mathf.Cos(slope), -Mathf.Sin(slope));
+            CreateBox(
+                parent,
+                name,
+                surfaceCenter - (surfaceNormal * (RampThickness * 0.5f)),
+                new Vector3(width, RampThickness, rise / Mathf.Sin(slope)),
+                material,
+                true,
+                Quaternion.Euler(-RampSlopeDegrees, 0f, 0f));
         }
 
         private static Transform CreateGroup(Transform parent, string name)

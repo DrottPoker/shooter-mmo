@@ -157,9 +157,9 @@ the authoritative collision revision when the character joins, and the client
 refuses to predict against a different revision. The LocalPlayer prefab moves
 only in an authenticated World-scene session and has no offline movement mode.
 
-The Development World 2 traversal course was built for jumping. Its raised
-platforms and the observation steps are higher than the step height at their
-edges, so they cannot be reached by walking.
+The Development World 2 traversal course is walkable with click-to-move. Its
+ramps end flush with the raised platforms, and the observation steps climb in
+rises below the step height to a bridge that leads onto the observation deck.
 
 Complex terrain meshes, caves, moving platforms, dynamic doors, and rigid-body
 objects are not gameplay features yet. Dynamic server collision already has a
