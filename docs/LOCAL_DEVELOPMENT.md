@@ -189,24 +189,38 @@ The baseline scale is ammunition `1`, pistol `10`, and base character capacity
 The canonical content workflow is available in Unity at
 `MMORPG > Tools > Item Catalog`:
 
-1. Use the searchable definition list and category filter to select an item.
+1. Search the definition list by id, name, category, or tag, and narrow it with
+   the category, tag, and `Problems` filters. Hold Ctrl or Shift to select
+   several definitions.
 2. Edit gameplay fields and the separate client presentation fields in the same
-   window. Baked definition ids are read-only and cannot be deleted or reused.
-3. Optionally choose an icon Sprite below an `Assets/Resources` folder, with one
+   window. With several definitions selected, category, weight, stack size,
+   tags, equipment compatibility, eligibility, and policies change for all of
+   them at once, and a field whose values differ shows a dash. Id, display name,
+   Bag layout, and presentation are edited one definition at a time. Baked
+   definition ids are read-only and cannot be deleted or reused.
+3. The shared compiler checks the catalog inside Unity while you edit. A field
+   with a problem turns red, the list marks its definition, and choosing a
+   problem in the panel below selects the definition and its field.
+4. Undo and redo with Ctrl+Z and Ctrl+Y or the Edit menu; every edit is one step
+   in `Edit > Undo History`. Unsaved edits survive script reloads, and closing
+   the window asks whether to save them.
+5. Optionally choose an icon Sprite below an `Assets/Resources` folder, with one
    Sprite per asset file. The tool stores its extension-free Resources path, not
    the image data, in the presentation JSON. An item may remain iconless until
    approved client art is available.
-4. Select `Validate` to run the strict shared compiler without writing files.
-5. Select `Save` to write `catalog.json`, one file per definition, and the
+6. Select `Validate` to run the strict command-line compiler without writing
+   files.
+7. Select `Save` to write `catalog.json`, one file per definition, and the
    presentation content without replacing the runtime gameplay catalog. The
    files of removed draft definitions are deleted.
-6. Select `Save And Bake` to validate and atomically replace authoring, runtime,
+8. Select `Save And Bake` to validate and atomically replace authoring, runtime,
    and presentation JSON. Structural changes require explicit confirmation.
 
 The gameplay source remains `content/items`. The Editor-only assembly does not
-duplicate its rules. It invokes `tools/ItemCatalogCompiler`, which remains
-the validation and structural-fingerprint authority used by backend development
-and CI.
+duplicate its rules: live checks call the shared compiler in `Mmorpg.WorldData`,
+and `Validate` and both save actions invoke `tools/ItemCatalogCompiler`, which
+remains the validation and structural-fingerprint authority used by backend
+development and CI.
 
 Client-only presentation content is bundled at
 `src/Client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
@@ -1018,56 +1032,92 @@ presentation mapping:
 1. Open the Unity project and select `MMORPG > Tools > Content > Actor
    Studio`. Select `Mira the Quartermaster`. Expected result: the window shows
    an NPC with dialogue, vendor, quest offer, quest turn-in, crafting,
-   insurance, bank, and Recovery Storage capabilities, an invulnerable damage
-   policy, and authoritative interaction bounds.
-2. Click `Duplicate Selected`, give the copy a globally unique test actor id,
-   and use `Add Capability`, `Move Up`, `Move Down`, and `Remove Capability`.
-   Click `Preview Changes`. Expected result: inline validation and the exact
-   canonical JSON change appear without writing files. Click `Reload` to discard
-   the disposable copy unless it is intended as real content.
-3. Select `Feral Wolf`. Expected result: the same tool edits a Mob definition
-   with damageable policy plus activity and respawn profile references, without
-   adding a Mob runtime subclass.
-4. To use authored prefabs, click `Create Presentation Registry`, then assign a
-   prefab in `Replaceable prefab` for each presentation archetype. Expected
-   result: Unity creates
+   insurance, bank, and Recovery Storage capabilities, a note that NPCs are
+   always invulnerable instead of Mob settings, authoritative interaction
+   bounds with a front-view preview, and `No problems found.` below the editor.
+2. Click `Duplicate`. Expected result: the copy `npc.city_services.copy` is
+   added and selected. Use `Add Capability`, `Move Up`, `Move Down`, and
+   `Remove` on it, then enter `-1` as the Y value of `Size`. Expected result:
+   `Size` turns red, the list marks the copy, and the problems panel reports
+   `interactionBounds.sizeY`. Clicking the problem selects the copy and
+   focuses the field.
+3. Click the actor list so no text field has keyboard focus and press `Ctrl+Z`
+   repeatedly. Expected result: every edit is undone in order, the copy
+   disappears last, and `Ctrl+Y` redoes them. To start again from the files on
+   disk, click `Reload` and confirm the discard.
+4. Select `Feral Wolf`, then Ctrl-click `Feral Alpha`. Expected result: one
+   editor edits both, `Corpse Persistence` shows a mixed value because the wolf
+   is `Live` and the alpha is `Durable`, and the shared values show normally.
+   Change `Disposition` to `Neutral`. Expected result: both Mobs change in one
+   undo step. Add `City Guard` to the selection. Expected result: Mob-only
+   settings still show and edit only the two Mobs. Undo with `Ctrl+Z`.
+5. Select `City Guard`, change `Stable Actor Id`, and press Enter. Expected
+   result: the id stays and the status names `development-world-2`, because
+   that World also places the guard. An actor that only the edited World places
+   is renamed together with its spawns in one undo step. Click `Delete`.
+   Expected result: nothing is deleted and the status lists the spawns that
+   place the guard.
+6. To use authored prefabs, click `Create Presentation Registry` when it
+   appears, then assign a prefab in `Replaceable Prefab` for each presentation
+   archetype. Expected result: Unity creates
    `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
    The prefab changes presentation only. This optional asset creation and prefab
    assignment are the only manual Unity asset steps.
-5. Click `Save + Compile`, then `Verify Canonical`. Expected result: the
-   actor catalog, one file per actor, the spawn file, and the runtime JSON of
-   every World save deterministically in one transaction, and verification
-   reports the same revisions. Removing an actor deletes its definition file.
-   If no intentional content change was made, the files stay byte-for-byte
-   equivalent.
-6. Open `MMORPG > Tools > Content > Spawn Authoring` and click `Import`.
-   Inspect the Points, Groups, Areas, and Patrols tabs with `Scene Preview`
-   enabled. Expected result: scene handles show the service NPC point, two-guard
-   group, two-wolf seeded area, and wolf patrol path imported from neutral
-   WorldData.
-7. Add or duplicate a disposable entry, move it with the scene handle, click
-   `Ground Snap`, and inspect `Preview Changes`. Delete the disposable entry,
-   then click `Export + Compile` and `Verify Canonical`. Expected result: the
-   preview shows exact neutral JSON, ground snapping uses authored scene
-   collision, and clean export verifies deterministically.
-8. Start GameService and SimulationWorker, join `local-shard-1`, and approach
-   Mira. Expected result: actor instances appear and disappear through normal
-   interest presence. The worker startup log reports the actor content revision,
-   four definitions, and five instances.
-9. Point the crosshair at Mira from at most `3.0` metres and press `E`. Expected
-   result: temporary uGUI opens only after the server accepts and lists the
-   player-specific authoritative capability summary. Clicking a capability
-   reports `world_interaction_capability_deferred`, never local success.
-10. Repeat from beyond `3.0` metres and with static collision blocking line of
+7. With no pending edits, click `Preview Changes`, then `Save + Compile`, then
+   `Verify Canonical`. Expected result: the preview window lists every
+   canonical file, marks changed files in bold, and reports `No canonical
+   changes detected.`. Saving writes the actor catalog, one file per actor, the
+   spawn file, and the runtime JSON of every World deterministically in one
+   transaction, and verification reports the same revisions. Removing an actor
+   deletes its definition file. Without an intentional content change, the
+   files stay byte-for-byte equivalent. Closing the window with unsaved edits
+   asks whether to save them.
+8. Open a Scene view and `MMORPG > Tools > Content > Spawn Authoring`.
+   Expected result: the list shows the point `local.city_services`, the group
+   `local.city_guards`, the area `local.feral_wolves`, and the patrol path
+   `local.wolf_patrol` of `development-world-1`, the Scene view draws all four
+   while `Scene Preview` is on, and the problems panel reports
+   `No problems found.`. Selecting the point shows its prefab under
+   `Presentation Preview`.
+9. Select the group, Ctrl-click the area, and click `Frame`. Expected result:
+   the Scene view frames both, one move handle sits between them, dragging it
+   moves both, and one `Ctrl+Z` undoes the whole drag. The `Area` and
+   `Mob Lifecycle` sections appear because the area places the Feral Wolf.
+   Enter `0` in `Count`. Expected result: `Count` turns red, the list marks the
+   area, and the problems panel reports the allowed range. Undo with `Ctrl+Z`.
+10. Click `New Point`. Expected result: `local.new_point` appears at the Scene
+    view pivot and is selected. Click the marker of another entry in the Scene
+    view. Expected result: that entry is selected, and Ctrl-click adds to the
+    selection. Select `local.new_point` again, click `Ground Snap`, then
+    `Preview Changes`. Expected result: the point moves onto the scene collider
+    below it, or the status reports that no collider was found, and the preview
+    shows the exact neutral JSON of the spawn file.
+11. Change the `Stable Id` of `local.wolf_patrol`. Expected result: the area's
+    `Patrol Path` follows the new id in the same undo step. Select the patrol
+    path together with `local.new_point` and click `Delete`. Expected result:
+    the point is deleted and the patrol path stays, because the area follows
+    it. Click `Reload`, confirm the discard, then click `Save + Compile` and
+    `Verify Canonical`. Expected result: without edits, the files stay
+    byte-for-byte equivalent and verification reports the same revisions.
+12. Start GameService and SimulationWorker, join `local-shard-1`, and approach
+    Mira. Expected result: actor instances appear and disappear through normal
+    interest presence. The worker startup log reports the actor content
+    revision, four definitions, and five instances.
+13. Point the crosshair at Mira from at most `3.0` metres and press `E`.
+    Expected result: temporary uGUI opens only after the server accepts and
+    lists the player-specific authoritative capability summary. Clicking a
+    capability reports `world_interaction_capability_deferred`, never local
+    success.
+14. Repeat from beyond `3.0` metres and with static collision blocking line of
     sight. Expected result: the server rejects the request and no interaction
     remains open. Open within range, move through `3.5` metres, and verify the
     server closes only that session. Pressing `E` also closes an active session.
-11. Join with two clients and open Mira independently. Expected result: both
+15. Join with two clients and open Mira independently. Expected result: both
     sessions coexist. One client cannot open a corpse while its NPC interaction
     is active. After closing it with `E`, target a corpse and verify the existing
     Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
     unchanged.
-12. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
+16. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
     from compiled WorldData with fresh runtime identities, normal interest
     presence returns, and no stale actor or interaction session survives.
 
@@ -1165,13 +1215,13 @@ lifetime:
 Verify the content manually:
 
 1. Open `MMORPG > Tools > Content > Actor Studio`.
-2. Select `mob.feral_wolf`. Confirm `Corpse Persistence` is `live` and
+2. Select `mob.feral_wolf`. Confirm `Corpse Persistence` is `Live` and
    `Corpse Lifetime Seconds` is `120`.
-3. Select `mob.feral_alpha`. Confirm persistence is `durable` and lifetime is
+3. Select `mob.feral_alpha`. Confirm persistence is `Durable` and lifetime is
    `600`.
 4. Select `npc.city_guard` or `npc.city_services`. Confirm NPC content does not
    carry Mob corpse settings.
-5. Select `Validate`, `Compile`, and `Verify`.
+5. Click `Preview Changes`, `Save + Compile`, and `Verify Canonical`.
 
 Expected result: every action succeeds, there are four actor definitions and
 five runtime instances, and the checked-in actor runtime revision is

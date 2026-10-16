@@ -73,9 +73,12 @@ state.
 ## Unity Editor Workflow
 
 Open `MMORPG > Tools > Item Catalog` in the Unity project. The Editor-only
-tool provides a searchable definition list with a category filter, create and
-duplicate actions, every gameplay field in this contract, Bag slot editing, and
-the separate client presentation mapping.
+tool provides a searchable definition list with category, tag, and problem
+filters and multi-selection, create, duplicate, and remove-draft actions, every
+gameplay field in this contract, Bag slot editing, and the separate client
+presentation mapping. Selected definitions are edited together, live validation
+marks the fields that break this contract, and every edit can be undone with
+Unity's Undo.
 
 - Definition ids already present in runtime JSON are locked and cannot be
   deleted or reused. A new id remains editable until its first successful bake.

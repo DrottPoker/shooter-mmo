@@ -1,6 +1,6 @@
 # NPC And Mob System Design
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 Status: Canonical design, Phase 12 foundation implemented
 
@@ -497,10 +497,18 @@ Phase 12 adds:
 
 Actor Studio supports:
 
-- Search and filtering by actor kind, faction, capability, and tag.
+- Search and filtering by actor kind, faction, capability, tag, and problems.
 - Creation from NPC or Mob templates.
 - Safe duplication with a new stable id.
-- Capability add, remove, reorder, and inline validation.
+- Multi-selection: kind, faction, disposition, presentation, tags, Mob
+  lifecycle settings, and interaction bounds edit every selected actor at once.
+- Every edit is one step in Unity's Undo, and unsaved edits survive script
+  reloads.
+- Capability add, remove, and reorder.
+- Live validation with the shared compiler, marked on the actor and field it
+  concerns.
+- Renaming an actor updates the spawns of the edited World. Actors that other
+  Worlds place keep their id, and placed actors cannot be deleted.
 - Dropdown selection for referenced profiles and presentation archetypes.
 - Interaction-bounds preview.
 - Deterministic save, compile, verify, and change preview.
@@ -509,14 +517,24 @@ Actor Studio supports:
 
 Spawn Authoring supports:
 
-- Visual scene handles for spawn points, spawn areas, and patrol paths.
-- Ground snapping against authored scene collision.
+- One list of every spawn point, group, area, and patrol path, with search and
+  filtering by type, actor, and problems.
+- Visual scene handles for spawn points, groups, areas, and patrol points.
+  Clicking a marker in the Scene view selects its entry, and one handle moves a
+  whole selection.
+- Multi-selection: actor, patrol path, position, yaw, group layout, area
+  settings, and Mob lifecycle settings edit every selected entry that has them.
+  A vector edit changes only the edited axis of each entry.
+- Every edit, including a whole handle drag, is one step in Unity's Undo, and
+  unsaved edits survive script reloads.
+- Ground snapping of the selection against authored scene collision.
 - Actor prefab preview selected through the presentation archetype.
 - Spawn-group and population-limit authoring.
 - Respawn and activation-profile selection.
-- Stable id generation and duplicate-reference validation.
-- Import from canonical WorldData into the scene authoring view.
-- Export preview showing the exact canonical WorldData change.
+- Stable id generation and live validation with the shared compiler, marked on
+  the entry and field it concerns. Renaming a patrol path updates the spawns
+  that follow it, and a followed patrol path cannot be deleted.
+- Change preview showing the exact canonical WorldData change.
 - One-click save, compile, and verify.
 
 Editor scene components are temporary authoring adapters. They store stable
