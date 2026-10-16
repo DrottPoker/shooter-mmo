@@ -2,7 +2,7 @@
   "name": "Mmorpg.Client.Editor",
   "rootNamespace": "Mmorpg.Client.Editor",
   "references": [
-    "Mmorpg.Client",
+    "Mmorpg.Client.Worlds",
     "Mmorpg.GameSimulation",
     "Mmorpg.WorldData.Editor"
   ],

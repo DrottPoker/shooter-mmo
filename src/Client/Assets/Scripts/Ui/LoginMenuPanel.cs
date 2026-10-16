@@ -1,6 +1,6 @@
 using System.Collections;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 

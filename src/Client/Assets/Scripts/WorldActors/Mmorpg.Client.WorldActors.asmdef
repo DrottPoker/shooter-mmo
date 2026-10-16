@@ -1,0 +1,22 @@
+{
+  "name": "Mmorpg.Client.WorldActors",
+  "rootNamespace": "Mmorpg.Client.WorldActors",
+  "references": [
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Core",
+    "Mmorpg.Client.Networking",
+    "Mmorpg.Client.Items",
+    "Mmorpg.Client.Gameplay",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.WorldData"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

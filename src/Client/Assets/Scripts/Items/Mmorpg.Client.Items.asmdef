@@ -1,0 +1,21 @@
+{
+  "name": "Mmorpg.Client.Items",
+  "rootNamespace": "Mmorpg.Client.Items",
+  "references": [
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Core",
+    "Mmorpg.Client.Networking",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.WorldData",
+    "Mmorpg.WorldData.Client"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

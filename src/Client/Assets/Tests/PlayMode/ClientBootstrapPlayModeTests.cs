@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Linq;
+using Mmorpg.Client.App;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
@@ -33,8 +35,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<CorpseClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldActorClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldInteractionClientController>(), Is.Not.Null);
-            Assert.That(ClientBootstrap.InventoryController.IsInitialized, Is.True);
-            Assert.That(ClientBootstrap.CorpseController, Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<InventoryClientController>().IsInitialized, Is.True);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
         }
 

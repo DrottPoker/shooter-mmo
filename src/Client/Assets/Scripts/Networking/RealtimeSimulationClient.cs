@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using LiteNetLib;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using UnityEngine;

@@ -83,15 +83,22 @@ namespace Mmorpg.Client.Ui
             get { return isOpen && characterPanel != null && characterPanel.gameObject.activeSelf; }
         }
 
+        // Called by the composition root before the component is activated.
+        public void Initialize(
+            InventoryClientController inventory,
+            CorpseClientController corpses)
+        {
+            controller = inventory;
+            corpseController = corpses;
+        }
+
         private void Start()
         {
-            controller = ClientBootstrap.InventoryController;
             if (controller != null)
             {
                 controller.State.Changed += Rebuild;
             }
 
-            corpseController = ClientBootstrap.CorpseController;
             if (corpseController != null)
             {
                 corpseController.State.Changed += OnCorpseStateChanged;
@@ -185,7 +192,6 @@ namespace Mmorpg.Client.Ui
 
             if (value)
             {
-                controller = controller ?? ClientBootstrap.InventoryController;
                 controller?.EnsureFullState();
                 Rebuild();
             }
@@ -622,7 +628,6 @@ namespace Mmorpg.Client.Ui
 
         private void DrawCorpse(Transform parent, InventoryClientState inventoryState)
         {
-            corpseController = corpseController ?? ClientBootstrap.CorpseController;
             if (corpseController == null)
             {
                 CreateMessage(parent, "Corpse interaction state is unavailable.", ErrorColor);

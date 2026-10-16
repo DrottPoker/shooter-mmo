@@ -1,6 +1,5 @@
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Config;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
 using Mmorpg.GameProtocol;

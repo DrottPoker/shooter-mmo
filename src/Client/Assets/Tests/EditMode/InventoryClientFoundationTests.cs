@@ -1,6 +1,6 @@
 using System;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Config;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items.Presentation;

@@ -1,6 +1,6 @@
 using System.Collections;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using UnityEngine;
@@ -13,6 +13,7 @@ namespace Mmorpg.Client.Ui
         private readonly ClientOperationState operationState = new ClientOperationState();
 
         private ApiClient apiClient;
+        private RealtimeSimulationClient simulationClient;
         private string characterName = "Hero One";
         private string status = "Select or create a character, then join a shard.";
         private CharacterResponse[] characters = new CharacterResponse[0];
@@ -21,6 +22,12 @@ namespace Mmorpg.Client.Ui
         private int selectedShardIndex;
         private bool operationStepFailed;
         private Vector2 scrollPosition;
+
+        // Called by the composition root before the component is activated.
+        public void Initialize(RealtimeSimulationClient realtimeClient)
+        {
+            simulationClient = realtimeClient;
+        }
 
         private void OnDestroy()
         {
@@ -365,7 +372,6 @@ namespace Mmorpg.Client.Ui
                 "GameService issued a short-lived join ticket for character '" + character.name
                 + "' on shard '" + shard.id + "'.");
 
-            var simulationClient = ClientBootstrap.SimulationClient;
             if (simulationClient == null)
             {
                 ClientLog.Error(
@@ -433,7 +439,7 @@ namespace Mmorpg.Client.Ui
 
             operationStepFailed = true;
 
-            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error))
+            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, simulationClient))
             {
                 status = "Error: " + error.ToDisplayMessage();
                 ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDisplayMessage());

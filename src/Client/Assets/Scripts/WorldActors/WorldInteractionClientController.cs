@@ -1,4 +1,5 @@
 using System;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
@@ -130,6 +131,7 @@ namespace Mmorpg.Client.WorldActors
         private RealtimeSimulationClient simulationClient;
         private WorldActorClientController actorController;
         private CorpseClientController corpseController;
+        private InventoryClientController inventoryController;
         private bool initialized;
 
         public WorldInteractionClientState State { get; } =
@@ -149,14 +151,16 @@ namespace Mmorpg.Client.WorldActors
         public void Initialize(
             RealtimeSimulationClient realtimeClient,
             WorldActorClientController worldActors,
-            CorpseClientController corpses)
+            CorpseClientController corpses,
+            InventoryClientController inventory)
         {
             if (realtimeClient == null
                 || worldActors == null
-                || corpses == null)
+                || corpses == null
+                || inventory == null)
             {
                 throw new ArgumentNullException(
-                    "World interaction requires realtime, actor, and corpse controllers.");
+                    "World interaction requires realtime, actor, corpse, and inventory controllers.");
             }
 
             if (initialized)
@@ -167,6 +171,7 @@ namespace Mmorpg.Client.WorldActors
             simulationClient = realtimeClient;
             actorController = worldActors;
             corpseController = corpses;
+            inventoryController = inventory;
             simulationClient.WorldInteractionOpened += OnOpened;
             simulationClient.WorldInteractionCompleted += OnCompleted;
             simulationClient.WorldInteractionClosed += OnClosed;
@@ -428,7 +433,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (result.Succeeded && result.ItemStateRevision > 0)
             {
-                ClientBootstrap.InventoryController?.EnsureFullState(
+                inventoryController.EnsureFullState(
                     result.ItemStateRevision);
             }
         }

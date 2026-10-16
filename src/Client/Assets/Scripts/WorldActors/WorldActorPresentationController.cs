@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 
@@ -20,6 +20,12 @@ namespace Mmorpg.Client.WorldActors
         private WorldActorPresentationRegistry presentationRegistry;
         private Transform presentationRoot;
 
+        // Called by the composition root before the component is activated.
+        public void Initialize(WorldActorClientController worldActors)
+        {
+            actorController = worldActors;
+        }
+
         private void Awake()
         {
             materialProperties = new MaterialPropertyBlock();
@@ -27,7 +33,6 @@ namespace Mmorpg.Client.WorldActors
 
         private void Start()
         {
-            actorController = ClientBootstrap.WorldActorController;
             presentationRegistry = Resources.Load<WorldActorPresentationRegistry>(
                 RegistryResourcePath);
             if (presentationRegistry == null)

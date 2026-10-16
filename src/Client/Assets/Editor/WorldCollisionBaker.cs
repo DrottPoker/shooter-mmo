@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Mmorpg.Client.Collision;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Editor;
