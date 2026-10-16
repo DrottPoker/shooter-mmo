@@ -43,8 +43,8 @@ public sealed class StackStressGameplayTests
             intent.OperationKind,
             true,
             false,
-            null!,
             new RealtimeCarryState(2, 2, 200),
+            null!,
             [new RealtimeItemRevision(itemId, 2)],
             [
                 new RealtimeContainerRevision(permanentId, 2),

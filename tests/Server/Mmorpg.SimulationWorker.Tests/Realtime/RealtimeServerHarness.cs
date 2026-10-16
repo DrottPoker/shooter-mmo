@@ -707,11 +707,14 @@ internal sealed class TestGate
     }
 }
 
+// LoggedAtUtc lets timing assertions anchor on when the server acted, which client-side
+// polling delays cannot move.
 internal sealed record CapturedLogEntry(
     LogLevel Level,
     string? Template,
     string Message,
-    Exception? Exception);
+    Exception? Exception,
+    DateTime LoggedAtUtc);
 
 internal sealed class CapturingLogger<T> : ILogger<T>
 {
@@ -756,7 +759,8 @@ internal sealed class CapturingLogger<T> : ILogger<T>
                 logLevel,
                 template,
                 formatter(state, exception),
-                exception));
+                exception,
+                DateTime.UtcNow));
         }
     }
 }

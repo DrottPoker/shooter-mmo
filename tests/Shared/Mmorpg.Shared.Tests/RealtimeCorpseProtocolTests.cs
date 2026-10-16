@@ -178,8 +178,8 @@ public sealed class RealtimeCorpseProtocolTests
             true,
             false,
             true,
-            null!,
-            carry);
+            carry,
+            null!);
         AssertRoundTrip(success);
 
         var failure = new RealtimeCorpseInteractionResult(
@@ -189,10 +189,10 @@ public sealed class RealtimeCorpseProtocolTests
             false,
             true,
             true,
+            carry,
             new RealtimeError(
                 "item_quantity_changed",
-                "The corpse stack changed."),
-            carry);
+                "The corpse stack changed."));
         var actual = AssertRoundTrip(failure);
         Assert.Equal("item_quantity_changed", actual.Error.Code);
     }

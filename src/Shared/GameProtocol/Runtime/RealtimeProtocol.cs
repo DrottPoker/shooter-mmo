@@ -1,238 +1,381 @@
 using System;
-using System.IO;
+using System.Buffers.Binary;
 using System.Text;
 
 namespace Mmorpg.GameProtocol
 {
-    public enum RealtimeMessageType : byte
-    {
-        JoinRequest = 1,
-        JoinAccepted = 2,
-        JoinRejected = 3,
-        LeaveRequest = 4,
-        LeaveAccepted = 5,
-        LeaveRejected = 6,
-        ServerDisconnect = 7,
-        MovementInputBatch = 8,
-        SimulationSnapshot = 9,
-        EntitySpawn = 10,
-        EntityDespawn = 11,
-        CarryStateChanged = 12,
-        ItemOperationIntent = 13,
-        ItemOperationResult = 14,
-        CorpsePresenceSnapshotChunk = 15,
-        CorpseInteractionIntent = 16,
-        CorpseInteractionResult = 17,
-        CorpseViewStateChunk = 18,
-        CorpseViewClosed = 19,
-        WorldActorSpawn = 20,
-        WorldActorState = 21,
-        WorldActorDespawn = 22,
-        WorldInteractionIntent = 23,
-        WorldInteractionOpened = 24,
-        WorldInteractionResult = 25,
-        WorldInteractionClosed = 26,
-        OwnerSimulationSnapshot = 27
-    }
-
-    public sealed class RealtimeError
-    {
-        public RealtimeError(string code, string message)
-        {
-            Code = code;
-            Message = message;
-        }
-
-        public string Code { get; }
-
-        public string Message { get; }
-    }
-
-    // Wire limits that authored content must fit. Content compilers keep their own
-    // limits, and a compatibility test checks that they never exceed these.
-    public static class RealtimeProtocolLimits
-    {
-        public const int MaximumIdentifierLength = 128;
-        public const int MaximumNameLength = 128;
-        public const int MaximumEquipmentSlotIdLength = 64;
-        public const int MaximumSlotTagLength = 64;
-        public const int MaximumSlotTags = 16;
-        public const int MaximumDefinitionIdLength = 128;
-    }
-
-    // Framing, versioning, and the primitive readers and writers shared by every message
-    // family. Each family keeps its messages and its codec in its own folder.
+    // Framing and the primitive readers and writers that the generated codecs use. The
+    // version, limits, messages, and codecs are generated from the schema in Schema~, and
+    // each family folder keeps only its cross-field rules.
     public static partial class RealtimeProtocol
     {
-        private const uint Magic = 0x4F4D4D53;
-        private const int MaximumIdentifierLength = RealtimeProtocolLimits.MaximumIdentifierLength;
-        private const int MaximumNameLength = RealtimeProtocolLimits.MaximumNameLength;
-        private const int MaximumTimestampLength = 64;
-        private const int MaximumErrorCodeLength = 64;
-        private const int MaximumErrorMessageLength = 512;
-        private const int MaximumEquipmentSlotIdLength = RealtimeProtocolLimits.MaximumEquipmentSlotIdLength;
-        public const int MaximumUnreliablePacketSize = 1_023;
-        public const byte ControlChannel = 0;
-        public const byte MovementInputChannel = 1;
-        public const byte UnreliableReceiveChannel = 0;
-        public const byte ChannelCount = 2;
-        public const ushort Version = 14;
-        public const string ConnectionKey = "Mmorpg.Realtime.v8";
-        public const int MaximumPacketSize = 1200;
+        private const int HeaderSize = sizeof(uint) + sizeof(ushort) + sizeof(byte);
+
+        private const int GuidSize = 16;
+
+        // Decoding rejects invalid UTF-8 instead of replacing it.
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
         public static bool TryReadMessageType(byte[] data, out RealtimeMessageType messageType)
         {
             messageType = default;
-            if (data == null || data.Length < sizeof(uint) + sizeof(ushort) + sizeof(byte))
+            if (data == null || data.Length < HeaderSize)
             {
                 return false;
             }
 
-            using (var stream = new MemoryStream(data, writable: false))
-            using (var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true))
-            {
-                return reader.ReadUInt32() == Magic
-                    && reader.ReadUInt16() == Version
-                    && Enum.IsDefined(typeof(RealtimeMessageType), messageType = (RealtimeMessageType)reader.ReadByte());
-            }
-        }
-
-        private static byte[] Encode(RealtimeMessageType messageType, Action<BinaryWriter> writePayload)
-        {
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
-            {
-                writer.Write(Magic);
-                writer.Write(Version);
-                writer.Write((byte)messageType);
-                writePayload(writer);
-                writer.Flush();
-
-                if (stream.Length > MaximumPacketSize)
-                {
-                    throw new InvalidOperationException(
-                        $"Realtime packet exceeds the {MaximumPacketSize} byte limit.");
-                }
-
-                return stream.ToArray();
-            }
-        }
-
-        private static byte[] EncodeError(RealtimeMessageType messageType, string code, string message)
-        {
-            return Encode(messageType, writer =>
-            {
-                WriteString(writer, code, MaximumErrorCodeLength, nameof(code));
-                WriteString(writer, message, MaximumErrorMessageLength, nameof(message));
-            });
-        }
-
-        private static bool TryDecodeError(
-            byte[] data,
-            RealtimeMessageType expectedType,
-            out RealtimeError realtimeError,
-            out string error)
-        {
-            realtimeError = null;
-            if (!TryCreateReader(data, expectedType, out var stream, out var reader, out error))
+            var header = new ReadOnlySpan<byte>(data);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic
+                || BinaryPrimitives.ReadUInt16LittleEndian(header.Slice(sizeof(uint))) != Version)
             {
                 return false;
             }
 
-            using (stream)
-            using (reader)
-            {
-                if (!TryReadString(reader, MaximumErrorCodeLength, out var code, out error)
-                    || !TryReadString(reader, MaximumErrorMessageLength, out var message, out error)
-                    || !TryFinish(stream, out error))
-                {
-                    return false;
-                }
-
-                realtimeError = new RealtimeError(code, message);
-                return true;
-            }
+            messageType = (RealtimeMessageType)header[HeaderSize - 1];
+            return TryGetDescriptor(messageType, out _);
         }
 
-        private static bool TryCreateReader(
+        // Allocates the packet at its exact size and writes the frame header.
+        private static PacketWriter StartPacket(RealtimeMessageType messageType, int payloadSize)
+        {
+            var size = HeaderSize + payloadSize;
+            if (size > MaximumPacketSize)
+            {
+                throw new InvalidOperationException($"Realtime packet exceeds the {MaximumPacketSize} byte limit.");
+            }
+
+            var writer = new PacketWriter(new byte[size]);
+            writer.WriteUInt32(Magic);
+            writer.WriteUInt16(Version);
+            writer.WriteByte((byte)messageType);
+            return writer;
+        }
+
+        private static bool TryStartPacket(
             byte[] data,
             RealtimeMessageType expectedType,
-            out MemoryStream stream,
-            out BinaryReader reader,
+            out PacketReader reader,
             out string error)
         {
-            stream = null;
-            reader = null;
-            error = string.Empty;
-
+            reader = default;
             if (data == null || data.Length > MaximumPacketSize)
             {
                 error = "Packet length is invalid.";
                 return false;
             }
 
-            try
+            reader = new PacketReader(data);
+            if (!reader.TryReadUInt32(out var magic, out error))
             {
-                stream = new MemoryStream(data, writable: false);
-                reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+                error = "Packet header is incomplete.";
+                return false;
+            }
 
-                if (reader.ReadUInt32() != Magic)
+            if (magic != Magic)
+            {
+                error = "Packet magic is invalid.";
+                return false;
+            }
+
+            if (!reader.TryReadUInt16(out var version, out error))
+            {
+                error = "Packet header is incomplete.";
+                return false;
+            }
+
+            if (version != Version)
+            {
+                error = "Protocol version is unsupported.";
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var messageType, out error))
+            {
+                error = "Packet header is incomplete.";
+                return false;
+            }
+
+            if ((RealtimeMessageType)messageType != expectedType)
+            {
+                error = "Packet message type is invalid.";
+                return false;
+            }
+
+            return true;
+        }
+
+        // A u16 UTF-8 byte length, then the bytes.
+        private static int StringSize(string value)
+        {
+            return sizeof(ushort) + Encoding.UTF8.GetByteCount(value);
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        // Writes little-endian values into a packet that was allocated at its exact size.
+        // Callers validate every value first, so the writer only copies bytes.
+        private ref struct PacketWriter
+        {
+            private readonly byte[] buffer;
+            private int position;
+
+            public PacketWriter(byte[] buffer)
+            {
+                this.buffer = buffer;
+                position = 0;
+            }
+
+            public void WriteByte(byte value)
+            {
+                buffer[position] = value;
+                position++;
+            }
+
+            public void WriteBoolean(bool value)
+            {
+                WriteByte(value ? (byte)1 : (byte)0);
+            }
+
+            public void WriteUInt16(ushort value)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(position), value);
+                position += sizeof(ushort);
+            }
+
+            public void WriteUInt32(uint value)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(position), value);
+                position += sizeof(uint);
+            }
+
+            public void WriteUInt64(ulong value)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(position), value);
+                position += sizeof(ulong);
+            }
+
+            public void WriteInt32(int value)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(position), value);
+                position += sizeof(int);
+            }
+
+            public void WriteInt64(long value)
+            {
+                BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(position), value);
+                position += sizeof(long);
+            }
+
+            public void WriteSingle(float value)
+            {
+                WriteInt32(BitConverter.SingleToInt32Bits(value));
+            }
+
+            // The byte order of Guid.ToByteArray.
+            public void WriteGuid(Guid value)
+            {
+                if (!value.TryWriteBytes(buffer.AsSpan(position)))
                 {
-                    error = "Packet magic is invalid.";
-                    DisposeReader(stream, reader);
+                    throw new InvalidOperationException("Realtime packet is too small for its identifier.");
+                }
+
+                position += GuidSize;
+            }
+
+            public void WriteString(string value)
+            {
+                var length = Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, position + sizeof(ushort));
+                WriteUInt16((ushort)length);
+                position += length;
+            }
+
+            // Every packet is sized exactly, so a mismatch is a generator defect.
+            public byte[] Finish()
+            {
+                if (position != buffer.Length)
+                {
+                    throw new InvalidOperationException("Realtime packet size does not match its encoded bytes.");
+                }
+
+                return buffer;
+            }
+        }
+
+        // Reads little-endian values and reports the first truncated or malformed one.
+        private ref struct PacketReader
+        {
+            private readonly ReadOnlySpan<byte> data;
+            private int position;
+
+            public PacketReader(ReadOnlySpan<byte> data)
+            {
+                this.data = data;
+                position = 0;
+            }
+
+            public bool TryReadByte(out byte value, out string error)
+            {
+                if (!Has(sizeof(byte), "Packet byte is incomplete.", out error))
+                {
+                    value = 0;
                     return false;
                 }
 
-                if (reader.ReadUInt16() != Version)
+                value = data[position];
+                position++;
+                return true;
+            }
+
+            // Any non-zero byte reads as true.
+            public bool TryReadBoolean(out bool value, out string error)
+            {
+                if (!Has(sizeof(byte), "Packet boolean is incomplete.", out error))
                 {
-                    error = "Protocol version is unsupported.";
-                    DisposeReader(stream, reader);
+                    value = false;
                     return false;
                 }
 
-                if ((RealtimeMessageType)reader.ReadByte() != expectedType)
+                value = data[position] != 0;
+                position++;
+                return true;
+            }
+
+            public bool TryReadUInt16(out ushort value, out string error)
+            {
+                if (!Has(sizeof(ushort), "Packet unsigned integer is incomplete.", out error))
                 {
-                    error = "Packet message type is invalid.";
-                    DisposeReader(stream, reader);
+                    value = 0;
+                    return false;
+                }
+
+                value = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(position));
+                position += sizeof(ushort);
+                return true;
+            }
+
+            public bool TryReadUInt32(out uint value, out string error)
+            {
+                if (!Has(sizeof(uint), "Packet unsigned integer is incomplete.", out error))
+                {
+                    value = 0;
+                    return false;
+                }
+
+                value = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(position));
+                position += sizeof(uint);
+                return true;
+            }
+
+            public bool TryReadUInt64(out ulong value, out string error)
+            {
+                if (!Has(sizeof(ulong), "Packet unsigned integer is incomplete.", out error))
+                {
+                    value = 0;
+                    return false;
+                }
+
+                value = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(position));
+                position += sizeof(ulong);
+                return true;
+            }
+
+            public bool TryReadInt32(out int value, out string error)
+            {
+                if (!Has(sizeof(int), "Packet integer is incomplete.", out error))
+                {
+                    value = 0;
+                    return false;
+                }
+
+                value = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(position));
+                position += sizeof(int);
+                return true;
+            }
+
+            public bool TryReadInt64(out long value, out string error)
+            {
+                if (!Has(sizeof(long), "Packet integer is incomplete.", out error))
+                {
+                    value = 0;
+                    return false;
+                }
+
+                value = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(position));
+                position += sizeof(long);
+                return true;
+            }
+
+            public bool TryReadSingle(out float value, out string error)
+            {
+                if (!Has(sizeof(float), "Packet number is incomplete.", out error))
+                {
+                    value = 0f;
+                    return false;
+                }
+
+                value = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(data.Slice(position)));
+                position += sizeof(float);
+                if (!IsFinite(value))
+                {
+                    error = "Packet number is not finite.";
                     return false;
                 }
 
                 return true;
             }
-            catch (EndOfStreamException)
+
+            public bool TryReadGuid(out Guid value, out string error)
             {
-                error = "Packet header is incomplete.";
-                DisposeReader(stream, reader);
-                return false;
+                if (!Has(GuidSize, "Packet identifier is incomplete.", out error))
+                {
+                    value = Guid.Empty;
+                    return false;
+                }
+
+                value = new Guid(data.Slice(position, GuidSize));
+                position += GuidSize;
+                return true;
             }
-        }
 
-        private static bool TryReadString(
-            BinaryReader reader,
-            int maximumLength,
-            out string value,
-            out string error)
-        {
-            value = string.Empty;
-            error = string.Empty;
-
-            try
+            // Text has 1 to maximumLength UTF-16 characters, or 0 with allowBlank, and at
+            // most four bytes per character. Whitespace is read as is: validation decides
+            // whether blank text is valid.
+            public bool TryReadString(int maximumLength, out string value, out string error, bool allowBlank = false)
             {
-                var byteLength = reader.ReadUInt16();
-                if (byteLength == 0 || byteLength > maximumLength * 4)
+                value = string.Empty;
+                if (!Has(sizeof(ushort), "Packet string is invalid.", out error))
+                {
+                    return false;
+                }
+
+                var byteLength = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(position));
+                position += sizeof(ushort);
+                if ((byteLength == 0 && !allowBlank) || byteLength > maximumLength * 4)
                 {
                     error = "Packet string length is invalid.";
                     return false;
                 }
 
-                var bytes = reader.ReadBytes(byteLength);
-                if (bytes.Length != byteLength)
+                if (!Has(byteLength, "Packet string is incomplete.", out error))
                 {
-                    error = "Packet string is incomplete.";
                     return false;
                 }
 
-                value = new UTF8Encoding(false, true).GetString(bytes);
+                try
+                {
+                    value = StrictUtf8.GetString(data.Slice(position, byteLength));
+                }
+                catch (DecoderFallbackException)
+                {
+                    value = string.Empty;
+                    error = "Packet string is invalid.";
+                    return false;
+                }
+
+                position += byteLength;
                 if (value.Length > maximumLength)
                 {
                     error = "Packet string exceeds its character limit.";
@@ -241,222 +384,30 @@ namespace Mmorpg.GameProtocol
 
                 return true;
             }
-            catch (Exception exception) when (
-                exception is EndOfStreamException || exception is DecoderFallbackException)
-            {
-                error = "Packet string is invalid.";
-                return false;
-            }
-        }
 
-        private static bool TryReadBoolean(BinaryReader reader, out bool value, out string error)
-        {
-            value = false;
-            error = string.Empty;
-
-            try
+            public bool TryFinish(out string error)
             {
-                value = reader.ReadBoolean();
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                error = "Packet boolean is incomplete.";
-                return false;
-            }
-        }
-
-        private static void WriteGuid(BinaryWriter writer, Guid value)
-        {
-            writer.Write(value.ToByteArray());
-        }
-
-        private static bool TryReadGuid(BinaryReader reader, out Guid value, out string error)
-        {
-            try
-            {
-                var bytes = reader.ReadBytes(16);
-                if (bytes.Length != 16)
+                if (position == data.Length)
                 {
-                    value = Guid.Empty;
-                    error = "Packet identifier is incomplete.";
-                    return false;
+                    error = string.Empty;
+                    return true;
                 }
 
-                value = new Guid(bytes);
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = Guid.Empty;
-                error = "Packet identifier is incomplete.";
+                error = "Packet contains trailing data.";
                 return false;
             }
-        }
 
-        private static bool TryReadByte(BinaryReader reader, out byte value, out string error)
-        {
-            try
+            private bool Has(int count, string incomplete, out string error)
             {
-                value = reader.ReadByte();
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0;
-                error = "Packet byte is incomplete.";
-                return false;
-            }
-        }
-
-        private static bool TryReadUInt16(BinaryReader reader, out ushort value, out string error)
-        {
-            try
-            {
-                value = reader.ReadUInt16();
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0;
-                error = "Packet unsigned integer is incomplete.";
-                return false;
-            }
-        }
-
-        private static bool TryReadUInt32(BinaryReader reader, out uint value, out string error)
-        {
-            try
-            {
-                value = reader.ReadUInt32();
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0;
-                error = "Packet unsigned integer is incomplete.";
-                return false;
-            }
-        }
-
-        private static bool TryReadUInt64(BinaryReader reader, out ulong value, out string error)
-        {
-            try
-            {
-                value = reader.ReadUInt64();
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0;
-                error = "Packet unsigned integer is incomplete.";
-                return false;
-            }
-        }
-
-        private static bool TryReadInt32(BinaryReader reader, out int value, out string error)
-        {
-            try
-            {
-                value = reader.ReadInt32();
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0;
-                error = "Packet integer is incomplete.";
-                return false;
-            }
-        }
-
-        private static bool TryReadInt64(BinaryReader reader, out long value, out string error)
-        {
-            try
-            {
-                value = reader.ReadInt64();
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0;
-                error = "Packet integer is incomplete.";
-                return false;
-            }
-        }
-
-        private static bool TryReadSingle(BinaryReader reader, out float value, out string error)
-        {
-            try
-            {
-                value = reader.ReadSingle();
-                if (!IsFinite(value))
+                if (data.Length - position >= count)
                 {
-                    error = "Packet number is not finite.";
-                    return false;
+                    error = string.Empty;
+                    return true;
                 }
 
-                error = string.Empty;
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                value = 0f;
-                error = "Packet number is incomplete.";
+                error = incomplete;
                 return false;
             }
-        }
-
-        private static bool IsFinite(float value)
-        {
-            return !float.IsNaN(value) && !float.IsInfinity(value);
-        }
-
-        private static bool TryFinish(MemoryStream stream, out string error)
-        {
-            if (stream.Position == stream.Length)
-            {
-                error = string.Empty;
-                return true;
-            }
-
-            error = "Packet contains trailing data.";
-            return false;
-        }
-
-        private static void WriteString(
-            BinaryWriter writer,
-            string value,
-            int maximumLength,
-            string parameterName)
-        {
-            if (string.IsNullOrWhiteSpace(value) || value.Length > maximumLength)
-            {
-                throw new ArgumentException(
-                    $"Value must contain between 1 and {maximumLength} characters.",
-                    parameterName);
-            }
-
-            var bytes = Encoding.UTF8.GetBytes(value);
-            if (bytes.Length > ushort.MaxValue)
-            {
-                throw new ArgumentException("Value is too large to encode.", parameterName);
-            }
-
-            writer.Write((ushort)bytes.Length);
-            writer.Write(bytes);
-        }
-
-        private static void DisposeReader(MemoryStream stream, BinaryReader reader)
-        {
-            reader?.Dispose();
-            stream?.Dispose();
         }
     }
 }

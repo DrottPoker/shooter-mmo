@@ -46,6 +46,7 @@
     <Project Path="tools/ActiveSimulationBots/Mmorpg.Tools.ActiveSimulationBots.csproj" />
     <Project Path="tools/ContentPipeline/Mmorpg.Tools.ContentPipeline.csproj" />
     <Project Path="tools/ItemCatalogCompiler/Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <Project Path="tools/ProtocolGenerator/Mmorpg.Tools.ProtocolGenerator.csproj" />
     <Project Path="tools/SimulationBotClient/Mmorpg.Tools.SimulationBotClient.csproj" />
     <Project Path="tools/StackStressGenerator/Mmorpg.Tools.StackStressGenerator.csproj" />
     <Project Path="tools/WorldActorCompiler/Mmorpg.Tools.WorldActorCompiler.csproj" />
