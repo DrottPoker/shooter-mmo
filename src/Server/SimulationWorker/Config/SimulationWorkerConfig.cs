@@ -21,7 +21,6 @@ public sealed record SimulationWorkerConfig(
     TimeSpan JoinHandshakeTimeout,
     TimeSpan NetworkPollInterval,
     int SnapshotRateHz,
-    TimeSpan MovementInputSilenceTimeout,
     MovementSimulationSettings MovementSimulation,
     MovementSpawnConfig MovementSpawn,
     Uri GameServiceBaseUrl,
@@ -159,17 +158,9 @@ public sealed record SimulationWorkerConfig(
             movementSection["SnapshotRateHz"],
             "SimulationWorker:Movement:SnapshotRateHz",
             errors);
-        var movementInputSilenceTimeoutMilliseconds = PositiveInt(
-            movementSection["InputSilenceTimeoutMilliseconds"],
-            "SimulationWorker:Movement:InputSilenceTimeoutMilliseconds",
-            errors);
         var walkSpeed = FiniteFloat(
             movementSection["WalkSpeed"],
             "SimulationWorker:Movement:WalkSpeed",
-            errors);
-        var sprintSpeed = FiniteFloat(
-            movementSection["SprintSpeed"],
-            "SimulationWorker:Movement:SprintSpeed",
             errors);
         var rotationSpeed = FiniteFloat(
             movementSection["RotationSpeedDegrees"],
@@ -182,10 +173,6 @@ public sealed record SimulationWorkerConfig(
         var maximumFallSpeed = FiniteFloat(
             movementSection["MaximumFallSpeed"],
             "SimulationWorker:Movement:MaximumFallSpeed",
-            errors);
-        var jumpVelocity = FiniteFloat(
-            movementSection["JumpVelocity"],
-            "SimulationWorker:Movement:JumpVelocity",
             errors);
         var groundedVerticalVelocity = FiniteFloat(
             movementSection["GroundedVerticalVelocity"],
@@ -460,12 +447,6 @@ public sealed record SimulationWorkerConfig(
                 "SimulationWorker:Movement:SnapshotRateHz must divide TickRateHz without a remainder.");
         }
 
-        if (movementInputSilenceTimeoutMilliseconds > 5_000)
-        {
-            errors.Add(
-                "SimulationWorker:Movement:InputSilenceTimeoutMilliseconds must not exceed 5000.");
-        }
-
         MovementSimulationSettings? movementSimulation = null;
         try
         {
@@ -480,11 +461,9 @@ public sealed record SimulationWorkerConfig(
             movementSimulation = new MovementSimulationSettings(
                 movementTickRateHz,
                 walkSpeed,
-                sprintSpeed,
                 rotationSpeed,
                 gravity,
                 maximumFallSpeed,
-                jumpVelocity,
                 groundedVerticalVelocity,
                 groundHeight,
                 minimumX,
@@ -560,7 +539,6 @@ public sealed record SimulationWorkerConfig(
             TimeSpan.FromSeconds(joinHandshakeTimeoutSeconds),
             TimeSpan.FromMilliseconds(networkPollIntervalMilliseconds),
             snapshotRateHz,
-            TimeSpan.FromMilliseconds(movementInputSilenceTimeoutMilliseconds),
             movementSimulation!,
             new MovementSpawnConfig(spawnX, spawnY, spawnZ, spawnYaw),
             parsedGameServiceUrl!,

@@ -13,10 +13,8 @@ namespace Mmorpg.Client.Tests.EditMode
         private static readonly MovementSimulationSettings Settings = new MovementSimulationSettings(
             30,
             5f,
-            8f,
             720f,
             -24f,
-            7f,
             -2f,
             0f,
             -14f,
@@ -27,8 +25,8 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ReconciliationRemovesAcknowledgedInputsAndReplaysPendingInputs()
         {
-            var first = Input(1, 0f, 1f);
-            var second = Input(2, 1f, 0f);
+            var first = Input(1, Path(1, 0f, 3f));
+            var second = Input(2, Path(2, 3f, -1f));
             var world = LoadCollisionWorld();
             var initial = PlayerMovementSimulation.CreateInitialState(
                 Settings,
@@ -65,7 +63,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void RedundantBatchContainsAtMostFourNewestInputs()
+        public void RedundantBatchCarriesTheNewestPathUntilTheWorkerConfirmsIt()
         {
             var world = LoadCollisionWorld();
             var initial = PlayerMovementSimulation.CreateInitialState(
@@ -80,16 +78,81 @@ namespace Mmorpg.Client.Tests.EditMode
                 Settings,
                 PlayerCarryState.Default,
                 world);
+            var path = Path(5, 0f, 4f);
             for (uint sequence = 1; sequence <= 6; sequence++)
             {
-                prediction.Predict(Input(sequence, 0f, 1f));
+                prediction.Predict(Input(sequence, path));
             }
 
-            var batch = prediction.CreateRedundantInputBatch();
+            var batch = prediction.CreateRedundantInputBatch(out var unconfirmed);
 
             Assert.That(batch.Length, Is.EqualTo(4));
             Assert.That(batch[0].InputSequence, Is.EqualTo(3));
             Assert.That(batch[3].InputSequence, Is.EqualTo(6));
+            Assert.That(unconfirmed, Is.SameAs(path));
+
+            // An owner snapshot that already follows the path confirms it.
+            prediction.Reconcile(prediction.State, 4);
+            prediction.CreateRedundantInputBatch(out unconfirmed);
+            Assert.That(prediction.ConfirmedPathId, Is.EqualTo(5u));
+            Assert.That(unconfirmed, Is.Null);
+
+            // Standing needs no path data at all.
+            prediction.Predict(Input(7, null));
+            prediction.CreateRedundantInputBatch(out unconfirmed);
+            Assert.That(unconfirmed, Is.Null);
+        }
+
+        [Test]
+        public void NavigatorPlansInTheBackgroundIssuesPathIdsAndStopsWithinRange()
+        {
+            var world = LoadCollisionWorld();
+            var navigator = new LocalPlayerNavigator(
+                world,
+                Settings,
+                MovementPathPlannerSettings.Default);
+            var standing = PlayerMovementSimulation.CreateInitialState(Settings, world, 0f, 0f, -1f, 0f);
+            var start = standing.Position;
+
+            var walk = navigator.Request(start, new SimulationVector3(4f, 0f, 3f), 0f);
+            WaitForPlan(navigator, standing, walk);
+            Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.Moving));
+            var first = navigator.CurrentPath;
+            Assert.That(first.Id, Is.EqualTo(1u));
+            Assert.That(first.Destination.X, Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(first.Destination.Z, Is.EqualTo(3f).Within(0.0001f));
+
+            var approach = navigator.Request(start, new SimulationVector3(-4f, 0f, 3f), 2f);
+            Assert.That(approach, Is.GreaterThan(walk));
+            WaitForPlan(navigator, standing, approach);
+            var approachPath = navigator.CurrentPath;
+            Assert.That(approachPath.Id, Is.EqualTo(2u));
+            var deltaX = approachPath.Destination.X + 4f;
+            var deltaZ = approachPath.Destination.Z - 3f;
+            Assert.That(Math.Sqrt((deltaX * deltaX) + (deltaZ * deltaZ)), Is.EqualTo(2d).Within(0.001d));
+
+            // A NaN destination has no route, so the current path stays.
+            WaitForPlan(navigator, standing, navigator.Request(start, new SimulationVector3(float.NaN, 0f, 0f), 0f));
+            Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.NoRoute));
+            Assert.That(navigator.CurrentPath, Is.SameAs(approachPath));
+
+            // An approach whose plan has no waypoints is no route either, not an arrival.
+            WaitForPlan(navigator, standing, navigator.Request(start, new SimulationVector3(float.NaN, 0f, 0f), 2f));
+            Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.NoRoute));
+            Assert.That(navigator.CurrentPath, Is.SameAs(approachPath));
+
+            WaitForPlan(navigator, standing, navigator.Request(start, new SimulationVector3(0.5f, 0f, -1f), 2f));
+            Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.AlreadyThere));
+            Assert.That(navigator.CurrentPath, Is.Null);
+
+            // A newer request wins over one that is still being planned.
+            navigator.Request(start, new SimulationVector3(4f, 0f, 3f), 0f);
+            var newest = navigator.Request(start, new SimulationVector3(-4f, 0f, 3f), 0f);
+            WaitForPlan(navigator, standing, newest);
+            Assert.That(navigator.CurrentPath.Destination.X, Is.EqualTo(-4f).Within(0.0001f));
+            var stop = navigator.Stop();
+            Assert.That(navigator.AppliedIntentId, Is.EqualTo(stop));
+            Assert.That(navigator.CurrentPath, Is.Null);
         }
 
         [TestCase(200, 10000)]
@@ -110,7 +173,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void PredictionAppliesCarryRevisionToSprintAndMovementSpeed()
+        public void PredictionAppliesCarryRevisionToMovementSpeed()
         {
             var world = LoadCollisionWorld();
             var initial = PlayerMovementSimulation.CreateInitialState(
@@ -128,16 +191,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var carryState = new PlayerCarryState(1, 210, 200);
             prediction.ApplyCarryState(carryState);
 
-            prediction.Predict(new PlayerMovementInput(
-                1,
-                1,
-                0f,
-                1f,
-                0f,
-                PlayerMovementButtons.Sprint));
+            prediction.Predict(Input(1, Path(1, 0f, 5f)));
 
             Assert.That(prediction.CarryState, Is.SameAs(carryState));
-            Assert.That(prediction.State.IsSprinting, Is.False);
             Assert.That(
                 prediction.State.VelocityZ,
                 Is.EqualTo(Settings.WalkSpeed * 0.9f).Within(0.0001f));
@@ -359,11 +415,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     30,
                     15,
                     5f,
-                    8f,
                     720f,
                     -24f,
                     55f,
-                    7f,
                     -2f,
                     0f,
                     -14f,
@@ -385,19 +439,33 @@ namespace Mmorpg.Client.Tests.EditMode
                     -2f,
                     0f,
                     0f,
-                    true,
-                    false));
+                    true));
         }
 
-        private static PlayerMovementInput Input(uint sequence, float moveX, float moveY)
+        private static void WaitForPlan(
+            LocalPlayerNavigator navigator,
+            PlayerMovementState predicted,
+            int intentId)
         {
-            return new PlayerMovementInput(
-                sequence,
-                sequence,
-                moveX,
-                moveY,
-                0f,
-                PlayerMovementButtons.None);
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while ((navigator.AppliedIntentId != intentId || navigator.IsPlanning)
+                && DateTime.UtcNow < deadline)
+            {
+                System.Threading.Thread.Sleep(1);
+                navigator.Update(predicted);
+            }
+
+            Assert.That(navigator.AppliedIntentId, Is.EqualTo(intentId));
+        }
+
+        private static PlayerMovementInput Input(uint sequence, MovementPath path)
+        {
+            return new PlayerMovementInput(sequence, sequence, path);
+        }
+
+        private static MovementPath Path(uint id, float x, float z)
+        {
+            return new MovementPath(id, new[] { new SimulationVector3(x, 0f, z) });
         }
 
         private static PlayerMovementState State(float positionX, float yawDegrees)
@@ -410,8 +478,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 -2f,
                 0f,
                 yawDegrees,
-                true,
-                false);
+                true);
         }
 
         private static ChunkedStaticCollisionWorld LoadCollisionWorld()

@@ -331,15 +331,17 @@ only for its hand-written cross-field rules, as `Movement`, `Items`, `Corpses`,
 and `WorldActors` do; `Session` and `Replication` need none. The list is in
 [Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
 
-Protocol version 14 includes:
+Protocol version 15 includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
 - Server-assigned network entity ids.
 - Reliable ordered entity spawn and despawn.
-- Bounded, sequenced movement input batches.
+- Bounded, sequenced movement input batches that carry the client-planned path
+  of the newest input until the worker confirms it.
 - A dedicated fixed-rate owner snapshot with server tick, snapshot sequence,
-  input acknowledgement, and authoritative reconciliation state.
+  input acknowledgement, and authoritative reconciliation state including path
+  progress.
 - Chunked remote simulation snapshots whose visible entity updates rotate
   fairly when the worker-wide byte budget cannot carry the full dense set.
 - Movement, simulation revision, and collision revision metadata.
@@ -394,9 +396,13 @@ prove the bounded tier or add spatial, frequency, or byte-budget degradation.
 it directly as a local package and `src/Shared/DotNet/GameSimulation` compiles it
 for SimulationWorker.
 
-It owns movement integration, carry-state encumbrance, sprint restrictions,
-gravity, facing, capsule collision, steps, slopes, bounds, and collision-data
-codecs. Its carry wrapper delegates capacity, hard-cap, and multiplier arithmetic
+It owns click-to-move path following, the path limits, the route planner,
+carry-state encumbrance, gravity, facing, capsule collision, steps, slopes,
+bounds, collision raycasts, and collision-data codecs. `MovementPathPlanner`
+runs A* on a fine internal grid sampled from the collision world, with several
+walkable levels per cell, and string pulls the route into at most 32 waypoints.
+The Unity client plans with it today; the same deterministic code can plan for
+world actors in SimulationWorker. Its carry wrapper delegates capacity, hard-cap, and multiplier arithmetic
 to the pure WorldData item rules. A carry tuple above the hard cap is valid,
 because death can leave an involuntary overflow. Only voluntary transitions are
 limited, through the shared `EncumbranceRules.IsAllowedVoluntaryTransition` rule
@@ -448,8 +454,8 @@ equipment compatibility, Secure Container eligibility, empty and non-empty Bag
 locations, Bag containment-cycle rejection, unitless integer weight arithmetic,
 base character capacity `200`, the 140 percent hard cap, and the linear
 fixed-point encumbrance multiplier. GameSimulation wraps the carry tuple in an
-immutable shared movement state and applies the same multiplier and sprint
-threshold in SimulationWorker and Unity prediction. These rules have
+immutable shared movement state and applies the same multiplier in
+SimulationWorker and Unity prediction. These rules have
 no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.
 
 `src/Shared/WorldData/Editor/Items` contains the Editor-only `Mmorpg.WorldData.Editor`
@@ -706,7 +712,7 @@ Unity presence and view state, temporary presentation, bidirectional item
 transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
 death generation remains a later gameplay boundary.
 
-Protocol version `11` (now `14`) retained the existing framing and added corpse presence,
+Protocol version `11` (now `15`) retained the existing framing and added corpse presence,
 interaction, result, chunked view-state, and view-closure message types. Corpse
 chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
 The Phase 8 ordinary container-item swap continues to reuse its existing
@@ -730,10 +736,10 @@ topology layer:
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
   authoritative interaction, range and line-of-sight validation, NPC capability
   dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol uses version `14` for actor presence, interaction messages, and
+- GameProtocol uses version `15` for actor presence, interaction messages, and
   typed insurance or quest item-lifecycle actions
   compiled from the same source for .NET and Unity.
-- Unity owns advisory crosshair targeting, immutable replicated actor and
+- Unity owns advisory pointer targeting, immutable replicated actor and
   interaction state, prefab presentation, temporary uGUI, and Editor authoring
   tools.
 - GameService remains the durable authority when a later capability mutates
@@ -769,7 +775,7 @@ completion remains unavailable because no progression authority exists yet.
 The generic interaction flow is:
 
 ```text
-Unity crosshair target and E intent
+Unity pointer click, approach into range, and open intent
   -> assigned SimulationWorker
   -> exact session, target, Shard, revision, range, line-of-sight, state,
      capability, and rate validation
@@ -1038,12 +1044,17 @@ starts its input sequence from the beginning.
 
 1. SimulationWorker sends validated movement settings, shared-data revisions,
    and the admission-fenced carry tuple on join.
-2. Unity samples Input Actions at the provided fixed rate, predicts locally,
-   and sends redundant batches of recent unacknowledged inputs.
-3. SimulationWorker processes only newer sequences at 30 Hz. Clients send input,
-   never accepted positions.
-4. Static and dynamic collision plus carry-state sprint and speed rules run
-   through the shared simulation. Both server and Unity use the exact committed
+2. A click plans a route around obstacles with the shared planner in Unity. Each
+   input names the route by path id, and the batch carries the route's
+   waypoints until the worker confirms it. Unity predicts locally and sends
+   redundant batches of recent unacknowledged inputs.
+3. SimulationWorker processes only newer sequences at 30 Hz. It validates a new
+   route against the World bounds and a 256 meter length limit and follows the
+   same waypoints. A route that breaks the limits is adopted as already ended.
+   Clients send input and routes, never accepted positions.
+4. Static and dynamic collision plus carry-state speed rules run through the
+   shared simulation, which ends a route that collision blocked for half a
+   second. Both server and Unity use the exact committed
    item-state revision, weight, capacity, and fixed-point multiplier.
 5. Session heartbeat advances carry state monotonically. SimulationWorker sends
    a reliable carry-state update before the newer state affects local movement.

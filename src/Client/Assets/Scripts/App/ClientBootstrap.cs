@@ -27,6 +27,7 @@ namespace Mmorpg.Client.App
         private CorpseClientController corpseController;
         private WorldActorClientController worldActorController;
         private WorldInteractionClientController worldInteractionController;
+        private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -251,14 +252,13 @@ namespace Mmorpg.Client.App
             {
                 foreach (var context in root.GetComponentsInChildren<WorldSceneContext>(true))
                 {
-                    context.Initialize(simulationClient);
+                    context.Initialize(simulationClient, pointerFocus);
                 }
             }
 
-            AddSceneComponentIfMissing<CrosshairController>(null);
             AddSceneComponentIfMissing<WorldScenePanel>(
-                panel => panel.Initialize(simulationClient));
-            AddSceneComponentIfMissing<CrosshairPanel>(null);
+                panel => panel.Initialize(simulationClient, pointerFocus));
+            AddSceneComponentIfMissing<MovementDestinationMarker>(null);
             AddSceneComponentIfMissing<TemporaryInventoryPanel>(
                 panel => panel.Initialize(inventoryController, corpseController));
             AddSceneComponentIfMissing<CorpsePresentationController>(

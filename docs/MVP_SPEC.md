@@ -1,6 +1,6 @@
 # MMORPG MVP Spec
 
-Last updated: 2026-10-12
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -108,7 +108,7 @@ as unsafe.
 - NPC vendor, bank, Recovery Storage, and insurance NPC access.
 - Equipment and inventory management.
 - Future location for crafting stations, quest NPCs, and social services.
-- NPC interaction uses the crosshair and `E`, with SimulationWorker validating
+- NPC interaction uses a pointer click that walks into range, with SimulationWorker validating
   target identity, range, line of sight, state, and capability.
 
 ### Open Risk Rule Area
@@ -248,8 +248,9 @@ Weight is a unitless non-negative integer gameplay value. The baseline scale is
 ammunition `1`, pistol `10`, and base character carry capacity `200`. The
 equipped Bag may add a capacity bonus.
 
-- At or below 100 percent, movement uses base speed and sprint is available.
-- Above 100 percent, sprint is disabled.
+- At or below 100 percent, movement uses base speed. Running with run energy
+  that drains faster with weight is planned in
+  [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
 - Movement speed decreases linearly from 100 percent base speed at 100 percent
   load to 20 percent base speed at 140 percent load.
 - Exactly 140 percent is allowed.
@@ -356,7 +357,7 @@ and the first combat Mob are implemented:
 - Normal actors are reconstructed from WorldData after worker restart and do
   not require one PostgreSQL row per instance.
 - NPCs are event-driven. Mobs use centrally scheduled dormant and active tiers.
-- The player points the crosshair at an actor and presses `E`. The server owns
+- The player clicks an actor, walks into range, and opens it. The server owns
   the `3.0` metre start range, `3.5` metre maintain range, line of sight, target
   revision, and one-active-interaction rule.
 - The one-active-interaction rule includes the existing corpse view, while many
@@ -520,7 +521,7 @@ Current implementation note:
   deltas, immutable Unity state, and a generic replaceable corpse presentation.
 - Item-plan Phase 12 adds deterministic NPC, Mob, capability, and spawn content,
   visual Unity authoring, SimulationWorker actor runtime and interest
-  integration, presentation-only actor prefabs, authoritative crosshair
+  integration, presentation-only actor prefabs, authoritative targeted
   interaction, and a shared corpse interaction lease. The foundation is
   implemented.
 - Item-plan Phase 13 adds insurance NPC pricing and explicit policy lifecycle
@@ -603,7 +604,7 @@ Status: In progress, item-plan Phases 1 through 15 complete
   Problem Details, ETag catalog caching, and no-store character responses are
   complete.
 - Shared carry state, exact-session join and heartbeat propagation,
-  authoritative sprint and movement effects, Unity prediction, reconnect
+  authoritative movement effects, Unity prediction, reconnect
   restoration, and protocol compatibility fencing are complete.
 - The exact-session worker mutation boundary, service-authenticated durable
   authority, live bank and Recovery access, world-available Secure Container

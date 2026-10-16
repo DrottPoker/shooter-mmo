@@ -36,17 +36,66 @@ public sealed class SharedSimulationHardeningTests
     {
         var states = MovementDeterminismScenario.ComputeTrace().States;
 
-        // Blocked by the wall face at x = 6 minus the capsule radius.
+        // Blocked by the wall face at x = 6 minus the capsule radius until the path ended.
         Assert.True(states.Count(state =>
             state.PositionX is > 5.6f and < 5.7f && Math.Abs(state.PositionZ) < 3.5f) >= 10);
+        Assert.Contains(states, state =>
+            state.PathProgress == new MovementPathProgress(1, 1, 0) && state.PositionX < 6f);
         // Climbed the rotated ramp to its high edge and dropped off it.
         Assert.Contains(states, state => state.PositionY > 2f);
+        Assert.True(states.Count(state => !state.IsGrounded) >= 8);
         // Stopped against a face of the rotated pillar.
         Assert.Contains(states, state => DistanceXz(state, 2f, -8f) < 0.9f);
-        // Stepped up onto the step and jumped from it.
+        // Stepped up onto the step while encumbered.
         Assert.True(states.Count(state =>
             Math.Abs(state.PositionY - 0.3f) < 0.005f && state.PositionX is > -8f and < -4f) >= 10);
-        Assert.True(states.Count(state => !state.IsGrounded) >= 50);
+        // Reached the last waypoint of a multi-waypoint path.
+        Assert.Contains(states, state => state.PathProgress == new MovementPathProgress(2, 2, 0));
+    }
+
+    [Fact]
+    public void SharedPlannerMatchesThePinnedFingerprintAndItsPlansAreFollowable()
+    {
+        // The Unity EditMode tests check the same fingerprint, so the worker and the client
+        // plan identical routes.
+        var trace = MovementDeterminismScenario.ComputePlannerTrace();
+
+        Assert.Equal(MovementDeterminismScenario.ExpectedPlannerFingerprint, trace.Fingerprint);
+        Assert.All(trace.Plans, plan => Assert.Equal(MovementPathPlanStatus.Reached, plan.Status));
+
+        // The motor follows every planned path to its end without being blocked.
+        var starts = new[]
+        {
+            new SimulationVector3(9f, 0f, 0f),
+            new SimulationVector3(0f, 0f, 18f),
+            new SimulationVector3(-12f, 0f, -12f)
+        };
+        for (var index = 0; index < trace.Plans.Count; index++)
+        {
+            var path = new MovementPath((uint)(index + 1), trace.Plans[index].Waypoints.ToArray());
+            var state = PlayerMovementSimulation.CreateInitialState(
+                trace.Settings,
+                trace.CollisionWorld,
+                starts[index].X,
+                starts[index].Y,
+                starts[index].Z,
+                0f);
+            var maximumBlockedTicks = 0;
+            for (uint tick = 1; tick <= 600 && state.PathProgress.NextWaypointIndex < path.Count; tick++)
+            {
+                state = PlayerMovementSimulation.Step(
+                    state,
+                    new PlayerMovementInput(tick, tick, path),
+                    trace.Settings,
+                    PlayerCarryState.Default,
+                    trace.CollisionWorld);
+                maximumBlockedTicks = Math.Max(maximumBlockedTicks, state.PathProgress.BlockedTicks);
+            }
+
+            Assert.Equal(path.Count, state.PathProgress.NextWaypointIndex);
+            Assert.True(maximumBlockedTicks <= 1, $"Plan {index} was blocked for {maximumBlockedTicks} ticks.");
+            Assert.True(DistanceXz(state, path.Destination.X, path.Destination.Z) < 0.02f);
+        }
     }
 
     [Fact]
@@ -76,18 +125,16 @@ public sealed class SharedSimulationHardeningTests
     }
 
     [Fact]
-    public void SettingsBudgetCoversSprintAndFallTogether()
+    public void SettingsBudgetCoversWalkAndFallTogether()
     {
-        // Sprint or fall alone fits 256 substeps of 0.1, but sprinting while falling
+        // Walk or fall alone fits 256 substeps of 0.1, but walking while falling
         // does not, and the motor would reject that move at runtime.
         var exception = Assert.Throws<ArgumentException>(() => new MovementSimulationSettings(
             1,
-            5f,
             20f,
             720f,
             -24f,
             20f,
-            7f,
             -2f,
             0f,
             -14f,

@@ -33,7 +33,6 @@ namespace Mmorpg.Client.Ui
         private InventoryClientController controller;
         private CorpseClientController corpseController;
         private LocalPlayerInput localPlayerInput;
-        private ThirdPersonCameraController playerCamera;
         private GameObject canvasObject;
         private GameObject rootObject;
         private RectTransform equipmentPanel;
@@ -111,7 +110,7 @@ namespace Mmorpg.Client.Ui
 
         private void Update()
         {
-            if (localPlayerInput == null || playerCamera == null)
+            if (localPlayerInput == null)
             {
                 FindPlayerPresentation();
             }
@@ -159,11 +158,6 @@ namespace Mmorpg.Client.Ui
             {
                 corpseController.State.Changed -= OnCorpseStateChanged;
             }
-
-            if (playerCamera != null)
-            {
-                playerCamera.SetUiCursorReleased(false);
-            }
         }
 
         public void SetOpen(bool value)
@@ -183,11 +177,6 @@ namespace Mmorpg.Client.Ui
             if (rootObject != null)
             {
                 rootObject.SetActive(value);
-            }
-
-            if (playerCamera != null)
-            {
-                playerCamera.SetUiCursorReleased(value);
             }
 
             if (value)
@@ -242,13 +231,6 @@ namespace Mmorpg.Client.Ui
             localPlayerInput = localPlayer != null
                 ? localPlayer.PlayerInput
                 : FindAnyObjectByType<LocalPlayerInput>();
-            playerCamera = localPlayer != null
-                ? localPlayer.PlayerCamera
-                : FindAnyObjectByType<ThirdPersonCameraController>();
-            if (playerCamera != null && isOpen)
-            {
-                playerCamera.SetUiCursorReleased(true);
-            }
         }
 
         private void BuildUi()
@@ -1982,7 +1964,6 @@ namespace Mmorpg.Client.Ui
                 + "  |  Load " + (snapshot.LoadRatioBasisPoints / 100f).ToString("0.##")
                 + "%  |  Movement "
                 + (snapshot.MovementMultiplierBasisPoints / 100f).ToString("0.##")
-                + "%  |  Sprint " + (snapshot.SprintEligible ? "Allowed" : "Blocked")
                 + "  |  Revision " + snapshot.ItemStateRevision;
         }
 

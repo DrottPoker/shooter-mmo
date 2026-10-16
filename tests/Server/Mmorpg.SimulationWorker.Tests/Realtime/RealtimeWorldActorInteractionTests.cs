@@ -215,7 +215,7 @@ public sealed class RealtimeWorldActorInteractionTests
         while (!(client.WorldClosures.Count == 1
             && client.WorldActorDespawns.Any(despawn => despawn.EntityId == services.EntityId)))
         {
-            client.SendMovement(++sequence, -1f, 0f);
+            client.SendMoveTo(++sequence, -14f, -1f);
             await Task.Delay(50, timeout.Token);
             harness.PollClients();
         }

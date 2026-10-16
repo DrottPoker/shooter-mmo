@@ -418,7 +418,10 @@ namespace Mmorpg.Client.Networking
             onError(leaveError);
         }
 
-        public bool TrySendMovementInputs(PlayerMovementInput[] inputs)
+        // Sends the newest inputs, plus the path of the newest input when the worker has not
+        // confirmed it yet. The path travels with the inputs that name it, so it can never
+        // arrive after them.
+        public bool TrySendMovementInputs(PlayerMovementInput[] inputs, MovementPath unconfirmedPath)
         {
             if (State != RealtimeConnectionState.Joined
                 || serverPeer == null
@@ -436,15 +439,13 @@ namespace Mmorpg.Client.Networking
                 protocolInputs[index] = new RealtimeMovementInput(
                     input.InputSequence,
                     input.ClientTick,
-                    input.MoveX,
-                    input.MoveY,
-                    input.CameraYawDegrees,
-                    ToRealtimeButtons(input.Buttons));
+                    input.PathId);
             }
 
             try
             {
-                var movementPacket = RealtimeProtocol.EncodeMovementInputBatch(protocolInputs);
+                var movementPacket = RealtimeProtocol.EncodeMovementInputBatch(
+                    new RealtimeMovementInputBatch(protocolInputs, ToRealtimePath(unconfirmedPath)));
                 serverPeer.Send(
                     movementPacket,
                     RealtimeProtocol.MovementInputChannel,
@@ -1655,25 +1656,21 @@ namespace Mmorpg.Client.Networking
                 "Realtime operation failed: " + error.ToDisplayMessage());
         }
 
-        private static RealtimeMovementButtons ToRealtimeButtons(PlayerMovementButtons buttons)
+        private static RealtimeMovementPath ToRealtimePath(MovementPath path)
         {
-            var result = RealtimeMovementButtons.None;
-            if ((buttons & PlayerMovementButtons.Sprint) != 0)
+            if (path == null)
             {
-                result |= RealtimeMovementButtons.Sprint;
+                return null;
             }
 
-            if ((buttons & PlayerMovementButtons.Jump) != 0)
+            var waypoints = new RealtimeMovementPathWaypoint[path.Count];
+            for (var index = 0; index < waypoints.Length; index++)
             {
-                result |= RealtimeMovementButtons.Jump;
+                var waypoint = path[index];
+                waypoints[index] = new RealtimeMovementPathWaypoint(waypoint.X, waypoint.Y, waypoint.Z);
             }
 
-            if ((buttons & PlayerMovementButtons.Aim) != 0)
-            {
-                result |= RealtimeMovementButtons.Aim;
-            }
-
-            return result;
+            return new RealtimeMovementPath(path.Id, waypoints);
         }
     }
 }

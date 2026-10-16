@@ -18,8 +18,8 @@ does after joining:
 
 | Workload | Supported mode | Durable item traffic | Movement pattern | Primary use |
 | --- | --- | :---: | --- | --- |
-| `lifecycle` | `worker-only`, `full-stack` | No | Existing square path | Preserve the comparable admission and realtime baseline |
-| `inventory` | `full-stack` | Yes | Existing square path | Relocate one item between Permanent Inventory and Secure Container |
+| `lifecycle` | `worker-only`, `full-stack` | No | Square walking path | Preserve the comparable admission and realtime baseline |
+| `inventory` | `full-stack` | Yes | Square walking path | Relocate one item between Permanent Inventory and Secure Container |
 | `loot-hotspot` | `full-stack` | Yes | Hold at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
 | `mixed-gameplay` | `full-stack` | Yes | Bounded movement near the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
 
@@ -87,7 +87,7 @@ harness does not create one transport thread per bot.
 
 ### Dense Replication And Shared Corpse Scheduling
 
-Protocol version `14` separates local authority from degradable remote
+Protocol version `15` separates local authority from degradable remote
 presentation. Every joined client receives a small owner snapshot at the full
 configured 15 Hz. That packet carries the authoritative local state and input
 acknowledgement. Remote visible entities use MTU-safe chunks of at most 24
@@ -588,6 +588,13 @@ sharing one Windows development machine:
 | Protocol 14 owner-priority scheduling | 400 | 60 s | 400/400 | 0 | 160.1 ms | 78.9% | at most 24 ms | 155.1 MiB | Clean owner path, remote cadence about 5.6 Hz |
 | Protocol 14 development `2d83d3f`, mean of three | 400 | 60 s | 400/400 | 0 | 169.0 ms | 86.6% | at most 24 ms | 191.7 MiB | Comparison baseline for the generated codec |
 | Protocol 14 generated span codec, mean of three | 400 | 60 s | 400/400 | 0 | 156.7 ms | 83.1% | at most 24 ms | 213.0 MiB | Clean short runs, same wire as development |
+| Protocol 15 click-to-move paths, single run on 2026-10-16 | 400 | 60 s | 400/400 | 0 | 155.6 ms | 89.8% | at most 16 ms | 204.6 MiB | Clean short run with the Unity Editor open |
+
+Protocol 15 bots follow click-to-move paths: the lifecycle workload walks a
+square of 10 meter legs at walking speed instead of sprinting and jumping, and
+each input names a path instead of carrying a direction, camera yaw, and
+buttons. In the protocol 15 run the worker received about 362 KiB/s in 7,761
+packets per second, about 48 bytes per input batch.
 
 At 200 bots, reusable interest state and visibility-set packet sharing reduced
 steady process allocation from about 1,690 MiB to 258 MiB per ten-second metrics

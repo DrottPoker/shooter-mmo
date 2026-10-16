@@ -180,11 +180,9 @@ namespace Mmorpg.Client.Networking
                 var settings = new MovementSimulationSettings(
                     source.TickRateHz,
                     source.WalkSpeed,
-                    source.SprintSpeed,
                     source.RotationSpeedDegrees,
                     source.Gravity,
                     source.MaximumFallSpeed,
-                    source.JumpVelocity,
                     source.GroundedVerticalVelocity,
                     source.GroundHeight,
                     source.MinimumX,
@@ -214,8 +212,7 @@ namespace Mmorpg.Client.Networking
                         state.VelocityY,
                         state.VelocityZ,
                         state.YawDegrees,
-                        state.IsGrounded,
-                        state.IsSprinting),
+                        state.IsGrounded),
                     carryState,
                     collisionStream);
                 return true;

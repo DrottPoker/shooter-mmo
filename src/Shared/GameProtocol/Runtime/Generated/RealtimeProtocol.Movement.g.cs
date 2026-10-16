@@ -7,18 +7,6 @@ using System;
 namespace Mmorpg.GameProtocol
 {
     /// <summary>
-    /// Movement buttons held during one input tick.
-    /// </summary>
-    [Flags]
-    public enum RealtimeMovementButtons : byte
-    {
-        None = 0,
-        Sprint = 1,
-        Jump = 2,
-        Aim = 4
-    }
-
-    /// <summary>
     /// The authoritative movement state of one player.
     /// </summary>
     public sealed partial class RealtimePlayerState
@@ -31,8 +19,7 @@ namespace Mmorpg.GameProtocol
             float velocityY,
             float velocityZ,
             float yawDegrees,
-            bool isGrounded,
-            bool isSprinting)
+            bool isGrounded)
         {
             PositionX = positionX;
             PositionY = positionY;
@@ -42,7 +29,6 @@ namespace Mmorpg.GameProtocol
             VelocityZ = velocityZ;
             YawDegrees = yawDegrees;
             IsGrounded = isGrounded;
-            IsSprinting = isSprinting;
         }
 
         /// <summary>
@@ -84,11 +70,6 @@ namespace Mmorpg.GameProtocol
         /// The player stands on walkable ground.
         /// </summary>
         public bool IsGrounded { get; }
-
-        /// <summary>
-        /// The player moves at sprint speed.
-        /// </summary>
-        public bool IsSprinting { get; }
     }
 
     /// <summary>
@@ -100,11 +81,9 @@ namespace Mmorpg.GameProtocol
             ushort tickRateHz,
             ushort snapshotRateHz,
             float walkSpeed,
-            float sprintSpeed,
             float rotationSpeedDegrees,
             float gravity,
             float maximumFallSpeed,
-            float jumpVelocity,
             float groundedVerticalVelocity,
             float groundHeight,
             float minimumX,
@@ -122,11 +101,9 @@ namespace Mmorpg.GameProtocol
             TickRateHz = tickRateHz;
             SnapshotRateHz = snapshotRateHz;
             WalkSpeed = walkSpeed;
-            SprintSpeed = sprintSpeed;
             RotationSpeedDegrees = rotationSpeedDegrees;
             Gravity = gravity;
             MaximumFallSpeed = maximumFallSpeed;
-            JumpVelocity = jumpVelocity;
             GroundedVerticalVelocity = groundedVerticalVelocity;
             GroundHeight = groundHeight;
             MinimumX = minimumX;
@@ -158,11 +135,6 @@ namespace Mmorpg.GameProtocol
         public float WalkSpeed { get; }
 
         /// <summary>
-        /// Sprinting speed in meters per second; at least the walking speed.
-        /// </summary>
-        public float SprintSpeed { get; }
-
-        /// <summary>
         /// Turn rate in degrees per second.
         /// </summary>
         public float RotationSpeedDegrees { get; }
@@ -176,11 +148,6 @@ namespace Mmorpg.GameProtocol
         /// Terminal fall speed in meters per second.
         /// </summary>
         public float MaximumFallSpeed { get; }
-
-        /// <summary>
-        /// Upward velocity of a jump in meters per second.
-        /// </summary>
-        public float JumpVelocity { get; }
 
         /// <summary>
         /// Vertical velocity that keeps a grounded player on the ground.
@@ -249,24 +216,18 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// One tick of movement input. The move vector is at most one unit long.
+    /// One tick of movement intent: the path the player follows.
     /// </summary>
     public sealed partial class RealtimeMovementInput
     {
         public RealtimeMovementInput(
             uint inputSequence,
             uint clientTick,
-            float moveX,
-            float moveY,
-            float cameraYawDegrees,
-            RealtimeMovementButtons buttons)
+            uint pathId)
         {
             InputSequence = inputSequence;
             ClientTick = clientTick;
-            MoveX = moveX;
-            MoveY = moveY;
-            CameraYawDegrees = cameraYawDegrees;
-            Buttons = buttons;
+            PathId = pathId;
         }
 
         /// <summary>
@@ -280,24 +241,119 @@ namespace Mmorpg.GameProtocol
         public uint ClientTick { get; }
 
         /// <summary>
-        /// Sideways axis of the move vector.
+        /// The movement path to follow, or 0 to stand still.
         /// </summary>
-        public float MoveX { get; }
+        public uint PathId { get; }
+    }
+
+    /// <summary>
+    /// One waypoint of a movement path, on the walkable surface.
+    /// </summary>
+    public sealed partial class RealtimeMovementPathWaypoint
+    {
+        public RealtimeMovementPathWaypoint(
+            float x,
+            float y,
+            float z)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+        }
 
         /// <summary>
-        /// Forward axis of the move vector.
+        /// World position on the x axis in meters.
         /// </summary>
-        public float MoveY { get; }
+        public float X { get; }
 
         /// <summary>
-        /// Camera facing in degrees.
+        /// World position on the y axis in meters.
         /// </summary>
-        public float CameraYawDegrees { get; }
+        public float Y { get; }
 
         /// <summary>
-        /// The held movement buttons.
+        /// World position on the z axis in meters.
         /// </summary>
-        public RealtimeMovementButtons Buttons { get; }
+        public float Z { get; }
+    }
+
+    /// <summary>
+    /// A client-planned path. The worker validates it and moves along it with authoritative collision.
+    /// </summary>
+    public sealed partial class RealtimeMovementPath
+    {
+        public RealtimeMovementPath(
+            uint pathId,
+            RealtimeMovementPathWaypoint[] waypoints)
+        {
+            PathId = pathId;
+            Waypoints = waypoints;
+        }
+
+        /// <summary>
+        /// Identifies the path within the session.
+        /// </summary>
+        public uint PathId { get; }
+
+        /// <summary>
+        /// The waypoints after the start, in order.
+        /// </summary>
+        public RealtimeMovementPathWaypoint[] Waypoints { get; }
+    }
+
+    /// <summary>
+    /// How far the owner has followed its movement path. Without a path, the index and the blocked ticks are 0.
+    /// </summary>
+    public sealed partial class RealtimeMovementPathProgress
+    {
+        public RealtimeMovementPathProgress(
+            uint pathId,
+            byte nextWaypointIndex,
+            byte blockedTicks)
+        {
+            PathId = pathId;
+            NextWaypointIndex = nextWaypointIndex;
+            BlockedTicks = blockedTicks;
+        }
+
+        /// <summary>
+        /// The followed path, or 0 for none.
+        /// </summary>
+        public uint PathId { get; }
+
+        /// <summary>
+        /// The waypoint the owner moves toward; the waypoint count once the path ended.
+        /// </summary>
+        public byte NextWaypointIndex { get; }
+
+        /// <summary>
+        /// Consecutive ticks in which collision blocked the path.
+        /// </summary>
+        public byte BlockedTicks { get; }
+    }
+
+    /// <summary>
+    /// The newest movement inputs, oldest first, and the path of the newest input until the worker confirmed it.
+    /// </summary>
+    public sealed partial class RealtimeMovementInputBatch
+    {
+        public RealtimeMovementInputBatch(
+            RealtimeMovementInput[] inputs,
+            RealtimeMovementPath path)
+        {
+            Inputs = inputs;
+            Path = path;
+        }
+
+        /// <summary>
+        /// The newest inputs, oldest first. Each input is sent in several batches.
+        /// </summary>
+        public RealtimeMovementInput[] Inputs { get; }
+
+        /// <summary>
+        /// The path of the newest input; its id equals that input's path id.
+        /// </summary>
+        public RealtimeMovementPath Path { get; }
     }
 
     /// <summary>
@@ -309,12 +365,14 @@ namespace Mmorpg.GameProtocol
             uint snapshotSequence,
             uint serverTick,
             uint lastProcessedInputSequence,
-            RealtimePlayerState state)
+            RealtimePlayerState state,
+            RealtimeMovementPathProgress pathProgress)
         {
             SnapshotSequence = snapshotSequence;
             ServerTick = serverTick;
             LastProcessedInputSequence = lastProcessedInputSequence;
             State = state;
+            PathProgress = pathProgress;
         }
 
         /// <summary>
@@ -336,6 +394,11 @@ namespace Mmorpg.GameProtocol
         /// The owner's authoritative movement state.
         /// </summary>
         public RealtimePlayerState State { get; }
+
+        /// <summary>
+        /// The owner's progress along its movement path.
+        /// </summary>
+        public RealtimeMovementPathProgress PathProgress { get; }
     }
 
     // Encoding, decoding, and validation of the Movement family.
@@ -344,26 +407,26 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The size in bytes of every OwnerSimulationSnapshot packet, including the frame header.
         /// </summary>
-        public const int OwnerSimulationSnapshotPacketSize = 48;
+        public const int OwnerSimulationSnapshotPacketSize = 54;
 
         /// <summary>
-        /// The newest movement inputs, oldest first.
+        /// The newest movement inputs, oldest first, and the path of the newest input until the worker confirmed it.
         /// </summary>
-        public static byte[] EncodeMovementInputBatch(RealtimeMovementInput[] inputs)
+        public static byte[] EncodeMovementInputBatch(RealtimeMovementInputBatch batch)
         {
-            if (!IsValidMovementInputBatch(inputs))
+            if (!IsValidMovementInputBatch(batch))
             {
-                throw new ArgumentException("Movement input batch is invalid.", nameof(inputs));
+                throw new ArgumentException("Movement input batch is invalid.", nameof(batch));
             }
 
-            var writer = StartPacket(RealtimeMessageType.MovementInputBatch, SizeOfMovementInputBatch(inputs));
-            WriteMovementInputBatch(ref writer, inputs);
+            var writer = StartPacket(RealtimeMessageType.MovementInputBatch, SizeOfMovementInputBatch(batch));
+            WriteMovementInputBatch(ref writer, batch);
             return writer.Finish();
         }
 
-        public static bool TryDecodeMovementInputBatch(byte[] data, out RealtimeMovementInput[] inputs, out string error)
+        public static bool TryDecodeMovementInputBatch(byte[] data, out RealtimeMovementInputBatch batch, out string error)
         {
-            inputs = null;
+            batch = null;
             if (!TryStartPacket(data, RealtimeMessageType.MovementInputBatch, out var reader, out error)
                 || !TryReadMovementInputBatch(ref reader, out var decoded, out error)
                 || !reader.TryFinish(out error))
@@ -377,27 +440,38 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            inputs = decoded;
+            batch = decoded;
             return true;
         }
 
-        private static void WriteMovementInputBatch(ref PacketWriter writer, RealtimeMovementInput[] value)
+        private static void WriteMovementInputBatch(ref PacketWriter writer, RealtimeMovementInputBatch value)
         {
-            writer.WriteByte((byte)value.Length);
-            foreach (var item in value)
+            writer.WriteByte((byte)value.Inputs.Length);
+            foreach (var item in value.Inputs)
             {
                 WriteMovementInput(ref writer, item);
             }
+            var hasPath = value.Path != null;
+            writer.WriteBoolean(hasPath);
+            if (hasPath)
+            {
+                WriteMovementPath(ref writer, value.Path);
+            }
         }
 
-        private static int SizeOfMovementInputBatch(RealtimeMovementInput[] value)
+        private static int SizeOfMovementInputBatch(RealtimeMovementInputBatch value)
         {
-            var size = 0;
-            size += 1 + (value.Length * 21);
+            var size = 1;
+            size += 1 + (value.Inputs.Length * 12);
+            if (value.Path != null)
+            {
+                size += SizeOfMovementPath(value.Path);
+            }
+
             return size;
         }
 
-        private static bool TryReadMovementInputBatch(ref PacketReader reader, out RealtimeMovementInput[] value, out string error)
+        private static bool TryReadMovementInputBatch(ref PacketReader reader, out RealtimeMovementInputBatch value, out string error)
         {
             value = null;
             if (!reader.TryReadByte(out var inputsCount, out error))
@@ -422,20 +496,36 @@ namespace Mmorpg.GameProtocol
                 inputs[index] = element;
             }
 
-            value = inputs;
-            return true;
-        }
-
-        private static bool IsValidMovementInputBatch(RealtimeMovementInput[] value)
-        {
-            if (value == null
-                || value.Length < 1
-                || value.Length > MaximumInputBatchSize)
+            if (!reader.TryReadBoolean(out var hasPath, out error))
             {
                 return false;
             }
 
-            foreach (var item in value)
+            RealtimeMovementPath path = null;
+            if (hasPath)
+            {
+                if (!TryReadMovementPath(ref reader, out path, out error))
+                {
+                    return false;
+                }
+            }
+
+            value = new RealtimeMovementInputBatch(inputs, path);
+            return true;
+        }
+
+        private static bool IsValidMovementInputBatch(RealtimeMovementInputBatch value)
+        {
+            if (value == null
+                || value.Inputs == null
+                || value.Inputs.Length < 1
+                || value.Inputs.Length > MaximumInputBatchSize
+                || (value.Path != null && !IsValidMovementPath(value.Path)))
+            {
+                return false;
+            }
+
+            foreach (var item in value.Inputs)
             {
                 if (!IsValidMovementInput(item))
                 {
@@ -443,7 +533,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            return true;
+            return SatisfiesRules(value);
         }
 
         /// <summary>
@@ -456,7 +546,7 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Owner simulation snapshot is invalid.", nameof(snapshot));
             }
 
-            var writer = StartPacket(RealtimeMessageType.OwnerSimulationSnapshot, 41);
+            var writer = StartPacket(RealtimeMessageType.OwnerSimulationSnapshot, 47);
             WriteOwnerSimulationSnapshot(ref writer, snapshot);
             return writer.Finish();
         }
@@ -487,6 +577,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteUInt32(value.ServerTick);
             writer.WriteUInt32(value.LastProcessedInputSequence);
             WritePlayerState(ref writer, value.State);
+            WriteMovementPathProgress(ref writer, value.PathProgress);
         }
 
         private static bool TryReadOwnerSimulationSnapshot(ref PacketReader reader, out RealtimeOwnerSimulationSnapshot value, out string error)
@@ -512,14 +603,20 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeOwnerSimulationSnapshot(snapshotSequence, serverTick, lastProcessedInputSequence, state);
+            if (!TryReadMovementPathProgress(ref reader, out var pathProgress, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeOwnerSimulationSnapshot(snapshotSequence, serverTick, lastProcessedInputSequence, state, pathProgress);
             return true;
         }
 
         private static bool IsValidOwnerSimulationSnapshot(RealtimeOwnerSimulationSnapshot value)
         {
             if (value == null
-                || !IsValidPlayerState(value.State))
+                || !IsValidPlayerState(value.State)
+                || !IsValidMovementPathProgress(value.PathProgress))
             {
                 return false;
             }
@@ -536,7 +633,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteSingle(value.VelocityY);
             writer.WriteSingle(value.VelocityZ);
             writer.WriteSingle(value.YawDegrees);
-            writer.WriteByte((byte)((value.IsGrounded ? 1 : 0) | (value.IsSprinting ? 2 : 0)));
+            writer.WriteByte((byte)((value.IsGrounded ? 1 : 0)));
         }
 
         private static bool TryReadPlayerState(ref PacketReader reader, out RealtimePlayerState value, out string error)
@@ -582,13 +679,13 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if ((flags & ~0x03) != 0)
+            if ((flags & ~0x01) != 0)
             {
                 error = "Player state flags has unknown bits.";
                 return false;
             }
 
-            value = new RealtimePlayerState(positionX, positionY, positionZ, velocityX, velocityY, velocityZ, yawDegrees, (flags & 0x01) != 0, (flags & 0x02) != 0);
+            value = new RealtimePlayerState(positionX, positionY, positionZ, velocityX, velocityY, velocityZ, yawDegrees, (flags & 0x01) != 0);
             return true;
         }
 
@@ -614,11 +711,9 @@ namespace Mmorpg.GameProtocol
             writer.WriteUInt16(value.TickRateHz);
             writer.WriteUInt16(value.SnapshotRateHz);
             writer.WriteSingle(value.WalkSpeed);
-            writer.WriteSingle(value.SprintSpeed);
             writer.WriteSingle(value.RotationSpeedDegrees);
             writer.WriteSingle(value.Gravity);
             writer.WriteSingle(value.MaximumFallSpeed);
-            writer.WriteSingle(value.JumpVelocity);
             writer.WriteSingle(value.GroundedVerticalVelocity);
             writer.WriteSingle(value.GroundHeight);
             writer.WriteSingle(value.MinimumX);
@@ -652,11 +747,6 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadSingle(out var sprintSpeed, out error))
-            {
-                return false;
-            }
-
             if (!reader.TryReadSingle(out var rotationSpeedDegrees, out error))
             {
                 return false;
@@ -668,11 +758,6 @@ namespace Mmorpg.GameProtocol
             }
 
             if (!reader.TryReadSingle(out var maximumFallSpeed, out error))
-            {
-                return false;
-            }
-
-            if (!reader.TryReadSingle(out var jumpVelocity, out error))
             {
                 return false;
             }
@@ -742,7 +827,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeMovementSettings(tickRateHz, snapshotRateHz, walkSpeed, sprintSpeed, rotationSpeedDegrees, gravity, maximumFallSpeed, jumpVelocity, groundedVerticalVelocity, groundHeight, minimumX, maximumX, minimumZ, maximumZ, characterRadius, characterHeight, stepHeight, maximumSlopeDegrees, groundSnapDistance, maximumSubstepDistance, maximumPenetrationIterations);
+            value = new RealtimeMovementSettings(tickRateHz, snapshotRateHz, walkSpeed, rotationSpeedDegrees, gravity, maximumFallSpeed, groundedVerticalVelocity, groundHeight, minimumX, maximumX, minimumZ, maximumZ, characterRadius, characterHeight, stepHeight, maximumSlopeDegrees, groundSnapDistance, maximumSubstepDistance, maximumPenetrationIterations);
             return true;
         }
 
@@ -754,15 +839,12 @@ namespace Mmorpg.GameProtocol
                 || value.SnapshotRateHz < 1
                 || !IsFinite(value.WalkSpeed)
                 || value.WalkSpeed <= 0f
-                || !IsFinite(value.SprintSpeed)
                 || !IsFinite(value.RotationSpeedDegrees)
                 || value.RotationSpeedDegrees <= 0f
                 || !IsFinite(value.Gravity)
                 || value.Gravity >= 0f
                 || !IsFinite(value.MaximumFallSpeed)
                 || value.MaximumFallSpeed <= 0f
-                || !IsFinite(value.JumpVelocity)
-                || value.JumpVelocity <= 0f
                 || !IsFinite(value.GroundedVerticalVelocity)
                 || value.GroundedVerticalVelocity > 0f
                 || !IsFinite(value.GroundHeight)
@@ -795,10 +877,7 @@ namespace Mmorpg.GameProtocol
         {
             writer.WriteUInt32(value.InputSequence);
             writer.WriteUInt32(value.ClientTick);
-            writer.WriteSingle(value.MoveX);
-            writer.WriteSingle(value.MoveY);
-            writer.WriteSingle(value.CameraYawDegrees);
-            writer.WriteByte((byte)value.Buttons);
+            writer.WriteUInt32(value.PathId);
         }
 
         private static bool TryReadMovementInput(ref PacketReader reader, out RealtimeMovementInput value, out string error)
@@ -814,49 +893,178 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadSingle(out var moveX, out error))
+            if (!reader.TryReadUInt32(out var pathId, out error))
             {
                 return false;
             }
 
-            if (!reader.TryReadSingle(out var moveY, out error))
-            {
-                return false;
-            }
-
-            if (!reader.TryReadSingle(out var cameraYawDegrees, out error))
-            {
-                return false;
-            }
-
-            if (!reader.TryReadByte(out var buttonsByte, out error))
-            {
-                return false;
-            }
-
-            var buttons = (RealtimeMovementButtons)buttonsByte;
-
-            value = new RealtimeMovementInput(inputSequence, clientTick, moveX, moveY, cameraYawDegrees, buttons);
+            value = new RealtimeMovementInput(inputSequence, clientTick, pathId);
             return true;
         }
 
         private static bool IsValidMovementInput(RealtimeMovementInput value)
         {
+            if (value == null)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteMovementPathWaypoint(ref PacketWriter writer, RealtimeMovementPathWaypoint value)
+        {
+            writer.WriteSingle(value.X);
+            writer.WriteSingle(value.Y);
+            writer.WriteSingle(value.Z);
+        }
+
+        private static bool TryReadMovementPathWaypoint(ref PacketReader reader, out RealtimeMovementPathWaypoint value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadSingle(out var x, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadSingle(out var y, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadSingle(out var z, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeMovementPathWaypoint(x, y, z);
+            return true;
+        }
+
+        private static bool IsValidMovementPathWaypoint(RealtimeMovementPathWaypoint value)
+        {
             if (value == null
-                || !IsFinite(value.MoveX)
-                || !IsFinite(value.MoveY)
-                || !IsFinite(value.CameraYawDegrees)
-                || !IsDefined(value.Buttons))
+                || !IsFinite(value.X)
+                || !IsFinite(value.Y)
+                || !IsFinite(value.Z))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteMovementPath(ref PacketWriter writer, RealtimeMovementPath value)
+        {
+            writer.WriteUInt32(value.PathId);
+            writer.WriteByte((byte)value.Waypoints.Length);
+            foreach (var item in value.Waypoints)
+            {
+                WriteMovementPathWaypoint(ref writer, item);
+            }
+        }
+
+        private static int SizeOfMovementPath(RealtimeMovementPath value)
+        {
+            var size = 4;
+            size += 1 + (value.Waypoints.Length * 12);
+            return size;
+        }
+
+        private static bool TryReadMovementPath(ref PacketReader reader, out RealtimeMovementPath value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadUInt32(out var pathId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var waypointsCount, out error))
+            {
+                return false;
+            }
+
+            if (waypointsCount < 1 || waypointsCount > MaximumMovementPathWaypoints)
+            {
+                error = "Movement path waypoints count is invalid.";
+                return false;
+            }
+
+            var waypoints = new RealtimeMovementPathWaypoint[waypointsCount];
+            for (var index = 0; index < waypoints.Length; index++)
+            {
+                if (!TryReadMovementPathWaypoint(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                waypoints[index] = element;
+            }
+
+            value = new RealtimeMovementPath(pathId, waypoints);
+            return true;
+        }
+
+        private static bool IsValidMovementPath(RealtimeMovementPath value)
+        {
+            if (value == null
+                || value.PathId < 1
+                || value.Waypoints == null
+                || value.Waypoints.Length < 1
+                || value.Waypoints.Length > MaximumMovementPathWaypoints)
+            {
+                return false;
+            }
+
+            foreach (var item in value.Waypoints)
+            {
+                if (!IsValidMovementPathWaypoint(item))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void WriteMovementPathProgress(ref PacketWriter writer, RealtimeMovementPathProgress value)
+        {
+            writer.WriteUInt32(value.PathId);
+            writer.WriteByte(value.NextWaypointIndex);
+            writer.WriteByte(value.BlockedTicks);
+        }
+
+        private static bool TryReadMovementPathProgress(ref PacketReader reader, out RealtimeMovementPathProgress value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadUInt32(out var pathId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var nextWaypointIndex, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var blockedTicks, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeMovementPathProgress(pathId, nextWaypointIndex, blockedTicks);
+            return true;
+        }
+
+        private static bool IsValidMovementPathProgress(RealtimeMovementPathProgress value)
+        {
+            if (value == null
+                || value.NextWaypointIndex > MaximumMovementPathWaypoints)
             {
                 return false;
             }
 
             return SatisfiesRules(value);
-        }
-
-        private static bool IsDefined(RealtimeMovementButtons value)
-        {
-            return ((byte)value & ~0x07) == 0;
         }
     }
 }

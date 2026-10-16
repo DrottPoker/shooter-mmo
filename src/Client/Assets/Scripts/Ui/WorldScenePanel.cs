@@ -24,11 +24,13 @@ namespace Mmorpg.Client.Ui
         private LocalPlayerController localPlayerController;
         private bool isVisible = true;
         private RealtimeSimulationClient simulationClient;
+        private WorldPointerFocus pointerFocus;
 
         // Called by the composition root before the component is activated.
-        public void Initialize(RealtimeSimulationClient realtimeClient)
+        public void Initialize(RealtimeSimulationClient realtimeClient, WorldPointerFocus focus)
         {
             simulationClient = realtimeClient;
+            pointerFocus = focus;
         }
 
         private void Start()
@@ -90,8 +92,10 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            var panelRect = TemporaryPanelStyles.GetBottomLeftPanelRect(520f, 670f);
+            pointerFocus?.ReportInterfaceRect(panelRect);
             GUILayout.BeginArea(
-                TemporaryPanelStyles.GetBottomLeftPanelRect(520f, 670f),
+                panelRect,
                 "World Client Debug (F2)",
                 GUI.skin.window);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
@@ -231,10 +235,10 @@ namespace Mmorpg.Client.Ui
                 "Carry Weight / Capacity",
                 carryState.CarriedWeight + " / " + carryState.CarryCapacity);
             DrawMetric(
-                "Item Revision / Movement / Sprint",
+                "Item Revision / Movement",
                 carryState.ItemStateRevision + " / "
                 + (carryState.MovementMultiplierBasisPoints / 100f).ToString("0.##")
-                + "% / " + (carryState.SprintAllowed ? "Allowed" : "Blocked"));
+                + "%");
             DrawMetric(
                 "Client Tick / Entity",
                 localPlayerController.ClientSimulationTick + " / "
@@ -254,6 +258,22 @@ namespace Mmorpg.Client.Ui
             DrawMetric(
                 "Latest Position Correction",
                 localPlayerController.LatestReconciliationDistance.ToString("0.000") + " m");
+            var path = localPlayerController.CurrentPath;
+            var progress = localPlayerController.PredictedState.PathProgress;
+            DrawMetric(
+                "Path / Waypoint / Blocked",
+                path == null
+                    ? "Standing"
+                    : path.Id + " / " + Math.Min(progress.NextWaypointIndex, path.Count)
+                        + " of " + path.Count + " / " + progress.BlockedTicks);
+            DrawMetric(
+                "Latest Plan",
+                localPlayerController.LatestPlanStatus + ", "
+                + localPlayerController.LatestPlanExpandedNodes + " nodes, "
+                + localPlayerController.LatestPlanMilliseconds.ToString("0.0") + " ms",
+                localPlayerController.LatestPlanMilliseconds <= TargetFrameBudgetMilliseconds
+                    ? WorldDebugHealth.Healthy
+                    : WorldDebugHealth.Warning);
         }
 
         private void DrawNetworkSection()

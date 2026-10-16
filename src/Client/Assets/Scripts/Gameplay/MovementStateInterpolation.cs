@@ -20,7 +20,7 @@ namespace Mmorpg.Client.Gameplay
                 Lerp(from.VelocityZ, to.VelocityZ, amount),
                 LerpAngle(from.YawDegrees, to.YawDegrees, amount),
                 amount < 0.5f ? from.IsGrounded : to.IsGrounded,
-                amount < 0.5f ? from.IsSprinting : to.IsSprinting);
+                to.PathProgress);
         }
 
         public static PlayerMovementState ShiftPose(
@@ -39,7 +39,7 @@ namespace Mmorpg.Client.Gameplay
                 state.VelocityZ,
                 NormalizeAngle(state.YawDegrees + yawDegrees),
                 state.IsGrounded,
-                state.IsSprinting);
+                state.PathProgress);
         }
 
         public static float DeltaAngle(float from, float to)

@@ -46,7 +46,7 @@ namespace Mmorpg.GameProtocol
         ServerDisconnect = 7,
 
         /// <summary>
-        /// The newest movement inputs, oldest first.
+        /// The newest movement inputs, oldest first, and the path of the newest input until the worker confirmed it.
         /// </summary>
         MovementInputBatch = 8,
 
@@ -224,6 +224,11 @@ namespace Mmorpg.GameProtocol
         /// Characters in an item definition id.
         /// </summary>
         public const int MaximumDefinitionIdLength = 128;
+
+        /// <summary>
+        /// Waypoints in one movement path; equals MovementPath.MaximumWaypoints in GameSimulation.
+        /// </summary>
+        public const int MaximumMovementPathWaypoints = 32;
     }
 
     // Framing, versioning, channels, and limits of the realtime protocol.
@@ -232,7 +237,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 14;
+        public const ushort Version = 15;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -286,6 +291,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumSlotTagLength = RealtimeProtocolLimits.MaximumSlotTagLength;
         private const int MaximumSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
         private const int MaximumDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
+        private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;

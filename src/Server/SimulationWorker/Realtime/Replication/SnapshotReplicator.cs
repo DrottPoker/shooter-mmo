@@ -22,6 +22,7 @@ internal sealed class SnapshotReplicator(
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
+    private readonly Dictionary<ulong, RealtimeMovementPathProgress> ownerPathProgress = [];
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly TokenBucket aggregateSnapshotBytes = new(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
@@ -37,6 +38,7 @@ internal sealed class SnapshotReplicator(
         try
         {
             snapshotPacketCache.Reset();
+            ownerPathProgress.Clear();
             entityRegistry.CopyPlayersTo(playerBuffer);
             foreach (var entity in playerBuffer)
             {
@@ -49,6 +51,9 @@ internal sealed class SnapshotReplicator(
                     entity.NetworkEntityId,
                     entity.Movement.LastProcessedInputSequence,
                     RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State)));
+                ownerPathProgress.Add(
+                    entity.NetworkEntityId,
+                    RealtimeStateMapper.ToRealtimePathProgress(entity.Movement.State.PathProgress));
             }
 
             if (snapshotPacketCache.EntitySnapshotCount == 0)
@@ -103,7 +108,10 @@ internal sealed class SnapshotReplicator(
             {
                 if (!snapshotPacketCache.TryGetSnapshot(
                         recipient.ControlledEntityId,
-                        out var controlledSnapshot))
+                        out var controlledSnapshot)
+                    || !ownerPathProgress.TryGetValue(
+                        recipient.ControlledEntityId,
+                        out var controlledPathProgress))
                 {
                     continue;
                 }
@@ -113,7 +121,8 @@ internal sealed class SnapshotReplicator(
                         snapshotSequence,
                         clock.ServerTick,
                         controlledSnapshot!.LastProcessedInputSequence,
-                        controlledSnapshot.State));
+                        controlledSnapshot.State,
+                        controlledPathProgress));
                 encodedOwnerPacketCount++;
                 if (!aggregateSnapshotBytes.TryConsume(ownerPacket.Length))
                 {

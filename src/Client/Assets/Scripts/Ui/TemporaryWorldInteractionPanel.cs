@@ -24,9 +24,7 @@ namespace Mmorpg.Client.Ui
         private RectTransform content;
         private Text prompt;
         private Font font;
-        private ThirdPersonCameraController playerCamera;
         private InventoryClientController inventoryController;
-        private bool cursorReleased;
 
         // Called by the composition root before the component is activated.
         public void Initialize(
@@ -88,8 +86,6 @@ namespace Mmorpg.Client.Ui
             {
                 inventoryController.State.Changed -= Rebuild;
             }
-
-            SetCursorReleased(false);
         }
 
         private void BuildUi()
@@ -144,10 +140,13 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            var approaching = targetingController?.ApproachTarget;
             var target = targetingController?.CurrentTarget;
-            prompt.text = target != null && target.IsTargetActive
-                ? "E  Interact with " + target.TargetDisplayName
-                : string.Empty;
+            prompt.text = approaching != null
+                ? "Walking to " + approaching.TargetDisplayName
+                : target != null && target.IsTargetActive
+                    ? "Click to interact with " + target.TargetDisplayName
+                    : string.Empty;
             prompt.gameObject.SetActive(!string.IsNullOrWhiteSpace(prompt.text));
 
             for (var index = content.childCount - 1; index >= 0; index--)
@@ -161,7 +160,6 @@ namespace Mmorpg.Client.Ui
                 || state.PendingOperationId != Guid.Empty
                 || !string.IsNullOrWhiteSpace(state.LastMessage);
             panel.gameObject.SetActive(showPanel);
-            SetCursorReleased(showPanel);
             if (!showPanel)
             {
                 return;
@@ -454,27 +452,5 @@ namespace Mmorpg.Client.Ui
             DontDestroyOnLoad(eventSystem);
         }
 
-        private void SetCursorReleased(bool value)
-        {
-            if (cursorReleased == value)
-            {
-                return;
-            }
-
-            if (playerCamera == null)
-            {
-                var player = FindAnyObjectByType<LocalPlayerController>();
-                playerCamera = player != null ? player.PlayerCamera : null;
-            }
-
-            if (playerCamera == null)
-            {
-                cursorReleased = false;
-                return;
-            }
-
-            playerCamera.SetUiCursorReleased(this, value);
-            cursorReleased = value;
-        }
     }
 }

@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-07-19
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -70,8 +70,7 @@ guides for canonical actor coordinates while actor content remains owned by
 WorldData. Each registered World scene owns a LocalPlayer prefab
 reference, an explicit spawn point, and a separate entity presentation root.
 After SimulationWorker accepts a character join, the mapped scene creates one
-runtime LocalPlayer instance whose prefab owns the configured third-person
-camera. Without an active joined session, no local player exists in the scene.
+runtime LocalPlayer instance whose prefab owns the orbit camera. Without an active joined session, no local player exists in the scene.
 DevelopmentWorld1 retains the static boundaries, slope, three step heights,
 cover, and dedicated camera-collision wall used by focused movement tests.
 
@@ -88,110 +87,109 @@ interest. Snapshot loss never decides whether a remote player exists.
 
 ## Player Movement
 
-Status: Server-authoritative movement and test-map collision implemented
+Status: Server-authoritative click-to-move implemented
 
-- Move with WASD.
-- Sprint with Shift.
-- Jump with Space.
-- Sprint can only begin while grounded. A sprint that began on the ground can
-  continue through a jump while Shift remains held.
-- Releasing Shift in the air ends sprint, and pressing it again cannot restart
-  sprint until the player reaches the ground.
-- Airborne movement input cannot accelerate, stop, redirect, or rotate the
-  character. A jump or fall preserves its horizontal takeoff momentum until the
-  character is grounded again. The camera remains independently controllable.
-- Camera-relative movement follows the current mouse-controlled view.
-- While aiming, the player faces the camera direction so lateral movement
-  behaves as shooter strafing.
-- Aim cancels sprint and blocks both sprint and jump until Aim is released. The
-  shared simulation enforces this rule for prediction and SimulationWorker authority.
+- Left-click the ground to walk there. The client plans a route around walls,
+  buildings, and cover on a fine internal grid that the player never sees, and
+  the character starts walking on the next simulation tick.
+- A click on a spot that cannot be reached, such as a wall face or a roof, walks
+  to the closest reachable point. A click more than 64 meters away walks toward
+  it as far as the search reaches.
+- A new click replaces the current route at once.
+- Route planning runs on a background thread, so a long search never stalls a
+  frame. The previous route continues until the new one is ready.
+- The character walks at one speed, 5 meters per second scaled by carry weight,
+  and turns toward its direction of travel. It follows ramps and steps up to the
+  step height, and it falls when it walks off a higher ledge. An airborne
+  character keeps its momentum until it lands.
+- A route that collision blocks for half a second ends, so the character never
+  keeps pushing against a wall.
+- A small yellow disc marks the destination until the character arrives.
+- Clicks and scrolling over interface panels never reach the world.
+- Keyboard movement, sprint, jump, and aim no longer exist. Running with run
+  energy is planned in [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
 - Movement uses a PlayerInput-owned Unity Input Actions asset.
 - The local player predicts each fixed input tick immediately. A separate local
   presentation state interpolates those predictions at the render frame rate so
   the player and camera do not move in 30 Hz steps.
-- SimulationWorker owns the accepted position, velocity, facing, grounded state, and
-  sprint state.
-- SimulationWorker resolves the player capsule against the baked ground, boundaries,
-  ramp, steps, cover, and camera test wall.
+- SimulationWorker owns the accepted position, velocity, facing, grounded state,
+  and route progress. It follows the same route waypoints as the client and
+  checks only their limits, so the collision stays authoritative.
+- SimulationWorker resolves the player capsule against the baked ground,
+  boundaries, buildings, ramps, steps, and cover.
 - Walkable slopes up to the configured 45 degree limit hold a grounded character
-  in place when movement input stops. Steeper surfaces are not treated as ground.
+  in place when it stands. Steeper surfaces are not treated as ground.
 - The simulation capsule uses a slope-aware support height to avoid penetration
   correction along the slope. Presentation removes only that geometric offset,
   preserving render-frame interpolation instead of replacing it with the latest
   surface height.
 - Grounded transitions over configured steps and small drops use an additional
-  100 ms vertical presentation blend. Jumping, airborne movement, steep surfaces,
+  100 ms vertical presentation blend. Airborne movement, steep surfaces,
   teleports, and large corrections bypass this blend.
-- Authoritative snapshots acknowledge processed input sequences. The client
-  replays remaining input and smooths small corrections.
+- Authoritative snapshots acknowledge processed input sequences and route
+  progress. The client replays remaining input and smooths small corrections.
 - Remote players advance on an adaptive frame-rate render clock through a
   snapshot buffer approximately 100 ms behind server time. Bounded clock
   correction restores that delay after a network stall instead of accumulating
   permanent latency.
-- SimulationWorker neutralizes movement and action state after 500 ms without a
-  newer input sequence, then resumes from the next valid input.
+- A route continues on SimulationWorker when input packets are briefly lost,
+  because every route has an end.
 
 Gamepad bindings and player-configurable rebinding are not implemented yet.
 
-Movement speed, gravity, terminal fall speed, jump, facing, capsule dimensions,
-slope and step rules, authored collision, and world bounds are validated and
-simulated by SimulationWorker.
-The active UDP connection carries sequenced input and periodic movement
-snapshots in addition to session control.
+Movement speed, gravity, terminal fall speed, facing, capsule dimensions, slope
+and step rules, route limits, authored collision, and world bounds are validated
+and simulated by SimulationWorker.
+The active UDP connection carries sequenced input with the route of the newest
+click and periodic movement snapshots in addition to session control.
 The character root is the shared logical ground point for players and NPCs.
 `CharacterBody` configures the CharacterController contact envelope around that
 point, including skin width, without moving the presentation hierarchy. Visual
 assets use a feet-at-zero convention below PlayerVisual, and spawn placement
-aligns the character root directly to the spawn point. Direct scene preview uses
-normal gravity and CharacterController collision without forced per-frame ground
-snapping. Authenticated play keeps simulation at the shared fixed tick rate and
-renders an interpolated presentation state at the same root convention.
+aligns the character root directly to the spawn point. Authenticated play keeps
+simulation at the shared fixed tick rate and renders an interpolated
+presentation state at the same root convention.
 
 Each development map is baked into versioned collision chunks shared by the
-server and client prediction. Authenticated movement therefore collides with
-the selected scene's authored BoxColliders. SimulationWorker sends the authoritative collision revision
-when the character joins, and the client refuses to predict against a different
-revision. Isolated LocalPlayer prefab tests may use Unity CharacterController,
-but authenticated World-scene movement requires the joined SimulationWorker
-session.
+server and client prediction. Authenticated movement and route planning
+therefore use the selected scene's authored BoxColliders. SimulationWorker sends
+the authoritative collision revision when the character joins, and the client
+refuses to predict against a different revision. The LocalPlayer prefab moves
+only in an authenticated World-scene session and has no offline movement mode.
+
+The Development World 2 traversal course was built for jumping. Its raised
+platforms and the observation steps are higher than the step height at their
+edges, so they cannot be reached by walking.
 
 Complex terrain meshes, caves, moving platforms, dynamic doors, and rigid-body
 objects are not gameplay features yet. Dynamic server collision already has a
 spatial registry, while transform replication and non-box collision formats are
 later slices.
 
-## Third-Person Camera
+## Orbit Camera
 
 Status: Local foundation implemented
 
-- Mouse movement controls the camera continuously while gameplay input is
-  captured.
-- Hold the right mouse button to enter the current aim input state.
-- F1 releases the cursor for temporary debug UI interaction. F1 captures it again.
-- Normal framing uses a right-shoulder offset so the player does not block the
-  center of the view.
+- The camera orbits the player from behind and above. Drag with the middle mouse
+  button to turn and tilt it, or hold the arrow keys: left and right turn it,
+  up and down tilt it.
+- The scroll wheel zooms between 3 and 30 meters. Each notch changes the
+  distance by 15 percent, and the zoom eases in.
+- Tilt is limited to 10 through 80 degrees above the horizon. The camera starts
+  12 meters away and 40 degrees above the horizon, behind the player.
+- The cursor always stays visible and free.
 - The LocalPlayer prefab owns `LocalPlayerCamera`, so other scene cameras can be
   added without becoming the gameplay camera by accident.
-- Normal framing uses an explicit vertical offset and a closer follow distance
-  to keep the character lower and left of center in a modern shooter composition.
-- Aim smoothly tightens the right-shoulder framing and changes camera FOV from
-  60 to 45 degrees.
-- Camera distance is fixed. Mouse-wheel zoom is not available.
 - Camera focus follows a single player CameraTarget height.
-- Vertical look is clamped from -50 to 75 degrees.
-- Spherecast collision moves the camera in front of walls and restores its
-  desired distance after the obstruction clears.
+- Spherecast collision pulls the camera in front of walls at once and eases it
+  back out after the obstruction clears. Hiding roofs and occluding walls is
+  planned.
 - The collision filter ignores the local player hierarchy.
 
-## Crosshair And World Debug HUD
+## World Debug HUD
 
-Status: Gameplay contract implemented with temporary UI presentation
+Status: Temporary UI presentation
 
-- An unequipped player sees a small white dot at screen center.
-- Crosshair definitions support dot and cross shapes, size, thickness, gap,
-  color, and runtime spread.
-- Future weapon equipment can replace the active definition without changing
-  camera or input code.
 - The temporary World Client Debug panel is scrollable and anchored to the
   bottom-left corner.
 - F2 hides or restores the World Debug panel.
@@ -199,11 +197,11 @@ Status: Gameplay contract implemented with temporary UI presentation
   available to that client. It includes frame average, p95, and maximum time,
   FPS, Unity memory, connection identity, ping, snapshot age and observed rate,
   estimated missing snapshot sequences, payload rates, known entities, pending
-  predicted inputs, and reconciliation statistics.
+  predicted inputs, reconciliation statistics, the current route and waypoint,
+  and the latest route plan with its search size and time.
 - SimulationWorker CPU, memory, total population, bot population, capacity, and
   internal tick timing remain server-side operational data and are not sent to
   gameplay clients.
-- The crosshair is hidden while F1 has released the cursor.
 
 ## Carry Weight And Encumbrance
 
@@ -217,9 +215,8 @@ weight. Items assigned to equipment slots, including the equipped Bag item
 itself, do not. The equipped Bag's capacity bonus still applies. Bank, Recovery
 Storage, and corpse custody do not contribute.
 
-Movement remains at full speed through 100 percent capacity. Sprint is allowed
-at exactly 100 percent and disabled above it. Above 100 percent, walk and sprint
-base speed use the same linear multiplier until movement reaches `0.20` at the
+Movement remains at full speed through 100 percent capacity. Above 100 percent,
+walking speed uses a linear multiplier until movement reaches `0.20` at the
 140 percent hard cap. Durable weight-increasing item operations that would
 exceed that cap are rejected atomically.
 
@@ -227,7 +224,7 @@ GameService owns the persistent tuple. SimulationWorker owns its movement
 effect, and Unity predicts with the same shared GameSimulation rules. Join and
 reconnect restore one fenced committed revision. Later revisions advance over
 the reliable control path. The F2 panel shows the current weight, capacity,
-revision, movement percentage, and sprint eligibility.
+revision, and movement percentage.
 
 Active characters now have one authoritative in-world mutation path for
 relocation, equip, unequip, stack split and merge, allowed destruction, Secure
@@ -267,7 +264,7 @@ explicit Development configuration permits Bank and Recovery mutations from any
 authoritative player position.
 
 The header shows authoritative weight, capacity, load percentage, movement
-multiplier, sprint eligibility, and item-state revision. General and specialized
+multiplier, and item-state revision. General and specialized
 Bag slots are visibly distinct. Local definition lookups disable obvious invalid
 equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
 targets, but the server remains final authority.
@@ -280,16 +277,16 @@ update is required and does not render stale item state.
 
 `B` toggles character storage, `C` toggles equipment plus character storage, and
 `I` toggles the complete Development view. Pressing a different inventory key
-switches the open view, and `Escape` closes it. Shooter pointer capture is
-released while the panel is open. Each window is a separate fixed module root,
+switches the open view, and `Escape` closes it. Clicks on the panel never move
+the character. Each window is a separate fixed module root,
 so opening Equipment or Context never moves Character Inventory. The uGUI
 visuals are deliberately temporary, but catalog, snapshot, revision,
 operation-id, error, refresh, reconnect, and authority handling are permanent
 foundations.
 
-Nearby durable corpses use a generic replaceable capsule presentation. Press
-`E` within three metres to open the nearest corpse, or use the Corpse tab in the
-complete Development view. The contextual module shows general inventory,
+Nearby durable corpses use a generic replaceable capsule presentation. Click a
+corpse to walk to it and open it, or use the Corpse tab in the complete
+Development view. The contextual module shows general inventory,
 equipment, and Bag contents only after a complete authoritative snapshot has
 arrived. Drag full items into Permanent inventory, the equipped Bag, or Secure
 Container, or drag carried items back into compatible corpse slots. Enable the
@@ -323,7 +320,7 @@ Secure Container weight above 140 percent. This involuntary state is durable,
 but subsequent item operations may neither increase weight nor worsen the exact
 load ratio until the character is within the hard cap. Any further weight
 increase or ratio degradation is rejected. The character can still join a Shard
-in this state and moves at the minimum `0.20` multiplier without sprint.
+in this state and moves at the minimum `0.20` multiplier.
 
 Player corpses retain their Shard, transform, source name, generic presentation
 key, three item sections, snapshots, revisions, database creation time, and one
@@ -358,10 +355,12 @@ interactables is implemented:
   vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
 - `Mob` identifies a combat actor with later AI, aggro, combat, loot, corpse,
   and respawn behavior.
-- The player points the crosshair at a registered target and presses `E`.
-  Pressing `E` again closes the active NPC or corpse interaction.
-- Unity may discover and prompt for targets within `6.0` metres using a direct
-  ray and `0.15` metre spherecast tolerance.
+- The pointer picks a registered target with a direct ray and a `0.15` metre
+  spherecast tolerance, up to `100` metres from the camera and never through
+  solid geometry. A prompt names the target under the pointer.
+- A left click on the target walks the player to `2.75` metres and then asks
+  SimulationWorker to open the interaction. A new click elsewhere cancels the
+  walk, and `Escape` closes the active NPC or corpse interaction.
 - SimulationWorker opens an interaction only within the authoritative `3.0`
   metre start range after validating session, Shard, target identity and
   revision, active state, line of sight, capability, and request limits.
@@ -372,7 +371,7 @@ interactables is implemented:
 - The temporary uGUI lists only the capability summary returned by the server.
   Permanent actor, target, operation, revision, interaction-session, and
   reconnect state remains outside that panel.
-- Corpse targeting joins the shared crosshair selection UX and interaction
+- Corpse targeting joins the shared pointer selection and interaction
   lease without replacing the existing authoritative corpse view and mutation
   flow.
 
@@ -396,7 +395,7 @@ They remain in the MVP specification until working behavior is available:
 
 - Dynamic collision transform replication.
 - Terrain and cave collision beyond the current oriented-box format.
-- Shooter combat, weapons, damage, death, and respawning.
+- Combat, weapons, damage, death, and respawning.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
 - Live combat death production, final corpse art and loot presentation,

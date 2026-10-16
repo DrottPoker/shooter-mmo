@@ -6,7 +6,7 @@ namespace Mmorpg.SharedTests
 {
     public static partial class RealtimeProtocolGolden
     {
-        // Payload bytes after the seven-byte header, pinned from protocol version 14.
+        // Payload bytes after the seven-byte header, pinned from protocol version 15.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Corpses/CorpseInteractionIntent/close"] =
@@ -220,23 +220,26 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 01 50 51 52 53 54 55 56 57 58 59 " +
                 "5a 5b 5c 5d 5e 5f",
             ["Movement/MovementInputBatch/four"] =
-                "04 01 00 00 00 e9 03 00 00 00 00 80 3e 00 00 00 " +
-                "bf 00 c0 07 43 01 ff ff ff ff 00 00 00 00 9a 99 " +
-                "19 bf cd cc 4c 3f 00 10 34 c4 07 03 00 00 00 04 " +
-                "03 02 01 00 00 00 00 00 00 80 bf ca f2 49 71 02 " +
-                "04 00 00 00 4d 00 00 00 00 00 00 80 00 00 00 00 " +
-                "00 00 00 80 00",
+                "04 01 00 00 00 e9 03 00 00 00 00 00 00 ff ff ff " +
+                "ff 00 00 00 00 00 00 00 00 03 00 00 00 04 03 02 " +
+                "01 ff ff ff ff 04 00 00 00 4d 00 00 00 0d 0c 0b " +
+                "0a 00",
+            ["Movement/MovementInputBatch/full path"] = "sha256:403:d96e0c593041d850c674860cf81b857cb8d6b0629463642ef967e08f02f24273",
             ["Movement/MovementInputBatch/single"] =
-                "01 01 00 00 00 e9 03 00 00 00 00 80 3e 00 00 00 " +
-                "bf 00 c0 07 43 01",
+                "01 01 00 00 00 e9 03 00 00 00 00 00 00 00",
+            ["Movement/MovementInputBatch/with path"] =
+                "02 01 00 00 00 e9 03 00 00 00 00 00 00 02 00 00 " +
+                "00 ea 03 00 00 0d 0c 0b 0a 01 0d 0c 0b 0a 02 00 " +
+                "00 48 41 00 00 00 80 00 00 50 c0 ff ff 7f 7f 01 " +
+                "00 00 00 ff ff 7f ff",
             ["Movement/OwnerSimulationSnapshot/boundary"] =
                 "ff ff ff ff 00 00 00 00 01 00 00 00 00 00 00 80 " +
                 "01 00 00 00 ff ff 7f 7f ff ff 7f ff 01 00 00 80 " +
-                "ee e3 6c 00 df ff b3 c3 02",
+                "ee e3 6c 00 df ff b3 c3 00 ff ff ff ff 20 ff",
             ["Movement/OwnerSimulationSnapshot/typical"] =
                 "44 33 22 11 88 77 66 55 cc bb aa 99 00 00 48 41 " +
                 "00 00 50 c0 00 18 80 44 00 00 00 3f 00 00 1c c1 " +
-                "00 00 08 40 00 40 87 43 01",
+                "00 00 08 40 00 40 87 43 01 0d 0c 0b 0a 03 02",
             ["Replication/EntityDespawn/typical"] =
                 "07 00 00 00 00 00 00 00 0f 00 6f 75 74 5f 6f 66 " +
                 "5f 69 6e 74 65 72 65 73 74",
@@ -247,7 +250,7 @@ namespace Mmorpg.SharedTests
                 "7d 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 0e 00 " +
                 "70 6c 61 79 65 72 2d 64 65 66 61 75 6c 74 40 e2 " +
                 "01 00 00 00 00 80 01 00 00 00 ff ff 7f 7f ff ff " +
-                "7f ff 01 00 00 80 ee e3 6c 00 df ff b3 c3 02",
+                "7f ff 01 00 00 80 ee e3 6c 00 df ff b3 c3 00",
             ["Replication/EntitySpawn/typical"] =
                 "11 10 0f 0e 0d 0c 0b 0a 01 24 00 38 63 33 64 32 " +
                 "65 31 66 2d 30 62 34 61 2d 34 63 35 64 2d 39 65 " +
@@ -262,8 +265,8 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 33 00 00 00 00 00 48 41 00 00 50 " +
                 "c0 00 18 80 44 00 00 00 3f 00 00 1c c1 00 00 08 " +
                 "40 00 40 87 43 01",
-            ["Session/JoinAccepted/boundary"] = "sha256:614:88b82c74f7ea1df2ea6cb0e2c19ebd54d01474c84de8b637c76d8112de6eaa39",
-            ["Session/JoinAccepted/typical"] = "sha256:340:3515d5d2b683fe8585f6a028a013dc915e1210f38c7c70fedb5939a7e6103cc4",
+            ["Session/JoinAccepted/boundary"] = "sha256:606:9717fe20c5bcd633afada11ef49bc07a460201cbb9f29bc8b4c42239268a60dd",
+            ["Session/JoinAccepted/typical"] = "sha256:332:ecfaa5a4472c9e20cdc304b02defaf2376120c7b2fe92c474de4a1874b79b568",
             ["Session/JoinRejected/basic"] =
                 "13 00 6a 6f 69 6e 5f 74 69 63 6b 65 74 5f 65 78 " +
                 "70 69 72 65 64 18 00 54 68 65 20 6a 6f 69 6e 20 " +

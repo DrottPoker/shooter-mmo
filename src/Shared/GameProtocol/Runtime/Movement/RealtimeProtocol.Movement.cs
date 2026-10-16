@@ -8,7 +8,6 @@ namespace Mmorpg.GameProtocol
         {
             return settings.SnapshotRateHz <= settings.TickRateHz
                 && settings.TickRateHz % settings.SnapshotRateHz == 0
-                && settings.SprintSpeed >= settings.WalkSpeed
                 && settings.MinimumX < settings.MaximumX
                 && settings.MinimumZ < settings.MaximumZ
                 && settings.CharacterHeight >= settings.CharacterRadius * 2f
@@ -16,10 +15,18 @@ namespace Mmorpg.GameProtocol
                 && settings.MaximumSubstepDistance <= settings.CharacterRadius;
         }
 
-        // The move vector is at most one unit long, with room for float rounding.
-        private static bool SatisfiesRules(RealtimeMovementInput input)
+        private static bool SatisfiesRules(RealtimeMovementPathProgress progress)
         {
-            return (input.MoveX * input.MoveX) + (input.MoveY * input.MoveY) <= 1.0001f;
+            return progress.PathId != 0
+                || (progress.NextWaypointIndex == 0 && progress.BlockedTicks == 0);
+        }
+
+        // A path travels only with the input that follows it, so the worker never has to
+        // match a path to an input from another batch.
+        private static bool SatisfiesRules(RealtimeMovementInputBatch batch)
+        {
+            return batch.Path == null
+                || batch.Path.PathId == batch.Inputs[batch.Inputs.Length - 1].PathId;
         }
     }
 }

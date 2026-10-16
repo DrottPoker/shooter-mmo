@@ -27,12 +27,17 @@ public sealed record SimulationBotConnectionOptions(
     int UdpPort,
     TimeSpan JoinAndLeaveTimeout);
 
+// The bot's newest authoritative position, from the join or the latest owner snapshot.
+public readonly record struct SimulationBotPosition(float X, float Y, float Z);
+
 public interface ISimulationBotInputSource
 {
-    RealtimeMovementInput CreateInput(
-        uint inputSequence,
+    // The path to follow this tick, or null to stand. Returning the same path keeps
+    // following it, and a new route needs a new path id.
+    RealtimeMovementPath? SelectPath(
         uint clientTick,
-        RealtimeJoinAccepted joinedSession);
+        RealtimeJoinAccepted joinedSession,
+        SimulationBotPosition position);
 }
 
 public interface ISimulationBotRealtimeObserver

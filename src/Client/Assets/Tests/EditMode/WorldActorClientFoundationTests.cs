@@ -212,7 +212,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void DirectCrosshairCandidateWinsAndSphereToleranceIsFallback()
+        public void DirectPointerCandidateWinsAndSphereToleranceIsFallback()
         {
             var direct = new FakeTarget("Direct");
             var sphere = new FakeTarget("Sphere");
@@ -357,6 +357,7 @@ namespace Mmorpg.Client.Tests.EditMode
             public long TargetRevision => 1;
             public bool IsTargetActive => true;
             public string TargetDisplayName { get; }
+            public Vector3 TargetPosition => Vector3.zero;
         }
     }
 }

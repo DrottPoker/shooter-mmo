@@ -18,5 +18,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 MovementDeterminismScenario.ComputeFingerprint(),
                 Is.EqualTo(MovementDeterminismScenario.ExpectedFingerprint));
         }
+
+        // The worker can plan routes for world actors, so Unity and .NET must plan alike.
+        [Test]
+        public void UnityRuntimeMatchesThePinnedPlannerFingerprint()
+        {
+            Assert.That(
+                MovementDeterminismScenario.ComputePlannerTrace().Fingerprint,
+                Is.EqualTo(MovementDeterminismScenario.ExpectedPlannerFingerprint));
+        }
     }
 }

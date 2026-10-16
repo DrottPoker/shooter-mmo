@@ -1,9 +1,11 @@
 # Combat And Setting Design
 
-Last updated: 2026-10-13
+Last updated: 2026-10-16
 
-Status: Agreed design direction. Nothing in this document is implemented yet.
-It replaces the earlier modern third-person shooter combat direction.
+Status: Agreed design direction. Click-to-move movement and the orbit camera are
+implemented, as recorded in [Movement And Camera](#movement-and-camera); the
+rest of this document is not implemented yet. It replaces the earlier modern
+third-person shooter combat direction.
 
 ## Purpose
 
@@ -190,6 +192,31 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
   connects directly to the existing carry-weight and encumbrance rules.
 - Buildings hide roofs or occluding walls when the camera would otherwise lose
   the character.
+
+### Implemented
+
+The first gameplay slice, in October 2026, implements this movement and camera
+direction with these decisions:
+
+- A left click on the ground walks there. The client plans the route around
+  obstacles with a shared A* planner on a fine internal grid sampled from the
+  baked collision, with several walkable levels per cell. The player never sees
+  the grid. A destination that cannot be reached leads to the closest reachable
+  point.
+- The client owns the route and SimulationWorker owns the movement. The route
+  travels to the worker as waypoints, the worker checks its bounds and length
+  and follows the same waypoints with authoritative collision, and prediction
+  therefore matches the worker exactly. The planner is shared code, so the
+  worker can plan routes for world actors with the same results later.
+- There is one walking speed, scaled by carry weight. Sprint, jump, and aim were
+  removed. Running with run energy remains a later decision.
+- A left click on an NPC or a corpse walks into interaction range and then opens
+  it, and Escape closes it. The right click context menu and Examine are not
+  implemented yet.
+- The camera orbits the player. The middle mouse button and the arrow keys turn
+  and tilt it between 10 and 80 degrees, and the scroll wheel zooms from 3 to 30
+  meters. Geometry pulls the camera in front of walls; hiding roofs and
+  occluding walls is not implemented yet.
 
 ## Combat Model
 
@@ -642,7 +669,8 @@ without migration.
 
 ## Implications For The Existing Codebase
 
-This section is a planning aid. None of it is implemented.
+This section is a planning aid. The movement, camera, and left click items are
+implemented as described in [Implemented](#implemented); the rest is not.
 
 Expected to carry over largely unchanged:
 
@@ -657,15 +685,20 @@ Expected to carry over largely unchanged:
 Expected to change:
 
 - Movement input changes from per-tick directional input and camera yaw to
-  move-to-destination and attack-target commands.
-- SimulationWorker needs server-side pathfinding with navigation data generated
-  from World authoring data. A C# Recast and Detour port such as DotRecast is
-  one option.
-- Shared movement code can become shared path following, so the client starts
+  move-to-destination and attack-target commands. Implemented for movement:
+  each input names a client-planned path. Attack-target commands remain.
+- Server-side pathfinding with navigation data generated from World authoring
+  data. The shared grid planner samples the baked collision and runs in the
+  client today. SimulationWorker can use it for world actors; a baked navigation
+  grid can replace the on-demand sampling if larger Worlds need it.
+- Shared movement code becomes shared path following, so the client starts
   moving immediately on click while the server stays authoritative.
+  Implemented.
 - The third-person shooter camera is replaced by an orbit camera with zoom.
+  Implemented.
 - Crosshair interaction targeting is replaced by cursor picking with a left
-  click default action and a right click context menu.
+  click default action and a right click context menu. The left click is
+  implemented; the context menu remains.
 - The projectile and fire-intent combat direction in the
   [MVP Specification](MVP_SPEC.md) is replaced by target-based combat where the
   server resolves hits. Shooter-style lag compensation is not needed.
@@ -703,6 +736,6 @@ Expected additions:
 This document supersedes the modern third-person shooter, modern weapon, and
 projectile combat direction in
 [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) and the combat direction
-in [MVP Specification](MVP_SPEC.md). Architecture and feature documents still
-describe the implemented WASD movement, shooter camera, and crosshair
-interaction until the code changes.
+in [MVP Specification](MVP_SPEC.md). Click-to-move, the orbit camera, and
+pointer interaction replaced the WASD movement, shooter camera, and crosshair
+interaction in October 2026.

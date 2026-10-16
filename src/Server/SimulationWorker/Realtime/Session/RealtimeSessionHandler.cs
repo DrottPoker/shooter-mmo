@@ -201,12 +201,7 @@ internal sealed class RealtimeSessionHandler(
                 initialMovementState,
                 config.MovementSimulation,
                 session.CarryState,
-                collisionWorld,
-                Math.Max(
-                    1,
-                    (int)Math.Ceiling(
-                        config.MovementInputSilenceTimeout.TotalSeconds
-                        * config.MovementSimulation.TickRateHz))));
+                collisionWorld));
         if (registration.ReplacedEntity is not null)
         {
             teardown.RemoveReplacedEntity(registration.ReplacedEntity);

@@ -270,7 +270,7 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   grow server memory without bound. Rejected connections are counted by the
   `simulation_worker.realtime.connections.rejected` metric.
 
-Protocol version `14` carries Shard and World identity plus the initial carry
+Protocol version `15` carries Shard and World identity plus the initial carry
 tuple in join acceptance. Reliable ordered control messages carry later item
 state, corpse, world-actor presence, bounded actor state, and correlated world
 interaction contracts. Ordinary actor spawn packets contain presentation,
@@ -374,18 +374,25 @@ corpse view.
 
 ## Server-Authoritative Movement
 
-- Clients send input sequences, camera yaw, and action buttons, never accepted
-  positions.
+- Clients send input sequences and click-to-move paths, never accepted
+  positions. Each input names the followed path by id, and a batch carries the
+  waypoints of the newest input's path until the owner snapshot reports it.
 - SimulationWorker runs the shared movement code at a fixed 30 Hz by default.
-- It accepts only newer input sequences and neutralizes stale input.
-- Aiming blocks sprint and jump.
+- It accepts only newer input sequences. A new path must keep its waypoints in
+  the World bounds and stay within 256 meters from the authoritative position
+  through every waypoint; a path that breaks the limits is adopted as already
+  ended, so client and worker agree that the character stands. An input that
+  names a path the worker never received is a protocol error.
+- The worker follows the same waypoints as the client prediction and keeps
+  following a path when input packets are briefly lost, because every path
+  ends. A path that collision blocks for half a second ends.
 - New planar control is ignored while airborne.
 - Collision, slopes, steps, ground support, and bounds are server-owned.
 - Each authoritative entity owns one reusable collision-query workspace, so
   fixed ticks reuse broadphase list and stable-id set capacity instead of
   allocating them again for every movement step.
-- Owner snapshots are sent at 15 Hz by default with input acknowledgement and
-  authoritative reconciliation state.
+- Owner snapshots are sent at 15 Hz by default with input acknowledgement,
+  authoritative reconciliation state, and path progress.
 - Remote snapshots use the remaining fair byte budget. Their cadence degrades
   explicitly under dense overload instead of starving owner reconciliation.
 - Unity predicts with the same source, reconciles only from owner snapshots,
@@ -424,8 +431,8 @@ corpse view.
 - Position-driven load and larger unload radii provide streaming hysteresis.
 - A composite collision world combines static chunks and mutable dynamic shapes.
 
-The current test World uses oriented boxes for ground, boundaries, a camera
-wall, ramp, steps, and cover. Triangle terrain and replicated dynamic transforms
+The development Worlds use oriented boxes for ground, boundaries, buildings,
+ramps, steps, and cover. Triangle terrain and replicated dynamic transforms
 are not implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
@@ -609,12 +616,12 @@ concurrent inspection, and authoritative looting:
   applies only increasing item-state revisions. Same-revision conflicts
   invalidate the local lease instead of accepting contradictory weight or
   capacity.
-- GameSimulation, at revision `movement-simulation-v4` and with carry state
+- GameSimulation, at revision `movement-simulation-v5` and with carry state
   since `v3`, owns the immutable carry state and deterministic encumbrance
-  calculation used by worker movement and Unity prediction. Sprint is allowed through exactly 100 percent load, then
-  disabled, while the movement multiplier falls linearly to `0.20` at the exact
-  140 percent hard cap.
-- Realtime protocol version `14` retains carry state on join, later committed
+  calculation used by worker movement and Unity prediction. Walking keeps full
+  speed through exactly 100 percent load, then the movement multiplier falls
+  linearly to `0.20` at the exact 140 percent hard cap.
+- Realtime protocol version `15` retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
@@ -716,7 +723,8 @@ concurrent inspection, and authoritative looting:
 - Unity also owns immutable corpse presence and view state, complete chunk
   assembly, monotonic delta application, one pending corpse operation, and
   refresh-on-stale behavior. A replaceable generic corpse capsule presents the
-  server identity and transform. `E` opens the nearest eligible corpse, and the
+  server identity and transform. A click on a corpse walks into range and opens
+  it, and the
   same typed drag layer submits bidirectional full or partial transfers,
   corpse-internal moves, compatible stack merges, ordinary occupied-slot swaps,
   and Bag swaps. Corpse equipment buttons display the canonical slot label and
@@ -1013,9 +1021,11 @@ the test connection variable at development or production data.
 - A movement determinism golden test runs one shared scenario in .NET and in
   Unity EditMode and pins `GameSimulationCompatibility.Revision` together with
   the same fingerprint in both, so a movement change without a revision bump,
-  or a runtime that diverges, fails. A coverage test keeps the scenario
-  blocking on a wall, climbing and dropping off a rotated ramp, stopping at a
-  rotated pillar, stepping up, and jumping.
+  or a runtime that diverges, fails. A coverage test keeps the click paths
+  blocked by a wall until the path ends, sliding along it, climbing and dropping
+  off a rotated ramp, blocked by a rotated pillar, and stepping up while
+  encumbered. A second fingerprint pins the route planner in both runtimes, and
+  the motor follows every planned route to its end.
 - Committed collision manifests are checked against their recomputed
   revision.
 - Isolated PostgreSQL item tests for concurrent migration initialization,
@@ -1036,7 +1046,7 @@ the test connection variable at development or production data.
   Details, offline session fencing, offline bank and Recovery rejection, system
   delivery, successful kernel claims, and hard-cap claim rollback.
 - Shared carry and movement tests for exact custody contribution, base and Bag
-  capacity, lower-capacity Bag rejection, sprint at and above 100 percent,
+  capacity, lower-capacity Bag rejection,
   fixed-point movement reference points, monotonic active-session propagation,
   protocol validation, and reconnect restoration.
 - Phase 8 protocol, HTTP client, worker socket, configuration, and isolated

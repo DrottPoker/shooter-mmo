@@ -3,40 +3,27 @@ using Mmorpg.GameSimulation;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
+public enum MovementInputAcceptance
+{
+    Accepted,
+
+    // The path broke the worker's limits, so the character stands at the end of it.
+    PathRejected,
+
+    // The newest input names a path that never arrived, which a correct client never does.
+    UnknownPath
+}
+
+// Follows the client's movement paths with the shared simulation. The worker steps once
+// per tick with the newest input, so collision, speed, and bounds stay authoritative.
 public sealed class AuthoritativePlayerMovement(
     PlayerMovementState initialState,
     MovementSimulationSettings settings,
     PlayerCarryState initialCarryState,
-    ICollisionWorld collisionWorld,
-    int maximumInputSilenceTicks)
+    ICollisionWorld collisionWorld)
 {
-    private readonly int inputSilenceTickLimit = maximumInputSilenceTicks > 0
-        ? maximumInputSilenceTicks
-        : throw new ArgumentOutOfRangeException(nameof(maximumInputSilenceTicks));
     private readonly CollisionQueryBuffer collisionQueryBuffer = new();
-    private PlayerMovementInput latestInput = new(
-        0,
-        0,
-        0f,
-        0f,
-        initialState.YawDegrees,
-        PlayerMovementButtons.None);
-    private bool jumpPending;
-    private int ticksSinceLatestInput;
-
-    public AuthoritativePlayerMovement(
-        PlayerMovementState initialState,
-        MovementSimulationSettings settings,
-        PlayerCarryState initialCarryState,
-        ICollisionWorld collisionWorld)
-        : this(
-            initialState,
-            settings,
-            initialCarryState,
-            collisionWorld,
-            Math.Max(1, settings.TickRateHz / 2))
-    {
-    }
+    private PlayerMovementInput latestInput = new(0, 0, null);
 
     public PlayerMovementState State { get; private set; } = initialState;
 
@@ -46,6 +33,8 @@ public sealed class AuthoritativePlayerMovement(
     public uint LastReceivedInputSequence { get; private set; }
 
     public uint LastProcessedInputSequence { get; private set; }
+
+    public MovementPath? CurrentPath => latestInput.Path;
 
     public bool ApplyCarryState(PlayerCarryState carryState)
     {
@@ -71,103 +60,87 @@ public sealed class AuthoritativePlayerMovement(
         return true;
     }
 
-    // A reconnecting client starts a new input sequence, so the reused entity must accept
-    // it from the beginning instead of discarding it as older than the previous client.
+    // A reconnecting client starts new input sequences and path ids, so the reused entity
+    // accepts them from the beginning and stops following the previous client's path.
     public void ResetInputSequence()
     {
         LastReceivedInputSequence = 0;
         LastProcessedInputSequence = 0;
-        latestInput = new PlayerMovementInput(
-            0,
-            0,
-            0f,
-            0f,
-            State.YawDegrees,
-            PlayerMovementButtons.None);
-        jumpPending = false;
-        ticksSinceLatestInput = inputSilenceTickLimit;
+        latestInput = new PlayerMovementInput(0, 0, null);
+        State = State.WithPathProgress(MovementPathProgress.None);
     }
 
-    public void AcceptInputs(RealtimeMovementInput[] inputs)
+    public MovementInputAcceptance AcceptInputs(RealtimeMovementInputBatch batch)
     {
-        var acceptedInput = false;
-        foreach (var input in inputs)
+        ArgumentNullException.ThrowIfNull(batch);
+        RealtimeMovementInput? newest = null;
+        var newestSequence = LastReceivedInputSequence;
+        foreach (var input in batch.Inputs)
         {
-            if (!MovementSequence.IsNewer(input.InputSequence, LastReceivedInputSequence))
+            if (MovementSequence.IsNewer(input.InputSequence, newestSequence))
             {
-                continue;
+                newest = input;
+                newestSequence = input.InputSequence;
             }
-
-            var buttons = ToSimulationButtons(input.Buttons);
-            jumpPending |= (buttons & PlayerMovementButtons.Jump) != 0;
-            latestInput = new PlayerMovementInput(
-                input.InputSequence,
-                input.ClientTick,
-                input.MoveX,
-                input.MoveY,
-                input.CameraYawDegrees,
-                buttons & ~PlayerMovementButtons.Jump);
-            LastReceivedInputSequence = input.InputSequence;
-            acceptedInput = true;
         }
 
-        if (acceptedInput)
+        if (newest is null)
         {
-            ticksSinceLatestInput = 0;
+            return MovementInputAcceptance.Accepted;
         }
+
+        var acceptance = MovementInputAcceptance.Accepted;
+        MovementPath? path = null;
+        if (newest.PathId != 0)
+        {
+            if (latestInput.Path?.Id == newest.PathId)
+            {
+                path = latestInput.Path;
+            }
+            else if (batch.Path is { } wirePath && wirePath.PathId == newest.PathId)
+            {
+                path = ToSimulationPath(wirePath);
+                if (!MovementPathRules.IsValid(path, State.Position, settings, out _))
+                {
+                    // Progress at the end makes client and worker agree that the character
+                    // stands, and later inputs that still name this path stay valid.
+                    State = State.WithPathProgress(
+                        new MovementPathProgress(path.Id, path.Count, 0));
+                    acceptance = MovementInputAcceptance.PathRejected;
+                }
+            }
+            else
+            {
+                return MovementInputAcceptance.UnknownPath;
+            }
+        }
+
+        latestInput = new PlayerMovementInput(newest.InputSequence, newest.ClientTick, path);
+        LastReceivedInputSequence = newest.InputSequence;
+        return acceptance;
     }
 
     public void SimulateTick()
     {
-        var inputIsStale = ticksSinceLatestInput >= inputSilenceTickLimit;
-        var buttons = inputIsStale
-            ? PlayerMovementButtons.None
-            : latestInput.Buttons;
-        if (jumpPending)
-        {
-            buttons |= PlayerMovementButtons.Jump;
-        }
-
-        var input = new PlayerMovementInput(
-            LastReceivedInputSequence,
-            latestInput.ClientTick,
-            inputIsStale ? 0f : latestInput.MoveX,
-            inputIsStale ? 0f : latestInput.MoveY,
-            latestInput.CameraYawDegrees,
-            buttons);
         State = PlayerMovementSimulation.Step(
             State,
-            input,
+            latestInput,
             settings,
             CarryState,
             collisionWorld,
             collisionQueryBuffer);
         LastProcessedInputSequence = LastReceivedInputSequence;
-        jumpPending = false;
-        if (ticksSinceLatestInput < int.MaxValue)
-        {
-            ticksSinceLatestInput++;
-        }
     }
 
-    private static PlayerMovementButtons ToSimulationButtons(RealtimeMovementButtons buttons)
+    private static MovementPath ToSimulationPath(RealtimeMovementPath wirePath)
     {
-        var result = PlayerMovementButtons.None;
-        if ((buttons & RealtimeMovementButtons.Sprint) != 0)
+        var waypoints = new SimulationVector3[wirePath.Waypoints.Length];
+        for (var index = 0; index < waypoints.Length; index++)
         {
-            result |= PlayerMovementButtons.Sprint;
+            var waypoint = wirePath.Waypoints[index];
+            waypoints[index] = new SimulationVector3(waypoint.X, waypoint.Y, waypoint.Z);
         }
 
-        if ((buttons & RealtimeMovementButtons.Jump) != 0)
-        {
-            result |= PlayerMovementButtons.Jump;
-        }
-
-        if ((buttons & RealtimeMovementButtons.Aim) != 0)
-        {
-            result |= PlayerMovementButtons.Aim;
-        }
-
-        return result;
+        return new MovementPath(wirePath.PathId, waypoints);
     }
 }

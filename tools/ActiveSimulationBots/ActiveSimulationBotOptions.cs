@@ -14,12 +14,9 @@ public sealed record ActiveSimulationBotOptions(
     TimeSpan MaximumOnlineDuration,
     TimeSpan MinimumOfflineDuration,
     TimeSpan MaximumOfflineDuration,
-    TimeSpan MinimumDirectionDuration,
-    TimeSpan MaximumDirectionDuration,
+    TimeSpan MinimumBehaviorDuration,
+    TimeSpan MaximumBehaviorDuration,
     double IdleChance,
-    double SprintChance,
-    double AimChance,
-    double JumpChancePerSecond,
     TimeSpan JoinAndLeaveTimeout,
     TimeSpan MinimumRetryDelay,
     TimeSpan MaximumRetryDelay,
@@ -115,16 +112,16 @@ public sealed record ActiveSimulationBotOptions(
             0,
             86_400,
             errors);
-        var minimumDirectionDuration = ReadSeconds(
+        var minimumBehaviorDuration = ReadSeconds(
             section,
-            "MinimumDirectionSeconds",
+            "MinimumBehaviorSeconds",
             2,
             1,
             3600,
             errors);
-        var maximumDirectionDuration = ReadSeconds(
+        var maximumBehaviorDuration = ReadSeconds(
             section,
-            "MaximumDirectionSeconds",
+            "MaximumBehaviorSeconds",
             6,
             1,
             3600,
@@ -142,20 +139,13 @@ public sealed record ActiveSimulationBotOptions(
             "MaximumOfflineSeconds",
             errors);
         ValidateRange(
-            minimumDirectionDuration,
-            maximumDirectionDuration,
-            "MinimumDirectionSeconds",
-            "MaximumDirectionSeconds",
+            minimumBehaviorDuration,
+            maximumBehaviorDuration,
+            "MinimumBehaviorSeconds",
+            "MaximumBehaviorSeconds",
             errors);
 
         var idleChance = ReadProbability(section, "IdleChance", 0.15d, errors);
-        var sprintChance = ReadProbability(section, "SprintChance", 0.45d, errors);
-        var aimChance = ReadProbability(section, "AimChance", 0.20d, errors);
-        var jumpChancePerSecond = ReadProbability(
-            section,
-            "JumpChancePerSecond",
-            0.08d,
-            errors);
 
         var joinAndLeaveTimeout = ReadSeconds(
             section,
@@ -227,12 +217,9 @@ public sealed record ActiveSimulationBotOptions(
             maximumOnlineDuration,
             minimumOfflineDuration,
             maximumOfflineDuration,
-            minimumDirectionDuration,
-            maximumDirectionDuration,
+            minimumBehaviorDuration,
+            maximumBehaviorDuration,
             idleChance,
-            sprintChance,
-            aimChance,
-            jumpChancePerSecond,
             joinAndLeaveTimeout,
             minimumRetryDelay,
             maximumRetryDelay,

@@ -75,7 +75,8 @@ namespace Mmorpg.WorldData.Actors
 
     public static class WorldInteractionRules
     {
-        public const float ClientDiscoveryRange = 6f;
+        // The pointer ray from the camera, which zooms out to 30 meters behind the player.
+        public const float ClientPointerRange = 100f;
         public const float ClientSpherecastRadius = 0.15f;
         public const float AuthoritativeStartRange = 3f;
         public const float AuthoritativeMaintainRange = 3.5f;

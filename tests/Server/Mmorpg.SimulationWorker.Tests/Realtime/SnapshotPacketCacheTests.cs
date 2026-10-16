@@ -72,7 +72,6 @@ public sealed class SnapshotPacketCacheTests
                 0f,
                 0f,
                 0f,
-                true,
-                false));
+                true));
     }
 }

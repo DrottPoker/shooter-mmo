@@ -45,7 +45,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
-| `Mmorpg.Client.Gameplay` | Local and remote players, camera, input, prediction, interpolation, crosshair, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, prediction, interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
 | `Mmorpg.Client.Ui` | Every panel, drag and drop, `ClientOperationState` | Every row above it |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | Every row above it |
@@ -103,16 +103,23 @@ LocalPlayer prefab
   +-- CameraTarget
   +-- LocalPlayerCamera
       +-- Camera and AudioListener
-      +-- ThirdPersonCameraController
+      +-- OrbitCameraController
 
 Realtime movement
   +-- NetworkMovementSession
   +-- UnityWorldCollisionLoader
   +-- baked WorldData chunks
+  +-- LocalPlayerNavigator
+      +-- shared MovementPathPlanner on a background thread
   +-- ClientMovementPrediction
   +-- shared PlayerMovementSimulation
   +-- RemoteMovementInterpolation
   +-- RemotePlayerView
+
+World pointer input
+  +-- WorldPointerFocus, owned by ClientBootstrap
+  +-- IWorldClickHandler, such as WorldInteractionTargetingController
+  +-- MovementDestinationMarker
 ```
 
 ## Persistent Client Bootstrap
@@ -246,13 +253,15 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic GameService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 14 uses two explicit LiteNetLib channels plus unchanneled
+Protocol version 15 uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
   lifecycle, carry-state updates, and item-operation intent and result control
   messages.
-- Channel 1 uses sequenced delivery for redundant movement input batches.
+- Channel 1 uses sequenced delivery for redundant movement input batches. A
+  batch also carries the path of its newest input until an owner snapshot
+  confirms that path, so a path can never arrive after the inputs that name it.
 - Dedicated owner snapshots and chunked remote simulation snapshots use
   LiteNetLib's unchanneled `Unreliable` delivery. LiteNetLib reports these
   packets with receive channel 0. Server tick, snapshot sequence, message type,
@@ -467,10 +476,17 @@ separate from that presentation hierarchy and is destroyed with the active
 World scene.
 
 `LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
-prefab. The referenced Input Actions asset defines movement, sprint, jump, aim,
-look, debug cursor, and debug panel bindings. This keeps device bindings out of
-gameplay and UI code and allows future rebinding and control-scheme work without
-changing those systems.
+prefab. The referenced Input Actions asset defines the select click, pointer
+position, middle-button camera orbit and its mouse delta, arrow-key camera
+rotation, scroll zoom, cancel, inventory, and debug panel bindings. This keeps
+device bindings out of gameplay and UI code and allows future rebinding and
+control-scheme work without changing those systems. The cursor is never locked.
+
+`ClientBootstrap` owns one `WorldPointerFocus` and passes it to the World scene,
+the local player, the camera, and the World Debug panel. It reports whether the
+pointer is over interface: uGUI panels through the EventSystem, and the
+immediate-mode debug panel through the rectangle it reports while drawing. A
+click or scroll over a panel therefore never reaches the world.
 
 `CharacterBody` is the reusable collision foundation for local players, remote
 players, and NPCs. The character root is its logical ground point. CharacterBody
@@ -488,31 +504,38 @@ queries the same baked collision world and removes the geometric slope support
 offset from local and remote render poses without replacing their interpolated
 height. Its `GroundedVerticalPresentation` applies a bounded 100 ms blend to
 small height changes on flat walkable support, covering steps and short grounded
-drops. Ramps, jumps, airborne movement, teleports, and large corrections bypass
+drops. Ramps, airborne movement, teleports, and large corrections bypass
 this extra blend. Presentation never feeds back into prediction, reconciliation,
 input packets, or SimulationWorker state.
 
-`LocalPlayerController` retains an offline CharacterController path for isolated
-prefab testing, but registered World scenes do not create an offline player. A
-runtime World-scene player always uses `ClientMovementPrediction` and the exact
-shared fixed-step capsule simulation and baked collision world. Normal movement faces
-its travel direction. Aim faces the camera heading so left and right movement
-become shooter-style strafing. Sprint is a grounded state transition: it may
-remain active through a jump but cannot start while airborne. Both isolated
-prefab testing and authenticated prediction preserve takeoff momentum and facing
-while airborne. Movement input resumes only after grounded state is restored,
-while the third-person camera remains independently controllable.
-`RefreshCharacterDimensions` remains the runtime entry point when a future
-character system changes collider dimensions.
+`LocalPlayerController` moves the player only in an authenticated World-scene
+session; the prefab has no offline movement mode. A left click goes through the
+registered `IWorldClickHandler` instances first, so a click on an NPC or a
+corpse belongs to world interaction. Otherwise a ray through the pointer is cast
+against the same baked collision world that prediction uses, and the hit point
+becomes the destination. `LocalPlayerNavigator` plans the route with the shared
+`MovementPathPlanner` on a background thread. The collision world is
+lock-protected, and only one plan runs at a time, so a long search never stalls
+a frame while chunk streaming continues on the main thread. Every walk,
+approach, or stop is a new intent with an id; only the newest intent's plan is
+applied, and the previous path continues until it is ready. The navigator gives
+every applied plan a new path id. A plan that stopped at the 32 waypoint limit
+continues under the same intent once its last waypoint is reached. An approach
+trims the route where it first comes within range of the target. Only a start
+already within range counts as arrival and stops the player; an approach without
+a route reports no route, and the previous path continues. Normal movement
+faces its travel direction, and an airborne player keeps its takeoff momentum
+and facing until it lands. `RefreshCharacterDimensions` remains the runtime
+entry point when a future character system changes collider dimensions.
 
 Authenticated prediction also consumes the exact carry tuple owned by
-`NetworkMovementSession`. The shared simulation allows sprint at exactly 100
-percent capacity, disables sprint above it, and linearly reduces movement to
-`0.20` at the 140 percent hard cap. An involuntary death overflow above the hard
-cap is a valid carry tuple and stays at `0.20`. A reliable newer revision is applied before
-subsequent prediction and reconciliation replay. The temporary F2 panel exposes
-weight, capacity, item-state revision, movement percentage, and sprint
-eligibility for observation without becoming inventory state or authority.
+`NetworkMovementSession`. The shared simulation keeps full walking speed through
+100 percent capacity and linearly reduces it to `0.20` at the 140 percent hard
+cap. An involuntary death overflow above the hard cap is a valid carry tuple and
+stays at `0.20`. A reliable newer revision is applied before subsequent
+prediction and reconciliation replay. The temporary F2 panel exposes weight,
+capacity, item-state revision, and movement percentage for observation without
+becoming inventory state or authority.
 
 `RealtimeSimulationClient.TrySendItemOperation` accepts only a typed Phase 8
 protocol intent while joined and sends it on the reliable ordered control path.
@@ -565,8 +588,8 @@ implementation. It creates runtime uGUI below a World-scene controller and reads
 the persistent state without embedding API, protocol, revision, or item-rule
 ownership. `B` toggles character storage only, `C` toggles equipment plus
 character storage, and `I` toggles the complete Development view with contextual
-storage. Pressing a different inventory key switches modes, `Escape` closes the
-panel, and the camera releases pointer capture while it is open. Equipment,
+storage. Pressing a different inventory key switches modes, and `Escape` closes
+the panel. Clicks on the panel never reach the world. Equipment,
 Context, and Character Inventory each own a separate panel root at fixed anchors.
 Mode changes affect root visibility only and never rewrite another module's
 layout.
@@ -591,7 +614,7 @@ Recovery item represents its complete delivery during a drag because the durable
 claim remains atomic.
 
 The panel displays authoritative weight, capacity, load, movement multiplier,
-sprint eligibility, and item-state revision. A UI-only target advisor reuses pure
+and item-state revision. A UI-only target advisor reuses pure
 WorldData equipment, stack, Bag, Secure Container, slot-tag, weight, and hard-cap
 rules to disable obvious invalid targets. Server authority always revalidates any
 submitted action, and the client never applies an optimistic custody change.
@@ -625,7 +648,8 @@ refresh because its response contains no character revision or carry change.
 `CorpsePresentationController` creates one replaceable generic capsule for every
 nearby presence entry and updates it from server position and presentation key.
 It uses a shared renderer property block and never creates per-frame materials.
-Pressing `E` opens the nearest corpse within the configured three-metre range.
+A click on a corpse walks the player into range and opens it through the shared
+pointer targeting described below.
 No authored scene or prefab object is required for the temporary presentation.
 
 The Context module switches to Corpse when an open snapshot arrives. It renders
@@ -691,11 +715,14 @@ is opened once and baked once for each of them; its authored World id must be
 one of those Worlds.
 
 For network movement, input is sampled at the server-provided tick rate and each
-command receives an input sequence and client tick. The local state is predicted
-immediately and up to four newest unacknowledged commands are sent in each batch.
-On an authoritative owner snapshot, `ClientMovementPrediction` removes
-acknowledged commands, starts from the server state, and replays the remaining
-commands.
+command receives an input sequence, a client tick, and the id of the path the
+player follows, or 0 while it stands. The local state is predicted immediately
+and up to four newest unacknowledged commands are sent in each batch, together
+with the path of the newest command until an owner snapshot reports that path
+id. On an authoritative owner snapshot, `ClientMovementPrediction` removes
+acknowledged commands, starts from the server state including its path
+progress, and replays the remaining commands. Client and worker follow the same
+waypoints, so a replay reaches the same result.
 Prediction and reconciliation replay share one reusable collision-query
 workspace, avoiding per-step broadphase collection allocation without changing
 the deterministic movement result.
@@ -745,35 +772,27 @@ larger network stall it restores the intended buffer delay instead of retaining
 permanent extra latency. A reliable despawn removes the matching view
 immediately. Missing unreliable snapshots never decide entity lifetime.
 
-`ThirdPersonCameraController` consumes look input continuously while the gameplay
-cursor is captured. F1 switches between captured shooter input and a released
-debug cursor. The inventory panel independently releases capture while open and
-restores the applicable debug or gameplay cursor state when closed. The
-component and Camera live on the LocalPlayerCamera child owned by the LocalPlayer
-prefab. Normal framing uses a 1.1 meter right-shoulder offset,
-a 0.45 meter vertical offset, a 4.75 meter follow distance, and a 12 degree
-initial pitch. Aim changes the offsets to 1.3 and 0.35 meters, moves the camera
-to 4.25 meters, and reduces FOV from 60 to 45 degrees using a
-frame-rate-independent transition. Player-controlled camera zoom is not
-supported. Vertical input is clamped from -50 to 75 degrees. Camera orbit uses
-the single CameraTarget pivot. A
-non-allocating spherecast follows the complete offset camera path, moves the
-camera in front of obstructions, and filters the local player hierarchy.
+`OrbitCameraController` lives with the Camera on the LocalPlayerCamera child
+owned by the LocalPlayer prefab and orbits the single CameraTarget pivot.
+Dragging with the middle mouse button turns and tilts it at 0.25 degrees per
+pixel, and the arrow keys turn it at 120 and tilt it at 60 degrees per second.
+Tilt is clamped from 10 to 80 degrees. The scroll wheel changes the zoom
+distance by 15 percent per notch between 3 and 30 meters, and the applied
+distance eases toward it. The camera starts 12 meters away at a 40 degree tilt
+behind the player, with a 55 degree field of view. A non-allocating spherecast
+from the pivot pulls the camera in front of obstructions at once and eases it
+back out, and it filters the local player hierarchy. Scrolling over interface
+does not zoom. The cursor is never locked or hidden.
 
-`CrosshairDefinition` is a gameplay-facing value type with shape, size,
-thickness, gap, and color. `CrosshairController` owns the active definition and
-dynamic spread and exposes change APIs for future equipment and weapon systems.
-`CrosshairPanel` only presents that state through the current temporary IMGUI
-layer. The controller defaults to the unarmed dot and does not depend on the UI
-implementation.
+`MovementDestinationMarker` is replaceable presentation that the bootstrap adds
+to every World scene. It shows a flat, collider-free disc at the destination of
+the path the predicted player still follows.
 
-The current network simulation collides with all 12 baked BoxColliders in the
-test map, including the rotated ramp, steps, cover, and boundaries. The capsule
+The network simulation collides with every baked BoxCollider of the selected
+World, including rotated ramps, steps, cover, and boundaries. The capsule
 dimensions, slope limit, step height, ground snap distance, and substep budget
-come from the validated server join settings. Direct scene preview still uses
-Unity CharacterController against the authored scene colliders as an offline
-authoring check. Authenticated movement does not use CharacterController to
-decide network position.
+come from the validated server join settings. Movement never uses Unity
+CharacterController or PhysX to decide network position.
 
 ## Phase 12 World Actor And Interaction Client
 
@@ -786,7 +805,7 @@ Phase 12 adds permanent client state below replaceable presentation:
 - `WorldInteractionClientController` owns correlated operations, the active
   authoritative interaction session, capability summaries, server closure, and
   uncertain-state cleanup.
-- `WorldInteractionTargetingController` owns advisory crosshair targeting
+- `WorldInteractionTargetingController` owns advisory pointer targeting
   against registered NPC, corpse, and future world-object views.
 - `WorldActorView` provides presentation identity and target registration.
   `NpcView` and `MobView` add kind-specific presentation hooks without actor
@@ -807,7 +826,7 @@ Phase 12 adds permanent client state below replaceable presentation:
   permanent controller and capability contracts.
 
 The actor and interaction messages introduced through protocol version `13`
-remain part of current protocol version `14`. The persistent realtime client
+remain part of current protocol version `15`. The persistent realtime client
 decodes them through the shared GameProtocol source and keeps the existing
 explicit mismatch path for older or partially updated clients.
 Phase 13 adds typed insurance apply or remove and quest accept or abandon
@@ -816,7 +835,7 @@ item interaction transport.
 
 Phase 14 requires no protocol bump or parallel Mob-loot controller. The existing
 corpse presence and nullable source-character contracts represent both live Mob
-and durable player or boss corpses. The same client view, crosshair target,
+and durable player or boss corpses. The same client view, pointer target,
 operation journal, canonical three-section snapshot, committed delta, inventory
 refresh, and reconnect cleanup paths remain authoritative.
 
@@ -825,11 +844,18 @@ packet, scene object, prefab, inspector reference, or presentation flow. The
 licensed EditMode and PlayMode suites remain the regression gate for the
 persistent inventory, corpse, actor, interaction, and bootstrap ownership above.
 
-The `E` input action requests interaction with the current crosshair target or
-closes the current NPC or corpse interaction.
-Client selection checks a direct centre ray first and then a `0.15` metre
-spherecast tolerance among registered targets within a `6.0` metre discovery
-distance. The result only chooses an intent. SimulationWorker independently owns
+The pointer selects targets: a direct ray through the cursor first, then a
+`0.15` metre spherecast tolerance, among registered targets within `100` metres
+of the camera that no solid collider hides. The targeting controller is an
+`IWorldClickHandler` of the local player, so a left click on a target never
+becomes a walk to the ground behind it. The click instead approaches the target:
+the player walks until it is within `2.75` metres, inside the worker's start
+range, and the controller sends the open intent once the authoritative owner
+position is that close. A newer click or stop cancels the approach. A target
+without a route gives up at once with a message, and an approach that ends out
+of range gives up after 1.5 seconds. Clicking another
+target first closes the active interaction, and the cancel action, Escape,
+closes it. The result only chooses an intent. SimulationWorker independently owns
 the `3.0` metre start range, `3.5` metre maintain range, closest-point bounds
 distance, line of sight, target revision, capability, and session validation.
 
@@ -883,12 +909,13 @@ when changing definitions, spawn source, or the presentation registry asset.
 
 EditMode tests cover client session cleanup, operation serialization, structured
 Problem Details parsing, diagnostic prefix formatting, configuration loading,
-PlayerInput action binding, invalid array rejection, dynamic crosshair
-configuration, local reconciliation, redundant input batches, remote
-interpolation, collision resource loading, authored player prefab contracts, and
-development-world scene composition. They also execute the shared encumbrance
-reference points, sprint threshold, movement prediction, and monotonic carry-revision
-handling used by SimulationWorker. Phase 8 EditMode coverage also round-trips
+PlayerInput action binding, invalid array rejection, local reconciliation,
+redundant input batches with the unconfirmed path, background route planning
+with intent and path ids, remote interpolation, collision resource loading,
+authored player prefab and orbit camera contracts, and development-world scene
+composition. They also execute the shared encumbrance reference points, movement
+prediction, the movement and planner determinism fingerprints, and monotonic
+carry-revision handling used by SimulationWorker. Phase 8 EditMode coverage also round-trips
 typed Secure Container intents and committed item results without adding client
 authority fields. Phase 9 coverage loads the real bundled gameplay and
 presentation catalogs, verifies cache reuse and mismatch rejection, validates
@@ -963,6 +990,9 @@ Manual flows and expected results are documented in
 - Keep authored collision in `WorldData`; never duplicate scene geometry as
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.
+- Plan routes only through `LocalPlayerNavigator` and the shared planner, and
+  route world clicks through `IWorldClickHandler` and `WorldPointerFocus` instead
+  of reading the mouse in feature code.
 - Keep persistent cross-scene session state in `ClientSession` and
   item and corpse state in their bootstrap-owned controllers, not scene panels.
 - Keep planned actor and world-interaction state in bootstrap-owned controllers,

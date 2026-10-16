@@ -8,7 +8,7 @@ using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SharedTests
 {
-    // Golden wire cases for realtime protocol version 14. Compiled into both the Unity
+    // Golden wire cases for realtime protocol version 15. Compiled into both the Unity
     // EditMode tests and the .NET backend tests, so both runtimes must produce and accept
     // exactly these bytes. Change a vector only together with an intended protocol change
     // and a protocol version bump.
@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 14;
+        public const ushort PinnedVersion = 15;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -265,7 +265,7 @@ namespace Mmorpg.SharedTests
             Expect(failures, "UnreliableReceiveChannel", RealtimeProtocol.UnreliableReceiveChannel, (byte)0);
             Expect(failures, "ChannelCount", RealtimeProtocol.ChannelCount, (byte)2);
             Expect(failures, "MaximumInputBatchSize", RealtimeProtocol.MaximumInputBatchSize, 4);
-            Expect(failures, "OwnerSimulationSnapshotPacketSize", RealtimeProtocol.OwnerSimulationSnapshotPacketSize, 48);
+            Expect(failures, "OwnerSimulationSnapshotPacketSize", RealtimeProtocol.OwnerSimulationSnapshotPacketSize, 54);
             Expect(failures, "MaximumSnapshotEntitiesPerChunk", RealtimeProtocol.MaximumSnapshotEntitiesPerChunk, 24);
             Expect(failures, "SimulationSnapshotPacketHeaderSize", RealtimeProtocol.SimulationSnapshotPacketHeaderSize, 20);
             Expect(failures, "SimulationSnapshotEntitySize", RealtimeProtocol.SimulationSnapshotEntitySize, 41);
@@ -275,6 +275,7 @@ namespace Mmorpg.SharedTests
             Expect(failures, "Limits.MaximumSlotTagLength", RealtimeProtocolLimits.MaximumSlotTagLength, 64);
             Expect(failures, "Limits.MaximumSlotTags", RealtimeProtocolLimits.MaximumSlotTags, 16);
             Expect(failures, "Limits.MaximumDefinitionIdLength", RealtimeProtocolLimits.MaximumDefinitionIdLength, 128);
+            Expect(failures, "Limits.MaximumMovementPathWaypoints", RealtimeProtocolLimits.MaximumMovementPathWaypoints, 32);
 
             ExpectEnum<RealtimeMessageType>(
                 failures,
@@ -284,7 +285,6 @@ namespace Mmorpg.SharedTests
                 + "CorpseInteractionIntent=16 CorpseInteractionResult=17 CorpseViewStateChunk=18 CorpseViewClosed=19 "
                 + "WorldActorSpawn=20 WorldActorState=21 WorldActorDespawn=22 WorldInteractionIntent=23 "
                 + "WorldInteractionOpened=24 WorldInteractionResult=25 WorldInteractionClosed=26 OwnerSimulationSnapshot=27");
-            ExpectEnum<RealtimeMovementButtons>(failures, "None=0 Sprint=1 Jump=2 Aim=4");
             ExpectEnum<RealtimeEntityKind>(failures, "Player=1");
             ExpectEnum<RealtimeItemOperationKind>(
                 failures,
@@ -307,7 +307,7 @@ namespace Mmorpg.SharedTests
                 "None=0 ApplyInsurance=1 RemoveInsurance=2 AcceptQuest=3 AbandonQuest=4");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 0e 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 0f 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);

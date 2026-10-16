@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 14,
+    "version": 15,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -56,6 +56,12 @@
       "value": 4,
       "visibility": "protocol",
       "description": "Movement inputs in one batch."
+    },
+    {
+      "name": "MaximumMovementPathWaypoints",
+      "value": 32,
+      "visibility": "public",
+      "description": "Waypoints in one movement path; equals MovementPath.MaximumWaypoints in GameSimulation."
     },
     {
       "name": "MaximumSnapshotEntitiesPerChunk",
@@ -186,18 +192,6 @@
   ],
   "enums": [
     {
-      "name": "MovementButtons",
-      "family": "Movement",
-      "flags": true,
-      "description": "Movement buttons held during one input tick.",
-      "values": [
-        { "name": "None", "value": 0 },
-        { "name": "Sprint", "value": 1 },
-        { "name": "Jump", "value": 2 },
-        { "name": "Aim", "value": 4 }
-      ]
-    },
-    {
       "name": "EntityKind",
       "family": "Replication",
       "description": "The kind of a replicated simulation entity.",
@@ -322,8 +316,7 @@
           "type": "bits8",
           "description": "Movement state bits.",
           "bits": [
-            { "name": "IsGrounded", "description": "The player stands on walkable ground." },
-            { "name": "IsSprinting", "description": "The player moves at sprint speed." }
+            { "name": "IsGrounded", "description": "The player stands on walkable ground." }
           ]
         }
       ]
@@ -354,11 +347,6 @@
           "description": "Walking speed in meters per second."
         },
         {
-          "name": "SprintSpeed",
-          "type": "f32",
-          "description": "Sprinting speed in meters per second; at least the walking speed."
-        },
-        {
           "name": "RotationSpeedDegrees",
           "type": "f32",
           "exclusiveMinimum": 0,
@@ -375,12 +363,6 @@
           "type": "f32",
           "exclusiveMinimum": 0,
           "description": "Terminal fall speed in meters per second."
-        },
-        {
-          "name": "JumpVelocity",
-          "type": "f32",
-          "exclusiveMinimum": 0,
-          "description": "Upward velocity of a jump in meters per second."
         },
         {
           "name": "GroundedVerticalVelocity",
@@ -449,15 +431,61 @@
     {
       "name": "MovementInput",
       "family": "Movement",
-      "rules": true,
-      "description": "One tick of movement input. The move vector is at most one unit long.",
+      "description": "One tick of movement intent: the path the player follows.",
       "fields": [
         { "name": "InputSequence", "type": "u32", "description": "Increases by one with every input." },
         { "name": "ClientTick", "type": "u32", "description": "The client simulation tick of the input." },
-        { "name": "MoveX", "type": "f32", "description": "Sideways axis of the move vector." },
-        { "name": "MoveY", "type": "f32", "description": "Forward axis of the move vector." },
-        { "name": "CameraYawDegrees", "type": "f32", "description": "Camera facing in degrees." },
-        { "name": "Buttons", "type": "MovementButtons", "description": "The held movement buttons." }
+        {
+          "name": "PathId",
+          "type": "u32",
+          "description": "The movement path to follow, or 0 to stand still."
+        }
+      ]
+    },
+    {
+      "name": "MovementPathWaypoint",
+      "family": "Movement",
+      "description": "One waypoint of a movement path, on the walkable surface.",
+      "fields": [
+        { "name": "X", "type": "f32", "description": "World position on the x axis in meters." },
+        { "name": "Y", "type": "f32", "description": "World position on the y axis in meters." },
+        { "name": "Z", "type": "f32", "description": "World position on the z axis in meters." }
+      ]
+    },
+    {
+      "name": "MovementPath",
+      "family": "Movement",
+      "description": "A client-planned path. The worker validates it and moves along it with authoritative collision.",
+      "fields": [
+        { "name": "PathId", "type": "u32", "minimum": 1, "description": "Identifies the path within the session." },
+        {
+          "name": "Waypoints",
+          "type": "array",
+          "items": "MovementPathWaypoint",
+          "minCount": 1,
+          "maxCount": "MaximumMovementPathWaypoints",
+          "description": "The waypoints after the start, in order."
+        }
+      ]
+    },
+    {
+      "name": "MovementPathProgress",
+      "family": "Movement",
+      "rules": true,
+      "description": "How far the owner has followed its movement path. Without a path, the index and the blocked ticks are 0.",
+      "fields": [
+        { "name": "PathId", "type": "u32", "description": "The followed path, or 0 for none." },
+        {
+          "name": "NextWaypointIndex",
+          "type": "u8",
+          "maximum": "MaximumMovementPathWaypoints",
+          "description": "The waypoint the owner moves toward; the waypoint count once the path ended."
+        },
+        {
+          "name": "BlockedTicks",
+          "type": "u8",
+          "description": "Consecutive ticks in which collision blocked the path."
+        }
       ]
     },
     {
@@ -860,8 +888,9 @@
       "direction": "clientToServer",
       "channel": "MovementInputChannel",
       "delivery": "sequenced",
-      "description": "The newest movement inputs, oldest first.",
-      "api": "unwrap",
+      "description": "The newest movement inputs, oldest first, and the path of the newest input until the worker confirmed it.",
+      "parameter": "batch",
+      "rules": true,
       "fields": [
         {
           "name": "Inputs",
@@ -870,6 +899,12 @@
           "minCount": 1,
           "maxCount": "MaximumInputBatchSize",
           "description": "The newest inputs, oldest first. Each input is sent in several batches."
+        },
+        {
+          "name": "Path",
+          "type": "MovementPath",
+          "optional": true,
+          "description": "The path of the newest input; its id equals that input's path id."
         }
       ]
     },
@@ -1955,7 +1990,12 @@
           "type": "u32",
           "description": "The newest input sequence the worker applied."
         },
-        { "name": "State", "type": "PlayerState", "description": "The owner's authoritative movement state." }
+        { "name": "State", "type": "PlayerState", "description": "The owner's authoritative movement state." },
+        {
+          "name": "PathProgress",
+          "type": "MovementPathProgress",
+          "description": "The owner's progress along its movement path."
+        }
       ]
     }
   ]

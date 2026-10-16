@@ -275,7 +275,7 @@ namespace Mmorpg.GameProtocol
 
         private static int SizeOfJoinAccepted(RealtimeJoinAccepted value)
         {
-            var size = 139;
+            var size = 131;
             size += StringSize(value.SimulationSessionId);
             size += StringSize(value.AccountId);
             size += StringSize(value.CharacterId);

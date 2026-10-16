@@ -314,16 +314,9 @@ public sealed class RealtimeSimulationServiceTests
                             new PlayerCarryState(1, 210, 200),
                             out _));
                     peer.Send(
-                        RealtimeProtocol.EncodeMovementInputBatch(new[]
-                        {
-                            new RealtimeMovementInput(
-                                1,
-                                1,
-                                0f,
-                                1f,
-                                0f,
-                                RealtimeMovementButtons.Sprint)
-                        }),
+                        RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
+                            [new RealtimeMovementInput(1, 1, 1)],
+                            new RealtimeMovementPath(1, [new RealtimeMovementPathWaypoint(0f, 0f, 10f)]))),
                         RealtimeProtocol.MovementInputChannel,
                         DeliveryMethod.Sequenced);
                     return;
@@ -352,7 +345,7 @@ public sealed class RealtimeSimulationServiceTests
                     var joined = joinAccepted.Task.GetAwaiter().GetResult();
                     if (snapshot.LastProcessedInputSequence == 1
                         && snapshot.State.PositionZ > -1f
-                        && !snapshot.State.IsSprinting
+                        && snapshot.PathProgress.PathId == 1
                         && carryStateChanged.Task.IsCompletedSuccessfully
                         && movementSnapshot.TrySetResult(snapshot))
                     {
@@ -452,8 +445,9 @@ public sealed class RealtimeSimulationServiceTests
             Assert.Equal(1, carryState.ItemStateRevision);
             Assert.Equal(210, carryState.CarriedWeight);
             Assert.Equal(200, carryState.CarryCapacity);
-            Assert.False(movedPlayer.State.IsSprinting);
+            // The committed 210 of 200 carry weight slows walking to 90 percent.
             Assert.Equal(4.5f, movedPlayer.State.VelocityZ, 3);
+            Assert.Equal(0, movedPlayer.PathProgress.NextWaypointIndex);
             Assert.Equal(0.35f, joined.MovementSettings.CharacterRadius);
             Assert.Equal(55f, joined.MovementSettings.MaximumFallSpeed);
             Assert.Equal(1u, movedPlayer.LastProcessedInputSequence);
@@ -601,14 +595,11 @@ public sealed class RealtimeSimulationServiceTests
             TimeSpan.FromSeconds(2),
             TimeSpan.FromMilliseconds(5),
             15,
-            TimeSpan.FromMilliseconds(500),
             new MovementSimulationSettings(
                 30,
                 5f,
-                8f,
                 720f,
                 -24f,
-                7f,
                 -2f,
                 0f,
                 -14f,

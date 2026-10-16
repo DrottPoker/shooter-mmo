@@ -342,9 +342,10 @@ queues, and central fixed-step or coarse-schedule batches.
 
 ## Interaction Targeting And Input
 
-The player's interaction action is `E`. The crosshair supplies the intended
-target, but target selection is advisory because a client cannot be trusted as a
-security boundary.
+The player's interaction action is a left click on the target under the
+pointer, which walks the player into range before it asks the worker to open the
+interaction. Escape closes it. Target selection is advisory because a client
+cannot be trusted as a security boundary.
 
 One reusable client target system serves:
 
@@ -365,15 +366,18 @@ The initial shared interaction values are:
 
 | Rule | Value |
 | --- | --- |
-| Client discovery distance | `6.0` metres |
+| Client pointer range from the camera | `100` metres |
+| Client approach distance | `2.75` metres |
 | Authoritative start range | `3.0` metres |
 | Authoritative maintain range | `3.5` metres |
 | Client spherecast tolerance | `0.15` metres |
 
-The client checks a crosshair-centred ray first and may use a small spherecast to
-make thin or animated presentation targets practical. It ranks only registered
-interactable views and provides a prompt for the best unobstructed candidate.
-The discovery distance does not grant authority to open an interaction.
+The client checks a ray through the pointer first and may use a small spherecast
+to make thin or animated presentation targets practical. It ranks only
+registered interactable views and provides a prompt for the best unobstructed
+candidate. A click walks the player to the approach distance, inside the start
+range, and sends the open intent once the authoritative owner position is that
+close. The pointer range does not grant authority to open an interaction.
 
 The start range is the player's base interaction range. The maintain range adds
 small hysteresis so movement and reconciliation near the boundary do not flicker
@@ -460,8 +464,8 @@ The Unity foundation separates permanent state from replaceable presentation:
 - `WorldInteractionClientController` owns target observation, operation
   correlation, the active authoritative interaction session, closure, and
   reconnect cleanup.
-- `WorldInteractionTargetingController` performs advisory crosshair targeting
-  against registered presentation targets.
+- `WorldInteractionTargetingController` performs advisory pointer targeting
+  against registered presentation targets and approaches a clicked target.
 - `WorldActorView` is the presentation base for actor identity and target bounds.
 - `NpcView` and `MobView` provide kind-specific presentation hooks without
   owning authority.
@@ -482,9 +486,9 @@ registered capability adapter. Phase 12 may present capabilities whose business
 handler is intentionally deferred, but it must label that state clearly and
 must not fake a successful transaction.
 
-The current crosshair remains presentation-only. Target highlighting and prompt
-color are advisory. Closing the panel restores the normal camera and pointer
-behavior through the existing input and UI coordination foundation.
+Pointer targeting remains advisory. Target highlighting and prompt color are
+presentation only. The cursor is always free, so opening or closing the panel
+never changes camera or pointer behavior.
 
 ## Unity Editor Authoring UX
 
@@ -661,8 +665,8 @@ The manual acceptance gate must prove:
    canonical change, and compile successfully.
 3. Create and place one Mob definition through the same tools.
 4. Restart SimulationWorker and verify both actors reconstruct from WorldData.
-5. Join with Unity, point the crosshair at the NPC from within `3.0` metres, and
-   press `E`.
+5. Join with Unity and left-click the NPC. The player walks into range before the
+   interaction opens.
 6. Verify the temporary uGUI lists the authoritative capability summary.
 7. Try from outside start range and through blocking collision and observe the
    stable rejection without opening local state.
@@ -676,7 +680,7 @@ The manual acceptance gate must prove:
 
 Phase 12 is complete only when content creators can create new NPC and Mob
 definitions, compose existing NPC capabilities, place and verify spawns visually,
-and exercise authoritative crosshair interaction without adding a new runtime
+and exercise authoritative targeted interaction without adding a new runtime
 actor class or a database row per actor.
 
 Phase 12 explicitly stops before:

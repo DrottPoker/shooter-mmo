@@ -103,18 +103,13 @@ internal sealed class RealtimeRecordingClient : IDisposable
         Send(RealtimeProtocol.EncodeLeaveRequest(simulationSessionId));
     }
 
-    public void SendMovement(uint inputSequence, float moveX, float moveY)
+    // Every call names path 1, so the worker keeps the first destination it received.
+    public void SendMoveTo(uint inputSequence, float x, float z)
     {
         Send(
-            RealtimeProtocol.EncodeMovementInputBatch([
-                new RealtimeMovementInput(
-                    inputSequence,
-                    inputSequence,
-                    moveX,
-                    moveY,
-                    0f,
-                    RealtimeMovementButtons.None)
-            ]),
+            RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
+                [new RealtimeMovementInput(inputSequence, inputSequence, 1)],
+                new RealtimeMovementPath(1, [new RealtimeMovementPathWaypoint(x, 0f, z)]))),
             DeliveryMethod.Sequenced,
             RealtimeProtocol.MovementInputChannel);
     }

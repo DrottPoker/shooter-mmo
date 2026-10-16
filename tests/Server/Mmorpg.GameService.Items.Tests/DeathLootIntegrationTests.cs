@@ -574,7 +574,6 @@ public sealed class DeathLootIntegrationTests
             consumed.Value.ItemStateRevision,
             consumed.Value.CarriedWeight,
             consumed.Value.CarryCapacity);
-        Assert.False(workerCarry.SprintAllowed);
         Assert.Equal(
             EncumbranceRules.MinimumMovementMultiplierBasisPoints,
             workerCarry.MovementMultiplierBasisPoints);

@@ -18,11 +18,9 @@ internal static class RealtimeStateMapper
             (ushort)settings.TickRateHz,
             (ushort)config.SnapshotRateHz,
             settings.WalkSpeed,
-            settings.SprintSpeed,
             settings.RotationSpeedDegrees,
             settings.Gravity,
             settings.MaximumFallSpeed,
-            settings.JumpVelocity,
             settings.GroundedVerticalVelocity,
             settings.GroundHeight,
             settings.MinimumX,
@@ -48,8 +46,15 @@ internal static class RealtimeStateMapper
             state.VelocityY,
             state.VelocityZ,
             state.YawDegrees,
-            state.IsGrounded,
-            state.IsSprinting);
+            state.IsGrounded);
+    }
+
+    public static RealtimeMovementPathProgress ToRealtimePathProgress(MovementPathProgress progress)
+    {
+        return new RealtimeMovementPathProgress(
+            progress.PathId,
+            (byte)progress.NextWaypointIndex,
+            (byte)progress.BlockedTicks);
     }
 
     public static RealtimeCarryState ToRealtimeCarryState(PlayerCarryState carryState)

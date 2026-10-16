@@ -85,7 +85,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   swaps, committed viewer deltas, and no database transaction held across a
   client network wait.
 - Exact-session carry-state admission and heartbeat propagation, with base and
-  Bag capacity, monotonic item-state revisions, authoritative sprint limits, and
+  Bag capacity, monotonic item-state revisions, authoritative movement speed, and
   one shared encumbrance calculation for SimulationWorker and Unity prediction.
 - A persistent Unity inventory controller with one bundled gameplay and
   presentation catalog cache, monotonic complete and focused snapshots,
@@ -99,7 +99,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   equipment destinations.
 - Persistent Unity corpse presence and view state with complete chunk assembly,
   monotonic deltas, stable closure handling, a generic replaceable capsule,
-  `E` proximity interaction, and typed bidirectional drag-and-drop transfers.
+  click-to-open interaction, and typed bidirectional drag-and-drop transfers.
 - OpenTelemetry metrics, logs, and traces from both server processes, exported
   over OTLP to a local Collector, Prometheus, Loki, Tempo, and Grafana stack with
   a playtest dashboard, a GameService dashboard, and tested Prometheus alert
@@ -146,7 +146,7 @@ absolute expiry, and restart restoration. SimulationWorker and Unity now expose
 the concurrent interactive corpse loop over that durable authority. The combat
 death producer, final corpse art, and final UI art remain later phases. The
 scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
-deterministic WorldData, protocol version `14`, bounded worker state, existing
+deterministic WorldData, protocol version `15`, bounded worker state, existing
 spatial interest, server-authoritative interaction sessions, shared corpse
 targeting, typed insurance and quest item-lifecycle handlers, and permanent
 Unity state below a temporary uGUI panel. Normal live Mob corpses and selected

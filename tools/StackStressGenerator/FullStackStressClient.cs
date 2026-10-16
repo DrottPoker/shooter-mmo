@@ -471,7 +471,6 @@ public sealed record FullStackCharacterInventoryResponse(
     long CarriedWeight,
     long CarryCapacity,
     int LoadRatioBasisPoints,
-    bool SprintEligible,
     int MovementMultiplierBasisPoints);
 
 public sealed record FullStackStackStressInventoryFixtureRequest(

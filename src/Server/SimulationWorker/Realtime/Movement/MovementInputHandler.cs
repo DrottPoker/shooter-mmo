@@ -22,7 +22,7 @@ internal sealed class MovementInputHandler(
             return;
         }
 
-        if (!RealtimeProtocol.TryDecodeMovementInputBatch(packet, out var inputs, out var movementError))
+        if (!RealtimeProtocol.TryDecodeMovementInputBatch(packet, out var batch, out var movementError))
         {
             sender.RejectProtocol(
                 peer,
@@ -32,6 +32,13 @@ internal sealed class MovementInputHandler(
             return;
         }
 
-        playerEntity.Movement.AcceptInputs(inputs);
+        if (playerEntity.Movement.AcceptInputs(batch) == MovementInputAcceptance.UnknownPath)
+        {
+            sender.RejectProtocol(
+                peer,
+                context,
+                "unknown_movement_path",
+                "The movement input names a path the worker never received.");
+        }
     }
 }
