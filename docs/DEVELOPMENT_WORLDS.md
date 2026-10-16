@@ -1,6 +1,6 @@
 # Development Worlds
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -22,7 +22,8 @@ persists that binding only when the shard is offline and drained. Both Worlds
 remain reusable content.
 
 The client catalog maps `development-world-2` to `DevelopmentWorld2`, and both
-development scenes are enabled in Build Profiles.
+development scenes are Addressables World scenes. Build Profiles contain only
+LoginMenu and CharacterSelect.
 
 ## Development World 2 Layout Contract
 
@@ -102,9 +103,10 @@ touching `Gameplay`, actor authoring, or actor runtime content.
 7. Confirm the Console reports a successful bake for
     `development-world-2`. The bake must create
     `content/worlds/development-world-2/collision.json` and
-    `src/Shared/WorldData/Generated/Resources/WorldCollision/development-world-2`.
-8. Keep `DevelopmentWorld2` enabled in `File > Build Profiles`, after
-   `LoginMenu` and `CharacterSelect`.
+    `src/Shared/WorldData/Generated/WorldCollision/development-world-2`.
+8. Keep `DevelopmentWorld2` an entry with the address `DevelopmentWorld2` in the
+   `World Scenes` Addressables group, and out of `File > Build Profiles`. `MMORPG
+   > Tools > Addressables > Apply Client Layout` restores both.
 
 Expected result: Development World 1 remains playable, Development World 2 has
 86 authoritative boxes in 256 chunks, and actor authoring files remain
@@ -122,8 +124,8 @@ powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 
 Expected result: the collision verifier checks every World and reports
 `development-world-2` with 256 chunks and a deterministic revision, and all Unity EditMode and
-PlayMode tests pass. `Bake Build World Scenes` also verifies every
-catalog-to-Build Profiles mapping before writing collision output.
+PlayMode tests pass. `Bake World Scenes` also verifies every catalog mapping
+to an Addressables World scene before writing collision output.
 
 The authored baseline has passed review. The local worker configuration now
 requests Development World 2 for `local-shard-1`. Future changes between

@@ -33,8 +33,9 @@ namespace Mmorpg.WorldData.Content
         public const string WorldActorsFileName = "world-actors.json";
         public const string CollisionManifestFileName = "manifest.json";
 
-        // Unity loads collision through Resources.Load("WorldCollision/<world>/manifest").
-        public const string CollisionResourceDirectoryName = "WorldCollision";
+        // Unity loads collision as Addressables whose addresses mirror this directory:
+        // "WorldCollision/<world>/manifest.json" and "WorldCollision/<world>/<chunk>.bytes".
+        public const string CollisionDirectoryName = "WorldCollision";
 
         public const int MaximumDefinitionIdLength = 128;
 
@@ -143,7 +144,7 @@ namespace Mmorpg.WorldData.Content
 
         public static string GeneratedCollisionRoot(string generatedRoot)
         {
-            return Path.Combine(generatedRoot, "Resources", CollisionResourceDirectoryName);
+            return Path.Combine(generatedRoot, CollisionDirectoryName);
         }
 
         public static string GeneratedCollisionDirectory(string generatedRoot, string worldId)

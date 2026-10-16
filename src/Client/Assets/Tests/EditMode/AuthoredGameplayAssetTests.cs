@@ -1,8 +1,9 @@
 using System.Linq;
-using Mmorpg.Client.Collision;
-using Mmorpg.Client.Config;
+using Mmorpg.Client.Core;
+using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.WorldActors;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Editor.Actors;
@@ -73,11 +74,18 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ClientConfigReferencesBundledGameplayCatalog()
         {
-            var config = ClientConfig.Load();
-
-            Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
-            Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"catalogId\""));
-            Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"revision\""));
+            var config = ClientConfig.Load(out var handle);
+            try
+            {
+                Assert.That(handle.IsValid(), Is.True);
+                Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
+                Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"catalogId\""));
+                Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"revision\""));
+            }
+            finally
+            {
+                ClientAssets.Release(handle);
+            }
         }
 
         [Test]
@@ -417,8 +425,8 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EveryAuthoredActorArchetypeHasAPresentationPrefab()
         {
-            var registry = Resources.Load<WorldActorPresentationRegistry>(
-                WorldActorPresentationController.RegistryResourcePath);
+            var registry = AssetDatabase.LoadAssetAtPath<WorldActorPresentationRegistry>(
+                ClientAddresses.ContentRoot + ClientAddresses.WorldActorPresentationRegistry);
             Assert.That(registry, Is.Not.Null);
             var workspace = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault()).Load();
             var compiled = WorldActorCompiler.Compile(
@@ -429,8 +437,15 @@ namespace Mmorpg.Client.Tests.EditMode
             foreach (var actor in compiled.Actors)
             {
                 Assert.That(
-                    registry.TryResolve(actor.PresentationArchetypeId, out var prefab),
+                    registry.TryResolve(actor.PresentationArchetypeId, out var reference),
                     Is.True,
+                    actor.PresentationArchetypeId);
+                var prefab = reference.editorAsset;
+                Assert.That(prefab, Is.Not.Null, actor.PresentationArchetypeId);
+                // The prefab folder is an Addressables folder entry, so the reference loads.
+                Assert.That(
+                    AssetDatabase.GetAssetPath(prefab),
+                    Does.StartWith(ClientAddressablesLayout.WorldActorPrefabFolder + "/"),
                     actor.PresentationArchetypeId);
                 // Presentation never takes part in physics or crosshair raycasts.
                 Assert.That(

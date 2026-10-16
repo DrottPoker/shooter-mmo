@@ -18,17 +18,20 @@ namespace Mmorpg.Client.Tests.EditMode
                 WorldCollisionBaker.MenuPath,
                 Does.StartWith("MMORPG/Tools/"));
             Assert.That(
-                WorldCollisionBaker.BakeBuildWorldScenesMenuPath,
+                WorldCollisionBaker.BakeWorldScenesMenuPath,
                 Does.StartWith("MMORPG/Tools/"));
             Assert.That(
                 ItemCatalogEditorWindow.MenuPath,
                 Does.StartWith("MMORPG/Tools/"));
+            Assert.That(
+                ClientAddressablesLayout.ApplyMenuPath,
+                Does.StartWith("MMORPG/Tools/"));
         }
 
         [Test]
-        public void BuildWorldBakeOpensASharedSceneOnceForEveryWorld()
+        public void WorldBakeOpensASharedSceneOnceForEveryWorld()
         {
-            var plans = WorldCollisionBaker.PlanBuildWorldBakes(
+            var plans = WorldCollisionBaker.PlanWorldBakes(
                 new[]
                 {
                     new WorldSceneCatalogEntry { worldId = "world-a", sceneName = "SharedArena" },
@@ -41,7 +44,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(plans[0].ScenePath, Is.EqualTo("Assets/Scenes/SharedArena.unity"));
             Assert.That(plans[0].WorldIds, Is.EqualTo(new[] { "world-a", "world-b" }));
             Assert.That(plans[1].WorldIds, Is.EqualTo(new[] { "world-c" }));
-            Assert.Throws<InvalidOperationException>(() => WorldCollisionBaker.PlanBuildWorldBakes(
+            Assert.Throws<InvalidOperationException>(() => WorldCollisionBaker.PlanWorldBakes(
                 new[] { new WorldSceneCatalogEntry { worldId = "world-d", sceneName = "Missing" } },
                 new[] { "Assets/Scenes/Solo.unity" }));
         }

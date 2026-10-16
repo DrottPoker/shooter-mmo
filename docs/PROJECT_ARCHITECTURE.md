@@ -45,7 +45,7 @@ root of every namespace (`Mmorpg.GameService`, `Mmorpg.SimulationWorker`,
 `Mmorpg.Server.Common`, `Mmorpg.GameProtocol`, `Mmorpg.GameSimulation`,
 `Mmorpg.WorldData`, `Mmorpg.Client`, `Mmorpg.Tools`), of the project and Unity
 assembly names, and of the Unity packages (`com.mmorpg.*`). Type names, file
-names, and Resources paths never contain the codename, so a later rename only
+names, and Addressables addresses never contain the codename, so a later rename only
 touches namespaces, project and package names, and the test environment
 variables (`MMORPG_TEST_POSTGRES`, `MMORPG_TEST_REDIS`).
 
@@ -480,7 +480,7 @@ every requested grant through `ItemTransactionService`, so catalog, slot,
 policy, revision, weight, and hard-cap authority remain in the backend.
 
 Unity owns a separate client presentation catalog keyed by stable definition id
-under `Assets/Resources/Items/Presentation`. It references icons, localization
+under `Assets/Content/Items/Presentation`, loaded through Addressables. It references icons, localization
 keys, fallback text, and optional prefab presentation keys, but cannot duplicate
 or override authoritative gameplay fields. Its deterministic presentation
 revision records the exact source gameplay revision. The client validates and
@@ -497,7 +497,10 @@ it never owns item custody or applies an optimistic mutation.
 
 `src/Client` owns presentation, input, prediction,
 reconciliation, interpolation, scene transitions, HTTP serialization, and the
-persistent UDP client. It never owns authoritative gameplay state. See
+persistent UDP client. It never owns authoritative gameplay state. Its code is
+split into nine area assemblies whose dependency direction the compiler
+enforces, and all runtime content, including World scenes and generated
+collision, loads through Addressables. See
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
 
 The F2 panel is an observation surface for the local client. It derives frame,
@@ -1135,7 +1138,7 @@ combat producer pending
   [GameService Modules](GAME_SERVICE_MODULES.md#configuration).
 - `src/Server/SimulationWorker/Config` owns worker identity, endpoint, networking,
   simulation, collision streaming, quotas, and interest settings.
-- `src/Client/Assets/Resources/Config` owns runtime Unity
+- `src/Client/Assets/Content/Config` owns runtime Unity
   endpoint and timeout configuration.
 - The ignored root `.env` owns local secrets and machine overrides.
 - `.env.example` is the committed environment contract.

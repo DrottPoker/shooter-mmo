@@ -60,7 +60,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   capacity is 200.
 - A Unity item catalog window for searchable gameplay authoring, strict shared
   validation, deterministic baking, structural-change review, and client-owned
-  icons and presentation metadata cached from a bundled Resources catalog.
+  icons and presentation metadata cached from a bundled Addressables catalog.
 - A transactional PostgreSQL item catalog mirror, constrained item custody
   schema, and idempotent empty item-state bootstrap for existing and new
   characters.
@@ -306,8 +306,8 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
 Repository-wide Compose, SDK, solution, build, and environment contracts remain
 in root. Service-specific settings live under each service's `Config` folder.
-Unity runtime settings live under `Assets/Resources/Config` with definitions in
-`Assets/Scripts/Config`.
+Unity runtime settings live under `Assets/Content/Config` with definitions in
+`Assets/Scripts/Core`.
 
 ## Documentation
 

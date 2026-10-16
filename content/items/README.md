@@ -94,11 +94,12 @@ Unity's Undo.
   the previous runtime catalog. Structural changes require explicit
   confirmation and Phase 3 persistence compatibility review.
 
-Client presentation JSON is bundled at
-`src/Client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
-It contains icon Resources paths, localization keys, fallback text, and optional
-prefab presentation keys. Icon files are client-owned assets below
-`Assets/Resources` and use one Sprite per file. The catalog has a separate
+Client presentation JSON is bundled through Addressables at
+`src/Client/Assets/Content/Items/Presentation/item-presentation-catalog.json`.
+It contains icon Addressables addresses below `Items/Icons/`, localization keys,
+fallback text, and optional prefab presentation keys. Icon files are
+client-owned assets below `Assets/Content/Items/Icons` and use one Sprite per
+file. The catalog has a separate
 deterministic presentation revision and records the exact source gameplay
 revision. These client fields never alter gameplay structural fingerprints.
 

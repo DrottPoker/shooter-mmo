@@ -1,0 +1,14 @@
+{
+  "name": "Mmorpg.Client.Api",
+  "rootNamespace": "Mmorpg.Client.Api",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -1,6 +1,7 @@
 using System;
-using Mmorpg.Client.Collision;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using NUnit.Framework;

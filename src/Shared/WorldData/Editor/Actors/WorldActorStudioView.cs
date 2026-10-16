@@ -18,7 +18,11 @@ namespace Mmorpg.WorldData.Editor.Actors
     {
         public const long LiveValidationDelayMilliseconds = 300;
         public const int MaximumCapabilities = 16;
-        public const string PresentationRegistryPath = "Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset";
+        public const string PresentationRegistryPath = "Assets/Content/WorldActors/WorldActorPresentationRegistry.asset";
+
+        // The registry stores each prefab as an Addressables reference. This folder is one
+        // Addressables folder entry, so every prefab below it can be referenced.
+        public const string PresentationPrefabFolder = "Assets/Prefabs/WorldActors";
 
         private static readonly (string Value, string Label)[] Kinds =
         {
@@ -753,7 +757,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             var registry = AssetDatabase.LoadAssetAtPath<ScriptableObject>(PresentationRegistryPath);
             if (registry == null)
             {
-                container.Add(new HelpBox("No runtime presentation registry asset exists at the canonical Resources path.", HelpBoxMessageType.Warning));
+                container.Add(new HelpBox("No runtime presentation registry asset exists at " + PresentationRegistryPath + ".", HelpBoxMessageType.Warning));
                 container.Add(new Button(() =>
                 {
                     if (CreatePresentationRegistry() != null)
@@ -770,7 +774,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             {
                 objectType = typeof(GameObject),
                 allowSceneObjects = false,
-                tooltip = "The Unity prefab of this presentation archetype, stored in the presentation registry asset."
+                tooltip = "The Unity prefab of this presentation archetype, stored as an Addressables reference in the presentation registry asset. It must be below " + PresentationPrefabFolder + "."
             };
             Action refresh = () => prefab.SetValueWithoutNotify(FindMappedPrefab(registry, SelectedPresentationId()));
             prefab.RegisterValueChangedCallback(change => SetMappedPrefab(registry, SelectedPresentationId(), change.newValue as GameObject));
@@ -1085,11 +1089,20 @@ namespace Mmorpg.WorldData.Editor.Actors
                 var entry = entries.GetArrayElementAtIndex(index);
                 if (string.Equals(entry.FindPropertyRelative("presentationArchetypeId")?.stringValue, presentationArchetypeId, StringComparison.Ordinal))
                 {
-                    return entry.FindPropertyRelative("prefab")?.objectReferenceValue as GameObject;
+                    return LoadReferencedPrefab(entry.FindPropertyRelative("prefab"));
                 }
             }
 
             return null;
+        }
+
+        // Resolves the Addressables reference stored in a registry entry's prefab field.
+        public static GameObject LoadReferencedPrefab(SerializedProperty prefabReference)
+        {
+            var guid = prefabReference?.FindPropertyRelative("m_AssetGUID")?.stringValue;
+            return string.IsNullOrEmpty(guid)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(guid));
         }
 
         // Records the prefab in the registry asset through a SerializedObject, so the change
@@ -1098,6 +1111,14 @@ namespace Mmorpg.WorldData.Editor.Actors
         {
             if (string.IsNullOrEmpty(presentationArchetypeId))
             {
+                return;
+            }
+
+            var prefabPath = prefab == null ? string.Empty : AssetDatabase.GetAssetPath(prefab);
+            if (prefab != null && !prefabPath.StartsWith(PresentationPrefabFolder + "/", StringComparison.Ordinal))
+            {
+                toolLayout.SetStatus("Presentation prefabs must be stored below " + PresentationPrefabFolder + " so they are Addressable.", HelpBoxMessageType.Error);
+                form.Refresh();
                 return;
             }
 
@@ -1127,7 +1148,18 @@ namespace Mmorpg.WorldData.Editor.Actors
 
             var selectedEntry = entries.GetArrayElementAtIndex(entryIndex);
             selectedEntry.FindPropertyRelative("presentationArchetypeId").stringValue = presentationArchetypeId;
-            selectedEntry.FindPropertyRelative("prefab").objectReferenceValue = prefab;
+            var reference = selectedEntry.FindPropertyRelative("prefab");
+            reference.FindPropertyRelative("m_AssetGUID").stringValue = prefab == null
+                ? string.Empty
+                : AssetDatabase.AssetPathToGUID(prefabPath);
+            foreach (var subObjectField in new[] { "m_SubObjectName", "m_SubObjectType", "m_SubObjectGUID" })
+            {
+                var subObject = reference.FindPropertyRelative(subObjectField);
+                if (subObject != null)
+                {
+                    subObject.stringValue = string.Empty;
+                }
+            }
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(registry);
         }
@@ -1145,14 +1177,14 @@ namespace Mmorpg.WorldData.Editor.Actors
                 return null;
             }
 
-            if (!AssetDatabase.IsValidFolder("Assets/Resources"))
+            if (!AssetDatabase.IsValidFolder("Assets/Content"))
             {
-                AssetDatabase.CreateFolder("Assets", "Resources");
+                AssetDatabase.CreateFolder("Assets", "Content");
             }
 
-            if (!AssetDatabase.IsValidFolder("Assets/Resources/WorldActors"))
+            if (!AssetDatabase.IsValidFolder("Assets/Content/WorldActors"))
             {
-                AssetDatabase.CreateFolder("Assets/Resources", "WorldActors");
+                AssetDatabase.CreateFolder("Assets/Content", "WorldActors");
             }
 
             var registry = ScriptableObject.CreateInstance(registryType);
