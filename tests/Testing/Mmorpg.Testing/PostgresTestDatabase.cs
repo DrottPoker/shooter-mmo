@@ -4,31 +4,38 @@ using Npgsql;
 
 namespace Mmorpg.Testing;
 
-// Gives every test assembly its own PostgreSQL database next to the configured base
-// database, so test projects run in parallel against one server without sharing schema,
-// rows, or advisory locks. Databases are created on demand and never dropped.
+// Gives every test its own PostgreSQL database next to the configured base database. A test
+// run builds each template database once and copies it for every lease, so tests run in
+// parallel without sharing schema, rows, or advisory locks, and no test repeats migrations.
+// For the base database <base> and the test assembly's <project> the databases are:
+//   <base>_<project>             holds the run lock and nothing else
+//   <base>_<project>_tpl_<name>  one per template, rebuilt by every run
+//   <base>_<project>_<n>         leased test databases, recreated from a template per lease
+// Databases are created on demand and never dropped at the end of a run.
 public static partial class PostgresTestDatabase
 {
     public const string ConnectionStringVariable = "MMORPG_TEST_POSTGRES";
 
-    // Session advisory lock that marks a database as used by one test run. Production code
-    // never takes this key.
+    // Session advisory lock that marks a test assembly's databases as used by one test run.
+    // Production code never takes this key.
     private const long RunLockKey = 7104202610150001;
 
-    private const int CreateAttempts = 5;
+    private const int Attempts = 5;
 
-    // One database per test process, and a test process runs exactly one test assembly.
-    // The cached result keeps the run lock connection open until the process exits.
-    private static readonly Lazy<Task<ProvisionedDatabase>> Current = new(ProvisionAsync);
+    // One run per test process, and a test process runs exactly one test assembly. The
+    // cached run keeps the run lock connection open until the process exits.
+    private static readonly Lazy<Task<TestRun>> Current = new(StartRunAsync);
 
-    // The connection string of this test assembly's database, created on first use.
-    public static async Task<string> GetConnectionStringAsync()
+    // A fresh copy of the template for one test. Dispose the lease when the test ends.
+    public static async Task<PostgresTestDatabaseLease> LeaseAsync(PostgresTestTemplate template)
     {
-        return (await Current.Value).ConnectionString;
+        ArgumentNullException.ThrowIfNull(template);
+        var run = await Current.Value;
+        return await run.LeaseAsync(template);
     }
 
-    // Tests reset whole schemas, so they refuse any database that is not named as a test
-    // database.
+    // Tests reset and copy whole databases, so they refuse any database that is not named
+    // as a test database.
     public static void EnsureDedicatedTestDatabase(string connectionString)
     {
         var builder = new NpgsqlConnectionStringBuilder(connectionString);
@@ -38,15 +45,6 @@ public static partial class PostgresTestDatabase
             throw new InvalidOperationException(
                 "The PostgreSQL integration connection must target a database whose name contains 'test'.");
         }
-    }
-
-    public static async Task ResetPublicSchemaAsync(NpgsqlDataSource dataSource)
-    {
-        EnsureDedicatedTestDatabase(dataSource.ConnectionString);
-        await using var command = dataSource.CreateCommand(
-            "drop schema if exists public cascade; create schema public;");
-
-        await command.ExecuteNonQueryAsync();
     }
 
     // <base>_<project>: the assembly name without the Mmorpg. prefix and the .Tests suffix,
@@ -64,7 +62,13 @@ public static partial class PostgresTestDatabase
             project = project[..^".Tests".Length];
         }
 
-        var name = $"{baseDatabase}_{project.ToLowerInvariant().Replace('.', '_')}";
+        return EnsureValidDatabaseName(
+            $"{baseDatabase}_{project.ToLowerInvariant().Replace('.', '_')}",
+            testAssemblyName);
+    }
+
+    private static string EnsureValidDatabaseName(string name, string testAssemblyName)
+    {
         if (!DatabaseNamePattern().IsMatch(name))
         {
             throw new InvalidOperationException(
@@ -74,7 +78,7 @@ public static partial class PostgresTestDatabase
         return name;
     }
 
-    private static async Task<ProvisionedDatabase> ProvisionAsync()
+    private static async Task<TestRun> StartRunAsync()
     {
         var baseConnectionString = Environment.GetEnvironmentVariable(ConnectionStringVariable);
         if (string.IsNullOrWhiteSpace(baseConnectionString))
@@ -85,14 +89,25 @@ public static partial class PostgresTestDatabase
 
         EnsureDedicatedTestDatabase(baseConnectionString);
         var testAssemblyName = TestAssemblyName();
-        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString);
-        builder.Database = DatabaseNameFor(builder.Database!, testAssemblyName);
-        var connectionString = builder.ConnectionString;
-        EnsureDedicatedTestDatabase(connectionString);
+        var baseDatabase = new NpgsqlConnectionStringBuilder(baseConnectionString).Database!;
+        var prefix = DatabaseNameFor(baseDatabase, testAssemblyName);
 
-        await CreateDatabaseIfMissingAsync(baseConnectionString, builder.Database);
-        var runLock = await AcquireRunLockAsync(connectionString, builder.Database, testAssemblyName);
-        return new ProvisionedDatabase(connectionString, runLock);
+        // CREATE and DROP DATABASE run on the base database, which tests never use.
+        var admin = NpgsqlDataSource.Create(baseConnectionString);
+        try
+        {
+            await CreateDatabaseIfMissingAsync(admin, prefix);
+            var runLock = await AcquireRunLockAsync(
+                ConnectionStringFor(baseConnectionString, prefix, pooling: false),
+                prefix,
+                testAssemblyName);
+            return new TestRun(admin, baseConnectionString, prefix, testAssemblyName, runLock);
+        }
+        catch
+        {
+            await admin.DisposeAsync();
+            throw;
+        }
     }
 
     private static string TestAssemblyName()
@@ -104,17 +119,24 @@ public static partial class PostgresTestDatabase
             ?? throw new InvalidOperationException($"The test assembly name '{name}' has no simple name.");
     }
 
-    private static async Task CreateDatabaseIfMissingAsync(string baseConnectionString, string database)
+    private static string ConnectionStringFor(string baseConnectionString, string database, bool pooling)
     {
-        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString) { Pooling = false };
-        await using var connection = new NpgsqlConnection(builder.ConnectionString);
-        await connection.OpenAsync();
+        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = database };
+        if (!pooling)
+        {
+            builder.Pooling = false;
+        }
 
+        var connectionString = builder.ConnectionString;
+        EnsureDedicatedTestDatabase(connectionString);
+        return connectionString;
+    }
+
+    private static async Task CreateDatabaseIfMissingAsync(NpgsqlDataSource admin, string database)
+    {
         for (var attempt = 1; ; attempt++)
         {
-            await using (var exists = new NpgsqlCommand(
-                "select 1 from pg_database where datname = $1",
-                connection))
+            await using (var exists = admin.CreateCommand("select 1 from pg_database where datname = $1"))
             {
                 exists.Parameters.Add(new NpgsqlParameter { Value = database });
                 if (await exists.ExecuteScalarAsync() is not null)
@@ -125,9 +147,7 @@ public static partial class PostgresTestDatabase
 
             try
             {
-                // The name matched DatabaseNamePattern, so quoting it is safe.
-                await using var create = new NpgsqlCommand($"create database \"{database}\"", connection);
-                await create.ExecuteNonQueryAsync();
+                await CreateDatabaseAsync(admin, database, template: null);
                 return;
             }
             catch (PostgresException exception) when (exception.SqlState is PostgresErrorCodes.DuplicateDatabase
@@ -137,18 +157,68 @@ public static partial class PostgresTestDatabase
                 return;
             }
             catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ObjectInUse
-                && attempt < CreateAttempts)
+                && attempt < Attempts)
             {
                 // The template database was briefly in use by another session.
                 await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt));
             }
-            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+        }
+    }
+
+    // Drops any earlier copy, including connections a previous test left open, and copies the
+    // template. A null template copies the server's default template.
+    private static async Task RecreateDatabaseAsync(NpgsqlDataSource admin, string database, string? template)
+    {
+        // The names matched DatabaseNamePattern, so quoting them is safe. CREATE and DROP
+        // DATABASE cannot share one command, because a multi-statement command is a transaction.
+        await using (var drop = admin.CreateCommand($"drop database if exists \"{database}\" with (force)"))
+        {
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
             {
-                throw new InvalidOperationException(
-                    $"The test role cannot create the test database '{database}'. Grant it CREATEDB or create the database beforehand.",
-                    exception);
+                await CreateDatabaseAsync(admin, database, template);
+                return;
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ObjectInUse
+                && attempt < Attempts)
+            {
+                // A session on the template was still closing.
+                await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt));
             }
         }
+    }
+
+    private static async Task CreateDatabaseAsync(NpgsqlDataSource admin, string database, string? template)
+    {
+        var sql = template is null
+            ? $"create database \"{database}\""
+            : $"create database \"{database}\" template \"{template}\"";
+        await using var create = admin.CreateCommand(sql);
+        try
+        {
+            await create.ExecuteNonQueryAsync();
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+        {
+            throw new InvalidOperationException(
+                $"The test role cannot create the test database '{database}'. Grant it CREATEDB.",
+                exception);
+        }
+    }
+
+    // The empty starting point of every template: the public schema recreated by the test
+    // role, exactly as a test that resets its own schema would see it.
+    private static async Task ResetPublicSchemaAsync(string connectionString)
+    {
+        EnsureDedicatedTestDatabase(connectionString);
+        await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        await using var command = dataSource.CreateCommand(
+            "drop schema if exists public cascade; create schema public;");
+        await command.ExecuteNonQueryAsync();
     }
 
     // The lock lives on an unpooled session that stays open, so it is released exactly when
@@ -158,8 +228,7 @@ public static partial class PostgresTestDatabase
         string database,
         string testAssemblyName)
     {
-        var builder = new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false };
-        var connection = new NpgsqlConnection(builder.ConnectionString);
+        var connection = new NpgsqlConnection(connectionString);
         try
         {
             await connection.OpenAsync();
@@ -168,7 +237,7 @@ public static partial class PostgresTestDatabase
             if (await command.ExecuteScalarAsync() is not true)
             {
                 throw new InvalidOperationException(
-                    $"Another run of {testAssemblyName} is using test database '{database}'. Run one test run per project and server at a time.");
+                    $"Another run of {testAssemblyName} is using the test databases '{database}_*'. Run one test run per project and server at a time.");
             }
 
             return connection;
@@ -183,5 +252,102 @@ public static partial class PostgresTestDatabase
     [GeneratedRegex("^[a-z0-9_]{1,63}$")]
     private static partial Regex DatabaseNamePattern();
 
-    private sealed record ProvisionedDatabase(string ConnectionString, NpgsqlConnection RunLock);
+    private sealed class TestRun(
+        NpgsqlDataSource admin,
+        string baseConnectionString,
+        string prefix,
+        string testAssemblyName,
+        NpgsqlConnection runLock)
+    {
+        private readonly Lock gate = new();
+        private readonly Dictionary<string, (PostgresTestTemplate Template, Lazy<Task<string>> Database)> templates =
+            new(StringComparer.Ordinal);
+
+        // Released numbers are reused lowest first, so a run needs only as many databases as
+        // tests ran at the same time.
+        private readonly SortedSet<int> freeNumbers = [];
+        private int highestNumber;
+
+        // Referenced so the run lock session stays open for the whole process.
+        public NpgsqlConnection RunLock { get; } = runLock;
+
+        public async Task<PostgresTestDatabaseLease> LeaseAsync(PostgresTestTemplate template)
+        {
+            var templateDatabase = await TemplateDatabaseAsync(template);
+            var number = TakeNumber();
+            try
+            {
+                var database = EnsureValidDatabaseName($"{prefix}_{number}", testAssemblyName);
+                await RecreateDatabaseAsync(admin, database, templateDatabase);
+                return new PostgresTestDatabaseLease(
+                    ConnectionStringFor(baseConnectionString, database, pooling: true),
+                    () => ReturnNumber(number));
+            }
+            catch
+            {
+                ReturnNumber(number);
+                throw;
+            }
+        }
+
+        private Task<string> TemplateDatabaseAsync(PostgresTestTemplate template)
+        {
+            Lazy<Task<string>> database;
+            lock (gate)
+            {
+                if (!templates.TryGetValue(template.Name, out var entry))
+                {
+                    entry = (template, new Lazy<Task<string>>(() => BuildTemplateAsync(template)));
+                    templates.Add(template.Name, entry);
+                }
+                else if (!ReferenceEquals(entry.Template, template))
+                {
+                    throw new InvalidOperationException(
+                        $"Two different PostgreSQL test templates are named '{template.Name}'.");
+                }
+
+                database = entry.Database;
+            }
+
+            // The first caller starts the build; every later caller awaits the same task.
+            return database.Value;
+        }
+
+        private async Task<string> BuildTemplateAsync(PostgresTestTemplate template)
+        {
+            var database = EnsureValidDatabaseName($"{prefix}_tpl_{template.Name}", testAssemblyName);
+            await RecreateDatabaseAsync(admin, database, template: null);
+            var connectionString = ConnectionStringFor(baseConnectionString, database, pooling: false);
+            await ResetPublicSchemaAsync(connectionString);
+            if (template.Initialize is not null)
+            {
+                await template.Initialize(connectionString);
+            }
+
+            return database;
+        }
+
+        private int TakeNumber()
+        {
+            lock (gate)
+            {
+                if (freeNumbers.Count > 0)
+                {
+                    var number = freeNumbers.Min;
+                    freeNumbers.Remove(number);
+                    return number;
+                }
+
+                return ++highestNumber;
+            }
+        }
+
+        private void ReturnNumber(int number)
+        {
+            lock (gate)
+            {
+                freeNumbers.Add(number);
+            }
+        }
+    }
 }

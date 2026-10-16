@@ -18,14 +18,22 @@ namespace Mmorpg.GameService.Testing;
 
 internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 {
+    // Built once per test run, then copied for every context that initializes its database.
+    private static readonly PostgresTestTemplate InitializedTemplate = new(
+        "initialized",
+        InitializeTemplateAsync);
+
+    private readonly PostgresTestDatabaseLease? lease;
     private readonly ServiceProvider serviceProvider;
     private readonly AsyncServiceScope scope;
 
     private PostgresIntegrationTestContext(
+        PostgresTestDatabaseLease? lease,
         NpgsqlDataSource dataSource,
         IConfiguration configuration,
         GameServiceConfiguration gameServiceConfiguration)
     {
+        this.lease = lease;
         DataSource = dataSource;
         Configuration = configuration;
         GameServiceConfiguration = gameServiceConfiguration;
@@ -109,17 +117,53 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
 
     public SimulationTopologySeeder SimulationTopologySeeder { get; }
 
+    // Every context owns a fresh database: an empty public schema, or with initializeDatabase
+    // a copy of the initialized template, which equals a database that just ran
+    // InitializeDatabaseAsync.
     public static async Task<PostgresIntegrationTestContext> CreateAsync(
         bool initializeDatabase = true,
         bool heartbeatSeedShard = true)
     {
-        var connectionString = await PostgresTestDatabase.GetConnectionStringAsync();
-        var dataSource = NpgsqlDataSource.Create(connectionString);
-
+        var lease = await PostgresTestDatabase.LeaseAsync(
+            initializeDatabase ? InitializedTemplate : PostgresTestTemplate.Empty);
+        PostgresIntegrationTestContext? context = null;
         try
         {
-            await PostgresTestDatabase.ResetPublicSchemaAsync(dataSource);
+            context = Create(lease.ConnectionString, lease);
+            if (initializeDatabase && heartbeatSeedShard)
+            {
+                var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+                    "local-simulation-worker-1",
+                    CreateHeartbeatRequest(),
+                    CancellationToken.None);
+                Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+            }
 
+            return context;
+        }
+        catch
+        {
+            if (context is null)
+            {
+                await lease.DisposeAsync();
+            }
+            else
+            {
+                await context.DisposeAsync();
+            }
+
+            throw;
+        }
+    }
+
+    // A null lease leaves the database to the caller, as the template build does.
+    private static PostgresIntegrationTestContext Create(
+        string connectionString,
+        PostgresTestDatabaseLease? lease)
+    {
+        var dataSource = NpgsqlDataSource.Create(connectionString);
+        try
+        {
             var configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -136,32 +180,26 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                 })
                 .Build();
 
-            var gameServiceConfiguration = GameServiceTestComposition.CreateConfiguration(
-                connectionString);
-            var context = new PostgresIntegrationTestContext(
+            return new PostgresIntegrationTestContext(
+                lease,
                 dataSource,
                 configuration,
-                gameServiceConfiguration);
-            if (initializeDatabase)
-            {
-                await context.InitializeDatabaseAsync();
-                if (heartbeatSeedShard)
-                {
-                    var heartbeat = await context.SimulationWorkerRegistryService.HeartbeatAsync(
-                        "local-simulation-worker-1",
-                        CreateHeartbeatRequest(),
-                        CancellationToken.None);
-                    Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-                }
-            }
-
-            return context;
+                GameServiceTestComposition.CreateConfiguration(connectionString));
         }
         catch
         {
-            await dataSource.DisposeAsync();
+            dataSource.Dispose();
             throw;
         }
+    }
+
+    // Migrations and startup seeds, through the same service graph and configuration as
+    // every test context. The worker heartbeat stays per test, because it records the
+    // current time.
+    private static async Task InitializeTemplateAsync(string connectionString)
+    {
+        await using var context = Create(connectionString, lease: null);
+        await context.InitializeDatabaseAsync();
     }
 
     public async Task InitializeDatabaseAsync()
@@ -268,6 +306,10 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         await scope.DisposeAsync();
         await serviceProvider.DisposeAsync();
         await DataSource.DisposeAsync();
+        if (lease is not null)
+        {
+            await lease.DisposeAsync();
+        }
     }
 }
 
