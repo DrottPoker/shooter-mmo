@@ -212,7 +212,9 @@ snapshot delivery:
   LiteNetLib's unchanneled `Unreliable` delivery. LiteNetLib reports these
   packets with receive channel 0. Server tick, snapshot sequence, message type,
   and remote chunk metadata provide application-level ordering without
-  confusing snapshots with reliable control messages.
+  confusing snapshots with reliable control messages. The client recognizes
+  them by the unreliable delivery in their generated message descriptor, see
+  [Realtime Protocol](REALTIME_PROTOCOL.md#message-descriptors).
 - The owner snapshot is the only source for local input acknowledgement,
   prediction reconciliation, and collision-streaming anchors. Remote chunks
   update admitted remote entities and may arrive at a lower fair cadence under
@@ -249,7 +251,10 @@ The join response must also match the client's compiled movement-simulation
 revision and baked collision revision. Either mismatch aborts activation with a
 structured client error.
 
-`src/Shared/GameProtocol/Runtime` is installed as a local Unity package. LiteNetLib is
+`src/Shared/GameProtocol/Runtime` is installed as a local Unity package. Its
+`Generated` folder is written by `tools/ProtocolGenerator` from the protocol
+schema, including stable `.meta` files, so a protocol change never needs a
+Unity Editor step; see [Realtime Protocol](REALTIME_PROTOCOL.md). LiteNetLib is
 installed from OpenUPM. The runtime assembly references both by assembly name.
 LiteNetLib is pinned to version 2.1.4 in both the project manifest and package
 lock. Unity displays a missing-signature warning because the scoped third-party

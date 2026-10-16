@@ -217,7 +217,9 @@ public sealed class WorldInteractionAuthorityService(
                     intent.OperationKind,
                     true,
                     actor.InteractionRevision,
-                    null!),
+                    itemStateRevision: 0,
+                    message: string.Empty,
+                    error: null!),
                 new RealtimeWorldInteractionClosed(
                     intent.InteractionSessionId,
                     intent.TargetKind,
@@ -281,11 +283,11 @@ public sealed class WorldInteractionAuthorityService(
                 intent.OperationKind,
                 dispatch.Succeeded,
                 actor.InteractionRevision,
+                dispatch.ItemStateRevision,
+                dispatch.Succeeded ? dispatch.Message : string.Empty,
                 dispatch.Succeeded
                     ? null!
-                    : new RealtimeError(dispatch.Code, dispatch.Message),
-                dispatch.Succeeded ? dispatch.Message : string.Empty,
-                dispatch.ItemStateRevision),
+                    : new RealtimeError(dispatch.Code, dispatch.Message)),
             null,
             dispatch.ShouldDisconnect);
     }
@@ -359,7 +361,9 @@ public sealed class WorldInteractionAuthorityService(
                 intent.OperationKind,
                 false,
                 actor.InteractionRevision,
-                new RealtimeError(code, message)),
+                itemStateRevision: 0,
+                message: string.Empty,
+                error: new RealtimeError(code, message)),
             new RealtimeWorldInteractionClosed(
                 intent.InteractionSessionId,
                 intent.TargetKind,
@@ -383,7 +387,9 @@ public sealed class WorldInteractionAuthorityService(
                 intent.OperationKind,
                 false,
                 targetRevision,
-                new RealtimeError(code, message)),
+                itemStateRevision: 0,
+                message: string.Empty,
+                error: new RealtimeError(code, message)),
             null);
     }
 

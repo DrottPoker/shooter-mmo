@@ -176,7 +176,9 @@ public sealed class RealtimeWorldActorProtocolTests
             RealtimeWorldInteractionOperationKind.CapabilityAction,
             false,
             3,
-            new RealtimeError(
+            itemStateRevision: 0,
+            message: string.Empty,
+            error: new RealtimeError(
                 "world_interaction_capability_deferred",
                 "This capability handler is not implemented in Phase 12."));
         Assert.True(
@@ -193,9 +195,9 @@ public sealed class RealtimeWorldActorProtocolTests
             RealtimeWorldInteractionOperationKind.CapabilityAction,
             true,
             3,
-            null!,
+            15,
             "Insurance applied.",
-            15);
+            null!);
         Assert.True(
             RealtimeProtocol.TryDecodeWorldInteractionResult(
                 RealtimeProtocol.EncodeWorldInteractionResult(committed),
@@ -268,7 +270,9 @@ public sealed class RealtimeWorldActorProtocolTests
             RealtimeWorldInteractionOperationKind.CapabilityAction,
             true,
             1,
-            null!);
+            itemStateRevision: 0,
+            message: string.Empty,
+            error: null!);
         Assert.Throws<ArgumentException>(
             () => RealtimeProtocol.EncodeWorldInteractionResult(invalidResult));
     }
@@ -287,19 +291,19 @@ public sealed class RealtimeWorldActorProtocolTests
             "city",
             RealtimeWorldActorDisposition.Friendly,
             "npc.city_services",
+            1,
+            1,
+            true,
             2.5f,
             0f,
             -1f,
             270f,
-            1,
-            1,
-            true,
+            RealtimeWorldActorActivityTier.EventDriven,
             0f,
             1f,
             0f,
             0.8f,
             2f,
-            0.8f,
-            RealtimeWorldActorActivityTier.EventDriven);
+            0.8f);
     }
 }

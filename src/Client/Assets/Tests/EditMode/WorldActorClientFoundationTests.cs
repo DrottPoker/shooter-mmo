@@ -112,7 +112,9 @@ namespace Mmorpg.Client.Tests.EditMode
                         RealtimeWorldInteractionOperationKind.CapabilityAction,
                         false,
                         3,
-                        new RealtimeError("invalid", "Wrong operation")),
+                        itemStateRevision: 0,
+                        message: string.Empty,
+                        error: new RealtimeError("invalid", "Wrong operation")),
                     out error),
                 Is.False);
 
@@ -174,7 +176,9 @@ namespace Mmorpg.Client.Tests.EditMode
                         RealtimeWorldInteractionOperationKind.CapabilityAction,
                         false,
                         1,
-                        new RealtimeError(
+                        itemStateRevision: 0,
+                        message: string.Empty,
+                        error: new RealtimeError(
                             "world_interaction_session_invalid",
                             "The interaction closed.")),
                     out error),
@@ -196,9 +200,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeWorldInteractionOperationKind.CapabilityAction,
                 true,
                 3,
-                null,
+                42,
                 "Insurance applied.",
-                42);
+                null);
 
             Assert.That(state.TryComplete(result, out var error), Is.True, error);
             Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
@@ -322,20 +326,20 @@ namespace Mmorpg.Client.Tests.EditMode
                 "city",
                 RealtimeWorldActorDisposition.Friendly,
                 "npc.city_services",
+                1,
+                1,
+                true,
                 2.5f,
                 0f,
                 -1f,
                 270f,
-                1,
-                1,
-                true,
+                RealtimeWorldActorActivityTier.EventDriven,
                 0f,
                 1f,
                 0f,
                 0.8f,
                 2f,
-                0.8f,
-                RealtimeWorldActorActivityTier.EventDriven);
+                0.8f);
         }
 
         private sealed class FakeTarget : IWorldInteractionTarget

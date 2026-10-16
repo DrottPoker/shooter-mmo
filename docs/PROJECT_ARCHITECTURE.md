@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -234,9 +234,9 @@ namespace, in folders that mirror the protocol families:
 
 | Folder | Responsibility |
 | --- | --- |
-| `Transport` | `LiteNetLibRealtimeTransport` owns the `NetManager` and resolves peers by id, `RealtimeConnectionAdmission` decides connection requests, `RealtimePeerSender` sends packets and protocol rejections. |
+| `Transport` | `LiteNetLibRealtimeTransport` owns the `NetManager` and resolves peers by id, `RealtimeConnectionAdmission` decides connection requests, `RealtimePeerSender` sends packets and protocol rejections, `RealtimeDeliveryMethods` maps the delivery of a generated message descriptor to LiteNetLib. |
 | `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation and the orphan sweep. |
-| `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table in `RealtimeMessageRoutes`. |
+| `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table in `RealtimeMessageRoutes`, which takes each route's channel and delivery from the generated message descriptor. |
 | `Operations` | `RealtimeCompletionQueue`, `RealtimeCompletionProcessor`, `RealtimeOperationTracker`, `AuthorityOperationScheduler`, and the completion records. |
 | `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors` | One loop-side handler per feature plus, where GameService or capability calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks, `EntityPresenceReplicator` owns the interest manager, and `SnapshotReplicator` owns snapshot budgets and fairness. |
 
@@ -313,13 +313,22 @@ It must not become a dumping ground for feature logic.
 binary realtime contract. `src/Shared/DotNet/GameProtocol` compiles the same files
 for backend processes and tests.
 
+The protocol is described once in `src/Shared/GameProtocol/Schema~/realtime-protocol.json`.
+`tools/ProtocolGenerator` turns the schema into `Runtime/Generated`: the
+version, channels, limits, `RealtimeMessageType`, the message descriptors, the
+protocol enums, and the models, codecs, and validation of the generated
+families. [Realtime Protocol](REALTIME_PROTOCOL.md) describes the wire
+format, the schema, the descriptors, and the versioning rules.
+
 The static `RealtimeProtocol` facade is one partial class. `RealtimeProtocol.cs`
-holds the version, channels, framing, error messages, and the primitive readers
-and writers. Each message family has its own folder with a message file and a
-codec file: `Session` (join, leave, disconnect), `Movement` (input, settings,
-owner snapshot), `Replication` (entity presence and simulation snapshots),
-`Items`, `Corpses`, and `WorldActors`. A new message belongs to one family folder
-and adds its type to `RealtimeMessageType` in the core file.
+holds the framing and the span-based packet reader and writer that every
+generated codec uses. The message families are `Session` (join, leave,
+disconnect), `Movement` (input, settings, owner snapshot), `Replication` (entity
+presence and simulation snapshots), `Items`, `Corpses`, and `WorldActors`. The
+generator writes the models and codecs of every family. A family keeps a folder
+only for its hand-written cross-field rules, as `Movement`, `Items`, `Corpses`,
+and `WorldActors` do; `Session` and `Replication` need none. The list is in
+[Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
 
 Protocol version 14 includes:
 

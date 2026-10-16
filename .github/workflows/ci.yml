@@ -74,6 +74,14 @@ jobs:
           --
           --verify
 
+      - name: Verify generated realtime protocol
+        run: >-
+          dotnet run --project tools/ProtocolGenerator
+          --configuration Release
+          --no-build
+          --
+          --verify
+
       # Every test project writes TestResults/<Project>/test-results.trx and its own
       # coverage folder, set by tests/Directory.Build.props.
       - name: Test

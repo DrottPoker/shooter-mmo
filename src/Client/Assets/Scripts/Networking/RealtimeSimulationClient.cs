@@ -633,16 +633,17 @@ namespace Mmorpg.Client.Networking
                     return;
                 }
 
-                if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType))
+                if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType)
+                    || !RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor))
                 {
                     FailProtocol("invalid_packet", "SimulationWorker returned an invalid realtime packet.");
                     return;
                 }
 
-                if (messageType == RealtimeMessageType.SimulationSnapshot
-                    || messageType == RealtimeMessageType.OwnerSimulationSnapshot)
+                // The protocol schema declares which messages travel unreliably: the snapshots.
+                if (descriptor.Delivery == RealtimeDelivery.Unreliable)
                 {
-                    if (channel != RealtimeProtocol.UnreliableReceiveChannel
+                    if (channel != descriptor.Channel
                         || deliveryMethod != DeliveryMethod.Unreliable)
                     {
                         FailProtocol(
@@ -660,9 +661,15 @@ namespace Mmorpg.Client.Networking
                     {
                         HandleOwnerSimulationSnapshot(packet);
                     }
-                    else
+                    else if (messageType == RealtimeMessageType.SimulationSnapshot)
                     {
                         HandleSimulationSnapshot(packet);
+                    }
+                    else
+                    {
+                        FailProtocol(
+                            "unexpected_message",
+                            "SimulationWorker returned a message that is invalid for clients.");
                     }
 
                     return;

@@ -376,7 +376,7 @@ public sealed class RealtimeProtocolRejectionTests
             () => client.ServerDisconnect is not null && client.IsDisconnected,
             $"{client.Name} to be rejected with {expectedCode}");
         var reliable = client.ReliablePackets;
-        var disconnect = Assert.Single(
+        Assert.Single(
             reliable,
             packet => packet.Type == RealtimeMessageType.ServerDisconnect);
         if (expectLastReliable)
@@ -385,14 +385,20 @@ public sealed class RealtimeProtocolRejectionTests
         }
 
         Assert.Equal(expectedCode, client.ServerDisconnect!.Code);
+        var rejections = harness.Logger.Entries
+            .Where(entry => entry.Template == "[SIMULATION] Disconnecting UDP peer {PeerId} with code {Code}: {Message}"
+                && entry.Message.Contains(expectedCode, StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(rejections);
+
+        // The worker logs the rejection before it sends ServerDisconnect and schedules the
+        // delayed disconnect, and a late client poll only records the disconnect later, so
+        // this bound holds under any machine load. The earliest matching entry is used
+        // because the log does not name the client.
         Assert.True(
-            client.DisconnectedAtUtc!.Value - disconnect.ReceivedAtUtc
+            client.DisconnectedAtUtc!.Value - rejections.Min(entry => entry.LoggedAtUtc)
                 >= TimeSpan.FromMilliseconds(150),
             "The server must keep the peer for the graceful disconnect delay.");
-        Assert.Contains(
-            harness.Logger.Entries,
-            entry => entry.Template == "[SIMULATION] Disconnecting UDP peer {PeerId} with code {Code}: {Message}"
-                && entry.Message.Contains(expectedCode, StringComparison.Ordinal));
     }
 
     internal static byte[] WithTrailingByte(byte[] packet)
