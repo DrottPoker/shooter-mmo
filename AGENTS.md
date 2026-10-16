@@ -30,3 +30,8 @@ Follow these rules for all future work in this repository.
   through a pull request whose CI passes, then delete the branch locally and on
   GitHub. This is standing permission to commit, push, open the pull request,
   merge it, and delete the branch for that task. No other branch is left behind.
+- After every merge into `development`, fast-forward the local `development`
+  branch in the main checkout with `git pull --ff-only origin development`, so
+  the user always has the latest `development` locally. Never reset or discard
+  local work for this: if uncommitted changes block the pull, show them to the
+  user and ask before stashing them under a descriptive name.
