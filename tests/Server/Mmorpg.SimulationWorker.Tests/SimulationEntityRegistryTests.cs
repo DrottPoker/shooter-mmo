@@ -12,10 +12,8 @@ public sealed class SimulationEntityRegistryTests
     private static readonly MovementSimulationSettings MovementSettings = new(
         30,
         5f,
-        8f,
         720f,
         -24f,
-        7f,
         -2f,
         0f,
         -14f,
@@ -49,16 +47,9 @@ public sealed class SimulationEntityRegistryTests
         var registry = new SimulationEntityRegistry();
         var originalSession = CreateSession();
         var original = registry.RegisterPlayer(originalSession, CreateMovement);
-        original.Entity.Movement.AcceptInputs(
-        [
-            new RealtimeMovementInput(
-                1,
-                1,
-                0f,
-                1f,
-                0f,
-                RealtimeMovementButtons.None)
-        ]);
+        original.Entity.Movement.AcceptInputs(new RealtimeMovementInputBatch(
+            [new RealtimeMovementInput(1, 1, 1)],
+            new RealtimeMovementPath(1, [new RealtimeMovementPathWaypoint(0f, 0f, 5f)])));
         original.Entity.Movement.SimulateTick();
         var refreshedSession = originalSession with
         {

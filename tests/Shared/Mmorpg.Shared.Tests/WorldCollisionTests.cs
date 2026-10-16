@@ -7,10 +7,8 @@ public sealed class WorldCollisionTests
     private static readonly MovementSimulationSettings MovementSettings = new(
         30,
         5f,
-        8f,
         720f,
         -24f,
-        7f,
         -2f,
         0f,
         -14f,
@@ -116,7 +114,7 @@ public sealed class WorldCollisionTests
         {
             state = PlayerMovementSimulation.Step(
                 state,
-                Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.Sprint),
+                Toward((uint)(tick + 1), 0f, 10f),
                 MovementSettings,
                 PlayerCarryState.Default,
                 world);
@@ -155,7 +153,7 @@ public sealed class WorldCollisionTests
         {
             state = PlayerMovementSimulation.Step(
                 state,
-                Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None, 180f),
+                Toward((uint)(tick + 1), 0f, -13f),
                 MovementSettings,
                 PlayerCarryState.Default,
                 world);
@@ -195,7 +193,7 @@ public sealed class WorldCollisionTests
         {
             state = PlayerMovementSimulation.Step(
                 state,
-                Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None, 180f),
+                Toward((uint)(tick + 1), 0f, -13f),
                 MovementSettings,
                 PlayerCarryState.Default,
                 world);
@@ -208,7 +206,7 @@ public sealed class WorldCollisionTests
         {
             state = PlayerMovementSimulation.Step(
                 state,
-                Input((uint)(tick + 19), 0f, 0f, PlayerMovementButtons.None, 180f),
+                new PlayerMovementInput((uint)(tick + 19), (uint)(tick + 19), null),
                 MovementSettings,
                 PlayerCarryState.Default,
                 world);
@@ -288,7 +286,7 @@ public sealed class WorldCollisionTests
         {
             state = PlayerMovementSimulation.Step(
                 state,
-                Input((uint)(tick + 1), 0f, 1f, PlayerMovementButtons.None),
+                Toward((uint)(tick + 1), -8f, 5f),
                 MovementSettings,
                 PlayerCarryState.Default,
                 world);
@@ -357,14 +355,13 @@ public sealed class WorldCollisionTests
         Assert.Single(buffer.Boxes);
     }
 
-    private static PlayerMovementInput Input(
-        uint sequence,
-        float moveX,
-        float moveY,
-        PlayerMovementButtons buttons,
-        float cameraYaw = 0f)
+    // Every tick names the same one-waypoint path, so the character keeps walking to it.
+    private static PlayerMovementInput Toward(uint sequence, float x, float z)
     {
-        return new PlayerMovementInput(sequence, sequence, moveX, moveY, cameraYaw, buttons);
+        return new PlayerMovementInput(
+            sequence,
+            sequence,
+            new MovementPath(1, [new SimulationVector3(x, 0f, z)]));
     }
 
     private static ChunkedStaticCollisionWorld CompileWorld(

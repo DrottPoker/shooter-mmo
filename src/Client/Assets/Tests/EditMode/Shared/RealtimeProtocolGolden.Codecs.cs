@@ -37,7 +37,7 @@ namespace Mmorpg.SharedTests
                 [RealtimeMessageType.ServerDisconnect] = Typed<RealtimeError>(
                     RealtimeProtocol.TryDecodeServerDisconnect,
                     value => RealtimeProtocol.EncodeServerDisconnect(value.Code, value.Message)),
-                [RealtimeMessageType.MovementInputBatch] = Typed<RealtimeMovementInput[]>(
+                [RealtimeMessageType.MovementInputBatch] = Typed<RealtimeMovementInputBatch>(
                     RealtimeProtocol.TryDecodeMovementInputBatch,
                     RealtimeProtocol.EncodeMovementInputBatch),
                 [RealtimeMessageType.SimulationSnapshot] = Typed<RealtimeSimulationSnapshot>(

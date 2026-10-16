@@ -779,7 +779,6 @@ public sealed class WorldActorRuntimeTests
             TimeSpan.FromSeconds(2),
             TimeSpan.FromMilliseconds(5),
             15,
-            TimeSpan.FromMilliseconds(500),
             CreateMovementSettings(),
             new MovementSpawnConfig(0f, 0f, -1f, 0f),
             new Uri("http://game-service.test"),
@@ -796,10 +795,8 @@ public sealed class WorldActorRuntimeTests
         return new MovementSimulationSettings(
             30,
             5f,
-            8f,
             720f,
             -24f,
-            7f,
             -2f,
             0f,
             -100f,

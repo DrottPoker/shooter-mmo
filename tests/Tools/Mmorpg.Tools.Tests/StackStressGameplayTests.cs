@@ -193,7 +193,6 @@ public sealed class StackStressGameplayTests
             2,
             200,
             100,
-            true,
             10_000);
     }
 }

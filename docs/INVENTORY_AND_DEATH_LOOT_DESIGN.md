@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 Status: Locked design target; Phases 1 through 15 content, authoring, schema,
 character bootstrap, authoritative reads, policy lifecycle, internal durable
@@ -373,9 +373,9 @@ its carry-capacity bonus.
 
 ### Encumbrance Curve
 
-- At or below 100 percent capacity, movement uses 100 percent of base speed and
-  sprint remains available.
-- Above 100 percent, sprint is disabled.
+- At or below 100 percent capacity, movement uses 100 percent of base speed.
+  Running with run energy that drains faster with weight is planned in
+  [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
 - From 100 to 140 percent, movement speed decreases linearly.
 - At 140 percent, movement uses 20 percent of base speed.
 - Exactly 140 percent is allowed.
@@ -401,7 +401,7 @@ The intended linear reference points are:
 
 The authoritative multiplier is clamped between 0.20 and 1.00. The shared
 simulation applies it to normal base movement after action restrictions are
-resolved. Server authority decides whether sprint is allowed.
+resolved.
 
 Every operation computes the prospective numerator and denominator. Equipping a
 different Bag removes the Bag root's own weight, activates its carried contents,
@@ -783,8 +783,7 @@ the same character row lock used by session admission.
 Phase 7 carries each admission-fenced weight, capacity, and monotonic item-state
 revision into the active SimulationWorker session and Unity movement state. A
 session heartbeat applies later committed revisions monotonically. SimulationWorker
-and Unity use the same GameSimulation encumbrance rules for sprint eligibility
-and movement speed, while GameService remains the durable item and hard-cap
+and Unity use the same GameSimulation encumbrance rules for movement speed, while GameService remains the durable item and hard-cap
 authority.
 
 Phase 8 adds the live SimulationWorker item-mutation path over the same durable
@@ -843,7 +842,7 @@ Bag swaps. No new item owner, location, or authority is introduced.
 No vendor, gathering, quest progression, combat death producer, damage system,
 or Mob loot-table producer calls these boundaries yet. Final corpse art remains
 a later phase. Phase 13 routes insurance and quest item
-lifecycle actions through the Phase 12 world actor, shared crosshair targeting,
+lifecycle actions through the Phase 12 world actor, shared targeting,
 one-active-interaction lease, and authoritative capability dispatch. GameService
 owns the atomic insurance charge, policy mutation, exact quest grant lineage,
 and audit. No Zone or Layer identity was introduced.

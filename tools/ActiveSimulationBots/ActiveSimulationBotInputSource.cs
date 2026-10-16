@@ -3,15 +3,20 @@ using Mmorpg.Tools.SimulationBotClient;
 
 namespace Mmorpg.Tools.ActiveSimulationBots;
 
+// Alternates idle intervals with straight walks to random destinations. The worker's
+// collision stops a bot at any obstacle, and its path ends once it was blocked.
 public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
 {
+    private const double BoundsMargin = 1d;
+
+    // Stays below the worker's 256 meter path limit for any behavior duration.
+    private const double MaximumWalkDistance = 200d;
+
     private readonly ActiveSimulationBotOptions options;
     private readonly Random random;
     private uint nextBehaviorTick;
-    private float moveX;
-    private float moveY;
-    private float yaw;
-    private RealtimeMovementButtons persistentButtons;
+    private uint lastPathId;
+    private RealtimeMovementPath? currentPath;
 
     public ActiveSimulationBotInputSource(
         ActiveSimulationBotOptions options,
@@ -21,61 +26,60 @@ public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
         random = new Random(HashCode.Combine(options.Seed, botIndex));
     }
 
-    public RealtimeMovementInput CreateInput(
-        uint inputSequence,
+    public RealtimeMovementPath? SelectPath(
         uint clientTick,
-        RealtimeJoinAccepted joinedSession)
+        RealtimeJoinAccepted joinedSession,
+        SimulationBotPosition position)
     {
         if (nextBehaviorTick == 0 || clientTick >= nextBehaviorTick)
         {
-            SelectBehavior(clientTick, joinedSession.MovementSettings.TickRateHz);
+            SelectBehavior(clientTick, joinedSession.MovementSettings, position);
         }
 
-        var buttons = persistentButtons;
-        var jumpChanceThisTick = options.JumpChancePerSecond
-            / joinedSession.MovementSettings.TickRateHz;
-        if ((buttons & RealtimeMovementButtons.Aim) == 0
-            && random.NextDouble() < jumpChanceThisTick)
-        {
-            buttons |= RealtimeMovementButtons.Jump;
-        }
-
-        return new RealtimeMovementInput(
-            inputSequence,
-            clientTick,
-            moveX,
-            moveY,
-            yaw,
-            buttons);
+        return currentPath;
     }
 
-    private void SelectBehavior(uint clientTick, uint tickRateHz)
+    private void SelectBehavior(
+        uint clientTick,
+        RealtimeMovementSettings settings,
+        SimulationBotPosition position)
     {
-        var idle = random.NextDouble() < options.IdleChance;
-        if (idle)
+        var durationSeconds = RandomBetween(
+            options.MinimumBehaviorDuration.TotalSeconds,
+            options.MaximumBehaviorDuration.TotalSeconds);
+        if (random.NextDouble() < options.IdleChance)
         {
-            moveX = 0f;
-            moveY = 0f;
+            currentPath = null;
         }
         else
         {
-            var movementAngle = random.NextDouble() * Math.PI * 2d;
-            moveX = (float)Math.Sin(movementAngle);
-            moveY = (float)Math.Cos(movementAngle);
+            // A destination about one behavior interval of walking away, inside the World.
+            var angle = random.NextDouble() * Math.PI * 2d;
+            var distance = Math.Min(settings.WalkSpeed * durationSeconds, MaximumWalkDistance);
+            var x = Math.Clamp(
+                position.X + (Math.Sin(angle) * distance),
+                settings.MinimumX + BoundsMargin,
+                settings.MaximumX - BoundsMargin);
+            var z = Math.Clamp(
+                position.Z + (Math.Cos(angle) * distance),
+                settings.MinimumZ + BoundsMargin,
+                settings.MaximumZ - BoundsMargin);
+            unchecked
+            {
+                lastPathId++;
+            }
+
+            if (lastPathId == 0)
+            {
+                lastPathId = 1;
+            }
+
+            currentPath = new RealtimeMovementPath(
+                lastPathId,
+                [new RealtimeMovementPathWaypoint((float)x, position.Y, (float)z)]);
         }
 
-        yaw = (float)(random.NextDouble() * 360d);
-        var aiming = random.NextDouble() < options.AimChance;
-        persistentButtons = aiming
-            ? RealtimeMovementButtons.Aim
-            : random.NextDouble() < options.SprintChance
-                ? RealtimeMovementButtons.Sprint
-                : RealtimeMovementButtons.None;
-
-        var durationSeconds = RandomBetween(
-            options.MinimumDirectionDuration.TotalSeconds,
-            options.MaximumDirectionDuration.TotalSeconds);
-        var durationTicks = Math.Max(1u, (uint)Math.Round(durationSeconds * tickRateHz));
+        var durationTicks = Math.Max(1u, (uint)Math.Round(durationSeconds * settings.TickRateHz));
         nextBehaviorTick = clientTick + durationTicks;
     }
 

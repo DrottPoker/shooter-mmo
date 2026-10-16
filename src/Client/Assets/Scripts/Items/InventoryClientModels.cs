@@ -351,7 +351,6 @@ namespace Mmorpg.Client.Items
             long carriedWeight,
             long carryCapacity,
             int loadRatioBasisPoints,
-            bool sprintEligible,
             int movementMultiplierBasisPoints)
         {
             CharacterId = characterId;
@@ -366,7 +365,6 @@ namespace Mmorpg.Client.Items
             CarriedWeight = carriedWeight;
             CarryCapacity = carryCapacity;
             LoadRatioBasisPoints = loadRatioBasisPoints;
-            SprintEligible = sprintEligible;
             MovementMultiplierBasisPoints = movementMultiplierBasisPoints;
         }
 
@@ -394,8 +392,6 @@ namespace Mmorpg.Client.Items
 
         public int LoadRatioBasisPoints { get; }
 
-        public bool SprintEligible { get; }
-
         public int MovementMultiplierBasisPoints { get; }
 
         public string CoherenceSignature()
@@ -407,7 +403,6 @@ namespace Mmorpg.Client.Items
                 .Append(CarriedWeight).Append('|')
                 .Append(CarryCapacity).Append('|')
                 .Append(LoadRatioBasisPoints).Append('|')
-                .Append(SprintEligible).Append('|')
                 .Append(MovementMultiplierBasisPoints).Append('|')
                 .Append(PermanentInventory.CoherenceSignature()).Append('|')
                 .Append(Bank.CoherenceSignature()).Append('|')
@@ -960,14 +955,12 @@ namespace Mmorpg.Client.Items
             var expectedLoadRatio = CalculateLoadRatioBasisPoints(
                 response.carriedWeight,
                 response.carryCapacity);
-            var expectedSprintEligibility = response.carriedWeight <= response.carryCapacity;
             var expectedMovementMultiplier = EncumbranceRules
                 .CalculateMovementMultiplierBasisPoints(
                     response.carriedWeight,
                     response.carryCapacity);
             // Weight above the hard cap is valid after an involuntary death overflow.
             if (response.loadRatioBasisPoints != expectedLoadRatio
-                || response.sprintEligible != expectedSprintEligibility
                 || response.movementMultiplierBasisPoints != expectedMovementMultiplier)
             {
                 error = "The inventory snapshot contains inconsistent carry state.";
@@ -987,7 +980,6 @@ namespace Mmorpg.Client.Items
                 response.carriedWeight,
                 response.carryCapacity,
                 response.loadRatioBasisPoints,
-                response.sprintEligible,
                 response.movementMultiplierBasisPoints);
             return true;
         }

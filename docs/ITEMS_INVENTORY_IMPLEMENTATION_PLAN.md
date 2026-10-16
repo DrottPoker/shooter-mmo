@@ -2,9 +2,12 @@
 
 > Historical record. Names and locations in this document describe the codebase
 > before the October 2026 restructure, which renamed the `ShooterMmo` namespace
-> root to `Mmorpg` and `AuthService` to `GameService`.
+> root to `Mmorpg` and `AuthService` to `GameService`. Click-to-move later
+> removed sprint, sprint eligibility, and the crosshair with the `E` key: the
+> phases below describe what each phase delivered at the time. Current movement
+> and interaction are described in [Game Features](GAME_FEATURES.md).
 
-Last updated: 2026-07-18
+Last updated: 2026-10-16
 
 Status: Approved delivery baseline, Phases 1 through 15 implemented
 

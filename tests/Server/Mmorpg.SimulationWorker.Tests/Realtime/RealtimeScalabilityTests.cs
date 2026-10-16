@@ -63,7 +63,7 @@ public sealed class RealtimeScalabilityTests
                 .Select(entityId => new RealtimeEntitySnapshot(
                     entityId,
                     1,
-                    new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true, false)))
+                    new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true)))
                 .ToArray();
             var packet = RealtimeProtocol.EncodeSimulationSnapshot(
                 new RealtimeSimulationSnapshot(1, 1, 0, 1, snapshotEntities));
@@ -121,8 +121,9 @@ public sealed class RealtimeScalabilityTests
 
         var batch = cache.GetOrCreate(visible, 1, 1, bytesPerRecipient, 9_500);
 
-        Assert.Equal(240, batch.EntityCount);
-        Assert.Equal(10, batch.DeferredEntityCount);
+        // The 54-byte owner snapshot shares the budget, so 239 remote entities fit.
+        Assert.Equal(239, batch.EntityCount);
+        Assert.Equal(11, batch.DeferredEntityCount);
         Assert.Equal(10, batch.Packets.Count);
         Assert.True(
             batch.TotalBytes + RealtimeProtocol.OwnerSimulationSnapshotPacketSize
@@ -145,7 +146,7 @@ public sealed class RealtimeScalabilityTests
         cache.Add(new RealtimeEntitySnapshot(
             entityId,
             1,
-            new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true, false)));
+            new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true)));
     }
 
     private static IReadOnlyList<ulong> DecodeEntityIds(SnapshotPacketBatch batch)

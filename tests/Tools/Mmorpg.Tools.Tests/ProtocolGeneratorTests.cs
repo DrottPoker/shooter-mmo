@@ -32,7 +32,7 @@ public sealed class ProtocolGeneratorTests
     {
         var result = ProtocolGeneration.Run(ProtocolGeneratorOptions.Create(RepositoryPaths.Root, verifyOnly: true));
 
-        Assert.Equal(14, result.Model.Version);
+        Assert.Equal(15, result.Model.Version);
         Assert.Equal(27, result.Model.Messages.Count);
     }
 
@@ -113,19 +113,22 @@ public sealed class ProtocolGeneratorTests
         using var repository = new TemporaryRepository();
         var generate = ProtocolGeneratorOptions.Create(repository.Root, verifyOnly: false);
         var verify = ProtocolGeneratorOptions.Create(repository.Root, verifyOnly: true);
-        ProtocolGeneration.Run(generate);
+        var current = ProtocolGeneration.Run(generate).Model.Version;
         var lockPath = ProtocolLayout.Resolve(repository.Root, ProtocolLayout.LockPath);
-        Assert.Equal(new[] { 14 }, ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys);
+        var lockedVersions = ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys.ToArray();
+        Assert.Equal(current, lockedVersions[^1]);
 
         repository.EditSchema(schema => schema["protocol"]!["connectionKey"] = "Mmorpg.Realtime.v9");
         var changed = Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(generate));
         Assert.Contains("Increase protocol.version", changed.Message, StringComparison.Ordinal);
 
-        repository.EditSchema(schema => schema["protocol"]!["version"] = 15);
+        repository.EditSchema(schema => schema["protocol"]!["version"] = current + 1);
         Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(verify));
         ProtocolGeneration.Run(generate);
         ProtocolGeneration.Run(verify);
-        Assert.Equal(new[] { 14, 15 }, ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys);
+        Assert.Equal(
+            lockedVersions.Append(current + 1),
+            ProtocolVersionLock.Parse(File.ReadAllText(lockPath)).Keys);
 
         repository.EditSchema(schema => schema["protocol"]!["version"] = 13);
         var lower = Assert.Throws<InvalidDataException>(() => ProtocolGeneration.Run(generate));

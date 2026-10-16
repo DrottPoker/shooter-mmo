@@ -28,6 +28,8 @@ public sealed class SimulationBotClient : IDisposable
     private uint clientTick;
     private uint lastSnapshotSequence;
     private bool hasSnapshotSequence;
+    private SimulationBotPosition latestPosition;
+    private uint confirmedPathId;
     private bool disposed;
     private string? failureCode;
     private string? failureMessage;
@@ -343,6 +345,11 @@ public sealed class SimulationBotClient : IDisposable
         }
 
         joinedSession = session;
+        latestPosition = new SimulationBotPosition(
+            session.InitialPlayerState.PositionX,
+            session.InitialPlayerState.PositionY,
+            session.InitialPlayerState.PositionZ);
+        confirmedPathId = 0;
         State = SimulationBotClientState.Joined;
         var now = Stopwatch.GetTimestamp();
         joinLatencyMs = Stopwatch.GetElapsedTime(startedTimestamp, now).TotalMilliseconds;
@@ -644,6 +651,7 @@ public sealed class SimulationBotClient : IDisposable
 
         snapshotsReceived++;
         latestServerTick = snapshot.ServerTick;
+        var isNewest = true;
         if (!hasSnapshotSequence)
         {
             hasSnapshotSequence = true;
@@ -657,6 +665,20 @@ public sealed class SimulationBotClient : IDisposable
             }
 
             lastSnapshotSequence = snapshot.SnapshotSequence;
+        }
+        else
+        {
+            isNewest = false;
+        }
+
+        // A reordered older snapshot must not move the bot back or unconfirm its path.
+        if (isNewest)
+        {
+            latestPosition = new SimulationBotPosition(
+                snapshot.State.PositionX,
+                snapshot.State.PositionY,
+                snapshot.State.PositionZ);
+            confirmedPathId = snapshot.PathProgress.PathId;
         }
 
         AcknowledgeInputs(snapshot.LastProcessedInputSequence);
@@ -708,10 +730,11 @@ public sealed class SimulationBotClient : IDisposable
                 clientTick++;
             }
 
-            var command = inputSource.CreateInput(
+            var path = inputSource.SelectPath(clientTick, joinedSession, latestPosition);
+            var command = new RealtimeMovementInput(
                 nextInputSequence,
                 clientTick,
-                joinedSession);
+                path?.PathId ?? 0);
             pendingInputs.Add(new PendingInput(command, nowTimestamp));
             if (pendingInputs.Count > MaximumTrackedUnacknowledgedInputs)
             {
@@ -724,7 +747,10 @@ public sealed class SimulationBotClient : IDisposable
                 .Skip(pendingInputs.Count - batchCount)
                 .Select(pending => pending.Command)
                 .ToArray();
-            var packet = RealtimeProtocol.EncodeMovementInputBatch(batch);
+            // The path travels with every batch until an owner snapshot confirms it.
+            var packet = RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
+                batch,
+                path is not null && path.PathId != confirmedPathId ? path : null));
             serverPeer.Send(
                 packet,
                 RealtimeProtocol.MovementInputChannel,

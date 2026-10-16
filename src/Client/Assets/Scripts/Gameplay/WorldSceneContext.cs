@@ -20,13 +20,15 @@ namespace Mmorpg.Client.Gameplay
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
         private RealtimeSimulationClient simulationClient;
+        private WorldPointerFocus pointerFocus;
         private LocalPlayerController localPlayer;
 
-        // The composition root passes the persistent realtime client when the scene loads,
-        // before Start runs.
-        public void Initialize(RealtimeSimulationClient realtimeClient)
+        // The composition root passes the persistent realtime client and the pointer focus
+        // when the scene loads, before Start runs.
+        public void Initialize(RealtimeSimulationClient realtimeClient, WorldPointerFocus focus)
         {
             simulationClient = realtimeClient;
+            pointerFocus = focus;
         }
 
         private void Start()
@@ -278,6 +280,8 @@ namespace Mmorpg.Client.Gameplay
             }
 
             localPlayer.PlayerCamera.SetTarget(localPlayer.CameraTarget, localPlayer.PlayerInput);
+            localPlayer.PlayerCamera.SetPointerFocus(pointerFocus);
+            localPlayer.SetPointerFocus(pointerFocus);
             return true;
         }
 

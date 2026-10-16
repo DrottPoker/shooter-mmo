@@ -13,7 +13,6 @@ internal sealed record CharacterInventorySnapshotResponse(
     long CarriedWeight,
     long CarryCapacity,
     int LoadRatioBasisPoints,
-    bool SprintEligible,
     int MovementMultiplierBasisPoints);
 
 internal sealed record ItemContainerSnapshotResponse(

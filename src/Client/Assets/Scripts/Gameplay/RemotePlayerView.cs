@@ -68,8 +68,7 @@ namespace Mmorpg.Client.Gameplay
                 state.VelocityY,
                 state.VelocityZ,
                 state.YawDegrees,
-                state.IsGrounded,
-                state.IsSprinting);
+                state.IsGrounded);
             var wasEmpty = interpolation.Count == 0;
             if (!interpolation.Push(serverTick, movementState))
             {

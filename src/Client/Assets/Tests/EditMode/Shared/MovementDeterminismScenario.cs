@@ -14,24 +14,32 @@ namespace Mmorpg.SharedTests
         // Change both values together, and only for an intended change to shared movement
         // or collision behavior: bump GameSimulationCompatibility.Revision and pin the new
         // fingerprint. Clients and workers with different revisions must not interoperate.
-        public const string ExpectedSimulationRevision = "movement-simulation-v4";
-        public const string ExpectedFingerprint = "d8eddca55aba6de1";
+        public const string ExpectedSimulationRevision = "movement-simulation-v5";
+        public const string ExpectedFingerprint = "3ba403655f002a79";
+
+        // The planner does not affect the wire contract, because paths travel as data, so
+        // its fingerprint changes without a revision bump. It still must match in both
+        // runtimes, so the worker can plan for world actors with the same results.
+        public const string ExpectedPlannerFingerprint = "98c0afe164955178";
 
         private const int TickCount = 900;
 
-        // The route steers through every collision case: blocked by a wall, sliding
-        // along it, climbing a rotated ramp and dropping off its high edge, stopping
-        // at a rotated pillar, stepping up and jumping on a step, and walking off it.
-        private static readonly Waypoint[] Route =
+        private static readonly PlayerCarryState Encumbered = new PlayerCarryState(1, 240, 200);
+
+        // Each click steers through one collision case: blocked by a wall until the path
+        // gives up, sliding along it, climbing a rotated ramp and dropping off its high
+        // edge, blocked by a rotated pillar, stepping up onto a step while encumbered, and
+        // a click that replaces a path halfway.
+        private static readonly Click[] Route =
         {
-            new Waypoint(10f, 0f, PlayerMovementButtons.None, 0, 60),
-            new Waypoint(6f, 6f, PlayerMovementButtons.Sprint, 0, 50),
-            new Waypoint(0f, 16f, PlayerMovementButtons.None, 0, 90),
-            new Waypoint(0f, 3f, PlayerMovementButtons.Sprint, 0, 90),
-            new Waypoint(2f, -8f, PlayerMovementButtons.None, 0, 90),
-            new Waypoint(-6f, 0f, PlayerMovementButtons.None, 0, 90),
-            new Waypoint(-6f, 0.5f, PlayerMovementButtons.None, 15, 45),
-            new Waypoint(-12f, 0f, PlayerMovementButtons.Sprint, 0, 45)
+            new Click(1, 60, false, new[] { Point(10f, 0f) }),
+            new Click(2, 120, false, new[] { Point(6f, 6f), Point(0f, 16f) }),
+            new Click(3, 90, false, new[] { Point(0f, 3f) }),
+            new Click(4, 90, false, new[] { Point(2f, -8f) }),
+            new Click(5, 120, true, new[] { Point(-6f, 0f), Point(-6f, 0.5f), Point(-12f, 0f) }),
+            new Click(6, 20, false, new[] { Point(0f, -2f) }),
+            new Click(7, 60, false, new[] { Point(-3f, -3f), Point(3f, 3f) }),
+            new Click(0, 30, false, null)
         };
 
         public static string ComputeFingerprint()
@@ -43,20 +51,7 @@ namespace Mmorpg.SharedTests
         public static MovementDeterminismTrace ComputeTrace()
         {
             var collisionWorld = CreateCollisionWorld();
-            var settings = new MovementSimulationSettings(
-                30,
-                5f,
-                8f,
-                720f,
-                -24f,
-                7f,
-                -2f,
-                0f,
-                -30f,
-                30f,
-                -30f,
-                30f);
-            var carryState = PlayerCarryState.Default;
+            var settings = CreateSettings();
             var queryBuffer = new CollisionQueryBuffer();
             var state = PlayerMovementSimulation.CreateInitialState(
                 settings,
@@ -66,15 +61,41 @@ namespace Mmorpg.SharedTests
                 0f,
                 0f);
             var states = new List<PlayerMovementState>(TickCount);
-            var routeIndex = 0;
-            var routeTick = 0;
             var hash = 14695981039346656037UL;
+            var clickIndex = 0;
+            var clickTick = 0;
+            var nextPathId = (uint)Route.Length;
             for (uint tick = 1; tick <= TickCount; tick++)
             {
-                var input = CreateInput(tick, state, ref routeIndex, ref routeTick);
+                MovementPath path;
+                var carryState = PlayerCarryState.Default;
+                if (clickIndex < Route.Length)
+                {
+                    var click = Route[clickIndex];
+                    path = click.Path;
+                    carryState = click.Encumbered ? Encumbered : PlayerCarryState.Default;
+                    clickTick++;
+                    if (clickTick >= click.TickBudget)
+                    {
+                        clickIndex++;
+                        clickTick = 0;
+                    }
+                }
+                else
+                {
+                    // After the route: a new click toward alternating corners every 40 ticks.
+                    var phase = (int)((tick / 40) % 4);
+                    var corner = phase == 0 ? Point(-4f, 4f)
+                        : phase == 1 ? Point(4f, -4f)
+                        : phase == 2 ? Point(-2f, -5f)
+                        : Point(3f, 5f);
+                    var pathId = nextPathId + (tick / 40);
+                    path = new MovementPath(pathId, new[] { corner });
+                }
+
                 state = PlayerMovementSimulation.Step(
                     state,
-                    input,
+                    new PlayerMovementInput(tick, tick, path),
                     settings,
                     carryState,
                     collisionWorld,
@@ -88,58 +109,58 @@ namespace Mmorpg.SharedTests
                 states);
         }
 
-        private static PlayerMovementInput CreateInput(
-            uint tick,
-            PlayerMovementState state,
-            ref int routeIndex,
-            ref int routeTick)
+        // Plans around the wall and up the ramp, and hashes every waypoint.
+        public static MovementPlannerTrace ComputePlannerTrace()
         {
-            while (routeIndex < Route.Length)
+            var collisionWorld = CreateCollisionWorld();
+            var planner = new MovementPathPlanner(
+                collisionWorld,
+                CreateSettings(),
+                MovementPathPlannerSettings.Default);
+            var plans = new[]
             {
-                var waypoint = Route[routeIndex];
-                var deltaX = (double)waypoint.X - state.PositionX;
-                var deltaZ = (double)waypoint.Z - state.PositionZ;
-                var reached = waypoint.JumpEveryTicks == 0
-                    && ((deltaX * deltaX) + (deltaZ * deltaZ)) < 0.04d;
-                if (reached || routeTick >= waypoint.TickBudget)
+                planner.Plan(new SimulationVector3(9f, 0f, 0f), new SimulationVector3(4f, 0f, 0.5f)),
+                planner.Plan(new SimulationVector3(0f, 0f, 18f), new SimulationVector3(0f, 2f, 7f)),
+                planner.Plan(new SimulationVector3(-12f, 0f, -12f), new SimulationVector3(-6f, 0.3f, 1f))
+            };
+            var hash = 14695981039346656037UL;
+            foreach (var plan in plans)
+            {
+                hash = Mix(hash, (uint)plan.Status);
+                hash = Mix(hash, (uint)plan.Waypoints.Count);
+                foreach (var waypoint in plan.Waypoints)
                 {
-                    routeIndex++;
-                    routeTick = 0;
-                    continue;
+                    hash = Mix(hash, waypoint.X);
+                    hash = Mix(hash, waypoint.Y);
+                    hash = Mix(hash, waypoint.Z);
                 }
-
-                routeTick++;
-                var yaw = (float)(Math.Atan2(deltaX, deltaZ) * (180d / Math.PI));
-                var buttons = waypoint.Buttons;
-                if (waypoint.JumpEveryTicks > 0 && routeTick % waypoint.JumpEveryTicks == 0)
-                {
-                    buttons |= PlayerMovementButtons.Jump;
-                }
-
-                return Input(tick, 0f, 1f, yaw, buttons);
             }
 
-            // After the route: aim and strafe, then turn continuously with jumps.
-            if (tick <= 760)
-            {
-                return Input(tick, 1f, 0.25f, 0f, PlayerMovementButtons.Aim);
-            }
-
-            var turningYaw = (tick * 4) % 360;
-            var turningButtons = tick % 40 == 0
-                ? PlayerMovementButtons.Jump
-                : PlayerMovementButtons.Sprint;
-            return Input(tick, 0.3f, 1f, turningYaw, turningButtons);
+            return new MovementPlannerTrace(
+                hash.ToString("x16", CultureInfo.InvariantCulture),
+                plans,
+                collisionWorld,
+                CreateSettings());
         }
 
-        private static PlayerMovementInput Input(
-            uint tick,
-            float moveX,
-            float moveY,
-            float cameraYawDegrees,
-            PlayerMovementButtons buttons)
+        public static MovementSimulationSettings CreateSettings()
         {
-            return new PlayerMovementInput(tick, tick, moveX, moveY, cameraYawDegrees, buttons);
+            return new MovementSimulationSettings(
+                30,
+                5f,
+                720f,
+                -24f,
+                -2f,
+                0f,
+                -30f,
+                30f,
+                -30f,
+                30f);
+        }
+
+        private static SimulationVector3 Point(float x, float z)
+        {
+            return new SimulationVector3(x, 0f, z);
         }
 
         private static ulong Mix(ulong hash, PlayerMovementState state)
@@ -151,7 +172,10 @@ namespace Mmorpg.SharedTests
             hash = Mix(hash, state.VelocityY);
             hash = Mix(hash, state.VelocityZ);
             hash = Mix(hash, state.YawDegrees);
-            hash = Mix(hash, (state.IsGrounded ? 1u : 0u) | (state.IsSprinting ? 2u : 0u));
+            hash = Mix(hash, state.IsGrounded ? 1u : 0u);
+            hash = Mix(hash, state.PathProgress.PathId);
+            hash = Mix(hash, (uint)state.PathProgress.NextWaypointIndex);
+            hash = Mix(hash, (uint)state.PathProgress.BlockedTicks);
             return hash;
         }
 
@@ -228,31 +252,20 @@ namespace Mmorpg.SharedTests
             };
         }
 
-        private readonly struct Waypoint
+        private sealed class Click
         {
-            public Waypoint(
-                float x,
-                float z,
-                PlayerMovementButtons buttons,
-                int jumpEveryTicks,
-                int tickBudget)
+            public Click(uint pathId, int tickBudget, bool encumbered, SimulationVector3[] waypoints)
             {
-                X = x;
-                Z = z;
-                Buttons = buttons;
-                JumpEveryTicks = jumpEveryTicks;
+                Path = waypoints == null ? null : new MovementPath(pathId, waypoints);
                 TickBudget = tickBudget;
+                Encumbered = encumbered;
             }
 
-            public float X { get; }
-
-            public float Z { get; }
-
-            public PlayerMovementButtons Buttons { get; }
-
-            public int JumpEveryTicks { get; }
+            public MovementPath Path { get; }
 
             public int TickBudget { get; }
+
+            public bool Encumbered { get; }
         }
     }
 
@@ -269,5 +282,28 @@ namespace Mmorpg.SharedTests
         public string Fingerprint { get; }
 
         public IReadOnlyList<PlayerMovementState> States { get; }
+    }
+
+    public sealed class MovementPlannerTrace
+    {
+        public MovementPlannerTrace(
+            string fingerprint,
+            IReadOnlyList<MovementPathPlan> plans,
+            ICollisionWorld collisionWorld,
+            MovementSimulationSettings settings)
+        {
+            Fingerprint = fingerprint;
+            Plans = plans;
+            CollisionWorld = collisionWorld;
+            Settings = settings;
+        }
+
+        public string Fingerprint { get; }
+
+        public IReadOnlyList<MovementPathPlan> Plans { get; }
+
+        public ICollisionWorld CollisionWorld { get; }
+
+        public MovementSimulationSettings Settings { get; }
     }
 }

@@ -602,74 +602,77 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
         }
     }
 
+    // Movement paths per workload. Hotspot bots stand at their corpses, mixed gameplay bots
+    // step back and forth beside them, and the default workload walks a square loop.
     private sealed class StressBotInputSource(
         int botIndex,
         int seed,
         StressWorkloadProfile workload) : ISimulationBotInputSource
     {
-        public RealtimeMovementInput CreateInput(
-            uint inputSequence,
+        private const float MixedGameplayStep = 0.5f;
+        private SimulationBotPosition? origin;
+        private RealtimeMovementPath? currentPath;
+
+        public RealtimeMovementPath? SelectPath(
             uint clientTick,
-            RealtimeJoinAccepted joinedSession)
+            RealtimeJoinAccepted joinedSession,
+            SimulationBotPosition position)
         {
+            origin ??= position;
+            var start = origin.Value;
+            var settings = joinedSession.MovementSettings;
             if (workload == StressWorkloadProfile.LootHotspot)
             {
-                return new RealtimeMovementInput(
-                    inputSequence,
-                    clientTick,
-                    0,
-                    0,
-                    (botIndex * 17f) % 360f,
-                    RealtimeMovementButtons.Aim);
+                return null;
             }
 
             if (workload == StressWorkloadProfile.MixedGameplay)
             {
-                var phaseTicks = Math.Max(1u, joinedSession.MovementSettings.TickRateHz / 3u);
-                var phase = (clientTick / phaseTicks + (uint)botIndex) % 4u;
-                var mixedMoveY = phase switch
+                var phaseTicks = Math.Max(1u, settings.TickRateHz / 3u);
+                var step = (clientTick / phaseTicks) + (uint)botIndex;
+                return (step % 4u) switch
                 {
-                    0 => 0.5f,
-                    2 => -0.5f,
-                    _ => 0f
+                    0 => PathFor(step, start.X, start.Z + MixedGameplayStep, start.Y, settings),
+                    2 => PathFor(step, start.X, start.Z, start.Y, settings),
+                    _ => null
                 };
-                return new RealtimeMovementInput(
-                    inputSequence,
-                    clientTick,
-                    0,
-                    mixedMoveY,
-                    (botIndex * 17f + clientTick) % 360f,
-                    RealtimeMovementButtons.Aim);
             }
 
-            var ticksPerPhase = Math.Max(1u, joinedSession.MovementSettings.TickRateHz * 2u);
-            var movementPhase = (int)(((clientTick / ticksPerPhase)
-                + (uint)(botIndex + seed)) % 4u);
-            var (moveX, moveY) = movementPhase switch
+            var ticksPerLeg = Math.Max(1u, settings.TickRateHz * 2u);
+            var leg = (clientTick / ticksPerLeg) + (uint)(botIndex + seed);
+            var legLength = settings.WalkSpeed * 2f;
+            var (offsetX, offsetZ) = (leg % 4u) switch
             {
-                0 => (0f, 1f),
-                1 => (1f, 0f),
-                2 => (0f, -1f),
-                _ => (-1f, 0f)
+                0 => (0f, legLength),
+                1 => (legLength, legLength),
+                2 => (legLength, 0f),
+                _ => (0f, 0f)
             };
-            var buttons = movementPhase == 3
-                ? RealtimeMovementButtons.Aim
-                : RealtimeMovementButtons.Sprint;
-            var jumpInterval = Math.Max(1u, joinedSession.MovementSettings.TickRateHz * 5u);
-            if (movementPhase != 3
-                && clientTick % jumpInterval == (uint)(botIndex % jumpInterval))
+            return PathFor(leg, start.X + offsetX, start.Z + offsetZ, start.Y, settings);
+        }
+
+        // One path id per step, so every tick of the same step follows the same path.
+        private RealtimeMovementPath PathFor(
+            uint step,
+            float x,
+            float z,
+            float y,
+            RealtimeMovementSettings settings)
+        {
+            var pathId = Math.Max(1u, unchecked(step + 1u));
+            if (currentPath?.PathId != pathId)
             {
-                buttons |= RealtimeMovementButtons.Jump;
+                currentPath = new RealtimeMovementPath(
+                    pathId,
+                    [
+                        new RealtimeMovementPathWaypoint(
+                            Math.Clamp(x, settings.MinimumX, settings.MaximumX),
+                            y,
+                            Math.Clamp(z, settings.MinimumZ, settings.MaximumZ))
+                    ]);
             }
 
-            var yaw = (botIndex * 17f + clientTick * 1.5f) % 360f;
-            return new RealtimeMovementInput(
-                inputSequence,
-                clientTick,
-                moveX,
-                moveY,
-                yaw,
-                buttons);
+            return currentPath;
         }
     }
 }

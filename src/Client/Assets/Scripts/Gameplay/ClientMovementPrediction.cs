@@ -53,6 +53,10 @@ namespace Mmorpg.Client.Gameplay
             get { return carryState; }
         }
 
+        // The path id of the newest authoritative state. Until it matches the path of the
+        // newest input, every batch carries that path.
+        public uint ConfirmedPathId { get; private set; }
+
         public void ApplyCarryState(PlayerCarryState candidate)
         {
             if (candidate == null)
@@ -97,6 +101,7 @@ namespace Mmorpg.Client.Gameplay
             uint lastProcessedInputSequence)
         {
             var previousPrediction = State;
+            ConfirmedPathId = authoritativeState.PathProgress.PathId;
             pendingInputs.RemoveAll(input =>
                 !MovementSequence.IsNewer(input.InputSequence, lastProcessedInputSequence));
 
@@ -116,8 +121,18 @@ namespace Mmorpg.Client.Gameplay
             return new MovementReconciliation(previousPrediction, replayed);
         }
 
-        public PlayerMovementInput[] CreateRedundantInputBatch()
+        public PlayerMovementInput[] CreateRedundantInputBatch(out MovementPath unconfirmedPath)
         {
+            unconfirmedPath = null;
+            if (pendingInputs.Count > 0)
+            {
+                var newestPath = pendingInputs[pendingInputs.Count - 1].Path;
+                if (newestPath != null && newestPath.Id != ConfirmedPathId)
+                {
+                    unconfirmedPath = newestPath;
+                }
+            }
+
             var count = pendingInputs.Count < RealtimeProtocol.MaximumInputBatchSize
                 ? pendingInputs.Count
                 : RealtimeProtocol.MaximumInputBatchSize;

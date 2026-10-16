@@ -37,30 +37,51 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(actions, Is.Not.Null);
             Assert.That(actions.FindActionMap("Player", false), Is.Not.Null);
-            Assert.That(actions.FindAction("Move", false), Is.Not.Null);
-            Assert.That(actions.FindAction("Sprint", false), Is.Not.Null);
-            Assert.That(actions.FindAction("Jump", false), Is.Not.Null);
-            Assert.That(actions.FindAction("Aim", false), Is.Not.Null);
-            Assert.That(actions.FindAction("Look", false), Is.Not.Null);
-            Assert.That(actions.FindAction("ToggleDebugCursor", false), Is.Not.Null);
-            Assert.That(actions.FindAction("ToggleWorldDebug", false), Is.Not.Null);
-            Assert.That(actions.FindAction("ToggleInventory", false), Is.Not.Null);
-            Assert.That(actions.FindAction("ToggleCharacterInventory", false), Is.Not.Null);
-            Assert.That(actions.FindAction("ToggleEquipmentInventory", false), Is.Not.Null);
-            Assert.That(actions.FindAction("Orbit", false), Is.Null);
-            Assert.That(actions.FindAction("Zoom", false), Is.Null);
+            foreach (var actionName in new[]
+            {
+                "Select",
+                "PointerPosition",
+                "CameraOrbit",
+                "CameraOrbitDelta",
+                "CameraRotate",
+                "CameraZoom",
+                "Cancel",
+                "ToggleWorldDebug",
+                "ToggleInventory",
+                "ToggleCharacterInventory",
+                "ToggleEquipmentInventory"
+            })
+            {
+                Assert.That(actions.FindAction(actionName, false), Is.Not.Null, actionName);
+            }
 
-            var movePaths = actions.FindAction("Move").bindings.Select(binding => binding.path);
-            Assert.That(movePaths, Does.Contain("<Keyboard>/w"));
-            Assert.That(movePaths, Does.Contain("<Keyboard>/a"));
-            Assert.That(movePaths, Does.Contain("<Keyboard>/s"));
-            Assert.That(movePaths, Does.Contain("<Keyboard>/d"));
-            Assert.That(actions.FindAction("Aim").bindings.Select(binding => binding.path),
-                Does.Contain("<Mouse>/rightButton"));
-            Assert.That(actions.FindAction("Look").bindings.Select(binding => binding.path),
+            // Click-to-move replaced keyboard movement, sprint, jump, aim, mouse look, the
+            // debug cursor toggle, and the crosshair interact key.
+            foreach (var removedName in new[]
+            {
+                "Move", "Sprint", "Jump", "Aim", "Look", "ToggleDebugCursor", "Interact"
+            })
+            {
+                Assert.That(actions.FindAction(removedName, false), Is.Null, removedName);
+            }
+
+            Assert.That(actions.FindAction("Select").bindings.Select(binding => binding.path),
+                Does.Contain("<Mouse>/leftButton"));
+            Assert.That(actions.FindAction("PointerPosition").bindings.Select(binding => binding.path),
+                Does.Contain("<Pointer>/position"));
+            Assert.That(actions.FindAction("CameraOrbit").bindings.Select(binding => binding.path),
+                Does.Contain("<Mouse>/middleButton"));
+            Assert.That(actions.FindAction("CameraOrbitDelta").bindings.Select(binding => binding.path),
                 Does.Contain("<Mouse>/delta"));
-            Assert.That(actions.FindAction("ToggleDebugCursor").bindings.Select(binding => binding.path),
-                Does.Contain("<Keyboard>/f1"));
+            var rotatePaths = actions.FindAction("CameraRotate").bindings.Select(binding => binding.path);
+            Assert.That(rotatePaths, Does.Contain("<Keyboard>/upArrow"));
+            Assert.That(rotatePaths, Does.Contain("<Keyboard>/downArrow"));
+            Assert.That(rotatePaths, Does.Contain("<Keyboard>/leftArrow"));
+            Assert.That(rotatePaths, Does.Contain("<Keyboard>/rightArrow"));
+            Assert.That(actions.FindAction("CameraZoom").bindings.Select(binding => binding.path),
+                Does.Contain("<Mouse>/scroll/y"));
+            Assert.That(actions.FindAction("Cancel").bindings.Select(binding => binding.path),
+                Does.Contain("<Keyboard>/escape"));
             Assert.That(actions.FindAction("ToggleWorldDebug").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/f2"));
             Assert.That(actions.FindAction("ToggleInventory").bindings.Select(binding => binding.path),
@@ -85,38 +106,6 @@ namespace Mmorpg.Client.Tests.EditMode
             finally
             {
                 ClientAssets.Release(handle);
-            }
-        }
-
-        [Test]
-        public void DynamicCrosshairSupportsWeaponDefinitionsAndSpread()
-        {
-            var gameObject = new GameObject("CrosshairTest");
-
-            try
-            {
-                var controller = gameObject.AddComponent<CrosshairController>();
-                Assert.That(controller.CurrentDefinition.Shape, Is.EqualTo(CrosshairShape.Dot));
-                Assert.That(controller.CurrentDefinition.Size, Is.EqualTo(4f));
-                Assert.That(controller.CurrentDefinition.Gap, Is.Zero);
-
-                var weaponCrosshair = new CrosshairDefinition(
-                    CrosshairShape.Cross,
-                    12f,
-                    2f,
-                    4f,
-                    Color.red);
-                controller.SetCrosshair(weaponCrosshair);
-                controller.SetDynamicSpread(6f);
-
-                Assert.That(controller.CurrentDefinition.Shape, Is.EqualTo(CrosshairShape.Cross));
-                Assert.That(controller.CurrentDefinition.Size, Is.EqualTo(12f));
-                Assert.That(controller.CurrentDefinition.Color, Is.EqualTo(Color.red));
-                Assert.That(controller.DynamicSpread, Is.EqualTo(6f));
-            }
-            finally
-            {
-                Object.DestroyImmediate(gameObject);
             }
         }
 
@@ -166,28 +155,24 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(prefabRoot.GetComponentsInChildren<AudioListener>(true), Has.Length.EqualTo(1));
 
                 var cameraProperties = new SerializedObject(cameraController);
-                Assert.That(cameraProperties.FindProperty("shoulderOffset").floatValue,
-                    Is.EqualTo(1.1f));
-                Assert.That(cameraProperties.FindProperty("aimShoulderOffset").floatValue,
-                    Is.EqualTo(1.3f));
-                Assert.That(cameraProperties.FindProperty("verticalOffset").floatValue,
-                    Is.EqualTo(0.45f));
-                Assert.That(cameraProperties.FindProperty("aimVerticalOffset").floatValue,
-                    Is.EqualTo(0.35f));
-                Assert.That(cameraProperties.FindProperty("distance").floatValue,
-                    Is.EqualTo(4.75f));
-                Assert.That(cameraProperties.FindProperty("aimDistance").floatValue,
-                    Is.EqualTo(4.25f));
-                Assert.That(cameraProperties.FindProperty("initialPitch").floatValue,
+                Assert.That(cameraProperties.FindProperty("target").objectReferenceValue,
+                    Is.EqualTo(localController.CameraTarget));
+                Assert.That(cameraProperties.FindProperty("minimumDistance").floatValue,
+                    Is.EqualTo(3f));
+                Assert.That(cameraProperties.FindProperty("maximumDistance").floatValue,
+                    Is.EqualTo(30f));
+                Assert.That(cameraProperties.FindProperty("initialDistance").floatValue,
                     Is.EqualTo(12f));
-                Assert.That(cameraProperties.FindProperty("minPitch").floatValue,
-                    Is.EqualTo(-50f));
-                Assert.That(cameraProperties.FindProperty("maxPitch").floatValue,
-                    Is.EqualTo(75f));
-                Assert.That(cameraProperties.FindProperty("normalFieldOfView").floatValue,
-                    Is.EqualTo(60f));
-                Assert.That(cameraProperties.FindProperty("aimFieldOfView").floatValue,
-                    Is.EqualTo(45f));
+                Assert.That(cameraProperties.FindProperty("minimumPitch").floatValue,
+                    Is.EqualTo(10f));
+                Assert.That(cameraProperties.FindProperty("maximumPitch").floatValue,
+                    Is.EqualTo(80f));
+                Assert.That(cameraProperties.FindProperty("initialPitch").floatValue,
+                    Is.EqualTo(40f));
+                Assert.That(cameraProperties.FindProperty("fieldOfView").floatValue,
+                    Is.EqualTo(55f));
+                Assert.That(cameraProperties.FindProperty("shoulderOffset"), Is.Null);
+                Assert.That(cameraProperties.FindProperty("aimDistance"), Is.Null);
 
                 var bodyProperties = new SerializedObject(characterBody);
                 Assert.That(bodyProperties.FindProperty("controllerSkinWidthRatio").floatValue,
@@ -212,6 +197,51 @@ namespace Mmorpg.Client.Tests.EditMode
             finally
             {
                 PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
+        [Test]
+        public void OrbitCameraClampsTiltAndZoomAndKeepsTurning()
+        {
+            var cameraObject = new GameObject("OrbitCameraTest", typeof(Camera));
+            try
+            {
+                var orbit = cameraObject.AddComponent<OrbitCameraController>();
+                orbit.ApplyInput(Vector2.zero, Vector2.zero, 0f, 0f);
+                Assert.That(orbit.Pitch, Is.EqualTo(40f));
+                Assert.That(orbit.ZoomDistance, Is.EqualTo(12f));
+
+                // Dragging up tilts toward the horizon until the 10 degree limit.
+                orbit.ApplyInput(new Vector2(0f, 1000f), Vector2.zero, 0f, 0f);
+                Assert.That(orbit.Pitch, Is.EqualTo(10f));
+                orbit.ApplyInput(Vector2.zero, new Vector2(0f, 1f), 0f, 10f);
+                Assert.That(orbit.Pitch, Is.EqualTo(80f));
+
+                // One notch zooms in by 15 percent; many notches stop at the limits.
+                orbit.ApplyInput(Vector2.zero, Vector2.zero, 1f, 0f);
+                Assert.That(orbit.ZoomDistance, Is.EqualTo(10.2f).Within(0.0001f));
+                for (var notch = 0; notch < 40; notch++)
+                {
+                    orbit.ApplyInput(Vector2.zero, Vector2.zero, -1f, 0f);
+                }
+
+                Assert.That(orbit.ZoomDistance, Is.EqualTo(30f));
+                for (var notch = 0; notch < 40; notch++)
+                {
+                    orbit.ApplyInput(Vector2.zero, Vector2.zero, 1f, 0f);
+                }
+
+                Assert.That(orbit.ZoomDistance, Is.EqualTo(3f));
+
+                // Turning wraps around instead of clamping.
+                orbit.ApplyInput(new Vector2(4 * 360f, 0f), Vector2.zero, 0f, 0f);
+                Assert.That(orbit.Yaw, Is.EqualTo(0f).Within(0.001f));
+                orbit.ApplyInput(Vector2.zero, new Vector2(-1f, 0f), 0f, 0.5f);
+                Assert.That(orbit.Yaw, Is.EqualTo(60f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(cameraObject);
             }
         }
 
@@ -447,7 +477,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     AssetDatabase.GetAssetPath(prefab),
                     Does.StartWith(ClientAddressablesLayout.WorldActorPrefabFolder + "/"),
                     actor.PresentationArchetypeId);
-                // Presentation never takes part in physics or crosshair raycasts.
+                // Presentation never takes part in physics or pointer raycasts.
                 Assert.That(
                     prefab.GetComponentsInChildren<Collider>(true),
                     Is.Empty,

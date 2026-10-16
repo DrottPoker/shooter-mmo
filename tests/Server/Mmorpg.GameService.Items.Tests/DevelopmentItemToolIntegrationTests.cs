@@ -89,7 +89,6 @@ public sealed class DevelopmentItemToolIntegrationTests
             CancellationToken.None);
         Assert.True(inventory.Succeeded, inventory.Error?.Message);
         Assert.Equal(14_000, inventory.Value!.LoadRatioBasisPoints);
-        Assert.False(inventory.Value.SprintEligible);
         Assert.Equal(2_000, inventory.Value.MovementMultiplierBasisPoints);
 
         var hardCapError = await Assert.ThrowsAsync<InvalidOperationException>(() =>

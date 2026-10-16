@@ -2,24 +2,13 @@ using System;
 
 namespace Mmorpg.GameSimulation
 {
-    [Flags]
-    public enum PlayerMovementButtons : byte
-    {
-        None = 0,
-        Sprint = 1,
-        Jump = 2,
-        Aim = 4
-    }
-
     public sealed class MovementSimulationSettings
     {
         public MovementSimulationSettings(
             int tickRateHz,
             float walkSpeed,
-            float sprintSpeed,
             float rotationSpeedDegrees,
             float gravity,
-            float jumpVelocity,
             float groundedVerticalVelocity,
             float groundHeight,
             float minimumX,
@@ -29,11 +18,9 @@ namespace Mmorpg.GameSimulation
             : this(
                 tickRateHz,
                 walkSpeed,
-                sprintSpeed,
                 rotationSpeedDegrees,
                 gravity,
                 55f,
-                jumpVelocity,
                 groundedVerticalVelocity,
                 groundHeight,
                 minimumX,
@@ -47,10 +34,8 @@ namespace Mmorpg.GameSimulation
         public MovementSimulationSettings(
             int tickRateHz,
             float walkSpeed,
-            float sprintSpeed,
             float rotationSpeedDegrees,
             float gravity,
-            float jumpVelocity,
             float groundedVerticalVelocity,
             float groundHeight,
             float minimumX,
@@ -61,11 +46,9 @@ namespace Mmorpg.GameSimulation
             : this(
                 tickRateHz,
                 walkSpeed,
-                sprintSpeed,
                 rotationSpeedDegrees,
                 gravity,
                 55f,
-                jumpVelocity,
                 groundedVerticalVelocity,
                 groundHeight,
                 minimumX,
@@ -79,11 +62,9 @@ namespace Mmorpg.GameSimulation
         public MovementSimulationSettings(
             int tickRateHz,
             float walkSpeed,
-            float sprintSpeed,
             float rotationSpeedDegrees,
             float gravity,
             float maximumFallSpeed,
-            float jumpVelocity,
             float groundedVerticalVelocity,
             float groundHeight,
             float minimumX,
@@ -102,11 +83,6 @@ namespace Mmorpg.GameSimulation
                 throw new ArgumentOutOfRangeException(nameof(walkSpeed));
             }
 
-            if (!IsFinite(sprintSpeed) || sprintSpeed < walkSpeed)
-            {
-                throw new ArgumentOutOfRangeException(nameof(sprintSpeed));
-            }
-
             if (!IsFinite(rotationSpeedDegrees) || rotationSpeedDegrees <= 0f)
             {
                 throw new ArgumentOutOfRangeException(nameof(rotationSpeedDegrees));
@@ -120,11 +96,6 @@ namespace Mmorpg.GameSimulation
             if (!IsFinite(maximumFallSpeed) || maximumFallSpeed <= 0f)
             {
                 throw new ArgumentOutOfRangeException(nameof(maximumFallSpeed));
-            }
-
-            if (!IsFinite(jumpVelocity) || jumpVelocity <= 0f)
-            {
-                throw new ArgumentOutOfRangeException(nameof(jumpVelocity));
             }
 
             if (!IsFinite(groundedVerticalVelocity) || groundedVerticalVelocity > 0f)
@@ -146,11 +117,10 @@ namespace Mmorpg.GameSimulation
             CharacterCollision = characterCollision
                 ?? throw new ArgumentNullException(nameof(characterCollision));
             // The motor counts substeps from the full displacement length, so the budget
-            // covers horizontal sprint and the fastest vertical speed at the same time.
-            var maximumVerticalSpeed = (double)Math.Max(maximumFallSpeed, jumpVelocity);
+            // covers walking and the fastest fall at the same time.
             var maximumPerTickDisplacement = Math.Sqrt(
-                ((double)sprintSpeed * sprintSpeed)
-                + (maximumVerticalSpeed * maximumVerticalSpeed)) / tickRateHz;
+                ((double)walkSpeed * walkSpeed)
+                + ((double)maximumFallSpeed * maximumFallSpeed)) / tickRateHz;
             var requiredSubsteps = Math.Ceiling(
                 maximumPerTickDisplacement
                 / CharacterCollision.MaximumSubstepDistance);
@@ -162,11 +132,9 @@ namespace Mmorpg.GameSimulation
 
             TickRateHz = tickRateHz;
             WalkSpeed = walkSpeed;
-            SprintSpeed = sprintSpeed;
             RotationSpeedDegrees = rotationSpeedDegrees;
             Gravity = gravity;
             MaximumFallSpeed = maximumFallSpeed;
-            JumpVelocity = jumpVelocity;
             GroundedVerticalVelocity = groundedVerticalVelocity;
             GroundHeight = groundHeight;
             MinimumX = minimumX;
@@ -182,17 +150,19 @@ namespace Mmorpg.GameSimulation
             get { return (float)(1f / TickRateHz); }
         }
 
-        public float WalkSpeed { get; }
+        // A path ends after the motor blocked it for half a second.
+        public int BlockedPathTickLimit
+        {
+            get { return (TickRateHz + 1) / 2; }
+        }
 
-        public float SprintSpeed { get; }
+        public float WalkSpeed { get; }
 
         public float RotationSpeedDegrees { get; }
 
         public float Gravity { get; }
 
         public float MaximumFallSpeed { get; }
-
-        public float JumpVelocity { get; }
 
         public float GroundedVerticalVelocity { get; }
 
@@ -214,49 +184,25 @@ namespace Mmorpg.GameSimulation
         }
     }
 
+    // One tick of movement intent: the path the player wants to follow, or none to stand.
     public readonly struct PlayerMovementInput
     {
-        public PlayerMovementInput(
-            uint inputSequence,
-            uint clientTick,
-            float moveX,
-            float moveY,
-            float cameraYawDegrees,
-            PlayerMovementButtons buttons)
+        public PlayerMovementInput(uint inputSequence, uint clientTick, MovementPath path)
         {
             InputSequence = inputSequence;
             ClientTick = clientTick;
-            MoveX = moveX;
-            MoveY = moveY;
-            CameraYawDegrees = cameraYawDegrees;
-            Buttons = buttons;
+            Path = path;
         }
 
         public uint InputSequence { get; }
 
         public uint ClientTick { get; }
 
-        public float MoveX { get; }
+        public MovementPath Path { get; }
 
-        public float MoveY { get; }
-
-        public float CameraYawDegrees { get; }
-
-        public PlayerMovementButtons Buttons { get; }
-
-        public bool SprintHeld
+        public uint PathId
         {
-            get { return (Buttons & PlayerMovementButtons.Sprint) != 0; }
-        }
-
-        public bool JumpPressed
-        {
-            get { return (Buttons & PlayerMovementButtons.Jump) != 0; }
-        }
-
-        public bool AimHeld
-        {
-            get { return (Buttons & PlayerMovementButtons.Aim) != 0; }
+            get { return Path != null ? Path.Id : 0u; }
         }
     }
 
@@ -270,8 +216,30 @@ namespace Mmorpg.GameSimulation
             float velocityY,
             float velocityZ,
             float yawDegrees,
+            bool isGrounded)
+            : this(
+                positionX,
+                positionY,
+                positionZ,
+                velocityX,
+                velocityY,
+                velocityZ,
+                yawDegrees,
+                isGrounded,
+                MovementPathProgress.None)
+        {
+        }
+
+        public PlayerMovementState(
+            float positionX,
+            float positionY,
+            float positionZ,
+            float velocityX,
+            float velocityY,
+            float velocityZ,
+            float yawDegrees,
             bool isGrounded,
-            bool isSprinting)
+            MovementPathProgress pathProgress)
         {
             PositionX = positionX;
             PositionY = positionY;
@@ -281,7 +249,7 @@ namespace Mmorpg.GameSimulation
             VelocityZ = velocityZ;
             YawDegrees = yawDegrees;
             IsGrounded = isGrounded;
-            IsSprinting = isSprinting;
+            PathProgress = pathProgress;
         }
 
         public float PositionX { get; }
@@ -300,7 +268,27 @@ namespace Mmorpg.GameSimulation
 
         public bool IsGrounded { get; }
 
-        public bool IsSprinting { get; }
+        // Only the owner snapshot carries progress. Remote states always have none.
+        public MovementPathProgress PathProgress { get; }
+
+        public SimulationVector3 Position
+        {
+            get { return new SimulationVector3(PositionX, PositionY, PositionZ); }
+        }
+
+        public PlayerMovementState WithPathProgress(MovementPathProgress pathProgress)
+        {
+            return new PlayerMovementState(
+                PositionX,
+                PositionY,
+                PositionZ,
+                VelocityX,
+                VelocityY,
+                VelocityZ,
+                YawDegrees,
+                IsGrounded,
+                pathProgress);
+        }
     }
 
     public static class MovementSequence
@@ -313,6 +301,15 @@ namespace Mmorpg.GameSimulation
 
     public static class PlayerMovementSimulation
     {
+        // A waypoint counts as reached within one centimeter.
+        public const float WaypointArrivalDistance = 0.01f;
+
+        // A tick blocks the path when the motor moved less than this share of the step.
+        private const float BlockedProgressRatio = 0.25f;
+
+        private const float WaypointArrivalDistanceSquared =
+            WaypointArrivalDistance * WaypointArrivalDistance;
+
         public static PlayerMovementState CreateInitialState(
             MovementSimulationSettings settings,
             ICollisionWorld collisionWorld,
@@ -354,8 +351,7 @@ namespace Mmorpg.GameSimulation
                 isGrounded ? settings.GroundedVerticalVelocity : 0f,
                 0f,
                 NormalizeAngle(yawDegrees),
-                isGrounded,
-                false);
+                isGrounded);
         }
 
         public static PlayerMovementState Step(
@@ -397,33 +393,58 @@ namespace Mmorpg.GameSimulation
                 throw new ArgumentNullException(nameof(queryBuffer));
             }
 
-            CalculatePlanarMovement(
-                state,
-                input,
-                out var directionX,
-                out var directionZ,
-                out var directionLength,
-                out var cameraYaw);
+            // A different path in the input replaces the followed one from its start.
+            var path = input.Path;
+            var progress = state.PathProgress;
+            if (progress.PathId != input.PathId)
+            {
+                progress = new MovementPathProgress(input.PathId, 0, 0);
+            }
 
+            var waypointIndex = progress.NextWaypointIndex;
+            var blockedTicks = progress.BlockedTicks;
             var isGrounded = state.IsGrounded;
-            var acceptsPlanarControl = isGrounded;
-            var isSprinting = state.IsSprinting;
-            if (!carryState.SprintAllowed || input.AimHeld || !input.SprintHeld)
+            var startX = state.PositionX;
+            var startZ = state.PositionZ;
+            var followsPath = false;
+            var directionX = 0f;
+            var directionZ = 0f;
+            var planarSpeed = 0f;
+            if (isGrounded && path != null)
             {
-                isSprinting = false;
-            }
-            else if (!isSprinting && isGrounded)
-            {
-                isSprinting = true;
+                while (waypointIndex < path.Count
+                    && PlanarDistanceSquared(startX, startZ, path[waypointIndex])
+                        <= WaypointArrivalDistanceSquared)
+                {
+                    waypointIndex++;
+                }
+
+                if (waypointIndex < path.Count)
+                {
+                    var target = path[waypointIndex];
+                    var deltaX = (float)(target.X - startX);
+                    var deltaZ = (float)(target.Z - startZ);
+                    var distance = (float)Math.Sqrt(
+                        (float)((float)(deltaX * deltaX) + (float)(deltaZ * deltaZ)));
+                    directionX = (float)(deltaX / distance);
+                    directionZ = (float)(deltaZ / distance);
+                    var speed = (float)(settings.WalkSpeed * carryState.MovementMultiplier);
+                    var stepDistance = (float)(speed * settings.FixedDeltaTime);
+                    // The last step lands exactly on the waypoint instead of passing it.
+                    planarSpeed = distance < stepDistance
+                        ? (float)(distance / settings.FixedDeltaTime)
+                        : speed;
+                    followsPath = true;
+                }
             }
 
-            var speed = (float)((isSprinting ? settings.SprintSpeed : settings.WalkSpeed)
-                * carryState.MovementMultiplier);
-            var velocity = acceptsPlanarControl
+            // Grounded characters move only along the path. Airborne characters keep
+            // their momentum until they land.
+            var velocity = isGrounded
                 ? new SimulationVector3(
-                    (float)(directionX * speed),
+                    (float)(directionX * planarSpeed),
                     state.VelocityY,
-                    (float)(directionZ * speed))
+                    (float)(directionZ * planarSpeed))
                 : new SimulationVector3(
                     state.VelocityX,
                     state.VelocityY,
@@ -434,15 +455,6 @@ namespace Mmorpg.GameSimulation
                     velocity.X,
                     settings.GroundedVerticalVelocity,
                     velocity.Z);
-            }
-
-            if (input.JumpPressed && isGrounded && !input.AimHeld)
-            {
-                velocity = new SimulationVector3(
-                    velocity.X,
-                    settings.JumpVelocity,
-                    velocity.Z);
-                isGrounded = false;
             }
 
             var gravityStep = (float)(settings.Gravity * settings.FixedDeltaTime);
@@ -467,12 +479,36 @@ namespace Mmorpg.GameSimulation
             var velocityY = movement.IsGrounded
                 ? settings.GroundedVerticalVelocity
                 : movement.Velocity.Y;
-            var targetYaw = state.YawDegrees;
-            if (acceptsPlanarControl && input.AimHeld)
+
+            if (followsPath)
             {
-                targetYaw = cameraYaw;
+                var movedX = (float)(positionX - startX);
+                var movedZ = (float)(positionZ - startZ);
+                var moved = (float)((float)(movedX * movedX) + (float)(movedZ * movedZ));
+                var minimumProgress = (float)((float)(planarSpeed * settings.FixedDeltaTime)
+                    * BlockedProgressRatio);
+                blockedTicks = moved < (float)(minimumProgress * minimumProgress)
+                    ? blockedTicks + 1
+                    : 0;
+                if (PlanarDistanceSquared(positionX, positionZ, path[waypointIndex])
+                    <= WaypointArrivalDistanceSquared)
+                {
+                    waypointIndex++;
+                    blockedTicks = 0;
+                }
+                else if (blockedTicks >= settings.BlockedPathTickLimit)
+                {
+                    waypointIndex = path.Count;
+                    blockedTicks = 0;
+                }
             }
-            else if (acceptsPlanarControl && directionLength > 0.001f)
+            else if (path == null || waypointIndex >= path.Count)
+            {
+                blockedTicks = 0;
+            }
+
+            var targetYaw = state.YawDegrees;
+            if (followsPath)
             {
                 targetYaw = NormalizeAngle(
                     (float)(Math.Atan2(directionX, directionZ) * (180d / Math.PI)));
@@ -491,44 +527,14 @@ namespace Mmorpg.GameSimulation
                 movement.Velocity.Z,
                 yaw,
                 movement.IsGrounded,
-                isSprinting);
+                new MovementPathProgress(progress.PathId, waypointIndex, blockedTicks));
         }
 
-        private static void CalculatePlanarMovement(
-            PlayerMovementState state,
-            PlayerMovementInput input,
-            out float directionX,
-            out float directionZ,
-            out float directionLength,
-            out float cameraYaw)
+        private static float PlanarDistanceSquared(float x, float z, SimulationVector3 point)
         {
-            var moveX = IsFinite(input.MoveX) ? Clamp(input.MoveX, -1f, 1f) : 0f;
-            var moveY = IsFinite(input.MoveY) ? Clamp(input.MoveY, -1f, 1f) : 0f;
-            var moveLength = (float)Math.Sqrt((float)((float)(moveX * moveX) + (float)(moveY * moveY)));
-            if (moveLength > 1f)
-            {
-                moveX = (float)(moveX / moveLength);
-                moveY = (float)(moveY / moveLength);
-            }
-
-            cameraYaw = IsFinite(input.CameraYawDegrees)
-                ? NormalizeAngle(input.CameraYawDegrees)
-                : state.YawDegrees;
-            var radians = (float)(cameraYaw * ((float)Math.PI / 180f));
-            var forwardX = (float)Math.Sin(radians);
-            var forwardZ = (float)Math.Cos(radians);
-            var rightX = forwardZ;
-            var rightZ = -forwardX;
-            directionX = (float)((float)(rightX * moveX) + (float)(forwardX * moveY));
-            directionZ = (float)((float)(rightZ * moveX) + (float)(forwardZ * moveY));
-            directionLength = (float)Math.Sqrt(
-                (float)((float)(directionX * directionX) + (float)(directionZ * directionZ)));
-            if (directionLength > 1f)
-            {
-                directionX = (float)(directionX / directionLength);
-                directionZ = (float)(directionZ / directionLength);
-                directionLength = 1f;
-            }
+            var deltaX = (float)(point.X - x);
+            var deltaZ = (float)(point.Z - z);
+            return (float)((float)(deltaX * deltaX) + (float)(deltaZ * deltaZ));
         }
 
         private static float MoveAngleTowards(float current, float target, float maximumDelta)
@@ -566,11 +572,6 @@ namespace Mmorpg.GameSimulation
         private static float Clamp(float value, float minimum, float maximum)
         {
             return Math.Max(minimum, Math.Min(maximum, value));
-        }
-
-        private static bool IsFinite(float value)
-        {
-            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 }

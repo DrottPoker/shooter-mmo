@@ -126,7 +126,6 @@ namespace Mmorpg.Client.Api
         public long carriedWeight;
         public long carryCapacity;
         public int loadRatioBasisPoints;
-        public bool sprintEligible;
         public int movementMultiplierBasisPoints;
     }
 

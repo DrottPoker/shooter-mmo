@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 14 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 15 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -134,8 +134,8 @@ compile error. `SatisfiesRules` runs after every field rule passed, so it may
 rely on them.
 
 A message uses `"api": "unwrap"` when it has a single field and its encode and
-decode methods should take that value directly, as `MovementInputBatch` takes
-`RealtimeMovementInput[]`. `parameter` names the encode and decode parameter.
+decode methods should take that value directly, as `CarryStateChanged` takes
+`RealtimeCarryState`. `parameter` names the encode and decode parameter.
 An unwrapped struct field may add `"encodeParameters": "expanded"`, so the
 encode method takes the struct's fields instead, as
 `EncodeJoinRejected(code, message)` builds the `RealtimeError` itself. A
@@ -253,6 +253,24 @@ table from the descriptors, the Unity client recognizes snapshots by their
 unreliable delivery, and `RealtimeReplicationContractTests` checks that every
 packet the worker sends travels as its descriptor says.
 
+## Movement Input And Paths
+
+Protocol version 15 carries click-to-move. Every `MovementInput` names the path
+the player follows with `PathId`, or 0 to stand. `MovementInputBatch` adds an
+optional `Path` with its id and 1 to `MaximumMovementPathWaypoints` (32)
+waypoints. The hand-written rule requires the path id to equal the path id of
+the newest input in the batch, so a path always travels with the inputs that
+name it and can never arrive after them. The client keeps sending the path until
+an owner snapshot reports that path id. A batch whose newest input names a path
+the worker never received is a protocol error, `unknown_movement_path`.
+
+`OwnerSimulationSnapshot` ends with `MovementPathProgress`: the followed path id,
+the next waypoint index, at most 32, which equals the waypoint count once the
+path ended, and the consecutive ticks in which collision blocked the path.
+Without a path, the index and the blocked ticks must be 0. Remote
+`PlayerState` records carry no path data, and its only flag is `IsGrounded`.
+`MovementSettings` no longer has sprint speed or jump velocity.
+
 ## Versioning
 
 Client and worker run in lockstep: both must use the same version. Decoders
@@ -285,5 +303,5 @@ accepts needs a version bump by hand.
 ## Golden Tests
 
 The golden cases pin the exact bytes of every message type and every accept or
-reject decision of protocol version 14 in both .NET and Unity. They are
+reject decision of protocol version 15 in both .NET and Unity. They are
 described in [Backend Tests](../tests/README.md#realtime-protocol-goldens).

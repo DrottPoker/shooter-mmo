@@ -54,7 +54,7 @@ public sealed class RealtimeProtocolRejectionTests
                 client.Send([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
                 break;
             case "movement_before_join":
-                client.SendMovement(1, 0f, 1f);
+                client.SendMoveTo(1, 0f, 1f);
                 break;
             case "join_on_movement_channel":
                 client.Send(
@@ -198,15 +198,15 @@ public sealed class RealtimeProtocolRejectionTests
                 client.Send([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
                 break;
             case "movement_on_control_channel":
-                client.Send(RealtimeProtocol.EncodeMovementInputBatch([
-                    new RealtimeMovementInput(1, 1, 0f, 1f, 0f, RealtimeMovementButtons.None)
-                ]));
+                client.Send(RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
+                    [new RealtimeMovementInput(1, 1, 0)],
+                    null)));
                 break;
             case "invalid_movement_payload":
                 client.Send(
-                    WithTrailingByte(RealtimeProtocol.EncodeMovementInputBatch([
-                        new RealtimeMovementInput(1, 1, 0f, 1f, 0f, RealtimeMovementButtons.None)
-                    ])),
+                    WithTrailingByte(RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
+                        [new RealtimeMovementInput(1, 1, 0)],
+                        null))),
                     DeliveryMethod.Sequenced,
                     RealtimeProtocol.MovementInputChannel);
                 break;

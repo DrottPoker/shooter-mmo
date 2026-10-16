@@ -289,7 +289,6 @@ namespace Mmorpg.Client.Tests.EditMode
             var divergentResponse = CreateFullResponse(characterId, 6);
             divergentResponse.carriedWeight = 1;
             divergentResponse.loadRatioBasisPoints = 50;
-            divergentResponse.sprintEligible = true;
             divergentResponse.movementMultiplierBasisPoints = 10_000;
             Assert.That(TryMap(divergentResponse, out var divergent), Is.True);
             Assert.That(
@@ -713,7 +712,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 carriedWeight = 0,
                 carryCapacity = 200,
                 loadRatioBasisPoints = 0,
-                sprintEligible = true,
                 movementMultiplierBasisPoints = 10_000
             };
         }
@@ -828,7 +826,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 carriedWeight,
                 carryCapacity,
                 (int)(carriedWeight * 10_000 / carryCapacity),
-                carriedWeight <= carryCapacity,
                 10_000);
             var state = new InventoryClientState();
             state.SetCatalog(catalog);
@@ -861,7 +858,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 carriedWeight,
                 carryCapacity,
                 (int)(carriedWeight * 10_000 / carryCapacity),
-                carriedWeight <= carryCapacity,
                 10_000);
             var state = new InventoryClientState();
             state.SetCatalog(catalog);

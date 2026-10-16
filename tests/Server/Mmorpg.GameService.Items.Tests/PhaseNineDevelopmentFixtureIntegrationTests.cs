@@ -37,7 +37,6 @@ public sealed class PhaseNineDevelopmentFixtureIntegrationTests
         var snapshot = readResult.Value!;
         Assert.Equal(result.ItemStateRevision, snapshot.ItemStateRevision);
         Assert.Equal(4880, snapshot.LoadRatioBasisPoints);
-        Assert.True(snapshot.SprintEligible);
         Assert.Equal(10_000, snapshot.MovementMultiplierBasisPoints);
 
         Assert.NotNull(snapshot.EquippedBag);

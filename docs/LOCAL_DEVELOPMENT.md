@@ -90,7 +90,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports nine definitions, one base Secure Container
   tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 14 with 27 messages
+- Protocol verification reports realtime protocol version 15 with 27 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -164,14 +164,14 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 14 with 27
+Expected result: both commands report realtime protocol version 15 with 27
 messages. The first command rewrites only changed files and removes files that
 the schema no longer produces. The second fails and names the file when a
 generated file is stale, missing, or not produced by the schema. Commit the
 schema, `realtime-protocol.lock.json`, the generated `.cs` files, and their
 `.meta` files together.
 
-When generation reports that the wire contract of protocol version 14 changed,
+When generation reports that the wire contract of protocol version 15 changed,
 the schema change alters bytes or acceptance. Increase `protocol.version` in
 the schema and generate again; the lock then records the new version next to
 the old ones. No Unity
@@ -563,8 +563,8 @@ docker compose -f docker-compose.test.yml down
 
 Expected result: every selected test passes. The suite verifies base capacity
 `200`, equipped Bag capacity, exact custody contribution, exclusion of bank,
-Recovery Storage, and corpse custody, lower-capacity Bag rollback, sprint at and
-above 100 percent, the linear multiplier through `0.20` at 140 percent,
+Recovery Storage, and corpse custody, lower-capacity Bag rollback, full
+movement through 100 percent, the linear multiplier through `0.20` at 140 percent,
 monotonic active-session propagation, protocol validation, and reconnect
 restoration.
 
@@ -583,13 +583,12 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `14` and simulation revision
-   `movement-simulation-v3`.
+   startup reports realtime protocol version `15` and simulation revision
+   `movement-simulation-v5`.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
-   `0 / 200`, movement `100%`, sprint allowed, and its committed item-state
-   revision.
+   `0 / 200`, movement `100%`, and its committed item-state revision.
 6. Leave to CharacterSelect and join the same character again. The carry tuple
    and revision are restored and movement remains available.
 7. Exit Play Mode and stop both backend processes and Compose services.
@@ -643,7 +642,7 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `14` and loads the configured local bank,
+   reports realtime protocol version `15` and loads the configured local bank,
    Recovery Storage, and insurance NPC service points without a configuration
    error.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
@@ -835,8 +834,8 @@ items.
    appear in the chosen container only after the committed full refresh.
 7. Starting from fixture weight `122 / 250`, move Bank iron ore quantity `20` to
    Permanent inventory. Weight becomes `242 / 250`. Move Bank iron ore quantity
-   `16` to reach `338 / 250`, where sprint is blocked and the movement multiplier
-   begins its linear decline. Move the single field dressing to reach
+   `16` to reach `338 / 250`, where the movement multiplier begins its linear
+   decline. Move the single field dressing to reach
    `340 / 250`, followed by the empty Bank Field Pack to reach exactly
    `350 / 250`, load `140%`, and movement `20%`.
 8. Attempt to move the single Bank ammunition item into carried storage. The
@@ -950,7 +949,8 @@ at the same time:
    player and enter Play Mode in the Editor. Log the two looters into their
    separate accounts and join `local-shard-1`. Both spawn beside the generic
    corpse capsule.
-5. Press `E` in both clients. Expected result: each opens the same complete
+5. Click the corpse capsule in both clients. Expected result: each player walks
+   into range and opens the same complete
    three-section corpse view. The character inventory module stays fixed while
    the Corpse context module opens.
 6. Drag two different corpse items into valid empty carried slots at nearly the
@@ -1114,18 +1114,19 @@ presentation mapping:
     Mira. Expected result: actor instances appear and disappear through normal
     interest presence. The worker startup log reports the actor content
     revision, four definitions, and five instances.
-13. Point the crosshair at Mira from at most `3.0` metres and press `E`.
-    Expected result: temporary uGUI opens only after the server accepts and
-    lists the player-specific authoritative capability summary. Clicking a
+13. Left-click Mira. Expected result: the player walks to about `2.75` metres
+    from her, and temporary uGUI opens only after the server accepts and lists
+    the player-specific authoritative capability summary. Clicking a
     capability reports `world_interaction_capability_deferred`, never local
     success.
-14. Repeat from beyond `3.0` metres and with static collision blocking line of
-    sight. Expected result: the server rejects the request and no interaction
-    remains open. Open within range, move through `3.5` metres, and verify the
-    server closes only that session. Pressing `E` also closes an active session.
+14. Click Mira while a wall hides her from the camera. Expected result: the
+    click walks to the ground behind the pointer instead and opens nothing.
+    Open within range, click the ground beyond `3.5` metres, and verify the
+    server closes only that session. Pressing `Escape` also closes an active
+    session.
 15. Join with two clients and open Mira independently. Expected result: both
     sessions coexist. One client cannot open a corpse while its NPC interaction
-    is active. After closing it with `E`, target a corpse and verify the existing
+    is active. After closing it with `Escape`, click a corpse and verify the existing
     Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
     unchanged.
 16. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
@@ -1188,7 +1189,7 @@ Expected result: PostgreSQL reports `UPDATE 1`. If local database names or users
 differ, use the matching values from `.env`.
 
 Start GameService and SimulationWorker, join `local-shard-1`, approach Mira
-within `3.0` metres, point the crosshair at her, and press `E`.
+and left-click her. The player walks into range before the interaction opens.
 
 Expected result:
 
@@ -1505,7 +1506,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 14, simulation revision,
+`27015`, runtime id, realtime protocol version 15, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
@@ -1873,9 +1874,8 @@ The scenes, prefabs, and `PlayerControls` asset described here are already
 committed. Do not repeat these steps on an existing checkout, because recreating
 an asset replaces the committed version and its later additions. The steps
 record how the assets were first created; use them only to rebuild a missing
-asset from scratch. The committed `PlayerControls` asset has more actions than
-the original seven, including `ToggleInventory`, `ToggleCharacterInventory`,
-`ToggleEquipmentInventory`, and `Interact`.
+asset from scratch. The steps describe the current click-to-move actions and
+orbit camera.
 
 ### Create The Input Actions Asset
 
@@ -1884,17 +1884,22 @@ the original seven, including `ToggleInventory`, `ToggleCharacterInventory`,
    `PlayerControls`.
 3. Open it and create an action map named `Player`.
 4. Add these actions and bindings:
-   - `Move`: Value, Vector2. Add a 2D Vector composite with WASD.
-   - `Sprint`: Button. Bind left Shift.
-   - `Jump`: Button. Bind Space.
-   - `Aim`: Button. Bind `<Mouse>/rightButton`.
-   - `Look`: Value, Vector2. Bind `<Mouse>/delta`.
-   - `ToggleDebugCursor`: Button. Bind `<Keyboard>/f1`.
+   - `Select`: Button. Bind `<Mouse>/leftButton`.
+   - `PointerPosition`: Value, Vector2. Bind `<Pointer>/position`.
+   - `CameraOrbit`: Button. Bind `<Mouse>/middleButton`.
+   - `CameraOrbitDelta`: Value, Vector2. Bind `<Mouse>/delta`.
+   - `CameraRotate`: Value, Vector2. Add a 2D Vector composite with the four
+     arrow keys.
+   - `CameraZoom`: Value, Axis. Bind `<Mouse>/scroll/y`.
+   - `Cancel`: Button. Bind `<Keyboard>/escape`.
    - `ToggleWorldDebug`: Button. Bind `<Keyboard>/f2`.
+   - `ToggleInventory`, `ToggleCharacterInventory`, and
+     `ToggleEquipmentInventory`: Button. Bind `<Keyboard>/i`, `<Keyboard>/b`,
+     and `<Keyboard>/c`.
 5. Click `Save Asset`.
 
 Expected result: `PlayerControls.inputactions` contains one `Player` map and the
-seven actions with no missing bindings.
+eleven actions with no missing bindings.
 
 ### Create The LocalPlayer Prefab
 
@@ -1915,25 +1920,21 @@ seven actions with no missing bindings.
 5. Add `PlayerInput`. Assign `PlayerControls` to Actions, set Default Map to
    `Player`, and set Behavior to `Invoke C Sharp Events`.
 6. Add `LocalPlayerInput` and `LocalPlayerController`.
-   - Grounded Vertical Velocity: `-2`
 7. Add a child named `CameraTarget` at local position `0, 1.45, 0` and assign it
    to the LocalPlayerController Camera Target field.
 8. Add a child named `LocalPlayerCamera` directly under LocalPlayer. Tag it
-   `MainCamera` and add Camera, AudioListener, and ThirdPersonCameraController.
+   `MainCamera` and add Camera, AudioListener, and OrbitCameraController.
    Configure:
    - Camera Near Clip Plane: `0.05`
    - Camera Far Clip Plane: `500`
-   - Shoulder Offset: `1.1`
-   - Aim Shoulder Offset: `1.3`
-   - Vertical Offset: `0.45`
-   - Aim Vertical Offset: `0.35`
-   - Distance: `5.25`
-   - Initial Pitch: `12`
-   - Min Pitch: `-50`
-   - Max Pitch: `75`
-   - Normal Field Of View: `60`
-   - Aim Field Of View: `50`
-   - Aim Transition Sharpness: `12`
+   - Target: `CameraTarget`
+   - Minimum, Maximum, and Initial Distance: `3`, `30`, and `12`
+   - Minimum, Maximum, and Initial Pitch: `10`, `80`, and `40`
+   - Drag Degrees Per Pixel: `0.25`
+   - Key Yaw and Key Pitch Degrees Per Second: `120` and `60`
+   - Zoom Step Fraction: `0.15`
+   - Field Of View: `55`
+   - Collision Radius: `0.25`
 9. Assign LocalPlayerCamera to both the PlayerInput Camera field and the
    LocalPlayerController Player Camera field.
 10. Add an empty child named `PlayerVisual` at local position `0, 0, 0`.
@@ -2106,7 +2107,7 @@ Expected result:
 
 - EditMode validates API parsing, client state, Input Actions, collision resource
   loading, prediction, reconciliation, remote interpolation, world-actor and
-  interaction state, crosshair targeting, actor content tooling, both player
+  interaction state, pointer targeting, actor content tooling, both player
   prefab contracts, and authored development-world scene composition.
 - PlayMode validates that loading `LoginMenu` creates the persistent client
   bootstrap, realtime client, actor and interaction controllers, and runtime
@@ -2294,11 +2295,9 @@ Expected result:
   using World `development-world-2`.
 - A local test player is instantiated only after the accepted join and starts
   from the authoritative state associated with the authored PlayerSpawn.
-- You can move with `WASD`, sprint with `Shift`, jump with `Space`, control the
-  camera continuously with the mouse, and hold the right mouse button to aim.
-- A small unarmed crosshair dot appears at screen center.
-- F1 releases or recaptures the debug cursor, and F2 hides or restores the
-  scrollable bottom-left World Client Debug panel.
+- A left click on the ground walks there, the middle mouse button or the arrow
+  keys orbit the camera, and the scroll wheel zooms. The cursor stays visible.
+- F2 hides or restores the scrollable bottom-left World Client Debug panel.
 - World Debug displays `Joined` and `127.0.0.1:27015/udp`.
 - World Debug displays shard `local-shard-1`, World `development-world-2`, worker
   `local-simulation-worker-1`, and the current runtime id.
@@ -2392,50 +2391,58 @@ Expected result:
 - Only the second account session remains authorized and only its selected
   character can remain connected.
 
-Camera and input test:
+Click-to-move and camera test:
 
-1. Move with keyboard WASD, sprint with left Shift, and jump with Space.
-2. Jump without sprinting, press Shift while airborne, and keep moving forward.
-3. Begin sprinting on the ground, jump while holding Shift, then release and
-   press Shift again before landing.
-4. Move the mouse without holding a mouse button and test the full upward and
-   downward look range.
-5. Hold right mouse button and move sideways with A and D.
-6. While holding right mouse button, hold Shift and press Space while moving.
-7. Begin sprinting, then press and hold right mouse button.
-8. Press F1, use the visible cursor, then press F1 again.
-9. Press F2 twice to hide and restore the World Debug panel.
-10. Walk with a wall between the camera target and desired camera position.
+No Inspector, scene, prefab, package, input-action, or build-setting change is
+required. The committed `PlayerControls` asset and `LocalPlayer` prefab already
+contain click-to-move and the orbit camera.
+
+1. Join `DevelopmentWorld2` through LoginMenu and CharacterSelect. Press F2 to
+   hide World Debug if it covers much of a small Game view, and keep the Game
+   view focused.
+2. Left-click the ground a few meters in front of the player.
+3. From the plaza, click the ground east of the East Service Hall, so the
+   straight line crosses the hall. Press F2 to watch World Debug while the player
+   walks.
+4. Click the roof or a wall face of a hall.
+5. Click a new spot while the player still walks.
+6. Drag with the middle mouse button, then hold each arrow key.
+7. Scroll the mouse wheel both ways.
+8. Walk so a hall stands between the player and the camera.
+9. With World Debug visible, click and scroll on the panel.
+10. Hover Mira the Quartermaster on the plaza, then left-click her from more than
+    three meters away.
+11. Press Escape.
 
 Expected result:
 
-- Movement is supplied by the PlayerInput-owned Input Actions asset rather than
-  direct device polling or runtime-created bindings.
-- Sprint cannot begin in the air. A ground-started sprint continues through a
-  jump only while Shift remains held.
-- Falling and landing remain continuous with no visible forced downward snap.
-- The LocalPlayer root and PlayerVisual both use local Y zero as the foot plane.
-  CharacterBody aligns the controller contact envelope without moving visuals.
-- Mouse look remains active without holding Aim.
-- The camera can look substantially farther upward and downward without turning
-  fully upside down.
-- Aim turns the player toward the camera heading and supports strafing.
-- Aim blocks sprint and jump. Entering Aim while sprinting immediately returns
-  movement to walk speed.
-- F1 releases pointer input without causing Aim, then restores captured shooter
-  input.
-- Camera focus stays at the single `CameraTarget` height without the previous
-  duplicated vertical offset.
-- Normal camera framing stays over the right shoulder.
-- Normal camera distance is 4.75 meters. Aim smoothly tightens the shoulder
-  offset, moves to 4.25 meters, and changes FOV from 60 to 45.
-- The mouse wheel does not change camera distance.
-- The camera moves in front of walls using a spherecast and returns to the desired
-  distance when the obstruction clears.
-- The unarmed crosshair dot is centered while the cursor is captured and hidden
-  while the debug cursor is released.
-- The World Client Debug panel stays in the bottom-left corner, scrolls when the
-  viewport is small, and F2 controls its visibility.
+- Step 2: a small yellow disc marks the destination. The player starts walking
+  on the next simulation tick without a visible server round trip, turns toward
+  its direction of travel, stops on the disc, and the disc disappears.
+- Step 3: the player walks around the hall, never into it. World Debug shows
+  the path id, the current waypoint of the route, and the latest plan with its
+  search nodes and milliseconds. Frames do not stall while it plans.
+- Step 4: the player walks to the closest reachable point beside the hall and
+  stops there.
+- Step 5: the new click replaces the route at once.
+- Step 6: dragging turns and tilts the camera around the player. Left and right
+  arrows turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees.
+- Step 7: each notch zooms by about 15 percent between 3 and 30 meters, and the
+  zoom eases instead of jumping.
+- Step 8: the camera moves in front of the hall at once and eases back out
+  afterwards.
+- Step 9: clicks and scrolling on the panel neither move the player nor zoom
+  the camera.
+- Step 10: the prompt reads `Click to interact with Mira the Quartermaster`. The
+  player walks to about 2.75 meters from Mira and stops, and her capability
+  panel opens.
+- Step 11: Escape closes the interaction.
+- The cursor stays visible and free throughout. WASD, Shift, Space, the right
+  mouse button, F1, and E do nothing.
+- World Debug reports no hard snaps, and the latest position correction stays
+  near zero while the player walks.
+- The SimulationWorker terminal shows no `unknown_movement_path` or
+  `invalid_movement_input` protocol errors.
 
 Server-authoritative movement test:
 
@@ -2444,10 +2451,13 @@ Server-authoritative movement test:
    directly from DevelopmentWorld1 for this test.
 3. Confirm World Debug shows server-authoritative client prediction and an
    increasing observed server tick value.
-4. Move, rotate, sprint, jump, release movement, and change direction sharply.
-5. Walk into the four boundaries, CameraTestWall, LowCover, and HighCover.
-6. Walk up and down Ramp, release all movement input while standing halfway up,
-   wait for at least three seconds, then traverse Step01, Step02, and Step03.
+4. Click spots far apart, and click a new spot to change direction sharply while
+   the player walks.
+5. Click the far side of CameraTestWall, LowCover, and HighCover, and click
+   beyond a boundary wall.
+6. Click a spot halfway up Ramp, wait at least three seconds there, then click
+   the tops of Step01, Step02, and Step03 in turn, and walk off the high edge of
+   the second ramp.
 7. Watch the Unity Console and SimulationWorker terminal while moving for at least
    30 seconds.
 8. Stop SimulationWorker while the character is moving.
@@ -2458,20 +2468,20 @@ Expected result:
   used by SimulationWorker.
 - Normal snapshots do not cause repeated large position snaps on flat ground,
   the ramp, or steps.
-- Sprint cannot begin in the air and jump remains responsive even if the input
-  batch containing its edge is duplicated.
 - The server tick increases continuously and snapshots acknowledge input without
   protocol errors.
-- If input packets stop for more than the configured 500 ms timeout, SimulationWorker
-  neutralizes movement and action state instead of continuing the last command.
-- The capsule stops at walls and cover, follows the walkable ramp, and climbs
-  the configured step heights in both the predicted and authoritative state.
-- Releasing movement input on Ramp leaves the character stationary, and the
-  rendered feet remain aligned with the ramp surface while moving and idle.
+- Routes lead around the walls and cover. A route against a boundary ends at
+  the closest reachable point, and a route that collision blocks ends after half
+  a second instead of pushing against the wall.
+- The capsule follows the walkable ramp and climbs the configured step heights
+  in both the predicted and authoritative state.
+- A route continues when input packets pause, because every route ends.
+- Standing on Ramp leaves the character stationary, and the rendered feet
+  remain aligned with the ramp surface while moving and idle.
 - Step01, Step02, Step03, and short grounded drops transition smoothly instead
   of snapping the rendered player or camera directly to each discrete height.
-- Jump takeoff, airborne falling, and landing from heights above the ground snap
-  range remain responsive and are not delayed by step presentation smoothing.
+- Walking off an edge above the ground snap range falls and lands without delay
+  from step presentation smoothing.
 - The client refuses to activate movement and reports a collision revision error
   if its baked world data differs from SimulationWorker.
 - The client refuses to activate movement and reports a simulation revision
@@ -2487,7 +2497,7 @@ Remote interpolation test with a standalone build:
 3. Log in with two different accounts and select two different characters on
    `local-shard-1`.
 4. Join the shard from both clients.
-5. Move each character while watching it from the other client.
+5. Click to walk with each character while watching it from the other client.
 
 Expected result: each client owns one predicted local player and creates one
 presentation-only RemotePlayer instance for the other character under

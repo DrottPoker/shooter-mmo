@@ -84,7 +84,6 @@ public sealed class ItemReadModelIntegrationTests
         Assert.Equal(0, snapshot.CarriedWeight);
         Assert.Equal(200, snapshot.CarryCapacity);
         Assert.Equal(0, snapshot.LoadRatioBasisPoints);
-        Assert.True(snapshot.SprintEligible);
         Assert.Equal(10_000, snapshot.MovementMultiplierBasisPoints);
 
         AssertContainerIsEmptyAndOrdered(snapshot.PermanentInventory, "permanent_inventory", 20);
@@ -152,7 +151,6 @@ public sealed class ItemReadModelIntegrationTests
         Assert.Equal(210, snapshot.CarriedWeight);
         Assert.Equal(200, snapshot.CarryCapacity);
         Assert.Equal(10_500, snapshot.LoadRatioBasisPoints);
-        Assert.False(snapshot.SprintEligible);
         Assert.Equal(9_000, snapshot.MovementMultiplierBasisPoints);
 
         var rifle = snapshot.PermanentInventory.Slots[0].Item;

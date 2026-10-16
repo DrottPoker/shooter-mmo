@@ -1,6 +1,6 @@
 # Active Simulation Bots
 
-Last updated: 2026-07-14
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -85,11 +85,8 @@ Population and behavior controls live in
 | `PopulationChangeIntervalSeconds` | `20` | Interval between random target changes |
 | `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `45`, `120` | Random joined lifetime before graceful logout |
 | `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | Random rest before the same slot may log in again |
-| `MinimumDirectionSeconds`, `MaximumDirectionSeconds` | `2`, `6` | Random movement behavior duration |
+| `MinimumBehaviorSeconds`, `MaximumBehaviorSeconds` | `2`, `6` | Random behavior duration; a walk heads for a destination about that many seconds of walking away |
 | `IdleChance` | `0.15` | Chance that a new behavior interval is idle |
-| `SprintChance` | `0.45` | Chance that a non-aim behavior requests sprint |
-| `AimChance` | `0.20` | Chance that a behavior interval requests aim |
-| `JumpChancePerSecond` | `0.08` | Tick-rate-adjusted jump request chance |
 | `JoinAndLeaveTimeoutSeconds` | `10` | UDP handshake and graceful leave deadline |
 | `MinimumRetrySeconds`, `MaximumRetrySeconds` | `2`, `30` | Exponential reconnect range with jitter |
 | `ShutdownTimeoutSeconds` | `15` | Ctrl+C graceful leave deadline |
@@ -159,7 +156,12 @@ Expected result:
   time waiting for the simulation loop from finalization work. A healthy ramp
   returns the backlog to zero instead of allowing joins to wait behind growing
   lifecycle work.
-- Bots send movement input at the tick rate returned by SimulationWorker.
+- Bots send movement input at the tick rate returned by SimulationWorker. A
+  walking bot follows a straight one-waypoint path to a random destination
+  inside the World bounds and at most 200 meters away. It does not plan around
+  obstacles, so collision stops it, and the worker ends a blocked path after
+  half a second. The path travels with the input batches until an owner
+  snapshot confirms it, exactly as from the Unity client.
 - The target population changes within the configured range.
 - Individual bots issue a normal reliable leave, disappear, wait for a random
   offline interval, request a fresh one-time ticket, and rejoin.

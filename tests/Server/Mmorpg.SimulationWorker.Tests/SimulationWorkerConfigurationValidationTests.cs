@@ -60,7 +60,6 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(4 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotByteBurst);
         Assert.Equal(30, config.MovementSimulation.TickRateHz);
         Assert.Equal(15, config.SnapshotRateHz);
-        Assert.Equal(TimeSpan.FromMilliseconds(500), config.MovementInputSilenceTimeout);
         Assert.Equal(0.35f, config.MovementSimulation.CharacterCollision.Radius);
         Assert.Equal(3, config.ItemInteraction.ServicePoints.Count);
         Assert.Equal(3f, config.ItemInteraction.CorpseInteractionRadius);
@@ -228,13 +227,10 @@ public sealed class SimulationWorkerConfigurationValidationTests
             ["SimulationWorker:CollisionStreaming:UnloadRadiusChunks"] = "3",
             ["SimulationWorker:Movement:TickRateHz"] = "30",
             ["SimulationWorker:Movement:SnapshotRateHz"] = "15",
-            ["SimulationWorker:Movement:InputSilenceTimeoutMilliseconds"] = "500",
             ["SimulationWorker:Movement:WalkSpeed"] = "5",
-            ["SimulationWorker:Movement:SprintSpeed"] = "8",
             ["SimulationWorker:Movement:RotationSpeedDegrees"] = "720",
             ["SimulationWorker:Movement:Gravity"] = "-24",
             ["SimulationWorker:Movement:MaximumFallSpeed"] = "55",
-            ["SimulationWorker:Movement:JumpVelocity"] = "7",
             ["SimulationWorker:Movement:GroundedVerticalVelocity"] = "-2",
             ["SimulationWorker:Movement:CharacterRadius"] = "0.35",
             ["SimulationWorker:Movement:CharacterHeight"] = "2",

@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-10-12
+Last updated: 2026-10-16
 
 ## What MMORPG Is
 
@@ -148,16 +148,21 @@ The repository currently supports:
   destruction, Recovery claims, and account Secure Container tier changes.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `14`,
-  movement revision `movement-simulation-v3`, and identical authoritative and
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `15`,
+  movement revision `movement-simulation-v5`, and identical authoritative and
   predicted encumbrance behavior.
+- RuneScape-style click-to-move: the client plans a route around obstacles on
+  a fine internal grid in the background, predicts it at once, and
+  SimulationWorker follows the same waypoints with authoritative collision. An
+  orbit camera turns with the middle mouse button or arrow keys and zooms from 3
+  to 30 meters.
 - Deterministic NPC and Mob definitions, factions, presentation references,
   activity and respawn profiles, spawn points, groups, areas, and patrol paths
   with one shared command-line and Unity Editor compiler path.
 - Bounded worker-runtime actors with fresh runtime and network identities,
   reliable interest presence, event-driven NPCs, and centrally bucketed Mob
   dormant or active scheduling.
-- Server-authoritative crosshair interaction using exact-session, runtime,
+- Server-authoritative click interaction using exact-session, runtime,
   Shard, target-revision, range, bounds, line-of-sight, capability, rate, and
   one-active-session validation.
 
@@ -189,8 +194,8 @@ WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors
   instead of receiving one PostgreSQL row per instance.
 - NPCs are event-driven. Mobs use centrally scheduled dormant and active tiers
   without per-actor asynchronous loops.
-- Players point the crosshair at a nearby actor and press `E`. SimulationWorker
-  validates exact session, target, Shard, revision, range, line of sight, active
+- Players click an actor and walk into range before the client asks to open it.
+  SimulationWorker validates exact session, target, Shard, revision, range, line of sight, active
   state, and capability before opening one interaction session.
 - One player may hold one active interaction, including a corpse view, while
   many players may interact with the same target.
@@ -232,9 +237,8 @@ and account-session mutation routes. Account mutations lock the same character
 row as simulation admission and reject an active session with
 `item_offline_access_required`. Phase 7 carries the committed item-state
 revision, weight, and base plus Bag capacity through admission and heartbeat to
-SimulationWorker. The shared GameSimulation rules now apply the exact sprint
-threshold and linear movement multiplier in both authoritative movement and
-Unity prediction. Phase 8 adds bounded reliable item intents, authoritative
+SimulationWorker. The shared GameSimulation rules now apply the linear movement
+multiplier in both authoritative movement and Unity prediction. Phase 8 adds bounded reliable item intents, authoritative
 worker service-point access, exact live-session and worker-runtime fencing, and
 committed carry propagation through the existing durable kernel. Phase 9 adds
 the persistent Unity catalog and inventory controller, monotonic complete and

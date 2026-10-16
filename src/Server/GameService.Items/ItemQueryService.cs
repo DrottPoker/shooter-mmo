@@ -130,7 +130,6 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 state.CarriedWeight,
                 state.CarryCapacity,
                 CalculateLoadRatioBasisPoints(state.CarriedWeight, state.CarryCapacity),
-                state.CarriedWeight <= state.CarryCapacity,
                 EncumbranceRules.CalculateMovementMultiplierBasisPoints(
                     state.CarriedWeight,
                     state.CarryCapacity));

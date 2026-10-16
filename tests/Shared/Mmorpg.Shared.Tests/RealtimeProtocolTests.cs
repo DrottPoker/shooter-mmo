@@ -275,25 +275,19 @@ public sealed class RealtimeProtocolTests
     }
 
     [Fact]
-    public void MovementInputBatchRoundTripsSequencedCommands()
+    public void MovementInputBatchRoundTripsSequencedCommandsAndTheNewestPath()
     {
-        var expected = new[]
-        {
-            new RealtimeMovementInput(
-                10,
-                20,
-                0.5f,
-                0.5f,
-                180f,
-                RealtimeMovementButtons.Sprint | RealtimeMovementButtons.Aim),
-            new RealtimeMovementInput(
-                11,
-                21,
-                0f,
-                1f,
-                181f,
-                RealtimeMovementButtons.Jump)
-        };
+        var expected = new RealtimeMovementInputBatch(
+            [
+                new RealtimeMovementInput(10, 20, 3),
+                new RealtimeMovementInput(11, 21, 4)
+            ],
+            new RealtimeMovementPath(
+                4,
+                [
+                    new RealtimeMovementPathWaypoint(1f, 0f, 2f),
+                    new RealtimeMovementPathWaypoint(-3.5f, 0.25f, 7f)
+                ]));
 
         var decoded = RealtimeProtocol.TryDecodeMovementInputBatch(
             RealtimeProtocol.EncodeMovementInputBatch(expected),
@@ -301,9 +295,26 @@ public sealed class RealtimeProtocolTests
             out var error);
 
         Assert.True(decoded, error);
-        Assert.Equal(2, actual.Length);
-        Assert.Equal(11u, actual[1].InputSequence);
-        Assert.Equal(RealtimeMovementButtons.Jump, actual[1].Buttons);
+        Assert.Equal(2, actual.Inputs.Length);
+        Assert.Equal(11u, actual.Inputs[1].InputSequence);
+        Assert.Equal(4u, actual.Inputs[1].PathId);
+        Assert.NotNull(actual.Path);
+        Assert.Equal(4u, actual.Path.PathId);
+        Assert.Equal(-3.5f, actual.Path.Waypoints[1].X);
+        Assert.Equal(0.25f, actual.Path.Waypoints[1].Y);
+    }
+
+    [Fact]
+    public void MovementInputBatchRejectsAPathThatDoesNotBelongToTheNewestInput()
+    {
+        var mismatched = new RealtimeMovementInputBatch(
+            [new RealtimeMovementInput(10, 20, 3), new RealtimeMovementInput(11, 21, 4)],
+            new RealtimeMovementPath(3, [new RealtimeMovementPathWaypoint(1f, 0f, 2f)]));
+
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeMovementInputBatch(mismatched));
+        Assert.Equal(
+            MovementPath.MaximumWaypoints,
+            RealtimeProtocolLimits.MaximumMovementPathWaypoints);
     }
 
     [Fact]
@@ -373,7 +384,8 @@ public sealed class RealtimeProtocolTests
             5,
             91,
             13,
-            CreatePlayerState(4f));
+            CreatePlayerState(4f),
+            new RealtimeMovementPathProgress(9, 2, 3));
         var packet = RealtimeProtocol.EncodeOwnerSimulationSnapshot(expected);
 
         var decoded = RealtimeProtocol.TryDecodeOwnerSimulationSnapshot(
@@ -387,6 +399,9 @@ public sealed class RealtimeProtocolTests
         Assert.Equal(91u, actual.ServerTick);
         Assert.Equal(13u, actual.LastProcessedInputSequence);
         Assert.Equal(4f, actual.State.PositionX);
+        Assert.Equal(9u, actual.PathProgress.PathId);
+        Assert.Equal(2, actual.PathProgress.NextWaypointIndex);
+        Assert.Equal(3, actual.PathProgress.BlockedTicks);
     }
 
     [Fact]
@@ -432,21 +447,15 @@ public sealed class RealtimeProtocolTests
     }
 
     [Fact]
-    public void MovementDecoderRejectsNonFiniteInput()
+    public void MovementDecoderRejectsNonFiniteWaypoints()
     {
-        var packet = RealtimeProtocol.EncodeMovementInputBatch(new[]
-        {
-            new RealtimeMovementInput(
-                1,
-                1,
-                0f,
-                1f,
-                0f,
-                RealtimeMovementButtons.None)
-        });
-        var cameraYawOffset = 7 + 1 + 4 + 4 + 4 + 4;
+        var packet = RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
+            [new RealtimeMovementInput(1, 1, 1)],
+            new RealtimeMovementPath(1, [new RealtimeMovementPathWaypoint(0f, 1f, 0f)])));
+        // Header, input count, one input, path presence, path id, waypoint count, then x.
+        var waypointYOffset = 7 + 1 + 12 + 1 + 4 + 1 + 4;
         var nanBytes = BitConverter.GetBytes(float.NaN);
-        Array.Copy(nanBytes, 0, packet, cameraYawOffset, nanBytes.Length);
+        Array.Copy(nanBytes, 0, packet, waypointYOffset, nanBytes.Length);
 
         var decoded = RealtimeProtocol.TryDecodeMovementInputBatch(packet, out _, out var error);
 
@@ -460,11 +469,9 @@ public sealed class RealtimeProtocolTests
             30,
             15,
             5f,
-            8f,
             720f,
             -24f,
             55f,
-            7f,
             -2f,
             0f,
             -14f,
@@ -490,7 +497,6 @@ public sealed class RealtimeProtocolTests
             -2f,
             0f,
             0f,
-            true,
-            false);
+            true);
     }
 }

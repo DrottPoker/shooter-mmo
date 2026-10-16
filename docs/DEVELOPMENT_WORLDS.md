@@ -58,6 +58,12 @@ The canonical World manifest and actor content already reserve these coordinates
 Do not move these authored landmarks without updating the matching `world.json`
 manifest and actor spawn content in the same change.
 
+The north traversal course was built when players could jump. The top edges of
+both platform ramps end below their platform, and each observation step rises
+more than the step height, so click-to-move cannot reach the platforms, the
+bridge, or the observation deck. The route planner walks to the closest
+reachable point instead.
+
 Development World 2 currently contains 86 enabled, non-trigger BoxColliders.
 The broad ground collider still guarantees all 256 collision chunks exist.
 Thin cyan service and spawn guides are visual only and have no Collider. They

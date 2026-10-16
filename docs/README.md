@@ -58,10 +58,11 @@ operations, and future design do not drift into duplicate descriptions.
   click-to-move movement and camera, the combat triangle, damage types and
   resistances, weapons, ammunition, magic, mana, threat, healing, PvP combat,
   and professions. It replaces the earlier modern third-person shooter
-  direction and is not implemented yet.
+  direction. Its click-to-move movement and orbit camera are implemented; the
+  rest is not implemented yet.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) is the canonical
   source of truth for the implemented scalable world-actor model, NPC and Mob
-  distinction, composable NPC capabilities, visual spawn authoring, crosshair
+  distinction, composable NPC capabilities, visual spawn authoring, click
   interaction, runtime ownership, and actor scaling rules.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
   current product and domain source of truth for planned items, slot inventory,
@@ -80,7 +81,7 @@ operations, and future design do not drift into duplicate descriptions.
   durable player corpses, worker restart restoration, and audited expiry are also
   complete, together with concurrent bidirectional corpse interaction. Phase 12
   adds deterministic actor content and tools, bounded worker actors, shared
-  crosshair targeting, and authoritative NPC interaction. Phase 13 adds
+  interaction targeting, and authoritative NPC interaction. Phase 13 adds
   protocol version `13` and insurance plus quest item-lifecycle handlers on that
   interaction. Phase 14 adds content-controlled live or durable Mob corpse
   variants, retry-safe loot claims, and selected boss restart restoration.

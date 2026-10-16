@@ -49,11 +49,6 @@ namespace Mmorpg.GameSimulation
 
         public long CarryCapacity { get; }
 
-        public bool SprintAllowed
-        {
-            get { return CarriedWeight <= CarryCapacity; }
-        }
-
         public int MovementMultiplierBasisPoints
         {
             get { return movementMultiplierBasisPoints; }

@@ -29,6 +29,11 @@ namespace Mmorpg.Client.WorldActors
 
         public string TargetDisplayName { get; private set; } = string.Empty;
 
+        public Vector3 TargetPosition
+        {
+            get { return transform.position; }
+        }
+
         public void Apply(CorpsePresenceEntry corpse)
         {
             if (corpse == null)

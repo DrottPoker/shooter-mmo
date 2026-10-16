@@ -12,6 +12,9 @@ namespace Mmorpg.Client.WorldActors
         long TargetRevision { get; }
         bool IsTargetActive { get; }
         string TargetDisplayName { get; }
+
+        // Where the player walks to before it asks the worker to open the interaction.
+        Vector3 TargetPosition { get; }
     }
 
     [DisallowMultipleComponent]
@@ -25,6 +28,11 @@ namespace Mmorpg.Client.WorldActors
         public bool IsTargetActive { get; private set; }
         public string TargetDisplayName { get; private set; } = string.Empty;
         public string PresentationArchetypeId { get; private set; } = string.Empty;
+
+        public Vector3 TargetPosition
+        {
+            get { return transform.position; }
+        }
         public RealtimeWorldInteractionTargetKind TargetKind
         {
             get { return RealtimeWorldInteractionTargetKind.WorldActor; }
