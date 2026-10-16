@@ -74,6 +74,43 @@ namespace Mmorpg.WorldData.Editor.Actors
             CurrentRuntime = runtime
                 ?? throw new ArgumentNullException(nameof(runtime));
         }
+
+        // Replaces the editable content with a snapshot taken earlier, for undo and redo.
+        public void RestoreContent(WorldActorEditorCatalog catalog, WorldActorEditorSpawns spawns)
+        {
+            if (catalog == null)
+            {
+                throw new ArgumentNullException(nameof(catalog));
+            }
+
+            if (spawns == null)
+            {
+                throw new ArgumentNullException(nameof(spawns));
+            }
+
+            Catalog.formatVersion = catalog.formatVersion;
+            Catalog.catalogId = catalog.catalogId;
+            Catalog.factions = catalog.factions;
+            Catalog.presentationArchetypes = catalog.presentationArchetypes;
+            Catalog.activityProfiles = catalog.activityProfiles;
+            Catalog.respawnProfiles = catalog.respawnProfiles;
+            Catalog.actors = catalog.actors;
+            Spawns.formatVersion = spawns.formatVersion;
+            Spawns.worldId = spawns.worldId;
+            Spawns.actorCatalogId = spawns.actorCatalogId;
+            Spawns.spawnPoints = spawns.spawnPoints;
+            Spawns.spawnGroups = spawns.spawnGroups;
+            Spawns.spawnAreas = spawns.spawnAreas;
+            Spawns.patrolPaths = spawns.patrolPaths;
+        }
+    }
+
+    // The editable part of a workspace: what undo and redo restore.
+    [Serializable]
+    public sealed class WorldActorEditorSnapshot
+    {
+        public WorldActorEditorCatalog catalog;
+        public WorldActorEditorSpawns spawns;
     }
 
     // One file a successful validation would write, with its canonical text.
@@ -376,6 +413,21 @@ namespace Mmorpg.WorldData.Editor.Actors
         public ContentCompilerRunResult VerifyCanonical()
         {
             return compilerRunner.Verify(paths.ContentRoot, paths.GeneratedRoot);
+        }
+
+        // The other Worlds whose committed spawns place the actor. Only the edited World's
+        // spawns are part of the workspace, but every World compiles against the one catalog.
+        public string[] FindOtherWorldReferences(string actorId)
+        {
+            return ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(paths.ContentRoot))
+                .Where(worldId => !string.Equals(worldId, paths.WorldId, StringComparison.Ordinal))
+                .Where(worldId =>
+                {
+                    var spawnPath = ContentLayout.ActorSpawnsPath(paths.ContentRoot, worldId);
+                    return File.Exists(spawnPath)
+                        && WorldActorEditorJson.DeserializeSpawns(File.ReadAllText(spawnPath)).CountActorReferences(actorId) > 0;
+                })
+                .ToArray();
         }
 
         // Authored file text keyed by path relative to the content root.

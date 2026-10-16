@@ -1002,56 +1002,75 @@ presentation mapping:
 1. Open the Unity project and select `MMORPG > Tools > Content > Actor
    Studio`. Select `Mira the Quartermaster`. Expected result: the window shows
    an NPC with dialogue, vendor, quest offer, quest turn-in, crafting,
-   insurance, bank, and Recovery Storage capabilities, an invulnerable damage
-   policy, and authoritative interaction bounds.
-2. Click `Duplicate Selected`, give the copy a globally unique test actor id,
-   and use `Add Capability`, `Move Up`, `Move Down`, and `Remove Capability`.
-   Click `Preview Changes`. Expected result: inline validation and the exact
-   canonical JSON change appear without writing files. Click `Reload` to discard
-   the disposable copy unless it is intended as real content.
-3. Select `Feral Wolf`. Expected result: the same tool edits a Mob definition
-   with damageable policy plus activity and respawn profile references, without
-   adding a Mob runtime subclass.
-4. To use authored prefabs, click `Create Presentation Registry`, then assign a
-   prefab in `Replaceable prefab` for each presentation archetype. Expected
-   result: Unity creates
+   insurance, bank, and Recovery Storage capabilities, a note that NPCs are
+   always invulnerable instead of Mob settings, authoritative interaction
+   bounds with a front-view preview, and `No problems found.` below the editor.
+2. Click `Duplicate`. Expected result: the copy `npc.city_services.copy` is
+   added and selected. Use `Add Capability`, `Move Up`, `Move Down`, and
+   `Remove` on it, then enter `-1` as the Y value of `Size`. Expected result:
+   `Size` turns red, the list marks the copy, and the problems panel reports
+   `interactionBounds.sizeY`. Clicking the problem selects the copy and
+   focuses the field.
+3. Click the actor list so no text field has keyboard focus and press `Ctrl+Z`
+   repeatedly. Expected result: every edit is undone in order, the copy
+   disappears last, and `Ctrl+Y` redoes them. To start again from the files on
+   disk, click `Reload` and confirm the discard.
+4. Select `Feral Wolf`, then Ctrl-click `Feral Alpha`. Expected result: one
+   editor edits both, `Corpse Persistence` shows a mixed value because the wolf
+   is `Live` and the alpha is `Durable`, and the shared values show normally.
+   Change `Disposition` to `Neutral`. Expected result: both Mobs change in one
+   undo step. Add `City Guard` to the selection. Expected result: Mob-only
+   settings still show and edit only the two Mobs. Undo with `Ctrl+Z`.
+5. Select `City Guard`, change `Stable Actor Id`, and press Enter. Expected
+   result: the id stays and the status names `development-world-2`, because
+   that World also places the guard. An actor that only the edited World places
+   is renamed together with its spawns in one undo step. Click `Delete`.
+   Expected result: nothing is deleted and the status lists the spawns that
+   place the guard.
+6. To use authored prefabs, click `Create Presentation Registry` when it
+   appears, then assign a prefab in `Replaceable Prefab` for each presentation
+   archetype. Expected result: Unity creates
    `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
    The prefab changes presentation only. This optional asset creation and prefab
    assignment are the only manual Unity asset steps.
-5. Click `Save + Compile`, then `Verify Canonical`. Expected result: the
-   actor catalog, one file per actor, the spawn file, and the runtime JSON of
-   every World save deterministically in one transaction, and verification
-   reports the same revisions. Removing an actor deletes its definition file.
-   If no intentional content change was made, the files stay byte-for-byte
-   equivalent.
-6. Open `MMORPG > Tools > Content > Spawn Authoring` and click `Import`.
+7. With no pending edits, click `Preview Changes`, then `Save + Compile`, then
+   `Verify Canonical`. Expected result: the preview window lists every
+   canonical file, marks changed files in bold, and reports `No canonical
+   changes detected.`. Saving writes the actor catalog, one file per actor, the
+   spawn file, and the runtime JSON of every World deterministically in one
+   transaction, and verification reports the same revisions. Removing an actor
+   deletes its definition file. Without an intentional content change, the
+   files stay byte-for-byte equivalent. Closing the window with unsaved edits
+   asks whether to save them.
+8. Open `MMORPG > Tools > Content > Spawn Authoring` and click `Import`.
    Inspect the Points, Groups, Areas, and Patrols tabs with `Scene Preview`
    enabled. Expected result: scene handles show the service NPC point, two-guard
    group, two-wolf seeded area, and wolf patrol path imported from neutral
    WorldData.
-7. Add or duplicate a disposable entry, move it with the scene handle, click
+9. Add or duplicate a disposable entry, move it with the scene handle, click
    `Ground Snap`, and inspect `Preview Changes`. Delete the disposable entry,
    then click `Export + Compile` and `Verify Canonical`. Expected result: the
    preview shows exact neutral JSON, ground snapping uses authored scene
    collision, and clean export verifies deterministically.
-8. Start GameService and SimulationWorker, join `local-shard-1`, and approach
-   Mira. Expected result: actor instances appear and disappear through normal
-   interest presence. The worker startup log reports the actor content revision,
-   four definitions, and five instances.
-9. Point the crosshair at Mira from at most `3.0` metres and press `E`. Expected
-   result: temporary uGUI opens only after the server accepts and lists the
-   player-specific authoritative capability summary. Clicking a capability
-   reports `world_interaction_capability_deferred`, never local success.
-10. Repeat from beyond `3.0` metres and with static collision blocking line of
+10. Start GameService and SimulationWorker, join `local-shard-1`, and approach
+    Mira. Expected result: actor instances appear and disappear through normal
+    interest presence. The worker startup log reports the actor content
+    revision, four definitions, and five instances.
+11. Point the crosshair at Mira from at most `3.0` metres and press `E`.
+    Expected result: temporary uGUI opens only after the server accepts and
+    lists the player-specific authoritative capability summary. Clicking a
+    capability reports `world_interaction_capability_deferred`, never local
+    success.
+12. Repeat from beyond `3.0` metres and with static collision blocking line of
     sight. Expected result: the server rejects the request and no interaction
     remains open. Open within range, move through `3.5` metres, and verify the
     server closes only that session. Pressing `E` also closes an active session.
-11. Join with two clients and open Mira independently. Expected result: both
+13. Join with two clients and open Mira independently. Expected result: both
     sessions coexist. One client cannot open a corpse while its NPC interaction
     is active. After closing it with `E`, target a corpse and verify the existing
     Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
     unchanged.
-12. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
+14. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
     from compiled WorldData with fresh runtime identities, normal interest
     presence returns, and no stale actor or interaction session survives.
 
@@ -1149,13 +1168,13 @@ lifetime:
 Verify the content manually:
 
 1. Open `MMORPG > Tools > Content > Actor Studio`.
-2. Select `mob.feral_wolf`. Confirm `Corpse Persistence` is `live` and
+2. Select `mob.feral_wolf`. Confirm `Corpse Persistence` is `Live` and
    `Corpse Lifetime Seconds` is `120`.
-3. Select `mob.feral_alpha`. Confirm persistence is `durable` and lifetime is
+3. Select `mob.feral_alpha`. Confirm persistence is `Durable` and lifetime is
    `600`.
 4. Select `npc.city_guard` or `npc.city_services`. Confirm NPC content does not
    carry Mob corpse settings.
-5. Select `Validate`, `Compile`, and `Verify`.
+5. Click `Preview Changes`, `Save + Compile`, and `Verify Canonical`.
 
 Expected result: every action succeeds, there are four actor definitions and
 five runtime instances, and the checked-in actor runtime revision is

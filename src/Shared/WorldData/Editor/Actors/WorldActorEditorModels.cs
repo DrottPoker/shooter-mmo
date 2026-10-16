@@ -213,6 +213,41 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorSpawnArea[] spawnAreas;
         public WorldActorEditorPatrolPath[] patrolPaths;
 
+        // The spawn points, groups, and areas that place the actor.
+        public int CountActorReferences(string actorId)
+        {
+            return (spawnPoints ?? Array.Empty<WorldActorEditorSpawnPoint>()).Count(value => string.Equals(value?.actorId, actorId, StringComparison.Ordinal))
+                + (spawnGroups ?? Array.Empty<WorldActorEditorSpawnGroup>()).Count(value => string.Equals(value?.actorId, actorId, StringComparison.Ordinal))
+                + (spawnAreas ?? Array.Empty<WorldActorEditorSpawnArea>()).Count(value => string.Equals(value?.actorId, actorId, StringComparison.Ordinal));
+        }
+
+        public void ReplaceActorReferences(string currentId, string newId)
+        {
+            foreach (var value in spawnPoints ?? Array.Empty<WorldActorEditorSpawnPoint>())
+            {
+                if (value != null && string.Equals(value.actorId, currentId, StringComparison.Ordinal))
+                {
+                    value.actorId = newId;
+                }
+            }
+
+            foreach (var value in spawnGroups ?? Array.Empty<WorldActorEditorSpawnGroup>())
+            {
+                if (value != null && string.Equals(value.actorId, currentId, StringComparison.Ordinal))
+                {
+                    value.actorId = newId;
+                }
+            }
+
+            foreach (var value in spawnAreas ?? Array.Empty<WorldActorEditorSpawnArea>())
+            {
+                if (value != null && string.Equals(value.actorId, currentId, StringComparison.Ordinal))
+                {
+                    value.actorId = newId;
+                }
+            }
+        }
+
         public WorldActorSpawnAuthoringDocument ToDomain()
         {
             return new WorldActorSpawnAuthoringDocument

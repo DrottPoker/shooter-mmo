@@ -142,6 +142,20 @@
     width: auto;
 }
 
+/* A front view of interaction bounds, below the vector fields. */
+.content-bounds-preview {
+    margin: 4px 0 2px 183px;
+    border-radius: 3px;
+    background-color: rgb(26, 31, 38);
+}
+
+.content-bounds-preview__box {
+    position: absolute;
+    border-width: 1px;
+    border-color: rgba(51, 179, 255, 0.8);
+    background-color: rgba(51, 179, 255, 0.35);
+}
+
 .content-field--error > Label,
 .content-field--error.unity-toggle > .unity-toggle__input > Label {
     color: rgb(222, 82, 82);

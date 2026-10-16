@@ -151,7 +151,7 @@ namespace Mmorpg.WorldData.Editor.ContentTools
             refreshers.Add(() =>
             {
                 current = options().ToList();
-                var values = targets.Select(entry => get(entry) ?? string.Empty).ToArray();
+                var values = Relevant(editable).Select(entry => get(entry) ?? string.Empty).ToArray();
                 var first = values.Length > 0 ? values[0] : string.Empty;
                 var mixed = values.Any(value => !string.Equals(value, first, StringComparison.Ordinal));
                 if (!mixed && !current.Any(option => string.Equals(option.Value, first, StringComparison.Ordinal)))
@@ -216,13 +216,14 @@ namespace Mmorpg.WorldData.Editor.ContentTools
                 }
 
                 empty.style.display = available.Length == 0 ? DisplayStyle.Flex : DisplayStyle.None;
+                var relevant = Relevant(editable);
                 foreach (var toggle in toggles.Children().OfType<Toggle>())
                 {
                     var value = (string)toggle.userData;
-                    var count = targets.Count(entry => (get(entry) ?? Array.Empty<string>())
+                    var count = relevant.Count(entry => (get(entry) ?? Array.Empty<string>())
                         .Contains(value, StringComparer.Ordinal));
-                    toggle.SetValueWithoutNotify(targets.Count > 0 && count == targets.Count);
-                    toggle.showMixedValue = count > 0 && count < targets.Count;
+                    toggle.SetValueWithoutNotify(relevant.Count > 0 && count == relevant.Count);
+                    toggle.showMixedValue = count > 0 && count < relevant.Count;
                     toggle.SetEnabled(IsEditable(editable));
                 }
             });
@@ -240,15 +241,13 @@ namespace Mmorpg.WorldData.Editor.ContentTools
                 .ToArray();
             foreach (var entry in fields)
             {
-                var related = relevant.Where(issue => issue.Concerns(entry.Field)).ToArray();
+                var related = relevant.Where(issue => entry.Paths.Any(issue.Concerns)).ToArray();
                 var hasError = related.Any(issue => issue.Severity == ContentIssueSeverity.Error);
                 entry.Element.EnableInClassList(ContentToolStyles.FieldError, hasError);
                 entry.Element.EnableInClassList(
                     ContentToolStyles.FieldWarning,
                     !hasError && related.Length > 0);
-                entry.Element.tooltip = related.Length == 0
-                    ? entry.Tooltip
-                    : string.Join("\n", related.Select(issue => issue.Message));
+                entry.ShowIssues(related);
             }
         }
 
@@ -262,15 +261,26 @@ namespace Mmorpg.WorldData.Editor.ContentTools
 
             var issue = new ContentIssue(string.Empty, field, string.Empty);
             return fields
-                .Where(entry => issue.Concerns(entry.Field))
-                .OrderByDescending(entry => entry.Field.Length)
-                .Select(entry => entry.Element)
+                .Select(entry => (entry.Element, Length: entry.Paths.Where(issue.Concerns).Select(path => path.Length).DefaultIfEmpty(-1).Max()))
+                .Where(match => match.Length >= 0)
+                .OrderByDescending(match => match.Length)
+                .Select(match => match.Element)
                 .FirstOrDefault();
         }
 
         public void Register(string field, VisualElement element)
         {
             Register(field, element, null);
+        }
+
+        // Lets the field also show findings about other paths, such as the separate X, Y, and
+        // Z values that one vector field edits.
+        public void Covers(string field, params string[] paths)
+        {
+            foreach (var entry in fields.Where(candidate => string.Equals(candidate.Field, field, StringComparison.Ordinal)))
+            {
+                entry.Paths.AddRange((paths ?? Array.Empty<string>()).Where(path => !string.IsNullOrEmpty(path)));
+            }
         }
 
         // Edits the field the way its control does, as one undoable step for every selected entry.
@@ -299,7 +309,7 @@ namespace Mmorpg.WorldData.Editor.ContentTools
         {
             if (!string.IsNullOrEmpty(field) && element != null)
             {
-                fields.Add(new FieldEntry(field, element, element.tooltip, setValue, setFlag));
+                fields.Add(new FieldEntry(field, element, setValue, setFlag));
             }
         }
 
@@ -318,7 +328,7 @@ namespace Mmorpg.WorldData.Editor.ContentTools
             refreshers.Add(() =>
             {
                 var comparer = EqualityComparer<TValue>.Default;
-                var values = targets.Select(get).ToArray();
+                var values = Relevant(editable).Select(get).ToArray();
                 var first = values.Length > 0 ? values[0] : default;
                 control.SetValueWithoutNotify(first);
                 control.showMixedValue = values.Any(value => !comparer.Equals(value, first));
@@ -353,6 +363,19 @@ namespace Mmorpg.WorldData.Editor.ContentTools
             return targets.Count > 0 && (editable == null || targets.Any(editable));
         }
 
+        // The selected entries a field shows: the ones it can edit, or all when it edits none,
+        // so a field that only applies to some entries shows their shared value.
+        private IReadOnlyList<T> Relevant(Func<T, bool> editable)
+        {
+            if (editable == null)
+            {
+                return targets;
+            }
+
+            var applicable = targets.Where(editable).ToArray();
+            return applicable.Length > 0 ? applicable : targets;
+        }
+
         private static string[] Normalize(IEnumerable<string> values)
         {
             return values
@@ -364,29 +387,52 @@ namespace Mmorpg.WorldData.Editor.ContentTools
 
         private sealed class FieldEntry
         {
+            private string tooltip;
+            private bool showingIssues;
+
             public FieldEntry(
                 string field,
                 VisualElement element,
-                string tooltip,
                 Action<object> setValue,
                 Action<string, bool> setFlag)
             {
                 Field = field;
+                Paths = new List<string> { field };
                 Element = element;
-                Tooltip = tooltip ?? string.Empty;
                 SetValue = setValue;
                 SetFlag = setFlag;
             }
 
             public string Field { get; }
 
-            public VisualElement Element { get; }
+            // The field itself and the further paths it covers.
+            public List<string> Paths { get; }
 
-            public string Tooltip { get; }
+            public VisualElement Element { get; }
 
             public Action<object> SetValue { get; }
 
             public Action<string, bool> SetFlag { get; }
+
+            // Shows the findings as the tooltip, and the field's own tooltip again without them.
+            public void ShowIssues(IReadOnlyCollection<ContentIssue> related)
+            {
+                if (related.Count > 0)
+                {
+                    if (!showingIssues)
+                    {
+                        tooltip = Element.tooltip;
+                        showingIssues = true;
+                    }
+
+                    Element.tooltip = string.Join("\n", related.Select(issue => issue.Message));
+                }
+                else if (showingIssues)
+                {
+                    Element.tooltip = tooltip;
+                    showingIssues = false;
+                }
+            }
         }
     }
 }

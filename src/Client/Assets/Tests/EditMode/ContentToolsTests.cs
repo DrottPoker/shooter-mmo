@@ -210,6 +210,26 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void FieldsForSomeEntriesShowAndEditOnlyThose()
+        {
+            var holder = new Holder { Document = CreateDocument() };
+            holder.Document.entries[0].weight = 5f;
+            using (var session = CreateSession(holder))
+            {
+                session.Load(false);
+                var form = new ContentForm<TestEntry>(session, entry => entry.id);
+                var weight = form.Float("Weight", "weight", entry => entry.weight, (entry, value) => entry.weight = value, entry => entry.id == "b");
+                form.SetTargets(holder.Document.entries);
+
+                Assert.That(weight.showMixedValue, Is.False);
+                Assert.That(weight.value, Is.EqualTo(2f));
+
+                form.TrySetValue("weight", 3f);
+                Assert.That(holder.Document.entries.Select(entry => entry.weight), Is.EqualTo(new[] { 5f, 3f }));
+            }
+        }
+
+        [Test]
         public void FlagFieldsAddAndRemoveAValueForEverySelectedEntry()
         {
             var holder = new Holder { Document = CreateDocument() };
@@ -234,6 +254,38 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 form.TrySetFlag("tags", "b", false);
                 Assert.That(holder.Document.entries.Select(entry => entry.tags), Is.All.EqualTo(new[] { "a" }));
+            }
+        }
+
+        [Test]
+        public void FieldsShowFindingsAboutTheirCoveredPathsAndKeepTheirOwnTooltip()
+        {
+            var holder = new Holder { Document = CreateDocument() };
+            using (var session = CreateSession(holder))
+            {
+                session.Load(false);
+                var form = new ContentForm<TestEntry>(session, entry => entry.id);
+                var position = form.Vector3("Position", "position", _ => UnityEngine.Vector3.zero, (_, _) => { });
+                var weight = form.Float("Weight", "weight", entry => entry.weight, (entry, value) => entry.weight = value);
+                weight.tooltip = "Whole units.";
+                form.Covers("position", "x", "y", "z");
+                form.SetTargets(new[] { holder.Document.entries[0] });
+
+                form.ApplyIssues(new[]
+                {
+                    new ContentIssue("a", "y", "y must be finite."),
+                    new ContentIssue("a", "weight", "weight must not be negative.")
+                });
+
+                Assert.That(position.ClassListContains(ContentToolStyles.FieldError), Is.True);
+                Assert.That(position.tooltip, Is.EqualTo("y must be finite."));
+                Assert.That(form.FindField("y"), Is.SameAs(position));
+                Assert.That(weight.tooltip, Is.EqualTo("weight must not be negative."));
+
+                form.ApplyIssues(new ContentIssue[0]);
+
+                Assert.That(position.ClassListContains(ContentToolStyles.FieldError), Is.False);
+                Assert.That(weight.tooltip, Is.EqualTo("Whole units."));
             }
         }
 
