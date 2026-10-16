@@ -8,6 +8,7 @@ namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
 // A transaction that throws is still counted: the transaction counter and duration
 // record outcome "failed", or "cancelled" when the caller cancelled the request.
+[Collection(SerialTestCollection.Name)]
 public sealed class ItemTransactionFailureMetricsTests
 {
     [Fact]

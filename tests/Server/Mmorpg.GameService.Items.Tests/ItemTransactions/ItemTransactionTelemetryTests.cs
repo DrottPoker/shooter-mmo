@@ -15,6 +15,7 @@ namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 // Pins the observable telemetry of an item transaction: the logger category, the log
 // level, template, and properties of every outcome, the correlation id precedence, the
 // lock-wait scopes, and the transaction metric tags.
+[Collection(SerialTestCollection.Name)]
 public sealed class ItemTransactionTelemetryTests
 {
     private const string RejectedTemplate =

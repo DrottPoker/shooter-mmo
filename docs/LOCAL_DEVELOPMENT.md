@@ -1280,10 +1280,15 @@ coverage and expect all EditMode and PlayMode tests to pass unchanged.
 
 ## Isolated PostgreSQL Integration Tests
 
-Every test project with PostgreSQL tests uses its own database next to the
-database named in `MMORPG_TEST_POSTGRES` and resets that database's `public`
-schema before each test. Always use the isolated test Compose file and never
-point the test variable at a development, staging, or production database.
+Every PostgreSQL test gets its own fresh database next to the database named in
+`MMORPG_TEST_POSTGRES`, copied from a template that each test run builds once
+with the migrations and startup seeds. Always use the isolated test Compose file
+and never point the test variable at a development, staging, or production
+database. Keep the host `127.0.0.1`, as in `.env.example`: with `localhost`, every
+new connection on Windows first waits about two seconds for IPv6 loopback to
+fail, which makes the PostgreSQL tests several times slower. If your `.env`
+still says `Host=localhost` for `MMORPG_TEST_POSTGRES` or
+`ConnectionStrings__Postgres`, change it to `Host=127.0.0.1`.
 
 Start the test database:
 
@@ -1308,13 +1313,15 @@ Expected result:
   reconnect, heartbeat, cross-shard and cross-character exclusion, assignment
   failover, and idempotent release tests pass
   instead of being skipped.
-- The server holds one test database per project with PostgreSQL tests:
-  `<base>_gameservice`, `<base>_gameservice_accounts`,
+- The server holds a group of test databases per project with PostgreSQL
+  tests, named after `<base>_gameservice`, `<base>_gameservice_accounts`,
   `<base>_gameservice_items`, and `<base>_integration`, where `<base>` is the
-  database named in the variable. Each is created on first use and kept. The
-  test container keeps its data in memory, so `down` removes them.
+  database named in the variable: the run lock database itself, its `_tpl_`
+  templates, and numbered test databases such as `<base>_gameservice_items_1`.
+  They are created on demand and kept. The test container keeps its data in
+  memory, so `down` removes them.
 - A second run of the same test project against the same server, started while
-  the first still runs, fails at once with a message that names the database.
+  the first still runs, fails at once with a message that names the databases.
 
 Add `--filter "Category=Integration"` to run only the PostgreSQL and Redis
 tests, or `--filter "Category!=Integration"` to run everything else without
