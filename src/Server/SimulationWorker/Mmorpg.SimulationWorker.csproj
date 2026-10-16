@@ -5,6 +5,7 @@
     <ProjectReference Include="..\..\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
     <ProjectReference Include="..\..\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
     <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
+    <ProjectReference Include="..\Telemetry\Mmorpg.Server.Telemetry.csproj" />
   </ItemGroup>
 
   <ItemGroup>

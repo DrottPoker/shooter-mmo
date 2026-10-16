@@ -75,6 +75,7 @@ dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-buil
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
+& .\tools\Verify-Observability.ps1
 dotnet test Mmorpg.slnx --configuration Release --no-build
 ```
 
@@ -91,6 +92,10 @@ Expected result:
   tier, and the deterministic checked-in revision.
 - Protocol verification reports realtime protocol version 14 with 27 messages
   and finds every generated file current.
+- Observability verification validates the collector and Prometheus
+  configuration, passes the alert rule tests, and parses both dashboards. It
+  needs Docker and starts nothing that keeps running. CI runs the same script
+  in its `Observability configuration` job.
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
   configured. The Redis integration test is skipped unless
@@ -1630,6 +1635,83 @@ sessions owned by that account session are released.
 An authenticated session can similarly revoke an owned session with
 `DELETE /api/accounts/sessions/{sessionId}`.
 
+## Monitoring Stack
+
+The monitoring stack shows live metrics, logs, traces, dashboards, and alerts of
+GameService and SimulationWorker in Grafana. What it measures and how to read it
+is in [Monitoring](MONITORING.md).
+
+Start the stack next to PostgreSQL and Redis:
+
+```powershell
+docker compose -f docker-compose.observability.yml up -d --wait
+```
+
+Expected result: five containers of the project `shooter-mmo-observability` run,
+and Grafana answers on `http://127.0.0.1:3000` without a login. The stack
+publishes only loopback ports:
+
+| Port | Service |
+| --- | --- |
+| `127.0.0.1:4317` | OpenTelemetry Collector, OTLP gRPC |
+| `127.0.0.1:4318` | OpenTelemetry Collector, OTLP HTTP |
+| `127.0.0.1:9090` | Prometheus, including its alert list under `/alerts` |
+| `127.0.0.1:3000` | Grafana |
+
+Enable export in the services. `.env.example` already contains the line; add it
+to an older `.env` if it is missing:
+
+```text
+Telemetry__OtlpEndpoint=http://127.0.0.1:4317
+```
+
+Then start GameService and SimulationWorker as described in
+[Backend Services](#backend-services).
+
+Expected result: both processes log `Exporting metrics, traces, and logs over
+OTLP to http://127.0.0.1:4317/.` at startup. Without the setting they log
+`Telemetry export is disabled.` and nothing leaves the process.
+
+Manual check:
+
+1. Open `http://127.0.0.1:3000`. The home page is the **MMORPG Playtest**
+   dashboard. Within about 20 seconds `Shards online` shows `1` and the tick
+   panels show values far below the dashed 33.3 ms budget line.
+2. Start population, for example with
+   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) or the Unity client. The
+   `Players` or `Bots` stat, bandwidth, and packets rise within one refresh.
+3. Register an account as in [Backend Services](#backend-services) and copy the
+   `X-Correlation-ID` response header. In Grafana Explore, choose Loki and run
+   `{service_name="game-service"} | CorrelationId="<header value>"`. The account
+   log entry appears; open it and follow **View trace** to the request with its
+   PostgreSQL commands in Tempo.
+4. Stop SimulationWorker. Within about three minutes `Shards online` drops to
+   `0`, and `ShardOffline` and then `SimulationWorkerDown` appear in the
+   **Firing alerts** table and under Alerting in Grafana. Start the worker again
+   and both alerts resolve within about a minute.
+
+Validate the stack configuration and run the alert rule tests without starting
+anything:
+
+```powershell
+& ./tools/Verify-Observability.ps1
+```
+
+Expected result: `Observability verification passed: collector, Prometheus,
+alert tests, and 2 dashboards.`
+
+Stop the stack and keep its data, or remove the data too:
+
+```powershell
+docker compose -f docker-compose.observability.yml down
+docker compose -f docker-compose.observability.yml down -v
+```
+
+Dashboards are provisioned read-only from `observability/grafana/dashboards`.
+Edit the JSON there and run
+`docker compose -f docker-compose.observability.yml restart grafana` to load a
+change at once.
+
 ## Unity Client Flow
 
 The Unity project includes temporary runtime UI for the current backend flow.
@@ -2439,4 +2521,5 @@ accepted world presence.
 - [Project Architecture](PROJECT_ARCHITECTURE.md)
 - [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md)
 - [Service Features](SERVICE_FEATURES.md)
+- [Monitoring](MONITORING.md)
 - [Game Features](GAME_FEATURES.md)

@@ -31,6 +31,7 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var configuration = GameServiceConfiguration.Load(builder.Configuration, builder.Environment);
+builder.AddGameServiceTelemetry(configuration);
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = configuration.Items.Operations.MaximumHttpRequestBodyBytes;
@@ -57,5 +58,17 @@ if (commandExitCode is not null)
 }
 
 app.MapGameService(configuration);
+
+if (configuration.Telemetry.IsEnabled)
+{
+    app.Logger.LogInformation(
+        "Exporting metrics, traces, and logs over OTLP to {OtlpEndpoint}.",
+        configuration.Telemetry.OtlpEndpoint);
+}
+else
+{
+    app.Logger.LogInformation(
+        "Telemetry export is disabled. Set Telemetry:OtlpEndpoint to export metrics, traces, and logs.");
+}
 
 app.Run();

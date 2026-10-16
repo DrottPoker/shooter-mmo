@@ -41,7 +41,7 @@ public sealed class RealtimeMetricsReporterService(
             using var process = Process.GetCurrentProcess();
 
             logger.LogInformation(
-                "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
+                "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s, of which snapshots {SnapshotKiBPerSecond:F1} KiB/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
                 snapshot.ActiveRealPlayers,
                 snapshot.ActiveSyntheticBots,
                 snapshot.UnauthenticatedPeers,
@@ -54,6 +54,7 @@ public sealed class RealtimeMetricsReporterService(
                 PerSecond(snapshot.ReceivedBytes - previousNetwork.ReceivedBytes, sampleSeconds) / 1024d,
                 PerSecond(snapshot.SentPackets - previousNetwork.SentPackets, sampleSeconds),
                 PerSecond(snapshot.SentBytes - previousNetwork.SentBytes, sampleSeconds) / 1024d,
+                PerSecond(snapshot.SnapshotBytes - previousNetwork.SnapshotBytes, sampleSeconds) / 1024d,
                 PerSecond(
                     snapshot.DroppedSnapshotPackets - previousNetwork.DroppedSnapshotPackets,
                     sampleSeconds),
@@ -81,7 +82,7 @@ public sealed class RealtimeMetricsReporterService(
 
             var performance = performanceMetrics.CaptureAndReset();
             logger.LogInformation(
-                "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}.",
+                "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}.",
                 Format(performance.NetworkPoll),
                 Format(performance.CompletedOperations),
                 Format(performance.JoinQueueDelay),
@@ -98,6 +99,7 @@ public sealed class RealtimeMetricsReporterService(
                 Format(performance.InterestRefresh),
                 Format(performance.SnapshotBroadcast),
                 performance.TickResynchronizations,
+                performance.TickOverruns,
                 performance.ProcessAllocatedBytes / 1024d / 1024d,
                 performance.Generation0Collections,
                 performance.Generation1Collections,

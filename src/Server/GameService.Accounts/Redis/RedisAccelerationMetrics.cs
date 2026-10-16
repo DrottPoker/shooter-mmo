@@ -17,10 +17,12 @@ internal sealed record RedisAccelerationMetricsSnapshot(
 
 internal sealed class RedisAccelerationMetrics : IDisposable
 {
+    public const string MeterName = "Mmorpg.GameService.Redis";
+
     private const long FailureLogIntervalMilliseconds = 30_000;
     private readonly ConcurrentDictionary<string, long> lastFailureLogAt =
         new(StringComparer.Ordinal);
-    private readonly Meter meter = new("Mmorpg.GameService.Redis", "1.0.0");
+    private readonly Meter meter = new(MeterName, "1.0.0");
     private readonly Counter<long> sessionCacheCounter;
     private readonly Counter<long> redisFailureCounter;
     private readonly Counter<long> rateLimitCounter;
@@ -38,11 +40,11 @@ internal sealed class RedisAccelerationMetrics : IDisposable
     public RedisAccelerationMetrics()
     {
         sessionCacheCounter = meter.CreateCounter<long>(
-            "auth_service.redis.session_cache.operations");
+            "game_service.redis.session_cache.operations");
         redisFailureCounter = meter.CreateCounter<long>(
-            "auth_service.redis.failures");
+            "game_service.redis.failures");
         rateLimitCounter = meter.CreateCounter<long>(
-            "auth_service.redis.authentication_rate_limit.operations");
+            "game_service.redis.authentication_rate_limit.operations");
     }
 
     public void RecordSessionCacheHit()

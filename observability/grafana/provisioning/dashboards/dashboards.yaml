@@ -1,0 +1,12 @@
+# The dashboards in observability/grafana/dashboards are the source of truth. Edit them
+# in the repository; changes made in the Grafana UI cannot be saved.
+apiVersion: 1
+
+providers:
+  - name: mmorpg
+    folder: MMORPG
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

@@ -789,12 +789,20 @@ revision from the carry store, not the revision from the time of the join.
 
 ## Metrics And Logs
 
+Both server processes export metrics, logs, and traces through OpenTelemetry
+over OTLP when `Telemetry:OtlpEndpoint` is set. The local Collector, Prometheus,
+Loki, Tempo, and Grafana stack, the dashboards, the alert rules, the
+configuration, and the playtest workflow are described in
+[Monitoring](MONITORING.md). Without the setting nothing leaves the process and
+the meters below only feed the periodic status logs.
+
 The meter `Mmorpg.SimulationWorker.Realtime` exposes:
 
 - Active peers and entities.
 - Joined real players, joined synthetic bots, and unauthenticated peers as
   separate gauges.
-- Sent and received packets and bytes.
+- Sent and received packets and bytes, and the snapshot payload bytes among the
+  sent bytes.
 - Quota rejections, total dropped snapshots, and the subset dropped by
   aggregate snapshot backpressure.
 - Accepted and rejected joins.
@@ -810,39 +818,55 @@ identities.
 The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
 latency and outcome, lock wait, conflict, stale revision, timeout, death
 partition, policy action, cleanup, corpse count, and Recovery backlog
-measurements. The transaction counter and duration carry the outcome
-`committed`, `rejected`, `failed` for a transaction that threw, or `cancelled`
-when the caller cancelled it; the periodic totals count only committed and
-rejected transactions. The meter `Mmorpg.SimulationWorker.Corpses` separates active
-live and durable counts by the fixed `persistence` dimension. Neither meter uses
-item, account, character, operation, corpse, session, actor, or runtime ids as
-labels.
+measurements under `game_service.items.*`. The transaction counter and duration
+carry the outcome `committed`, `rejected`, `failed` for a transaction that threw,
+or `cancelled` when the caller cancelled it; the periodic totals count only
+committed and rejected transactions. The meter `Mmorpg.GameService.Redis`
+exposes session cache, Redis failure, and distributed rate-limit counters under
+`game_service.redis.*`. The meter `Mmorpg.GameService.Placement` reports, per
+Shard and labeled only by `shard.id`, whether the Shard is online and its active
+players and capacity, refreshed every `Simulation:MetricsIntervalSeconds` from
+the same query as the public shard list. A failed refresh drops the values
+instead of keeping stale ones. The meter `Mmorpg.SimulationWorker.Corpses`
+separates active live and durable counts by the fixed `persistence` dimension.
+None of these meters uses item, account, character, operation, corpse, session,
+actor, or runtime ids as labels.
 
-SimulationWorker supplies a bounded `X-Correlation-ID` on GameService requests.
-Item transaction logs include correlation and operation ids, classify expected
-contention below warning, promote significant lifecycle commits, and exclude
-credentials, tokens, and command bodies. Periodic GameService summaries report
-cumulative transaction, contention, lifecycle, corpse, Recovery, and cleanup
-counts.
+Every GameService request has one correlation id: the caller's valid
+`X-Correlation-ID`, otherwise the W3C trace id of the request. The response
+header carries it, every log entry written during the request carries it as the
+`CorrelationId` scope value, and the request span carries it as
+`mmorpg.correlation_id`. SimulationWorker sends the trace id of its operation as
+`X-Correlation-ID` together with the W3C `traceparent` header, so one worker
+operation, its GameService request, and that request's PostgreSQL commands form
+one trace. Item transaction logs include correlation and operation ids, classify
+expected contention below warning, promote significant lifecycle commits, and
+exclude credentials, tokens, and command bodies. Periodic GameService summaries
+report cumulative transaction, contention, lifecycle, corpse, Recovery, and
+cleanup counts.
 
 Periodic structured logs expose the same totals. A worker status line also
 reports real players, synthetic bots, unauthenticated peers, process CPU
 normalized to total logical-core capacity, single-core-equivalent CPU, working
-set, packet and payload rates, snapshot
+set, packet and payload rates including the snapshot payload rate, snapshot
 drops, quota rejections, and the sample window. Metrics deliberately avoid
 account, character, session, entity, and peer identifiers as labels.
 
 The performance meter `Mmorpg.SimulationWorker.Performance` records network
 poll, completed-operation, join-queue-delay, join-finalization, simulation-tick,
 tick-lag, collision-streaming, movement, interest, and snapshot-broadcast
-durations plus fixed-tick resynchronizations. The periodic metrics log reports
+durations plus fixed-tick resynchronizations and overruns, which count ticks
+that took longer than the tick interval. It also publishes the current
+completed-operation backlog as a gauge. The periodic metrics log reports
 interval averages, approximate p95 and p99 upper bounds, and maximum durations.
 It also reports the current and interval-maximum completed-operation backlog so
 admission congestion is distinguishable from UDP loss. Snapshot broadcast is
 the complete snapshot pipeline and includes the separately reported interest
 phase. The same interval log reports process allocation, GC collection counts,
 managed heap size and fragmentation, live managed memory, distinct visibility
-groups, encoded snapshot packet count, and sent snapshot packet count.
+groups, encoded snapshot packet count, sent snapshot packet count, and tick
+overruns. Recording any of these measurements on the realtime loop does not
+allocate, with or without the OpenTelemetry exporter attached.
 
 These operational values remain server-side. They are not added to the realtime
 gameplay protocol and are not broadcast to Unity clients. The Unity F2 panel
@@ -1079,7 +1103,8 @@ the test connection variable at development or production data.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.
-- Metric exporter, dashboards, and alerting.
+- Alert notifications to a chat or paging service, and a shared or staging
+  deployment of the monitoring stack.
 - Durable unique actor state, complete Mob AI, capability business operations,
   or combat simulation.
 - General terrain mesh and rigid-body collision.

@@ -100,6 +100,11 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Persistent Unity corpse presence and view state with complete chunk assembly,
   monotonic deltas, stable closure handling, a generic replaceable capsule,
   `E` proximity interaction, and typed bidirectional drag-and-drop transfers.
+- OpenTelemetry metrics, logs, and traces from both server processes, exported
+  over OTLP to a local Collector, Prometheus, Loki, Tempo, and Grafana stack with
+  a playtest dashboard, a GameService dashboard, and tested Prometheus alert
+  rules. Export is opt-in, and hot-path metric recording stays allocation-free.
+  See [Monitoring](docs/MONITORING.md).
 - Structured API errors, correlation ids, rate limits, no-store token responses,
   Redis-backed distributed authentication throttling, and a bounded Redis
   account-session cache with revocation tombstones.
@@ -174,6 +179,14 @@ Start PostgreSQL and Redis:
 docker compose up -d --wait
 ```
 
+Optionally start the monitoring stack, which shows both services live in
+Grafana on `http://127.0.0.1:3000` while `Telemetry__OtlpEndpoint` is set in
+`.env`, as `.env.example` does. See [Monitoring](docs/MONITORING.md).
+
+```powershell
+docker compose -f docker-compose.observability.yml up -d --wait
+```
+
 Run the two backend processes in separate PowerShell terminals:
 
 ```powershell
@@ -219,6 +232,7 @@ dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-buil
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
+& ./tools/Verify-Observability.ps1
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
@@ -278,12 +292,14 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `src/Server/GameService.Items` | Item catalog, item state and transactions, corpses, death loot, Recovery, policies, expiry, maintenance, and item development tools |
 | `src/Server/SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `src/Server/Common` | Framework-neutral helpers shared by the server processes |
+| `src/Server/Telemetry` | OpenTelemetry setup shared by the server processes: export options, resource, metric views, sampling, and OTLP exporters |
 | `src/Shared/GameProtocol` | Local Unity package containing the realtime protocol: the schema in `Schema~`, the code generated from it in `Runtime/Generated`, and the hand-written cross-field rules of each family |
 | `src/Shared/GameSimulation` | Local Unity package containing shared simulation source |
 | `content` | Authored game content: item and actor catalogs with one file per definition, and per-World manifests, spawns, and collision sources |
 | `src/Shared/WorldData` | Local Unity package with shared domain rules and compilers, the Unity content tools, and the deterministic `Generated` data compiled from `content` |
 | `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
 | `src/Client` | Unity project and Unity tests |
+| `observability` | Local monitoring stack configuration: OpenTelemetry Collector, Prometheus with alert rules and their tests, Loki, Tempo, and the Grafana data sources and dashboards |
 | `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, stress benchmark, shared headless bot client, and active bot population |
 | `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |

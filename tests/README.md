@@ -13,11 +13,12 @@ infrastructure. Unity tests live inside the Unity project under
 
 | Project | Path | Covers |
 | --- | --- | --- |
-| `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-test databases copied from templates, golden files, trait names |
+| `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-test databases copied from templates, golden files, trait names, and the metric names that the files in `observability` reference |
 | `Mmorpg.Testing.Content` | `Testing/Mmorpg.Testing.Content` | Library: item catalog, world actor, and collision world loaders that use the content tools |
 | `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition, the API test hosts, and the GameService source map and assembly list |
 | `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog and world actor compilers; links the Unity EditMode movement scenario and realtime protocol golden cases |
 | `Mmorpg.Server.Common.Tests` | `Server/Mmorpg.Server.Common.Tests` | `Mmorpg.Server.Common` |
+| `Mmorpg.Server.Telemetry.Tests` | `Server/Mmorpg.Server.Telemetry.Tests` | `Mmorpg.Server.Telemetry`: export options, metric views, resource, sampling, and provider registration |
 | `Mmorpg.GameService.Platform.Tests` | `Server/Mmorpg.GameService.Platform.Tests` | GameService Platform |
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including one PostgreSQL and one Redis test |
 | `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters |
@@ -95,13 +96,15 @@ together run every check of
 | `Backend checks and unit tests` | Dependency policy, locked restore, format, build, the three content verifiers, and every test with `Category!=Integration` |
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
+| `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |
 
 The two integration jobs start their own PostgreSQL, with its data in memory,
 and Redis service containers. NuGet packages are cached by `actions/setup-dotnet`
 from the `packages.lock.json` files. Every test project writes one TRX file to
 `TestResults/<Project>/test-results.trx`, and `tools/Verify-TestResults.ps1`
 fails the job when any test in them did not run or pass. Each job uploads its
-`TestResults` folder as an artifact.
+`TestResults` folder as an artifact. The observability job needs no .NET and
+runs the pinned Collector and Prometheus images through the runner's Docker.
 
 ## Databases And Redis
 

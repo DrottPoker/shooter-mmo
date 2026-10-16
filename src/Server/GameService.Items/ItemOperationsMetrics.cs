@@ -61,26 +61,26 @@ internal sealed class ItemOperationsMetrics : IDisposable
     public ItemOperationsMetrics()
     {
         transactionLatency = meter.CreateHistogram<double>(
-            "auth_service.items.transactions.duration",
+            "game_service.items.transactions.duration",
             "ms");
         lockWaitLatency = meter.CreateHistogram<double>(
-            "auth_service.items.locks.wait.duration",
+            "game_service.items.locks.wait.duration",
             "ms");
         transactionCounter = meter.CreateCounter<long>(
-            "auth_service.items.transactions");
+            "game_service.items.transactions");
         conflictCounter = meter.CreateCounter<long>(
-            "auth_service.items.conflicts");
+            "game_service.items.conflicts");
         deathPartitionCounter = meter.CreateCounter<long>(
-            "auth_service.items.death_partitions");
+            "game_service.items.death_partitions");
         policyActionCounter = meter.CreateCounter<long>(
-            "auth_service.items.policy_actions");
+            "game_service.items.policy_actions");
         cleanupCounter = meter.CreateCounter<long>(
-            "auth_service.items.cleanup");
+            "game_service.items.cleanup");
         meter.CreateObservableGauge(
-            "auth_service.items.corpses",
+            "game_service.items.corpses",
             ObserveCorpseCounts);
         meter.CreateObservableGauge(
-            "auth_service.items.recovery.backlog",
+            "game_service.items.recovery.backlog",
             () => Volatile.Read(ref recoveryBacklog));
     }
 

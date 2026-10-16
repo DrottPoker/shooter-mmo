@@ -1,0 +1,103 @@
+# promtool unit tests for the playtest alerts. Run them with
+# tools/Verify-Observability.ps1, which uses the pinned Prometheus image.
+rule_files:
+  - ../rules/playtest.rules.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: A worker that stops reporting and its offline shard alert, GameService stays quiet
+    interval: 15s
+    input_series:
+      - series: 'target_info{job="mmorpg/game-service", instance="g1"}'
+        values: '1x40'
+      - series: 'target_info{job="mmorpg/simulation-worker", instance="local-simulation-worker-1"}'
+        values: '1x8 _x32'
+      - series: 'game_service_placement_shard_online{job="mmorpg/game-service", instance="g1", shard_id="local-shard-1"}'
+        values: '1x8 0x32'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SimulationWorkerDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: SimulationWorkerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: mmorpg/simulation-worker
+            exp_annotations:
+              summary: No SimulationWorker has reported telemetry for two minutes.
+      - eval_time: 5m
+        alertname: GameServiceDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: ShardOffline
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ShardOffline
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              shard_id: local-shard-1
+            exp_annotations:
+              summary: Shard local-shard-1 is offline in the shard list, so players cannot join it.
+
+  - name: Tick overruns alert above one percent of ticks only
+    interval: 15s
+    input_series:
+      # 30 ticks per second, so 450 ticks per sample.
+      - series: 'simulation_worker_simulation_tick_duration_milliseconds_count{instance="w1"}'
+        values: '0+450x40'
+      - series: 'simulation_worker_simulation_tick_overruns_total{instance="w1"}'
+        values: '0+9x40'
+      - series: 'simulation_worker_simulation_tick_duration_milliseconds_count{instance="w2"}'
+        values: '0+450x40'
+      - series: 'simulation_worker_simulation_tick_overruns_total{instance="w2"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SimulationTickOverruns
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w1
+            exp_annotations:
+              summary: More than 1 percent of the fixed ticks on w1 take longer than the tick interval.
+
+  - name: GameService 5xx responses above one percent
+    interval: 15s
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="mmorpg/game-service", http_route="/api/shards", http_response_status_code="200"}'
+        values: '0+100x40'
+      - series: 'http_server_request_duration_seconds_count{job="mmorpg/game-service", http_route="/api/shards", http_response_status_code="500"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GameServiceErrorRate
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GameServiceErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: More than 1 percent of the GameService requests fail with a 5xx status.
+
+  - name: Database pool saturation
+    interval: 15s
+    input_series:
+      - series: 'db_client_connection_count{job="mmorpg/game-service", instance="g1", db_client_connection_state="used"}'
+        values: '60x20'
+      - series: 'db_client_connection_count{job="mmorpg/game-service", instance="g1", db_client_connection_state="idle"}'
+        values: '4x20'
+      - series: 'db_client_connection_max{job="mmorpg/game-service", instance="g1"}'
+        values: '64x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DatabasePoolSaturated
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: g1
+            exp_annotations:
+              summary: GameService g1 uses more than 90 percent of its PostgreSQL connection pool.

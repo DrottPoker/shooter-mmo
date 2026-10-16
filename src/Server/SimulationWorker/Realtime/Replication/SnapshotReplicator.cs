@@ -130,6 +130,7 @@ internal sealed class SnapshotReplicator(
                 sender.SendUnreliable(recipient.Peer, ownerPacket);
                 sentPacketCount++;
                 networkMetrics.RecordSnapshotEntities(1);
+                networkMetrics.RecordSnapshotBytes(ownerPacket.Length);
             }
 
             var recipientStart = snapshotRecipientRotation.Begin(
@@ -175,6 +176,7 @@ internal sealed class SnapshotReplicator(
                     sentPacketCount++;
                     networkMetrics.RecordSnapshotEntities(
                         packetBatch.EntityCounts[packetIndex]);
+                    networkMetrics.RecordSnapshotBytes(packet.Length);
                 }
             }
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Configuration;
+using Mmorpg.Server.Telemetry;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -13,6 +14,7 @@ using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.Telemetry;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
 
@@ -41,6 +43,17 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var config = SimulationWorkerConfig.FromConfiguration(builder.Configuration);
+var telemetryOptions = TelemetryOptions.FromConfiguration(builder.Configuration);
+var workerIdentity = SimulationWorkerIdentity.Create();
+builder.AddServerTelemetry(
+    telemetryOptions,
+    SimulationWorkerTelemetry.CreateResource(
+        config,
+        workerIdentity,
+        telemetryOptions,
+        builder.Environment.EnvironmentName),
+    SimulationWorkerTelemetry.MeterNames,
+    [SimulationWorkerTelemetry.ActivitySourceName]);
 var worldActorRuntime = WorldActorLoader.Load(config);
 WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var developmentItemInteractionOptions =
@@ -108,7 +121,7 @@ builder.Services.AddSingleton<SimulationWorkerRegistrationLease>();
 builder.Services.AddSingleton(new SimulationInterestManager(config.InterestManagement));
 builder.Services.AddSingleton<RealtimeNetworkMetrics>();
 builder.Services.AddSingleton<RealtimePerformanceMetrics>();
-builder.Services.AddSingleton(SimulationWorkerIdentity.Create());
+builder.Services.AddSingleton(workerIdentity);
 builder.Services.AddTransient<GameServiceAuthenticationHandler>();
 builder.Services.AddHttpClient<GameServiceClient>(httpClient =>
 {
@@ -160,7 +173,7 @@ logger.LogInformation(
     config.UdpPort,
     config.AdvertisedHost,
     config.AdvertisedUdpPort,
-    host.Services.GetRequiredService<SimulationWorkerIdentity>().RuntimeId,
+    workerIdentity.RuntimeId,
     GameSimulationCompatibility.Revision,
     staticCollisionWorld.Revision,
     collisionStreamingStore.LoadedChunkCount,
@@ -171,5 +184,17 @@ logger.LogInformation(
     worldActorRuntime.Revision,
     worldActorRuntime.Actors.Length,
     worldActorRuntime.SpawnInstances.Length);
+
+if (telemetryOptions.IsEnabled)
+{
+    logger.LogInformation(
+        "Exporting metrics, traces, and logs over OTLP to {OtlpEndpoint}.",
+        telemetryOptions.OtlpEndpoint);
+}
+else
+{
+    logger.LogInformation(
+        "Telemetry export is disabled. Set Telemetry:OtlpEndpoint to export metrics, traces, and logs.");
+}
 
 await host.RunAsync();

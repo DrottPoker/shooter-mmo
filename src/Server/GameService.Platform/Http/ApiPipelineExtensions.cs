@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -141,16 +142,24 @@ internal sealed class ApiExceptionHandler(
     }
 }
 
-internal sealed class CorrelationIdMiddleware(RequestDelegate next)
+// Gives every request one correlation id: the caller's X-Correlation-ID when it is
+// valid, otherwise the W3C trace id of the request, so the response header, the logs,
+// and the trace share one value.
+internal sealed class CorrelationIdMiddleware(
+    RequestDelegate next,
+    ILogger<CorrelationIdMiddleware> logger)
 {
+    public const string ActivityTagName = "mmorpg.correlation_id";
+
     public async Task InvokeAsync(HttpContext context)
     {
         var suppliedId = context.Request.Headers[ApiPipelineExtensions.CorrelationIdHeaderName].ToString();
         var correlationId = IsValid(suppliedId)
             ? suppliedId
-            : Guid.NewGuid().ToString("N");
+            : CreateCorrelationId();
 
         context.TraceIdentifier = correlationId;
+        Activity.Current?.SetTag(ActivityTagName, correlationId);
         // The exception handler clears headers, so the header is added when the response starts.
         context.Response.OnStarting(() =>
         {
@@ -158,7 +167,19 @@ internal sealed class CorrelationIdMiddleware(RequestDelegate next)
             return Task.CompletedTask;
         });
 
-        await next(context);
+        // Every log entry of the request, from any module, carries the id.
+        using (logger.BeginScope("CorrelationId:{CorrelationId}", correlationId))
+        {
+            await next(context);
+        }
+    }
+
+    private static string CreateCorrelationId()
+    {
+        var activity = Activity.Current;
+        return activity is not null && activity.TraceId != default
+            ? activity.TraceId.ToHexString()
+            : Guid.NewGuid().ToString("N");
     }
 
     private static bool IsValid(string value)
