@@ -58,9 +58,12 @@ namespace.
 target framework, nullable and implicit usings, the global `Xunit` using, and
 for test projects the test packages, a results folder per project
 (`TestResults/<Project>`), and the `Mmorpg.TestProjectDirectory` assembly
-metadata. The test infrastructure libraries get `xunit.v3.extensibility.core`
-and `xunit.v3.assert` instead. Every `xunit.v3` package must use one version;
-`tools/Verify-DependencyPolicy.ps1` checks it.
+metadata. Test projects reference `xunit.v3.mtp-off`, the xunit.v3 variant
+without Microsoft Testing Platform: `dotnet test` runs them in VSTest mode with
+`xunit.runner.visualstudio` and `coverlet.collector`, and the platform's v2
+rejects that mode on the .NET 10 SDK. The test infrastructure libraries get
+`xunit.v3.extensibility.core` and `xunit.v3.assert` instead. Every `xunit.v3`
+package must use one version; `tools/Verify-DependencyPolicy.ps1` checks it.
 
 Test projects run in parallel with each other. `Mmorpg.GameService.Items.Tests`
 also runs its test classes in parallel, on at most four threads, which bounds
@@ -68,8 +71,9 @@ CPU contention and PostgreSQL connections; tests inside one class still run one
 at a time. Its classes that observe process-wide state, such as `MeterListener`
 tests, join `SerialTestCollection`, which runs alone after the parallel classes.
 Put a new Items test class there when it reads process-wide state. Every other
-test project disables parallel test execution inside its assembly in
-`AssemblyInfo.cs`, because its meter listener tests, static stores, and timing
+test project disables parallel test execution inside its assembly with
+`[assembly: Parallelization(Mode = ParallelMode.None)]` in `AssemblyInfo.cs`,
+because its meter listener tests, static stores, and timing
 budgets assume it; those projects finish before the Items tests anyway.
 
 ## Traits
