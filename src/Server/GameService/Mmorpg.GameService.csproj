@@ -7,10 +7,12 @@
     <ProjectReference Include="..\GameService.Characters\Mmorpg.GameService.Characters.csproj" />
     <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
     <ProjectReference Include="..\GameService.Items\Mmorpg.GameService.Items.csproj" />
+    <ProjectReference Include="..\Telemetry\Mmorpg.Server.Telemetry.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
   </ItemGroup>
 
   <ItemGroup>

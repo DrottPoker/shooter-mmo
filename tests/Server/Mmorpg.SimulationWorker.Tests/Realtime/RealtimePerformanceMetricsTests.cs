@@ -8,9 +8,10 @@ public sealed class RealtimePerformanceMetricsTests
     public void CapturesIntervalDurationDistributionAndResets()
     {
         using var metrics = new RealtimePerformanceMetrics();
-        metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(1));
-        metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(5));
-        metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(40));
+        var tickBudget = TimeSpan.FromMilliseconds(1000d / 30d);
+        metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(1), tickBudget);
+        metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(5), tickBudget);
+        metrics.RecordSimulationTick(TimeSpan.FromMilliseconds(40), tickBudget);
         metrics.RecordInterestRefresh(TimeSpan.FromMilliseconds(2));
         metrics.RecordJoinQueueDelay(TimeSpan.FromMilliseconds(4));
         metrics.RecordJoinFinalization(TimeSpan.FromMilliseconds(3));
@@ -37,6 +38,7 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Equal(9, snapshot.MaximumCorpseMutationBacklog);
         Assert.Equal(2, snapshot.ActiveCorpseMutations);
         Assert.Equal(1, snapshot.TickResynchronizations);
+        Assert.Equal(1, snapshot.TickOverruns);
         Assert.True(snapshot.ProcessAllocatedBytes >= 0);
         Assert.True(snapshot.Generation0Collections >= 0);
         Assert.True(snapshot.Generation1Collections >= 0);
@@ -60,6 +62,7 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Equal(5, reset.MaximumCorpseMutationBacklog);
         Assert.Equal(2, reset.ActiveCorpseMutations);
         Assert.Equal(0, reset.TickResynchronizations);
+        Assert.Equal(0, reset.TickOverruns);
         Assert.Equal(0, reset.SnapshotVisibilityGroups);
         Assert.Equal(0, reset.SnapshotPacketsEncoded);
         Assert.Equal(0, reset.SnapshotPacketsSent);

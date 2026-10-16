@@ -24,6 +24,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.realtime.received.packets",
         "simulation_worker.realtime.sent.bytes",
         "simulation_worker.realtime.sent.packets",
+        "simulation_worker.realtime.snapshot.bytes",
         "simulation_worker.realtime.snapshot.entity_records",
         "simulation_worker.realtime.snapshot_backpressure_dropped.packets",
         "simulation_worker.realtime.snapshot_dropped.packets",
@@ -36,6 +37,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.corpse.mutation.backlog",
         "simulation_worker.join.finalization.duration",
         "simulation_worker.join.queue_delay.duration",
+        "simulation_worker.loop.completed_operations.backlog",
         "simulation_worker.loop.completed_operations.duration",
         "simulation_worker.loop.network_poll.duration",
         "simulation_worker.simulation.collision_streaming.duration",
@@ -48,6 +50,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.simulation.snapshot_broadcast.duration",
         "simulation_worker.simulation.tick.duration",
         "simulation_worker.simulation.tick.lag",
+        "simulation_worker.simulation.tick.overruns",
         "simulation_worker.simulation.tick.resynchronizations"
     ];
 

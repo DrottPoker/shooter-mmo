@@ -2,6 +2,7 @@ using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.Telemetry;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -12,7 +13,22 @@ public sealed class SimulationJoinService(
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity)
 {
+    // One span covers the ticket consumption and any release a rejected join needs.
     public async Task<SimulationJoinResult<ActiveSimulationSession>> JoinAsync(
+        string joinTicket,
+        CancellationToken cancellationToken)
+    {
+        using var activity = SimulationWorkerTelemetry.StartOperation("simulation.join");
+        var result = await JoinCoreAsync(joinTicket, cancellationToken);
+        if (!result.Succeeded)
+        {
+            SimulationWorkerTelemetry.RecordFailure(activity, result.Error!.Code);
+        }
+
+        return result;
+    }
+
+    private async Task<SimulationJoinResult<ActiveSimulationSession>> JoinCoreAsync(
         string joinTicket,
         CancellationToken cancellationToken)
     {

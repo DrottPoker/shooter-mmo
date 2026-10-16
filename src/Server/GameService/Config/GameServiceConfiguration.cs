@@ -4,6 +4,7 @@ using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.Server.Telemetry;
 
 namespace Mmorpg.GameService.Config;
 
@@ -16,6 +17,9 @@ internal sealed record GameServiceConfiguration(
     PlacementModuleOptions Placement,
     ItemsModuleOptions Items)
 {
+    // Process-level export settings; disabled unless Telemetry:OtlpEndpoint is set.
+    public TelemetryOptions Telemetry { get; init; } = TelemetryOptions.Disabled;
+
     public static GameServiceConfiguration Load(
         IConfiguration configuration,
         IHostEnvironment environment)
@@ -38,6 +42,7 @@ internal sealed record GameServiceConfiguration(
         var itemOperations = ItemOperationsOptions.FromConfiguration(configuration);
         var redisAcceleration = RedisAccelerationOptions.FromConfiguration(configuration);
         var itemCatalog = ItemCatalogSource.FromConfiguration(configuration);
+        var telemetry = TelemetryOptions.FromConfiguration(configuration);
 
         return new GameServiceConfiguration(
             core.Platform,
@@ -52,7 +57,10 @@ internal sealed record GameServiceConfiguration(
                 itemCatalog,
                 itemOperations,
                 npcItemLifecycle,
-                stackStressFixtures));
+                stackStressFixtures))
+        {
+            Telemetry = telemetry
+        };
     }
 }
 

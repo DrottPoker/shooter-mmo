@@ -17,6 +17,9 @@ public sealed record PlacementModuleOptions(
 
     public SimulationWorkerLeasePolicy WorkerLeasePolicy => new(WorkerHeartbeatTimeout);
 
+    // How often the shard gauges re-read the shard list. Optional, 15 seconds by default.
+    public TimeSpan MetricsInterval { get; init; } = TimeSpan.FromSeconds(15);
+
     public static PlacementModuleOptions ReadCore(
         IConfiguration configuration,
         ICollection<string> errors)
@@ -37,11 +40,22 @@ public sealed record PlacementModuleOptions(
             "Simulation:WorkerHeartbeatTimeoutSeconds",
             errors);
         var topology = SimulationTopologyConfig.FromConfiguration(configuration, errors);
+        var metricsIntervalSeconds = configuration["Simulation:MetricsIntervalSeconds"] is null
+            ? 15
+            : ConfigurationValidation.ValidateIntRange(
+                configuration,
+                "Simulation:MetricsIntervalSeconds",
+                1,
+                3600,
+                errors);
 
         return new PlacementModuleOptions(
             joinTicketLifetimeSeconds,
             sessionLeaseLifetimeSeconds,
             TimeSpan.FromSeconds(workerHeartbeatTimeoutSeconds),
-            topology);
+            topology)
+        {
+            MetricsInterval = TimeSpan.FromSeconds(metricsIntervalSeconds)
+        };
     }
 }

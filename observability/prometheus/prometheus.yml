@@ -1,0 +1,23 @@
+# Prometheus receives the services' metrics from the collector through its native OTLP
+# endpoint (--web.enable-otlp-receiver) and evaluates the alert rules below. The OTLP
+# service name becomes the job label and the service instance id the instance label.
+global:
+  evaluation_interval: 15s
+
+otlp:
+  # Resource attributes that dashboards and alerts filter on. Each has one stable value
+  # per process, so promoting them adds no series.
+  promote_resource_attributes:
+    - deployment.environment.name
+    - mmorpg.fleet.id
+    - mmorpg.node.id
+    - mmorpg.shard.id
+    - mmorpg.world.id
+
+storage:
+  tsdb:
+    # Pushed samples can arrive late when the collector retries a batch.
+    out_of_order_time_window: 10m
+
+rule_files:
+  - /etc/prometheus/rules/*.rules.yml

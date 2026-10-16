@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Health;
+using Mmorpg.SimulationWorker.Telemetry;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -54,6 +55,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             CancellationToken cancellationToken)
     {
         return PostAsync<SimulationWorkerHeartbeatRequest, SimulationWorkerHeartbeatResponse>(
+            "GameService.HeartbeatSimulationWorker",
             $"/api/simulation-workers/{Uri.EscapeDataString(workerId)}/heartbeat",
             request,
             response => string.Equals(response.WorkerId, workerId, StringComparison.Ordinal)
@@ -87,6 +89,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             CancellationToken cancellationToken)
     {
         return PostAsync<SimulationWorkerOfflineRequest, SimulationWorkerOfflineResponse>(
+            "GameService.MarkSimulationWorkerOffline",
             $"/api/simulation-workers/{Uri.EscapeDataString(workerId)}/offline",
             new SimulationWorkerOfflineRequest(runtimeId),
             response => string.Equals(response.WorkerId, workerId, StringComparison.Ordinal)
@@ -105,6 +108,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             + $"?workerRuntimeId={Uri.EscapeDataString(workerRuntimeId)}"
             + $"&shardId={Uri.EscapeDataString(shardId)}";
         return GetAsync<CorpseRestoreResponse>(
+            "GameService.RestoreDurableCorpses",
             path,
             response => IsValidCorpseRestore(response, shardId),
             cancellationToken);
@@ -116,6 +120,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             CancellationToken cancellationToken)
     {
         return PostAsync<CreatePersistentMobCorpseRequest, PersistentMobCorpseResponse>(
+            "GameService.CreatePersistentMobCorpse",
             $"/api/simulation-workers/{Uri.EscapeDataString(request.WorkerId)}/mob-corpses/durable",
             request,
             response => response.OperationId == request.OperationId
@@ -139,6 +144,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         CancellationToken cancellationToken)
     {
         return PostAsync<SimulationMobLootGrantRequest, SimulationItemTransactionResponse>(
+            "GameService.GrantLiveMobLoot",
             $"/api/simulation-sessions/{simulationSessionId}/mob-loot-grants",
             request,
             response => IsValidLiveMobLootGrant(response, request),
@@ -152,6 +158,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         CancellationToken cancellationToken)
     {
         return PostAsync<SimulationCorpseOpenRequest, CorpseViewSnapshotResponse>(
+            "GameService.OpenCorpse",
             $"/api/simulation-sessions/{simulationSessionId}/corpses/{corpseId}/open",
             request,
             response => IsValidCorpseView(response, corpseId, request.ShardId),
@@ -165,6 +172,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         CancellationToken cancellationToken)
     {
         return PostAsync<SimulationCorpseMutationRequest, CorpseMutationResponse>(
+            "GameService.MutateCorpse",
             $"/api/simulation-sessions/{simulationSessionId}/corpses/{corpseId}/item-operations",
             request,
             response => IsValidCorpseMutation(response, request, corpseId),
@@ -179,6 +187,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         CancellationToken cancellationToken)
     {
         return PostAsync<ConsumeSimulationJoinTicketRequest, ConsumedSimulationJoinTicketResponse>(
+            "GameService.ConsumeJoinTicket",
             "/api/simulation-join-tickets/consume",
             new ConsumeSimulationJoinTicketRequest(ticket, workerId, runtimeId, shardId),
             response => IsValidConsumedTicket(response, workerId, runtimeId, shardId),
@@ -191,6 +200,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         CancellationToken cancellationToken)
     {
         return PostAsync<SimulationPlayerDeathRequest, PlayerDeathPartitionResponse>(
+            "GameService.ProcessPlayerDeath",
             $"/api/simulation-sessions/{simulationSessionId}/player-deaths",
             request,
             response => IsValidPlayerDeathPartition(response, request),
@@ -205,6 +215,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             CancellationToken cancellationToken)
     {
         return PostAsync<SimulationSessionCredentialRequest, SimulationSessionLeaseResponse>(
+            "GameService.HeartbeatSimulationSession",
             $"/api/simulation-sessions/{simulationSessionId}/heartbeat",
             new SimulationSessionCredentialRequest(workerRuntimeId, sessionToken),
             IsValidSimulationSessionLease,
@@ -218,6 +229,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         CancellationToken cancellationToken)
     {
         return PostAsync<SimulationSessionCredentialRequest, SimulationSessionLeaseResponse>(
+            "GameService.ReleaseSimulationSession",
             $"/api/simulation-sessions/{simulationSessionId}/release",
             new SimulationSessionCredentialRequest(workerRuntimeId, sessionToken),
             IsValidSimulationSessionLease,
@@ -231,13 +243,53 @@ public sealed class GameServiceClient(HttpClient httpClient)
             CancellationToken cancellationToken)
     {
         return PostAsync<SimulationItemOperationRequest, SimulationItemTransactionResponse>(
+            "GameService.MutateSimulationItems",
             $"/api/simulation-sessions/{simulationSessionId}/item-operations",
             request,
             response => IsValidSimulationItemTransaction(response, request),
             cancellationToken);
     }
 
+    // Each call is one span named after its operation. A failure code lands on that
+    // span, and the HTTP client span and the GameService request nest below it.
     private async Task<GameServiceResult<TResponse>> PostAsync<TRequest, TResponse>(
+        string operation,
+        string path,
+        TRequest requestBody,
+        Func<TResponse, bool> responseValidator,
+        CancellationToken cancellationToken)
+    {
+        using var activity = SimulationWorkerTelemetry.StartOperation(operation);
+        return RecordOutcome(
+            activity,
+            await SendPostAsync(path, requestBody, responseValidator, cancellationToken));
+    }
+
+    private async Task<GameServiceResult<TResponse>> GetAsync<TResponse>(
+        string operation,
+        string path,
+        Func<TResponse, bool> responseValidator,
+        CancellationToken cancellationToken)
+    {
+        using var activity = SimulationWorkerTelemetry.StartOperation(operation);
+        return RecordOutcome(
+            activity,
+            await SendGetAsync(path, responseValidator, cancellationToken));
+    }
+
+    private static GameServiceResult<T> RecordOutcome<T>(
+        Activity? activity,
+        GameServiceResult<T> result)
+    {
+        if (!result.Succeeded)
+        {
+            SimulationWorkerTelemetry.RecordFailure(activity, result.Error!.Code);
+        }
+
+        return result;
+    }
+
+    private async Task<GameServiceResult<TResponse>> SendPostAsync<TRequest, TResponse>(
         string path,
         TRequest requestBody,
         Func<TResponse, bool> responseValidator,
@@ -312,7 +364,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         }
     }
 
-    private async Task<GameServiceResult<TResponse>> GetAsync<TResponse>(
+    private async Task<GameServiceResult<TResponse>> SendGetAsync<TResponse>(
         string path,
         Func<TResponse, bool> responseValidator,
         CancellationToken cancellationToken)

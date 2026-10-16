@@ -6,6 +6,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Telemetry;
 
 namespace Mmorpg.SimulationWorker.Sessions;
 
@@ -23,10 +24,17 @@ public sealed class SimulationSessionHeartbeatService(
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            await RunBoundedAsync(
-                sessionStore.ListActiveSessions(),
-                HeartbeatAsync,
-                stoppingToken);
+            var sessions = sessionStore.ListActiveSessions();
+            if (sessions.Count == 0)
+            {
+                continue;
+            }
+
+            // One trace per cycle instead of one per session.
+            using var activity = SimulationWorkerTelemetry.StartOperation(
+                "simulation.session.heartbeat_cycle");
+            activity?.SetTag("mmorpg.simulation_session.count", sessions.Count);
+            await RunBoundedAsync(sessions, HeartbeatAsync, stoppingToken);
         }
     }
 

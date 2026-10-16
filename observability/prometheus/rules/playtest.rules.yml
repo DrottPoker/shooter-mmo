@@ -1,0 +1,159 @@
+# Alerts that matter during a playtest. Prometheus evaluates them and Grafana lists
+# them under Alerting and on the dashboards; nothing is routed to a notifier yet.
+# critical: players are affected now. warning: look before it becomes critical.
+# Unit tests: observability/prometheus/tests/playtest.rules.test.yml, run by
+# tools/Verify-Observability.ps1.
+groups:
+  - name: mmorpg-availability
+    rules:
+      - alert: GameServiceDown
+        expr: absent_over_time(target_info{job="mmorpg/game-service"}[1m])
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: GameService has not reported telemetry for two minutes, so nobody can log in or join a shard.
+
+      - alert: SimulationWorkerDown
+        expr: absent_over_time(target_info{job="mmorpg/simulation-worker"}[1m])
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: No SimulationWorker has reported telemetry for two minutes.
+
+      - alert: ShardOffline
+        expr: max by (shard_id) (game_service_placement_shard_online) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Shard {{ $labels.shard_id }} is offline in the shard list, so players cannot join it.
+
+      - alert: ShardNearCapacity
+        expr: |
+          max by (shard_id) (
+            game_service_placement_shard_players
+              / (game_service_placement_shard_capacity > 0)
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Shard {{ $labels.shard_id }} is above 90 percent of its player capacity.
+
+  - name: mmorpg-realtime
+    rules:
+      - alert: SimulationTickOverruns
+        expr: |
+          sum by (instance) (rate(simulation_worker_simulation_tick_overruns_total[2m]))
+            / sum by (instance) (rate(simulation_worker_simulation_tick_duration_milliseconds_count[2m]))
+            > 0.01
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 1 percent of the fixed ticks on {{ $labels.instance }} take longer than the tick interval.
+
+      - alert: SimulationTickResynchronized
+        expr: sum by (instance) (increase(simulation_worker_simulation_tick_resynchronizations_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: The simulation on {{ $labels.instance }} fell more than five ticks behind and skipped time, which players see as a hitch.
+
+      - alert: SnapshotDrops
+        expr: |
+          sum by (instance) (rate(simulation_worker_realtime_snapshot_dropped_packets_total[5m]))
+            / (
+              sum by (instance) (rate(simulation_worker_simulation_snapshot_packets_sent_total[5m]))
+                + sum by (instance) (rate(simulation_worker_realtime_snapshot_dropped_packets_total[5m]))
+            )
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5 percent of the snapshot packets on {{ $labels.instance }} are dropped by quotas or backpressure.
+
+      - alert: CompletedOperationBacklog
+        expr: max by (instance) (simulation_worker_loop_completed_operations_backlog) > 50
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 50 completed authority operations wait for the realtime loop on {{ $labels.instance }}.
+
+      - alert: JoinRejections
+        expr: |
+          sum by (instance) (rate(simulation_worker_realtime_joins_rejected_total[5m])) > 0.05
+          and
+          sum by (instance) (rate(simulation_worker_realtime_joins_rejected_total[5m]))
+            / (
+              sum by (instance) (rate(simulation_worker_realtime_joins_accepted_total[5m]))
+                + sum by (instance) (rate(simulation_worker_realtime_joins_rejected_total[5m]))
+            )
+            > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 20 percent of the joins on {{ $labels.instance }} are rejected.
+
+  - name: mmorpg-game-service
+    rules:
+      - alert: GameServiceErrorRate
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{job="mmorpg/game-service", http_response_status_code=~"5.."}[5m]))
+            / sum(rate(http_server_request_duration_seconds_count{job="mmorpg/game-service"}[5m]))
+            > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 1 percent of the GameService requests fail with a 5xx status.
+
+      - alert: GameServiceSlowRoute
+        expr: |
+          histogram_quantile(0.95,
+            sum by (http_route, le) (rate(http_server_request_duration_seconds_bucket{job="mmorpg/game-service"}[5m]))
+          ) > 0.5
+          and
+          sum by (http_route) (rate(http_server_request_duration_seconds_count{job="mmorpg/game-service"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The p95 latency of GameService route {{ $labels.http_route }} is above 500 ms.
+
+      - alert: DatabasePoolSaturated
+        expr: |
+          sum by (instance) (db_client_connection_count{job="mmorpg/game-service", db_client_connection_state="used"})
+            / sum by (instance) (db_client_connection_max{job="mmorpg/game-service"})
+            > 0.9
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: GameService {{ $labels.instance }} uses more than 90 percent of its PostgreSQL connection pool.
+
+      - alert: ItemTransactionFailures
+        expr: sum(increase(game_service_items_transactions_total{outcome="failed"}[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Item transactions failed with an unexpected error in the last five minutes; the GameService logs have the operation ids.
+
+      - alert: ItemTransactionTimeouts
+        expr: sum(increase(game_service_items_conflicts_total{kind="timeout"}[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Item transactions hit their lock or transaction timeout in the last five minutes.
+
+      - alert: RedisFailures
+        expr: sum(increase(game_service_redis_failures_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: GameService could not reach Redis in the last five minutes and fell back to PostgreSQL and local rate limits.

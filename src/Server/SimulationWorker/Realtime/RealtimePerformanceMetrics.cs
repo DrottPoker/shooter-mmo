@@ -26,6 +26,7 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     int MaximumCorpseMutationBacklog,
     int ActiveCorpseMutations,
     long TickResynchronizations,
+    long TickOverruns,
     long ProcessAllocatedBytes,
     int Generation0Collections,
     int Generation1Collections,
@@ -54,6 +55,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Histogram<double> interestRefreshHistogram;
     private readonly Histogram<double> snapshotBroadcastHistogram;
     private readonly Counter<long> tickResynchronizationCounter;
+    private readonly Counter<long> tickOverrunCounter;
     private readonly Counter<long> snapshotVisibilityGroupCounter;
     private readonly Counter<long> snapshotPacketEncodingCounter;
     private readonly Counter<long> snapshotPacketSendCounter;
@@ -76,6 +78,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private int maximumCorpseMutationBacklog;
     private int activeCorpseMutations;
     private long tickResynchronizations;
+    private long tickOverruns;
     private long previousAllocatedBytes = GC.GetTotalAllocatedBytes(false);
     private int previousGeneration0Collections = GC.CollectionCount(0);
     private int previousGeneration1Collections = GC.CollectionCount(1);
@@ -99,6 +102,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         snapshotBroadcastHistogram = CreateHistogram("simulation_worker.simulation.snapshot_broadcast.duration");
         tickResynchronizationCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.tick.resynchronizations");
+        tickOverrunCounter = meter.CreateCounter<long>(
+            "simulation_worker.simulation.tick.overruns");
         snapshotVisibilityGroupCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.snapshot.visibility_groups");
         snapshotPacketEncodingCounter = meter.CreateCounter<long>(
@@ -107,6 +112,9 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             "simulation_worker.simulation.snapshot.packets_sent");
         snapshotEntityUpdateDeferredCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.snapshot.entity_updates_deferred");
+        meter.CreateObservableGauge(
+            "simulation_worker.loop.completed_operations.backlog",
+            () => Volatile.Read(ref completedOperationBacklog));
         corpseMutationBacklogGauge = meter.CreateObservableGauge(
             "simulation_worker.corpse.mutation.backlog",
             () => Volatile.Read(ref corpseMutationBacklog));
@@ -176,8 +184,17 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         }
     }
 
-    public void RecordSimulationTick(TimeSpan duration) =>
+    // A tick that takes longer than its fixed interval is an overrun, even when the
+    // catch-up budget later absorbs the delay without a resynchronization.
+    public void RecordSimulationTick(TimeSpan duration, TimeSpan budget)
+    {
         Record(simulationTick, simulationTickHistogram, duration);
+        if (duration > budget)
+        {
+            Interlocked.Increment(ref tickOverruns);
+            tickOverrunCounter.Add(1);
+        }
+    }
 
     public void RecordSimulationTickLag(TimeSpan duration) =>
         Record(simulationTickLag, simulationTickLagHistogram, duration);
@@ -261,6 +278,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             maximumCorpseBacklog,
             Volatile.Read(ref activeCorpseMutations),
             Interlocked.Exchange(ref tickResynchronizations, 0),
+            Interlocked.Exchange(ref tickOverruns, 0),
             Math.Max(0, allocatedBytes - Interlocked.Exchange(ref previousAllocatedBytes, allocatedBytes)),
             Math.Max(
                 0,
@@ -336,9 +354,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         public void Record(double milliseconds)
         {
             var microseconds = (long)Math.Ceiling(milliseconds * 1000d);
-            var bucketIndex = Array.FindIndex(
-                UpperBoundsMilliseconds,
-                upperBound => milliseconds <= upperBound);
+            var bucketIndex = FindBucketIndex(milliseconds);
             lock (gate)
             {
                 samples++;
@@ -346,6 +362,21 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 maximumMicroseconds = Math.Max(maximumMicroseconds, microseconds);
                 buckets[bucketIndex]++;
             }
+        }
+
+        // A plain loop, because a predicate lambda would capture the sample and
+        // allocate on every tick.
+        private static int FindBucketIndex(double milliseconds)
+        {
+            for (var index = 0; index < UpperBoundsMilliseconds.Length; index++)
+            {
+                if (milliseconds <= UpperBoundsMilliseconds[index])
+                {
+                    return index;
+                }
+            }
+
+            return UpperBoundsMilliseconds.Length - 1;
         }
 
         public RealtimeDurationSummary? CaptureAndReset()

@@ -15,6 +15,8 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
 
     public IReadOnlyList<DatabaseMigration> Migrations => PlacementSchemaMigrations.All;
 
+    public IReadOnlyList<string> MeterNames { get; } = [PlacementMetrics.MeterName];
+
     public void AddServices(IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -29,11 +31,13 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
         services.AddSingleton<ISimulationPresence, SimulationPresence>();
         services.AddSingleton<DevelopmentSimulationBotAuthority>();
         services.AddSingleton<SimulationTopologySeeder>();
+        services.AddSingleton<PlacementMetrics>();
         services.AddScoped<ShardService>();
         services.AddScoped<SimulationSessionService>();
         services.AddScoped<SimulationWorkerRegistryService>();
         services.AddScoped<DevelopmentSimulationBotPlacementService>();
         services.AddScoped<DevelopmentSimulationBotTicketService>();
+        services.AddHostedService<PlacementMetricsReporterService>();
     }
 
     // Ensures the configured World definitions, Fleets, Nodes, and Shards exist. The host
