@@ -1,0 +1,211 @@
+/* Shared layout and states of the content tools: Item Catalog, Actor Studio, Spawn Authoring. */
+
+.content-tool {
+    flex-grow: 1;
+}
+
+.content-tool__body {
+    flex-grow: 1;
+}
+
+.content-heading {
+    -unity-font-style: bold;
+    font-size: 12px;
+    margin: 6px 6px 2px 6px;
+}
+
+.content-list-pane {
+    flex-grow: 1;
+    min-width: 220px;
+}
+
+.content-list-pane > .unity-toolbar-search-field {
+    margin: 2px 6px 4px 6px;
+    width: auto;
+}
+
+.content-list-filters {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin: 0 4px 4px 4px;
+}
+
+.content-list-filters > * {
+    margin: 1px 2px;
+    min-width: 90px;
+    flex-grow: 1;
+}
+
+.content-list-summary {
+    margin: 2px 6px 4px 6px;
+    opacity: 0.7;
+    font-size: 10px;
+}
+
+.content-list-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 6px;
+}
+
+.content-list-row__text {
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.content-list-row__title {
+    -unity-font-style: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.content-list-row__subtitle {
+    font-size: 10px;
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.content-list-row__marker {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    margin-left: 4px;
+}
+
+.content-marker--error {
+    background-color: rgb(222, 82, 82);
+}
+
+.content-marker--warning {
+    background-color: rgb(230, 175, 60);
+}
+
+.content-marker--changed {
+    border-width: 1px;
+    border-color: rgb(120, 170, 230);
+}
+
+.content-detail {
+    flex-grow: 1;
+    padding: 4px 8px;
+}
+
+.content-section {
+    margin: 4px 0 8px 0;
+    padding: 4px 6px 6px 6px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgba(128, 128, 128, 0.3);
+}
+
+.content-section__title {
+    -unity-font-style: bold;
+    margin: 2px 0 4px 3px;
+}
+
+.content-hint {
+    white-space: normal;
+    opacity: 0.7;
+    font-size: 10px;
+    margin: 2px 3px 4px 3px;
+}
+
+.content-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.content-row > Button {
+    flex-grow: 1;
+}
+
+.content-tag-set {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.content-tag-set > Toggle {
+    width: 170px;
+    margin-right: 6px;
+}
+
+/* Every field in a detail panel lines up on one label column. */
+.content-detail .unity-base-field__label {
+    min-width: 180px;
+    width: 180px;
+}
+
+.content-detail .content-tag-set .unity-base-field__label,
+.content-detail .unity-composite-field__field .unity-base-field__label {
+    min-width: 0;
+    width: auto;
+}
+
+.content-field--error > Label,
+.content-field--error.unity-toggle > .unity-toggle__input > Label {
+    color: rgb(222, 82, 82);
+}
+
+.content-field--error .unity-base-field__input,
+.content-field--error .unity-base-text-field__input {
+    border-color: rgb(222, 82, 82);
+}
+
+.content-field--warning > Label {
+    color: rgb(230, 175, 60);
+}
+
+.content-issues {
+    max-height: 160px;
+    min-height: 26px;
+    border-top-width: 1px;
+    border-color: rgba(128, 128, 128, 0.3);
+}
+
+.content-issues__header {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 6px;
+}
+
+.content-issues__title {
+    -unity-font-style: bold;
+    flex-grow: 1;
+}
+
+.content-issues__row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 6px;
+}
+
+.content-issues__row > Label {
+    flex-grow: 1;
+    white-space: normal;
+}
+
+.content-status {
+    margin: 2px 4px;
+}
+
+.content-actions {
+    flex-direction: row;
+    padding: 4px;
+    border-top-width: 1px;
+    border-color: rgba(128, 128, 128, 0.3);
+}
+
+.content-actions > Button {
+    min-height: 24px;
+    flex-grow: 1;
+}
+
+.content-actions__info {
+    flex-grow: 2;
+    -unity-text-align: middle-left;
+    margin-left: 8px;
+    font-size: 10px;
+    opacity: 0.8;
+    white-space: normal;
+}
