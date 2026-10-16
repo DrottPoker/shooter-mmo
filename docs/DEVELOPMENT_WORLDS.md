@@ -58,13 +58,23 @@ The canonical World manifest and actor content already reserve these coordinates
 Do not move these authored landmarks without updating the matching `world.json`
 manifest and actor spawn content in the same change.
 
-The north traversal course was built when players could jump. The top edges of
-both platform ramps end below their platform, and each observation step rises
-more than the step height, so click-to-move cannot reach the platforms, the
-bridge, or the observation deck. The route planner walks to the closest
-reachable point instead.
+Every raised surface on the north traversal course is reachable by walking,
+because the character never jumps and steps up at most 0.35 m:
 
-Development World 2 currently contains 86 enabled, non-trigger BoxColliders.
+| Course element | Top height | Walking route |
+| --- | --- | --- |
+| West platform | `4` | A 10 degree ramp from the south, centered on X `-30`, ends flush with the platform's south face at Z `89` |
+| East platform | `6` | A 10 degree ramp from the south, centered on X `30`, ends flush with the platform's south face at Z `127` |
+| Observation bridge | `8` | 25 observation steps of 0.32 m with 1 m treads climb from Z `115` to Z `140`, where the bridge starts |
+| Observation deck | `8` | The bridge runs level from Z `140` onto the deck's south edge at Z `165` |
+
+The bridge leaves 7.2 m of headroom, so the ground below it stays walkable. When
+the course changes, keep each ramp top flush with its platform and every rise
+below the step height, then rebake. `MovementPathPlannerTests` plans from the
+ground to each platform, the bridge, and the deck against the baked collision
+and follows each route with the shared movement simulation.
+
+Development World 2 currently contains 106 enabled, non-trigger BoxColliders.
 The broad ground collider still guarantees all 256 collision chunks exist.
 Thin cyan service and spawn guides are visual only and have no Collider. They
 show the canonical bank, recovery, insurance, guard group, and wolf spawn
@@ -115,7 +125,7 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    > Tools > Addressables > Apply Client Layout` restores both.
 
 Expected result: Development World 1 remains playable, Development World 2 has
-86 authoritative boxes in 256 chunks, and actor authoring files remain
+106 authoritative boxes in 256 chunks, and actor authoring files remain
 unchanged. Both scenes are selected exclusively through their authoritative
 World IDs.
 
