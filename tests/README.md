@@ -1,6 +1,6 @@
 # Backend Tests
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 This directory holds the .NET backend tests: one test project per production
 module, one project for flows that cross modules or processes, and shared test
@@ -13,7 +13,7 @@ infrastructure. Unity tests live inside the Unity project under
 
 | Project | Path | Covers |
 | --- | --- | --- |
-| `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-assembly test databases, golden files, trait names |
+| `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-test databases copied from templates, golden files, trait names |
 | `Mmorpg.Testing.Content` | `Testing/Mmorpg.Testing.Content` | Library: item catalog, world actor, and collision world loaders that use the content tools |
 | `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition, the API test hosts, and the GameService source map and assembly list |
 | `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog and world actor compilers; links the Unity EditMode movement scenario |
@@ -25,7 +25,7 @@ infrastructure. Unity tests live inside the Unity project under
 | `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel boundary tests under `ItemTransactions` |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |
-| `Mmorpg.Integration.Tests` | `Integration/Mmorpg.Integration.Tests` | Flows across GameService modules or across GameService and SimulationWorker, and the test output guard |
+| `Mmorpg.Integration.Tests` | `Integration/Mmorpg.Integration.Tests` | Flows across GameService modules or across GameService and SimulationWorker, the test output guard, and the test database isolation guard |
 | `Mmorpg.Tools.Tests` | `Tools/Mmorpg.Tools.Tests` | The tools in `tools`, through their public types |
 
 A project is a test project exactly when its name ends in `.Tests`. The folder
@@ -61,10 +61,15 @@ metadata. The test infrastructure libraries get `xunit.v3.extensibility.core`
 and `xunit.v3.assert` instead. Every `xunit.v3` package must use one version;
 `tools/Verify-DependencyPolicy.ps1` checks it.
 
-Each test project disables parallel test execution inside its assembly in
-`AssemblyInfo.cs`. Meter listener tests, static stores, the shared per-assembly
-database, and timing budgets assume that. Test projects still run in parallel
-with each other.
+Test projects run in parallel with each other. `Mmorpg.GameService.Items.Tests`
+also runs its test classes in parallel, on at most four threads, which bounds
+CPU contention and PostgreSQL connections; tests inside one class still run one
+at a time. Its classes that observe process-wide state, such as `MeterListener`
+tests, join `SerialTestCollection`, which runs alone after the parallel classes.
+Put a new Items test class there when it reads process-wide state. Every other
+test project disables parallel test execution inside its assembly in
+`AssemblyInfo.cs`, because its meter listener tests, static stores, and timing
+budgets assume it; those projects finish before the Items tests anyway.
 
 ## Traits
 
@@ -77,29 +82,71 @@ with each other.
 Use `--filter "Category!=Integration"` for a fast loop without containers and
 `--filter "Category=Integration"` for only the infrastructure tests. The
 attributes skip their test while `MMORPG_TEST_POSTGRES` or `MMORPG_TEST_REDIS`
-is unset, so a full run must show no skipped test. CI writes one TRX file per
-test project to `TestResults/<Project>/test-results.trx` and fails when any test
-in them did not run or pass.
+is unset, so a full run must show no skipped test.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` splits the backend gate into parallel jobs that
+together run every check of
+[Standard Quality Checks](../README.md#standard-quality-checks) except Unity:
+
+| Job | Runs |
+| --- | --- |
+| `Backend checks and unit tests` | Dependency policy, locked restore, format, build, the three content verifiers, and every test with `Category!=Integration` |
+| `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
+| `Integration tests (other)` | `Category=Integration` in every other test project |
+
+The two integration jobs start their own PostgreSQL, with its data in memory,
+and Redis service containers. NuGet packages are cached by `actions/setup-dotnet`
+from the `packages.lock.json` files. Every test project writes one TRX file to
+`TestResults/<Project>/test-results.trx`, and `tools/Verify-TestResults.ps1`
+fails the job when any test in them did not run or pass. Each job uploads its
+`TestResults` folder as an artifact.
 
 ## Databases And Redis
 
-Every test assembly gets its own PostgreSQL database next to the database in
-`MMORPG_TEST_POSTGRES`. `PostgresTestDatabase` names it `<base>_<project>`: the
-assembly name without the `Mmorpg.` prefix and the `.Tests` suffix, lowercased,
-with dots mapped to underscores. `Mmorpg.GameService.Items.Tests` uses
-`<base>_gameservice_items`.
+Every PostgreSQL test gets its own database. `PostgresTestDatabase` keeps the
+databases next to the database in `MMORPG_TEST_POSTGRES` and names them after
+the test assembly, `<base>_<project>`: the assembly name without the `Mmorpg.`
+prefix and the `.Tests` suffix, lowercased, with dots mapped to underscores.
+`Mmorpg.GameService.Items.Tests` uses `<base>_gameservice_items`.
 
-- The database is created on first use and never dropped. The test role needs
-  `CREATEDB`, which the test container's role has.
-- The base and the derived database name must contain `test`; anything else is
+| Database | Holds |
+| --- | --- |
+| `<base>_<project>` | Only the run lock |
+| `<base>_<project>_tpl_<name>` | One template per `PostgresTestTemplate`, rebuilt once by every test run |
+| `<base>_<project>_<n>` | One test's database, recreated from a template for every lease |
+
+- `PostgresIntegrationTestContext.CreateAsync()` copies the `initialized`
+  template: the migrations, the startup seeds, and the simulation topology,
+  applied through the same service graph and configuration as every test. The
+  worker heartbeat still runs per test, because it records the current time.
+  `CreateAsync(initializeDatabase: false)` copies the `empty` template, an empty
+  `public` schema, for tests that run the initializer themselves.
+- A copy takes a few tens of milliseconds, while migrating a fresh schema takes
+  most of a second. Every template starts from an empty `public` schema that the
+  test role recreated, then runs its initializer.
+- Disposing the context ends its lease, and a later test reuses the number
+  `<n>`. A run therefore needs only as many test databases as tests ran at the
+  same time. A reused database is dropped with any connections a previous test
+  left open and copied again. Databases are created on demand and never dropped
+  at the end of a run. `PostgresTestDatabaseIsolationTests` in
+  `Mmorpg.Integration.Tests` guard these rules.
+- The test role needs `CREATEDB`, which the test container's role has, and the
+  server must be PostgreSQL 13 or later, for `DROP DATABASE ... WITH (FORCE)`.
+- The base and every derived database name must contain `test`; anything else is
   refused before a connection opens.
-- Every `PostgresIntegrationTestContext` resets the `public` schema of its
-  assembly's database before the test.
-- A test run holds a session advisory lock on its database. A second run of the
-  same test project against the same server fails at once with a message that
-  names the database, so run one test run per project and server at a time.
+- A test run holds a session advisory lock on `<base>_<project>`. A second run
+  of the same test project against the same server fails at once with a message
+  that names the databases, so run one test run per project and server at a
+  time.
 - Tests that build their own data source use `context.ConnectionString`, never
   the raw `MMORPG_TEST_POSTGRES` value.
+- Use `127.0.0.1`, not `localhost`, as the host. The test container publishes
+  its port on IPv4 loopback only, and on Windows every new connection to
+  `localhost` first waits about two seconds for `::1` to fail. Each test opens
+  new connections, so `localhost` makes the PostgreSQL tests several times
+  slower.
 
 Redis tests must write only below a unique key prefix, such as
 `shooter-mmo-test-<guid>`, remove their keys afterwards, and never call

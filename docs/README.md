@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -32,7 +32,7 @@ operations, and future design do not drift into duplicate descriptions.
     file and naming rules, the content compilers, and the generated data. The
     item authoring contract is in [Item Catalog Authoring](../content/items/README.md).
 12. [Backend Tests](../tests/README.md) for the backend test projects, where a new
-    test goes, test traits, per-project test databases, golden files, and test
+    test goes, test traits, per-test databases, CI jobs, golden files, and test
     access to internals.
 
 ## Foundation Hardening

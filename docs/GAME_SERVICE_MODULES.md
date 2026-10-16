@@ -1,6 +1,6 @@
 # GameService Modules
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Status
 
@@ -469,13 +469,14 @@ inside the modules.
 
 Each module has its own test project under `tests/Server`, the host and the
 guard tests live in `Mmorpg.GameService.Tests`, and flows that span modules or
-processes live in `tests/Integration/Mmorpg.Integration.Tests`. Every test
-project with PostgreSQL tests uses its own database, `<base>_<project>`, which
-`PostgresTestDatabase` creates on demand next to the configured base database.
-Separate schemas would not work, because every test context resets the `public`
-schema and `bootstrap_character_item_state` pins `search_path` to `public`.
-Separate databases also keep the migration and catalog advisory locks of test
-projects that run in parallel apart. See [Backend Tests](../tests/README.md).
+processes live in `tests/Integration/Mmorpg.Integration.Tests`. Every
+PostgreSQL test gets its own database, which `PostgresTestDatabase` copies from a
+template database next to the configured base database; the templates are built
+once per test run and named after the test project, `<base>_<project>_*`.
+Separate schemas would not work, because the migrations create everything in
+the `public` schema and `bootstrap_character_item_state` pins `search_path` to
+`public`. Separate databases also keep the migration and catalog advisory locks
+of tests that run in parallel apart. See [Backend Tests](../tests/README.md).
 
 The item transaction kernel has golden tests in
 `tests/Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`. Each golden file holds the
