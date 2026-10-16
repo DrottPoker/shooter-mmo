@@ -218,7 +218,8 @@ look before it becomes critical.
 tests for the availability, tick, error-rate, and pool rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
-images.
+images. CI runs it on every push and pull request in the `Observability
+configuration` job.
 
 ## During A Playtest
 
@@ -265,5 +266,4 @@ images.
 - Alert notifications to a chat or paging service.
 - A staging or production deployment of the stack, with authentication,
   retention, and backups.
-- Running `tools/Verify-Observability.ps1` in CI.
 - Unity client telemetry; client diagnostics stay in the F2 panel.

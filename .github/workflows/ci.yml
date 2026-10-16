@@ -19,7 +19,8 @@ env:
 # The backend gate runs as parallel jobs that together cover the README quality checks:
 # one job verifies, builds, and runs every test outside Category=Integration, and the
 # integration matrix runs the PostgreSQL and Redis tests, with the Items tests on their
-# own runner. Each job fails when any of its tests did not run or pass.
+# own runner. Each job fails when any of its tests did not run or pass. A separate job
+# validates the monitoring stack in observability/ with its pinned images.
 jobs:
   backend:
     name: Backend checks and unit tests
@@ -189,6 +190,22 @@ jobs:
           path: TestResults
           if-no-files-found: warn
           retention-days: 14
+
+  observability:
+    name: Observability configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # Validates the collector and Prometheus configuration, runs the promtool alert
+      # rule tests, and parses the Grafana dashboards with the images pinned in
+      # docker-compose.observability.yml.
+      - name: Verify the monitoring stack configuration
+        shell: pwsh
+        run: ./tools/Verify-Observability.ps1
 
   unity:
     name: Unity quality gate
