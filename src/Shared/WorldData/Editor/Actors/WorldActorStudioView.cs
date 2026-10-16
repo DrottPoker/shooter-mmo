@@ -969,9 +969,10 @@ namespace Mmorpg.WorldData.Editor.Actors
         {
             if (!issue.EntityKey.StartsWith(WorldActorEditorIssues.Actors + "/", StringComparison.Ordinal))
             {
-                if (issue.EntityKey.Length > 0)
+                if (WorldActorEditorIssues.TrySplitKey(issue.EntityKey, out var collection, out _)
+                    && WorldActorEditorIssues.IsSpawnCollection(collection))
                 {
-                    toolLayout.SetStatus("Spawn entries are edited in Spawn Authoring.", HelpBoxMessageType.Info);
+                    toolLayout.SetStatus("Spawn entries and patrol paths are edited in Spawn Authoring.", HelpBoxMessageType.Info);
                 }
 
                 return;
@@ -1008,18 +1009,7 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         private string DescribeIssue(ContentIssue issue)
         {
-            if (!WorldActorEditorIssues.TrySplitKey(issue.EntityKey, out var collection, out var id))
-            {
-                return issue.Message;
-            }
-
-            if (collection == WorldActorEditorIssues.Actors)
-            {
-                var actor = workspace?.Catalog.actors?.FirstOrDefault(entry => string.Equals(entry.id, id, StringComparison.Ordinal));
-                return (actor == null ? id : actor.displayName + " (" + id + ")") + ": " + issue.Message;
-            }
-
-            return "Spawn '" + id + "' (" + collection + "): " + issue.Message;
+            return WorldActorEditorIssues.Describe(issue, workspace);
         }
 
         private static string SearchText(WorldActorEditorDefinition actor)

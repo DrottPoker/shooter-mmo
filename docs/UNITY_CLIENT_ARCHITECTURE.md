@@ -764,8 +764,9 @@ All new Editor tools remain under the established menu root:
   multi-selection bulk editing, Unity Undo, live validation, preview, compile,
   and verify.
 - `MMORPG > Tools > Content > Spawn Authoring` owns scene handles, ground
-  snapping, spawn areas and groups, patrol paths, prefab preview, canonical
-  change preview, export, compile, and verify.
+  snapping, spawn areas and groups, patrol paths, prefab preview,
+  multi-selection bulk editing, Unity Undo, live validation, canonical change
+  preview, save, compile, and verify.
 
 Editor scene components are authoring adapters. They import and export stable
 neutral definitions, but only compiled WorldData creates runtime actors. Actor

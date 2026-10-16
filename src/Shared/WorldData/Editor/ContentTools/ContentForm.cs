@@ -114,7 +114,15 @@ namespace Mmorpg.WorldData.Editor.ContentTools
             Action<T, Vector3> set,
             Func<T, bool> editable = null)
         {
-            return Bind(new Vector3Field(), label, field, get, set, editable);
+            return BindVector(
+                new Vector3Field(),
+                label,
+                field,
+                get,
+                set,
+                editable,
+                value => new[] { value.x, value.y, value.z },
+                components => new Vector3(components[0], components[1], components[2]));
         }
 
         public Vector2Field Vector2(
@@ -124,7 +132,15 @@ namespace Mmorpg.WorldData.Editor.ContentTools
             Action<T, Vector2> set,
             Func<T, bool> editable = null)
         {
-            return Bind(new Vector2Field(), label, field, get, set, editable);
+            return BindVector(
+                new Vector2Field(),
+                label,
+                field,
+                get,
+                set,
+                editable,
+                value => new[] { value.x, value.y },
+                components => new Vector2(components[0], components[1]));
         }
 
         // A dropdown over values with display labels. A value that is not among the options,
@@ -335,6 +351,61 @@ namespace Mmorpg.WorldData.Editor.ContentTools
                 control.SetEnabled(IsEditable(editable));
             });
             Register(field, control, apply);
+            return control;
+        }
+
+        // A vector edits only the components that changed, so editing X of several entries
+        // keeps each entry's own Y and Z. Each component shows its own mixed state.
+        private TField BindVector<TField, TValue>(
+            TField control,
+            string label,
+            string field,
+            Func<T, TValue> get,
+            Action<T, TValue> set,
+            Func<T, bool> editable,
+            Func<TValue, float[]> split,
+            Func<float[], TValue> join)
+            where TField : BaseField<TValue>
+        {
+            control.label = label;
+            Action<TValue, TValue> apply = (previous, next) =>
+            {
+                var before = split(previous);
+                var after = split(next);
+                var changed = Enumerable.Range(0, after.Length).Where(index => !before[index].Equals(after[index])).ToArray();
+                if (changed.Length == 0)
+                {
+                    return;
+                }
+
+                Apply(label + " changed", editable, entry =>
+                {
+                    var components = split(get(entry));
+                    foreach (var index in changed)
+                    {
+                        components[index] = after[index];
+                    }
+
+                    set(entry, join(components));
+                });
+            };
+            control.RegisterValueChangedCallback(change => apply(change.previousValue, change.newValue));
+            var parts = control.Query<FloatField>().ToList();
+            refreshers.Add(() =>
+            {
+                var values = Relevant(editable).Select(entry => split(get(entry))).ToArray();
+                var first = values.Length > 0 ? values[0] : split(default);
+                control.SetValueWithoutNotify(join(first));
+                control.showMixedValue = false;
+                for (var index = 0; index < parts.Count && index < first.Length; index++)
+                {
+                    var component = index;
+                    parts[index].showMixedValue = values.Any(value => !value[component].Equals(first[component]));
+                }
+
+                control.SetEnabled(IsEditable(editable));
+            });
+            Register(field, control, value => apply(control.value, (TValue)value));
             return control;
         }
 

@@ -4,6 +4,7 @@ using Mmorpg.WorldData.Editor.ContentTools;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -210,6 +211,47 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void VectorFieldsEditOnlyTheChangedComponentOfEverySelectedEntry()
+        {
+            var holder = new Holder { Document = CreateDocument() };
+            holder.Document.entries[0].Position = new Vector3(1f, 2f, 3f);
+            holder.Document.entries[1].Position = new Vector3(4f, 5f, 3f);
+            using (var session = CreateSession(holder))
+            {
+                session.Load(false);
+                var form = new ContentForm<TestEntry>(session, entry => entry.id);
+                var field = form.Vector3("Position", "position", entry => entry.Position, (entry, value) => entry.Position = value);
+                form.SetTargets(holder.Document.entries);
+                var parts = field.Query<FloatField>().ToList();
+
+                Assert.That(parts.Select(part => part.showMixedValue), Is.EqualTo(new[] { true, true, false }));
+
+                form.TrySetValue("position", new Vector3(1f, 9f, 3f));
+
+                Assert.That(holder.Document.entries.Select(entry => entry.Position), Is.EqualTo(new[] { new Vector3(1f, 9f, 3f), new Vector3(4f, 9f, 3f) }));
+            }
+        }
+
+        [Test]
+        public void ContinuousChangesInOneUndoGroupUndoAtOnce()
+        {
+            var holder = new Holder { Document = CreateDocument() };
+            using (var session = CreateSession(holder))
+            {
+                session.Load(false);
+                Undo.IncrementCurrentGroup();
+                session.ChangeContinuously("Drag", () => holder.Document.entries[0].weight = 7f);
+                session.ChangeContinuously("Drag", () => holder.Document.entries[0].weight = 8f);
+                session.ChangeContinuously("Drag", () => holder.Document.entries[0].weight = 9f);
+
+                Undo.PerformUndo();
+
+                Assert.That(holder.Document.entries[0].weight, Is.EqualTo(1f));
+                Assert.That(session.HasUnsavedChanges, Is.False);
+            }
+        }
+
+        [Test]
         public void FieldsForSomeEntriesShowAndEditOnlyThose()
         {
             var holder = new Holder { Document = CreateDocument() };
@@ -353,6 +395,20 @@ namespace Mmorpg.Client.Tests.EditMode
             public float weight;
             public TestNested nested;
             public string[] tags;
+            public float x;
+            public float y;
+            public float z;
+
+            public Vector3 Position
+            {
+                get => new Vector3(x, y, z);
+                set
+                {
+                    x = value.x;
+                    y = value.y;
+                    z = value.z;
+                }
+            }
         }
 
         [Serializable]

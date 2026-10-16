@@ -453,10 +453,13 @@ state when the entries differ; live validation with the shared compilers inside
 Unity, with each finding mapped to its entry and field; and undo through Unity's
 own Undo. Every edit records an exact JSON snapshot of the edited content, so
 Ctrl+Z, the Edit menu, and Undo History work as elsewhere in Unity, and null
-never turns into an empty object on undo. A tool window keeps its undo state
-across script reloads and asks to save unsaved changes when it closes. The
-compilers, the content files, and `ContentFileTransaction` stay unchanged, so
-the compiled content does not change.
+never turns into an empty object on undo. A vector field edits only the axis
+that changed, and a continuous edit such as a Scene view handle drag becomes one
+undo step. A tool window keeps its undo state across script reloads and asks to
+save unsaved changes when it closes. Item Catalog, Actor Studio, and Spawn
+Authoring are built on it. The compilers, the content files, and
+`ContentFileTransaction` stay unchanged, so the compiled content does not
+change.
 
 `Assets/Editor` contains project-local orchestration tools below the shared
 `MMORPG > Tools` menu root. `Inventory Item Grants` invokes guarded,

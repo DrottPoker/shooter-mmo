@@ -13,14 +13,39 @@ namespace Mmorpg.WorldData.Editor.Actors
     public static class WorldActorEditorIssues
     {
         public const string Actors = "actors";
+        public const string Factions = "factions";
+        public const string PresentationArchetypes = "presentationArchetypes";
+        public const string ActivityProfiles = "activityProfiles";
+        public const string RespawnProfiles = "respawnProfiles";
         public const string SpawnPoints = "spawnPoints";
         public const string SpawnGroups = "spawnGroups";
         public const string SpawnAreas = "spawnAreas";
         public const string PatrolPaths = "patrolPaths";
 
+        private static readonly Dictionary<string, string> CollectionLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [Factions] = "Faction",
+            [PresentationArchetypes] = "Presentation archetype",
+            [ActivityProfiles] = "Activity profile",
+            [RespawnProfiles] = "Respawn profile",
+            [SpawnPoints] = "Spawn point",
+            [SpawnGroups] = "Spawn group",
+            [SpawnAreas] = "Spawn area",
+            [PatrolPaths] = "Patrol path"
+        };
+
         public static string Key(string collection, string id)
         {
             return collection + "/" + (id ?? string.Empty);
+        }
+
+        // Collections of the spawn file rather than the actor catalog.
+        public static bool IsSpawnCollection(string collection)
+        {
+            return collection == SpawnPoints
+                || collection == SpawnGroups
+                || collection == SpawnAreas
+                || collection == PatrolPaths;
         }
 
         public static IReadOnlyList<ContentIssue> Collect(WorldActorEditorWorkspace workspace)
@@ -62,6 +87,25 @@ namespace Mmorpg.WorldData.Editor.Actors
             return true;
         }
 
+        // The finding with the entry it concerns, such as "Feral Wolf (mob.feral_wolf): ..." or
+        // "Spawn area 'local.feral_wolves': ...".
+        public static string Describe(ContentIssue issue, WorldActorEditorWorkspace workspace)
+        {
+            if (!TrySplitKey(issue.EntityKey, out var collection, out var id))
+            {
+                return issue.Message;
+            }
+
+            if (collection == Actors)
+            {
+                var actor = workspace?.Catalog.actors?.FirstOrDefault(entry => string.Equals(entry?.id, id, StringComparison.Ordinal));
+                return (actor == null ? id : actor.displayName + " (" + id + ")") + ": " + issue.Message;
+            }
+
+            var label = CollectionLabels.TryGetValue(collection, out var value) ? value : collection;
+            return label + " '" + id + "': " + issue.Message;
+        }
+
         private static ContentIssue ToIssue(string error, IReadOnlyDictionary<string, string[]> ids)
         {
             if (ContentIssuePath.TryParse(error, out var collection, out var index, out var field, out var detail)
@@ -86,13 +130,19 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         private static IReadOnlyDictionary<string, string[]> EntryIds(WorldActorEditorWorkspace workspace)
         {
+            var catalog = workspace.Catalog;
+            var spawns = workspace.Spawns;
             return new Dictionary<string, string[]>(StringComparer.Ordinal)
             {
-                [Actors] = (workspace.Catalog.actors ?? Array.Empty<WorldActorEditorDefinition>()).Select(entry => entry?.id).ToArray(),
-                [SpawnPoints] = (workspace.Spawns.spawnPoints ?? Array.Empty<WorldActorEditorSpawnPoint>()).Select(entry => entry?.id).ToArray(),
-                [SpawnGroups] = (workspace.Spawns.spawnGroups ?? Array.Empty<WorldActorEditorSpawnGroup>()).Select(entry => entry?.id).ToArray(),
-                [SpawnAreas] = (workspace.Spawns.spawnAreas ?? Array.Empty<WorldActorEditorSpawnArea>()).Select(entry => entry?.id).ToArray(),
-                [PatrolPaths] = (workspace.Spawns.patrolPaths ?? Array.Empty<WorldActorEditorPatrolPath>()).Select(entry => entry?.id).ToArray()
+                [Actors] = (catalog.actors ?? Array.Empty<WorldActorEditorDefinition>()).Select(entry => entry?.id).ToArray(),
+                [Factions] = (catalog.factions ?? Array.Empty<WorldActorEditorFaction>()).Select(entry => entry?.id).ToArray(),
+                [PresentationArchetypes] = (catalog.presentationArchetypes ?? Array.Empty<WorldActorEditorPresentation>()).Select(entry => entry?.id).ToArray(),
+                [ActivityProfiles] = (catalog.activityProfiles ?? Array.Empty<WorldActorEditorActivityProfile>()).Select(entry => entry?.id).ToArray(),
+                [RespawnProfiles] = (catalog.respawnProfiles ?? Array.Empty<WorldActorEditorRespawnProfile>()).Select(entry => entry?.id).ToArray(),
+                [SpawnPoints] = (spawns.spawnPoints ?? Array.Empty<WorldActorEditorSpawnPoint>()).Select(entry => entry?.id).ToArray(),
+                [SpawnGroups] = (spawns.spawnGroups ?? Array.Empty<WorldActorEditorSpawnGroup>()).Select(entry => entry?.id).ToArray(),
+                [SpawnAreas] = (spawns.spawnAreas ?? Array.Empty<WorldActorEditorSpawnArea>()).Select(entry => entry?.id).ToArray(),
+                [PatrolPaths] = (spawns.patrolPaths ?? Array.Empty<WorldActorEditorPatrolPath>()).Select(entry => entry?.id).ToArray()
             };
         }
     }

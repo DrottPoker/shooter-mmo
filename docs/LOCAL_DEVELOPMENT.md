@@ -1042,35 +1042,52 @@ presentation mapping:
    deletes its definition file. Without an intentional content change, the
    files stay byte-for-byte equivalent. Closing the window with unsaved edits
    asks whether to save them.
-8. Open `MMORPG > Tools > Content > Spawn Authoring` and click `Import`.
-   Inspect the Points, Groups, Areas, and Patrols tabs with `Scene Preview`
-   enabled. Expected result: scene handles show the service NPC point, two-guard
-   group, two-wolf seeded area, and wolf patrol path imported from neutral
-   WorldData.
-9. Add or duplicate a disposable entry, move it with the scene handle, click
-   `Ground Snap`, and inspect `Preview Changes`. Delete the disposable entry,
-   then click `Export + Compile` and `Verify Canonical`. Expected result: the
-   preview shows exact neutral JSON, ground snapping uses authored scene
-   collision, and clean export verifies deterministically.
-10. Start GameService and SimulationWorker, join `local-shard-1`, and approach
+8. Open a Scene view and `MMORPG > Tools > Content > Spawn Authoring`.
+   Expected result: the list shows the point `local.city_services`, the group
+   `local.city_guards`, the area `local.feral_wolves`, and the patrol path
+   `local.wolf_patrol` of `development-world-1`, the Scene view draws all four
+   while `Scene Preview` is on, and the problems panel reports
+   `No problems found.`. Selecting the point shows its prefab under
+   `Presentation Preview`.
+9. Select the group, Ctrl-click the area, and click `Frame`. Expected result:
+   the Scene view frames both, one move handle sits between them, dragging it
+   moves both, and one `Ctrl+Z` undoes the whole drag. The `Area` and
+   `Mob Lifecycle` sections appear because the area places the Feral Wolf.
+   Enter `0` in `Count`. Expected result: `Count` turns red, the list marks the
+   area, and the problems panel reports the allowed range. Undo with `Ctrl+Z`.
+10. Click `New Point`. Expected result: `local.new_point` appears at the Scene
+    view pivot and is selected. Click the marker of another entry in the Scene
+    view. Expected result: that entry is selected, and Ctrl-click adds to the
+    selection. Select `local.new_point` again, click `Ground Snap`, then
+    `Preview Changes`. Expected result: the point moves onto the scene collider
+    below it, or the status reports that no collider was found, and the preview
+    shows the exact neutral JSON of the spawn file.
+11. Change the `Stable Id` of `local.wolf_patrol`. Expected result: the area's
+    `Patrol Path` follows the new id in the same undo step. Select the patrol
+    path together with `local.new_point` and click `Delete`. Expected result:
+    the point is deleted and the patrol path stays, because the area follows
+    it. Click `Reload`, confirm the discard, then click `Save + Compile` and
+    `Verify Canonical`. Expected result: without edits, the files stay
+    byte-for-byte equivalent and verification reports the same revisions.
+12. Start GameService and SimulationWorker, join `local-shard-1`, and approach
     Mira. Expected result: actor instances appear and disappear through normal
     interest presence. The worker startup log reports the actor content
     revision, four definitions, and five instances.
-11. Point the crosshair at Mira from at most `3.0` metres and press `E`.
+13. Point the crosshair at Mira from at most `3.0` metres and press `E`.
     Expected result: temporary uGUI opens only after the server accepts and
     lists the player-specific authoritative capability summary. Clicking a
     capability reports `world_interaction_capability_deferred`, never local
     success.
-12. Repeat from beyond `3.0` metres and with static collision blocking line of
+14. Repeat from beyond `3.0` metres and with static collision blocking line of
     sight. Expected result: the server rejects the request and no interaction
     remains open. Open within range, move through `3.5` metres, and verify the
     server closes only that session. Pressing `E` also closes an active session.
-13. Join with two clients and open Mira independently. Expected result: both
+15. Join with two clients and open Mira independently. Expected result: both
     sessions coexist. One client cannot open a corpse while its NPC interaction
     is active. After closing it with `E`, target a corpse and verify the existing
     Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
     unchanged.
-14. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
+16. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
     from compiled WorldData with fresh runtime identities, normal interest
     presence returns, and no stale actor or interaction session survives.
 

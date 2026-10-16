@@ -59,25 +59,14 @@ namespace Mmorpg.WorldData.Editor.ContentTools
 
         public void Change(string label, Action edit)
         {
-            if (edit == null)
-            {
-                throw new ArgumentNullException(nameof(edit));
-            }
+            Record(label, edit, true);
+        }
 
-            edit();
-            var next = ContentSnapshot.Capture(capture());
-            if (string.Equals(next, appliedSnapshot, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            // The undo state still holds the previous snapshot, which Undo records as the step
-            // to return to. A new group keeps two edits in one frame as two steps.
-            Undo.IncrementCurrentGroup();
-            Undo.RecordObject(state, label);
-            state.Snapshot = next;
-            appliedSnapshot = next;
-            Changed?.Invoke();
+        // An edit that continues the current undo step, such as every frame of a handle drag.
+        // Unity starts a new step on the next mouse or key press, so one drag undoes at once.
+        public void ChangeContinuously(string label, Action edit)
+        {
+            Record(label, edit, false);
         }
 
         // The content as it is now was written to disk. A save may also normalize the content,
@@ -99,6 +88,33 @@ namespace Mmorpg.WorldData.Editor.ContentTools
 
             disposed = true;
             Undo.undoRedoPerformed -= OnUndoRedoPerformed;
+        }
+
+        private void Record(string label, Action edit, bool newStep)
+        {
+            if (edit == null)
+            {
+                throw new ArgumentNullException(nameof(edit));
+            }
+
+            edit();
+            var next = ContentSnapshot.Capture(capture());
+            if (string.Equals(next, appliedSnapshot, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // The undo state still holds the previous snapshot, which Undo records as the step
+            // to return to. A new group keeps two edits in one frame as two steps.
+            if (newStep)
+            {
+                Undo.IncrementCurrentGroup();
+            }
+
+            Undo.RecordObject(state, label);
+            state.Snapshot = next;
+            appliedSnapshot = next;
+            Changed?.Invoke();
         }
 
         private void OnUndoRedoPerformed()
