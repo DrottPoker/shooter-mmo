@@ -1916,7 +1916,7 @@ for the runner, a repository admin can set the ruleset to `Disabled` under
 changes, update the JSON file and the live ruleset together:
 
 ```powershell
-$rulesetId = (gh api repos/DrottPoker/shooter-mmo/rulesets | ConvertFrom-Json | Where-Object name -eq "development CI gate").id
+$rulesetId = ((gh api repos/DrottPoker/shooter-mmo/rulesets | Out-String | ConvertFrom-Json) | Where-Object { $_.name -eq "development CI gate" }).id
 gh api -X PUT "repos/DrottPoker/shooter-mmo/rulesets/$rulesetId" --input .github/rulesets/development-ci-gate.json
 ```
 
