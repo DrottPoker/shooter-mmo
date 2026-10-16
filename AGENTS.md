@@ -19,3 +19,14 @@ Follow these rules for all future work in this repository.
 - When a change requires Unity Editor actions, always list the exact manual steps
   the user must perform and the expected result. Explicitly state when no manual
   Unity Editor steps are required.
+
+## Branches
+
+- `main` and `development` are the only long-lived branches. `main` is never
+  committed to directly; it is only fast-forwarded to `development`.
+- Start every new task on a new branch created from the latest `development`.
+  A worktree branch is the task branch, so base it on `development`, not `main`.
+- When the task is finished and verified, merge its branch into `development`
+  through a pull request whose CI passes, then delete the branch locally and on
+  GitHub. This is standing permission to commit, push, open the pull request,
+  merge it, and delete the branch for that task. No other branch is left behind.
