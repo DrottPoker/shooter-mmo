@@ -11,39 +11,20 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CI: "true"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+# The backend gate runs as parallel jobs that together cover the README quality checks:
+# one job verifies, builds, and runs every test outside Category=Integration, and the
+# integration matrix runs the PostgreSQL and Redis tests, with the Items tests on their
+# own runner. Each job fails when any of its tests did not run or pass.
 jobs:
   backend:
-    name: Backend quality gate
+    name: Backend checks and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CI: "true"
-      MMORPG_TEST_POSTGRES: Host=localhost;Port=5432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password
-      MMORPG_TEST_REDIS: localhost:6379
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: shooter_mmo_tests
-          POSTGRES_USER: shooter_mmo_tests
-          POSTGRES_PASSWORD: shooter_mmo_tests_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U shooter_mmo_tests -d shooter_mmo_tests"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 20
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 20
 
     steps:
       - name: Check out repository
@@ -100,36 +81,103 @@ jobs:
           dotnet test Mmorpg.slnx
           --configuration Release
           --no-build
+          --filter "Category!=Integration"
           --logger "trx;LogFileName=test-results.trx"
           --collect "XPlat Code Coverage"
 
-      # A skipped infrastructure test means a missing service or MMORPG_TEST_* variable,
-      # so CI treats any test that did not run as a failure.
       - name: Verify every test ran
         shell: pwsh
-        run: |
-          $results = @(Get-ChildItem -Path TestResults -Recurse -Filter test-results.trx)
-          if ($results.Count -eq 0) {
-              throw "No test results were written below TestResults."
-          }
-
-          $notRun = foreach ($result in $results) {
-              [xml]$trx = Get-Content -Raw -LiteralPath $result.FullName
-              $trx.TestRun.Results.UnitTestResult |
-                  Where-Object { $_.outcome -ne "Passed" } |
-                  ForEach-Object { "$($_.testName): $($_.outcome)" }
-          }
-          if ($notRun) {
-              throw "Tests did not run or pass:`n$($notRun -join "`n")"
-          }
-
-          Write-Output "All tests in $($results.Count) test result files passed."
+        run: ./tools/Verify-TestResults.ps1
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: backend-test-results
+          path: TestResults
+          if-no-files-found: warn
+          retention-days: 14
+
+  integration:
+    name: Integration tests (${{ matrix.suite.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: items
+            project: tests/Server/Mmorpg.GameService.Items.Tests
+            filter: Category=Integration
+          - name: other
+            project: Mmorpg.slnx
+            filter: Category=Integration&FullyQualifiedName!~Mmorpg.GameService.Items.Tests.
+    env:
+      MMORPG_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=shooter_mmo_tests;Username=shooter_mmo_tests;Password=shooter_mmo_tests_password
+      MMORPG_TEST_REDIS: 127.0.0.1:6379
+
+    # PostgreSQL keeps its data in memory, as in docker-compose.test.yml, because the
+    # tests create a database per test.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: shooter_mmo_tests
+          POSTGRES_USER: shooter_mmo_tests
+          POSTGRES_PASSWORD: shooter_mmo_tests_password
+        ports:
+          - 5432:5432
+        options: >-
+          --tmpfs /var/lib/postgresql/data
+          --health-cmd "pg_isready -U shooter_mmo_tests -d shooter_mmo_tests"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      - name: Restore locked dependencies
+        run: dotnet restore Mmorpg.slnx --locked-mode
+
+      - name: Build
+        run: dotnet build ${{ matrix.suite.project }} --configuration Release --no-restore
+
+      - name: Test
+        run: >-
+          dotnet test ${{ matrix.suite.project }}
+          --configuration Release
+          --no-build
+          --filter "${{ matrix.suite.filter }}"
+          --logger "trx;LogFileName=test-results.trx"
+          --collect "XPlat Code Coverage"
+
+      - name: Verify every test ran
+        shell: pwsh
+        run: ./tools/Verify-TestResults.ps1
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-integration-${{ matrix.suite.name }}-test-results
           path: TestResults
           if-no-files-found: warn
           retention-days: 14
