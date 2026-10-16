@@ -3,10 +3,10 @@ using System.Collections;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 using UnityEngine.Profiling;
-using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Ui
 {
@@ -40,7 +40,7 @@ namespace Mmorpg.Client.Ui
                 status = "No active simulation session. Local player is not spawned.";
                 return;
 #else
-                SceneManager.LoadScene(SceneNames.CharacterSelect);
+                ClientSceneLoader.LoadCharacterSelect();
                 return;
 #endif
             }
@@ -49,7 +49,7 @@ namespace Mmorpg.Client.Ui
                 || !simulationClient.IsJoined)
             {
                 ClientSession.ActiveSimulationSession = null;
-                SceneManager.LoadScene(SceneNames.CharacterSelect);
+                ClientSceneLoader.LoadCharacterSelect();
             }
         }
 
@@ -370,7 +370,7 @@ namespace Mmorpg.Client.Ui
             if (session == null || simulationClient == null)
             {
                 ClientSession.ActiveSimulationSession = null;
-                SceneManager.LoadScene(SceneNames.CharacterSelect);
+                ClientSceneLoader.LoadCharacterSelect();
                 yield break;
             }
 
@@ -391,7 +391,7 @@ namespace Mmorpg.Client.Ui
 
             ClientSession.ActiveSimulationSession = null;
             status = "Left shard.";
-            SceneManager.LoadScene(SceneNames.CharacterSelect);
+            ClientSceneLoader.LoadCharacterSelect();
         }
 
         private void SetError(RealtimeClientError error)

@@ -39,11 +39,17 @@ namespace Mmorpg.Client.Tests.EditMode
                 ["Mmorpg.Client.Api"] = Array.Empty<string>(),
                 ["Mmorpg.Client.Core"] = new[]
                 {
-                    "Mmorpg.Client.Api"
+                    "Mmorpg.Client.Api",
+                    "Unity.Addressables",
+                    "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.Worlds"] = new[]
                 {
-                    "Mmorpg.GameSimulation"
+                    "Mmorpg.Client.Core",
+                    "Mmorpg.GameSimulation",
+                    "Mmorpg.WorldData",
+                    "Unity.Addressables",
+                    "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.Networking"] = new[]
                 {
@@ -61,7 +67,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Networking",
                     "Mmorpg.GameProtocol",
                     "Mmorpg.WorldData",
-                    "Mmorpg.WorldData.Client"
+                    "Mmorpg.WorldData.Client",
+                    "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.Gameplay"] = new[]
                 {
@@ -81,7 +88,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Items",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.GameProtocol",
-                    "Mmorpg.WorldData"
+                    "Mmorpg.WorldData",
+                    "Unity.Addressables",
+                    "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.Ui"] = new[]
                 {
@@ -96,7 +105,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     "UnityEngine.UI",
                     "Mmorpg.GameProtocol",
                     "Mmorpg.GameSimulation",
-                    "Mmorpg.WorldData"
+                    "Mmorpg.WorldData",
+                    "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.App"] = new[]
                 {
@@ -107,13 +117,18 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Items",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.Client.WorldActors",
-                    "Mmorpg.Client.Ui"
+                    "Mmorpg.Client.Ui",
+                    "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.Editor"] = new[]
                 {
+                    "Mmorpg.Client.Core",
                     "Mmorpg.Client.Worlds",
                     "Mmorpg.GameSimulation",
-                    "Mmorpg.WorldData.Editor"
+                    "Mmorpg.WorldData",
+                    "Mmorpg.WorldData.Client",
+                    "Mmorpg.WorldData.Editor",
+                    "Unity.Addressables.Editor"
                 }
             };
 

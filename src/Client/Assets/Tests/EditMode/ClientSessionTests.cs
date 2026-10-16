@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Items;
 using Mmorpg.Client.Worlds;
 using Mmorpg.WorldData.Items.Presentation;
 using NUnit.Framework;

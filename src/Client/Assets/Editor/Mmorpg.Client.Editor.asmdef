@@ -4,7 +4,11 @@
   "references": [
     "Mmorpg.Client.Worlds",
     "Mmorpg.GameSimulation",
-    "Mmorpg.WorldData.Editor"
+    "Mmorpg.WorldData.Editor",
+    "Mmorpg.Client.Core",
+    "Mmorpg.WorldData",
+    "Mmorpg.WorldData.Client",
+    "Unity.Addressables.Editor"
   ],
   "includePlatforms": [
     "Editor"

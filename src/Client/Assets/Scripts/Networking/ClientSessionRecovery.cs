@@ -1,5 +1,6 @@
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Worlds;
 using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Networking
@@ -37,7 +38,7 @@ namespace Mmorpg.Client.Networking
             ClientSession.Clear();
             if (SceneManager.GetActiveScene().name != SceneNames.LoginMenu)
             {
-                SceneManager.LoadScene(SceneNames.LoginMenu);
+                ClientSceneLoader.LoadLoginMenu();
             }
 
             return true;

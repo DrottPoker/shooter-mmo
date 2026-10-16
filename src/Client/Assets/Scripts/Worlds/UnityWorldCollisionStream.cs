@@ -2,26 +2,26 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.GameSimulation;
-using UnityEngine;
 
 namespace Mmorpg.Client.Worlds
 {
     public sealed class UnityWorldCollisionStream
     {
-        private readonly string resourceDirectory;
+        private readonly string addressDirectory;
         private readonly Dictionary<CollisionChunkCoordinate, CollisionChunkManifestEntry> entries;
         private readonly HashSet<CollisionChunkCoordinate> loadedCoordinates =
             new HashSet<CollisionChunkCoordinate>();
         private readonly CollisionChunkStreamingPlanner planner;
 
         public UnityWorldCollisionStream(
-            string resourceDirectory,
+            string addressDirectory,
             CollisionWorldManifest manifest,
             int loadRadiusChunks,
             int unloadRadiusChunks)
         {
-            this.resourceDirectory = resourceDirectory;
+            this.addressDirectory = addressDirectory;
             entries = manifest.Chunks.ToDictionary(
                 entry => new CollisionChunkCoordinate(entry.X, entry.Z));
             planner = new CollisionChunkStreamingPlanner(
@@ -113,42 +113,37 @@ namespace Mmorpg.Client.Worlds
                 return;
             }
 
-            var chunkAsset = Resources.Load<TextAsset>(resourceDirectory + entry.ResourceName);
-            if (chunkAsset == null)
+            if (!ClientAssets.TryReadBytes(
+                    addressDirectory + entry.ResourceName + CollisionDataFormat.ChunkFileExtension,
+                    out var bytes,
+                    out var readError))
             {
-                throw new InvalidDataException("Collision chunk is missing: " + entry.ResourceName);
+                throw new InvalidDataException(
+                    "Collision chunk is missing: " + entry.ResourceName + ". " + readError);
             }
 
-            try
+            var hash = CollisionWorldCompiler.ComputeSha256Hex(bytes);
+            if (!string.Equals(hash, entry.Sha256, StringComparison.OrdinalIgnoreCase))
             {
-                var bytes = chunkAsset.bytes;
-                var hash = CollisionWorldCompiler.ComputeSha256Hex(bytes);
-                if (!string.Equals(hash, entry.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidDataException(
-                        "Collision chunk checksum does not match: " + entry.ResourceName);
-                }
-
-                var chunk = CollisionChunkCodec.Decode(bytes);
-                if (chunk.X != entry.X || chunk.Z != entry.Z)
-                {
-                    throw new InvalidDataException(
-                        "Collision chunk coordinates do not match the manifest: "
-                        + entry.ResourceName);
-                }
-
-                if (!CollisionWorld.TryLoadChunk(chunk))
-                {
-                    throw new InvalidDataException(
-                        "Collision chunk was already loaded unexpectedly: " + entry.ResourceName);
-                }
-
-                loadedCoordinates.Add(coordinate);
+                throw new InvalidDataException(
+                    "Collision chunk checksum does not match: " + entry.ResourceName);
             }
-            finally
+
+            var chunk = CollisionChunkCodec.Decode(bytes);
+            if (chunk.X != entry.X || chunk.Z != entry.Z)
             {
-                Resources.UnloadAsset(chunkAsset);
+                throw new InvalidDataException(
+                    "Collision chunk coordinates do not match the manifest: "
+                    + entry.ResourceName);
             }
+
+            if (!CollisionWorld.TryLoadChunk(chunk))
+            {
+                throw new InvalidDataException(
+                    "Collision chunk was already loaded unexpectedly: " + entry.ResourceName);
+            }
+
+            loadedCoordinates.Add(coordinate);
         }
     }
 }

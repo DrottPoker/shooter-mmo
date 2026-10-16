@@ -2,7 +2,11 @@
   "name": "Mmorpg.Client.Worlds",
   "rootNamespace": "Mmorpg.Client.Worlds",
   "references": [
-    "Mmorpg.GameSimulation"
+    "Mmorpg.Client.Core",
+    "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData",
+    "Unity.Addressables",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

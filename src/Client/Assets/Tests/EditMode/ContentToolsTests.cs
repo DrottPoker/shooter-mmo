@@ -135,7 +135,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("definitions[3].unitWeight must not be negative.", "definitions", 3, "unitWeight", "unitWeight must not be negative.")]
         [TestCase("definitions[0].bag.slots[1].kind is invalid.", "definitions", 0, "bag.slots[1].kind", "bag.slots[1].kind is invalid.")]
         [TestCase("actors[12] must not be null.", "actors", 12, "", "must not be null.")]
-        [TestCase("entries[2].iconResourcePath must be a relative Unity Resources path.", "entries", 2, "iconResourcePath", "iconResourcePath must be a relative Unity Resources path.")]
+        [TestCase("entries[2].iconAddress must be an Addressables address below 'Items/Icons/'.", "entries", 2, "iconAddress", "iconAddress must be an Addressables address below 'Items/Icons/'.")]
         public void CompilerErrorPathsAreParsed(string error, string collection, int index, string field, string detail)
         {
             Assert.That(ContentIssuePath.TryParse(error, out var parsedCollection, out var parsedIndex, out var parsedField, out var parsedDetail), Is.True);

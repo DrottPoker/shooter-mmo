@@ -32,8 +32,8 @@
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\Shared\WorldData\Generated\Resources\WorldCollision\**\*"
-             Exclude="..\..\Shared\WorldData\Generated\Resources\WorldCollision\**\*.meta"
+    <Content Include="..\..\Shared\WorldData\Generated\WorldCollision\**\*"
+             Exclude="..\..\Shared\WorldData\Generated\WorldCollision\**\*.meta"
              Link="WorldData\Worlds\%(RecursiveDir)Collision\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />

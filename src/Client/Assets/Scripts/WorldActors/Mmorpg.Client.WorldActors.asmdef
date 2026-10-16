@@ -8,7 +8,9 @@
     "Mmorpg.Client.Items",
     "Mmorpg.Client.Gameplay",
     "Mmorpg.GameProtocol",
-    "Mmorpg.WorldData"
+    "Mmorpg.WorldData",
+    "Unity.Addressables",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

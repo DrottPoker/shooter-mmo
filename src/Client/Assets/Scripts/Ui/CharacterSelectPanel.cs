@@ -4,7 +4,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using UnityEngine;
-using UnityEngine.SceneManagement;
+using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace Mmorpg.Client.Ui
 {
@@ -109,7 +109,7 @@ namespace Mmorpg.Client.Ui
                 ClientLogCategory.Auth,
                 "Account '" + accountName + "' logged out and its current session was revoked.");
             ClientSession.Clear();
-            SceneManager.LoadScene(SceneNames.LoginMenu);
+            ClientSceneLoader.LoadLoginMenu();
         }
 
         private void DrawCharacterSection()
@@ -309,10 +309,10 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            if (!Application.CanStreamedLevelBeLoaded(worldSceneName))
+            if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
             {
                 status = "Cannot join " + shard.displayName + ": scene '" + worldSceneName
-                    + "' is not included in the client build.";
+                    + "' is not an Addressables World scene in this client build.";
                 ClientLog.Error(ClientLogCategory.Client, status);
                 yield break;
             }
@@ -357,10 +357,10 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            if (!Application.CanStreamedLevelBeLoaded(worldSceneName))
+            if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
             {
                 status = "Cannot join " + shard.displayName + ": scene '" + worldSceneName
-                    + "' is not included in the client build.";
+                    + "' is not an Addressables World scene in this client build.";
                 ClientLog.Error(ClientLogCategory.Client, status);
                 yield break;
             }
@@ -397,8 +397,34 @@ namespace Mmorpg.Client.Ui
             }
 
             ClientSession.ActiveSimulationSession = activeSession;
-            status = "Joined shard " + activeSession.shardId + " as " + activeSession.characterName + ".";
-            SceneManager.LoadScene(worldSceneName);
+            status = "Joined shard " + activeSession.shardId + " as " + activeSession.characterName
+                + ". Loading " + worldSceneName + ".";
+
+            // A successful load replaces this scene and ends the routine. A failed load keeps
+            // CharacterSelect, so the joined session is released here.
+            var sceneLoad = ClientSceneLoader.LoadWorldScene(worldSceneName);
+            yield return sceneLoad;
+            if (sceneLoad.Status == AsyncOperationStatus.Succeeded)
+            {
+                yield break;
+            }
+
+            var loadError = sceneLoad.OperationException != null
+                ? sceneLoad.OperationException.Message
+                : "unknown error";
+            status = "Cannot enter " + worldSceneName + ": the scene failed to load (" + loadError + ").";
+            ClientLog.Error(ClientLogCategory.Client, status);
+            RealtimeClientError leaveError = null;
+            yield return simulationClient.Leave(
+                activeSession.simulationSessionId,
+                () => { },
+                value => leaveError = value);
+            if (leaveError != null)
+            {
+                simulationClient.Abort();
+            }
+
+            ClientSession.ActiveSimulationSession = null;
         }
 
         private void BeginOperation(ClientOperation operation, IEnumerator routine)
@@ -426,7 +452,7 @@ namespace Mmorpg.Client.Ui
             }
 
             ClientSession.Clear();
-            SceneManager.LoadScene(SceneNames.LoginMenu);
+            ClientSceneLoader.LoadLoginMenu();
             return false;
         }
 

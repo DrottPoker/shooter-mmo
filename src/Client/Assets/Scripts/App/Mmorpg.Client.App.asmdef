@@ -9,7 +9,8 @@
     "Mmorpg.Client.Items",
     "Mmorpg.Client.Gameplay",
     "Mmorpg.Client.WorldActors",
-    "Mmorpg.Client.Ui"
+    "Mmorpg.Client.Ui",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

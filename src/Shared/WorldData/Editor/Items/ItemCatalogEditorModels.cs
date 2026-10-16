@@ -690,9 +690,9 @@ namespace Mmorpg.WorldData.Editor.Items
                 new ItemPresentationEntry
                 {
                     definitionId = copy.id,
-                    iconResourcePath = sourcePresentation == null
+                    iconAddress = sourcePresentation == null
                         ? string.Empty
-                        : sourcePresentation.iconResourcePath,
+                        : sourcePresentation.iconAddress,
                     localizationKey = "items." + copy.id + ".name",
                     fallbackDisplayName = copy.displayName,
                     prefabPresentationKey = sourcePresentation == null
@@ -794,7 +794,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 new ItemPresentationEntry
                 {
                     definitionId = definition.id,
-                    iconResourcePath = string.Empty,
+                    iconAddress = string.Empty,
                     localizationKey = "items." + definition.id + ".name",
                     fallbackDisplayName = definition.displayName,
                     prefabPresentationKey = string.Empty

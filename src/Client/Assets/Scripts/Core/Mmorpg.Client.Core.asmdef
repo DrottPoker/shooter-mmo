@@ -2,7 +2,9 @@
   "name": "Mmorpg.Client.Core",
   "rootNamespace": "Mmorpg.Client.Core",
   "references": [
-    "Mmorpg.Client.Api"
+    "Mmorpg.Client.Api",
+    "Unity.Addressables",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

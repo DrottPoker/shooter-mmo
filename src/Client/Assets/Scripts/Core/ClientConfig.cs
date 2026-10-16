@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace Mmorpg.Client.Core
 {
@@ -36,16 +37,17 @@ namespace Mmorpg.Client.Core
             get { return itemGameplayCatalog; }
         }
 
-        public static ClientConfig Load()
+        // The handle keeps the configuration and the catalog it references loaded. The owner
+        // releases it with ClientAssets.Release; the fallback instance has no handle.
+        public static ClientConfig Load(out AsyncOperationHandle<ClientConfig> handle)
         {
-            var config = Resources.Load<ClientConfig>("Config/ClientConfig");
-            if (config != null)
+            if (ClientAssets.TryLoadNow(ClientAddresses.ClientConfig, out handle, out var error))
             {
-                return config;
+                return handle.Result;
             }
 
             Debug.LogWarning(
-                "Resources/Config/ClientConfig is missing. Using local fallback endpoints.");
+                "The client configuration is unavailable: " + error + " Using local fallback endpoints.");
             return CreateInstance<ClientConfig>();
         }
 

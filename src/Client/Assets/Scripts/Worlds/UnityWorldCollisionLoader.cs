@@ -1,14 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Mmorpg.Client.Core;
 using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Content;
 using UnityEngine;
 
 namespace Mmorpg.Client.Worlds
 {
     public static class UnityWorldCollisionLoader
     {
-        private const string ResourceRoot = "WorldCollision/";
         private const int DefaultLoadRadiusChunks = 2;
         private const int DefaultUnloadRadiusChunks = 3;
 
@@ -41,20 +42,22 @@ namespace Mmorpg.Client.Worlds
                 return false;
             }
 
-            var resourceDirectory = ResourceRoot + worldId.Trim() + "/";
-            var manifestAsset = Resources.Load<TextAsset>(resourceDirectory + "manifest");
-            if (manifestAsset == null)
+            var addressDirectory = ClientAddresses.WorldCollisionPrefix + worldId.Trim() + "/";
+            if (!ClientAssets.TryReadText(
+                    addressDirectory + ContentLayout.CollisionManifestFileName,
+                    out var manifestJson,
+                    out var readError))
             {
-                error = "Collision manifest is missing for world '" + worldId + "'.";
+                error = "Collision manifest is missing for world '" + worldId + "'. " + readError;
                 return false;
             }
 
             try
             {
-                var manifest = JsonUtility.FromJson<CollisionWorldManifest>(manifestAsset.text);
+                var manifest = JsonUtility.FromJson<CollisionWorldManifest>(manifestJson);
                 ValidateManifest(manifest, worldId);
                 collisionStream = new UnityWorldCollisionStream(
-                    resourceDirectory,
+                    addressDirectory,
                     manifest,
                     DefaultLoadRadiusChunks,
                     DefaultUnloadRadiusChunks);
@@ -65,10 +68,6 @@ namespace Mmorpg.Client.Worlds
                 error = "Collision data is invalid for world '" + worldId + "': "
                     + exception.Message;
                 return false;
-            }
-            finally
-            {
-                Resources.UnloadAsset(manifestAsset);
             }
         }
 

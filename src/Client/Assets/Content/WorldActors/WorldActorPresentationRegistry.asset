@@ -14,10 +14,30 @@ MonoBehaviour:
   m_EditorClassIdentifier: Mmorpg.Client::Mmorpg.Client.WorldActors.WorldActorPresentationRegistry
   entries:
   - presentationArchetypeId: npc.city_services
-    prefab: {fileID: 2197097162748082442, guid: c46e60fc0b8a16047b8e1e03d1447966, type: 3}
+    prefab:
+      m_AssetGUID: c46e60fc0b8a16047b8e1e03d1447966
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0
   - presentationArchetypeId: npc.city_guard
-    prefab: {fileID: 6284062932689077769, guid: 42f808a8a2685ee4f8513329b6d4c6da, type: 3}
+    prefab:
+      m_AssetGUID: 42f808a8a2685ee4f8513329b6d4c6da
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0
   - presentationArchetypeId: mob.feral_wolf
-    prefab: {fileID: 5131609589043755287, guid: 95f476e79fac8fa4488e7abe25bb3c13, type: 3}
+    prefab:
+      m_AssetGUID: 95f476e79fac8fa4488e7abe25bb3c13
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0
   - presentationArchetypeId: mob.feral_alpha
-    prefab: {fileID: 602175853523898571, guid: 0619c88532b54304ba14b7b239e46620, type: 3}
+    prefab:
+      m_AssetGUID: 0619c88532b54304ba14b7b239e46620
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0

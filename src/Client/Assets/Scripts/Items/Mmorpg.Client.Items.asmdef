@@ -7,7 +7,8 @@
     "Mmorpg.Client.Networking",
     "Mmorpg.GameProtocol",
     "Mmorpg.WorldData",
-    "Mmorpg.WorldData.Client"
+    "Mmorpg.WorldData.Client",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

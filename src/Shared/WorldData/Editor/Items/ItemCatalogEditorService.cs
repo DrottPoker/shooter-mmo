@@ -44,7 +44,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 RepositoryLayout.GeneratedRoot(repositoryRoot),
                 Path.Combine(
                     Application.dataPath,
-                    "Resources",
+                    "Content",
                     "Items",
                     "Presentation",
                     "item-presentation-catalog.json"));

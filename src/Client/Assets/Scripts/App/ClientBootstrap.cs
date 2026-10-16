@@ -9,6 +9,7 @@ using Mmorpg.Client.Ui;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.Client.Worlds;
 using UnityEngine;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.App
@@ -20,6 +21,7 @@ namespace Mmorpg.Client.App
         private string previousSceneName;
         private ApiClient apiClient;
         private Coroutine accountSessionMonitor;
+        private AsyncOperationHandle<ClientConfig> configHandle;
         private RealtimeSimulationClient simulationClient;
         private InventoryClientController inventoryController;
         private CorpseClientController corpseController;
@@ -29,8 +31,6 @@ namespace Mmorpg.Client.App
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            ClientSession.Configure(ClientConfig.Load());
-
             if (FindAnyObjectByType<ClientBootstrap>() != null)
             {
                 return;
@@ -43,7 +43,8 @@ namespace Mmorpg.Client.App
 
         private void Awake()
         {
-            var config = ClientConfig.Load();
+            var config = ClientConfig.Load(out configHandle);
+            ClientSession.Configure(config);
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
 
@@ -93,6 +94,8 @@ namespace Mmorpg.Client.App
 
             apiClient?.Dispose();
             apiClient = null;
+            ClientAssets.Release(configHandle);
+            configHandle = default;
         }
 
         private T GetOrAddComponent<T>() where T : Component
@@ -163,7 +166,7 @@ namespace Mmorpg.Client.App
                 ClientSession.Clear();
                 if (SceneManager.GetActiveScene().name != SceneNames.LoginMenu)
                 {
-                    SceneManager.LoadScene(SceneNames.LoginMenu);
+                    ClientSceneLoader.LoadLoginMenu();
                 }
 
                 return;
@@ -177,9 +180,14 @@ namespace Mmorpg.Client.App
 
             if (WorldSceneCatalog.IsWorldScene(SceneManager.GetActiveScene().name))
             {
-                SceneManager.LoadScene(ClientSession.IsAuthenticated
-                    ? SceneNames.CharacterSelect
-                    : SceneNames.LoginMenu);
+                if (ClientSession.IsAuthenticated)
+                {
+                    ClientSceneLoader.LoadCharacterSelect();
+                }
+                else
+                {
+                    ClientSceneLoader.LoadLoginMenu();
+                }
             }
         }
 

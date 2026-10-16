@@ -13,7 +13,8 @@
     "UnityEngine.UI",
     "Mmorpg.GameProtocol",
     "Mmorpg.GameSimulation",
-    "Mmorpg.WorldData"
+    "Mmorpg.WorldData",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
