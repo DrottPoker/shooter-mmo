@@ -1867,6 +1867,150 @@ experimental, review its changelog, update it in a focused branch with
 `unity pipeline install --package-version <version>`, let Unity rewrite
 `packages-lock.json`, and run both Unity suites and the backend quality gate.
 
+## Unity CI Runner
+
+The `Unity quality gate` job in `.github/workflows/ci.yml` runs both Unity
+suites through `tools/Run-UnityTests.ps1` on a self-hosted Windows runner.
+GitHub-hosted runners cannot activate a Unity Personal license, so the runner
+runs on the development machine under the developer's own Windows account and
+starts at sign-in. It reuses the Unity installation, the Unity CLI sign-in, and
+the Personal license that a local headless run uses, so the Unity gate runs only
+while that account is signed in. A queued job waits until the runner is online,
+and GitHub cancels it after 24 hours.
+
+The job runs for pull requests, pushes to `development` and `main`, and manual
+runs from `Actions > CI > Run workflow`. Pull requests from forks skip it. While
+the repository variable `UNITY_CI_ENABLED` is not `true`, the job is shown as
+skipped.
+
+The runner checks the repository out into its own work folder,
+`C:\actions-runner\_work\shooter-mmo\shooter-mmo`. That is a separate Unity
+project with its own `Library`, so a job can run while an Editor has the main
+checkout or a worktree open. Every job starts from a clean checkout and imports
+the project again; both suites together take about four minutes.
+
+Security rules, because the repository is public:
+
+- The runner's job-started hook, `tools/Assert-TrustedRunnerJob.ps1`, fails
+  every job before its first step unless it is a push, a manual run, or a pull
+  request from a branch of `DrottPoker/shooter-mmo`. A condition in the workflow
+  cannot protect the runner on its own, because a pull request from a fork runs
+  its own copy of the workflow file. Never widen the hook to other events such
+  as `pull_request_target`.
+- `Settings > Actions > General` requires approval for all external
+  contributors, so no workflow of a fork pull request runs before a maintainer
+  approves it. Read the workflow changes of such a pull request before
+  approving it.
+- Jobs run with the rights of the Windows account that runs the runner. Only
+  code from branches of this repository reaches it.
+- Keep automatic runner updates on. GitHub stops sending jobs to a runner that
+  falls more than 30 days behind the latest runner release.
+
+The ruleset `development CI gate`, stored in
+`.github/rulesets/development-ci-gate.json`, requires the jobs `Backend checks
+and unit tests`, `Integration tests (items)`, `Integration tests (other)`,
+`Observability configuration`, and `Unity quality gate` to pass before a commit
+reaches `development`. A skipped job counts as passed. When a merge cannot wait
+for the runner, a repository admin can set the ruleset to `Disabled` under
+`Settings > Rules > Rulesets` and back to `Active` afterwards. When a job name
+changes, update the JSON file and the live ruleset together:
+
+```powershell
+$rulesetId = gh api repos/DrottPoker/shooter-mmo/rulesets --jq '.[] | select(.name == "development CI gate") | .id'
+gh api -X PUT "repos/DrottPoker/shooter-mmo/rulesets/$rulesetId" --input .github/rulesets/development-ci-gate.json
+```
+
+### Set Up The Runner
+
+Requirements on the machine:
+
+- Unity `6000.5.4f1` in the default Unity Hub path, and the Unity CLI signed in:
+  `unity license status` reports `License: active` and `Signed in: yes`.
+- Git for Windows and the GitHub CLI, signed in with admin access to the
+  repository.
+- An execution policy that runs local scripts: `Get-ExecutionPolicy` reports
+  `RemoteSigned` or `Unrestricted`. Windows PowerShell 5.1 is enough; the job
+  does not need PowerShell 7.
+
+Run these commands once from the repository root in a normal PowerShell window,
+not as administrator. Replace the version with the latest release from
+`https://github.com/actions/runner/releases`.
+
+```powershell
+# Download the runner and check it against the checksum in its release notes.
+$version = "2.338.0"
+$zip = "C:\actions-runner\actions-runner-win-x64-$version.zip"
+New-Item -ItemType Directory -Force C:\actions-runner, C:\actions-runner-hooks | Out-Null
+gh release download "v$version" --repo actions/runner --pattern "actions-runner-win-x64-$version.zip" --dir C:\actions-runner --clobber
+$notes = gh release view "v$version" --repo actions/runner --json body --jq .body
+$expected = [regex]::Match($notes, '<!-- BEGIN SHA win-x64 -->([0-9a-f]{64})<!-- END SHA win-x64 -->').Groups[1].Value
+if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected) { throw "The runner download does not match its checksum." }
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::ExtractToDirectory($zip, "C:\actions-runner")
+Remove-Item $zip
+
+# Register the runner. The registration token is valid for one hour and is never printed.
+$token = gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/registration-token --jq .token
+& C:\actions-runner\config.cmd --unattended --replace --url https://github.com/DrottPoker/shooter-mmo --token $token --name "$env:COMPUTERNAME-unity" --labels unity-6000.5.4f1 --work _work
+Remove-Variable token
+
+# Install the job-started hook outside the runner folder.
+Copy-Item tools\Assert-TrustedRunnerJob.ps1 C:\actions-runner-hooks\ -Force
+Set-Content C:\actions-runner\.env "ACTIONS_RUNNER_HOOK_JOB_STARTED=C:\actions-runner-hooks\Assert-TrustedRunnerJob.ps1" -Encoding Ascii
+
+# Start the runner hidden at every sign-in, and once now.
+$launcher = "-NoProfile -WindowStyle Hidden -Command Start-Process -FilePath C:\actions-runner\run.cmd -WorkingDirectory C:\actions-runner -WindowStyle Hidden"
+$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath("Startup")) "GitHub Actions runner.lnk"))
+$shortcut.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+$shortcut.Arguments = $launcher
+$shortcut.WindowStyle = 7
+$shortcut.Save()
+Start-Process powershell.exe -ArgumentList $launcher -WindowStyle Hidden
+
+# Enable the job, require approval for fork workflows, and require green CI for development.
+gh variable set UNITY_CI_ENABLED --body true --repo DrottPoker/shooter-mmo
+gh api -X PUT repos/DrottPoker/shooter-mmo/actions/permissions/fork-pr-contributor-approval -f approval_policy=all_external_contributors
+gh api -X POST repos/DrottPoker/shooter-mmo/rulesets --input .github/rulesets/development-ci-gate.json
+```
+
+Verify the runner:
+
+```powershell
+gh api repos/DrottPoker/shooter-mmo/actions/runners --jq '.runners[] | "\(.name) \(.status) \([.labels[].name] | join(","))"'
+gh workflow run ci.yml --repo DrottPoker/shooter-mmo --ref development
+```
+
+Expected result:
+
+- The runner is listed as `<COMPUTERNAME>-unity online
+  self-hosted,Windows,X64,unity-6000.5.4f1`.
+- The manual CI run passes the `Unity quality gate` job. Its `Set up runner`
+  step reports `This self-hosted runner accepted the workflow_dispatch job`,
+  the job summary lists both suites as passed, and the run uploads the XML
+  results and Unity logs as `unity-test-results`.
+
+### Operate The Runner
+
+- Status: `Settings > Actions > Runners` on GitHub, or the `gh api` command
+  above. Runner logs are in `C:\actions-runner\_diag`.
+- Start it without signing out and in again:
+  `Start-Process C:\actions-runner\run.cmd -WorkingDirectory C:\actions-runner -WindowStyle Hidden`.
+  Stop it with `Stop-Process -Name Runner.Listener`.
+- A job that fails with Unity exit code `198`, `Access token is unavailable`, or
+  `No valid Unity Editor license found` lost the Unity sign-in. Run
+  `unity auth login`, check `unity license status`, and rerun the job.
+- After a change to `tools/Assert-TrustedRunnerJob.ps1`, copy it to
+  `C:\actions-runner-hooks` again. The runner runs that copy, not the
+  repository file.
+- After a Unity Editor upgrade, change the label in the workflow and on the
+  runner in the same pull request:
+  `gh api -X PUT "repos/DrottPoker/shooter-mmo/actions/runners/<id>/labels" -f "labels[]=unity-<version>"`.
+  The runner id is in the runner listing with `--jq '.runners[] | "\(.id) \(.name)"'`.
+- To remove the runner, set `UNITY_CI_ENABLED` to `false`, run
+  `& C:\actions-runner\config.cmd remove --token (gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/remove-token --jq .token)`,
+  stop it, and delete `C:\actions-runner`, `C:\actions-runner-hooks`, and the
+  `GitHub Actions runner` shortcut in the Startup folder.
+
 ## One-Time Unity World Scene Authoring
 
 The scenes, prefabs, and `PlayerControls` asset described here are already
@@ -2130,24 +2274,13 @@ these exact manual steps:
 
 Expected result: the script creates fresh EditMode and PlayMode XML files under
 `TestResults/Unity` and reports both suites as passed. License exit code `198`
-occurs before project tests start and is not a test failure.
+occurs before project tests start and is not a test failure. As in the backend
+gate, a skipped or inconclusive test, or a suite without tests, fails the run.
 
-The CI Unity job uses a Windows self-hosted runner because Unity requires an
-installed and activated Editor. To enable it:
-
-1. In the GitHub repository, open `Settings > Actions > Runners` and register a
-   Windows x64 self-hosted runner.
-2. Add the custom label `unity-6000.5.4f1` to that runner.
-3. Install and activate Unity `6000.5.4f1` for the Windows account that runs the
-   runner service.
-4. Add repository variable `UNITY_CI_ENABLED` with value `true`.
-5. If Unity is not installed in the default Unity Hub path, add repository
-   variable `UNITY_EDITOR_PATH` containing the full path to `Unity.exe`.
-
-Expected result: pushes and pull requests run both Unity suites, upload XML and
-Unity logs as `unity-test-results`, and fail the Unity quality gate on compiler
-or test errors. Until the runner and variable exist, the Unity job is shown as
-skipped instead of waiting forever for an unavailable runner.
+CI runs the same script for every pull request on a self-hosted runner,
+described in [Unity CI Runner](#unity-ci-runner). If Unity is not installed in
+the default Unity Hub path there, the repository variable `UNITY_EDITOR_PATH`
+can name the full path to `Unity.exe`.
 
 Before using the Unity client, start these services:
 

@@ -87,9 +87,9 @@ is unset, so a full run must show no skipped test.
 
 ## Continuous Integration
 
-`.github/workflows/ci.yml` splits the backend gate into parallel jobs that
-together run every check of
-[Standard Quality Checks](../README.md#standard-quality-checks) except Unity:
+`.github/workflows/ci.yml` runs every check of
+[Standard Quality Checks](../README.md#standard-quality-checks) as parallel jobs
+for every pull request, every push to `development` and `main`, and manual runs:
 
 | Job | Runs |
 | --- | --- |
@@ -97,6 +97,7 @@ together run every check of
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
 | `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |
+| `Unity quality gate` | `tools/Run-UnityTests.ps1`: the Unity EditMode and PlayMode suites, on the self-hosted Windows runner |
 
 The two integration jobs start their own PostgreSQL, with its data in memory,
 and Redis service containers. NuGet packages are cached by `actions/setup-dotnet`
@@ -105,6 +106,17 @@ from the `packages.lock.json` files. Every test project writes one TRX file to
 fails the job when any test in them did not run or pass. Each job uploads its
 `TestResults` folder as an artifact. The observability job needs no .NET and
 runs the pinned Collector and Prometheus images through the runner's Docker.
+
+The Unity job needs an installed and licensed Unity Editor, so it runs on a
+self-hosted runner on the development machine and skips pull requests from
+forks. It fails when a Unity test fails, is skipped or inconclusive, or when a
+suite has no tests, and uploads the NUnit XML files and Unity logs as
+`unity-test-results`. The runner, its security rules, and its setup are
+described in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
+
+The ruleset `development CI gate` in `.github/rulesets/development-ci-gate.json`
+requires all five jobs to pass before a commit reaches `development`; a skipped
+job counts as passed. Rename a job only together with that ruleset.
 
 ## Databases And Redis
 
