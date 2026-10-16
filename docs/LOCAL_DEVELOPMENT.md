@@ -1916,7 +1916,7 @@ for the runner, a repository admin can set the ruleset to `Disabled` under
 changes, update the JSON file and the live ruleset together:
 
 ```powershell
-$rulesetId = gh api repos/DrottPoker/shooter-mmo/rulesets --jq '.[] | select(.name == "development CI gate") | .id'
+$rulesetId = (gh api repos/DrottPoker/shooter-mmo/rulesets | ConvertFrom-Json | Where-Object name -eq "development CI gate").id
 gh api -X PUT "repos/DrottPoker/shooter-mmo/rulesets/$rulesetId" --input .github/rulesets/development-ci-gate.json
 ```
 
@@ -1976,14 +1976,14 @@ gh api -X POST repos/DrottPoker/shooter-mmo/rulesets --input .github/rulesets/de
 Verify the runner:
 
 ```powershell
-gh api repos/DrottPoker/shooter-mmo/actions/runners --jq '.runners[] | "\(.name) \(.status) \([.labels[].name] | join(","))"'
+gh api repos/DrottPoker/shooter-mmo/actions/runners --jq '.runners[] | {id, name, status, labels: [.labels[].name]}'
 gh workflow run ci.yml --repo DrottPoker/shooter-mmo --ref development
 ```
 
 Expected result:
 
-- The runner is listed as `<COMPUTERNAME>-unity online
-  self-hosted,Windows,X64,unity-6000.5.4f1`.
+- The runner is listed with name `<COMPUTERNAME>-unity`, status `online`, and
+  labels `self-hosted`, `Windows`, `X64`, and `unity-6000.5.4f1`.
 - The manual CI run passes the `Unity quality gate` job. Its `Set up runner`
   step reports `This self-hosted runner accepted the workflow_dispatch job`,
   the job summary lists both suites as passed, and the run uploads the XML
@@ -2005,7 +2005,7 @@ Expected result:
 - After a Unity Editor upgrade, change the label in the workflow and on the
   runner in the same pull request:
   `gh api -X PUT "repos/DrottPoker/shooter-mmo/actions/runners/<id>/labels" -f "labels[]=unity-<version>"`.
-  The runner id is in the runner listing with `--jq '.runners[] | "\(.id) \(.name)"'`.
+  The runner id is in the runner listing above.
 - To remove the runner, set `UNITY_CI_ENABLED` to `false`, run
   `& C:\actions-runner\config.cmd remove --token (gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/remove-token --jq .token)`,
   stop it, and delete `C:\actions-runner`, `C:\actions-runner-hooks`, and the
