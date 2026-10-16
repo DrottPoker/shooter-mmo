@@ -1,0 +1,18 @@
+{
+  "name": "Mmorpg.Client.Core",
+  "rootNamespace": "Mmorpg.Client.Core",
+  "references": [
+    "Mmorpg.Client.Api",
+    "Unity.Addressables",
+    "Unity.ResourceManager"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

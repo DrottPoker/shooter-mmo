@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
@@ -708,7 +708,9 @@ namespace Mmorpg.Client.Items
                 if (apiError != null)
                 {
                     if (State.Status != InventoryClientStatus.UpdateRequired
-                        && !ClientSessionRecovery.ReturnToLoginIfUnauthorized(apiError))
+                        && !ClientSessionRecovery.ReturnToLoginIfUnauthorized(
+                            apiError,
+                            simulationClient))
                     {
                         State.SetError(
                             new InventoryClientError(

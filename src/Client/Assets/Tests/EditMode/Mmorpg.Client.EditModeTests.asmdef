@@ -2,7 +2,14 @@
   "name": "Mmorpg.Client.EditModeTests",
   "rootNamespace": "Mmorpg.Client.Tests.EditMode",
   "references": [
-    "Mmorpg.Client",
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Core",
+    "Mmorpg.Client.Worlds",
+    "Mmorpg.Client.Networking",
+    "Mmorpg.Client.Items",
+    "Mmorpg.Client.Gameplay",
+    "Mmorpg.Client.WorldActors",
+    "Mmorpg.Client.Ui",
     "Unity.InputSystem",
     "Mmorpg.GameSimulation",
     "Mmorpg.GameProtocol",
@@ -10,7 +17,10 @@
     "Mmorpg.WorldData.Client",
     "Mmorpg.WorldData.Editor",
     "Mmorpg.WorldData.Actors.Editor",
-    "Mmorpg.Client.Editor"
+    "Mmorpg.Client.Editor",
+    "Unity.Addressables",
+    "Unity.Addressables.Editor",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [
     "Editor"

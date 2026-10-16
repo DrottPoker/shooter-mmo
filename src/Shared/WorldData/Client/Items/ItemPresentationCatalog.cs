@@ -10,7 +10,11 @@ namespace Mmorpg.WorldData.Items.Presentation
 {
     public static class ItemPresentationCatalogFormat
     {
-        public const int Version = 1;
+        // Version 2 replaced the Resources icon path with an Addressables icon address.
+        public const int Version = 2;
+
+        // Every icon is an Addressables Sprite in the client's item icon folder entry.
+        public const string IconAddressPrefix = "Items/Icons/";
     }
 
     [Serializable]
@@ -26,7 +30,7 @@ namespace Mmorpg.WorldData.Items.Presentation
     public sealed class ItemPresentationEntry
     {
         public string definitionId;
-        public string iconResourcePath;
+        public string iconAddress;
         public string localizationKey;
         public string fallbackDisplayName;
         public string prefabPresentationKey;
@@ -57,21 +61,6 @@ namespace Mmorpg.WorldData.Items.Presentation
 
     public static class ItemPresentationCatalogCompiler
     {
-        private static readonly string[] UnsupportedResourceExtensions =
-        {
-            ".asset",
-            ".bmp",
-            ".gif",
-            ".jpeg",
-            ".jpg",
-            ".png",
-            ".psd",
-            ".spriteatlas",
-            ".tga",
-            ".tif",
-            ".tiff"
-        };
-
         public static ItemPresentationCatalogDocument Compile(
             string sourceCatalogRevision,
             IEnumerable<string> expectedDefinitionIds,
@@ -191,8 +180,8 @@ namespace Mmorpg.WorldData.Items.Presentation
                     }
                 }
 
-                var iconResourcePath = NormalizeOptional(entry.iconResourcePath);
-                ValidateResourcePath(iconResourcePath, path + ".iconResourcePath", errors);
+                var iconAddress = NormalizeOptional(entry.iconAddress);
+                ValidateIconAddress(iconAddress, path + ".iconAddress", errors);
                 var localizationKey = NormalizeRequired(
                     entry.localizationKey,
                     path + ".localizationKey",
@@ -205,7 +194,7 @@ namespace Mmorpg.WorldData.Items.Presentation
                 result.Add(new ItemPresentationEntry
                 {
                     definitionId = definitionId,
-                    iconResourcePath = iconResourcePath,
+                    iconAddress = iconAddress,
                     localizationKey = localizationKey,
                     fallbackDisplayName = fallbackDisplayName,
                     prefabPresentationKey = NormalizeOptional(entry.prefabPresentationKey)
@@ -215,32 +204,29 @@ namespace Mmorpg.WorldData.Items.Presentation
             return result.ToArray();
         }
 
-        private static void ValidateResourcePath(
-            string resourcePath,
+        private static void ValidateIconAddress(
+            string iconAddress,
             string path,
             ICollection<string> errors)
         {
-            if (resourcePath.Length == 0)
+            if (iconAddress.Length == 0)
             {
                 return;
             }
 
-            if (resourcePath.StartsWith("/", StringComparison.Ordinal)
-                || resourcePath.EndsWith("/", StringComparison.Ordinal)
-                || resourcePath.Contains("\\")
-                || resourcePath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)
-                || resourcePath.StartsWith("Resources/", StringComparison.OrdinalIgnoreCase)
-                || resourcePath.Split('/').Any(segment => segment == ".." || segment.Length == 0))
+            var relative = iconAddress.StartsWith(
+                ItemPresentationCatalogFormat.IconAddressPrefix,
+                StringComparison.Ordinal)
+                ? iconAddress.Substring(ItemPresentationCatalogFormat.IconAddressPrefix.Length)
+                : null;
+            if (relative == null
+                || relative.Length == 0
+                || relative.EndsWith("/", StringComparison.Ordinal)
+                || relative.Contains("\\")
+                || relative.Split('/').Any(segment => segment == ".." || segment.Length == 0))
             {
-                errors.Add(path + " must be a relative Unity Resources path.");
-                return;
-            }
-
-            if (UnsupportedResourceExtensions.Any(extension => resourcePath.EndsWith(
-                extension,
-                StringComparison.OrdinalIgnoreCase)))
-            {
-                errors.Add(path + " must not include an asset file extension.");
+                errors.Add(path + " must be an Addressables address below '"
+                    + ItemPresentationCatalogFormat.IconAddressPrefix + "'.");
             }
         }
 
@@ -274,7 +260,7 @@ namespace Mmorpg.WorldData.Items.Presentation
                 foreach (var entry in catalog.entries)
                 {
                     writer.Write(entry.definitionId);
-                    writer.Write(entry.iconResourcePath);
+                    writer.Write(entry.iconAddress);
                     writer.Write(entry.localizationKey);
                     writer.Write(entry.fallbackDisplayName);
                     writer.Write(entry.prefabPresentationKey);
@@ -319,8 +305,6 @@ namespace Mmorpg.WorldData.Items.Presentation
     public sealed class ItemPresentationCatalogIndex
     {
         private readonly Dictionary<string, ItemPresentationEntry> entries;
-        private readonly Dictionary<string, Sprite> loadedIcons =
-            new Dictionary<string, Sprite>(StringComparer.Ordinal);
 
         private ItemPresentationCatalogIndex(ItemPresentationCatalogDocument catalog)
         {
@@ -392,26 +376,6 @@ namespace Mmorpg.WorldData.Items.Presentation
         {
             return entries.TryGetValue(definitionId, out entry);
         }
-
-        public Sprite LoadIcon(string definitionId)
-        {
-            ItemPresentationEntry entry;
-            if (!entries.TryGetValue(definitionId, out entry)
-                || string.IsNullOrWhiteSpace(entry.iconResourcePath))
-            {
-                return null;
-            }
-
-            Sprite cached;
-            if (loadedIcons.TryGetValue(entry.iconResourcePath, out cached))
-            {
-                return cached;
-            }
-
-            var icon = Resources.Load<Sprite>(entry.iconResourcePath);
-            loadedIcons[entry.iconResourcePath] = icon;
-            return icon;
-        }
     }
 
     public static class ItemPresentationCatalogJson
@@ -450,80 +414,6 @@ namespace Mmorpg.WorldData.Items.Presentation
         private static string NormalizeLineEndings(string value)
         {
             return value.Replace("\r\n", "\n").Replace("\r", "\n");
-        }
-    }
-
-    public static class ItemPresentationCatalogLoader
-    {
-        public const string ResourcePath = "Items/Presentation/item-presentation-catalog";
-
-        private static string cachedKey;
-        private static ItemPresentationCatalogIndex cachedIndex;
-
-        // Static state survives entering Play Mode when domain reload is disabled.
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStaticState()
-        {
-            cachedKey = null;
-            cachedIndex = null;
-        }
-
-        public static bool TryLoadOnce(
-            string expectedSourceCatalogRevision,
-            IEnumerable<string> expectedDefinitionIds,
-            out ItemPresentationCatalogIndex index,
-            out string error)
-        {
-            var expectedIds = expectedDefinitionIds == null
-                ? Array.Empty<string>()
-                : expectedDefinitionIds.OrderBy(value => value, StringComparer.Ordinal).ToArray();
-            var cacheKey = expectedSourceCatalogRevision + "|" + string.Join("|", expectedIds);
-            if (cachedIndex != null && string.Equals(cachedKey, cacheKey, StringComparison.Ordinal))
-            {
-                index = cachedIndex;
-                error = string.Empty;
-                return true;
-            }
-
-            var asset = Resources.Load<TextAsset>(ResourcePath);
-            if (asset == null)
-            {
-                index = null;
-                error = "Item presentation catalog resource is missing.";
-                return false;
-            }
-
-            ItemPresentationCatalogDocument document;
-            try
-            {
-                document = ItemPresentationCatalogJson.Deserialize(asset.text);
-            }
-            catch (Exception exception)
-            {
-                index = null;
-                error = exception.Message;
-                return false;
-            }
-
-            if (!ItemPresentationCatalogIndex.TryCreate(
-                document,
-                expectedSourceCatalogRevision,
-                expectedIds,
-                out index,
-                out error))
-            {
-                return false;
-            }
-
-            cachedKey = cacheKey;
-            cachedIndex = index;
-            return true;
-        }
-
-        public static void ResetCache()
-        {
-            cachedKey = null;
-            cachedIndex = null;
         }
     }
 }

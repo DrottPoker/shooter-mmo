@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Items;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Editor.Items;
@@ -515,7 +516,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     new ItemPresentationEntry
                     {
                         definitionId = "unknown.definition",
-                        iconResourcePath = string.Empty,
+                        iconAddress = string.Empty,
                         localizationKey = "items.unknown.definition.name",
                         fallbackDisplayName = "Unknown",
                         prefabPresentationKey = string.Empty
@@ -543,7 +544,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 expectedIds,
                 workspace.Presentation.entries);
             var changedEntries = presentationBefore.entries.Select(CloneEntry).ToArray();
-            changedEntries[0].iconResourcePath = "Items/Icons/test-ammunition";
+            changedEntries[0].iconAddress = "Items/Icons/test-ammunition.png";
             var presentationAfter = ItemPresentationCatalogCompiler.Compile(
                 gameplayBefore.Revision,
                 expectedIds,
@@ -668,7 +669,7 @@ namespace Mmorpg.Client.Tests.EditMode
             return new ItemPresentationEntry
             {
                 definitionId = entry.definitionId,
-                iconResourcePath = entry.iconResourcePath,
+                iconAddress = entry.iconAddress,
                 localizationKey = entry.localizationKey,
                 fallbackDisplayName = entry.fallbackDisplayName,
                 prefabPresentationKey = entry.prefabPresentationKey

@@ -1,11 +1,12 @@
 using System;
 using System.Collections;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 using UnityEngine.Profiling;
-using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Ui
 {
@@ -22,6 +23,13 @@ namespace Mmorpg.Client.Ui
         private LocalPlayerInput localPlayerInput;
         private LocalPlayerController localPlayerController;
         private bool isVisible = true;
+        private RealtimeSimulationClient simulationClient;
+
+        // Called by the composition root before the component is activated.
+        public void Initialize(RealtimeSimulationClient realtimeClient)
+        {
+            simulationClient = realtimeClient;
+        }
 
         private void Start()
         {
@@ -32,16 +40,16 @@ namespace Mmorpg.Client.Ui
                 status = "No active simulation session. Local player is not spawned.";
                 return;
 #else
-                SceneManager.LoadScene(SceneNames.CharacterSelect);
+                ClientSceneLoader.LoadCharacterSelect();
                 return;
 #endif
             }
 
-            if (ClientBootstrap.SimulationClient == null
-                || !ClientBootstrap.SimulationClient.IsJoined)
+            if (simulationClient == null
+                || !simulationClient.IsJoined)
             {
                 ClientSession.ActiveSimulationSession = null;
-                SceneManager.LoadScene(SceneNames.CharacterSelect);
+                ClientSceneLoader.LoadCharacterSelect();
             }
         }
 
@@ -58,7 +66,7 @@ namespace Mmorpg.Client.Ui
                 isVisible = !isVisible;
             }
 
-            var client = ClientBootstrap.SimulationClient;
+            var client = simulationClient;
             if (client == null)
             {
                 telemetry.ResetNetwork();
@@ -139,7 +147,7 @@ namespace Mmorpg.Client.Ui
         {
             DrawSectionHeader("Connection");
             var session = ClientSession.ActiveSimulationSession;
-            var client = ClientBootstrap.SimulationClient;
+            var client = simulationClient;
             if (session == null || client == null)
             {
                 DrawMetric("State", "No local simulation session", WorldDebugHealth.Unavailable);
@@ -197,7 +205,7 @@ namespace Mmorpg.Client.Ui
         private void DrawPredictionSection()
         {
             DrawSectionHeader("Client Prediction");
-            var client = ClientBootstrap.SimulationClient;
+            var client = simulationClient;
             if (client == null
                 || client.MovementSession == null
                 || localPlayerController == null)
@@ -251,7 +259,7 @@ namespace Mmorpg.Client.Ui
         private void DrawNetworkSection()
         {
             DrawSectionHeader("Observed Realtime Network");
-            var client = ClientBootstrap.SimulationClient;
+            var client = simulationClient;
             if (client == null || client.MovementSession == null)
             {
                 DrawMetric("Network", "Unavailable", WorldDebugHealth.Unavailable);
@@ -359,11 +367,10 @@ namespace Mmorpg.Client.Ui
         private IEnumerator LeaveShardRoutine()
         {
             var session = ClientSession.ActiveSimulationSession;
-            var simulationClient = ClientBootstrap.SimulationClient;
             if (session == null || simulationClient == null)
             {
                 ClientSession.ActiveSimulationSession = null;
-                SceneManager.LoadScene(SceneNames.CharacterSelect);
+                ClientSceneLoader.LoadCharacterSelect();
                 yield break;
             }
 
@@ -384,7 +391,7 @@ namespace Mmorpg.Client.Ui
 
             ClientSession.ActiveSimulationSession = null;
             status = "Left shard.";
-            SceneManager.LoadScene(SceneNames.CharacterSelect);
+            ClientSceneLoader.LoadCharacterSelect();
         }
 
         private void SetError(RealtimeClientError error)

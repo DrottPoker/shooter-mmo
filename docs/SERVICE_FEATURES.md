@@ -396,7 +396,7 @@ corpse view.
 - Each `content/worlds/<WorldId>/collision.json` contains neutral collision
   source for that World.
 - `tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest
-  below `src/Shared/WorldData/Generated/Resources/WorldCollision/<WorldId>`.
+  below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
 - Each chunk has a SHA-256 checksum.
 - The manifest has a deterministic complete collision revision.
 - SimulationWorker validates format, World id, checksums, coordinates, and
@@ -467,7 +467,7 @@ concurrent inspection, and authoritative looting:
   local Shard position. Its short-lived Development commands are loopback-only,
   require offline targets, use authoritative transaction services, and add no
   gameplay HTTP surface.
-- The client presentation catalog is bundled under Unity Resources. It maps
+- The client presentation catalog is bundled through Unity Addressables. It maps
   stable definition ids to optional icons, localization keys, fallback text,
   and optional prefab presentation keys with its own deterministic revision
   tied to the exact gameplay catalog revision.

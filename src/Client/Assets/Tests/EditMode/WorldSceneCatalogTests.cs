@@ -1,11 +1,13 @@
 using System;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Worlds;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Worlds;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -52,7 +54,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 .Select(JsonUtility.FromJson<WorldManifestDocument>)
                 .OrderBy(manifest => manifest.worldId, StringComparer.Ordinal)
                 .ToArray();
-            var catalogAsset = Resources.Load<TextAsset>(WorldSceneCatalog.ResourcePath);
+            var catalogAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                ClientAddresses.ContentRoot + ClientAddresses.WorldSceneCatalog);
 
             Assert.That(manifests, Is.Not.Empty);
             Assert.That(catalogAsset, Is.Not.Null);

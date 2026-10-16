@@ -1,0 +1,59 @@
+using UnityEngine;
+using UnityEngine.ResourceManagement.AsyncOperations;
+
+namespace Mmorpg.Client.Core
+{
+    [CreateAssetMenu(fileName = "ClientConfig", menuName = "MMORPG/Client Config")]
+    public sealed class ClientConfig : ScriptableObject
+    {
+        [SerializeField] private string gameServiceBaseUrl = "http://localhost:5000";
+        [SerializeField] private int requestTimeoutSeconds = 10;
+        [SerializeField] private int realtimeTimeoutSeconds = 10;
+        [SerializeField] private int sessionValidationIntervalSeconds = 5;
+        [SerializeField] private TextAsset itemGameplayCatalog;
+
+        public string GameServiceBaseUrl
+        {
+            get { return NormalizeUrl(gameServiceBaseUrl, "http://localhost:5000"); }
+        }
+
+        public int RequestTimeoutSeconds
+        {
+            get { return Mathf.Clamp(requestTimeoutSeconds, 1, 120); }
+        }
+
+        public int RealtimeTimeoutSeconds
+        {
+            get { return Mathf.Clamp(realtimeTimeoutSeconds, 1, 120); }
+        }
+
+        public int SessionValidationIntervalSeconds
+        {
+            get { return Mathf.Clamp(sessionValidationIntervalSeconds, 2, 60); }
+        }
+
+        public TextAsset ItemGameplayCatalog
+        {
+            get { return itemGameplayCatalog; }
+        }
+
+        // The handle keeps the configuration and the catalog it references loaded. The owner
+        // releases it with ClientAssets.Release; the fallback instance has no handle.
+        public static ClientConfig Load(out AsyncOperationHandle<ClientConfig> handle)
+        {
+            if (ClientAssets.TryLoadNow(ClientAddresses.ClientConfig, out handle, out var error))
+            {
+                return handle.Result;
+            }
+
+            Debug.LogWarning(
+                "The client configuration is unavailable: " + error + " Using local fallback endpoints.");
+            return CreateInstance<ClientConfig>();
+        }
+
+        private static string NormalizeUrl(string value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().TrimEnd('/');
+        }
+    }
+}

@@ -140,7 +140,9 @@ namespace Mmorpg.Client.Items
 
         public Sprite LoadIcon(string definitionId)
         {
-            return Presentation.LoadIcon(definitionId);
+            return Presentation.TryGet(definitionId ?? string.Empty, out var entry)
+                ? ItemPresentationCatalogLoader.LoadIcon(entry.iconAddress)
+                : null;
         }
     }
 

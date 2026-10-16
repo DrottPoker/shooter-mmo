@@ -88,7 +88,7 @@ static async Task WriteOutputs(
     JsonSerializerOptions jsonOptions)
 {
     Directory.CreateDirectory(outputDirectory);
-    foreach (var staleChunk in Directory.EnumerateFiles(outputDirectory, "chunk_*.bytes"))
+    foreach (var staleChunk in Directory.EnumerateFiles(outputDirectory, "chunk_*" + CollisionDataFormat.ChunkFileExtension))
     {
         File.Delete(staleChunk);
     }
@@ -96,7 +96,7 @@ static async Task WriteOutputs(
     foreach (var chunk in result.Chunks)
     {
         await File.WriteAllBytesAsync(
-            Path.Combine(outputDirectory, chunk.ManifestEntry.ResourceName + ".bytes"),
+            Path.Combine(outputDirectory, chunk.ManifestEntry.ResourceName + CollisionDataFormat.ChunkFileExtension),
             chunk.Data);
     }
 
@@ -159,7 +159,7 @@ static void VerifyOutputs(
     var expectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     foreach (var chunk in expected.Chunks)
     {
-        var fileName = chunk.ManifestEntry.ResourceName + ".bytes";
+        var fileName = chunk.ManifestEntry.ResourceName + CollisionDataFormat.ChunkFileExtension;
         expectedFiles.Add(fileName);
         var path = Path.Combine(outputDirectory, fileName);
         if (!File.Exists(path) || !File.ReadAllBytes(path).SequenceEqual(chunk.Data))
@@ -169,7 +169,7 @@ static void VerifyOutputs(
     }
 
     var unexpected = Directory.Exists(outputDirectory)
-        ? Directory.EnumerateFiles(outputDirectory, "chunk_*.bytes")
+        ? Directory.EnumerateFiles(outputDirectory, "chunk_*" + CollisionDataFormat.ChunkFileExtension)
             .Select(Path.GetFileName)
             .FirstOrDefault(fileName => fileName is not null && !expectedFiles.Contains(fileName))
         : null;
