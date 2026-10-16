@@ -119,7 +119,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(max by (shard_id) (game_service_placement_shard_online{job=\"mmorpg/game-service\", instance=~\"$instance\"}))",
+          "expr": "sum(max by (shard_id) (game_service_placement_shard_online{job=\"mmorpg/game-service\", instance=~\"$instance\"})) or vector(0)",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",

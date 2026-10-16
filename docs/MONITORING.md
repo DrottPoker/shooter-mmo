@@ -26,6 +26,9 @@ SimulationWorker -/                       \--> Tempo (traces)
   `observability/otel-collector/config.yaml`.
 - Grafana reads all three stores and loads the dashboards in
   `observability/grafana/dashboards` from the repository.
+- Pushed metrics carry no staleness markers, so Prometheus runs with a 30
+  second lookback: the values of a stopped process disappear from instant
+  queries and panels 30 seconds after its last export instead of five minutes.
 - Prometheus evaluates the alert rules in `observability/prometheus/rules`.
   Firing alerts show in Grafana under Alerting and on both dashboards. They are
   not routed to a notifier yet; routing comes with the staging environment.
@@ -43,7 +46,7 @@ development.
 | Setting | Default | Behavior |
 | --- | --- | --- |
 | `Telemetry:OtlpEndpoint` | empty | OTLP gRPC endpoint of the collector, such as `http://127.0.0.1:4317`. Empty disables export. Only scheme, host, and port are accepted. |
-| `Telemetry:MetricExportIntervalSeconds` | `10` | Metric export interval, 1 to 300 seconds. |
+| `Telemetry:MetricExportIntervalSeconds` | `10` | Metric export interval, 1 to 300 seconds. The local Prometheus forgets a series 30 seconds after its last sample, so keep this at 15 seconds or less with the local stack. |
 | `Telemetry:TraceSampleRatio` | `1.0` | Share of new traces that are kept, 0 to 1. A trace started by a sampled caller is always kept, so a worker operation and the GameService request and database commands it causes stay together. |
 | `Telemetry:ServiceInstanceId` | host name or worker id | Overrides the Prometheus `instance` label. GameService defaults to the lowercase host name and SimulationWorker to its `SimulationWorkerId`, so a restarted process continues its series. Two GameService replicas on one host must set different values. |
 | `Simulation:MetricsIntervalSeconds` | `15` | GameService only: how often the shard gauges re-read the shard list, 1 to 3600 seconds. |

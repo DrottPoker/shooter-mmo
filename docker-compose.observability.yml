@@ -27,6 +27,10 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
       - --web.enable-otlp-receiver
+      # Pushed series get no staleness markers. A short lookback drops the values of
+      # a stopped process after 30 seconds instead of five minutes; it must stay at
+      # least twice Telemetry:MetricExportIntervalSeconds.
+      - --query.lookback-delta=30s
     volumes:
       - ./observability/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus

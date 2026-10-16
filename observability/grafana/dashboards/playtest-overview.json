@@ -115,7 +115,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(simulation_worker_realtime_players_real{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "expr": "sum(simulation_worker_realtime_players_real{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}) or vector(0)",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -174,7 +174,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(simulation_worker_realtime_players_synthetic{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "expr": "sum(simulation_worker_realtime_players_synthetic{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}) or vector(0)",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -237,7 +237,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(max by (shard_id) (game_service_placement_shard_online{job=\"mmorpg/game-service\"}))",
+          "expr": "sum(max by (shard_id) (game_service_placement_shard_online{job=\"mmorpg/game-service\"})) or vector(0)",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -497,7 +497,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "count((time() - timestamp(ALERTS{alertstate=\"firing\"})) < 60) or vector(0)",
+          "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -522,9 +522,7 @@
         "uid": "prometheus"
       },
       "fieldConfig": {
-        "defaults": {
-          "noValue": "No alert is firing"
-        },
+        "defaults": {},
         "overrides": []
       },
       "options": {
@@ -534,7 +532,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(time() - timestamp(ALERTS{alertstate=\"firing\"})) < 60",
+          "expr": "ALERTS{alertstate=\"firing\"}",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -552,6 +550,7 @@
             "excludeByName": {
               "Time": true,
               "Value": true,
+              "__name__": true,
               "alertstate": true
             },
             "indexByName": {

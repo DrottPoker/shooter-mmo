@@ -1678,9 +1678,10 @@ Manual check:
    `{service_name="game-service"} | CorrelationId="<header value>"`. The account
    log entry appears; open it and follow **View trace** to the request with its
    PostgreSQL commands in Tempo.
-4. Stop SimulationWorker. After about one minute `ShardOffline` and then
-   `SimulationWorkerDown` appear in the **Firing alerts** table and under
-   Alerting in Grafana. Start the worker again and the alerts resolve.
+4. Stop SimulationWorker. Within about three minutes `Shards online` drops to
+   `0`, and `ShardOffline` and then `SimulationWorkerDown` appear in the
+   **Firing alerts** table and under Alerting in Grafana. Start the worker again
+   and both alerts resolve within about a minute.
 
 Validate the stack configuration and run the alert rule tests without starting
 anything:
