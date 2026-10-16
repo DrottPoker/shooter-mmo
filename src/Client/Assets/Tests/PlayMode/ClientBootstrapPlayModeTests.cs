@@ -1,12 +1,16 @@
 using System.Collections;
 using System.Linq;
+using Mmorpg.Client.App;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
 using Mmorpg.Client.WorldActors;
+using Mmorpg.Client.Worlds;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -33,8 +37,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<CorpseClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldActorClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldInteractionClientController>(), Is.Not.Null);
-            Assert.That(ClientBootstrap.InventoryController.IsInitialized, Is.True);
-            Assert.That(ClientBootstrap.CorpseController, Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<InventoryClientController>().IsInitialized, Is.True);
             Assert.That(Object.FindAnyObjectByType<LoginMenuPanel>(), Is.Not.Null);
         }
 
@@ -42,14 +45,10 @@ namespace Mmorpg.Client.Tests.PlayMode
         public IEnumerator LoadingWorldSceneWithoutJoinedSessionDoesNotSpawnLocalPlayer()
         {
             ClientSession.Clear();
-            var loadOperation = SceneManager.LoadSceneAsync(
-                SceneNames.DevelopmentWorld1);
-            Assert.That(loadOperation, Is.Not.Null);
-
-            while (!loadOperation.isDone)
-            {
-                yield return null;
-            }
+            Assert.That(ClientSceneLoader.IsWorldSceneAvailable(SceneNames.DevelopmentWorld1), Is.True);
+            var loadOperation = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
+            yield return loadOperation;
+            Assert.That(loadOperation.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
 
             yield return null;
 
@@ -98,6 +97,35 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(characterPanel.anchorMax, Is.EqualTo(characterAnchorMax));
             inventoryPanel.SetOpen(false);
             Assert.That(inventoryPanel.IsOpen, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator LeavingAWorldSceneReleasesItsAddressablesHandle()
+        {
+            ClientSession.Clear();
+            var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
+            yield return worldLoad;
+            Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
+            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(SceneNames.DevelopmentWorld1));
+
+            // A built-in scene replaces the World scene, which releases its Addressables handle.
+            var loginLoad = SceneManager.LoadSceneAsync(SceneNames.LoginMenu);
+            while (!loginLoad.isDone)
+            {
+                yield return null;
+            }
+
+            yield return null;
+
+            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(SceneNames.LoginMenu));
+            Assert.That(worldLoad.IsValid(), Is.False);
+        }
+
+        [Test]
+        public void UnknownWorldSceneIsUnavailable()
+        {
+            Assert.That(ClientSceneLoader.IsWorldSceneAvailable("NoSuchWorldScene"), Is.False);
+            Assert.That(ClientSceneLoader.IsWorldSceneAvailable(SceneNames.LoginMenu), Is.False);
         }
     }
 }

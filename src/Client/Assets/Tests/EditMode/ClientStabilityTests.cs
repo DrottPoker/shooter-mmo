@@ -1,6 +1,5 @@
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Config;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
 using Mmorpg.GameProtocol;
@@ -100,14 +99,21 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void ResourcesContainsClientEndpointConfiguration()
+        public void AddressablesContainClientEndpointConfiguration()
         {
-            var config = ClientConfig.Load();
-
-            Assert.That(config.GameServiceBaseUrl, Is.EqualTo("http://localhost:5000"));
-            Assert.That(config.RequestTimeoutSeconds, Is.EqualTo(10));
-            Assert.That(config.RealtimeTimeoutSeconds, Is.EqualTo(10));
-            Assert.That(config.SessionValidationIntervalSeconds, Is.EqualTo(5));
+            var config = ClientConfig.Load(out var handle);
+            try
+            {
+                Assert.That(handle.IsValid(), Is.True);
+                Assert.That(config.GameServiceBaseUrl, Is.EqualTo("http://localhost:5000"));
+                Assert.That(config.RequestTimeoutSeconds, Is.EqualTo(10));
+                Assert.That(config.RealtimeTimeoutSeconds, Is.EqualTo(10));
+                Assert.That(config.SessionValidationIntervalSeconds, Is.EqualTo(5));
+            }
+            finally
+            {
+                ClientAssets.Release(handle);
+            }
         }
 
         [Test]

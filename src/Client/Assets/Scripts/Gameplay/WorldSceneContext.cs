@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
@@ -20,6 +21,13 @@ namespace Mmorpg.Client.Gameplay
             new Dictionary<ulong, RemotePlayerView>();
         private RealtimeSimulationClient simulationClient;
         private LocalPlayerController localPlayer;
+
+        // The composition root passes the persistent realtime client when the scene loads,
+        // before Start runs.
+        public void Initialize(RealtimeSimulationClient realtimeClient)
+        {
+            simulationClient = realtimeClient;
+        }
 
         private void Start()
         {
@@ -64,7 +72,6 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            simulationClient = ClientBootstrap.SimulationClient;
             if (simulationClient == null
                 || !simulationClient.IsJoined
                 || simulationClient.MovementSession == null)

@@ -15,8 +15,9 @@ operations, and future design do not drift into duplicate descriptions.
 3. [GameService Modules](GAME_SERVICE_MODULES.md) for the GameService module
    projects, their contracts, table ownership, cross-module access rules, lock
    order, migration ownership, and architecture guard tests.
-4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for detailed Unity
-   runtime structure and client flows.
+4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for the client
+   assemblies and their dependency rules, Addressables content loading, and the
+   detailed Unity runtime structure and client flows.
 5. [Realtime Protocol](REALTIME_PROTOCOL.md) for the binary wire format, the
    protocol schema and its generator, the message descriptors, and the
    versioning rules.
@@ -25,16 +26,19 @@ operations, and future design do not drift into duplicate descriptions.
 7. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
 8. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
    instructions.
-9. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
-   and full-stack GameService, PostgreSQL, and SimulationWorker load testing.
-10. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
+9. [Monitoring](MONITORING.md) for the server metrics, logs, and traces, the
+   local OpenTelemetry, Prometheus, Loki, Tempo, and Grafana stack, the
+   dashboards and alerts, and what to watch during a playtest.
+10. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
+    and full-stack GameService, PostgreSQL, and SimulationWorker load testing.
+11. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
     bot population that can share the real shard with a Unity player.
-11. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
+12. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
     layouts, and the Unity rebuild and authoring workflow.
-12. [Game Content](../content/README.md) for the authored content layout, its
+13. [Game Content](../content/README.md) for the authored content layout, its
     file and naming rules, the content compilers, and the generated data. The
     item authoring contract is in [Item Catalog Authoring](../content/items/README.md).
-13. [Backend Tests](../tests/README.md) for the backend test projects, where a new
+14. [Backend Tests](../tests/README.md) for the backend test projects, where a new
     test goes, test traits, per-test databases, CI jobs, golden files, and test
     access to internals.
 

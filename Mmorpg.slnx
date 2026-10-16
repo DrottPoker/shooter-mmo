@@ -8,6 +8,7 @@
     <Project Path="src/Server/GameService.Placement/Mmorpg.GameService.Placement.csproj" />
     <Project Path="src/Server/GameService.Items/Mmorpg.GameService.Items.csproj" />
     <Project Path="src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj" />
+    <Project Path="src/Server/Telemetry/Mmorpg.Server.Telemetry.csproj" />
   </Folder>
   <Folder Name="/src/Shared/">
     <Project Path="src/Shared/DotNet/GameProtocol/Mmorpg.GameProtocol.csproj" />
@@ -28,6 +29,7 @@
   </Folder>
   <Folder Name="/tests/Server/">
     <Project Path="tests/Server/Mmorpg.Server.Common.Tests/Mmorpg.Server.Common.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.Server.Telemetry.Tests/Mmorpg.Server.Telemetry.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.GameService.Tests/Mmorpg.GameService.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.GameService.Platform.Tests/Mmorpg.GameService.Platform.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.GameService.Accounts.Tests/Mmorpg.GameService.Accounts.Tests.csproj" />

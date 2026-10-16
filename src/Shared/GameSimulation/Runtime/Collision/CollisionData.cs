@@ -14,6 +14,10 @@ namespace Mmorpg.GameSimulation
         public const uint ChunkMagic = 0x4C434D53;
         public const int MaximumBoxesPerChunk = 1_000_000;
 
+        // A chunk file is its manifest resource name plus this extension, on disk and as
+        // the end of its Unity Addressables address.
+        public const string ChunkFileExtension = ".bytes";
+
         // Every runtime must map a position to the same chunk coordinate. Worlds stay
         // inside a range where the float to int conversion is exact in .NET and Unity
         // and where chunk loops can never overflow.

@@ -60,11 +60,13 @@ at `src/Shared/WorldData/Generated/`:
 | --- | --- | --- |
 | `Items/core.item-catalog.json` | `items/` | `tools/ItemCatalogCompiler` |
 | `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json` | `tools/WorldActorCompiler` |
-| `Resources/WorldCollision/<world-id>/` | the World's `collision.json` | `tools/WorldCollisionCompiler` |
+| `WorldCollision/<world-id>/` | the World's `collision.json` | `tools/WorldCollisionCompiler` |
 
 Generated data is committed, so the services and the client run without a
 content build step, and CI verifies that it matches its sources. The client
-loads collision through `Resources.Load("WorldCollision/<world-id>/manifest")`.
+loads collision through Addressables at `WorldCollision/<world-id>/manifest.json`
+and `WorldCollision/<world-id>/<chunk>.bytes`; the generated folder is one
+Addressables folder entry.
 GameService and SimulationWorker copy `world.json` and the generated files into
 their output `WorldData` folders at build time.
 

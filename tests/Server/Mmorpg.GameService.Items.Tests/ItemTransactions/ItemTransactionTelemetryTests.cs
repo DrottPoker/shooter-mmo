@@ -170,7 +170,7 @@ public sealed class ItemTransactionTelemetryTests
         listener.InstrumentPublished = (instrument, meterListener) =>
         {
             if (string.Equals(instrument.Meter.Name, ItemOperationsMetrics.MeterName, StringComparison.Ordinal)
-                && instrument.Name is "auth_service.items.locks.wait.duration" or "auth_service.items.transactions")
+                && instrument.Name is "game_service.items.locks.wait.duration" or "game_service.items.transactions")
             {
                 meterListener.EnableMeasurementEvents(instrument);
             }

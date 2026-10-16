@@ -1,10 +1,11 @@
 using System;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Config;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items.Presentation;
 using NUnit.Framework;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -12,12 +13,14 @@ namespace Mmorpg.Client.Tests.EditMode
     public sealed class InventoryClientFoundationTests
     {
         private ClientItemCatalog catalog;
+        private ClientConfig config;
+        private AsyncOperationHandle<ClientConfig> configHandle;
 
         [SetUp]
         public void SetUp()
         {
             ItemPresentationCatalogLoader.ResetCache();
-            var config = ClientConfig.Load();
+            config = ClientConfig.Load(out configHandle);
             Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
             Assert.That(
                 ClientItemCatalog.TryLoad(
@@ -32,13 +35,13 @@ namespace Mmorpg.Client.Tests.EditMode
         public void TearDown()
         {
             ItemPresentationCatalogLoader.ResetCache();
+            ClientAssets.Release(configHandle);
+            configHandle = default;
         }
 
         [Test]
         public void CatalogLoadsGameplayAndPresentationOnceByDefinitionId()
         {
-            var config = ClientConfig.Load();
-
             Assert.That(
                 ClientItemCatalog.TryLoad(
                     config.ItemGameplayCatalog,

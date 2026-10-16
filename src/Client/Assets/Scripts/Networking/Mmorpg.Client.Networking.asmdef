@@ -1,0 +1,21 @@
+{
+  "name": "Mmorpg.Client.Networking",
+  "rootNamespace": "Mmorpg.Client.Networking",
+  "references": [
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Core",
+    "Mmorpg.Client.Worlds",
+    "LiteNetLib",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.GameSimulation"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

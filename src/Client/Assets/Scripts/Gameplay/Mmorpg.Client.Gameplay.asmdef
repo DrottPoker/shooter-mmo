@@ -1,0 +1,22 @@
+{
+  "name": "Mmorpg.Client.Gameplay",
+  "rootNamespace": "Mmorpg.Client.Gameplay",
+  "references": [
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Core",
+    "Mmorpg.Client.Worlds",
+    "Mmorpg.Client.Networking",
+    "Unity.InputSystem",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.GameSimulation"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -30,6 +30,11 @@ namespace Mmorpg.WorldData.Editor.Items
         private readonly Button removeButton;
         private readonly Button duplicateButton;
         private readonly IVisualElementScheduledItem liveValidation;
+        // The client content root and its item icon folder. The folder is one Addressables folder
+        // entry, so an icon's address is its path below the content root.
+        private const string ContentRoot = "Assets/Content/";
+        private const string IconFolder = ContentRoot + "Items/Icons";
+
         private readonly Dictionary<string, Sprite> iconCache = new Dictionary<string, Sprite>(StringComparer.Ordinal);
         private ContentEditSession<ItemCatalogEditorSnapshot> session;
         private ContentForm<ItemCatalogEditorDefinition> form;
@@ -629,7 +634,7 @@ namespace Mmorpg.WorldData.Editor.Items
 
             var icon = new ObjectField("Icon") { objectType = typeof(Sprite), allowSceneObjects = false };
             icon.RegisterValueChangedCallback(change => SetIcon(change.newValue as Sprite));
-            var path = new TextField("Resource Path") { isReadOnly = true };
+            var path = new TextField("Icon Address") { isReadOnly = true };
             var clear = new Button(() => SetIcon(null)) { text = "Clear" };
             var pathRow = new VisualElement();
             pathRow.AddToClassList(ContentToolStyles.Row);
@@ -640,16 +645,16 @@ namespace Mmorpg.WorldData.Editor.Items
             {
                 var presentation = form.Targets.Count == 1 ? PresentationOf(form.Targets[0]) : null;
                 missing.style.display = form.Targets.Count == 1 && presentation == null ? DisplayStyle.Flex : DisplayStyle.None;
-                icon.SetValueWithoutNotify(ResolveIcon(presentation?.iconResourcePath));
-                path.SetValueWithoutNotify(presentation?.iconResourcePath ?? string.Empty);
-                clear.SetEnabled(!string.IsNullOrWhiteSpace(presentation?.iconResourcePath));
+                icon.SetValueWithoutNotify(ResolveIcon(presentation?.iconAddress));
+                path.SetValueWithoutNotify(presentation?.iconAddress ?? string.Empty);
+                clear.SetEnabled(!string.IsNullOrWhiteSpace(presentation?.iconAddress));
             });
-            form.Register("presentation.iconResourcePath", icon);
+            form.Register("presentation.iconAddress", icon);
             section.Add(icon);
             section.Add(pathRow);
             section.Add(ContentToolStyles.CreateHint(
-                "Icons are client-owned assets under an Assets/Resources folder. Only the extension-free "
-                    + "Resources path is baked into the presentation catalog."));
+                "Icons are client-owned Sprites below " + IconFolder + ", an Addressables folder entry. "
+                    + "Only the icon's Addressables address is baked into the presentation catalog."));
             return section;
         }
 
@@ -737,7 +742,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 return;
             }
 
-            if (!TryGetResourcePath(icon, out var resourcePath, out var error))
+            if (!TryGetIconAddress(icon, out var iconAddress, out var error))
             {
                 toolLayout.SetStatus(error, HelpBoxMessageType.Error);
                 form.Refresh();
@@ -746,11 +751,11 @@ namespace Mmorpg.WorldData.Editor.Items
 
             if (icon != null)
             {
-                iconCache[resourcePath] = icon;
+                iconCache[iconAddress] = icon;
             }
 
             session.Change(icon == null ? "Presentation icon cleared" : "Presentation icon changed", () =>
-                SetPresentation(definition, presentation => presentation.iconResourcePath = resourcePath));
+                SetPresentation(definition, presentation => presentation.iconAddress = iconAddress));
         }
 
         private void SetPresentation(ItemCatalogEditorDefinition definition, Action<ItemPresentationEntry> edit)
@@ -913,39 +918,30 @@ namespace Mmorpg.WorldData.Editor.Items
                 "Cancel");
         }
 
-        private Sprite ResolveIcon(string resourcePath)
+        private Sprite ResolveIcon(string iconAddress)
         {
-            if (string.IsNullOrWhiteSpace(resourcePath))
+            if (string.IsNullOrWhiteSpace(iconAddress))
             {
                 return null;
             }
 
-            if (iconCache.TryGetValue(resourcePath, out var icon))
+            if (iconCache.TryGetValue(iconAddress, out var icon))
             {
                 return icon;
             }
 
-            foreach (var guid in AssetDatabase.FindAssets("t:Sprite", new[] { "Assets/Resources" }))
-            {
-                var assetPath = AssetDatabase.GUIDToAssetPath(guid);
-                foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(assetPath).OfType<Sprite>())
-                {
-                    if (TryGetResourcePath(asset, out var candidatePath, out _)
-                        && string.Equals(candidatePath, resourcePath, StringComparison.Ordinal))
-                    {
-                        iconCache[resourcePath] = asset;
-                        return asset;
-                    }
-                }
-            }
-
-            iconCache[resourcePath] = null;
-            return null;
+            // The icon folder entry gives every asset the address of its path below the
+            // client content root.
+            icon = iconAddress.StartsWith(ItemPresentationCatalogFormat.IconAddressPrefix, StringComparison.Ordinal)
+                ? AssetDatabase.LoadAssetAtPath<Sprite>(ContentRoot + iconAddress)
+                : null;
+            iconCache[iconAddress] = icon;
+            return icon;
         }
 
-        private static bool TryGetResourcePath(Sprite icon, out string resourcePath, out string error)
+        private static bool TryGetIconAddress(Sprite icon, out string iconAddress, out string error)
         {
-            resourcePath = string.Empty;
+            iconAddress = string.Empty;
             error = string.Empty;
             if (icon == null)
             {
@@ -953,9 +949,9 @@ namespace Mmorpg.WorldData.Editor.Items
             }
 
             var assetPath = AssetDatabase.GetAssetPath(icon).Replace('\\', '/');
-            if (!assetPath.StartsWith("Assets/", StringComparison.Ordinal))
+            if (!assetPath.StartsWith(IconFolder + "/", StringComparison.Ordinal))
             {
-                error = "Item icons must be owned by the client Assets folder.";
+                error = "Item icons must be stored below " + IconFolder + ".";
                 return false;
             }
 
@@ -965,16 +961,8 @@ namespace Mmorpg.WorldData.Editor.Items
                 return false;
             }
 
-            const string marker = "/Resources/";
-            var markerIndex = assetPath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (markerIndex < 0)
-            {
-                error = "Item icons must be stored below an Assets/Resources folder.";
-                return false;
-            }
-
-            resourcePath = Path.ChangeExtension(assetPath.Substring(markerIndex + marker.Length), null).Replace('\\', '/');
-            return !string.IsNullOrWhiteSpace(resourcePath);
+            iconAddress = assetPath.Substring(ContentRoot.Length);
+            return true;
         }
 
         private static string ShortRevision(string revision)

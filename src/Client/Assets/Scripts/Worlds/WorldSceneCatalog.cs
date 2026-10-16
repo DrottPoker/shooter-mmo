@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mmorpg.Client.Core;
 using UnityEngine;
 
 namespace Mmorpg.Client.Worlds
@@ -21,7 +22,6 @@ namespace Mmorpg.Client.Worlds
     public static class WorldSceneCatalog
     {
         public const int FormatVersion = 1;
-        public const string ResourcePath = "Worlds/world-scene-catalog";
 
         private static bool loadAttempted;
         private static WorldSceneCatalogDocument loadedCatalog;
@@ -116,19 +116,16 @@ namespace Mmorpg.Client.Worlds
             if (!loadAttempted)
             {
                 loadAttempted = true;
-                var asset = Resources.Load<TextAsset>(ResourcePath);
-                if (asset == null)
+                if (!ClientAssets.TryReadText(
+                        ClientAddresses.WorldSceneCatalog,
+                        out var json,
+                        out var readError))
                 {
-                    loadError = "The client world scene catalog resource is missing.";
+                    loadError = "The client world scene catalog is missing. " + readError;
                 }
-                else if (!TryParse(asset.text, out loadedCatalog, out loadError))
+                else if (!TryParse(json, out loadedCatalog, out loadError))
                 {
                     loadedCatalog = null;
-                }
-
-                if (asset != null)
-                {
-                    Resources.UnloadAsset(asset);
                 }
             }
 

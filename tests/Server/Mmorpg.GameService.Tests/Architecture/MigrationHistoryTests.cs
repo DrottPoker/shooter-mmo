@@ -137,6 +137,8 @@ public sealed class MigrationHistoryTests
 
         public IReadOnlyList<DatabaseMigration> Migrations { get; } = migrations;
 
+        public IReadOnlyList<string> MeterNames { get; } = [];
+
         public void AddServices(IServiceCollection services)
         {
         }

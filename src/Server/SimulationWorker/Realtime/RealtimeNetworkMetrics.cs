@@ -19,7 +19,8 @@ public readonly record struct RealtimeNetworkMetricsSnapshot(
     long RejectedJoins,
     long SpawnPackets,
     long DespawnPackets,
-    long SnapshotEntityRecords);
+    long SnapshotEntityRecords,
+    long SnapshotBytes);
 
 public sealed class RealtimeNetworkMetrics : IDisposable
 {
@@ -44,6 +45,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     private long spawnPackets;
     private long despawnPackets;
     private long snapshotEntityRecords;
+    private long snapshotBytes;
 
     public RealtimeNetworkMetrics()
     {
@@ -65,6 +67,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         meter.CreateObservableCounter("simulation_worker.realtime.spawn.packets", () => Volatile.Read(ref spawnPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.despawn.packets", () => Volatile.Read(ref despawnPackets));
         meter.CreateObservableCounter("simulation_worker.realtime.snapshot.entity_records", () => Volatile.Read(ref snapshotEntityRecords));
+        meter.CreateObservableCounter("simulation_worker.realtime.snapshot.bytes", () => Volatile.Read(ref snapshotBytes));
     }
 
     public void SetActivePeers(long value) => Interlocked.Exchange(ref activePeers, value);
@@ -123,6 +126,9 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     public void RecordSnapshotEntities(int count) => Interlocked.Add(ref snapshotEntityRecords, count);
 
+    // Payload bytes of snapshot packets handed to the transport, a subset of sent bytes.
+    public void RecordSnapshotBytes(int bytes) => Interlocked.Add(ref snapshotBytes, bytes);
+
     public RealtimeNetworkMetricsSnapshot Capture()
     {
         return new RealtimeNetworkMetricsSnapshot(
@@ -142,7 +148,8 @@ public sealed class RealtimeNetworkMetrics : IDisposable
             Volatile.Read(ref rejectedJoins),
             Volatile.Read(ref spawnPackets),
             Volatile.Read(ref despawnPackets),
-            Volatile.Read(ref snapshotEntityRecords));
+            Volatile.Read(ref snapshotEntityRecords),
+            Volatile.Read(ref snapshotBytes));
     }
 
     public void Dispose()

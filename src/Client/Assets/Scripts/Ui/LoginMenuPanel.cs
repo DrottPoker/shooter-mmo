@@ -1,8 +1,8 @@
 using System.Collections;
 using Mmorpg.Client.Api;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
+using Mmorpg.Client.Worlds;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Ui
 {
@@ -130,7 +130,7 @@ namespace Mmorpg.Client.Ui
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "Account '" + response.username + "' (" + response.accountId + ") " + action + ".");
-            SceneManager.LoadScene(SceneNames.CharacterSelect);
+            ClientSceneLoader.LoadCharacterSelect();
         }
 
         private void SetError(string operation, ApiError error)

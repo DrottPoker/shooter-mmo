@@ -28,10 +28,17 @@ namespace Mmorpg.Client.Ui
         private InventoryClientController inventoryController;
         private bool cursorReleased;
 
+        // Called by the composition root before the component is activated.
+        public void Initialize(
+            WorldInteractionClientController worldInteraction,
+            InventoryClientController inventory)
+        {
+            interactionController = worldInteraction;
+            inventoryController = inventory;
+        }
+
         private void Start()
         {
-            interactionController = ClientBootstrap.WorldInteractionController;
-            inventoryController = ClientBootstrap.InventoryController;
             targetingController = FindAnyObjectByType<WorldInteractionTargetingController>();
             if (interactionController != null)
             {

@@ -75,6 +75,7 @@ dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-buil
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
+& .\tools\Verify-Observability.ps1
 dotnet test Mmorpg.slnx --configuration Release --no-build
 ```
 
@@ -91,6 +92,10 @@ Expected result:
   tier, and the deterministic checked-in revision.
 - Protocol verification reports realtime protocol version 14 with 27 messages
   and finds every generated file current.
+- Observability verification validates the collector and Prometheus
+  configuration, passes the alert rule tests, and parses both dashboards. It
+  needs Docker and starts nothing that keeps running. CI runs the same script
+  in its `Observability configuration` job.
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
   configured. The Redis integration test is skipped unless
@@ -204,10 +209,11 @@ The canonical content workflow is available in Unity at
 4. Undo and redo with Ctrl+Z and Ctrl+Y or the Edit menu; every edit is one step
    in `Edit > Undo History`. Unsaved edits survive script reloads, and closing
    the window asks whether to save them.
-5. Optionally choose an icon Sprite below an `Assets/Resources` folder, with one
-   Sprite per asset file. The tool stores its extension-free Resources path, not
-   the image data, in the presentation JSON. An item may remain iconless until
-   approved client art is available.
+5. Optionally choose an icon Sprite below `Assets/Content/Items/Icons`, with one
+   Sprite per asset file. The folder is an Addressables folder entry, so the
+   tool stores the icon's Addressables address, such as
+   `Items/Icons/test-ammunition.png`, not the image data, in the presentation
+   JSON. An item may remain iconless until approved client art is available.
 6. Select `Validate` to run the strict command-line compiler without writing
    files.
 7. Select `Save` to write `catalog.json`, one file per definition, and the
@@ -222,9 +228,9 @@ and `Validate` and both save actions invoke `tools/ItemCatalogCompiler`, which
 remains the validation and structural-fingerprint authority used by backend
 development and CI.
 
-Client-only presentation content is bundled at
-`src/Client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.
-It maps every stable gameplay definition id to an optional icon Resources path,
+Client-only presentation content is bundled through Addressables at
+`src/Client/Assets/Content/Items/Presentation/item-presentation-catalog.json`.
+It maps every stable gameplay definition id to an optional icon address,
 localization key, fallback display name, and optional prefab presentation key.
 The file records the exact gameplay source revision and a separate deterministic
 presentation revision. Runtime lookup validates the pair once and caches it.
@@ -928,8 +934,10 @@ required. One Development player build is required so two clients can be active
 at the same time:
 
 1. In Unity, open `File > Build Profiles`, select Windows, enable
-   `Development Build`, and build the existing scene list. Do not add or reorder
-   scenes. Expected result: the standalone player reaches LoginMenu.
+   `Development Build`, and build the existing scene list, LoginMenu and
+   CharacterSelect. Do not add or reorder scenes: World scenes are Addressables,
+   and the player build builds their content first. Expected result: the
+   standalone player reaches LoginMenu.
 2. Start PostgreSQL, Redis, and GameService. Using the Editor client, create
    three disposable accounts with one character each: one offline corpse source
    and two looters. Apply `Phase 9 Full Test Pack` to both looters while they are
@@ -1025,7 +1033,7 @@ Existing canonical content requires no scene, prefab, Inspector, package, or
 build-setting change. The committed presentation registry already maps every
 authored archetype to a placeholder prefab. A new archetype uses the tinted
 fallback, with one warning, until a prefab is added to
-`Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
+`Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`.
 Use these exact Unity Editor steps to exercise the authoring tools and
 presentation mapping:
 
@@ -1059,10 +1067,13 @@ presentation mapping:
    place the guard.
 6. To use authored prefabs, click `Create Presentation Registry` when it
    appears, then assign a prefab in `Replaceable Prefab` for each presentation
-   archetype. Expected result: Unity creates
-   `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`.
-   The prefab changes presentation only. This optional asset creation and prefab
-   assignment are the only manual Unity asset steps.
+   archetype. The prefab must be stored below `Assets/Prefabs/WorldActors`, an
+   Addressables folder entry; the field rejects any other prefab. Expected
+   result: Unity creates
+   `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset` and stores
+   each prefab as an Addressables reference. The prefab changes presentation
+   only. This optional asset creation and prefab assignment are the only manual
+   Unity asset steps.
 7. With no pending edits, click `Preview Changes`, then `Save + Compile`, then
    `Verify Canonical`. Expected result: the preview window lists every
    canonical file, marks changed files in bold, and reports `No canonical
@@ -1624,6 +1635,83 @@ sessions owned by that account session are released.
 An authenticated session can similarly revoke an owned session with
 `DELETE /api/accounts/sessions/{sessionId}`.
 
+## Monitoring Stack
+
+The monitoring stack shows live metrics, logs, traces, dashboards, and alerts of
+GameService and SimulationWorker in Grafana. What it measures and how to read it
+is in [Monitoring](MONITORING.md).
+
+Start the stack next to PostgreSQL and Redis:
+
+```powershell
+docker compose -f docker-compose.observability.yml up -d --wait
+```
+
+Expected result: five containers of the project `shooter-mmo-observability` run,
+and Grafana answers on `http://127.0.0.1:3000` without a login. The stack
+publishes only loopback ports:
+
+| Port | Service |
+| --- | --- |
+| `127.0.0.1:4317` | OpenTelemetry Collector, OTLP gRPC |
+| `127.0.0.1:4318` | OpenTelemetry Collector, OTLP HTTP |
+| `127.0.0.1:9090` | Prometheus, including its alert list under `/alerts` |
+| `127.0.0.1:3000` | Grafana |
+
+Enable export in the services. `.env.example` already contains the line; add it
+to an older `.env` if it is missing:
+
+```text
+Telemetry__OtlpEndpoint=http://127.0.0.1:4317
+```
+
+Then start GameService and SimulationWorker as described in
+[Backend Services](#backend-services).
+
+Expected result: both processes log `Exporting metrics, traces, and logs over
+OTLP to http://127.0.0.1:4317/.` at startup. Without the setting they log
+`Telemetry export is disabled.` and nothing leaves the process.
+
+Manual check:
+
+1. Open `http://127.0.0.1:3000`. The home page is the **MMORPG Playtest**
+   dashboard. Within about 20 seconds `Shards online` shows `1` and the tick
+   panels show values far below the dashed 33.3 ms budget line.
+2. Start population, for example with
+   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) or the Unity client. The
+   `Players` or `Bots` stat, bandwidth, and packets rise within one refresh.
+3. Register an account as in [Backend Services](#backend-services) and copy the
+   `X-Correlation-ID` response header. In Grafana Explore, choose Loki and run
+   `{service_name="game-service"} | CorrelationId="<header value>"`. The account
+   log entry appears; open it and follow **View trace** to the request with its
+   PostgreSQL commands in Tempo.
+4. Stop SimulationWorker. Within about three minutes `Shards online` drops to
+   `0`, and `ShardOffline` and then `SimulationWorkerDown` appear in the
+   **Firing alerts** table and under Alerting in Grafana. Start the worker again
+   and both alerts resolve within about a minute.
+
+Validate the stack configuration and run the alert rule tests without starting
+anything:
+
+```powershell
+& ./tools/Verify-Observability.ps1
+```
+
+Expected result: `Observability verification passed: collector, Prometheus,
+alert tests, and 2 dashboards.`
+
+Stop the stack and keep its data, or remove the data too:
+
+```powershell
+docker compose -f docker-compose.observability.yml down
+docker compose -f docker-compose.observability.yml down -v
+```
+
+Dashboards are provisioned read-only from `observability/grafana/dashboards`.
+Edit the JSON there and run
+`docker compose -f docker-compose.observability.yml restart grafana` to load a
+change at once.
+
 ## Unity Client Flow
 
 The Unity project includes temporary runtime UI for the current backend flow.
@@ -1632,6 +1720,60 @@ session handling, API layer, scene lifecycle, input, camera, and gameplay system
 are maintained as long-term foundations. The UI is created automatically when
 each scene starts. The local player and test map must be authored as Unity assets
 and are not generated at runtime.
+
+## Unity Client Assemblies And Addressables
+
+The client code is split into nine area assemblies, and all runtime content
+loads through Addressables. The structure, the dependency rules, and the
+Addressables groups are described in
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#assemblies). No manual
+Unity Editor step is required after pulling this structure: the Addressables
+settings in `src/Client/Assets/AddressableAssetsData` are committed, and Play
+Mode uses the "Use Asset Database" play mode script, which needs no content
+build.
+
+Working rules:
+
+- New client content goes into a folder below `src/Client/Assets/Content`, or a
+  World actor prefab below `src/Client/Assets/Prefabs/WorldActors`. Those folders
+  are Addressables folder entries, so a new file is addressable at its path below
+  `Assets/Content` without any settings change.
+- A new World scene is mapped in `Assets/Content/Worlds/world-scene-catalog.json`
+  and registered with `MMORPG > Tools > Addressables > Apply Client Layout`.
+  Expected result: the Console reports `[ADDRESSABLES] The client layout is
+  applied and valid.`, the scene is an entry in the `World Scenes` group with
+  its scene name as address, and Build Profiles still list only LoginMenu and
+  CharacterSelect.
+- A normal player build builds the Addressables content first. To build the
+  content alone, open `Window > Asset Management > Addressables > Groups` and
+  select `Build > New Build > Default Build Script`. The first build in a new
+  Library asks whether to turn on `Debug Build Layout`; either answer is fine.
+  The build output and its content state stay in the ignored `Library` folder.
+- To exercise built bundles in the Editor, select `Play Mode Script > Use
+  Existing Build` in the Groups window after a content build, and switch back to
+  `Use Asset Database` afterwards. The choice is stored per user in `Library`.
+
+Manual test of the assemblies and Addressables:
+
+1. Open `src/Client` in Unity 6000.5.4f1 and wait for the import. Expected
+   result: the Console shows no compiler error, and the Project window shows
+   one asmdef in each folder below `Assets/Scripts`.
+2. Open `Window > Asset Management > Addressables > Groups`. Expected result:
+   the groups `Client Content`, `Item Icons`, `World Actor Prefabs`, `World
+   Collision`, and `World Scenes` exist, and `World Scenes` holds
+   `DevelopmentWorld1` and `DevelopmentWorld2`.
+3. Open `File > Build Profiles`. Expected result: the scene list holds only
+   `LoginMenu` and `CharacterSelect`.
+4. Run all EditMode and PlayMode tests in the Test Runner. Expected result: all
+   pass, including `ClientAssemblyArchitectureTests` and
+   `ClientAddressablesTests`.
+5. Start PostgreSQL, Redis, GameService, and SimulationWorker as described in
+   [Backend Services](#backend-services), open LoginMenu, enter Play Mode,
+   register, create a character, and join `Local Shard 1`. Expected result:
+   CharacterSelect shows `Loading DevelopmentWorld2.` briefly, the World scene
+   opens with the local player and the authored NPC prefabs, the Console has no
+   warning or error, and `Leave Shard` in the F2 panel returns to
+   CharacterSelect.
 
 ## Unity Editor Automation With Unity CLI
 
@@ -1879,9 +2021,9 @@ authoritative map collider changes.
    menu.
 7. Wait for asset import and script compilation to complete.
 
-After both development scenes exist in Build Profiles, use `MMORPG >
-Tools > World Collision > Bake Build World Scenes` to validate each catalog
-mapping and bake every enabled World scene in one deterministic pass. When
+After both development scenes are Addressables World scenes, use `MMORPG >
+Tools > World Collision > Bake World Scenes` to validate each catalog
+mapping and bake every World scene in one deterministic pass. When
 several Worlds share one reusable scene, the scene is baked once for each of
 those Worlds, and its `WorldCollisionAuthoring` World id must be one of them.
 
@@ -1896,7 +2038,7 @@ Expected result: Unity Console reports `[WORLD COLLISION] Baked world
 updates:
 
 - `content/worlds/development-world-1/collision.json`
-- `src/Shared/WorldData/Generated/Resources/WorldCollision/development-world-1/manifest.json`
+- `src/Shared/WorldData/Generated/WorldCollision/development-world-1/manifest.json`
 - Four `chunk_*.bytes` files in the same generated directory
 
 The bake stops with a red error if the collision root contains enabled,
@@ -2064,7 +2206,7 @@ before changing a shard:
 - Add `content/worlds/<WorldId>/world.json` with the stable identity, client
   scene, bounds, spawn, and item service points.
 - Provide `content/worlds/<WorldId>/collision.json` and its compiled collision
-  data below `src/Shared/WorldData/Generated/Resources/WorldCollision/<WorldId>`.
+  data below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
 - Provide `content/worlds/<WorldId>/actor-spawns.json` with at least one spawn
   and its compiled
   `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`. The
@@ -2072,8 +2214,10 @@ before changing a shard:
   compilers reject a World directory that lacks `world.json`,
   `actor-spawns.json`, or `collision.json`. Shared actor definitions remain under
   `content/actors`.
-- Add the authored Unity scene to the client build and map its `WorldId` in
-  `Assets/Resources/Worlds/world-scene-catalog.json`.
+- Map the authored Unity scene's `WorldId` in
+  `Assets/Content/Worlds/world-scene-catalog.json`, then run `MMORPG > Tools >
+  Addressables > Apply Client Layout` so the scene becomes an Addressables
+  World scene. Do not add it to Build Profiles.
 
 Perform the rebind in this order:
 
@@ -2128,8 +2272,9 @@ Expected result in `LoginMenu`:
 - Realtime timeout displays 10 seconds.
 
 These values are stored in
-`Assets/Resources/Config/ClientConfig.asset`. Create build-specific
-variants or change the asset before building a client for another environment.
+`Assets/Content/Config/ClientConfig.asset`, which the client loads through
+Addressables at startup. Change the asset before building a client for another
+environment.
 Endpoint fields are no longer editable from the runtime login panel.
 
 Manual Unity test flow:
@@ -2376,4 +2521,5 @@ accepted world presence.
 - [Project Architecture](PROJECT_ARCHITECTURE.md)
 - [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md)
 - [Service Features](SERVICE_FEATURES.md)
+- [Monitoring](MONITORING.md)
 - [Game Features](GAME_FEATURES.md)

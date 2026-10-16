@@ -1333,7 +1333,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                     var entry = entries.GetArrayElementAtIndex(index);
                     if (string.Equals(entry.FindPropertyRelative("presentationArchetypeId")?.stringValue, presentationArchetypeId, StringComparison.Ordinal))
                     {
-                        return entry.FindPropertyRelative("prefab")?.objectReferenceValue as GameObject;
+                        return WorldActorStudioView.LoadReferencedPrefab(entry.FindPropertyRelative("prefab"));
                     }
                 }
             }

@@ -48,7 +48,7 @@ public static class WorldCollisionLoader
         var chunkSources = new List<WorldCollisionChunkSource>(manifest.Chunks.Length);
         foreach (var entry in manifest.Chunks)
         {
-            var chunkPath = Path.Combine(worldPath, entry.ResourceName + ".bytes");
+            var chunkPath = Path.Combine(worldPath, entry.ResourceName + CollisionDataFormat.ChunkFileExtension);
             if (!File.Exists(chunkPath))
             {
                 throw new InvalidOperationException(

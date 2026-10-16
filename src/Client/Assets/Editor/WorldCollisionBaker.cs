@@ -3,11 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Mmorpg.Client.Collision;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Editor;
 using UnityEditor;
+using UnityEditor.AddressableAssets;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -30,8 +31,8 @@ namespace Mmorpg.Client.Editor
     public static class WorldCollisionBaker
     {
         public const string MenuPath = "MMORPG/Tools/World Collision/Bake Open Scene";
-        public const string BakeBuildWorldScenesMenuPath =
-            "MMORPG/Tools/World Collision/Bake Build World Scenes";
+        public const string BakeWorldScenesMenuPath =
+            "MMORPG/Tools/World Collision/Bake World Scenes";
 
         [MenuItem(MenuPath)]
         public static void BakeOpenScene()
@@ -53,8 +54,8 @@ namespace Mmorpg.Client.Editor
                 && SceneManager.GetActiveScene().isLoaded;
         }
 
-        [MenuItem(BakeBuildWorldScenesMenuPath)]
-        public static void BakeBuildWorldScenes()
+        [MenuItem(BakeWorldScenesMenuPath)]
+        public static void BakeWorldScenes()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
@@ -69,14 +70,14 @@ namespace Mmorpg.Client.Editor
             }
 
             var originalSetup = EditorSceneManager.GetSceneManagerSetup();
-            TextAsset catalogAsset = null;
             try
             {
-                catalogAsset = Resources.Load<TextAsset>(WorldSceneCatalog.ResourcePath);
+                var catalogPath = ClientAddresses.ContentRoot + ClientAddresses.WorldSceneCatalog;
+                var catalogAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(catalogPath);
                 if (catalogAsset == null)
                 {
                     throw new InvalidOperationException(
-                        "The client world scene catalog resource is missing.");
+                        "The client world scene catalog is missing at " + catalogPath + ".");
                 }
 
                 if (!WorldSceneCatalog.TryParse(
@@ -87,11 +88,20 @@ namespace Mmorpg.Client.Editor
                     throw new InvalidOperationException(catalogError);
                 }
 
-                var plans = PlanBuildWorldBakes(
+                var settings = AddressableAssetSettingsDefaultObject.Settings;
+                var scenesGroup = settings == null
+                    ? null
+                    : settings.FindGroup(ClientAddressablesLayout.WorldScenesGroup);
+                if (scenesGroup == null)
+                {
+                    throw new InvalidOperationException(
+                        "The Addressables group '" + ClientAddressablesLayout.WorldScenesGroup
+                        + "' is missing. Run " + ClientAddressablesLayout.ApplyMenuPath + ".");
+                }
+
+                var plans = PlanWorldBakes(
                     catalog.entries,
-                    EditorBuildSettings.scenes
-                        .Where(scene => scene.enabled)
-                        .Select(scene => scene.path));
+                    scenesGroup.entries.Select(entry => entry.AssetPath));
                 foreach (var plan in plans)
                 {
                     EditorSceneManager.OpenScene(plan.ScenePath, OpenSceneMode.Single);
@@ -103,11 +113,6 @@ namespace Mmorpg.Client.Editor
             }
             finally
             {
-                if (catalogAsset != null)
-                {
-                    Resources.UnloadAsset(catalogAsset);
-                }
-
                 if (originalSetup.Length > 0)
                 {
                     EditorSceneManager.RestoreSceneManagerSetup(originalSetup);
@@ -115,13 +120,13 @@ namespace Mmorpg.Client.Editor
             }
         }
 
-        // Groups catalog Worlds by their Build Profiles scene, so a reusable scene shared
+        // Groups catalog Worlds by their Addressables World scene, so a reusable scene shared
         // by several Worlds is opened once and baked once for each of them.
-        public static IReadOnlyList<WorldSceneBakePlan> PlanBuildWorldBakes(
+        public static IReadOnlyList<WorldSceneBakePlan> PlanWorldBakes(
             IEnumerable<WorldSceneCatalogEntry> entries,
-            IEnumerable<string> enabledScenePaths)
+            IEnumerable<string> worldScenePaths)
         {
-            var buildScenes = enabledScenePaths
+            var worldScenes = worldScenePaths
                 .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.Ordinal)
                 .ToDictionary(
                     group => group.Key,
@@ -131,12 +136,12 @@ namespace Mmorpg.Client.Editor
             var plansByScene = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             foreach (var entry in entries)
             {
-                if (!buildScenes.TryGetValue(entry.sceneName, out var scenePaths)
+                if (!worldScenes.TryGetValue(entry.sceneName, out var scenePaths)
                     || scenePaths.Length != 1)
                 {
                     throw new InvalidOperationException(
-                        "World '" + entry.worldId + "' must map to exactly one enabled "
-                        + "Build Profiles scene named '" + entry.sceneName + "'.");
+                        "World '" + entry.worldId + "' must map to exactly one Addressables "
+                        + "World scene named '" + entry.sceneName + "'.");
                 }
 
                 if (!plansByScene.TryGetValue(scenePaths[0], out var worldIds))
@@ -302,7 +307,7 @@ namespace Mmorpg.Client.Editor
             var expectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var chunk in result.Chunks)
             {
-                var fileName = chunk.ManifestEntry.ResourceName + ".bytes";
+                var fileName = chunk.ManifestEntry.ResourceName + CollisionDataFormat.ChunkFileExtension;
                 expectedFiles.Add(fileName);
                 writes.Add(new KeyValuePair<string, byte[]>(
                     Path.Combine(outputDirectory, fileName),
@@ -317,7 +322,7 @@ namespace Mmorpg.Client.Editor
                 Encoding.UTF8.GetBytes(authoringJson)));
             ReplaceFilesAtomically(writes);
 
-            foreach (var stalePath in Directory.EnumerateFiles(outputDirectory, "chunk_*.bytes"))
+            foreach (var stalePath in Directory.EnumerateFiles(outputDirectory, "chunk_*" + CollisionDataFormat.ChunkFileExtension))
             {
                 if (!expectedFiles.Contains(Path.GetFileName(stalePath)))
                 {

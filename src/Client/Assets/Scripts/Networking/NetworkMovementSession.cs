@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Mmorpg.Client.Collision;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 

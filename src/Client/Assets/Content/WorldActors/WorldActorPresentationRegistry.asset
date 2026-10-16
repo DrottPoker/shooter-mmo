@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15edff9c450098d48adee9b38602ab2e, type: 3}
+  m_Name: WorldActorPresentationRegistry
+  m_EditorClassIdentifier: Mmorpg.Client::Mmorpg.Client.WorldActors.WorldActorPresentationRegistry
+  entries:
+  - presentationArchetypeId: npc.city_services
+    prefab:
+      m_AssetGUID: c46e60fc0b8a16047b8e1e03d1447966
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0
+  - presentationArchetypeId: npc.city_guard
+    prefab:
+      m_AssetGUID: 42f808a8a2685ee4f8513329b6d4c6da
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0
+  - presentationArchetypeId: mob.feral_wolf
+    prefab:
+      m_AssetGUID: 95f476e79fac8fa4488e7abe25bb3c13
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0
+  - presentationArchetypeId: mob.feral_alpha
+    prefab:
+      m_AssetGUID: 0619c88532b54304ba14b7b239e46620
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0

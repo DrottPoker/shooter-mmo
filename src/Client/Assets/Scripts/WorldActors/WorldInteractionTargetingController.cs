@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Mmorpg.Client.Diagnostics;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Actors;
@@ -35,14 +35,23 @@ namespace Mmorpg.Client.WorldActors
             new List<WorldInteractionTargetCandidate>();
         private LocalPlayerController localPlayer;
         private WorldInteractionClientController interactionController;
+        private WorldActorClientController actorController;
 
         public event Action Changed;
 
         public IWorldInteractionTarget CurrentTarget { get; private set; }
 
+        // Called by the composition root before the component is activated.
+        public void Initialize(
+            WorldInteractionClientController worldInteraction,
+            WorldActorClientController worldActors)
+        {
+            interactionController = worldInteraction;
+            actorController = worldActors;
+        }
+
         private void Start()
         {
-            interactionController = ClientBootstrap.WorldInteractionController;
             FindLocalPlayer();
         }
 
@@ -77,9 +86,8 @@ namespace Mmorpg.Client.WorldActors
             if (CurrentTarget.TargetKind
                 == RealtimeWorldInteractionTargetKind.WorldActor)
             {
-                var actors = ClientBootstrap.WorldActorController;
-                if (actors != null
-                    && actors.State.TryGet(CurrentTarget.TargetEntityId, out var actor))
+                if (actorController != null
+                    && actorController.State.TryGet(CurrentTarget.TargetEntityId, out var actor))
                 {
                     SubmitActorOpen(actor);
                 }

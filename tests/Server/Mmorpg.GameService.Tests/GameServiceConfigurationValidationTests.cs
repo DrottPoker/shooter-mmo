@@ -67,6 +67,24 @@ public sealed class GameServiceConfigurationValidationTests
         Assert.Equal("Mmorpg.GameService", postgres.ApplicationName);
     }
 
+    [Fact]
+    public void PlacementMetricsIntervalIsOptionalAndBounded()
+    {
+        var defaults = GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(AuthSettings(includeSecrets: true))
+            .Build());
+        var settings = AuthSettings(includeSecrets: true);
+        settings["Simulation:MetricsIntervalSeconds"] = "0";
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+                .AddInMemoryCollection(settings)
+                .Build()));
+
+        Assert.Equal(TimeSpan.FromSeconds(15), defaults.Placement.MetricsInterval);
+        Assert.Contains("Simulation:MetricsIntervalSeconds must be an integer from 1 to 3600", exception.Message);
+    }
+
     [Theory]
     [InlineData("0", "positive integer")]
     [InlineData("1001", "must not exceed")]
