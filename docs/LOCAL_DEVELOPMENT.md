@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Requirements
 
@@ -159,24 +159,38 @@ The baseline scale is ammunition `1`, pistol `10`, and base character capacity
 The canonical content workflow is available in Unity at
 `MMORPG > Tools > Item Catalog`:
 
-1. Use the searchable definition list and category filter to select an item.
+1. Search the definition list by id, name, category, or tag, and narrow it with
+   the category, tag, and `Problems` filters. Hold Ctrl or Shift to select
+   several definitions.
 2. Edit gameplay fields and the separate client presentation fields in the same
-   window. Baked definition ids are read-only and cannot be deleted or reused.
-3. Optionally choose an icon Sprite below an `Assets/Resources` folder, with one
+   window. With several definitions selected, category, weight, stack size,
+   tags, equipment compatibility, eligibility, and policies change for all of
+   them at once, and a field whose values differ shows a dash. Id, display name,
+   Bag layout, and presentation are edited one definition at a time. Baked
+   definition ids are read-only and cannot be deleted or reused.
+3. The shared compiler checks the catalog inside Unity while you edit. A field
+   with a problem turns red, the list marks its definition, and choosing a
+   problem in the panel below selects the definition and its field.
+4. Undo and redo with Ctrl+Z and Ctrl+Y or the Edit menu; every edit is one step
+   in `Edit > Undo History`. Unsaved edits survive script reloads, and closing
+   the window asks whether to save them.
+5. Optionally choose an icon Sprite below an `Assets/Resources` folder, with one
    Sprite per asset file. The tool stores its extension-free Resources path, not
    the image data, in the presentation JSON. An item may remain iconless until
    approved client art is available.
-4. Select `Validate` to run the strict shared compiler without writing files.
-5. Select `Save` to write `catalog.json`, one file per definition, and the
+6. Select `Validate` to run the strict command-line compiler without writing
+   files.
+7. Select `Save` to write `catalog.json`, one file per definition, and the
    presentation content without replacing the runtime gameplay catalog. The
    files of removed draft definitions are deleted.
-6. Select `Save And Bake` to validate and atomically replace authoring, runtime,
+8. Select `Save And Bake` to validate and atomically replace authoring, runtime,
    and presentation JSON. Structural changes require explicit confirmation.
 
 The gameplay source remains `content/items`. The Editor-only assembly does not
-duplicate its rules. It invokes `tools/ItemCatalogCompiler`, which remains
-the validation and structural-fingerprint authority used by backend development
-and CI.
+duplicate its rules: live checks call the shared compiler in `Mmorpg.WorldData`,
+and `Validate` and both save actions invoke `tools/ItemCatalogCompiler`, which
+remains the validation and structural-fingerprint authority used by backend
+development and CI.
 
 Client-only presentation content is bundled at
 `src/Client/Assets/Resources/Items/Presentation/item-presentation-catalog.json`.

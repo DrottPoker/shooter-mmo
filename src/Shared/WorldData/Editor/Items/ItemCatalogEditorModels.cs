@@ -555,6 +555,14 @@ namespace Mmorpg.WorldData.Editor.Items
         }
     }
 
+    // The editable part of a workspace: what undo and redo restore.
+    [Serializable]
+    public sealed class ItemCatalogEditorSnapshot
+    {
+        public ItemCatalogEditorDocument authoring;
+        public ItemPresentationCatalogDocument presentation;
+    }
+
     public sealed class ItemCatalogEditorWorkspace
     {
         private readonly HashSet<string> bakedDefinitionIds;
@@ -600,6 +608,35 @@ namespace Mmorpg.WorldData.Editor.Items
             {
                 bakedDefinitionIds.Add(definition.id);
             }
+        }
+
+        // Replaces the editable content with a snapshot taken earlier, for undo and redo.
+        public void RestoreContent(
+            ItemCatalogEditorDocument authoring,
+            ItemPresentationCatalogDocument presentation)
+        {
+            if (authoring == null)
+            {
+                throw new ArgumentNullException(nameof(authoring));
+            }
+
+            if (presentation == null)
+            {
+                throw new ArgumentNullException(nameof(presentation));
+            }
+
+            Authoring.formatVersion = authoring.formatVersion;
+            Authoring.catalogId = authoring.catalogId;
+            Authoring.baseSecureContainerTierId = authoring.baseSecureContainerTierId;
+            Authoring.categories = authoring.categories;
+            Authoring.tags = authoring.tags;
+            Authoring.equipmentSlots = authoring.equipmentSlots;
+            Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogEditorDefinition>();
+            Authoring.secureContainerTiers = authoring.secureContainerTiers;
+            Presentation.formatVersion = presentation.formatVersion;
+            Presentation.sourceCatalogRevision = presentation.sourceCatalogRevision;
+            Presentation.presentationRevision = presentation.presentationRevision;
+            Presentation.entries = presentation.entries ?? Array.Empty<ItemPresentationEntry>();
         }
 
         public bool IsDefinitionIdLocked(string definitionId)
