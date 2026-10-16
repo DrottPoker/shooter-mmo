@@ -12,10 +12,11 @@ only adds the workflow notes that a coding agent needs to verify its own work.
   Checks. Run it from the repository root. The build must stay at zero warnings.
 - Integration tests: start `docker-compose.test.yml` and set
   `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` from `.env`, as shown
-  in `README.md`. A full run takes about eight minutes, so run it in the
-  background. Never print `.env` values. Every test project uses its own
-  database `<base>_<project>`, so test projects run in parallel; never start two
-  runs of the same test project at once.
+  in `README.md`. A full run takes about one minute with `Host=127.0.0.1`;
+  `Host=localhost` makes every new connection on Windows wait about two seconds.
+  Never print `.env` values. Every test gets its own database below
+  `<base>_<project>`, so test projects run in parallel; never start two runs of
+  the same test project at once.
 - Focused runs: `dotnet test tests/Server/<Project> --configuration Release` for
   one test project, or `dotnet test Mmorpg.slnx --configuration Release --filter
   "Category!=Integration"` for a fast loop without containers.
