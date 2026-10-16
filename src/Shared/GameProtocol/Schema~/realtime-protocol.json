@@ -1,0 +1,1962 @@
+{
+  "$schema": "./realtime-protocol.schema.json",
+  "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
+  "protocol": {
+    "namespace": "Mmorpg.GameProtocol",
+    "version": 14,
+    "magic": "0x4F4D4D53",
+    "connectionKey": "Mmorpg.Realtime.v8",
+    "maximumPacketSize": 1200,
+    "maximumUnreliablePacketSize": 1023,
+    "channelCount": 2,
+    "channels": [
+      { "name": "ControlChannel", "id": 0, "description": "Reliable ordered control messages in both directions." },
+      { "name": "MovementInputChannel", "id": 1, "description": "Sequenced movement input from the client." },
+      {
+        "name": "UnreliableReceiveChannel",
+        "id": 0,
+        "description": "The channel on which the client receives unreliable snapshots."
+      }
+    ]
+  },
+  "limits": [
+    {
+      "name": "MaximumIdentifierLength",
+      "value": 128,
+      "visibility": "public",
+      "description": "Characters in an identifier such as a session, account, World, or definition id."
+    },
+    {
+      "name": "MaximumNameLength",
+      "value": 128,
+      "visibility": "public",
+      "description": "Characters in a display name."
+    },
+    {
+      "name": "MaximumEquipmentSlotIdLength",
+      "value": 64,
+      "visibility": "public",
+      "description": "Characters in a canonical equipment slot id."
+    },
+    {
+      "name": "MaximumSlotTagLength",
+      "value": 64,
+      "visibility": "public",
+      "description": "Characters in one accepted slot tag."
+    },
+    { "name": "MaximumSlotTags", "value": 16, "visibility": "public", "description": "Accepted tags on one slot." },
+    {
+      "name": "MaximumDefinitionIdLength",
+      "value": 128,
+      "visibility": "public",
+      "description": "Characters in an item definition id."
+    },
+    {
+      "name": "MaximumInputBatchSize",
+      "value": 4,
+      "visibility": "protocol",
+      "description": "Movement inputs in one batch."
+    },
+    {
+      "name": "MaximumSnapshotEntitiesPerChunk",
+      "value": 24,
+      "visibility": "protocol",
+      "description": "Entity records in one simulation snapshot chunk."
+    },
+    {
+      "name": "MaximumTimestampLength",
+      "value": 64,
+      "visibility": "private",
+      "description": "Characters in a round-trip timestamp."
+    },
+    {
+      "name": "MaximumErrorCodeLength",
+      "value": 64,
+      "visibility": "private",
+      "description": "Characters in an error, closure, or despawn reason code."
+    },
+    {
+      "name": "MaximumErrorMessageLength",
+      "value": 512,
+      "visibility": "private",
+      "description": "Characters in a human-readable error or closure message."
+    },
+    {
+      "name": "MaximumJoinTicketLength",
+      "value": 1024,
+      "visibility": "private",
+      "description": "Characters in a join ticket."
+    },
+    {
+      "name": "MaximumItemOperationItems",
+      "value": 24,
+      "visibility": "private",
+      "description": "Item expectations in one recovery claim."
+    },
+    {
+      "name": "MaximumItemResultItemRevisions",
+      "value": 32,
+      "visibility": "private",
+      "description": "Committed item revisions in one item operation result."
+    },
+    {
+      "name": "MaximumItemResultContainerRevisions",
+      "value": 8,
+      "visibility": "private",
+      "description": "Committed container revisions in one item operation result."
+    },
+    {
+      "name": "MaximumItemResultRecoveryDeliveries",
+      "value": 8,
+      "visibility": "private",
+      "description": "Recovery deliveries in one item operation result."
+    },
+    {
+      "name": "MaximumWorldActorCapabilities",
+      "value": 16,
+      "visibility": "private",
+      "description": "Capabilities in one opened world interaction."
+    },
+    {
+      "name": "MaximumWorldActorCapabilityIdLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in a world actor capability id."
+    },
+    {
+      "name": "MaximumWorldActorCapabilityNameLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in a world actor capability display name."
+    },
+    {
+      "name": "MaximumWorldInteractionMessageLength",
+      "value": 512,
+      "visibility": "private",
+      "description": "Characters in the optional message of a world interaction result."
+    },
+    {
+      "name": "MaximumCorpsePresencePerChunk",
+      "value": 6,
+      "visibility": "private",
+      "description": "Corpses in one presence snapshot chunk."
+    },
+    {
+      "name": "MaximumCorpseViewSlotsPerChunk",
+      "value": 4,
+      "visibility": "private",
+      "description": "Slots in one corpse view state chunk."
+    },
+    {
+      "name": "MaximumCorpseChunkCount",
+      "value": 256,
+      "visibility": "private",
+      "description": "Chunks in one corpse presence snapshot or corpse view update."
+    },
+    {
+      "name": "MaximumCorpseSourceNameLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in the display name of the corpse's source."
+    },
+    {
+      "name": "MaximumCorpsePresentationKeyLength",
+      "value": 128,
+      "visibility": "private",
+      "description": "Characters in a corpse presentation key."
+    },
+    {
+      "name": "MaximumCorpseSectionKindLength",
+      "value": 32,
+      "visibility": "private",
+      "description": "Characters in a corpse view section kind."
+    },
+    {
+      "name": "MaximumCorpseSlotKindLength",
+      "value": 32,
+      "visibility": "private",
+      "description": "Characters in a corpse slot kind."
+    },
+    {
+      "name": "MaximumCorpseSectionSlotCapacity",
+      "value": 512,
+      "visibility": "private",
+      "description": "Slots in one corpse view section."
+    }
+  ],
+  "enums": [
+    {
+      "name": "MovementButtons",
+      "family": "Movement",
+      "flags": true,
+      "description": "Movement buttons held during one input tick.",
+      "values": [
+        { "name": "None", "value": 0 },
+        { "name": "Sprint", "value": 1 },
+        { "name": "Jump", "value": 2 },
+        { "name": "Aim", "value": 4 }
+      ]
+    },
+    {
+      "name": "EntityKind",
+      "family": "Replication",
+      "description": "The kind of a replicated simulation entity.",
+      "values": [ { "name": "Player", "value": 1 } ]
+    },
+    {
+      "name": "ItemOperationKind",
+      "family": "Items",
+      "description": "An in-world item operation.",
+      "values": [
+        { "name": "Relocate", "value": 1 },
+        { "name": "Equip", "value": 2 },
+        { "name": "Unequip", "value": 3 },
+        { "name": "SplitStack", "value": 4 },
+        { "name": "MergeStacks", "value": 5 },
+        { "name": "Destroy", "value": 6 },
+        { "name": "ClaimRecoveryDelivery", "value": 7 },
+        { "name": "SwapContainerItems", "value": 8 }
+      ]
+    },
+    {
+      "name": "CorpseInteractionKind",
+      "family": "Corpses",
+      "description": "An operation on an open corpse.",
+      "values": [
+        { "name": "Open", "value": 1 },
+        { "name": "Close", "value": 2 },
+        { "name": "Refresh", "value": 3 },
+        { "name": "LootItem", "value": 4 },
+        { "name": "LootPartialStack", "value": 5 },
+        { "name": "SwapBag", "value": 6 },
+        { "name": "DepositItem", "value": 7 },
+        { "name": "DepositPartialStack", "value": 8 },
+        { "name": "MoveItem", "value": 9 },
+        { "name": "MovePartialStack", "value": 10 }
+      ]
+    },
+    {
+      "name": "CorpseViewUpdateKind",
+      "family": "Corpses",
+      "description": "Whether a corpse view chunk replaces the view or applies a delta.",
+      "values": [ { "name": "Snapshot", "value": 1 }, { "name": "Delta", "value": 2 } ]
+    },
+    {
+      "name": "WorldActorKind",
+      "family": "WorldActors",
+      "description": "The kind of a world actor.",
+      "values": [ { "name": "Npc", "value": 1 }, { "name": "Mob", "value": 2 } ]
+    },
+    {
+      "name": "WorldActorDisposition",
+      "family": "WorldActors",
+      "description": "How a world actor treats players.",
+      "values": [ { "name": "Friendly", "value": 1 }, { "name": "Neutral", "value": 2 }, { "name": "Hostile", "value": 3 } ]
+    },
+    {
+      "name": "WorldActorActivityTier",
+      "family": "WorldActors",
+      "description": "How often the worker updates a world actor.",
+      "values": [ { "name": "EventDriven", "value": 1 }, { "name": "Dormant", "value": 2 }, { "name": "Active", "value": 3 } ]
+    },
+    {
+      "name": "WorldInteractionTargetKind",
+      "family": "WorldActors",
+      "description": "What a world interaction targets.",
+      "values": [ { "name": "WorldActor", "value": 1 }, { "name": "Corpse", "value": 2 } ]
+    },
+    {
+      "name": "WorldInteractionOperationKind",
+      "family": "WorldActors",
+      "description": "A world interaction operation.",
+      "values": [
+        { "name": "Open", "value": 1 },
+        { "name": "Close", "value": 2 },
+        { "name": "CapabilityAction", "value": 3 }
+      ]
+    },
+    {
+      "name": "WorldActorCapabilityKind",
+      "family": "WorldActors",
+      "description": "A service that a world actor offers.",
+      "values": [
+        { "name": "Dialogue", "value": 1 },
+        { "name": "Vendor", "value": 2 },
+        { "name": "QuestOffer", "value": 3 },
+        { "name": "QuestTurnIn", "value": 4 },
+        { "name": "Crafting", "value": 5 },
+        { "name": "Insurance", "value": 6 },
+        { "name": "Trainer", "value": 7 },
+        { "name": "Bank", "value": 8 },
+        { "name": "RecoveryStorage", "value": 9 }
+      ]
+    },
+    {
+      "name": "NpcLifecycleActionKind",
+      "family": "WorldActors",
+      "description": "An item lifecycle action that an NPC capability performs.",
+      "values": [
+        { "name": "None", "value": 0 },
+        { "name": "ApplyInsurance", "value": 1 },
+        { "name": "RemoveInsurance", "value": 2 },
+        { "name": "AcceptQuest", "value": 3 },
+        { "name": "AbandonQuest", "value": 4 }
+      ]
+    }
+  ],
+  "structs": [
+    {
+      "name": "PlayerState",
+      "family": "Movement",
+      "description": "The authoritative movement state of one player.",
+      "fields": [
+        { "name": "PositionX", "type": "f32", "description": "World position on the x axis in meters." },
+        { "name": "PositionY", "type": "f32", "description": "World position on the y axis in meters." },
+        { "name": "PositionZ", "type": "f32", "description": "World position on the z axis in meters." },
+        { "name": "VelocityX", "type": "f32", "description": "Velocity on the x axis in meters per second." },
+        { "name": "VelocityY", "type": "f32", "description": "Velocity on the y axis in meters per second." },
+        { "name": "VelocityZ", "type": "f32", "description": "Velocity on the z axis in meters per second." },
+        { "name": "YawDegrees", "type": "f32", "description": "Facing around the vertical axis in degrees." },
+        {
+          "name": "Flags",
+          "type": "bits8",
+          "description": "Movement state bits.",
+          "bits": [
+            { "name": "IsGrounded", "description": "The player stands on walkable ground." },
+            { "name": "IsSprinting", "description": "The player moves at sprint speed." }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MovementSettings",
+      "family": "Movement",
+      "rules": true,
+      "description": "Movement and collision settings that client prediction shares with the worker.",
+      "fields": [
+        {
+          "name": "TickRateHz",
+          "type": "u16",
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Simulation ticks per second."
+        },
+        {
+          "name": "SnapshotRateHz",
+          "type": "u16",
+          "minimum": 1,
+          "description": "Snapshots per second; divides the tick rate."
+        },
+        {
+          "name": "WalkSpeed",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Walking speed in meters per second."
+        },
+        {
+          "name": "SprintSpeed",
+          "type": "f32",
+          "description": "Sprinting speed in meters per second; at least the walking speed."
+        },
+        {
+          "name": "RotationSpeedDegrees",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Turn rate in degrees per second."
+        },
+        {
+          "name": "Gravity",
+          "type": "f32",
+          "exclusiveMaximum": 0,
+          "description": "Vertical acceleration in meters per second squared."
+        },
+        {
+          "name": "MaximumFallSpeed",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Terminal fall speed in meters per second."
+        },
+        {
+          "name": "JumpVelocity",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Upward velocity of a jump in meters per second."
+        },
+        {
+          "name": "GroundedVerticalVelocity",
+          "type": "f32",
+          "maximum": 0,
+          "description": "Vertical velocity that keeps a grounded player on the ground."
+        },
+        { "name": "GroundHeight", "type": "f32", "description": "Height of the fallback ground plane in meters." },
+        {
+          "name": "MinimumX",
+          "type": "f32",
+          "description": "Western world bound in meters; below the eastern bound."
+        },
+        { "name": "MaximumX", "type": "f32", "description": "Eastern world bound in meters." },
+        {
+          "name": "MinimumZ",
+          "type": "f32",
+          "description": "Southern world bound in meters; below the northern bound."
+        },
+        { "name": "MaximumZ", "type": "f32", "description": "Northern world bound in meters." },
+        {
+          "name": "CharacterRadius",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Capsule radius in meters."
+        },
+        {
+          "name": "CharacterHeight",
+          "type": "f32",
+          "description": "Capsule height in meters; at least twice the radius."
+        },
+        {
+          "name": "StepHeight",
+          "type": "f32",
+          "minimum": 0,
+          "description": "Highest step in meters; below the capsule height."
+        },
+        {
+          "name": "MaximumSlopeDegrees",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 89,
+          "description": "Steepest walkable slope in degrees."
+        },
+        {
+          "name": "GroundSnapDistance",
+          "type": "f32",
+          "minimum": 0,
+          "description": "Distance in meters within which a player snaps to the ground."
+        },
+        {
+          "name": "MaximumSubstepDistance",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "Longest collision substep in meters; at most the radius."
+        },
+        {
+          "name": "MaximumPenetrationIterations",
+          "type": "u8",
+          "minimum": 1,
+          "maximum": 16,
+          "description": "Collision depenetration passes per substep."
+        }
+      ]
+    },
+    {
+      "name": "MovementInput",
+      "family": "Movement",
+      "rules": true,
+      "description": "One tick of movement input. The move vector is at most one unit long.",
+      "fields": [
+        { "name": "InputSequence", "type": "u32", "description": "Increases by one with every input." },
+        { "name": "ClientTick", "type": "u32", "description": "The client simulation tick of the input." },
+        { "name": "MoveX", "type": "f32", "description": "Sideways axis of the move vector." },
+        { "name": "MoveY", "type": "f32", "description": "Forward axis of the move vector." },
+        { "name": "CameraYawDegrees", "type": "f32", "description": "Camera facing in degrees." },
+        { "name": "Buttons", "type": "MovementButtons", "description": "The held movement buttons." }
+      ]
+    },
+    {
+      "name": "EntitySnapshot",
+      "family": "Replication",
+      "description": "The state of one remote entity in a simulation snapshot.",
+      "sizeConstant": "SimulationSnapshotEntitySize",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
+        {
+          "name": "LastProcessedInputSequence",
+          "type": "u32",
+          "description": "The newest input sequence the worker applied for the entity."
+        },
+        { "name": "State", "type": "PlayerState", "description": "The entity's authoritative movement state." }
+      ]
+    },
+    {
+      "name": "Error",
+      "family": "Session",
+      "description": "A structured error: a stable code for programs and a message for people.",
+      "fields": [
+        {
+          "name": "Code",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "A stable, machine-readable code."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumErrorMessageLength",
+          "description": "A human-readable explanation."
+        }
+      ]
+    },
+    {
+      "name": "CarryState",
+      "family": "Items",
+      "description": "The committed carry weight of a character. Weight above the capacity is valid: death can leave an involuntary overflow.",
+      "fields": [
+        {
+          "name": "ItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The committed item-state revision of the character."
+        },
+        { "name": "CarriedWeight", "type": "i64", "minimum": 0, "description": "The carried weight in grams." },
+        { "name": "CarryCapacity", "type": "i64", "minimum": 1, "description": "The carry capacity in grams." }
+      ]
+    },
+    {
+      "name": "ItemRevisionExpectation",
+      "family": "Items",
+      "description": "An item and the revision the client expects it to have.",
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The expected item revision." }
+      ]
+    },
+    {
+      "name": "ItemRevision",
+      "family": "Items",
+      "description": "An item and the revision an operation committed.",
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The committed item revision." }
+      ]
+    },
+    {
+      "name": "ContainerRevision",
+      "family": "Items",
+      "description": "A container and the revision an operation committed.",
+      "fields": [
+        { "name": "ContainerId", "type": "guid", "nonEmpty": true, "description": "The container." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The committed container revision." }
+      ]
+    },
+    {
+      "name": "WorldActorCapability",
+      "family": "WorldActors",
+      "description": "A service that a world actor offers in an open interaction.",
+      "fields": [
+        {
+          "name": "Id",
+          "type": "string",
+          "maxLength": "MaximumWorldActorCapabilityIdLength",
+          "description": "The capability."
+        },
+        { "name": "Kind", "type": "WorldActorCapabilityKind", "description": "The kind of service." },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumWorldActorCapabilityNameLength",
+          "description": "The name the client shows."
+        },
+        {
+          "name": "IsAvailable",
+          "type": "bool",
+          "description": "Whether the character can use the capability now."
+        },
+        {
+          "name": "Revision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The capability revision an action must expect."
+        }
+      ]
+    },
+    {
+      "name": "CorpsePresence",
+      "family": "Corpses",
+      "description": "A corpse near the character, as the world shows it before it is opened.",
+      "fields": [
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
+        { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
+        { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        {
+          "name": "ExpiresAtUnixMilliseconds",
+          "type": "i64",
+          "minimum": 1,
+          "description": "When the corpse decays."
+        },
+        { "name": "IsEmpty", "type": "bool", "description": "Whether the corpse holds no items." },
+        {
+          "name": "SourceDisplayName",
+          "type": "string",
+          "maxLength": "MaximumCorpseSourceNameLength",
+          "description": "The name of whoever left the corpse."
+        },
+        {
+          "name": "PresentationKey",
+          "type": "string",
+          "maxLength": "MaximumCorpsePresentationKeyLength",
+          "description": "The presentation the client renders."
+        }
+      ]
+    },
+    {
+      "name": "CorpseItem",
+      "family": "Corpses",
+      "description": "An item in a corpse slot.",
+      "rules": true,
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        {
+          "name": "DefinitionId",
+          "type": "string",
+          "maxLength": "MaximumDefinitionIdLength",
+          "description": "The item definition."
+        },
+        { "name": "Quantity", "type": "i32", "minimum": 1, "description": "The stack quantity." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The item revision." },
+        { "name": "BagContentsContainerId", "type": "guid", "description": "The contents of a bag item, or empty." },
+        {
+          "name": "BagContentsRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The bag contents revision, or 0 without contents."
+        }
+      ]
+    },
+    {
+      "name": "CorpseSlot",
+      "family": "Corpses",
+      "description": "One slot of a corpse section and the item in it.",
+      "fields": [
+        { "name": "SlotIndex", "type": "i32", "minimum": 0, "description": "The slot within its section." },
+        {
+          "name": "SlotKind",
+          "type": "string",
+          "maxLength": "MaximumCorpseSlotKindLength",
+          "description": "The kind of slot."
+        },
+        {
+          "name": "AcceptedTags",
+          "type": "array",
+          "items": { "type": "string", "maxLength": "MaximumSlotTagLength" },
+          "maxCount": "MaximumSlotTags",
+          "distinct": true,
+          "nullAsEmpty": true,
+          "description": "The item tags the slot accepts."
+        },
+        {
+          "name": "EquipmentSlotId",
+          "type": "string",
+          "maxLength": "MaximumEquipmentSlotIdLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The equipment slot, in the equipment section only."
+        },
+        { "name": "Item", "type": "CorpseItem", "optional": true, "description": "The item in the slot, or null." }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "name": "JoinRequest",
+      "id": 1,
+      "family": "Session",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Asks to join a simulation session with a join ticket.",
+      "api": "unwrap",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "JoinTicket",
+          "type": "string",
+          "maxLength": "MaximumJoinTicketLength",
+          "blank": "acceptOnDecode",
+          "description": "The join ticket that GameService issued for this session."
+        }
+      ]
+    },
+    {
+      "name": "JoinAccepted",
+      "id": 2,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Accepts a join and carries the session, movement settings, and initial state.",
+      "parameter": "session",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "SimulationSessionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The simulation session."
+        },
+        {
+          "name": "AccountId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The account that joined."
+        },
+        {
+          "name": "CharacterId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The character that joined."
+        },
+        {
+          "name": "CharacterName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "blank": "acceptOnDecode",
+          "description": "The display name of the character."
+        },
+        {
+          "name": "ShardId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The shard that hosts the session."
+        },
+        {
+          "name": "WorldId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The world the character is in."
+        },
+        {
+          "name": "ControlledEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The entity the client controls."
+        },
+        {
+          "name": "SimulationRevision",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The simulation content revision of the worker."
+        },
+        {
+          "name": "CollisionRevision",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The collision content revision of the worker."
+        },
+        {
+          "name": "JoinedAt",
+          "type": "string",
+          "maxLength": "MaximumTimestampLength",
+          "blank": "acceptOnDecode",
+          "description": "When the session started, as an ISO 8601 timestamp."
+        },
+        {
+          "name": "SessionExpiresAt",
+          "type": "string",
+          "maxLength": "MaximumTimestampLength",
+          "blank": "acceptOnDecode",
+          "description": "When the session expires, as an ISO 8601 timestamp."
+        },
+        { "name": "IsReconnect", "type": "bool", "description": "Whether this join resumed an earlier session." },
+        { "name": "CarryState", "type": "CarryState", "description": "The committed carry state of the character." },
+        {
+          "name": "MovementSettings",
+          "type": "MovementSettings",
+          "description": "The movement settings the client must predict with."
+        },
+        {
+          "name": "InitialPlayerState",
+          "type": "PlayerState",
+          "description": "The authoritative state of the controlled entity at join."
+        }
+      ]
+    },
+    {
+      "name": "JoinRejected",
+      "id": 3,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Rejects a join with a structured error.",
+      "api": "unwrap",
+      "encodeParameters": "expanded",
+      "runtimeSizeCheck": true,
+      "fields": [ { "name": "Rejection", "type": "Error", "blank": "acceptOnDecode", "description": "Why the join failed." } ]
+    },
+    {
+      "name": "LeaveRequest",
+      "id": 4,
+      "family": "Session",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Asks to leave the active simulation session.",
+      "api": "unwrap",
+      "fields": [
+        {
+          "name": "SimulationSessionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "blank": "acceptOnDecode",
+          "description": "The simulation session to leave."
+        }
+      ]
+    },
+    {
+      "name": "LeaveAccepted",
+      "id": 5,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Confirms a leave.",
+      "api": "empty"
+    },
+    {
+      "name": "LeaveRejected",
+      "id": 6,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Rejects a leave with a structured error.",
+      "api": "unwrap",
+      "encodeParameters": "expanded",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "Rejection", "type": "Error", "blank": "acceptOnDecode", "description": "Why the leave failed." }
+      ]
+    },
+    {
+      "name": "ServerDisconnect",
+      "id": 7,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Tells the client why the worker ends the connection.",
+      "api": "unwrap",
+      "encodeParameters": "expanded",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "Reason",
+          "type": "Error",
+          "blank": "acceptOnDecode",
+          "description": "Why the worker ends the connection."
+        }
+      ]
+    },
+    {
+      "name": "MovementInputBatch",
+      "id": 8,
+      "family": "Movement",
+      "direction": "clientToServer",
+      "channel": "MovementInputChannel",
+      "delivery": "sequenced",
+      "description": "The newest movement inputs, oldest first.",
+      "api": "unwrap",
+      "fields": [
+        {
+          "name": "Inputs",
+          "type": "array",
+          "items": "MovementInput",
+          "minCount": 1,
+          "maxCount": "MaximumInputBatchSize",
+          "description": "The newest inputs, oldest first. Each input is sent in several batches."
+        }
+      ]
+    },
+    {
+      "name": "SimulationSnapshot",
+      "id": 9,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "UnreliableReceiveChannel",
+      "delivery": "unreliable",
+      "description": "One chunk of the remote entity states visible to the recipient.",
+      "parameter": "snapshot",
+      "emptySizeConstant": "SimulationSnapshotPacketHeaderSize",
+      "fields": [
+        { "name": "SnapshotSequence", "type": "u32", "description": "Increases with every snapshot frame." },
+        { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the states." },
+        {
+          "name": "ChunkIndex",
+          "type": "u16",
+          "lessThan": "ChunkCount",
+          "description": "The position of this chunk in its frame."
+        },
+        { "name": "ChunkCount", "type": "u16", "minimum": 1, "description": "The number of chunks in the frame." },
+        {
+          "name": "Entities",
+          "type": "array",
+          "items": "EntitySnapshot",
+          "minCount": 1,
+          "maxCount": "MaximumSnapshotEntitiesPerChunk",
+          "description": "The entity states in this chunk."
+        }
+      ]
+    },
+    {
+      "name": "EntitySpawn",
+      "id": 10,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "An entity entered the recipient's interest.",
+      "parameter": "spawn",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
+        { "name": "Kind", "type": "EntityKind", "description": "The kind of entity." },
+        {
+          "name": "PersistentId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "format": "guid",
+          "description": "The persistent id, such as the character id."
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "description": "The name shown for the entity."
+        },
+        {
+          "name": "ArchetypeId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The presentation archetype."
+        },
+        { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the initial state." },
+        {
+          "name": "InitialState",
+          "type": "PlayerState",
+          "description": "The movement state when the entity entered interest."
+        }
+      ]
+    },
+    {
+      "name": "EntityDespawn",
+      "id": 11,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "An entity left the recipient's interest.",
+      "parameter": "despawn",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
+        {
+          "name": "Reason",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "Why the entity left interest, as a code."
+        }
+      ]
+    },
+    {
+      "name": "CarryStateChanged",
+      "id": 12,
+      "family": "Items",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A newer committed carry state.",
+      "api": "unwrap",
+      "fields": [ { "name": "CarryState", "type": "CarryState", "description": "The newer committed carry state." } ]
+    },
+    {
+      "name": "ItemOperationIntent",
+      "id": 13,
+      "family": "Items",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Asks for one in-world item operation.",
+      "parameter": "intent",
+      "rules": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "Identifies the operation and its result."
+        },
+        { "name": "OperationKind", "type": "ItemOperationKind", "description": "The operation." },
+        {
+          "name": "ExpectedCharacterRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The character item-state revision the client saw."
+        }
+      ],
+      "variants": {
+        "discriminator": "OperationKind",
+        "fields": [
+          { "name": "ItemInstanceId", "type": "guid", "description": "The item the operation moves or changes." },
+          { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
+          { "name": "TargetItemInstanceId", "type": "guid", "description": "The second item of a merge or swap." },
+          {
+            "name": "ExpectedTargetItemRevision",
+            "type": "i64",
+            "description": "The second item's revision the client saw."
+          },
+          { "name": "DestinationContainerId", "type": "guid", "description": "The container the item moves into." },
+          {
+            "name": "DestinationSlotIndex",
+            "type": "i32",
+            "absent": -1,
+            "description": "The destination slot, or -1 for any free slot."
+          },
+          { "name": "Quantity", "type": "i32", "description": "The quantity that a split moves." },
+          {
+            "name": "EquipmentSlotId",
+            "type": "string",
+            "maxLength": "MaximumEquipmentSlotIdLength",
+            "description": "The canonical equipment slot that the item is equipped into."
+          },
+          {
+            "name": "RecoveryDeliveryId",
+            "type": "guid",
+            "description": "The Recovery delivery that a claim takes items from."
+          },
+          {
+            "name": "ExpectedRecoveryDeliveryRevision",
+            "type": "i64",
+            "description": "The delivery revision the client saw."
+          },
+          {
+            "name": "Items",
+            "type": "array",
+            "items": "ItemRevisionExpectation",
+            "minCount": 1,
+            "maxCount": "MaximumItemOperationItems",
+            "description": "The claimed items and their expected revisions."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [
+              { "kind": "Relocate", "factory": "CreateRelocate" },
+              { "kind": "Unequip", "factory": "CreateUnequip" }
+            ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "DestinationSlotIndex", "minimum": -1, "parameterDefault": -1 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "Equip", "factory": "CreateEquip" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "EquipmentSlotId" }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "SplitStack", "factory": "CreateSplitStack" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "Quantity", "minimum": 1 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "DestinationSlotIndex", "minimum": -1, "parameterDefault": -1 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "MergeStacks", "factory": "CreateMergeStacks" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "sourceItemInstanceId" },
+              { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedSourceItemRevision" },
+              { "field": "TargetItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedTargetItemRevision", "minimum": 0 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "SwapContainerItems", "factory": "CreateSwapContainerItems" } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "firstItemInstanceId" },
+              { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedFirstItemRevision" },
+              { "field": "TargetItemInstanceId", "nonEmpty": true, "parameter": "secondItemInstanceId" },
+              { "field": "ExpectedTargetItemRevision", "minimum": 0, "parameter": "expectedSecondItemRevision" }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "Destroy", "factory": "CreateDestroy" } ],
+            "fields": [ { "field": "ItemInstanceId", "nonEmpty": true }, { "field": "ExpectedItemRevision", "minimum": 0 } ]
+          },
+          {
+            "kinds": [ { "kind": "ClaimRecoveryDelivery", "factory": "CreateClaimRecoveryDelivery" } ],
+            "fields": [
+              { "field": "RecoveryDeliveryId", "nonEmpty": true },
+              { "field": "ExpectedRecoveryDeliveryRevision", "minimum": 0 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "Items" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemOperationResult",
+      "id": 14,
+      "family": "Items",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The committed or rejected outcome of an item operation.",
+      "parameter": "result",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The operation that this result answers."
+        },
+        { "name": "OperationKind", "type": "ItemOperationKind", "description": "The kind of the operation." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the operation committed." },
+        {
+          "name": "RequiresInventoryRefresh",
+          "type": "bool",
+          "description": "Whether the client must reload its inventory."
+        },
+        {
+          "name": "CarryState",
+          "type": "CarryState",
+          "description": "The committed carry state after the operation."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." },
+        {
+          "name": "ItemRevisions",
+          "type": "array",
+          "items": "ItemRevision",
+          "maxCount": "MaximumItemResultItemRevisions",
+          "description": "The committed item revisions; empty when the operation failed."
+        },
+        {
+          "name": "ContainerRevisions",
+          "type": "array",
+          "items": "ContainerRevision",
+          "maxCount": "MaximumItemResultContainerRevisions",
+          "description": "The committed container revisions; empty when the operation failed."
+        },
+        {
+          "name": "RecoveryDeliveryIds",
+          "type": "array",
+          "items": { "type": "guid", "nonEmpty": true },
+          "maxCount": "MaximumItemResultRecoveryDeliveries",
+          "description": "The Recovery deliveries the operation changed; empty when the operation failed."
+        }
+      ]
+    },
+    {
+      "name": "CorpsePresenceSnapshotChunk",
+      "id": 15,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "One chunk of the corpses near the recipient.",
+      "parameter": "chunk",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "SnapshotSequence", "type": "u32", "description": "The snapshot this chunk belongs to." },
+        {
+          "name": "ChunkIndex",
+          "type": "u16",
+          "lessThan": "ChunkCount",
+          "description": "The position of this chunk in the snapshot."
+        },
+        {
+          "name": "ChunkCount",
+          "type": "u16",
+          "minimum": 1,
+          "maximum": "MaximumCorpseChunkCount",
+          "description": "The number of chunks in the snapshot."
+        },
+        {
+          "name": "Corpses",
+          "type": "array",
+          "items": "CorpsePresence",
+          "maxCount": "MaximumCorpsePresencePerChunk",
+          "distinctBy": "CorpseId",
+          "nullAsEmpty": true,
+          "description": "The corpses in this chunk."
+        }
+      ]
+    },
+    {
+      "name": "CorpseInteractionIntent",
+      "id": 16,
+      "family": "Corpses",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Asks for one operation on a corpse.",
+      "parameter": "intent",
+      "rules": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "Identifies the operation and its result."
+        },
+        { "name": "OperationKind", "type": "CorpseInteractionKind", "description": "The operation." },
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        {
+          "name": "ExpectedCorpseRevision",
+          "type": "i64",
+          "description": "The corpse revision the client saw, or -1 for Open."
+        }
+      ],
+      "variants": {
+        "discriminator": "OperationKind",
+        "fields": [
+          {
+            "name": "ItemInstanceId",
+            "type": "guid",
+            "description": "The item that moves, or the corpse bag of a bag swap."
+          },
+          { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
+          { "name": "Quantity", "type": "i32", "description": "The quantity a partial stack moves." },
+          { "name": "DestinationContainerId", "type": "guid", "description": "The container the item moves into." },
+          {
+            "name": "ExpectedDestinationContainerRevision",
+            "type": "i64",
+            "description": "The destination container revision the client saw."
+          },
+          { "name": "DestinationSlotIndex", "type": "i32", "absent": -1, "description": "The destination slot." },
+          {
+            "name": "TargetItemInstanceId",
+            "type": "guid",
+            "description": "The stack the item merges into, or empty."
+          },
+          {
+            "name": "ExpectedTargetItemRevision",
+            "type": "i64",
+            "description": "The target stack revision the client saw."
+          },
+          {
+            "name": "CorpseBagContentsContainerId",
+            "type": "guid",
+            "description": "The contents of the corpse bag."
+          },
+          {
+            "name": "ExpectedCorpseBagContentsRevision",
+            "type": "i64",
+            "description": "The corpse bag contents revision the client saw."
+          },
+          { "name": "PlayerBagItemInstanceId", "type": "guid", "description": "The bag of the character." },
+          {
+            "name": "ExpectedPlayerBagRevision",
+            "type": "i64",
+            "description": "The character bag revision the client saw."
+          },
+          {
+            "name": "PlayerBagContentsContainerId",
+            "type": "guid",
+            "description": "The contents of the character bag."
+          },
+          {
+            "name": "ExpectedPlayerBagContentsRevision",
+            "type": "i64",
+            "description": "The character bag contents revision the client saw."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "Open", "factory": "CreateOpen" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "fixed": -1 } ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "Close", "factory": "CreateClose" }, { "kind": "Refresh", "factory": "CreateRefresh" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": []
+          },
+          {
+            "kinds": [
+              { "kind": "LootItem", "factory": "CreateLootItem" },
+              { "kind": "DepositItem", "factory": "CreateDepositItem" },
+              { "kind": "MoveItem", "factory": "CreateMoveItem" }
+            ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "Quantity", "fixed": 0 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "ExpectedDestinationContainerRevision", "minimum": 0 },
+              { "field": "DestinationSlotIndex", "minimum": 0 },
+              {
+                "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
+                "presence": "TargetItemInstanceId"
+              }
+            ]
+          },
+          {
+            "kinds": [
+              { "kind": "LootPartialStack", "factory": "CreateLootPartialStack" },
+              { "kind": "DepositPartialStack", "factory": "CreateDepositPartialStack" },
+              { "kind": "MovePartialStack", "factory": "CreateMovePartialStack" }
+            ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "Quantity", "minimum": 1 },
+              { "field": "DestinationContainerId", "nonEmpty": true },
+              { "field": "ExpectedDestinationContainerRevision", "minimum": 0 },
+              { "field": "DestinationSlotIndex", "minimum": 0 },
+              {
+                "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
+                "presence": "TargetItemInstanceId"
+              }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "SwapBag", "factory": "CreateSwapBag" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "corpseBagItemInstanceId" },
+              { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedCorpseBagRevision" },
+              { "field": "CorpseBagContentsContainerId", "nonEmpty": true },
+              { "field": "ExpectedCorpseBagContentsRevision", "minimum": 0 },
+              { "field": "PlayerBagItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedPlayerBagRevision", "minimum": 0 },
+              { "field": "PlayerBagContentsContainerId", "nonEmpty": true },
+              { "field": "ExpectedPlayerBagContentsRevision", "minimum": 0 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "CorpseInteractionResult",
+      "id": 17,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The committed or rejected outcome of a corpse operation.",
+      "parameter": "result",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The operation this answers." },
+        { "name": "OperationKind", "type": "CorpseInteractionKind", "description": "The operation." },
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the operation committed." },
+        {
+          "name": "RequiresCorpseRefresh",
+          "type": "bool",
+          "description": "Whether the client must refresh the corpse view."
+        },
+        {
+          "name": "RequiresInventoryRefresh",
+          "type": "bool",
+          "description": "Whether the client must refresh its inventory."
+        },
+        {
+          "name": "CarryState",
+          "type": "CarryState",
+          "description": "The committed carry state after the operation."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." }
+      ]
+    },
+    {
+      "name": "CorpseViewStateChunk",
+      "id": 18,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "One chunk of the open corpse view.",
+      "parameter": "chunk",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "UpdateId", "type": "guid", "nonEmpty": true, "description": "The update this chunk belongs to." },
+        {
+          "name": "UpdateKind",
+          "type": "CorpseViewUpdateKind",
+          "description": "Whether the update replaces the view or applies a delta."
+        },
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse." },
+        {
+          "name": "BaseRevision",
+          "type": "i64",
+          "minimum": -1,
+          "description": "The revision a delta applies to, or -1 for a snapshot."
+        },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The corpse revision after the update." },
+        {
+          "name": "ExpiresAtUnixMilliseconds",
+          "type": "i64",
+          "minimum": 1,
+          "description": "When the corpse decays."
+        },
+        {
+          "name": "SourceDisplayName",
+          "type": "string",
+          "maxLength": "MaximumCorpseSourceNameLength",
+          "description": "The name of whoever left the corpse."
+        },
+        {
+          "name": "PresentationKey",
+          "type": "string",
+          "maxLength": "MaximumCorpsePresentationKeyLength",
+          "description": "The presentation the client renders."
+        },
+        {
+          "name": "ChunkIndex",
+          "type": "u16",
+          "lessThan": "ChunkCount",
+          "description": "The position of this chunk in the update."
+        },
+        {
+          "name": "ChunkCount",
+          "type": "u16",
+          "minimum": 1,
+          "maximum": "MaximumCorpseChunkCount",
+          "description": "The number of chunks in the update."
+        },
+        {
+          "name": "SectionKind",
+          "type": "string",
+          "maxLength": "MaximumCorpseSectionKindLength",
+          "oneOf": [ "general_inventory", "equipment", "bag" ],
+          "description": "The corpse section this chunk describes."
+        },
+        {
+          "name": "ContainerId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The container behind the section."
+        },
+        { "name": "ContainerRevision", "type": "i64", "minimum": 0, "description": "The container revision." },
+        { "name": "ReplaceSection", "type": "bool", "description": "Whether the chunk replaces the whole section." },
+        {
+          "name": "SectionSlotCapacity",
+          "type": "i32",
+          "minimum": 1,
+          "maximum": "MaximumCorpseSectionSlotCapacity",
+          "description": "The number of slots in the section."
+        },
+        { "name": "SlotOffset", "type": "i32", "minimum": 0, "description": "The first slot this chunk covers." },
+        {
+          "name": "Slots",
+          "type": "array",
+          "items": "CorpseSlot",
+          "maxCount": "MaximumCorpseViewSlotsPerChunk",
+          "distinctBy": "SlotIndex",
+          "nullAsEmpty": true,
+          "description": "The slots in this chunk."
+        }
+      ]
+    },
+    {
+      "name": "CorpseViewClosed",
+      "id": 19,
+      "family": "Corpses",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The worker closed the open corpse view.",
+      "parameter": "closed",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "CorpseId", "type": "guid", "nonEmpty": true, "description": "The corpse whose view closed." },
+        {
+          "name": "Code",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "blank": "acceptOnDecode",
+          "description": "A stable code for why the view closed."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumErrorMessageLength",
+          "blank": "acceptOnDecode",
+          "description": "A human-readable explanation."
+        }
+      ]
+    },
+    {
+      "name": "WorldActorSpawn",
+      "id": 20,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A world actor entered the recipient's interest.",
+      "parameter": "spawn",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
+        {
+          "name": "RuntimeActorId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the actor."
+        },
+        {
+          "name": "ActorDefinitionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The actor definition."
+        },
+        {
+          "name": "SpawnDefinitionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The spawn that placed the actor."
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "description": "The name the client shows."
+        },
+        { "name": "Kind", "type": "WorldActorKind", "description": "The kind of actor." },
+        {
+          "name": "FactionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The faction of the actor."
+        },
+        { "name": "Disposition", "type": "WorldActorDisposition", "description": "How the actor treats players." },
+        {
+          "name": "PresentationArchetypeId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The presentation archetype the client renders."
+        },
+        { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "The revision of the actor state." },
+        {
+          "name": "InteractionRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The revision of the actor's interactions."
+        },
+        { "name": "IsActive", "type": "bool", "description": "Whether the actor is active." },
+        { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
+        { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
+        { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        { "name": "YawDegrees", "type": "f32", "description": "The facing around the vertical axis in degrees." },
+        {
+          "name": "ActivityTier",
+          "type": "WorldActorActivityTier",
+          "description": "How often the worker updates the actor."
+        },
+        {
+          "name": "BoundsCenterX",
+          "type": "f32",
+          "description": "The center of the interaction bounds on the x axis."
+        },
+        {
+          "name": "BoundsCenterY",
+          "type": "f32",
+          "description": "The center of the interaction bounds on the y axis."
+        },
+        {
+          "name": "BoundsCenterZ",
+          "type": "f32",
+          "description": "The center of the interaction bounds on the z axis."
+        },
+        {
+          "name": "BoundsSizeX",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "The size of the interaction bounds on the x axis."
+        },
+        {
+          "name": "BoundsSizeY",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "The size of the interaction bounds on the y axis."
+        },
+        {
+          "name": "BoundsSizeZ",
+          "type": "f32",
+          "exclusiveMinimum": 0,
+          "description": "The size of the interaction bounds on the z axis."
+        }
+      ]
+    },
+    {
+      "name": "WorldActorState",
+      "id": 21,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A newer state of a visible world actor.",
+      "parameter": "state",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
+        { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "The revision of the actor state." },
+        {
+          "name": "InteractionRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The revision of the actor's interactions."
+        },
+        { "name": "IsActive", "type": "bool", "description": "Whether the actor is active." },
+        { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
+        { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
+        { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        { "name": "YawDegrees", "type": "f32", "description": "The facing around the vertical axis in degrees." },
+        {
+          "name": "ActivityTier",
+          "type": "WorldActorActivityTier",
+          "description": "How often the worker updates the actor."
+        }
+      ]
+    },
+    {
+      "name": "WorldActorDespawn",
+      "id": 22,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A world actor left the recipient's interest.",
+      "parameter": "despawn",
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
+        {
+          "name": "RuntimeActorId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the actor."
+        },
+        {
+          "name": "Reason",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "A stable code for why the actor left."
+        }
+      ]
+    },
+    {
+      "name": "WorldInteractionIntent",
+      "id": 23,
+      "family": "WorldActors",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Asks to open, close, or act on a world interaction.",
+      "parameter": "intent",
+      "rules": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "Identifies the operation and its result."
+        },
+        {
+          "name": "SimulationSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The simulation session of the character."
+        },
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "description": "The open interaction, or empty for Open."
+        },
+        { "name": "OperationKind", "type": "WorldInteractionOperationKind", "description": "The operation." },
+        {
+          "name": "TargetKind",
+          "type": "WorldInteractionTargetKind",
+          "description": "What the interaction targets."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the target."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the target."
+        },
+        {
+          "name": "ExpectedTargetRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The target revision the client saw."
+        }
+      ],
+      "variants": {
+        "discriminator": "OperationKind",
+        "fields": [
+          {
+            "name": "CapabilityId",
+            "type": "string",
+            "maxLength": "MaximumWorldActorCapabilityIdLength",
+            "description": "The capability the action uses."
+          },
+          {
+            "name": "CapabilityKind",
+            "type": "WorldActorCapabilityKind",
+            "description": "The kind of the capability."
+          },
+          {
+            "name": "ExpectedCapabilityRevision",
+            "type": "i64",
+            "description": "The capability revision the client saw."
+          },
+          {
+            "name": "LifecycleAction",
+            "type": "NpcLifecycleActionKind",
+            "description": "The item lifecycle action of the capability."
+          },
+          {
+            "name": "ExpectedCharacterRevision",
+            "type": "i64",
+            "description": "The character item-state revision the client saw."
+          },
+          {
+            "name": "ItemInstanceId",
+            "type": "guid",
+            "description": "The item that insurance applies to or is removed from."
+          },
+          { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
+          {
+            "name": "DestinationContainerId",
+            "type": "guid",
+            "description": "The container that receives a quest item."
+          },
+          {
+            "name": "DestinationSlotIndex",
+            "type": "i32",
+            "absent": -1,
+            "description": "The slot that receives a quest item, or -1 for any free slot."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "Open", "factory": "CreateOpen" } ],
+            "common": [ { "field": "InteractionSessionId", "fixed": "empty" } ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "Close", "factory": "CreateClose" } ],
+            "common": [ { "field": "InteractionSessionId", "nonEmpty": true } ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "CapabilityAction", "factory": "CreateCapabilityAction" } ],
+            "common": [ { "field": "InteractionSessionId", "nonEmpty": true } ],
+            "fields": [
+              { "field": "CapabilityId" },
+              { "field": "CapabilityKind" },
+              { "field": "ExpectedCapabilityRevision", "minimum": 1 },
+              { "field": "LifecycleAction", "parameterDefault": "None" },
+              { "field": "ExpectedCharacterRevision", "parameterDefault": 0 },
+              { "field": "ItemInstanceId", "parameterDefault": "default" },
+              { "field": "ExpectedItemRevision", "parameterDefault": 0 },
+              { "field": "DestinationContainerId", "parameterDefault": "default" },
+              { "field": "DestinationSlotIndex", "parameterDefault": -1 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorldInteractionOpened",
+      "id": 24,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "An opened world interaction and its capabilities.",
+      "parameter": "opened",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The Open operation this answers."
+        },
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The interaction that opened."
+        },
+        {
+          "name": "TargetKind",
+          "type": "WorldInteractionTargetKind",
+          "description": "What the interaction targets."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the target."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the target."
+        },
+        { "name": "TargetRevision", "type": "i64", "minimum": 1, "description": "The current target revision." },
+        {
+          "name": "CapabilitySummaryRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The revision of the capability list."
+        },
+        {
+          "name": "DisplayName",
+          "type": "string",
+          "maxLength": "MaximumNameLength",
+          "description": "The name the client shows."
+        },
+        {
+          "name": "Capabilities",
+          "type": "array",
+          "items": "WorldActorCapability",
+          "maxCount": "MaximumWorldActorCapabilities",
+          "nullAsEmpty": true,
+          "description": "The services the target offers."
+        }
+      ]
+    },
+    {
+      "name": "WorldInteractionResult",
+      "id": 25,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The outcome of a world interaction intent.",
+      "parameter": "result",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The operation this answers." },
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "description": "The interaction, or empty for a failed Open."
+        },
+        { "name": "OperationKind", "type": "WorldInteractionOperationKind", "description": "The operation." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the operation committed." },
+        {
+          "name": "TargetRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The target revision after the operation."
+        },
+        {
+          "name": "ItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The character item-state revision after the operation."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumWorldInteractionMessageLength",
+          "blank": "allow",
+          "nullAsEmpty": true,
+          "description": "Text for the player, which may be empty."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." }
+      ]
+    },
+    {
+      "name": "WorldInteractionClosed",
+      "id": 26,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The worker closed a world interaction.",
+      "parameter": "closed",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The interaction that closed."
+        },
+        {
+          "name": "TargetKind",
+          "type": "WorldInteractionTargetKind",
+          "description": "What the interaction targeted."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the target."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the target."
+        },
+        {
+          "name": "Code",
+          "type": "string",
+          "maxLength": "MaximumErrorCodeLength",
+          "description": "A stable code for why it closed."
+        },
+        {
+          "name": "Message",
+          "type": "string",
+          "maxLength": "MaximumErrorMessageLength",
+          "description": "A human-readable explanation."
+        }
+      ]
+    },
+    {
+      "name": "OwnerSimulationSnapshot",
+      "id": 27,
+      "family": "Movement",
+      "direction": "serverToClient",
+      "channel": "UnreliableReceiveChannel",
+      "delivery": "unreliable",
+      "description": "The owner's authoritative state and input acknowledgement for reconciliation.",
+      "parameter": "snapshot",
+      "sizeConstant": "OwnerSimulationSnapshotPacketSize",
+      "fields": [
+        { "name": "SnapshotSequence", "type": "u32", "description": "Increases with every owner snapshot." },
+        { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the state." },
+        {
+          "name": "LastProcessedInputSequence",
+          "type": "u32",
+          "description": "The newest input sequence the worker applied."
+        },
+        { "name": "State", "type": "PlayerState", "description": "The owner's authoritative movement state." }
+      ]
+    }
+  ]
+}

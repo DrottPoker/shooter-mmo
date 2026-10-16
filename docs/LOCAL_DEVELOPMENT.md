@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Requirements
 
@@ -74,6 +74,7 @@ dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 dotnet test Mmorpg.slnx --configuration Release --no-build
 ```
 
@@ -88,6 +89,8 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports nine definitions, one base Secure Container
   tier, and the deterministic checked-in revision.
+- Protocol verification reports realtime protocol version 14 with 27 messages
+  and finds every generated file current.
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
   configured. The Redis integration test is skipped unless
@@ -142,6 +145,33 @@ pull requests. Close them and let the next monthly run, or a manual check under
 `src/Client/Directory.Build.props` stops the repository build
 settings from applying to the project files Unity generates, and those files
 and their NuGet lock file are ignored by Git.
+
+## Realtime Protocol Generation
+
+The realtime protocol is described once in
+`src/Shared/GameProtocol/Schema~/realtime-protocol.json`, and
+`tools/ProtocolGenerator` writes `src/Shared/GameProtocol/Runtime/Generated`.
+[Realtime Protocol](REALTIME_PROTOCOL.md) explains the schema and the rules.
+After a schema change, regenerate and verify from any repository directory:
+
+```powershell
+dotnet run --project tools/ProtocolGenerator --configuration Release
+dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
+```
+
+Expected result: both commands report realtime protocol version 14 with 27
+messages. The first command rewrites only changed files and removes files that
+the schema no longer produces. The second fails and names the file when a
+generated file is stale, missing, or not produced by the schema. Commit the
+schema, `realtime-protocol.lock.json`, the generated `.cs` files, and their
+`.meta` files together.
+
+When generation reports that the wire contract of protocol version 14 changed,
+the schema change alters bytes or acceptance. Increase `protocol.version` in
+the schema and generate again; the lock then records the new version next to
+the old ones. No Unity
+Editor step is required: the generator writes the `.meta` files with stable
+GUIDs, and Unity compiles the new code when it next refreshes.
 
 ## Item Catalog Authoring And Verification
 

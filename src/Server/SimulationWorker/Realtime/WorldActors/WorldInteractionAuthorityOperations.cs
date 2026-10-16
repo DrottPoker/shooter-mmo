@@ -46,7 +46,9 @@ internal sealed class WorldInteractionAuthorityOperations(
                     intent.OperationKind,
                     false,
                     0,
-                    new RealtimeError(
+                    itemStateRevision: 0,
+                    message: string.Empty,
+                    error: new RealtimeError(
                         "world_interaction_failed",
                         "SimulationWorker could not complete the world interaction.")),
                 null);

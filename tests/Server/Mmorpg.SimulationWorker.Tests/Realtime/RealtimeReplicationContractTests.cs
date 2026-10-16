@@ -1,5 +1,6 @@
 using LiteNetLib;
 using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Realtime;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -45,6 +46,16 @@ public sealed class RealtimeReplicationContractTests
             {
                 Assert.Equal(DeliveryMethod.ReliableOrdered, packet.Delivery);
                 Assert.Equal(RealtimeProtocol.ControlChannel, packet.Channel);
+            });
+        // Every packet travels exactly as the schema's message descriptor says.
+        Assert.All(
+            packets,
+            packet =>
+            {
+                Assert.True(RealtimeProtocol.TryGetDescriptor(packet.Type, out var descriptor));
+                Assert.Equal(RealtimeMessageDirection.ServerToClient, descriptor.Direction);
+                Assert.Equal(descriptor.Channel, packet.Channel);
+                Assert.Equal(RealtimeDeliveryMethods.ToDeliveryMethod(descriptor.Delivery), packet.Delivery);
             });
         var owner = client.OwnerSnapshots[0];
         Assert.True(owner.ServerTick > 0);

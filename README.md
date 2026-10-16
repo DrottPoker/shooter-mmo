@@ -218,6 +218,7 @@ dotnet test Mmorpg.slnx --configuration Release --no-build
 dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
@@ -271,13 +272,13 @@ headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 | `src/Server/GameService.Items` | Item catalog, item state and transactions, corpses, death loot, Recovery, policies, expiry, maintenance, and item development tools |
 | `src/Server/SimulationWorker` | Headless UDP, authoritative simulation, entity and actor state, interaction authority, worker lease, bounded corpse presentation and viewer state, and owned config |
 | `src/Server/Common` | Framework-neutral helpers shared by the server processes |
-| `src/Shared/GameProtocol` | Local Unity package containing protocol source |
+| `src/Shared/GameProtocol` | Local Unity package containing the realtime protocol: the schema in `Schema~`, the code generated from it in `Runtime/Generated`, and the hand-written cross-field rules of each family |
 | `src/Shared/GameSimulation` | Local Unity package containing shared simulation source |
 | `content` | Authored game content: item and actor catalogs with one file per definition, and per-World manifests, spawns, and collision sources |
 | `src/Shared/WorldData` | Local Unity package with shared domain rules and compilers, the Unity content tools, and the deterministic `Generated` data compiled from `content` |
 | `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
 | `src/Client` | Unity project and Unity tests |
-| `tools` | Verification, content compilers and their shared pipeline library, stress benchmark, shared headless bot client, and active bot population |
+| `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, stress benchmark, shared headless bot client, and active bot population |
 | `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |
 
@@ -303,6 +304,8 @@ complete dependency-ordered delivery plan is in
 The implemented scalable world-actor, NPC, Mob, visual spawn-authoring, and
 interaction foundation plus its deferred contract is in
 [NPC And Mob System Design](docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
+The binary realtime protocol, its schema, and its generator are described in
+[Realtime Protocol](docs/REALTIME_PROTOCOL.md).
 The authored content layout, its file rules, and the content compilers are in
 [Game Content](content/README.md).
 

@@ -278,12 +278,12 @@ internal sealed class CorpseOperationFinalizer(
                     result.Succeeded,
                     result.RequiresCorpseRefresh,
                     result.RequiresInventoryRefresh,
+                    RealtimeStateMapper.ToRealtimeCarryState(carryState!),
                     result.Succeeded
                         ? null!
                         : new RealtimeError(
                             result.Error!.Code,
-                            result.Error.Message),
-                    RealtimeStateMapper.ToRealtimeCarryState(carryState!))));
+                            result.Error.Message))));
     }
 
     public void SendCorpseOperationRejection(

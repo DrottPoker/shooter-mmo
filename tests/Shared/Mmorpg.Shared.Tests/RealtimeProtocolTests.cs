@@ -205,8 +205,8 @@ public sealed class RealtimeProtocolTests
             RealtimeItemOperationKind.Relocate,
             true,
             true,
-            null!,
             new RealtimeCarryState(42, 210, 250),
+            null!,
             [new RealtimeItemRevision(Guid.NewGuid(), 7)],
             [new RealtimeContainerRevision(Guid.NewGuid(), 8)],
             [Guid.NewGuid()]);
@@ -231,8 +231,8 @@ public sealed class RealtimeProtocolTests
             RealtimeItemOperationKind.Equip,
             false,
             true,
-            new RealtimeError("item_state_conflict", "Refresh required."),
             new RealtimeCarryState(42, 210, 250),
+            new RealtimeError("item_state_conflict", "Refresh required."),
             [],
             [],
             []);
