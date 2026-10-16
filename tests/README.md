@@ -96,13 +96,15 @@ together run every check of
 | `Backend checks and unit tests` | Dependency policy, locked restore, format, build, the three content verifiers, and every test with `Category!=Integration` |
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
+| `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |
 
 The two integration jobs start their own PostgreSQL, with its data in memory,
 and Redis service containers. NuGet packages are cached by `actions/setup-dotnet`
 from the `packages.lock.json` files. Every test project writes one TRX file to
 `TestResults/<Project>/test-results.trx`, and `tools/Verify-TestResults.ps1`
 fails the job when any test in them did not run or pass. Each job uploads its
-`TestResults` folder as an artifact.
+`TestResults` folder as an artifact. The observability job needs no .NET and
+runs the pinned Collector and Prometheus images through the runner's Docker.
 
 ## Databases And Redis
 

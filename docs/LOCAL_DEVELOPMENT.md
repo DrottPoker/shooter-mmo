@@ -94,7 +94,8 @@ Expected result:
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
-  needs Docker and starts nothing that keeps running.
+  needs Docker and starts nothing that keeps running. CI runs the same script
+  in its `Observability configuration` job.
 - Unit tests pass.
 - PostgreSQL integration tests are skipped unless their dedicated connection is
   configured. The Redis integration test is skipped unless
