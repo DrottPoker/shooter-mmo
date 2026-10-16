@@ -234,18 +234,23 @@ docker compose -f docker-compose.test.yml down
 Remove-Item Env:MMORPG_TEST_POSTGRES, Env:MMORPG_TEST_REDIS
 ```
 
-Expected result: every test passes and none is skipped. The full run takes about
-eight minutes, most of it in `Mmorpg.GameService.Items.Tests`.
+Expected result: every test passes and none is skipped. The test step takes
+under a minute, and the checks above without Unity about two minutes; the
+slowest test project is `Mmorpg.GameService.Items.Tests`.
 
-Each test project uses its own PostgreSQL database, `<base>_<project>`, next to
-the database named in `MMORPG_TEST_POSTGRES`. It creates the database on first
-use and resets its `public` schema before every test. Both database names must
-contain `test`, and the test role needs `CREATEDB`, which the test container's
-role has. Run one test run per project and server at a time: a second
-concurrent run of the same project fails at once. The variable must still never
-target shared or production data. Redis tests write only keys below a unique
-random prefix and remove them afterwards. The test Redis container listens on
-`127.0.0.1:56380` and keeps no data on disk.
+Every PostgreSQL test gets its own fresh database, copied from a template that
+each test run builds once with the migrations and startup seeds. The databases
+sit next to the database named in `MMORPG_TEST_POSTGRES` and are named after the
+test project, `<base>_<project>_*`. All database names must contain `test`, and
+the test role needs `CREATEDB`, which the test container's role has. Use
+`127.0.0.1`, not `localhost`, as the host, as `.env.example` does: the test
+container publishes its port on IPv4 loopback only, and on Windows every new
+connection to `localhost` first waits about two seconds for `::1` to fail. Run
+one test run per project and server at a time: a second concurrent run of the
+same project fails at once. The variable must still never target shared or
+production data. Redis tests write only keys below a unique random prefix and
+remove them afterwards. The test Redis container listens on `127.0.0.1:56380`
+and keeps no data on disk.
 
 For a fast loop that needs no containers, or to run one test project:
 
@@ -254,8 +259,9 @@ dotnet test Mmorpg.slnx --configuration Release --filter "Category!=Integration"
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release
 ```
 
-The test projects, where a new test goes, the traits, and the database rules are
-described in [Backend Tests](tests/README.md).
+The test projects, where a new test goes, the traits, the database rules, and
+how CI splits these checks into parallel jobs are described in
+[Backend Tests](tests/README.md).
 
 Run Unity tests through `Window > General > Test Runner`, or use the licensed
 headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).

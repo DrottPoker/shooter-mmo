@@ -7,6 +7,7 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items.Tests;
 
+[Collection(SerialTestCollection.Name)]
 public sealed class ItemOperationsHardeningTests
 {
     [Fact]
