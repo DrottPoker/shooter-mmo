@@ -52,3 +52,7 @@ With Unity CLI.
 - The headless `tools/Run-UnityTests.ps1` cannot run while the Editor has the
   project open. Use the live Editor commands above instead.
 - Exit Play Mode with `unity command editor_stop` before finishing.
+- An Addressables content build started through `eval_file` blocks the Editor
+  on a modal dialog when an open scene is unsaved, and once per Library on the
+  "Addressables Build Report" question. Open a saved scene first and answer the
+  question in the Editor, or build from the Addressables Groups window.

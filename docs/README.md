@@ -15,8 +15,9 @@ operations, and future design do not drift into duplicate descriptions.
 3. [GameService Modules](GAME_SERVICE_MODULES.md) for the GameService module
    projects, their contracts, table ownership, cross-module access rules, lock
    order, migration ownership, and architecture guard tests.
-4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for detailed Unity
-   runtime structure and client flows.
+4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for the client
+   assemblies and their dependency rules, Addressables content loading, and the
+   detailed Unity runtime structure and client flows.
 5. [Realtime Protocol](REALTIME_PROTOCOL.md) for the binary wire format, the
    protocol schema and its generator, the message descriptors, and the
    versioning rules.

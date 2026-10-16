@@ -16,8 +16,10 @@ runtime claim.
 ## Project Boundary
 
 The Unity project lives in `src/Client` and targets Unity
-6000.5.4f1. Runtime code is compiled into `Mmorpg.Client`. EditMode and
-PlayMode tests use separate assemblies.
+6000.5.4f1. Runtime code is compiled into nine area assemblies, described in
+[Assemblies](#assemblies). All runtime content loads through Addressables, as
+described in [Content Loading With Addressables](#content-loading-with-addressables).
+EditMode and PlayMode tests use separate assemblies.
 
 The current runtime UI is intentionally temporary while the custom UI is being
 designed. The client bootstrap, state ownership, API layer, scene lifecycle,
@@ -29,10 +31,41 @@ scene flow and controls remain testable. The map, local player, camera, input
 asset, and spawn point are real Unity assets and are never created by runtime
 generation code.
 
+## Assemblies
+
+Runtime code under `Assets/Scripts` is split into one assembly per area. Each
+folder holds one asmdef, and every reference between client assemblies points
+to a lower layer, so the compiler rejects a cycle or an upward dependency. The
+layers from the bottom up:
+
+| Assembly | Owns | Client references |
+|---|---|---|
+| `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
+| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets` | Api |
+| `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
+| `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
+| `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
+| `Mmorpg.Client.Gameplay` | Local and remote players, camera, input, prediction, interpolation, crosshair, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.WorldActors` | Actor and interaction state, targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
+| `Mmorpg.Client.Ui` | Every panel, drag and drop, `ClientOperationState` | Every row above it |
+| `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | Every row above it |
+
+Ui is the top feature area; only the App composition root, which creates the
+panels, sits above it. Each namespace equals its assembly name. Areas that read
+`ClientSession` reference Api as well, because the session caches Api
+contracts. The Editor-only `Mmorpg.Client.Editor` assembly references Core and
+Worlds plus the shared WorldData editor and the Addressables editor assemblies.
+
+`ClientAssemblyArchitectureTests` pins the exact declared references of every
+client assembly, including shared and package assemblies, the layer order, and
+the namespace rule. It reads the asmdef files because Unity adds
+`UnityEngine.UI` to every compiled assembly. A new dependency is a deliberate
+change: add the asmdef reference, keep it pointing down, and update the test.
+
 ## Runtime Structure
 
 ```text
-ClientBootstrap
+ClientBootstrap (Mmorpg.Client.App composition root)
   +-- ClientSession
   +-- ApiClient
   +-- RealtimeSimulationClient
@@ -89,6 +122,15 @@ changes. It initializes configuration, owns one `RealtimeSimulationClient` and
 one `InventoryClientController`, observes scene transitions, and performs
 fallback leave when an active World scene is left outside the normal panel flow.
 
+`ClientBootstrap` is the only composition root, and no runtime assembly
+references it. It creates the persistent services and passes them explicitly
+to every component that needs them; there is no static service access. Scene
+controllers that it creates at runtime are added to an inactive GameObject,
+given their dependencies through `Initialize`, and then activated, so `Awake`
+and `OnEnable` already see them. The scene-authored `WorldSceneContext`
+receives the realtime client when its scene loads, before `Start` runs. Tests
+construct the same components with their own dependencies.
+
 The fallback release is bound to the exact simulation-session identity. Completion of
 an older request cannot clear a newer local reconnect state. If graceful leave
 fails after the scene already changed, the client closes UDP so SimulationWorker can
@@ -96,9 +138,12 @@ run disconnect cleanup.
 
 ## Configuration
 
-`ClientConfig` is a ScriptableObject loaded from
-`Assets/Resources/Config/ClientConfig.asset`. Its C# definition lives
-in `Assets/Scripts/Config`. It currently contains:
+`ClientConfig` is a ScriptableObject at
+`Assets/Content/Config/ClientConfig.asset`. The bootstrap loads it through
+Addressables at startup, synchronously, and keeps its handle until the bootstrap
+is destroyed, which also keeps the referenced gameplay catalog loaded. A missing
+configuration logs a warning and uses local fallback endpoints. Its C#
+definition lives in `Assets/Scripts/Core`. It currently contains:
 
 - GameService base URL.
 - HTTP request timeout in seconds.
@@ -285,6 +330,41 @@ and its Player server stays disabled because the Pipeline Runtime setting
 `enableInBuilds` is `false`. The workflow and security rules are in
 [Local Development](LOCAL_DEVELOPMENT.md#unity-editor-automation-with-unity-cli).
 
+## Content Loading With Addressables
+
+The client uses Addressables 2.9.1 for all runtime content; there is no
+`Resources` folder and no `Resources.Load` call. Content lives in folders below
+`Assets/Content`. Each folder is one Addressables folder entry whose address is
+its path below `Assets/Content`, so an asset's address is its path below that
+root including the file extension, and a new file in a content folder needs no
+settings change. `ClientAddresses` lists every fixed address:
+
+| Group | Entries | Address | Packing |
+|---|---|---|---|
+| Client Content | `Assets/Content/Config`, `Worlds`, `Items/Presentation`, `WorldActors` | `Config/ClientConfig.asset`, `Worlds/world-scene-catalog.json`, `Items/Presentation/item-presentation-catalog.json`, `WorldActors/WorldActorPresentationRegistry.asset` | Together |
+| Item Icons | `Assets/Content/Items/Icons` | `Items/Icons/<file>` | Together |
+| World Actor Prefabs | `Assets/Prefabs/WorldActors` | `WorldActorPrefabs/<file>`, loaded by GUID through the registry | Together |
+| World Collision | `Packages/com.mmorpg.world-data/Generated/WorldCollision` | `WorldCollision/<WorldId>/manifest.json` and `<chunk>.bytes` | Together |
+| World Scenes | One entry per catalog World scene | The scene name | Separately, one bundle per scene |
+
+`ClientAssets` in Core loads small content synchronously: configuration,
+catalogs, icons, and collision chunks. It locates an address first, so a
+missing address becomes a structured error instead of an Addressables
+exception, and the caller releases every handle it owns. Scenes and actor
+prefabs load asynchronously where they are used.
+
+All groups build locally into the player. A normal player build builds the
+Addressables content first. The build content state is written to
+`Library/com.unity.addressables/ContentState`, because the client ships no
+remote content updates. In the Editor, the default play mode script is "Use
+Asset Database", so Play Mode and the tests need no content build.
+
+`ClientAddressablesLayout` in the Editor assembly defines the groups, folder
+entries, World scene entries, and the Build Profiles scene list in code. `MMORPG
+> Tools > Addressables > Apply Client Layout` reapplies it, and
+`ClientAddressablesTests` fails on any difference, on a runtime address without
+an entry, and on any `Resources` folder or call.
+
 ## Scene And UI Flow
 
 The build flow is:
@@ -295,16 +375,24 @@ LoginMenu -> CharacterSelect -> WorldSceneCatalog[accepted WorldId]
      +--------------+-------------------------+
 ```
 
-`Assets/Resources/Worlds/world-scene-catalog.json` is the client-owned mapping
+`Assets/Content/Worlds/world-scene-catalog.json` is the client-owned mapping
 from authoritative `WorldId` to an authored Unity scene name. GameService and
 SimulationWorker never send a scene path. CharacterSelect resolves the selected
 shard's World before requesting a join ticket and rejects an unknown mapping or
-a scene missing from the build. It resolves the authoritative placement World
-again before opening UDP, so a shard list cached across an offline rebind cannot
-load the previous scene. The checked-in catalog maps `development-world-1` to
-`DevelopmentWorld1` and `development-world-2` to `DevelopmentWorld2`. Both
-scenes are authored and included in Build Profiles. CharacterSelect still
-rejects a mapped scene that is absent from the build.
+a scene that is not an Addressables World scene. It resolves the authoritative
+placement World again before opening UDP, so a shard list cached across an
+offline rebind cannot load the previous scene. The checked-in catalog maps
+`development-world-1` to `DevelopmentWorld1` and `development-world-2` to
+`DevelopmentWorld2`. Both scenes are authored Addressables entries addressed by
+scene name. Build Profiles contain only LoginMenu and CharacterSelect.
+
+Every scene change goes through `ClientSceneLoader`. LoginMenu and
+CharacterSelect load as built-in scenes. After an accepted join, CharacterSelect
+loads the World scene asynchronously and stays visible, with its controls
+disabled, until the World scene replaces it. If the load fails, the panel shows
+the error and leaves the joined simulation session gracefully. Addressables
+releases the World scene's handle and bundles when the scene unloads, so a
+return to a built-in scene needs no explicit release.
 
 ### LoginMenu
 
@@ -437,13 +525,15 @@ another mutation. A duplicate completion for the last finalized operation is
 ignored safely.
 
 `ClientItemCatalog` compiles and revision-checks the bundled gameplay TextAsset,
-loads the presentation catalog once through its existing Resources cache, and
-indexes definitions and equipment slots by stable id. Gameplay and presentation
+loads the presentation catalog once through Addressables and caches it per
+gameplay revision, and indexes definitions and equipment slots by stable id. Gameplay and presentation
 source revisions must match before item UI can render. Every HTTP snapshot must
 also match the bundled gameplay revision. A mismatch clears renderable item
 state and produces `item_catalog_update_required` instead of accepting stale
 definitions. Icons, localization keys, fallback labels, and optional prefab
-presentation keys resolve locally. HTTP responses carry only stable definition
+presentation keys resolve locally. An icon is a Sprite whose Addressables
+address is stored in the catalog's `iconAddress` field, below `Items/Icons/`;
+the client loads each icon once and keeps it for the process lifetime. HTTP responses carry only stable definition
 ids and instance state.
 
 Durable item-instance revisions are non-negative, and a newly granted or split
@@ -594,9 +684,9 @@ service points.
 All Unity Editor commands owned by the project use the shared
 `MMORPG > Tools` root. The item catalog authoring window is at
 `MMORPG > Tools > Item Catalog`, and collision baking is at
-`MMORPG > Tools > World Collision > Bake Open Scene`. `Bake Build World
-Scenes` validates the World catalog against enabled Build Profiles scenes and
-bakes every mapped scene in one pass. A reusable scene shared by several Worlds
+`MMORPG > Tools > World Collision > Bake Open Scene`. `Bake World Scenes`
+validates the World catalog against the Addressables World scenes and bakes
+every mapped scene in one pass. A reusable scene shared by several Worlds
 is opened once and baked once for each of them; its authored World id must be
 one of those Worlds.
 
@@ -616,11 +706,13 @@ The presentation interpolation never feeds positions back into input packets or
 the shared simulation. The shared simulation source is installed as
 `com.mmorpg.game-simulation` and contains no Unity dependencies.
 
-`UnityWorldCollisionLoader` loads the selected world's manifest from the
-`Generated/Resources/WorldCollision` folder of the local `com.mmorpg.world-data`
-package. `UnityWorldCollisionStream` then loads and
-checksum-validates chunks around the initial player and the authoritative local
-owner snapshot. Remote snapshot scheduling cannot move the prediction collision
+`UnityWorldCollisionLoader` loads the selected world's manifest through
+Addressables at `WorldCollision/<WorldId>/manifest.json`, an address that
+mirrors the `Generated/WorldCollision` folder of the local
+`com.mmorpg.world-data` package. `UnityWorldCollisionStream` then loads
+synchronously and checksum-validates chunks at
+`WorldCollision/<WorldId>/<chunk>.bytes` around the initial player and the
+authoritative local owner snapshot. Remote snapshot scheduling cannot move the prediction collision
 window. The stream retains a larger chunk ring before unloading, which prevents
 boundary churn. The join response carries SimulationWorker's collision revision,
 and `NetworkMovementSession` does not start when the local revision differs. A
@@ -700,13 +792,17 @@ Phase 12 adds permanent client state below replaceable presentation:
   `NpcView` and `MobView` add kind-specific presentation hooks without actor
   authority.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
-  The asset is `Assets/Resources/WorldActors/WorldActorPresentationRegistry.asset`
+  The asset is `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`
   and maps all four authored archetypes to collider-free placeholder prefabs in
   `Assets/Prefabs/WorldActors` with URP materials in
-  `Assets/Art/Materials/WorldActors`. An authored prefab keeps its own look.
-  Only an unmapped archetype falls back to a tinted primitive, with one warning
-  per archetype, and a missing registry logs one warning at startup instead.
-  An EditMode test fails when an authored archetype has no prefab.
+  `Assets/Art/Materials/WorldActors`. Each entry is an Addressables
+  `AssetReferenceGameObject`. The registry loads when a World scene opens, a
+  prefab loads the first time an actor of its archetype appears, and the actor
+  is presented once its prefab is ready. All handles are released when the
+  World scene closes. An authored prefab keeps its own look. Only an unmapped
+  archetype or a prefab that fails to load falls back to a tinted primitive,
+  with one warning per archetype, and a missing registry logs one warning
+  instead. An EditMode test fails when an authored archetype has no prefab.
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
@@ -821,17 +917,40 @@ fixture is added.
 Phase 15 adds no Unity test fixture because it has no Unity-facing behavior. All
 EditMode and PlayMode tests still run as the release-hardening regression gate.
 
+`ClientAssemblyArchitectureTests` pins the assembly graph described in
+[Assemblies](#assemblies). `ClientAddressablesTests` compares the committed
+Addressables settings with `ClientAddressablesLayout`, resolves every fixed
+address, every generated collision manifest and chunk, every presentation icon,
+and every registry prefab, loads content through `ClientAssets`, and fails on any
+`Resources` folder or call in the client and shared packages.
+
 PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and
 presentation controllers plus the runtime login panel. World-scene coverage
-opens and closes the runtime uGUI inventory root and finds the runtime corpse
-and actor presentation controllers.
+loads `DevelopmentWorld1` through Addressables, opens and closes the runtime uGUI
+inventory root, and finds the runtime corpse and actor presentation controllers.
+Further PlayMode tests verify that returning to a built-in scene releases the
+World scene's Addressables handle and that an unknown or built-in scene is not
+an available World scene. The PlayMode tests also pass with the "Use Existing
+Build" play mode script against built bundles.
 
 Manual flows and expected results are documented in
 [Local Development](LOCAL_DEVELOPMENT.md).
 
 ## Extension Rules
 
+- Put client code in the assembly of its area. A new reference between client
+  assemblies must point to a lower layer and be added to
+  `ClientAssemblyArchitectureTests`.
+- Pass services from `ClientBootstrap` through `Initialize`; never add static
+  service access or reference `Mmorpg.Client.App` from runtime code.
+- Load runtime content only through Addressables. Put an asset in a content
+  folder below `Assets/Content`, or a World actor prefab below
+  `Assets/Prefabs/WorldActors`, refer to fixed addresses through
+  `ClientAddresses`, and release every handle you own. Never add a `Resources`
+  folder.
+- Change scenes only through `ClientSceneLoader`. A new World scene needs its
+  catalog entry and `MMORPG > Tools > Addressables > Apply Client Layout`.
 - Keep HTTP serialization and failure mapping inside the API layer.
 - Keep realtime transport state and packet handling inside
   `RealtimeSimulationClient`, not scene panels.
