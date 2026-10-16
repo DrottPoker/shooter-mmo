@@ -58,7 +58,8 @@ internal sealed class RedisAuthenticationRateLimiter(
             var values = (RedisResult[]?)raw;
             if (values is null || values.Length != 2)
             {
-                throw new RedisServerException("Redis returned an invalid rate-limit result.");
+                // The server reported no error; its reply only has the wrong shape.
+                throw new RedisException("Redis returned an invalid rate-limit result.");
             }
 
             var count = (long)values[0];
