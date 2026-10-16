@@ -279,6 +279,9 @@ how CI splits these checks into parallel jobs are described in
 
 Run Unity tests through `Window > General > Test Runner`, or use the licensed
 headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
+CI runs both Unity suites for every pull request on a self-hosted Windows
+runner, described in
+[Unity CI Runner](docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
 
 ## Repository Layout
 

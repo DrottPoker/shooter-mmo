@@ -58,9 +58,12 @@ namespace.
 target framework, nullable and implicit usings, the global `Xunit` using, and
 for test projects the test packages, a results folder per project
 (`TestResults/<Project>`), and the `Mmorpg.TestProjectDirectory` assembly
-metadata. The test infrastructure libraries get `xunit.v3.extensibility.core`
-and `xunit.v3.assert` instead. Every `xunit.v3` package must use one version;
-`tools/Verify-DependencyPolicy.ps1` checks it.
+metadata. Test projects reference `xunit.v3.mtp-off`, the xunit.v3 variant
+without Microsoft Testing Platform: `dotnet test` runs them in VSTest mode with
+`xunit.runner.visualstudio` and `coverlet.collector`, and the platform's v2
+rejects that mode on the .NET 10 SDK. The test infrastructure libraries get
+`xunit.v3.extensibility.core` and `xunit.v3.assert` instead. Every `xunit.v3`
+package must use one version; `tools/Verify-DependencyPolicy.ps1` checks it.
 
 Test projects run in parallel with each other. `Mmorpg.GameService.Items.Tests`
 also runs its test classes in parallel, on at most four threads, which bounds
@@ -68,8 +71,9 @@ CPU contention and PostgreSQL connections; tests inside one class still run one
 at a time. Its classes that observe process-wide state, such as `MeterListener`
 tests, join `SerialTestCollection`, which runs alone after the parallel classes.
 Put a new Items test class there when it reads process-wide state. Every other
-test project disables parallel test execution inside its assembly in
-`AssemblyInfo.cs`, because its meter listener tests, static stores, and timing
+test project disables parallel test execution inside its assembly with
+`[assembly: Parallelization(Mode = ParallelMode.None)]` in `AssemblyInfo.cs`,
+because its meter listener tests, static stores, and timing
 budgets assume it; those projects finish before the Items tests anyway.
 
 ## Traits
@@ -87,9 +91,9 @@ is unset, so a full run must show no skipped test.
 
 ## Continuous Integration
 
-`.github/workflows/ci.yml` splits the backend gate into parallel jobs that
-together run every check of
-[Standard Quality Checks](../README.md#standard-quality-checks) except Unity:
+`.github/workflows/ci.yml` runs every check of
+[Standard Quality Checks](../README.md#standard-quality-checks) as parallel jobs
+for every pull request, every push to `development` and `main`, and manual runs:
 
 | Job | Runs |
 | --- | --- |
@@ -97,6 +101,7 @@ together run every check of
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
 | `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |
+| `Unity quality gate` | `tools/Run-UnityTests.ps1`: the Unity EditMode and PlayMode suites, on the self-hosted Windows runner |
 
 The two integration jobs start their own PostgreSQL, with its data in memory,
 and Redis service containers. NuGet packages are cached by `actions/setup-dotnet`
@@ -105,6 +110,17 @@ from the `packages.lock.json` files. Every test project writes one TRX file to
 fails the job when any test in them did not run or pass. Each job uploads its
 `TestResults` folder as an artifact. The observability job needs no .NET and
 runs the pinned Collector and Prometheus images through the runner's Docker.
+
+The Unity job needs an installed and licensed Unity Editor, so it runs on a
+self-hosted runner on the development machine and skips pull requests from
+forks. It fails when a Unity test fails, is skipped or inconclusive, or when a
+suite has no tests, and uploads the NUnit XML files and Unity logs as
+`unity-test-results`. The runner, its security rules, and its setup are
+described in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
+
+The ruleset `development CI gate` in `.github/rulesets/development-ci-gate.json`
+requires all five jobs to pass before a commit reaches `development`; a skipped
+job counts as passed. Rename a job only together with that ruleset.
 
 ## Databases And Redis
 

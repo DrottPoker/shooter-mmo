@@ -1,8 +1,14 @@
 name: CI
 
+# Task branches are checked through their pull request, so a push to them does not start a
+# second run of the same commit. The long-lived branches are checked on every push.
 on:
   push:
+    branches:
+      - development
+      - main
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -207,9 +213,17 @@ jobs:
         shell: pwsh
         run: ./tools/Verify-Observability.ps1
 
+  # Unity needs an installed and licensed Editor, so this job runs on the self-hosted runner
+  # described in docs/LOCAL_DEVELOPMENT.md. Pull requests from forks are skipped. The runner's
+  # job-started hook, tools/Assert-TrustedRunnerJob.ps1, refuses them as well, because a
+  # fork pull request runs its own copy of this file. Windows PowerShell keeps PowerShell 7
+  # off the runner requirements; the backend job already verifies the dependency policy.
   unity:
     name: Unity quality gate
-    if: vars.UNITY_CI_ENABLED == 'true'
+    if: >-
+      vars.UNITY_CI_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity-6000.5.4f1]
     timeout-minutes: 30
 
@@ -217,12 +231,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Verify dependency policy
-        shell: pwsh
-        run: ./tools/Verify-DependencyPolicy.ps1
-
       - name: Run Unity EditMode and PlayMode tests
-        shell: pwsh
+        shell: powershell
         env:
           UNITY_EDITOR_PATH: ${{ vars.UNITY_EDITOR_PATH }}
         run: ./tools/Run-UnityTests.ps1

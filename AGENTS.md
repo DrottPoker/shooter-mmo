@@ -30,6 +30,10 @@ Follow these rules for all future work in this repository.
   through a pull request whose CI passes, then delete the branch locally and on
   GitHub. This is standing permission to commit, push, open the pull request,
   merge it, and delete the branch for that task. No other branch is left behind.
+- CI runs for pull requests, not for pushes to task branches, so open the pull
+  request to get CI. The ruleset `development CI gate` blocks the merge until
+  every CI job passes, including the Unity quality gate on the self-hosted
+  runner; wait for it and never disable the ruleset to get a merge through.
 - After every merge into `development`, fast-forward the local `development`
   branch in the main checkout with `git pull --ff-only origin development`, so
   the user always has the latest `development` locally. Never reset or discard
