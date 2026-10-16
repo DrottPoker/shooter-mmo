@@ -136,6 +136,11 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.NoRoute));
             Assert.That(navigator.CurrentPath, Is.SameAs(approachPath));
 
+            // An approach whose plan has no waypoints is no route either, not an arrival.
+            WaitForPlan(navigator, standing, navigator.Request(start, new SimulationVector3(float.NaN, 0f, 0f), 2f));
+            Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.NoRoute));
+            Assert.That(navigator.CurrentPath, Is.SameAs(approachPath));
+
             WaitForPlan(navigator, standing, navigator.Request(start, new SimulationVector3(0.5f, 0f, -1f), 2f));
             Assert.That(navigator.LastResult, Is.EqualTo(NavigationResult.AlreadyThere));
             Assert.That(navigator.CurrentPath, Is.Null);

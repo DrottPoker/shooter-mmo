@@ -166,10 +166,9 @@ namespace Mmorpg.Client.Gameplay
             LastStatus = plan.Status;
             LastExpandedNodes = plan.ExpandedNodes;
             LastPlanMilliseconds = finished.Result.Milliseconds;
-            var waypoints = request.Range > 0f
-                ? MovementPathGeometry.TrimToRange(request.Start, plan.Waypoints, request.Destination, request.Range)
-                : ToArray(plan.Waypoints);
-            if (request.Range > 0f && waypoints.Length == 0)
+            // Only the start decides arrival: a plan without waypoints may also mean no route.
+            if (request.Range > 0f
+                && MovementPathGeometry.IsWithinRange(request.Start, request.Destination, request.Range))
             {
                 CurrentPath = null;
                 ContinuationGoal = null;
@@ -177,6 +176,9 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
+            var waypoints = request.Range > 0f
+                ? MovementPathGeometry.TrimToRange(request.Start, plan.Waypoints, request.Destination, request.Range)
+                : ToArray(plan.Waypoints);
             if (waypoints.Length == 0)
             {
                 LastResult = NavigationResult.NoRoute;

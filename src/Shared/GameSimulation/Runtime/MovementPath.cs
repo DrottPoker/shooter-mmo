@@ -136,6 +136,14 @@ namespace Mmorpg.GameSimulation
 
     public static class MovementPathGeometry
     {
+        // Whether a position lies within the planar range of the target. A non-finite
+        // position or target is never within range.
+        public static bool IsWithinRange(SimulationVector3 position, SimulationVector3 target, float range)
+        {
+            ValidateRange(range);
+            return PlanarDistanceSquared(position, target) <= (double)range * range;
+        }
+
         // The route from the start up to the first point within the planar range of the
         // target, so approaching a target stops at interaction range instead of on top of
         // it. Returns no waypoints when the start is already within range, and the whole
@@ -151,16 +159,12 @@ namespace Mmorpg.GameSimulation
                 throw new ArgumentNullException(nameof(waypoints));
             }
 
-            if (float.IsNaN(range) || float.IsInfinity(range) || range < 0f)
-            {
-                throw new ArgumentOutOfRangeException(nameof(range));
-            }
-
-            var rangeSquared = (double)range * range;
-            if (PlanarDistanceSquared(start, target) <= rangeSquared)
+            if (IsWithinRange(start, target, range))
             {
                 return new SimulationVector3[0];
             }
+
+            var rangeSquared = (double)range * range;
 
             var result = new List<SimulationVector3>(waypoints.Count);
             var previous = start;
@@ -195,6 +199,14 @@ namespace Mmorpg.GameSimulation
             }
 
             return result.ToArray();
+        }
+
+        private static void ValidateRange(float range)
+        {
+            if (float.IsNaN(range) || float.IsInfinity(range) || range < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(range));
+            }
         }
 
         private static double PlanarDistanceSquared(SimulationVector3 left, SimulationVector3 right)

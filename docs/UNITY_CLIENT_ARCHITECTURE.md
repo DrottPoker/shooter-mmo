@@ -521,7 +521,9 @@ approach, or stop is a new intent with an id; only the newest intent's plan is
 applied, and the previous path continues until it is ready. The navigator gives
 every applied plan a new path id. A plan that stopped at the 32 waypoint limit
 continues under the same intent once its last waypoint is reached. An approach
-trims the route where it first comes within range of the target. Normal movement
+trims the route where it first comes within range of the target. Only a start
+already within range counts as arrival and stops the player; an approach without
+a route reports no route, and the previous path continues. Normal movement
 faces its travel direction, and an airborne player keeps its takeoff momentum
 and facing until it lands. `RefreshCharacterDimensions` remains the runtime
 entry point when a future character system changes collider dimensions.
@@ -849,8 +851,9 @@ of the camera that no solid collider hides. The targeting controller is an
 becomes a walk to the ground behind it. The click instead approaches the target:
 the player walks until it is within `2.75` metres, inside the worker's start
 range, and the controller sends the open intent once the authoritative owner
-position is that close. A newer click or stop cancels the approach, and an
-approach that ends out of range gives up after 1.5 seconds. Clicking another
+position is that close. A newer click or stop cancels the approach. A target
+without a route gives up at once with a message, and an approach that ends out
+of range gives up after 1.5 seconds. Clicking another
 target first closes the active interaction, and the cancel action, Escape,
 closes it. The result only chooses an intent. SimulationWorker independently owns
 the `3.0` metre start range, `3.5` metre maintain range, closest-point bounds

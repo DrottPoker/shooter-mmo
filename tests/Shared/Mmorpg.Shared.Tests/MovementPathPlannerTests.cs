@@ -184,6 +184,17 @@ public sealed class MovementPathPlannerTests
     }
 
     [Fact]
+    public void IsWithinRangeComparesPlanarDistanceAndRejectsNonFiniteTargets()
+    {
+        var start = new SimulationVector3(0f, 0f, 0f);
+
+        Assert.True(MovementPathGeometry.IsWithinRange(start, new SimulationVector3(1.2f, 9f, 1.5f), 2f));
+        Assert.False(MovementPathGeometry.IsWithinRange(start, new SimulationVector3(1.2f, 0f, 1.7f), 2f));
+        Assert.False(MovementPathGeometry.IsWithinRange(start, new SimulationVector3(float.NaN, 0f, 0f), 2f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => MovementPathGeometry.IsWithinRange(start, start, float.NaN));
+    }
+
+    [Fact]
     public void CollisionRaycastFindsTheNearestEnteredBox()
     {
         var world = CompileWorld(Ground(), Box("Wall", 0f, 1.5f, 3f, 4f, 1.5f, 0.25f));
