@@ -397,8 +397,9 @@ it directly as a local package and `src/Shared/DotNet/GameSimulation` compiles i
 for SimulationWorker.
 
 It owns click-to-move path following, the path limits, the route planner,
-carry-state encumbrance, gravity, facing, capsule collision, steps, slopes,
-bounds, collision raycasts, and collision-data codecs. `MovementPathPlanner`
+carry-state encumbrance, gravity, facing, capsule collision against oriented
+boxes and one-sided triangles, steps, slopes, bounds, collision raycasts, and
+collision-data codecs. `MovementPathPlanner`
 runs A* on a fine internal grid sampled from the collision world, with several
 walkable levels per cell, and string pulls the route into at most 32 waypoints.
 The Unity client plans with it today; the same deterministic code can plan for

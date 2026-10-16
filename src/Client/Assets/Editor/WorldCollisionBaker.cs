@@ -179,7 +179,12 @@ namespace Mmorpg.Client.Editor
                     + string.Join("', '", sceneWorldIds) + "'.");
             }
 
-            var boxes = BuildBoxEntries(authoring).ToArray();
+            var colliders = FindBakedColliders(authoring.CollisionRoot);
+            var boxes = BuildBoxEntries(authoring, colliders.OfType<BoxCollider>()).ToArray();
+            var meshes = BuildMeshEntries(authoring, colliders.OfType<MeshCollider>()).ToArray();
+            var heightfields = BuildHeightfieldEntries(
+                authoring,
+                colliders.OfType<TerrainCollider>()).ToArray();
             var document = new CollisionWorldAuthoringDocument
             {
                 FormatVersion = CollisionDataFormat.Version,
@@ -187,7 +192,9 @@ namespace Mmorpg.Client.Editor
                     ? authoredWorldId
                     : targetWorldId,
                 ChunkSize = authoring.ChunkSize,
-                Boxes = boxes
+                Boxes = boxes,
+                Meshes = meshes,
+                Heightfields = heightfields
             };
             var authoringJson = JsonUtility.ToJson(document, true) + Environment.NewLine;
             var persistedDocument = JsonUtility.FromJson<CollisionWorldAuthoringDocument>(
@@ -198,7 +205,8 @@ namespace Mmorpg.Client.Editor
             Debug.Log(
                 "[WORLD COLLISION] Baked world '" + result.Manifest.WorldId
                 + "' at revision " + result.Manifest.Revision
-                + " with " + boxes.Length + " boxes in " + result.Chunks.Count
+                + " with " + boxes.Length + " boxes, " + meshes.Length + " meshes, and "
+                + heightfields.Length + " heightfields in " + result.Chunks.Count
                 + " chunks.");
             return result;
         }
@@ -222,11 +230,11 @@ namespace Mmorpg.Client.Editor
             return components[0];
         }
 
-        private static IEnumerable<CollisionBoxAuthoringEntry> BuildBoxEntries(
-            WorldCollisionAuthoring authoring)
+        // Boxes, non-convex meshes, and terrains bake. Any other enabled solid collider
+        // stops the bake, so authored collision never silently goes missing.
+        private static Collider[] FindBakedColliders(Transform root)
         {
-            var root = authoring.CollisionRoot;
-            var colliders = root.GetComponentsInChildren<BoxCollider>(true)
+            var colliders = root.GetComponentsInChildren<Collider>(true)
                 .Where(collider => collider.enabled
                     && collider.gameObject.activeInHierarchy
                     && !collider.isTrigger)
@@ -235,21 +243,27 @@ namespace Mmorpg.Client.Editor
             if (colliders.Length == 0)
             {
                 throw new InvalidOperationException(
-                    "The collision root does not contain any enabled non-trigger BoxColliders.");
+                    "The collision root does not contain any enabled non-trigger colliders.");
             }
 
-            var unsupported = root.GetComponentsInChildren<Collider>(true)
-                .FirstOrDefault(collider => collider.enabled
-                    && collider.gameObject.activeInHierarchy
-                    && !collider.isTrigger
-                    && !(collider is BoxCollider));
+            var unsupported = colliders.FirstOrDefault(collider => !(collider is BoxCollider)
+                && !(collider is MeshCollider)
+                && !(collider is TerrainCollider));
             if (unsupported != null)
             {
                 throw new NotSupportedException(
-                    "The current collision format supports BoxCollider authoring only. Unsupported collider: "
+                    "The collision format supports BoxCollider, MeshCollider, and TerrainCollider "
+                    + "authoring only. Unsupported collider: "
                     + GetHierarchyPath(unsupported.transform));
             }
 
+            return colliders;
+        }
+
+        private static IEnumerable<CollisionBoxAuthoringEntry> BuildBoxEntries(
+            WorldCollisionAuthoring authoring,
+            IEnumerable<BoxCollider> colliders)
+        {
             foreach (var collider in colliders)
             {
                 var scale = collider.transform.lossyScale;
@@ -283,6 +297,130 @@ namespace Mmorpg.Client.Editor
                     RotationY = rotation.y,
                     RotationZ = rotation.z,
                     RotationW = rotation.w
+                };
+            }
+        }
+
+        // Each mesh triangle becomes a one-sided collision triangle in world space that
+        // faces the same way as its rendered front face.
+        private static IEnumerable<CollisionMeshAuthoringEntry> BuildMeshEntries(
+            WorldCollisionAuthoring authoring,
+            IEnumerable<MeshCollider> colliders)
+        {
+            foreach (var collider in colliders)
+            {
+                if (collider.convex)
+                {
+                    throw new NotSupportedException(
+                        "Convex MeshColliders cannot bake, because collision meshes are one-sided "
+                        + "triangles. Clear Convex on: " + GetHierarchyPath(collider.transform));
+                }
+
+                var mesh = collider.sharedMesh;
+                if (mesh == null)
+                {
+                    throw new InvalidOperationException(
+                        "MeshCollider has no mesh: " + GetHierarchyPath(collider.transform));
+                }
+
+                var localToWorld = collider.transform.localToWorldMatrix;
+                var vertices = new List<float>(mesh.vertexCount * 3);
+                foreach (var vertex in mesh.vertices)
+                {
+                    var position = localToWorld.MultiplyPoint3x4(vertex);
+                    vertices.Add(position.x);
+                    vertices.Add(position.y);
+                    vertices.Add(position.z);
+                }
+
+                // A mirroring transform reverses the winding, so swap two corners back.
+                var triangles = mesh.triangles;
+                if (localToWorld.determinant < 0f)
+                {
+                    for (var index = 0; index < triangles.Length; index += 3)
+                    {
+                        var swap = triangles[index + 1];
+                        triangles[index + 1] = triangles[index + 2];
+                        triangles[index + 2] = swap;
+                    }
+                }
+
+                yield return new CollisionMeshAuthoringEntry
+                {
+                    StableId = string.Empty,
+                    SourcePath = GetStableSourcePath(collider),
+                    LayerMask = authoring.LayerMask,
+                    Vertices = CollisionAuthoringEncoding.EncodeFloats(vertices),
+                    Triangles = CollisionAuthoringEncoding.EncodeInts(triangles)
+                };
+            }
+        }
+
+        // A terrain bakes as a world-space heightfield with one sample per heightmap texel
+        // and one hole flag per heightmap cell.
+        private static IEnumerable<CollisionHeightfieldAuthoringEntry> BuildHeightfieldEntries(
+            WorldCollisionAuthoring authoring,
+            IEnumerable<TerrainCollider> colliders)
+        {
+            foreach (var collider in colliders)
+            {
+                var terrainData = collider.terrainData;
+                if (terrainData == null)
+                {
+                    throw new InvalidOperationException(
+                        "TerrainCollider has no terrain data: " + GetHierarchyPath(collider.transform));
+                }
+
+                if (collider.transform.rotation != Quaternion.identity
+                    || collider.transform.lossyScale != Vector3.one)
+                {
+                    throw new InvalidOperationException(
+                        "A terrain must not be rotated or scaled: "
+                        + GetHierarchyPath(collider.transform));
+                }
+
+                var resolution = terrainData.heightmapResolution;
+                var size = terrainData.size;
+                var origin = collider.transform.position;
+                var normalizedHeights = terrainData.GetHeights(0, 0, resolution, resolution);
+                var heights = new float[resolution * resolution];
+                for (var z = 0; z < resolution; z++)
+                {
+                    for (var x = 0; x < resolution; x++)
+                    {
+                        heights[(z * resolution) + x] = origin.y + (normalizedHeights[z, x] * size.y);
+                    }
+                }
+
+                var cells = resolution - 1;
+                var solid = terrainData.GetHoles(0, 0, cells, cells);
+                var holes = new byte[cells * cells];
+                var hasHoles = false;
+                for (var z = 0; z < cells; z++)
+                {
+                    for (var x = 0; x < cells; x++)
+                    {
+                        if (!solid[z, x])
+                        {
+                            holes[(z * cells) + x] = 1;
+                            hasHoles = true;
+                        }
+                    }
+                }
+
+                yield return new CollisionHeightfieldAuthoringEntry
+                {
+                    StableId = string.Empty,
+                    SourcePath = GetStableSourcePath(collider),
+                    LayerMask = authoring.LayerMask,
+                    OriginX = origin.x,
+                    OriginZ = origin.z,
+                    SpacingX = size.x / cells,
+                    SpacingZ = size.z / cells,
+                    SamplesX = resolution,
+                    SamplesZ = resolution,
+                    Heights = CollisionAuthoringEncoding.EncodeFloats(heights),
+                    Holes = hasHoles ? CollisionAuthoringEncoding.EncodeBytes(holes) : string.Empty
                 };
             }
         }
@@ -406,12 +544,13 @@ namespace Mmorpg.Client.Editor
             }
         }
 
-        private static string GetStableSourcePath(BoxCollider collider)
+        // Boxes keep their original path form, so existing box ids stay stable.
+        private static string GetStableSourcePath(Collider collider)
         {
-            var colliders = collider.GetComponents<BoxCollider>();
+            var colliders = collider.GetComponents(collider.GetType());
             var index = Array.IndexOf(colliders, collider);
             return collider.gameObject.scene.name + "/" + GetHierarchyPath(collider.transform)
-                + "#BoxCollider" + index;
+                + "#" + collider.GetType().Name + index;
         }
 
         private static string GetHierarchyPath(Transform transform)

@@ -412,7 +412,7 @@ corpse view.
 - Unity validates and loads the same data, with the same revision check, before
   prediction.
 - Collision data stays within plus or minus 1,000,000 world units, chunk sizes
-  stay between 1 and 4096, and one box may span at most 65,536 chunks. Chunk
+  stay between 1 and 4096, and one shape may span at most 65,536 chunks. Chunk
   coordinates are clamped to plus or minus 2^24, so .NET and Unity map every
   position to the same chunk, and a query wider than the loaded set scans the
   loaded chunks instead of every cell in its range.
@@ -427,13 +427,20 @@ corpse view.
   difference between platforms only matters in the rare case where it crosses
   a float rounding boundary.
 - Static shapes are assigned to every intersected chunk and deduplicated by
-  stable id during queries.
+  stable id during queries. A chunk with more than 32 shapes indexes them in a
+  planar grid of about 2 m cells, so terrain chunks with thousands of triangles
+  stay cheap to query.
 - Position-driven load and larger unload radii provide streaming hysteresis.
 - A composite collision world combines static chunks and mutable dynamic shapes.
 
-The development Worlds use oriented boxes for ground, boundaries, buildings,
-ramps, steps, and cover. Triangle terrain and replicated dynamic transforms
-are not implemented.
+Collision format version 2 holds oriented boxes and one-sided triangles. The
+bake turns non-convex MeshColliders into triangles and TerrainColliders into
+heightfields. The shared compiler triangulates heightfields, two triangles per
+cell except for holes, so Unity and .NET produce identical chunks. A triangle
+collides only from its front, so a tunnel can run below walkable terrain.
+Development World 1 uses only boxes. Development World 2 adds the terrain and
+tunnel of its northeast highlands. Replicated dynamic transforms are not
+implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 

@@ -119,7 +119,7 @@ namespace Mmorpg.GameSimulation
             }
         }
 
-        public void QueryBoxes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
+        public void QueryShapes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
         {
             if (buffer == null)
             {
@@ -144,7 +144,7 @@ namespace Mmorpg.GameSimulation
                             && chunk.Z >= minimumZ
                             && chunk.Z <= maximumZ)
                         {
-                            AddIntersectingBoxes(chunk, bounds, layerMask, buffer);
+                            chunk.Query(bounds, layerMask, buffer);
                         }
                     }
 
@@ -157,30 +157,9 @@ namespace Mmorpg.GameSimulation
                     {
                         if (chunks.TryGetValue(ChunkKey(x, z), out var chunk))
                         {
-                            AddIntersectingBoxes(chunk, bounds, layerMask, buffer);
+                            chunk.Query(bounds, layerMask, buffer);
                         }
                     }
-                }
-            }
-        }
-
-        private static void AddIntersectingBoxes(
-            CollisionChunk chunk,
-            CollisionAabb bounds,
-            uint layerMask,
-            CollisionQueryBuffer buffer)
-        {
-            if (!chunk.Bounds.Intersects(bounds))
-            {
-                return;
-            }
-
-            for (var index = 0; index < chunk.Boxes.Count; index++)
-            {
-                var box = chunk.Boxes[index];
-                if ((box.LayerMask & layerMask) != 0 && box.Bounds.Intersects(bounds))
-                {
-                    buffer.Add(box);
                 }
             }
         }
@@ -280,22 +259,22 @@ namespace Mmorpg.GameSimulation
             }
         }
 
-        public void Upsert(CollisionBox box)
+        public void Upsert(CollisionShape shape)
         {
-            if (box == null)
+            if (shape == null)
             {
-                throw new ArgumentNullException(nameof(box));
+                throw new ArgumentNullException(nameof(shape));
             }
 
             lock (syncRoot)
             {
-                if (entries.TryGetValue(box.StableId, out var previous))
+                if (entries.TryGetValue(shape.StableId, out var previous))
                 {
                     RemoveCellMemberships(previous);
                 }
 
-                var entry = new DynamicCollisionEntry(box, CalculateCellKeys(box.Bounds));
-                entries[box.StableId] = entry;
+                var entry = new DynamicCollisionEntry(shape, CalculateCellKeys(shape.Bounds));
+                entries[shape.StableId] = entry;
                 AddCellMemberships(entry);
             }
         }
@@ -314,7 +293,7 @@ namespace Mmorpg.GameSimulation
             }
         }
 
-        public void QueryBoxes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
+        public void QueryShapes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
         {
             if (buffer == null)
             {
@@ -337,16 +316,16 @@ namespace Mmorpg.GameSimulation
                     chunkSize);
 
                 // A query wider than the occupied cells scans the entries instead, so the
-                // cost is bounded by the dynamic boxes and never by the query size.
+                // cost is bounded by the dynamic shapes and never by the query size.
                 if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
                     > stableIdsByCell.Count)
                 {
                     foreach (var entry in entries.Values)
                     {
-                        var box = entry.Box;
-                        if ((box.LayerMask & layerMask) != 0 && box.Bounds.Intersects(bounds))
+                        var shape = entry.Shape;
+                        if ((shape.LayerMask & layerMask) != 0 && shape.Bounds.Intersects(bounds))
                         {
-                            buffer.Add(box);
+                            buffer.Add(shape);
                         }
                     }
 
@@ -366,10 +345,10 @@ namespace Mmorpg.GameSimulation
 
                         foreach (var stableId in stableIds)
                         {
-                            var box = entries[stableId].Box;
-                            if ((box.LayerMask & layerMask) != 0 && box.Bounds.Intersects(bounds))
+                            var shape = entries[stableId].Shape;
+                            if ((shape.LayerMask & layerMask) != 0 && shape.Bounds.Intersects(bounds))
                             {
-                                buffer.Add(box);
+                                buffer.Add(shape);
                             }
                         }
                     }
@@ -384,9 +363,9 @@ namespace Mmorpg.GameSimulation
             var minimumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(bounds.Minimum.Z, chunkSize);
             var maximumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(bounds.Maximum.Z, chunkSize);
             if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
-                > CollisionDataFormat.MaximumChunksPerBox)
+                > CollisionDataFormat.MaximumChunksPerShape)
             {
-                throw new ArgumentException("Dynamic collision box spans too many cells.");
+                throw new ArgumentException("Dynamic collision shape spans too many cells.");
             }
 
             var keys = new List<long>();
@@ -412,7 +391,7 @@ namespace Mmorpg.GameSimulation
                     stableIdsByCell.Add(key, stableIds);
                 }
 
-                stableIds.Add(entry.Box.StableId);
+                stableIds.Add(entry.Shape.StableId);
             }
         }
 
@@ -423,7 +402,7 @@ namespace Mmorpg.GameSimulation
                 var key = entry.CellKeys[index];
                 if (stableIdsByCell.TryGetValue(key, out var stableIds))
                 {
-                    stableIds.Remove(entry.Box.StableId);
+                    stableIds.Remove(entry.Shape.StableId);
                     if (stableIds.Count == 0)
                     {
                         stableIdsByCell.Remove(key);
@@ -434,13 +413,13 @@ namespace Mmorpg.GameSimulation
 
         private sealed class DynamicCollisionEntry
         {
-            public DynamicCollisionEntry(CollisionBox box, long[] cellKeys)
+            public DynamicCollisionEntry(CollisionShape shape, long[] cellKeys)
             {
-                Box = box;
+                Shape = shape;
                 CellKeys = cellKeys;
             }
 
-            public CollisionBox Box { get; }
+            public CollisionShape Shape { get; }
 
             public long[] CellKeys { get; }
         }
@@ -455,11 +434,11 @@ namespace Mmorpg.GameSimulation
             this.sources = sources ?? throw new ArgumentNullException(nameof(sources));
         }
 
-        public void QueryBoxes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
+        public void QueryShapes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
         {
             for (var index = 0; index < sources.Length; index++)
             {
-                sources[index].QueryBoxes(bounds, layerMask, buffer);
+                sources[index].QueryShapes(bounds, layerMask, buffer);
             }
         }
     }

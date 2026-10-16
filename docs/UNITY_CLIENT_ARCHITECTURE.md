@@ -754,8 +754,10 @@ authority or feeds presentation positions back into prediction.
 `WorldCollisionAuthoring` defines the world id, chunk size, collision root, and
 layer mask on an authored scene object. The Editor command
 `MMORPG > Tools > World Collision > Bake Open Scene` scans enabled, non-trigger
-BoxColliders below that root and writes neutral authoring JSON plus versioned
-binary resources into `WorldData`. Unsupported collider types fail the bake
+BoxColliders, non-convex MeshColliders, and TerrainColliders below that root and
+writes neutral authoring JSON plus versioned binary resources into `WorldData`.
+Mesh vertices are baked in world space and terrain heights as a heightfield,
+both as exact base64 floats. Unsupported collider types fail the bake
 explicitly. The shared compiler canonicalizes signed floating-point zero before
 encoding, so Unity and .NET produce identical chunk hashes for equivalent
 transforms. Runtime code never scans the Unity scene or treats PhysX as network
@@ -788,8 +790,9 @@ does not zoom. The cursor is never locked or hidden.
 to every World scene. It shows a flat, collider-free disc at the destination of
 the path the predicted player still follows.
 
-The network simulation collides with every baked BoxCollider of the selected
-World, including rotated ramps, steps, cover, and boundaries. The capsule
+The network simulation collides with every baked box and one-sided triangle of
+the selected World, including rotated ramps, steps, cover, boundaries, terrain,
+and tunnel meshes. The capsule
 dimensions, slope limit, step height, ground snap distance, and substep budget
 come from the validated server join settings. Movement never uses Unity
 CharacterController or PhysX to decide network position.

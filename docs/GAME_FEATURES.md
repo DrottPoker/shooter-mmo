@@ -152,7 +152,7 @@ presentation state at the same root convention.
 
 Each development map is baked into versioned collision chunks shared by the
 server and client prediction. Authenticated movement and route planning
-therefore use the selected scene's authored BoxColliders. SimulationWorker sends
+therefore use the selected scene's authored boxes, meshes, and terrain. SimulationWorker sends
 the authoritative collision revision when the character joins, and the client
 refuses to predict against a different revision. The LocalPlayer prefab moves
 only in an authenticated World-scene session and has no offline movement mode.
@@ -161,10 +161,13 @@ The Development World 2 traversal course is walkable with click-to-move. Its
 ramps end flush with the raised platforms, and the observation steps climb in
 rises below the step height to a bridge that leads onto the observation deck.
 
-Complex terrain meshes, caves, moving platforms, dynamic doors, and rigid-body
-objects are not gameplay features yet. Dynamic server collision already has a
-spatial registry, while transform replication and non-box collision formats are
-later slices.
+Terrain works with click-to-move. In the Development World 2 highlands the
+player walks over hills and up a mountain's walkable face, is stopped by cliffs
+steeper than 45 degrees, and walks through a tunnel below the mountain. Rock
+paint marks the ground that is too steep to climb. Moving platforms, dynamic
+doors, and rigid-body objects are not gameplay features yet. Dynamic server
+collision already has a spatial registry, while transform replication is a
+later slice.
 
 ## Orbit Camera
 
@@ -394,7 +397,6 @@ These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
 - Dynamic collision transform replication.
-- Terrain and cave collision beyond the current oriented-box format.
 - Combat, weapons, damage, death, and respawning.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.

@@ -584,7 +584,7 @@ For a manual default-state and reconnect check:
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
    startup reports realtime protocol version `15` and simulation revision
-   `movement-simulation-v5`.
+   `movement-simulation-v6`.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
@@ -2179,16 +2179,19 @@ leaves a manifest whose checksums do not match its chunks. Unity ignores the
 `.tmp` files.
 
 Expected result: Unity Console reports `[WORLD COLLISION] Baked world
-'development-world-1'` with 13 boxes, four chunks, and a SHA-256 revision. The command
-updates:
+'development-world-1'` with 13 boxes, 0 meshes, and 0 heightfields in 4 chunks,
+and a SHA-256 revision. The command updates:
 
 - `content/worlds/development-world-1/collision.json`
 - `src/Shared/WorldData/Generated/WorldCollision/development-world-1/manifest.json`
 - Four `chunk_*.bytes` files in the same generated directory
 
-The bake stops with a red error if the collision root contains enabled,
-non-trigger Collider types other than BoxCollider. This is intentional until a
-later collision format adds terrain and triangle-mesh chunks.
+The bake reads enabled, non-trigger BoxColliders, non-convex MeshColliders, and
+TerrainColliders below the collision root. Meshes and terrains bake as one-sided
+triangles that collide only from their front. The bake stops with a red error
+for any other Collider type, for a convex MeshCollider, and for a rotated or
+scaled Terrain. The authoring rules for terrain, caves, and tunnels are in
+`docs/DEVELOPMENT_WORLDS.md` under Terrain And Mesh Collision Authoring.
 
 Verify the checked-in bake from the repository root:
 

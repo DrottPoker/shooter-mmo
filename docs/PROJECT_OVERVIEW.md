@@ -114,8 +114,9 @@ The repository currently supports:
   concurrency, and low-cardinality network metrics.
 - Sequenced movement input, a fixed 30 Hz authoritative simulation, 15 Hz
   snapshots, local prediction, reconciliation, and remote interpolation.
-- Shared capsule collision against the authored test map, including walls,
-  ramps, steps, cover, slope handling, and position-driven collision chunks.
+- Shared capsule collision against the authored test maps, including walls,
+  ramps, steps, cover, slope handling, terrain with hills, cliffs, and a
+  tunnel, and position-driven collision chunks.
 - Split liveness and readiness checks with real PostgreSQL and Redis probes.
 - Structured HTTP errors, correlation ids, authentication rate limits, and
   no-store token responses.
@@ -295,7 +296,6 @@ item grants. See
 ## Intentionally Deferred
 
 - Zone ownership, cross-zone handoff, and layer orchestration.
-- Triangle-mesh terrain and cave collision beyond the oriented-box test map.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
 - Gameplay-created item instances, authoritative combat death production, and

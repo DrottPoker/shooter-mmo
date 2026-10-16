@@ -51,6 +51,16 @@ public sealed class SharedSimulationHardeningTests
             Math.Abs(state.PositionY - 0.3f) < 0.005f && state.PositionX is > -8f and < -4f) >= 10);
         // Reached the last waypoint of a multi-waypoint path.
         Assert.Contains(states, state => state.PathProgress == new MovementPathProgress(2, 2, 0));
+        // Walked over the top of the heightfield mound.
+        Assert.Contains(states, state => state.PositionY > 2.8f && DistanceXz(state, 18f, -18f) < 1f);
+        // Blocked by the front of the mesh wall at x = -16 plus the capsule radius.
+        Assert.True(states.Count(state =>
+            state.PositionX is > -15.66f and < -15.6f && Math.Abs(state.PositionZ) < 7f) >= 10);
+        // Walked through the back of the same wall from behind it.
+        var behindWall = states.ToList().FindIndex(state =>
+            state.PositionX < -18f && Math.Abs(state.PositionZ) < 7f);
+        Assert.True(behindWall >= 0);
+        Assert.Contains(states.Skip(behindWall), state => state.PositionX > -12f && Math.Abs(state.PositionZ) < 7f);
     }
 
     [Fact]
@@ -64,12 +74,7 @@ public sealed class SharedSimulationHardeningTests
         Assert.All(trace.Plans, plan => Assert.Equal(MovementPathPlanStatus.Reached, plan.Status));
 
         // The motor follows every planned path to its end without being blocked.
-        var starts = new[]
-        {
-            new SimulationVector3(9f, 0f, 0f),
-            new SimulationVector3(0f, 0f, 18f),
-            new SimulationVector3(-12f, 0f, -12f)
-        };
+        var starts = trace.Starts;
         for (var index = 0; index < trace.Plans.Count; index++)
         {
             var path = new MovementPath((uint)(index + 1), trace.Plans[index].Waypoints.ToArray());
@@ -166,13 +171,13 @@ public sealed class SharedSimulationHardeningTests
         await Task.Run(
             () =>
             {
-                world.QueryBoxes(everywhere, CollisionLayers.All, staticResults);
-                dynamicWorld.QueryBoxes(everywhere, CollisionLayers.All, dynamicResults);
+                world.QueryShapes(everywhere, CollisionLayers.All, staticResults);
+                dynamicWorld.QueryShapes(everywhere, CollisionLayers.All, dynamicResults);
             },
             TestContext.Current.CancellationToken);
 
-        Assert.Single(staticResults.Boxes);
-        Assert.Single(dynamicResults.Boxes);
+        Assert.Single(staticResults.Shapes);
+        Assert.Single(dynamicResults.Shapes);
     }
 
     [Fact]

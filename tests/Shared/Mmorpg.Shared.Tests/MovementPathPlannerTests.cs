@@ -174,6 +174,59 @@ public sealed class MovementPathPlannerTests
         Assert.Equal(destinationY, final.PositionY, 2);
     }
 
+    // The northeast highlands terrain: a hill, the peak by its east face from the east and
+    // from the southeast around the south cliff, through the tunnel below the peak, and
+    // down the peak's west face onto the terrain above the tunnel.
+    [Theory]
+    [InlineData("hilltop", 1, 140f, 0f, 100f, 162f, 4.02f, 134f)]
+    [InlineData("peak from the east", 1, 192f, 0f, 188f, 154f, 20.02f, 188f)]
+    [InlineData("peak from the southeast", 2, 186f, 0f, 160f, 154f, 20.02f, 188f)]
+    [InlineData("through the tunnel", 1, 146f, 0f, 164f, 146f, 0.02f, 212f)]
+    [InlineData("above the tunnel", 1, 154f, 20.02f, 188f, 147f, 15.82f, 188f)]
+    public void DevelopmentWorld2HighlandsAreReachableByWalking(
+        string target,
+        int minimumWaypoints,
+        float startX,
+        float startY,
+        float startZ,
+        float destinationX,
+        float destinationY,
+        float destinationZ)
+    {
+        var world = DevelopmentWorld2.Value;
+        var settings = DevelopmentWorld2Settings();
+        var start = new SimulationVector3(startX, startY, startZ);
+
+        var plan = new MovementPathPlanner(world, settings, MovementPathPlannerSettings.Default)
+            .Plan(start, new SimulationVector3(destinationX, destinationY, destinationZ));
+
+        Assert.True(plan.Status == MovementPathPlanStatus.Reached, $"The {target} plan ended as {plan.Status}.");
+        Assert.False(plan.IsTruncated);
+        Assert.True(plan.Waypoints.Count >= minimumWaypoints, $"The {target} route did not bend around the cliff.");
+        var final = AssertFollowsToTheEnd(world, settings, start, plan);
+
+        // On a slope the capsule rests slightly above the surface it touches.
+        Assert.InRange(final.PositionY, destinationY - 0.05f, destinationY + 0.15f);
+    }
+
+    // The terrain above the tunnel faces up, so only the tunnel walls keep a walker out of
+    // the hollow space below the peak.
+    [Fact]
+    public void DevelopmentWorld2TunnelWallsKeepTheInsideOfThePeakUnreachable()
+    {
+        var world = DevelopmentWorld2.Value;
+        var settings = DevelopmentWorld2Settings();
+        var start = new SimulationVector3(146f, 0f, 188f);
+
+        var plan = new MovementPathPlanner(world, settings, MovementPathPlannerSettings.Default)
+            .Plan(start, new SimulationVector3(156f, 0f, 188f));
+
+        Assert.Equal(MovementPathPlanStatus.Closest, plan.Status);
+        var final = AssertFollowsToTheEnd(world, settings, start, plan);
+        Assert.InRange(final.PositionX, 146f, 149f - 0.35f);
+        Assert.Equal(0f, final.PositionY, 3);
+    }
+
     [Fact]
     public void PlannerSettingsRejectInvalidValues()
     {

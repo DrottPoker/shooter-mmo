@@ -358,18 +358,17 @@ namespace Mmorpg.GameSimulation
                 new SimulationVector3(origin.X, (float)(origin.Y - distance), origin.Z),
                 origin).Expanded(ContactEpsilon);
             queryBuffer.Clear();
-            collisionWorld.QueryBoxes(rayBounds, CollisionLayers.CharacterMovement, queryBuffer);
+            collisionWorld.QueryShapes(rayBounds, CollisionLayers.CharacterMovement, queryBuffer);
             queryBuffer.SortByStableId();
 
             var found = false;
             var highest = float.MinValue;
-            for (var index = 0; index < queryBuffer.Boxes.Count; index++)
+            for (var index = 0; index < queryBuffer.Shapes.Count; index++)
             {
-                if (!CollisionMath.TryRaycastBox(
+                if (!queryBuffer.Shapes[index].TryRaycast(
                         origin,
                         new SimulationVector3(0f, -1f, 0f),
                         distance,
-                        queryBuffer.Boxes[index],
                         out var hit)
                     || hit.Normal.Y < settings.MinimumGroundNormalY
                     || hit.Point.Y > highestAccepted
@@ -496,17 +495,16 @@ namespace Mmorpg.GameSimulation
             {
                 var bounds = CapsuleBounds(position, settings);
                 queryBuffer.Clear();
-                collisionWorld.QueryBoxes(bounds, CollisionLayers.CharacterMovement, queryBuffer);
+                collisionWorld.QueryShapes(bounds, CollisionLayers.CharacterMovement, queryBuffer);
                 queryBuffer.SortByStableId();
                 var resolvedAny = false;
 
-                for (var index = 0; index < queryBuffer.Boxes.Count; index++)
+                for (var index = 0; index < queryBuffer.Shapes.Count; index++)
                 {
-                    if (!CollisionMath.TryGetCapsuleBoxPenetration(
+                    if (!queryBuffer.Shapes[index].TryGetCapsulePenetration(
                             position,
                             settings.Radius,
                             settings.Height,
-                            queryBuffer.Boxes[index],
                             out var normal,
                             out var depth))
                     {

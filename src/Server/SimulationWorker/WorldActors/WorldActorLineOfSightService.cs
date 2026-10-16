@@ -33,14 +33,13 @@ public sealed class WorldActorLineOfSightService(ICollisionWorld collisionWorld)
         var maximum = SimulationVector3.Max(origin, target);
         var bounds = new CollisionAabb(minimum, maximum).Expanded(0.01f);
         queryBuffer.Clear();
-        collisionWorld.QueryBoxes(bounds, CollisionLayers.CombatQueries, queryBuffer);
-        foreach (var box in queryBuffer.Boxes)
+        collisionWorld.QueryShapes(bounds, CollisionLayers.CombatQueries, queryBuffer);
+        foreach (var shape in queryBuffer.Shapes)
         {
-            if (CollisionMath.TryRaycastBox(
+            if (shape.TryRaycast(
                     origin,
                     direction,
                     distance,
-                    box,
                     out var hit)
                 && hit.Distance < distance - 0.05f)
             {

@@ -43,6 +43,7 @@ authoritative playable area. Unity units are meters.
 | East sightline lane | X `80` to `228`, Z `-32` to `32` | Long-range lane with alternating cover, side walls, an observation post, and a backstop |
 | Southwest wilderness | X/Z `-232` to `-98` | Sparse rock perimeter keeps the wolf spawn area and patrol points open |
 | Southeast expansion pad | X `80` to `224`, Z `-224` to `-80` | Mostly empty visual pad with corner beacons and one small cargo cluster |
+| Northeast highlands | X `96` to `224`, Z `96` to `224` | Unity Terrain with rolling hills, a 20 m peak, and an arched tunnel through the foot of the peak |
 
 The canonical World manifest and actor content already reserve these coordinates:
 
@@ -74,7 +75,47 @@ below the step height, then rebake. `MovementPathPlannerTests` plans from the
 ground to each platform, the bridge, and the deck against the baked collision
 and follows each route with the shared movement simulation.
 
-Development World 2 currently contains 106 enabled, non-trigger BoxColliders.
+## Northeast Highlands
+
+The highlands are the terrain test area. They are a Unity Terrain baked as a
+collision heightfield, so hills, a mountain, and a tunnel use the same
+authoritative movement and route planning as the boxes. The builder computes
+every height from a fixed function of the position, so a rebuild reproduces the
+same terrain.
+
+| Element | Position or area | Notes |
+| --- | --- | --- |
+| Terrain | origin `(96, 0, 96)`, size `(128, 40, 128)` | Heightmap resolution `129`, one sample per meter, at least 0.02 m above the ground box |
+| Rolling hills | four smooth hills up to 4 m high | Steepest slopes below 19 degrees |
+| Peak | summit `(154, 20, 188)` | Faces of about 31 degrees. The east face is the only way up |
+| Cliffs | north, south, and west sides of the peak | About 61 degrees, too steep to climb |
+| Tunnel | X `143` to `149`, Z `170` to `206` | Arched tunnel 6 m wide and 6.5 m high, along Z through the foot of the peak |
+| South portal | Z `170` to `178` | Terrain holes at Z `172` to `177` open the south cliff |
+| North portal | Z `198` to `206` | Terrain holes at Z `199` to `204` open the north cliff |
+
+Terrain layers paint grass where the ground is 40 degrees or flatter and rock
+where it is steeper. Rock means a slope the character cannot walk up, because
+the walkable limit is 45 degrees.
+
+Collision triangles are one-sided. The terrain faces up, so a walker inside the
+tunnel passes below it. The tunnel arch faces in, so a walker on the peak passes
+above the arch. The arch walls are the only collision that keeps a walker in the
+tunnel. Each portal has two wing walls and a crown of boxes around the arch.
+Together they seal the edges of the terrain holes, so the space inside the peak
+cannot be reached. The terrain, the arch mesh, and the terrain layers are
+generated assets below `Assets/Art/Terrain/DevelopmentWorld2`.
+
+`MovementPathPlannerTests` plans against the baked collision to a hilltop, to
+the summit from the east and from the southeast around the south cliff, through
+the tunnel, and down the west face onto the terrain above the tunnel. It also
+checks that the tunnel walls keep the inside of the peak unreachable.
+
+## Collision Inventory
+
+Development World 2 currently contains 112 enabled, non-trigger BoxColliders,
+one non-convex MeshCollider for the tunnel arch, and one TerrainCollider. They
+bake to 112 boxes and 32,676 one-sided triangles: 128 by 128 terrain cells less
+60 portal holes, two triangles per cell, plus 28 arch triangles.
 The broad ground collider still guarantees all 256 collision chunks exist.
 Thin cyan service and spawn guides are visual only and have no Collider. They
 show the canonical bank, recovery, insurance, guard group, and wolf spawn
@@ -91,6 +132,8 @@ coordinates without creating or changing actor content.
 | Brown | Wilderness rock formations |
 | Teal | Reserved southeast expansion area |
 | Cyan | Visual-only actor placement guides |
+| Grass green | Walkable highlands terrain |
+| Rock grey | Highlands slopes too steep to walk |
 
 The client renders with the Universal Render Pipeline, so the palette builder
 creates `Universal Render Pipeline/Lit` materials. It still selects the shader
@@ -110,8 +153,10 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    an open scene has unsaved changes, Unity first asks whether to save them,
    and cancelling stops the rebuild.
 4. To customize the greybox, edit the generated children under `Environment`.
-   Keep authoritative geometry as enabled, non-trigger BoxColliders. Decorative
-   route surfaces and cyan guides must remain collider-free.
+   Keep authoritative geometry as enabled, non-trigger BoxColliders, non-convex
+   MeshColliders, or TerrainColliders, and follow the rules in Terrain And Mesh
+   Collision Authoring. Decorative route surfaces and cyan guides must remain
+   collider-free.
 5. Keep `PlayerSpawn`, all service markers, the guard marker, the wolf spawn
    guide, and the documented wolf patrol points free of blocking geometry.
 6. Save the scene. Select `MMORPG > Tools > World Collision > Bake Open
@@ -124,10 +169,30 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    `World Scenes` Addressables group, and out of `File > Build Profiles`. `MMORPG
    > Tools > Addressables > Apply Client Layout` restores both.
 
-Expected result: Development World 1 remains playable, Development World 2 has
-106 authoritative boxes in 256 chunks, and actor authoring files remain
-unchanged. Both scenes are selected exclusively through their authoritative
+Expected result: Development World 1 remains playable, the Console reports
+Development World 2 with 112 boxes, 1 mesh, and 1 heightfield in 256 chunks, and
+actor authoring files remain unchanged. Both scenes are selected exclusively through their authoritative
 World IDs.
+
+## Terrain And Mesh Collision Authoring
+
+These rules apply to every World scene, including a future production map.
+
+- Sculpt terrain with a Unity Terrain below the collision root. Keep the Terrain
+  unrotated and unscaled. The bake reads every heightmap sample and every
+  terrain hole.
+- Hills and mountains need no extra collision. Ground steeper than 45 degrees
+  blocks like a wall, so paint it so players can tell it apart from walkable
+  ground.
+- Model caves, overhangs, and tunnel interiors as MeshColliders with Convex
+  cleared. Each triangle collides only from its front, the side whose rendered
+  face is visible. Point every face toward where players walk.
+- Where a tunnel enters terrain, cut terrain holes for its opening. Then seal
+  every gap between the hole edges and the tunnel with boxes or front-facing
+  mesh walls. The space below terrain is otherwise open, because terrain only
+  collides from above.
+- Leave the world ground box or terrain below tunnel floors, or give the tunnel
+  mesh its own floor that faces up.
 
 ## Post-Authoring Verification
 

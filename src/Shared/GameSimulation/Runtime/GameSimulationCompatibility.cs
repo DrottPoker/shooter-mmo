@@ -4,6 +4,6 @@ namespace Mmorpg.GameSimulation
     {
         // Bump whenever shared movement or collision behavior changes. The movement
         // determinism golden test pins this value to the expected fingerprint.
-        public const string Revision = "movement-simulation-v5";
+        public const string Revision = "movement-simulation-v6";
     }
 }
