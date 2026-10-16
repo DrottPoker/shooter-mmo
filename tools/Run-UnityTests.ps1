@@ -138,11 +138,28 @@ foreach ($platform in @("EditMode", "PlayMode")) {
         throw "Unity $platform tests produced an invalid result file '$resultFile': $($_.Exception.Message)"
     }
 
-    if ($null -eq $testRun -or $testRun.result -ne "Passed" -or [int]$testRun.failed -ne 0) {
+    if ($null -eq $testRun) {
+        throw "Unity $platform tests produced a result file without a test run."
+    }
+
+    # As in the backend gate, a skipped or inconclusive test did not run and fails the suite,
+    # and so does a suite without tests.
+    $notPassed = @($testRun.SelectNodes(".//test-case[@result!='Passed']") |
+        ForEach-Object { "$($_.fullname): $($_.result)" })
+    if ($notPassed.Count -ne 0) {
+        throw "Unity $platform tests did not run or pass:`n$($notPassed -join "`n")"
+    }
+
+    if ($testRun.result -ne "Passed" -or [int]$testRun.total -eq 0 -or
+        [int]$testRun.passed -ne [int]$testRun.total) {
         throw "Unity $platform test results did not report a complete passing suite."
     }
 
-    Write-Output "Unity $platform tests passed: $($testRun.passed)/$($testRun.total)."
+    $summary = "Unity $platform tests passed: $($testRun.passed)/$($testRun.total)."
+    Write-Output $summary
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+        [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "- $summary`n")
+    }
 }
 
 $runner = if ($useUnityCli) { "the licensed Unity CLI" } else { "the Unity Editor" }
