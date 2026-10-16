@@ -16,6 +16,8 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
 
     public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
 
+    public IReadOnlyList<string> MeterNames { get; } = [RedisAccelerationMetrics.MeterName];
+
     public void AddServices(IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

@@ -28,7 +28,7 @@ public sealed class ItemTransactionFailureMetricsTests
         listener.InstrumentPublished = (instrument, meterListener) =>
         {
             if (string.Equals(instrument.Meter.Name, ItemOperationsMetrics.MeterName, StringComparison.Ordinal)
-                && instrument.Name is "auth_service.items.transactions" or "auth_service.items.transactions.duration")
+                && instrument.Name is "game_service.items.transactions" or "game_service.items.transactions.duration")
             {
                 meterListener.EnableMeasurementEvents(instrument);
             }

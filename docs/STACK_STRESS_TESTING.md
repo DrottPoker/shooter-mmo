@@ -531,6 +531,9 @@ and fixed-tick resynchronization. Timing metrics are also published through the
 `Mmorpg.SimulationWorker.Performance` meter. Network counters remain under
 `Mmorpg.SimulationWorker.Realtime`. Performance counters also expose shared
 snapshot packet encoding, sent packets, and deferred remote entity updates.
+Set `Telemetry__OtlpEndpoint` for GameService and SimulationWorker and start the
+[monitoring stack](MONITORING.md) to watch a run live in Grafana; the generator's
+own report remains the measurement of record.
 
 ## Quality Boundary
 

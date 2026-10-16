@@ -15,6 +15,8 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 
     public IReadOnlyList<DatabaseMigration> Migrations => ItemsSchemaMigrations.All;
 
+    public IReadOnlyList<string> MeterNames { get; } = [ItemOperationsMetrics.MeterName];
+
     public void AddServices(IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

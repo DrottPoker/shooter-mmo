@@ -77,7 +77,9 @@ Platform is public except its middleware and exception handler.
 ### Composition
 
 Each module implements `IGameServiceModule`: a name, the migrations it owns,
-its service registrations, and its routes. `GameServiceComposition` in the host
+the meters it creates, its service registrations, and its routes. The host
+exports exactly the declared meters when telemetry export is enabled, as
+described in [Monitoring](MONITORING.md). `GameServiceComposition` in the host
 builds the modules in dependency order and is shared by `Program.cs` and the
 tests. Startup runs in this order:
 
@@ -383,13 +385,14 @@ except `ItemTransactionKernelBoundaryTests`, which lives with the kernel tests i
 | Test | What it protects |
 | --- | --- |
 | `MigrationHistoryTests` | Migration ids, order, SQL hashes, the merge rules, and the ids recorded by a fresh database |
-| `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis` and `Mmorpg.GameService.Items` meters and every `auth_service.*` instrument |
+| `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, and `Mmorpg.GameService.Placement` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `NamespaceBoundaryTests` | A module references other modules only through lower modules' `Contracts` namespaces and Platform |
 | `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata |
 | `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |
 | `ModulePublicSurfaceTests` | Each module's exported types and Platform's internal middleware |
 | `ModuleCompositionTests` | Exactly one implementation of every SPI and contract, from its owner module, and startup failure for a missing or duplicate SPI |
+| `GameServiceTelemetryTests` | Every class that owns a `Meter` publishes `MeterName` and is declared by its module's `MeterNames`, and the dashboards and alert rules reference only published `game_service_*` metrics. It lives in the test project root. |
 | `ItemTransactionKernelBoundaryTests` | The item transaction kernel boundary described in [Items Transaction Kernel](#items-transaction-kernel) |
 
 ## Accepted Behavior Changes

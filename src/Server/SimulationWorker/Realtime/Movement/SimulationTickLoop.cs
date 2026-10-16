@@ -82,7 +82,8 @@ internal sealed class SimulationTickLoop(
             }
 
             performanceMetrics.RecordSimulationTick(
-                Stopwatch.GetElapsedTime(tickStarted));
+                Stopwatch.GetElapsedTime(tickStarted),
+                simulationInterval);
             nextSimulationTick += simulationInterval;
             processedTicks++;
         }

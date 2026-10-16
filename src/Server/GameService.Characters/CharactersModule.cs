@@ -11,6 +11,8 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
 
     public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
 
+    public IReadOnlyList<string> MeterNames { get; } = [];
+
     public void AddServices(IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

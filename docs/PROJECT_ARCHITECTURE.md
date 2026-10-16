@@ -153,7 +153,8 @@ relationship.
 - Conditionally cached current-catalog reads, no-store owned item-state, bank,
   and Recovery Storage reads, and offline-safe account item mutations.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
-  ids, sensitive response caching rules, and health routes.
+  ids, sensitive response caching rules, health routes, and OpenTelemetry
+  export of its metrics, request traces, and logs.
 - Bounded Redis cache-aside account-session validation and distributed
   authentication rate limits. PostgreSQL remains the durable session authority.
 - PostgreSQL schema migrations plus idempotent topology and item bootstrap.
@@ -377,7 +378,8 @@ shape before it can be treated as complete:
   fair update cadence, but owner reconciliation must remain fixed-rate and
   measurable.
 - Add low-cardinality timing, backlog, allocation, byte, fan-out, and deferred
-  work telemetry for any new high-frequency path.
+  work telemetry for any new high-frequency path, register its meter for export,
+  and keep its recording allocation-free.
 - Extend `StackStressGenerator` with a stable workload before raising a
   supported player tier. Compare the same mode, seed, bot count, ramp, and
   duration before and after an optimization.
@@ -1162,6 +1164,35 @@ code 1 on failure.
 
 Local Compose ports bind to `127.0.0.1`. Realtime metrics avoid account,
 character, session, entity, or peer ids as metric labels.
+
+### Telemetry
+
+Both processes build their OpenTelemetry pipeline through the shared
+`src/Server/Telemetry` project and push metrics, traces, and logs over OTLP to one
+OpenTelemetry Collector. The collector is the only telemetry receiver and routes
+to Prometheus, Tempo, and Loki, so services never depend on a storage backend.
+Export is off unless `Telemetry:OtlpEndpoint` is set.
+
+```text
+GameService ------\                          /--> Prometheus --> alert rules
+                   OTLP --> OpenTelemetry Collector --> Tempo
+SimulationWorker -/                          \--> Loki
+                                 Grafana reads all three
+```
+
+- GameService exports the meters each module declares in
+  `IGameServiceModule.MeterNames`, ASP.NET Core and Npgsql instrumentation, and
+  one span per request with its PostgreSQL commands.
+- SimulationWorker exports the meters listed in
+  `SimulationWorkerTelemetry.MeterNames` and one span per GameService call. The
+  W3C `traceparent` header joins the worker operation and the GameService request
+  into one trace, and the trace id doubles as the correlation id.
+- The fixed tick never starts a span. Hot-path metric recording uses lock-free
+  counters and untagged histograms that do not allocate, and the SDK collects and
+  exports on its own threads.
+
+The stack, dashboards, alerts, and operating guidance are in
+[Monitoring](MONITORING.md).
 
 ## Future Scaling Contract
 
