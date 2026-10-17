@@ -42,12 +42,12 @@ namespace Mmorpg.GameProtocol
         public long ItemStateRevision { get; }
 
         /// <summary>
-        /// The carried weight in grams.
+        /// The unitless carried weight.
         /// </summary>
         public long CarriedWeight { get; }
 
         /// <summary>
-        /// The carry capacity in grams.
+        /// The unitless carry capacity.
         /// </summary>
         public long CarryCapacity { get; }
     }

@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 15,
+    "version": 16,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -168,7 +168,7 @@
     {
       "name": "MaximumCorpsePresentationKeyLength",
       "value": 128,
-      "visibility": "private",
+      "visibility": "public",
       "description": "Characters in a corpse presentation key."
     },
     {
@@ -186,7 +186,7 @@
     {
       "name": "MaximumCorpseSectionSlotCapacity",
       "value": 512,
-      "visibility": "private",
+      "visibility": "public",
       "description": "Slots in one corpse view section."
     }
   ],
@@ -533,8 +533,8 @@
           "minimum": 0,
           "description": "The committed item-state revision of the character."
         },
-        { "name": "CarriedWeight", "type": "i64", "minimum": 0, "description": "The carried weight in grams." },
-        { "name": "CarryCapacity", "type": "i64", "minimum": 1, "description": "The carry capacity in grams." }
+        { "name": "CarriedWeight", "type": "i64", "minimum": 0, "description": "The unitless carried weight." },
+        { "name": "CarryCapacity", "type": "i64", "minimum": 1, "description": "The unitless carry capacity." }
       ]
     },
     {
@@ -1488,9 +1488,9 @@
         {
           "name": "SectionSlotCapacity",
           "type": "i32",
-          "minimum": 1,
+          "minimum": 0,
           "maximum": "MaximumCorpseSectionSlotCapacity",
-          "description": "The number of slots in the section."
+          "description": "The number of slots in the section. A live Mob corpse has no equipment or Bag slots."
         },
         { "name": "SlotOffset", "type": "i32", "minimum": 0, "description": "The first slot this chunk covers." },
         {

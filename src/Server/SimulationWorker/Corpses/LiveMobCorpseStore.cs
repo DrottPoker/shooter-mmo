@@ -234,7 +234,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
                     corpse.GeneralContainerId,
                     "corpse_inventory",
                     corpse.Revision,
-                    Math.Max(1, generalSlots.Length),
+                    generalSlots.Length,
                     generalSlots),
                 EmptySection("equipment", corpse.EquipmentContainerId, "corpse_equipment"),
                 EmptySection("bag", corpse.BagContainerId, "corpse_bag_contents")
@@ -242,6 +242,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             []);
     }
 
+    // A live Mob corpse carries only general loot, so its other sections have no slots.
     private static CorpseViewSectionResponse EmptySection(
         string sectionKind,
         Guid containerId,
@@ -252,13 +253,8 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             containerId,
             containerType,
             0,
-            1,
-            [new CorpseViewSlotResponse(
-                0,
-                sectionKind == "equipment" ? "equipment" : "general",
-                [],
-                null,
-                sectionKind == "equipment" ? "head" : string.Empty)]);
+            0,
+            []);
     }
 
     private void PurgeExpiredLocked()

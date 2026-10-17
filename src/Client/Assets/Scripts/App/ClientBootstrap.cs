@@ -260,7 +260,10 @@ namespace Mmorpg.Client.App
                 panel => panel.Initialize(simulationClient, pointerFocus));
             AddSceneComponentIfMissing<MovementDestinationMarker>(null);
             AddSceneComponentIfMissing<TemporaryInventoryPanel>(
-                panel => panel.Initialize(inventoryController, corpseController));
+                panel => panel.Initialize(
+                    inventoryController,
+                    corpseController,
+                    worldInteractionController));
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(corpseController));
             AddSceneComponentIfMissing<WorldActorPresentationController>(

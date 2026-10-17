@@ -505,7 +505,14 @@ namespace Mmorpg.Client.Items
             if (catalog == null
                 || item == null
                 || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
-                || !definition.PlayerDestroyable)
+                || !ItemPolicyRules.Evaluate(
+                        definition,
+                        item.Policies.Select(policy => new ItemPolicyState(
+                            policy.Kind,
+                            policy.Status,
+                            policy.ProtectionSource,
+                            string.Empty)))
+                    .CanPlayerDestroy)
             {
                 reason = "This item cannot be destroyed by the player.";
                 return false;

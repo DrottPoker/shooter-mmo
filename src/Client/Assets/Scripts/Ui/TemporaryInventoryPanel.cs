@@ -4,10 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
+using Mmorpg.Client.WorldActors;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -15,7 +15,7 @@ namespace Mmorpg.Client.Ui
 {
     public enum InventoryPanelMode
     {
-        FullDevelopment,
+        Complete,
         CharacterAndEquipment,
         CharacterOnly
     }
@@ -32,6 +32,7 @@ namespace Mmorpg.Client.Ui
 
         private InventoryClientController controller;
         private CorpseClientController corpseController;
+        private WorldInteractionClientController worldInteractionController;
         private LocalPlayerInput localPlayerInput;
         private GameObject canvasObject;
         private GameObject rootObject;
@@ -47,7 +48,7 @@ namespace Mmorpg.Client.Ui
         private Font font;
         private InventoryDragCoordinator dragCoordinator;
         private bool isOpen;
-        private InventoryPanelMode mode = InventoryPanelMode.FullDevelopment;
+        private InventoryPanelMode mode = InventoryPanelMode.Complete;
         private InventoryContextKind context = InventoryContextKind.None;
         private Guid selectedItemId;
         private bool splitMode;
@@ -85,10 +86,12 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated.
         public void Initialize(
             InventoryClientController inventory,
-            CorpseClientController corpses)
+            CorpseClientController corpses,
+            WorldInteractionClientController worldInteraction)
         {
             controller = inventory;
             corpseController = corpses;
+            worldInteractionController = worldInteraction;
         }
 
         private void Start()
@@ -127,15 +130,13 @@ namespace Mmorpg.Client.Ui
                 }
                 else if (localPlayerInput.ToggleInventoryPressedThisFrame)
                 {
-                    ToggleMode(InventoryPanelMode.FullDevelopment);
+                    ToggleMode(InventoryPanelMode.Complete);
                 }
-            }
-
-            if (isOpen
-                && Keyboard.current != null
-                && Keyboard.current.escapeKey.wasPressedThisFrame)
-            {
-                SetOpen(false);
+                else if (isOpen && localPlayerInput.CancelPressedThisFrame)
+                {
+                    // The targeting controller closes the interaction on Cancel.
+                    Hide(false);
+                }
             }
         }
 
@@ -162,52 +163,74 @@ namespace Mmorpg.Client.Ui
 
         public void SetOpen(bool value)
         {
-            SetOpen(value, value ? InventoryPanelMode.FullDevelopment : mode);
+            SetOpen(value, value ? InventoryPanelMode.Complete : mode);
         }
 
         public void SetOpen(bool value, InventoryPanelMode requestedMode)
         {
-            isOpen = value;
             if (value)
             {
-                mode = requestedMode;
-                ApplyModeVisibility();
+                Show(requestedMode);
+                return;
             }
 
+            Hide(true);
+        }
+
+        private void Show(InventoryPanelMode requestedMode)
+        {
+            isOpen = true;
+            mode = requestedMode;
+            ApplyModeVisibility();
             if (rootObject != null)
             {
-                rootObject.SetActive(value);
+                rootObject.SetActive(true);
             }
 
-            if (value)
-            {
-                controller?.EnsureFullState();
-                Rebuild();
-            }
-            else
-            {
-                if (corpseController?.State.ActiveView != null
-                    && corpseController.State.PendingOperationId == Guid.Empty)
-                {
-                    corpseController.TryClose(out _);
-                }
+            controller?.EnsureFullState();
+            Rebuild();
+        }
 
-                dragCoordinator?.Cancel();
-                ClearSelection();
+        // An open corpse view belongs to the panel, so hiding the panel closes it unless
+        // the caller already closes the interaction through its own path.
+        private void Hide(bool closeCorpseView)
+        {
+            isOpen = false;
+            if (rootObject != null)
+            {
+                rootObject.SetActive(false);
             }
+
+            if (closeCorpseView
+                && corpseController?.State.ActiveView != null
+                && corpseController.State.PendingOperationId == Guid.Empty)
+            {
+                worldInteractionController?.TryCloseActive(out _);
+            }
+
+            dragCoordinator?.Cancel();
+            ClearSelection();
         }
 
         private void ToggleMode(InventoryPanelMode requestedMode)
         {
             if (isOpen && mode == requestedMode)
             {
-                SetOpen(false, requestedMode);
+                Hide(true);
                 return;
+            }
+
+            // A corpse view is presented only by the complete view's context module.
+            if (requestedMode != InventoryPanelMode.Complete
+                && corpseController?.State.ActiveView != null
+                && corpseController.State.PendingOperationId == Guid.Empty)
+            {
+                worldInteractionController?.TryCloseActive(out _);
             }
 
             dragCoordinator?.Cancel();
             ClearSelection();
-            SetOpen(true, requestedMode);
+            Show(requestedMode);
         }
 
         private void OnCorpseStateChanged()
@@ -215,9 +238,10 @@ namespace Mmorpg.Client.Ui
             if (corpseController?.State.ActiveView != null)
             {
                 context = InventoryContextKind.Corpse;
-                if (!isOpen)
+                // Only the complete view shows the context module that presents the corpse.
+                if (!isOpen || mode != InventoryPanelMode.Complete)
                 {
-                    SetOpen(true, InventoryPanelMode.FullDevelopment);
+                    Show(InventoryPanelMode.Complete);
                     return;
                 }
             }
@@ -296,7 +320,7 @@ namespace Mmorpg.Client.Ui
             equipmentPanel.gameObject.SetActive(
                 mode != InventoryPanelMode.CharacterOnly);
             contextPanel.gameObject.SetActive(
-                mode == InventoryPanelMode.FullDevelopment);
+                mode == InventoryPanelMode.Complete);
             characterPanel.gameObject.SetActive(true);
         }
 
@@ -396,7 +420,7 @@ namespace Mmorpg.Client.Ui
                     Color.white);
                 CreateMessage(
                     contextContent,
-                    "Nearby corpse custody is discovered through SimulationWorker. Press E beside a corpse or open the Corpse tab.",
+                    "Click a corpse in the world to walk to it and open it.",
                     new Color(0.65f, 0.72f, 0.8f, 1f));
                 return;
             }
@@ -626,7 +650,7 @@ namespace Mmorpg.Client.Ui
             {
                 CreateMessage(
                     parent,
-                    "Move within 3 metres and press E, or open a nearby corpse below.",
+                    "Click a corpse in the world to walk to it and open it.",
                     Color.white);
                 if (corpseState.NearbyCorpses.Count == 0)
                 {
@@ -636,16 +660,11 @@ namespace Mmorpg.Client.Ui
 
                 foreach (var corpse in corpseState.NearbyCorpses)
                 {
-                    var row = CreateHorizontalRow(parent, 38f);
                     var label = (string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
                             ? "Corpse"
                             : corpse.SourceDisplayName)
                         + (corpse.IsEmpty ? " (empty)" : string.Empty);
-                    CreateButton(
-                        row,
-                        "Open " + label,
-                        () => ExecuteCorpseOpen(corpse.CorpseId),
-                        corpseState.PendingOperationId == Guid.Empty);
+                    CreateMessage(parent, "Nearby: " + label, Color.white);
                 }
 
                 return;
@@ -1899,24 +1918,11 @@ namespace Mmorpg.Client.Ui
             controller.RefreshContext(context);
         }
 
-        private void ExecuteCorpseOpen(Guid corpseId)
-        {
-            var error = "Corpse interaction state is unavailable.";
-            if (corpseController == null
-                || !corpseController.TryOpen(corpseId, out error))
-            {
-                RejectDrop(error);
-                return;
-            }
-
-            localStatus = "Corpse open submitted.";
-        }
-
         private void ExecuteCorpseClose()
         {
             var error = "Corpse interaction state is unavailable.";
-            if (corpseController == null
-                || !corpseController.TryClose(out error))
+            if (worldInteractionController == null
+                || !worldInteractionController.TryCloseActive(out error))
             {
                 RejectDrop(error);
                 return;

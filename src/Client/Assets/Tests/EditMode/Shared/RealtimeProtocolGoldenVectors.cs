@@ -6,7 +6,7 @@ namespace Mmorpg.SharedTests
 {
     public static partial class RealtimeProtocolGolden
     {
-        // Payload bytes after the seven-byte header, pinned from protocol version 15.
+        // Payload bytes after the seven-byte header, pinned from protocol version 16.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Corpses/CorpseInteractionIntent/close"] =

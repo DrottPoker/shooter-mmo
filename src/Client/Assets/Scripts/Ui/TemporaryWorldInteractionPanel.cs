@@ -8,6 +8,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -18,11 +19,14 @@ namespace Mmorpg.Client.Ui
     {
         private static readonly Color PanelColor =
             new Color(0.055f, 0.065f, 0.08f, 0.96f);
+        private static readonly Vector2 PromptPointerOffset = new Vector2(18f, 12f);
         private WorldInteractionClientController interactionController;
         private WorldInteractionTargetingController targetingController;
         private RectTransform panel;
         private RectTransform content;
+        private RectTransform promptRect;
         private Text prompt;
+        private Guid requestedInventorySessionId;
         private Font font;
         private InventoryClientController inventoryController;
 
@@ -40,7 +44,7 @@ namespace Mmorpg.Client.Ui
             targetingController = FindAnyObjectByType<WorldInteractionTargetingController>();
             if (interactionController != null)
             {
-                interactionController.State.Changed += Rebuild;
+                interactionController.State.Changed += OnInteractionStateChanged;
             }
 
             if (targetingController != null)
@@ -68,13 +72,53 @@ namespace Mmorpg.Client.Ui
                     Rebuild();
                 }
             }
+
+            FollowPointer();
+        }
+
+        // Insurance and quest actions need the committed inventory. It is requested once
+        // per opened interaction, never while drawing, because drawing runs on every
+        // inventory change.
+        private void OnInteractionStateChanged()
+        {
+            var active = interactionController.State.ActiveInteraction;
+            var activeSessionId = active?.InteractionSessionId ?? Guid.Empty;
+            if (activeSessionId != Guid.Empty && activeSessionId != requestedInventorySessionId)
+            {
+                requestedInventorySessionId = activeSessionId;
+                inventoryController?.EnsureFullState();
+            }
+            else if (activeSessionId == Guid.Empty)
+            {
+                requestedInventorySessionId = Guid.Empty;
+            }
+
+            Rebuild();
+        }
+
+        private void FollowPointer()
+        {
+            if (promptRect == null || !prompt.gameObject.activeSelf || Mouse.current == null)
+            {
+                return;
+            }
+
+            var canvasRect = (RectTransform)promptRect.parent;
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    canvasRect,
+                    Mouse.current.position.ReadValue(),
+                    null,
+                    out var localPoint))
+            {
+                promptRect.anchoredPosition = localPoint + PromptPointerOffset;
+            }
         }
 
         private void OnDestroy()
         {
             if (interactionController != null)
             {
-                interactionController.State.Changed -= Rebuild;
+                interactionController.State.Changed -= OnInteractionStateChanged;
             }
 
             if (targetingController != null)
@@ -107,11 +151,10 @@ namespace Mmorpg.Client.Ui
             scaler.referenceResolution = new Vector2(1920f, 1080f);
 
             var promptObject = CreateUiObject("InteractionPrompt", canvasObject.transform);
-            var promptRect = promptObject.GetComponent<RectTransform>();
+            promptRect = promptObject.GetComponent<RectTransform>();
             promptRect.anchorMin = new Vector2(0.5f, 0.5f);
             promptRect.anchorMax = new Vector2(0.5f, 0.5f);
-            promptRect.pivot = new Vector2(0.5f, 0f);
-            promptRect.anchoredPosition = new Vector2(0f, 52f);
+            promptRect.pivot = new Vector2(0f, 0f);
             promptRect.sizeDelta = new Vector2(600f, 32f);
             prompt = promptObject.AddComponent<Text>();
             ConfigureText(prompt, 20, TextAnchor.MiddleCenter);
@@ -228,7 +271,6 @@ namespace Mmorpg.Client.Ui
                         : "Insurance is currently unavailable.",
                     14,
                     TextAnchor.MiddleLeft);
-                inventoryController?.EnsureFullState();
                 return;
             }
 
@@ -280,7 +322,6 @@ namespace Mmorpg.Client.Ui
                         : "Quest lifecycle is currently unavailable.",
                     14,
                     TextAnchor.MiddleLeft);
-                inventoryController?.EnsureFullState();
                 return;
             }
 

@@ -290,11 +290,13 @@ operation-id, error, refresh, reconnect, and authority handling are permanent
 foundations.
 
 Nearby durable corpses use a generic replaceable capsule presentation. Click a
-corpse to walk to it and open it, or use the Corpse tab in the complete
-Development view. The contextual module shows general inventory,
-equipment, and Bag contents only after a complete authoritative snapshot has
-arrived. Drag full items into Permanent inventory, the equipped Bag, or Secure
-Container, or drag carried items back into compatible corpse slots. Enable the
+corpse to walk to it and open it. An open corpse always shows in the complete
+view, which the panel switches to; switching to `B` or `C` closes the corpse.
+The Corpse tab lists nearby corpses but cannot open them. The contextual module
+shows general inventory, equipment, and Bag contents only after a complete
+authoritative snapshot has arrived. Drag full items into Permanent inventory,
+the equipped Bag, or Secure Container, or drag carried items back into
+compatible corpse slots. Enable the
 partial-stack control before dragging to request a specific quantity in either
 direction. Items can also be dragged between empty or occupied slots in any
 corpse section. Compatible stacks with remaining capacity merge. Dropping a

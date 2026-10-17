@@ -861,7 +861,7 @@ namespace Mmorpg.GameProtocol
         public bool ReplaceSection { get; }
 
         /// <summary>
-        /// The number of slots in the section.
+        /// The number of slots in the section. A live Mob corpse has no equipment or Bag slots.
         /// </summary>
         public int SectionSlotCapacity { get; }
 
@@ -1858,7 +1858,7 @@ namespace Mmorpg.GameProtocol
                 || (value.SectionKind != "general_inventory" && value.SectionKind != "equipment" && value.SectionKind != "bag")
                 || value.ContainerId == Guid.Empty
                 || value.ContainerRevision < 0
-                || value.SectionSlotCapacity < 1
+                || value.SectionSlotCapacity < 0
                 || value.SectionSlotCapacity > MaximumCorpseSectionSlotCapacity
                 || value.SlotOffset < 0
                 || value.Slots == null

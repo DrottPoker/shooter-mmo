@@ -804,7 +804,7 @@ items.
    character storage are shown. Press `I` and verify the complete Development
    view adds the upper-right Bank and Recovery context. Pressing the active key
    closes that view, pressing another inventory key switches views, and
-   `Escape` closes any view and restores shooter pointer capture. Verify that
+   `Escape` closes any view; the cursor stays free. Verify that
    hidden modules leave no background or header behind and that Character
    Inventory keeps the same position and size in all three views.
 2. Drag the rifle, vest, pickaxe, or ring from Permanent inventory onto a

@@ -113,6 +113,9 @@ namespace Mmorpg.Client.Items
         private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
         private Coroutine refreshCoroutine;
+        // Set before the routine starts: its first step raises Changed synchronously, and a
+        // listener that asks for state again must queue instead of starting a second routine.
+        private bool refreshInProgress;
         private InventoryRefreshScope? queuedRefreshScope;
         private long queuedMinimumRevision = -1;
         private bool queuedOperationRefresh;
@@ -193,6 +196,8 @@ namespace Mmorpg.Client.Items
                 StopCoroutine(refreshCoroutine);
                 refreshCoroutine = null;
             }
+
+            refreshInProgress = false;
         }
 
         public void EnsureFullState()
@@ -594,14 +599,21 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
-            if (refreshCoroutine != null)
+            if (refreshInProgress)
             {
                 QueueRefresh(scope, operationRefresh, minimumRevision);
                 return;
             }
 
-            refreshCoroutine = StartCoroutine(
+            refreshInProgress = true;
+            var routine = StartCoroutine(
                 RefreshRoutine(scope, operationRefresh, minimumRevision));
+            // A routine that finished without yielding has already cleared the flag, and a
+            // queued refresh it started has stored its own handle.
+            if (refreshInProgress && refreshCoroutine == null)
+            {
+                refreshCoroutine = routine;
+            }
         }
 
         private IEnumerator RefreshRoutine(
@@ -774,6 +786,7 @@ namespace Mmorpg.Client.Items
             }
 
             refreshCoroutine = null;
+            refreshInProgress = false;
             if (succeeded
                 && scope != InventoryRefreshScope.Full
                 && State.RequiresFullRefresh)

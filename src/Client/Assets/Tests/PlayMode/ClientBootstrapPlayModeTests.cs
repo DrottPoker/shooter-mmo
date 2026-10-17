@@ -67,7 +67,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             inventoryPanel.SetOpen(true);
             yield return null;
             Assert.That(inventoryPanel.IsOpen, Is.True);
-            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.FullDevelopment));
+            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.Complete));
             Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.True);
             Assert.That(inventoryPanel.IsContextModuleVisible, Is.True);
             Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);

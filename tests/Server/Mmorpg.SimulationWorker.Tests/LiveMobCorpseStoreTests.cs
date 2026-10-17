@@ -1,3 +1,4 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Corpses;
 
 namespace Mmorpg.SimulationWorker.Tests;
@@ -52,6 +53,29 @@ public sealed class LiveMobCorpseStoreTests
         Assert.Equal(0, Assert.Single(
             snapshot.Sections.SelectMany(section => section.Slots),
             slot => slot.Item is not null).SlotIndex);
+    }
+
+    [Fact]
+    public void SnapshotHasEmptyEquipmentAndBagSectionsThatEncode()
+    {
+        var store = new LiveMobCorpseStore(TimeProvider.System);
+        var corpse = CreateCorpse(DateTime.UtcNow, 120d);
+        store.CreateOrGet(corpse);
+
+        var snapshot = store.CreateSnapshot(corpse.CorpseId);
+
+        Assert.NotNull(snapshot);
+        var general = Assert.Single(snapshot.Sections, section => section.SectionKind == "general_inventory");
+        Assert.Equal(1, general.SlotCapacity);
+        foreach (var kind in new[] { "equipment", "bag" })
+        {
+            var section = Assert.Single(snapshot.Sections, candidate => candidate.SectionKind == kind);
+            Assert.Equal(0, section.SlotCapacity);
+            Assert.Empty(section.Slots);
+        }
+
+        var chunks = CorpseRealtimePacketBuilder.BuildSnapshot(snapshot);
+        Assert.All(chunks, chunk => Assert.NotEmpty(RealtimeProtocol.EncodeCorpseViewStateChunk(chunk)));
     }
 
     [Fact]

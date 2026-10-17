@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 15 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 16 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -255,7 +255,7 @@ packet the worker sends travels as its descriptor says.
 
 ## Movement Input And Paths
 
-Protocol version 15 carries click-to-move. Every `MovementInput` names the path
+Protocol version 15 added click-to-move. Every `MovementInput` names the path
 the player follows with `PathId`, or 0 to stand. `MovementInputBatch` adds an
 optional `Path` with its id and 1 to `MaximumMovementPathWaypoints` (32)
 waypoints. The hand-written rule requires the path id to equal the path id of
@@ -270,6 +270,13 @@ path ended, and the consecutive ticks in which collision blocked the path.
 Without a path, the index and the blocked ticks must be 0. Remote
 `PlayerState` records carry no path data, and its only flag is `IsGrounded`.
 `MovementSettings` no longer has sprint speed or jump velocity.
+
+## Corpse Sections
+
+A corpse view section may have zero slots. Protocol version 16 allows
+`SectionSlotCapacity` 0, because a live Mob corpse carries only general loot and
+its equipment and Bag sections are empty, and a fully looted live Mob corpse has
+no general slots left. Carried weight and carry capacity are unitless integers.
 
 ## Versioning
 
@@ -303,5 +310,5 @@ accepts needs a version bump by hand.
 ## Golden Tests
 
 The golden cases pin the exact bytes of every message type and every accept or
-reject decision of protocol version 15 in both .NET and Unity. They are
+reject decision of the current protocol version in both .NET and Unity. They are
 described in [Backend Tests](../tests/README.md#realtime-protocol-goldens).

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Health;
 using Mmorpg.SimulationWorker.Telemetry;
@@ -11,7 +12,9 @@ namespace Mmorpg.SimulationWorker.GameServiceApi;
 public sealed class GameServiceClient(HttpClient httpClient)
 {
     private const int MaximumRestoredCorpses = 4_096;
-    private const int MaximumCorpseEquipmentSlotIdLength = 64;
+    // A death creates at most one Recovery delivery per protection source. The bound only
+    // rejects malformed responses.
+    private const int MaximumDeathRecoveryDeliveries = 8;
     private const int MaximumForwardedErrorCodeLength = 64;
     private const int MaximumForwardedErrorMessageLength = 256;
 
@@ -651,7 +654,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 || string.IsNullOrWhiteSpace(section.ContainerType)
                 || section.ContainerRevision < 0
                 || section.SlotCapacity <= 0
-                || section.SlotCapacity > 512
+                || section.SlotCapacity > RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity
                 || section.Slots is null
                 || section.Slots.Count != section.SlotCapacity)
             {
@@ -670,7 +673,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
                     || slot.AcceptedTags is null
                     || isEquipmentSlot != !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
                     || (slot.EquipmentSlotId?.Length ?? 0)
-                        > MaximumCorpseEquipmentSlotIdLength
+                        > RealtimeProtocolLimits.MaximumEquipmentSlotIdLength
                     || (isEquipmentSlot && !equipmentSlotIds.Add(slot.EquipmentSlotId!)))
                 {
                     return false;
@@ -729,7 +732,6 @@ public sealed class GameServiceClient(HttpClient httpClient)
         return response.OperationId == request.OperationId
             && response.DeathEventId == request.DeathEventId
             && response.Corpse.SourceCharacterId == request.CharacterId
-            && response.Corpse.ExpiresAt - response.Corpse.CreatedAt == TimeSpan.FromMinutes(5)
             && IsValidDurableCorpse(response.Corpse, request.ShardId, null)
             && response.CharacterRevision.CharacterId == request.CharacterId
             && response.CharacterRevision.Revision >= request.ExpectedCharacterRevision
@@ -738,7 +740,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 response.CharacterRevision.CarriedWeight,
                 response.CharacterRevision.CarryCapacity)
             && response.RecoveryDeliveryIds is not null
-            && response.RecoveryDeliveryIds.Count <= 8
+            && response.RecoveryDeliveryIds.Count <= MaximumDeathRecoveryDeliveries
             && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty)
             && response.RecoveryDeliveryIds.Distinct().Count()
                 == response.RecoveryDeliveryIds.Count;
@@ -757,10 +759,9 @@ public sealed class GameServiceClient(HttpClient httpClient)
             || !IsFinitePosition(corpse.PositionY)
             || !IsFinitePosition(corpse.PositionZ)
             || !IsNormalizedRotation(corpse)
-            || !string.Equals(
-                corpse.PresentationKey,
-                "corpse.generic_loot_crate",
-                StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(corpse.PresentationKey)
+            || corpse.PresentationKey.Length
+                > RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength
             || corpse.Revision < 0
             || corpse.CreatedAt == default
             || corpse.ExpiresAt <= corpse.CreatedAt
