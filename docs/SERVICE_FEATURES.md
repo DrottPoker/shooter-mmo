@@ -535,6 +535,13 @@ concurrent inspection, and authoritative looting:
   destruction, empty Bag storage, complete Bag aggregate swap, Recovery delivery
   add and claim, Secure Container tier change, policy application and removal,
   quest-grant abandonment cleanup, player-death partition, and corpse expiry.
+- Equip moves a whole stack only when it fits the equipment slot limit, which is
+  the smaller of the slot maximum quantity and the definition stack size. Merge
+  accepts an equipped target up to that limit and an equipped source, and split
+  accepts an equipped source, so arrows top up and partly leave the ammunition
+  slot. Equipping into a slot that an equipped item blocks, or with an item that
+  would block an occupied slot, is rejected with `equipment_slot_blocked`. A
+  corpse equipment slot keeps the same quantity limit.
 - Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
   child. A protected or insured Bag or child rejects the complete swap without
   changing custody, quantity, or revisions.

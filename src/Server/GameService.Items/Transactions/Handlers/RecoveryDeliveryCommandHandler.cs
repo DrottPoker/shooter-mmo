@@ -295,6 +295,7 @@ internal sealed class RecoveryDeliveryCommandHandler
             var destinationSlotIndex = await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
+                item.Quantity,
                 null,
                 bagHasContents,
                 item.IsBag ? item.ItemInstanceId : null,

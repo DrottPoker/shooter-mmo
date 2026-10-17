@@ -220,6 +220,16 @@ stack of up to `1000` units; every other slot holds one item. A definition may
 list blocked equipment slots that stay empty while it is equipped, so a
 two-handed bow in `main_hand` keeps `off_hand` free.
 
+Equipping moves a whole stack only when it fits the slot limit, which is the
+smaller of the slot maximum quantity and the definition stack size. A compatible
+stack dropped on the equipped stack tops it up to that limit, and a split from
+the equipped stack moves part of it into an empty container slot. An equipped
+stack has zero carried weight like every other equipped item. Equipping into a
+blocked slot, or equipping an item that would block an occupied slot, is
+rejected with `equipment_slot_blocked`. At death an equipped stack follows the
+normal death rules and keeps its quantity in the matching corpse equipment slot,
+which applies the same limit. Corpse loot still enters carried storage only.
+
 An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a
 parallel non-item system.

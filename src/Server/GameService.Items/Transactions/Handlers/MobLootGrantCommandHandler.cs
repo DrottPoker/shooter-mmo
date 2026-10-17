@@ -55,6 +55,7 @@ internal sealed class MobLootGrantCommandHandler
         var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
+            command.Quantity,
             command.DestinationSlotIndex,
             false,
             null,

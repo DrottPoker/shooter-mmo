@@ -2,7 +2,7 @@ using Dapper;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
-// Equips an item from a container and unequips it into a container slot.
+// Equips a whole item or stack from a container and unequips it into a container slot.
 internal sealed class ItemEquipmentCommandHandler
     : IItemCommandHandler<EquipItemCommand>,
     IItemCommandHandler<UnequipItemCommand>
@@ -32,19 +32,13 @@ internal sealed class ItemEquipmentCommandHandler
                 "The item is not in a container that can equip directly.");
         }
 
-        if (item.Quantity != 1)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.EquipmentSlotIncompatible,
-                "Equipped items must have quantity one.");
-        }
-
         var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
         var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
         await context.Placement.EnsureEquipmentDestinationAsync(
             command.CharacterId,
             command.EquipmentSlotId,
             definition,
+            item.Quantity,
             bagHasContents,
             cancellationToken);
         var beforeState = await context.Journal.CaptureItemStateJsonAsync(
@@ -134,6 +128,7 @@ internal sealed class ItemEquipmentCommandHandler
         var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
+            item.Quantity,
             command.DestinationSlotIndex,
             bagHasContents,
             item.IsBag ? item.ItemInstanceId : null,

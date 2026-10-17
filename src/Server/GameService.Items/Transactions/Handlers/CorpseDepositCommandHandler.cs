@@ -176,15 +176,6 @@ internal sealed class CorpseDepositCommandHandler
                     "Corpse Bags move only through an atomic Bag aggregate swap.");
             }
 
-            await context.Placement.SelectDestinationSlotAsync(
-                destination,
-                definition,
-                command.DestinationSlotIndex,
-                sourceBagHasContents,
-                source.IsBag ? source.ItemInstanceId : null,
-                false,
-                cancellationToken,
-                target.ItemInstanceId);
             targetPolicies = await context.State.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
@@ -196,6 +187,18 @@ internal sealed class CorpseDepositCommandHandler
                 targetPolicies,
                 definition,
                 movedQuantity);
+            await context.Placement.SelectDestinationSlotAsync(
+                destination,
+                definition,
+                stackDisposition == CorpseStackDisposition.Merge
+                    ? target.Quantity + movedQuantity
+                    : movedQuantity,
+                command.DestinationSlotIndex,
+                sourceBagHasContents,
+                source.IsBag ? source.ItemInstanceId : null,
+                false,
+                cancellationToken,
+                target.ItemInstanceId);
             if (stackDisposition != CorpseStackDisposition.Merge)
             {
                 if (isPartial)
@@ -219,6 +222,7 @@ internal sealed class CorpseDepositCommandHandler
                 await context.Placement.SelectDestinationSlotAsync(
                     sourceContainer,
                     targetDefinition,
+                    target.Quantity,
                     source.ContainerSlotIndex,
                     false,
                     null,
@@ -233,6 +237,7 @@ internal sealed class CorpseDepositCommandHandler
             await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
+                movedQuantity,
                 command.DestinationSlotIndex,
                 sourceBagHasContents,
                 source.IsBag ? source.ItemInstanceId : null,

@@ -2146,6 +2146,7 @@ bag_move_in_progress
 carry_weight_limit_exceeded
 equipment_slot_occupied
 equipment_slot_incompatible
+equipment_slot_blocked
 secure_container_item_forbidden
 bank_access_required
 recovery_access_required

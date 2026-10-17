@@ -808,37 +808,43 @@ names the package.
    new location. The header drops by the equipped item's own weight and restores
    it when the item is unequipped into carried storage. Clicking a destination
    without dragging does not move an item.
-3. Drag the empty Traveler's Pack from Permanent inventory into one of the
+3. Drag the 100 Bronze Arrows from the Bag ammunition slot onto the Ammunition
+   equipment slot. The weight drops by `100`. Select the equipped arrows, enter
+   `40`, enable `Split to Target`, and drag them onto an empty Permanent slot:
+   `60` stay equipped and the weight rises by `40`. Drag the `40` arrows back
+   onto the equipped stack to top it up to `100`, then drag the equipped stack
+   back onto the Bag ammunition slot. The weight returns to `1040 / 2500`.
+4. Drag the empty Traveler's Pack from Permanent inventory into one of the
    equipped Bag's general slots and back. Open Bank and drag the second empty
    Traveler's Pack between Bank and Permanent inventory. Click the equipped
    non-empty Traveler's Pack
    only to inspect its actions, then drag it and confirm ordinary Permanent, Bag,
    and Bank destinations reject it.
-4. Drag the healing potion, iron ore, and arrows out of and back into the
+5. Drag the healing potion, iron ore, and arrows out of and back into the
    supplies, material, and ammunition specialized slots. Drag the shortbow across a
    specialized slot and Secure Container target and confirm both reject it.
-5. In Bank, click an iron-ore stack, enter the split quantity, enable
+6. In Bank, click an iron-ore stack, enter the split quantity, enable
    `Split to Target`, then drag that selected stack onto an empty Bank slot. Drag
    the resulting stack onto its compatible peer to merge it back. Confirm source
    quantities and item identities change only after the server result and
    refresh. Drag two unlike items between compatible occupied ordinary slots and
    confirm they exchange slots in one committed refresh. Repeat against an
    incompatible specialized or Secure Container slot and confirm neither moves.
-6. In Recovery, drag either item in the prepared delivery onto a Permanent or
+7. In Recovery, drag either item in the prepared delivery onto a Permanent or
    Bank slot. The complete delivery disappears and both original item instances
    appear in the chosen container only after the committed full refresh.
-7. Starting from fixture weight `1040 / 2500`, move Bank iron ore quantity `20`
+8. Starting from fixture weight `1040 / 2500`, move Bank iron ore quantity `20`
    to Permanent inventory. Weight becomes `2240 / 2500`. Move Bank iron ore
    quantity `19` to reach `3380 / 2500`, above 100 percent, where the movement
    multiplier declines linearly. Move the single healing potion to reach
    `3400 / 2500`, followed by the empty Bank Traveler's Pack to reach exactly
    `3500 / 2500`, load `140%`, and movement `20%`.
-8. Attempt to move the Bank arrow stack into carried storage. The local target
+9. Attempt to move the Bank arrow stack into carried storage. The local target
    is disabled. Any equivalent authoritative request is rejected by the server,
    and the committed weight remains exactly `3500 / 2500`.
-9. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
+10. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
    quantity, carry value, and revision is restored without loss or duplication.
-10. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
+11. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
     references remain stable. Automated EditMode coverage also asserts that both
     catalog loads return the same presentation index and icon cache.
 

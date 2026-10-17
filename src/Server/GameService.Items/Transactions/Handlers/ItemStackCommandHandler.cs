@@ -4,7 +4,7 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
-// Splits, merges, and consumes item stacks.
+// Splits, merges, and consumes item stacks in containers and equipment slots.
 internal sealed class ItemStackCommandHandler
     : IItemCommandHandler<SplitItemStackCommand>,
     IItemCommandHandler<MergeItemStacksCommand>,
@@ -27,12 +27,11 @@ internal sealed class ItemStackCommandHandler
             command.CharacterId,
             command.ExpectedItemRevision,
             cancellationToken);
-        if (source.ContainerId is null
-            || string.Equals(source.SourceContainerType, "recovery_storage", StringComparison.Ordinal))
+        if (!IsStackLocation(source, command.CharacterId))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStackIncompatible,
-                "The source stack is not in a splittable container location.");
+                "The source stack is not in a splittable location.");
         }
 
         if (command.Quantity <= 0 || command.Quantity >= source.Quantity)
@@ -57,6 +56,7 @@ internal sealed class ItemStackCommandHandler
         var destinationSlotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
+            command.Quantity,
             command.DestinationSlotIndex,
             false,
             null,
@@ -183,14 +183,12 @@ internal sealed class ItemStackCommandHandler
             command.CharacterId,
             command.ExpectedTargetItemRevision,
             cancellationToken);
-        if (source.ContainerId is null
-            || target.ContainerId is null
-            || string.Equals(source.SourceContainerType, "recovery_storage", StringComparison.Ordinal)
-            || string.Equals(target.SourceContainerType, "recovery_storage", StringComparison.Ordinal))
+        if (!IsStackLocation(source, command.CharacterId)
+            || !IsStackLocation(target, command.CharacterId))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStackIncompatible,
-                "Both stacks must be in compatible ordinary container slots.");
+                "Both stacks must be in ordinary container slots or equipment slots.");
         }
 
         var definition = await context.State.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
@@ -237,6 +235,16 @@ internal sealed class ItemStackCommandHandler
                 sameDefinitionAndPolicy
                     ? "The merged quantity would exceed the definition stack limit."
                     : "The item stacks have incompatible definition or policy state.");
+        }
+
+        if (target.EquipmentSlotId is not null)
+        {
+            await context.Placement.EnsureEquippedStackQuantityAsync(
+                command.CharacterId,
+                target.EquipmentSlotId,
+                definition,
+                target.Quantity + source.Quantity,
+                cancellationToken);
         }
 
         var beforeSource = await context.Journal.CaptureItemStateJsonAsync(
@@ -364,5 +372,14 @@ internal sealed class ItemStackCommandHandler
 
         context.Journal.TouchContainer(item.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
+    }
+
+    // A stack can split or merge in an ordinary container slot or in an equipment slot of the
+    // character, such as the equipped arrows. Recovery Storage items must be claimed first.
+    private static bool IsStackLocation(LockedItem item, Guid characterId)
+    {
+        return item.ContainerId is null
+            ? item.EquippedCharacterId == characterId
+            : !string.Equals(item.SourceContainerType, "recovery_storage", StringComparison.Ordinal);
     }
 }

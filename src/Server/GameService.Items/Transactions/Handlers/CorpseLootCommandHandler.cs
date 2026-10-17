@@ -161,15 +161,6 @@ internal sealed class CorpseLootCommandHandler
                     "The target stack moved before the loot operation committed.");
             }
 
-            await context.Placement.SelectDestinationSlotAsync(
-                destination,
-                definition,
-                command.DestinationSlotIndex,
-                false,
-                null,
-                false,
-                cancellationToken,
-                target.ItemInstanceId);
             targetPolicies = await context.State.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
@@ -181,6 +172,18 @@ internal sealed class CorpseLootCommandHandler
                 targetPolicies,
                 definition,
                 movedQuantity);
+            await context.Placement.SelectDestinationSlotAsync(
+                destination,
+                definition,
+                stackDisposition == CorpseStackDisposition.Merge
+                    ? target.Quantity + movedQuantity
+                    : movedQuantity,
+                command.DestinationSlotIndex,
+                false,
+                null,
+                false,
+                cancellationToken,
+                target.ItemInstanceId);
             if (stackDisposition != CorpseStackDisposition.Merge)
             {
                 if (isPartial)
@@ -210,6 +213,7 @@ internal sealed class CorpseLootCommandHandler
                 await context.Placement.SelectDestinationSlotAsync(
                     sourceContainer,
                     targetDefinition,
+                    target.Quantity,
                     source.ContainerSlotIndex,
                     targetBagHasContents,
                     target.IsBag ? target.ItemInstanceId : null,
@@ -224,6 +228,7 @@ internal sealed class CorpseLootCommandHandler
             await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
+                movedQuantity,
                 command.DestinationSlotIndex,
                 false,
                 null,

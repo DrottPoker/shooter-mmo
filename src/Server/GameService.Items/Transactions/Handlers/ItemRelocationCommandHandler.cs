@@ -47,6 +47,7 @@ internal sealed class ItemRelocationCommandHandler
         var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
+            item.Quantity,
             command.DestinationSlotIndex,
             bagHasContents,
             item.IsBag ? item.ItemInstanceId : null,
@@ -163,6 +164,7 @@ internal sealed class ItemRelocationCommandHandler
         await context.Placement.SelectDestinationSlotAsync(
             secondContainer,
             firstDefinition,
+            firstItem.Quantity,
             secondItem.ContainerSlotIndex.Value,
             firstBagHasContents,
             firstItem.IsBag ? firstItem.ItemInstanceId : null,
@@ -172,6 +174,7 @@ internal sealed class ItemRelocationCommandHandler
         await context.Placement.SelectDestinationSlotAsync(
             firstContainer,
             secondDefinition,
+            secondItem.Quantity,
             firstItem.ContainerSlotIndex.Value,
             secondBagHasContents,
             secondItem.IsBag ? secondItem.ItemInstanceId : null,

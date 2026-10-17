@@ -829,6 +829,146 @@ namespace Mmorpg.Client.Tests.EditMode
             return state;
         }
 
+        [Test]
+        public void EquipmentAdvisorAppliesStackLimitsBlockedSlotsAndEquippedWeight()
+        {
+            var bow = CreateItem("fixture.bow", 1);
+            var equippedArrows = CreateItem("fixture.arrow", 30);
+            var state = CreateAdvisorStateWithEquipment(
+                100,
+                200,
+                new InventoryEquipmentSlot("main_hand", 2, bow),
+                new InventoryEquipmentSlot("off_hand", 3, null),
+                new InventoryEquipmentSlot("ammunition", 4, equippedArrows));
+            var carried = new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                state.FullSnapshot.PermanentInventory.ContainerId,
+                "permanent_inventory",
+                0,
+                string.Empty,
+                Guid.Empty);
+            var ammunitionLocation = new InventoryItemLocation(
+                InventoryItemLocationKind.Equipment,
+                Guid.Empty,
+                "equipment",
+                -1,
+                "ammunition",
+                Guid.Empty);
+
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    state,
+                    CreateItem("fixture.shield", 1),
+                    carried,
+                    state.FullSnapshot.Equipment[1],
+                    out var blockedReason),
+                Is.False);
+            Assert.That(blockedReason, Does.Contain("Main Hand"));
+            Assert.That(
+                InventoryTargetAdvisor.CanMerge(
+                    state,
+                    CreateItem("fixture.arrow", 20),
+                    carried,
+                    equippedArrows,
+                    ammunitionLocation,
+                    out var topUpReason),
+                Is.True,
+                topUpReason);
+            Assert.That(
+                InventoryTargetAdvisor.CanMerge(
+                    state,
+                    CreateItem("fixture.arrow", 21),
+                    carried,
+                    equippedArrows,
+                    ammunitionLocation,
+                    out var limitReason),
+                Is.False);
+            Assert.That(limitReason, Does.Contain("equipment slot limit"));
+
+            var emptySlotState = CreateAdvisorStateWithEquipment(
+                100,
+                200,
+                new InventoryEquipmentSlot("ammunition", 4, null));
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    emptySlotState,
+                    CreateItem("fixture.arrow", 55),
+                    carried,
+                    emptySlotState.FullSnapshot.Equipment[0],
+                    out _),
+                Is.False);
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    emptySlotState,
+                    CreateItem("fixture.arrow", 50),
+                    carried,
+                    emptySlotState.FullSnapshot.Equipment[0],
+                    out var fitReason),
+                Is.True,
+                fitReason);
+
+            var loadedState = CreateAdvisorStateWithEquipment(
+                270,
+                200,
+                new InventoryEquipmentSlot("ammunition", 4, equippedArrows));
+            var inventory = loadedState.FullSnapshot.PermanentInventory;
+            Assert.That(
+                InventoryTargetAdvisor.CanPlaceInContainer(
+                    loadedState,
+                    equippedArrows,
+                    ammunitionLocation,
+                    inventory,
+                    inventory.Slots[0],
+                    10,
+                    out var splitReason),
+                Is.True,
+                splitReason);
+            Assert.That(
+                InventoryTargetAdvisor.CanPlaceInContainer(
+                    loadedState,
+                    equippedArrows,
+                    ammunitionLocation,
+                    inventory,
+                    inventory.Slots[0],
+                    11,
+                    out var capReason),
+                Is.False);
+            Assert.That(capReason, Does.Contain("140 percent"));
+        }
+
+        private InventoryClientState CreateAdvisorStateWithEquipment(
+            long carriedWeight,
+            long carryCapacity,
+            params InventoryEquipmentSlot[] equipment)
+        {
+            var characterId = Guid.NewGuid();
+            var snapshot = new CharacterInventorySnapshot(
+                characterId,
+                catalog.Revision,
+                1,
+                CreateContainer("permanent_inventory", 1, 20),
+                equipment,
+                null,
+                CreateContainer("bank", 1, 40),
+                new SecureContainerInventory(
+                    "secure_container.base",
+                    1,
+                    CreateContainer("secure_container", 1, 4)),
+                new RecoveryStorageInventory(
+                    Guid.NewGuid(),
+                    1,
+                    Array.Empty<RecoveryDelivery>()),
+                carriedWeight,
+                carryCapacity,
+                (int)(carriedWeight * 10_000 / carryCapacity),
+                10_000);
+            var state = new InventoryClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(characterId);
+            Assert.That(state.ApplyFull(snapshot), Is.EqualTo(InventorySnapshotApplyResult.Applied));
+            return state;
+        }
+
         private InventoryClientState CreateAdvisorStateWithoutBag(
             long carriedWeight,
             long carryCapacity)

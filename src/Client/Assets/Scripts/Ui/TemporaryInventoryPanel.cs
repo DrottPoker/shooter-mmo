@@ -949,14 +949,9 @@ namespace Mmorpg.Client.Ui
                     out reason);
             }
 
-            if (source.Kind == InventoryItemLocationKind.Equipment)
+            // A split drag from an equipped stack unequips part of it, such as some arrows.
+            if (source.Kind == InventoryItemLocationKind.Equipment && !splitDrag)
             {
-                if (splitDrag)
-                {
-                    reason = "Equipped items cannot be split.";
-                    return false;
-                }
-
                 return InventoryTargetAdvisor.CanUnequip(
                     state,
                     item,
@@ -1169,9 +1164,17 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
+            var movedItem = quantity == item.Quantity
+                ? item
+                : new InventoryItem(
+                    item.ItemInstanceId,
+                    item.DefinitionId,
+                    quantity,
+                    item.Revision,
+                    item.Policies.ToArray());
             if (!CanOccupyCorpseEquipmentSlot(
                     state.Catalog,
-                    item,
+                    movedItem,
                     slot,
                     out reason))
             {
@@ -1192,14 +1195,6 @@ namespace Mmorpg.Client.Ui
                     out reason);
             }
 
-            var movedItem = quantity == item.Quantity
-                ? item
-                : new InventoryItem(
-                    item.ItemInstanceId,
-                    item.DefinitionId,
-                    quantity,
-                    item.Revision,
-                    item.Policies.ToArray());
             var corpseItem = slot.Item.ToInventoryItem();
             if (InventoryTargetAdvisor.CanMerge(
                     state.Catalog,
@@ -1361,6 +1356,8 @@ namespace Mmorpg.Client.Ui
                 out reason);
         }
 
+        // A corpse equipment slot accepts compatible items up to its equipment slot limit,
+        // counting a stack in the slot that the item merges with.
         private static bool CanOccupyCorpseEquipmentSlot(
             ClientItemCatalog catalog,
             InventoryItem item,
@@ -1373,12 +1370,31 @@ namespace Mmorpg.Client.Ui
                 return true;
             }
 
-            if (!catalog.TryGetEquipmentSlot(slot.EquipmentSlotId, out _)
+            if (!catalog.TryGetEquipmentSlot(slot.EquipmentSlotId, out var equipmentSlot)
                 || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
                 || !ItemEquipmentRules.IsCompatible(definition, slot.EquipmentSlotId))
             {
                 reason = "The item is not compatible with corpse equipment slot '"
                     + slot.EquipmentSlotId + "'.";
+                return false;
+            }
+
+            long quantity = item.Quantity;
+            if (slot.Item != null
+                && slot.Item.ItemInstanceId != item.ItemInstanceId
+                && InventoryTargetAdvisor.CanMerge(
+                    catalog,
+                    item,
+                    slot.Item.ToInventoryItem(),
+                    out _))
+            {
+                quantity += slot.Item.Quantity;
+            }
+
+            if (!ItemEquipmentRules.CanHoldQuantity(definition, equipmentSlot, quantity))
+            {
+                reason = "Corpse equipment slot '" + slot.EquipmentSlotId + "' holds at most "
+                    + ItemEquipmentRules.MaximumQuantity(definition, equipmentSlot) + ".";
                 return false;
             }
 
@@ -1458,10 +1474,7 @@ namespace Mmorpg.Client.Ui
 
             if (equipmentSlot.Item != null)
             {
-                reason = equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId
-                    ? "The item is already equipped in this slot."
-                    : "The equipment slot is occupied.";
-                return false;
+                return CanTopUpEquippedStack(state, item, source, equipmentSlot, out reason);
             }
 
             if (source.Kind == InventoryItemLocationKind.Equipment)
@@ -1598,10 +1611,58 @@ namespace Mmorpg.Client.Ui
             }
 
             state.TryFindItem(payload.ItemInstanceId, out var item, out _);
+            if (equipmentSlot.Item != null)
+            {
+                Execute(
+                    controller.TryMerge(item, equipmentSlot.Item, out var mergeError),
+                    mergeError,
+                    "Merge submitted.");
+                return;
+            }
+
             Execute(
                 controller.TryEquip(item, equipmentSlot.SlotId, out var error),
                 error,
                 "Equip submitted.");
+        }
+
+        // Dropping a compatible stack onto an occupied equipment slot merges into the equipped
+        // stack, such as arrows topping up the ammunition slot.
+        private static bool CanTopUpEquippedStack(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryItemLocation source,
+            InventoryEquipmentSlot equipmentSlot,
+            out string reason)
+        {
+            if (equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId)
+            {
+                reason = "The item is already equipped in this slot.";
+                return false;
+            }
+
+            if (!string.Equals(
+                    equipmentSlot.Item.DefinitionId,
+                    item.DefinitionId,
+                    StringComparison.Ordinal))
+            {
+                reason = "The equipment slot is occupied.";
+                return false;
+            }
+
+            return InventoryTargetAdvisor.CanMerge(
+                state,
+                item,
+                source,
+                equipmentSlot.Item,
+                new InventoryItemLocation(
+                    InventoryItemLocationKind.Equipment,
+                    Guid.Empty,
+                    "equipment",
+                    -1,
+                    equipmentSlot.SlotId,
+                    Guid.Empty),
+                out reason);
         }
 
         private void OnContainerSlotClicked(InventorySlot slot)

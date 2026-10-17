@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.WorldData.Items;
 
@@ -87,7 +88,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (source.IsExternal
+            if (IsWeightless(source)
                 && IsCarriedContainer(destination.ContainerType)
                 && !FitsHardCap(state.FullSnapshot, definition, movedQuantity))
             {
@@ -123,9 +124,30 @@ namespace Mmorpg.Client.Items
             }
 
             if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
-                || !ItemEquipmentRules.IsCompatible(definition, destination.SlotId))
+                || !ItemEquipmentRules.IsCompatible(definition, destination.SlotId)
+                || !state.Catalog.TryGetEquipmentSlot(destination.SlotId, out var slot))
             {
                 reason = "The item is not compatible with this equipment slot.";
+                return false;
+            }
+
+            if (!ItemEquipmentRules.CanHoldQuantity(definition, slot, item.Quantity))
+            {
+                reason = "This equipment slot holds at most "
+                    + ItemEquipmentRules.MaximumQuantity(definition, slot)
+                    + ". Split the stack first.";
+                return false;
+            }
+
+            var blockingSlotId = ItemEquipmentRules.FindBlockingSlot(
+                definition,
+                destination.SlotId,
+                BlockedSlotsByOccupiedSlot(state));
+            if (blockingSlotId != null)
+            {
+                reason = "The item equipped in "
+                    + EquipmentSlotName(state.Catalog, blockingSlotId)
+                    + " blocks this equipment slot.";
                 return false;
             }
 
@@ -397,9 +419,26 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (sourceLocation.IsExternal
-                && !targetLocation.IsExternal
-                && state.Catalog.TryGetDefinition(source.DefinitionId, out var definition)
+            if (!state.Catalog.TryGetDefinition(source.DefinitionId, out var definition))
+            {
+                reason = "The item definition is unavailable.";
+                return false;
+            }
+
+            // An equipped stack, such as the arrows in the ammunition slot, keeps its slot limit.
+            if (targetLocation.Kind == InventoryItemLocationKind.Equipment
+                && (!state.Catalog.TryGetEquipmentSlot(targetLocation.EquipmentSlotId, out var slot)
+                    || !ItemEquipmentRules.CanHoldQuantity(
+                        definition,
+                        slot,
+                        (long)source.Quantity + target.Quantity)))
+            {
+                reason = "The equipped stack would exceed its equipment slot limit.";
+                return false;
+            }
+
+            if (IsWeightless(sourceLocation)
+                && !IsWeightless(targetLocation)
                 && !FitsHardCap(state.FullSnapshot, definition, source.Quantity))
             {
                 reason = "Merging this stack would exceed the 140 percent carry cap.";
@@ -738,6 +777,39 @@ namespace Mmorpg.Client.Items
                 candidate != null && candidate.ContainerId == location.ContainerId);
             return container != null
                 && container.TryGetSlot(location.SlotIndex, out slot);
+        }
+
+        // Equipped items and external storage do not count toward carried weight.
+        private static bool IsWeightless(InventoryItemLocation location)
+        {
+            return location.IsExternal || location.Kind == InventoryItemLocationKind.Equipment;
+        }
+
+        private static Dictionary<string, string[]> BlockedSlotsByOccupiedSlot(
+            InventoryClientState state)
+        {
+            var blockedSlots = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            foreach (var equipmentSlot in state.FullSnapshot.Equipment)
+            {
+                if (equipmentSlot.Item != null)
+                {
+                    blockedSlots[equipmentSlot.SlotId] = state.Catalog.TryGetDefinition(
+                        equipmentSlot.Item.DefinitionId,
+                        out var equippedDefinition)
+                        ? equippedDefinition.BlockedEquipmentSlots ?? Array.Empty<string>()
+                        : Array.Empty<string>();
+                }
+            }
+
+            return blockedSlots;
+        }
+
+        private static string EquipmentSlotName(ClientItemCatalog catalog, string equipmentSlotId)
+        {
+            return catalog.TryGetEquipmentSlot(equipmentSlotId, out var slot)
+                && !string.IsNullOrWhiteSpace(slot.DisplayName)
+                    ? slot.DisplayName
+                    : equipmentSlotId;
         }
 
         private static bool IsCarriedContainer(string containerType)

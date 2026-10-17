@@ -263,13 +263,13 @@ public sealed class ItemRulesTests
         var bow = Definition("fixture.bow");
         var shield = Definition("fixture.shield");
         var sword = Definition("fixture.sword");
-        var withShield = new Dictionary<string, ItemDefinition>(StringComparer.Ordinal)
+        var withShield = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            ["off_hand"] = shield
+            ["off_hand"] = shield.BlockedEquipmentSlots
         };
-        var withBow = new Dictionary<string, ItemDefinition>(StringComparer.Ordinal)
+        var withBow = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            ["main_hand"] = bow
+            ["main_hand"] = bow.BlockedEquipmentSlots
         };
 
         Assert.Equal("off_hand", ItemEquipmentRules.FindBlockingSlot(bow, "main_hand", withShield));
@@ -279,7 +279,7 @@ public sealed class ItemRulesTests
         Assert.Null(ItemEquipmentRules.FindBlockingSlot(
             bow,
             "main_hand",
-            new Dictionary<string, ItemDefinition>(StringComparer.Ordinal)));
+            new Dictionary<string, string[]>(StringComparer.Ordinal)));
     }
 
     [Fact]

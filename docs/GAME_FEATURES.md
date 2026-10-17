@@ -251,7 +251,12 @@ and Recovery.
 Drag items to valid container or equipment destinations. Dropping onto an
 occupied compatible container slot merges compatible stacks and otherwise
 submits one atomic swap. Click selection is retained only for split and
-allowed-destroy actions. All mutations use the existing authoritative
+allowed-destroy actions. The ammunition slot holds one stack up to its
+slot limit. Dropping a compatible stack onto the equipped stack tops it up, and
+`Split to Target` from the equipped stack moves part of it into an empty slot.
+An item cannot be equipped into a slot that an equipped item blocks, such as
+the off hand next to a two-handed bow, or while it would block an occupied
+slot. All mutations use the existing authoritative
 SimulationWorker and GameService path. The panel renders only refreshed
 committed snapshots and never pretends that a pending mutation has completed.
 See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
@@ -303,7 +308,8 @@ corpse section. Compatible stacks with remaining capacity merge. Dropping a
 complete item that cannot merge onto an occupied slot swaps the two items only
 when both original slots accept the opposite item and the result stays within
 the hard cap. Every corpse equipment slot displays its equipment type and
-canonical id, and accepts only a compatible definition. Dropping either equipped
+canonical id, and accepts only a compatible definition up to its equipment slot
+limit. Dropping either equipped
 Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
 complete Bags satisfy the rules. Bank, Recovery Storage, and ordinary equipped
 items cannot enter corpse custody. The panel never moves either side

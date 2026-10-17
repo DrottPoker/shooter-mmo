@@ -158,41 +158,34 @@ namespace Mmorpg.WorldData.Items
             return quantity > 0 && quantity <= MaximumQuantity(definition, slot);
         }
 
-        // Returns the slot that blocks equipping the definition into the target slot, or null.
-        // An equipped item blocks the slots its definition lists, so a two-handed weapon in the
-        // main hand keeps the off hand empty, and an item cannot be equipped while it would
-        // block a slot that is already occupied.
+        // Returns the occupied slot that blocks equipping the definition into the target slot, or
+        // null. An equipped item blocks the slots its definition lists, so a two-handed weapon in
+        // the main hand keeps the off hand empty, and an item cannot be equipped while it would
+        // block a slot that is already occupied. The map holds each occupied slot and the slots
+        // that the item in it blocks.
         public static string FindBlockingSlot(
             ItemDefinition definition,
             string targetSlotId,
-            IReadOnlyDictionary<string, ItemDefinition> equippedBySlot)
+            IReadOnlyDictionary<string, string[]> blockedSlotsByOccupiedSlot)
         {
-            if (definition == null || string.IsNullOrWhiteSpace(targetSlotId))
+            if (definition == null
+                || string.IsNullOrWhiteSpace(targetSlotId)
+                || blockedSlotsByOccupiedSlot == null)
             {
                 return null;
             }
 
-            if (equippedBySlot == null)
+            foreach (var occupied in blockedSlotsByOccupiedSlot)
             {
-                return null;
-            }
-
-            foreach (var equipped in equippedBySlot)
-            {
-                if (string.Equals(equipped.Key, targetSlotId, StringComparison.Ordinal)
-                    || equipped.Value == null)
+                if (string.Equals(occupied.Key, targetSlotId, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                if (Contains(equipped.Value.BlockedEquipmentSlots, targetSlotId))
+                if (Contains(occupied.Value, targetSlotId)
+                    || Contains(definition.BlockedEquipmentSlots, occupied.Key))
                 {
-                    return equipped.Key;
-                }
-
-                if (Contains(definition.BlockedEquipmentSlots, equipped.Key))
-                {
-                    return equipped.Key;
+                    return occupied.Key;
                 }
             }
 
