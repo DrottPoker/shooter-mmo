@@ -241,7 +241,7 @@ public sealed class CorpseRealtimeStateTests
         string sectionKind = "general_inventory",
         int slotCapacity = 3,
         bool fillEverySlot = false,
-        string definitionId = "material.iron_ore")
+        string definitionId = "fixture.ore")
     {
         var slots = Enumerable.Range(0, slotCapacity)
             .Select(index => new CorpseViewSlotResponse(

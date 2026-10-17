@@ -11,7 +11,7 @@ namespace Mmorpg.Client.Items
     public sealed class ClientItemCatalog
     {
         private readonly Dictionary<string, ItemDefinition> definitions;
-        private readonly Dictionary<string, ItemCatalogIdentityEntry> equipmentSlots;
+        private readonly Dictionary<string, ItemEquipmentSlotEntry> equipmentSlots;
 
         private ClientItemCatalog(
             ItemCatalogRuntimeDocument gameplay,
@@ -56,10 +56,61 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            ItemCatalogRuntimeDocument gameplay;
+            if (!TryParseGameplay(gameplayAsset.text, out var gameplay, out error)
+                || !ItemPresentationCatalogLoader.TryLoadOnce(
+                    gameplay.Revision,
+                    gameplay.Definitions.Select(definition => definition.Id),
+                    out var presentation,
+                    out error))
+            {
+                return false;
+            }
+
+            catalog = new ClientItemCatalog(gameplay, presentation);
+            return true;
+        }
+
+        // Combines a verified gameplay catalog with a presentation index built for it, such as
+        // a test catalog that has no bundled presentation.
+        public static bool TryCreate(
+            ItemCatalogRuntimeDocument gameplay,
+            ItemPresentationCatalogIndex presentation,
+            out ClientItemCatalog catalog,
+            out string error)
+        {
+            catalog = null;
+            error = string.Empty;
+            if (gameplay == null || presentation == null)
+            {
+                error = "A gameplay catalog and its presentation are required.";
+                return false;
+            }
+
+            if (!string.Equals(
+                presentation.Catalog.sourceCatalogRevision,
+                gameplay.Revision,
+                StringComparison.Ordinal))
+            {
+                error = "The item presentation does not belong to the gameplay catalog revision.";
+                return false;
+            }
+
+            catalog = new ClientItemCatalog(gameplay, presentation);
+            return true;
+        }
+
+        // Parses compiled gameplay JSON and accepts it only when recompiling its own content
+        // reproduces its revision.
+        public static bool TryParseGameplay(
+            string json,
+            out ItemCatalogRuntimeDocument gameplay,
+            out string error)
+        {
+            gameplay = null;
+            error = string.Empty;
             try
             {
-                var jsonDocument = ClientItemCatalogJson.Deserialize(gameplayAsset.text);
+                var jsonDocument = ClientItemCatalogJson.Deserialize(json);
                 var compiled = ItemCatalogCompiler.Compile(jsonDocument.ToAuthoringDocument());
                 if (!string.Equals(
                     compiled.Revision,
@@ -71,24 +122,13 @@ namespace Mmorpg.Client.Items
                 }
 
                 gameplay = compiled;
+                return true;
             }
             catch (Exception exception)
             {
                 error = exception.Message;
                 return false;
             }
-
-            if (!ItemPresentationCatalogLoader.TryLoadOnce(
-                gameplay.Revision,
-                gameplay.Definitions.Select(definition => definition.Id),
-                out var presentation,
-                out error))
-            {
-                return false;
-            }
-
-            catalog = new ClientItemCatalog(gameplay, presentation);
-            return true;
         }
 
         public bool MatchesServerRevision(string serverRevision)
@@ -104,7 +144,7 @@ namespace Mmorpg.Client.Items
 
         public bool TryGetEquipmentSlot(
             string equipmentSlotId,
-            out ItemCatalogIdentityEntry equipmentSlot)
+            out ItemEquipmentSlotEntry equipmentSlot)
         {
             return equipmentSlots.TryGetValue(
                 equipmentSlotId ?? string.Empty,
@@ -153,11 +193,13 @@ namespace Mmorpg.Client.Items
         public string catalogId;
         public string revision;
         public string baseSecureContainerTierId;
+        public ClientItemCharacterJson character;
         public ClientItemCatalogIdentityJson[] categories;
         public ClientItemCatalogIdentityJson[] tags;
-        public ClientItemCatalogIdentityJson[] equipmentSlots;
+        public ClientItemEquipmentSlotJson[] equipmentSlots;
         public ClientItemDefinitionJson[] definitions;
         public ClientSecureContainerTierJson[] secureContainerTiers;
+        public ClientItemRetiredJson retired;
 
         public ItemCatalogAuthoringDocument ToAuthoringDocument()
         {
@@ -166,9 +208,24 @@ namespace Mmorpg.Client.Items
                 FormatVersion = formatVersion,
                 CatalogId = catalogId,
                 BaseSecureContainerTierId = baseSecureContainerTierId,
+                Character = character == null
+                    ? null
+                    : new ItemCharacterSettingsEntry
+                    {
+                        BaseCarryCapacity = character.baseCarryCapacity,
+                        InventorySlotCount = character.inventorySlotCount,
+                        BankSlotCount = character.bankSlotCount
+                    },
                 Categories = ConvertIdentities(categories),
                 Tags = ConvertIdentities(tags),
-                EquipmentSlots = ConvertIdentities(equipmentSlots),
+                EquipmentSlots = (equipmentSlots ?? Array.Empty<ClientItemEquipmentSlotJson>())
+                    .Select(slot => new ItemEquipmentSlotEntry
+                    {
+                        Id = slot.id,
+                        DisplayName = slot.displayName,
+                        MaximumQuantity = slot.maximumQuantity
+                    })
+                    .ToArray(),
                 Definitions = (definitions ?? Array.Empty<ClientItemDefinitionJson>())
                     .Select(definition => definition.ToAuthoringEntry())
                     .ToArray(),
@@ -180,7 +237,17 @@ namespace Mmorpg.Client.Items
                         DisplayName = tier.displayName,
                         SlotCapacity = tier.slotCapacity
                     })
-                    .ToArray()
+                    .ToArray(),
+                Retired = retired == null
+                    ? null
+                    : new ItemCatalogRetiredIdsEntry
+                    {
+                        Categories = retired.categories ?? Array.Empty<string>(),
+                        Tags = retired.tags ?? Array.Empty<string>(),
+                        EquipmentSlots = retired.equipmentSlots ?? Array.Empty<string>(),
+                        Definitions = retired.definitions ?? Array.Empty<string>(),
+                        SecureContainerTiers = retired.secureContainerTiers ?? Array.Empty<string>()
+                    }
             };
         }
 
@@ -202,6 +269,32 @@ namespace Mmorpg.Client.Items
     {
         public string id;
         public string displayName;
+    }
+
+    [Serializable]
+    internal sealed class ClientItemCharacterJson
+    {
+        public long baseCarryCapacity;
+        public int inventorySlotCount;
+        public int bankSlotCount;
+    }
+
+    [Serializable]
+    internal sealed class ClientItemEquipmentSlotJson
+    {
+        public string id;
+        public string displayName;
+        public int maximumQuantity;
+    }
+
+    [Serializable]
+    internal sealed class ClientItemRetiredJson
+    {
+        public string[] categories;
+        public string[] tags;
+        public string[] equipmentSlots;
+        public string[] definitions;
+        public string[] secureContainerTiers;
     }
 
     [Serializable]
@@ -235,6 +328,7 @@ namespace Mmorpg.Client.Items
         public long unitWeight;
         public int maximumStackSize;
         public string[] equipmentSlots;
+        public string[] blockedEquipmentSlots;
         public bool playerDestroyable;
         public ClientItemLocationEligibilityJson locationEligibility;
         public string[] defaultPolicies;
@@ -251,6 +345,7 @@ namespace Mmorpg.Client.Items
                 UnitWeight = unitWeight,
                 MaximumStackSize = maximumStackSize,
                 EquipmentSlots = equipmentSlots ?? Array.Empty<string>(),
+                BlockedEquipmentSlots = blockedEquipmentSlots ?? Array.Empty<string>(),
                 PlayerDestroyable = playerDestroyable,
                 LocationEligibility = new ItemLocationEligibilityAuthoringEntry
                 {
@@ -262,18 +357,19 @@ namespace Mmorpg.Client.Items
             };
         }
 
+        // JsonUtility never leaves a nested object null, and a valid Bag always has slots, so
+        // a Bag without slots stands for no Bag.
         private BagDefinitionAuthoringEntry ToAuthoringBag()
         {
-            if (!string.Equals(category, ItemCategoryIds.Bag, StringComparison.Ordinal))
+            if (bag == null || bag.slots == null || bag.slots.Length == 0)
             {
                 return null;
             }
 
             return new BagDefinitionAuthoringEntry
             {
-                CarryCapacityBonus = bag == null ? -1 : bag.carryCapacityBonus,
-                Slots = (bag == null ? Array.Empty<ClientBagSlotJson>() : bag.slots
-                        ?? Array.Empty<ClientBagSlotJson>())
+                CarryCapacityBonus = bag.carryCapacityBonus,
+                Slots = bag.slots
                     .Select(slot => new BagSlotAuthoringEntry
                     {
                         Index = slot.index,

@@ -130,7 +130,7 @@ internal sealed class PlayerDeathCommandHandler
                     item.container_id as "ContainerId",
                     item.container_slot_index as "ContainerSlotIndex",
                     item.equipment_slot_id as "EquipmentSlotId",
-                    equipment.sort_order as "EquipmentSortOrder",
+                    equipment.corpse_slot_index as "EquipmentCorpseSlotIndex",
                     bag_container.id as "BagContentsContainerId",
                     case
                         when item.equipped_character_id = @CharacterId then 'equipment'
@@ -161,7 +161,15 @@ internal sealed class PlayerDeathCommandHandler
                 left join item_containers bag_container
                   on bag_container.bound_bag_item_instance_id = item.id
                  and bag_container.container_type = 'bag_contents'
-                left join equipment_slots equipment on equipment.id = item.equipment_slot_id
+                -- The corpse equipment section lists the active slots in display order.
+                left join (
+                    select
+                        id,
+                        (row_number() over (order by display_order, id) - 1)::integer
+                            as corpse_slot_index
+                    from equipment_slots
+                    where is_active
+                ) equipment on equipment.id = item.equipment_slot_id
                 order by item.id;
                 """,
                 new

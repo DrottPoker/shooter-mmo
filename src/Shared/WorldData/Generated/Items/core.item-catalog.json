@@ -1,8 +1,13 @@
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "catalogId": "core",
-  "revision": "8e6e263ed9597d79aef43848b70251124d951ba240921c02f2d79e2d25ce61a4",
+  "revision": "c424a6d54b740cf11d9529264d7b3eecc85a2bb0d5e1264b297e668440bf63e8",
   "baseSecureContainerTierId": "secure_container.base",
+  "character": {
+    "baseCarryCapacity": 200,
+    "inventorySlotCount": 20,
+    "bankSlotCount": 40
+  },
   "categories": [
     {
       "id": "ammunition",
@@ -53,36 +58,44 @@
   ],
   "equipmentSlots": [
     {
-      "id": "bag",
-      "displayName": "Bag"
+      "id": "head",
+      "displayName": "Head",
+      "maximumQuantity": 1
     },
     {
       "id": "body_armor",
-      "displayName": "Body Armor"
-    },
-    {
-      "id": "head",
-      "displayName": "Head"
+      "displayName": "Body Armor",
+      "maximumQuantity": 1
     },
     {
       "id": "primary_weapon",
-      "displayName": "Primary Weapon"
-    },
-    {
-      "id": "ring_1",
-      "displayName": "Ring 1"
-    },
-    {
-      "id": "ring_2",
-      "displayName": "Ring 2"
+      "displayName": "Primary Weapon",
+      "maximumQuantity": 1
     },
     {
       "id": "secondary_weapon",
-      "displayName": "Secondary Weapon"
+      "displayName": "Secondary Weapon",
+      "maximumQuantity": 1
     },
     {
       "id": "tool",
-      "displayName": "Tool"
+      "displayName": "Tool",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "ring_1",
+      "displayName": "Ring 1",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "ring_2",
+      "displayName": "Ring 2",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "bag",
+      "displayName": "Bag",
+      "maximumQuantity": 1
     }
   ],
   "definitions": [
@@ -96,12 +109,13 @@
       "unitWeight": 1,
       "maximumStackSize": 60,
       "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "4f3477efa82aa24db832dc79cbd02f78b907654866f51f355313abcd187cd953"
+      "structuralFingerprint": "5bc759c512f683d496e0128377c39e9c56ba0aef2eb096a165b80018456521b6"
     },
     {
       "id": "armor.starter_vest",
@@ -113,12 +127,13 @@
       "equipmentSlots": [
         "body_armor"
       ],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "3c624665a00bd4deed23ee8cbc299dee47430b5a47d3ea7a511e7223db0b9d45"
+      "structuralFingerprint": "8c08c18b0769072942a81f052e5c974fcdab9273d0fc0f9115d88c3b0e328b62"
     },
     {
       "id": "bag.field_pack",
@@ -130,6 +145,7 @@
       "equipmentSlots": [
         "bag"
       ],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": false
@@ -181,7 +197,7 @@
           }
         ]
       },
-      "structuralFingerprint": "b8c4d9119b521be6a81746ca3cb8d84a8274068d20223d0f1a77d1d7d79a51c9"
+      "structuralFingerprint": "64ca706b3ef3162b6423dd24c253a4d011f19281c19886fba48389d7870e54bd"
     },
     {
       "id": "material.iron_ore",
@@ -193,12 +209,13 @@
       "unitWeight": 6,
       "maximumStackSize": 100,
       "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "578999a4497cde43950d800051f36994edab9ebc3e1e2560b86497891a61f625"
+      "structuralFingerprint": "e5f7ba1cae90d219f6e7a867923ee099977abe163056e3f74fc42cb9fa94ffce"
     },
     {
       "id": "medical.field_dressing",
@@ -210,12 +227,13 @@
       "unitWeight": 2,
       "maximumStackSize": 10,
       "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "46b4798cc0759370b6c35688105612224b1a8f30b65d3d2e466bb0bf6ba8655d"
+      "structuralFingerprint": "f209834dd94a837f21862b06ad0425ed5ba9946e763a6f10b6c282bbd8253d27"
     },
     {
       "id": "quest_item.signal_transponder",
@@ -225,6 +243,7 @@
       "unitWeight": 1,
       "maximumStackSize": 1,
       "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": false,
       "locationEligibility": {
         "secureContainer": true
@@ -232,7 +251,7 @@
       "defaultPolicies": [
         "protected_on_death"
       ],
-      "structuralFingerprint": "16e7b77651d665ccafd692f3efe3f3d765c82b84ace53d6ccdd569cac13639fc"
+      "structuralFingerprint": "b9facfc520fd062f20419026a3589375bb15d61091c73018e03d473b3a42d15c"
     },
     {
       "id": "ring.starter_band",
@@ -245,12 +264,13 @@
         "ring_1",
         "ring_2"
       ],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "c2cda89c02e5bed544df560ece0548ca1c1f5fda7054a52841b2d430ddfdc6c0"
+      "structuralFingerprint": "c9b0b45142b7daaea11d7bfadf176e23c97cebd5072ac9e64edb326561370efd"
     },
     {
       "id": "tool.starter_pickaxe",
@@ -262,12 +282,13 @@
       "equipmentSlots": [
         "tool"
       ],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "02809b7bd1270a95b9fbe269c0140cffb56cb6768dac4ed992f01847308609c4"
+      "structuralFingerprint": "0747890c9ba801ace017e1acfa1cbbfaec3d70e96a5617b2fd335fecf7304b61"
     },
     {
       "id": "weapon.training_rifle",
@@ -280,12 +301,13 @@
         "primary_weapon",
         "secondary_weapon"
       ],
+      "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": false
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "2be49cfb005cdc0e90fd3e1a80f546e028a9d20eecdf1e88134cc7d062f51730"
+      "structuralFingerprint": "13689ab9d2dfd0095e5825759afc922d0ec28842d41ad07ca5b71b7ac32ba329"
     }
   ],
   "secureContainerTiers": [
@@ -293,7 +315,14 @@
       "id": "secure_container.base",
       "displayName": "Secure Container",
       "slotCapacity": 4,
-      "structuralFingerprint": "83f95350e6a774f049139df932660c9149ed7f2a64a01c9c2d0801d48b7f5883"
+      "structuralFingerprint": "9462228681fa92f812285851c4bc7b06ed9b5c436dc8a86c05011756a79d5dca"
     }
-  ]
+  ],
+  "retired": {
+    "categories": [],
+    "tags": [],
+    "equipmentSlots": [],
+    "definitions": [],
+    "secureContainerTiers": []
+  }
 }

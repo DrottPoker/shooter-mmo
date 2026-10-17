@@ -1,5 +1,6 @@
 {
   "bag": null,
+  "blockedEquipmentSlots": [ ],
   "category": "quest_item",
   "defaultPolicies": [
     "protected_on_death"

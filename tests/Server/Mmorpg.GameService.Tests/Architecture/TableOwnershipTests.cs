@@ -30,6 +30,7 @@ public sealed partial class TableOwnershipTests
             ["item_definitions"] = GameServiceSourceMap.Items,
             ["item_definition_tags"] = GameServiceSourceMap.Items,
             ["item_definition_equipment_slots"] = GameServiceSourceMap.Items,
+            ["item_definition_blocked_equipment_slots"] = GameServiceSourceMap.Items,
             ["item_definition_location_rules"] = GameServiceSourceMap.Items,
             ["item_definition_default_policies"] = GameServiceSourceMap.Items,
             ["bag_definitions"] = GameServiceSourceMap.Items,

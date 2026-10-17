@@ -5,9 +5,14 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Testing.Content;
 
+// The real game content for content tests, and the test-owned fixture catalog for rule
+// tests that must not change when content or balance changes.
 public static class ItemCatalogTestData
 {
     public static string ItemsDirectory => ContentLayout.ItemsDirectory(RepositoryPaths.Content);
+
+    public static string FixtureItemsDirectory =>
+        ContentLayout.ItemsDirectory(RepositoryPaths.ItemCatalogFixtureContent);
 
     public static ItemCatalogAuthoringDocument LoadAuthoring()
     {
@@ -19,6 +24,16 @@ public static class ItemCatalogTestData
         return ItemCatalogCompiler.Compile(LoadAuthoring());
     }
 
+    public static ItemCatalogAuthoringDocument LoadFixtureAuthoring()
+    {
+        return ItemCatalogContent.Load(FixtureItemsDirectory);
+    }
+
+    public static ItemCatalogRuntimeDocument CompileFixture()
+    {
+        return ItemCatalogCompiler.Compile(LoadFixtureAuthoring());
+    }
+
     public static string CatalogJson => File.ReadAllText(ContentLayout.CatalogPath(ItemsDirectory));
 
     public static string DefinitionJson(string definitionId)
@@ -28,4 +43,7 @@ public static class ItemCatalogTestData
 
     public static string RuntimeJson => File.ReadAllText(
         ContentLayout.GeneratedItemCatalogPath(RepositoryPaths.Generated));
+
+    public static string FixtureRuntimeJson => File.ReadAllText(
+        RepositoryPaths.ItemCatalogFixtureRuntimePath);
 }

@@ -6,10 +6,12 @@ using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
+using Mmorpg.WorldData.Content;
 using Npgsql;
 
 namespace Mmorpg.GameService.Testing;
@@ -68,6 +70,10 @@ internal static class GameServiceTestComposition
         return services.BuildServiceProvider(validateScopes: true);
     }
 
+    // The NPC lifecycle grants the fixture catalog's quest item.
+    public static NpcItemLifecycleOptions FixtureNpcLifecycle { get; } =
+        new(100, "quest.fixture.letter", "fixture.letter", 1);
+
     // The settings every integration test runs with. Redis acceleration stays disabled,
     // so tests never reach Redis.
     public static GameServiceConfiguration CreateConfiguration(string postgresConnectionString)
@@ -98,13 +104,14 @@ internal static class GameServiceTestComposition
                     WorldManifestFileStore.LoadAll(RepositoryPaths.Worlds))
             },
             new ItemsModuleOptions(
-                new ItemCatalogSource(Path.GetFullPath(Path.Combine(
-                    AppContext.BaseDirectory,
-                    "WorldData",
-                    "Items",
-                    "core.item-catalog.json"))),
+                // Tests run against the test-owned item catalog, not the game content.
+                new ItemCatalogSource(RepositoryPaths.ItemCatalogFixtureRuntimePath),
                 ItemOperationsOptions.CreateDefaults(),
-                NpcItemLifecycleOptions.Default,
-                new StackStressFixtureOptions(false, string.Empty)));
+                FixtureNpcLifecycle,
+                new StackStressFixtureOptions(false, string.Empty))
+            {
+                DevelopmentItemPackages = new DevelopmentItemPackageSource(
+                    ContentLayout.DevelopmentItemPackagesPath(RepositoryPaths.ItemCatalogFixtureContent))
+            });
     }
 }

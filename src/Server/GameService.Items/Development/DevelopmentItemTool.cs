@@ -6,7 +6,7 @@ using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Npgsql;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Items.Development;
 
 internal enum DevelopmentItemToolCommandKind
 {
@@ -284,119 +284,42 @@ internal static class DevelopmentItemToolProtocol
 internal sealed class DevelopmentItemToolService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
-    PhaseNineDevelopmentFixtureSeeder phaseNineFixtureSeeder,
+    DevelopmentItemPackageApplier packageApplier,
+    DevelopmentItemPackageSource packageSource,
     CorpseService corpseService,
     IHostEnvironment environment)
 {
-    private const string PhaseNinePackageId = "phase9_full";
-
-    private static readonly IReadOnlyList<DevelopmentItemToolPackage> Packages =
-    [
-        new(
-            PhaseNinePackageId,
-            "Phase 9 Full Test Pack",
-            "Complete Phase 9 fixture with an equipped Bag, inventory, Bank, Secure Container, and Recovery delivery.",
-            true),
-        new(
-            "equipment",
-            "Equipment Test Pack",
-            "Bag, rifle, armor, tool, and ring candidates in Permanent Inventory.",
-            true),
-        new(
-            "stack_operations",
-            "Stack Split And Merge Pack",
-            "Several stackable materials, medical items, and ammunition in the Bank.",
-            true),
-        new(
-            "encumbrance_100",
-            "Encumbrance 100% Pack",
-            "Exactly 200 weight at the base capacity of 200.",
-            true),
-        new(
-            "encumbrance_140",
-            "Encumbrance 140% Pack",
-            "Exactly 280 weight at the 140 percent hard cap for base capacity 200.",
-            true),
-        new(
-            "secure_container",
-            "Secure Container Pack",
-            "Four eligible item stacks that fill the base Secure Container.",
-            true),
-        new(
-            "recovery_delivery",
-            "Recovery Delivery Pack",
-            "A ready Recovery delivery containing material and medical stacks.",
-            true)
-    ];
-
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<PackageGrant>> PackageGrants =
-        new Dictionary<string, IReadOnlyList<PackageGrant>>(StringComparer.Ordinal)
-        {
-            ["equipment"] =
-            [
-                new("bag.field_pack", 1, DevelopmentItemDestination.PermanentInventory),
-                new("weapon.training_rifle", 1, DevelopmentItemDestination.PermanentInventory),
-                new("armor.starter_vest", 1, DevelopmentItemDestination.PermanentInventory),
-                new("tool.starter_pickaxe", 1, DevelopmentItemDestination.PermanentInventory),
-                new("ring.starter_band", 1, DevelopmentItemDestination.PermanentInventory)
-            ],
-            ["stack_operations"] =
-            [
-                new("material.iron_ore", 20, DevelopmentItemDestination.Bank),
-                new("material.iron_ore", 16, DevelopmentItemDestination.Bank),
-                new("medical.field_dressing", 6, DevelopmentItemDestination.Bank),
-                new("medical.field_dressing", 4, DevelopmentItemDestination.Bank),
-                new("ammunition.training_556", 35, DevelopmentItemDestination.Bank),
-                new("ammunition.training_556", 25, DevelopmentItemDestination.Bank)
-            ],
-            ["encumbrance_100"] =
-            [
-                new("material.iron_ore", 33, DevelopmentItemDestination.PermanentInventory),
-                new("medical.field_dressing", 1, DevelopmentItemDestination.PermanentInventory)
-            ],
-            ["encumbrance_140"] =
-            [
-                new("material.iron_ore", 46, DevelopmentItemDestination.PermanentInventory),
-                new("medical.field_dressing", 2, DevelopmentItemDestination.PermanentInventory)
-            ],
-            ["secure_container"] =
-            [
-                new("quest_item.signal_transponder", 1, DevelopmentItemDestination.SecureContainer),
-                new("ammunition.training_556", 10, DevelopmentItemDestination.SecureContainer),
-                new("medical.field_dressing", 2, DevelopmentItemDestination.SecureContainer),
-                new("material.iron_ore", 1, DevelopmentItemDestination.SecureContainer)
-            ],
-            ["recovery_delivery"] =
-            [
-                new("material.iron_ore", 8, DevelopmentItemDestination.Bank),
-                new("medical.field_dressing", 3, DevelopmentItemDestination.Bank)
-            ]
-        };
+    private const string ToolName = "development item tool";
 
     public async Task<DevelopmentItemToolResponse> ExecuteAsync(
         DevelopmentItemToolCommand command,
         CancellationToken cancellationToken)
     {
-        EnsureGuardrails();
+        DevelopmentDatabaseGuard.Ensure(environment, dataSource, ToolName);
+        var packages = DevelopmentItemPackageLoader.Load(packageSource.PackagesPath);
         return command.Kind switch
         {
             DevelopmentItemToolCommandKind.List => new DevelopmentItemToolResponse(
                 true,
                 "Loaded local characters, item definitions, and development packages.",
-                await LoadDataAsync(cancellationToken)),
-            DevelopmentItemToolCommandKind.Grant => await GrantAsync(command, cancellationToken),
+                await LoadDataAsync(packages, cancellationToken)),
+            DevelopmentItemToolCommandKind.Grant => await GrantAsync(command, packages, cancellationToken),
             DevelopmentItemToolCommandKind.Package => await ApplyPackageAsync(
                 command,
+                packages,
                 cancellationToken),
             DevelopmentItemToolCommandKind.Corpse => await CreateCorpseAsync(
                 command,
+                packages,
                 cancellationToken),
             _ => throw new InvalidOperationException("Unsupported development item tool command.")
         };
     }
 
+    // An empty source character first receives the corpse seed package of the packages file.
     private async Task<DevelopmentItemToolResponse> CreateCorpseAsync(
         DevelopmentItemToolCommand command,
+        DevelopmentItemPackageDocument packages,
         CancellationToken cancellationToken)
     {
         var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
@@ -409,7 +332,10 @@ internal sealed class DevelopmentItemToolService(
                     "An empty corpse fixture character cannot have pending Recovery deliveries.");
             }
 
-            await phaseNineFixtureSeeder.SeedAsync(target.CharacterId, cancellationToken);
+            await packageApplier.ApplyAsync(
+                FindPackage(packages, packages.CorpseSeedPackageId),
+                target.CharacterId,
+                cancellationToken);
             target = await LoadTargetAsync(command.CharacterId, cancellationToken);
         }
 
@@ -440,11 +366,12 @@ internal sealed class DevelopmentItemToolService(
             $"Created corpse {result.Value!.Corpse.CorpseId} for {target.CharacterName} "
                 + $"on {command.ShardId} at ({command.PositionX}, {command.PositionY}, {command.PositionZ}). "
                 + "Restart SimulationWorker so it restores the durable corpse.",
-            await LoadDataAsync(cancellationToken));
+            await LoadDataAsync(packages, cancellationToken));
     }
 
     private async Task<DevelopmentItemToolResponse> GrantAsync(
         DevelopmentItemToolCommand command,
+        DevelopmentItemPackageDocument packages,
         CancellationToken cancellationToken)
     {
         var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
@@ -467,84 +394,38 @@ internal sealed class DevelopmentItemToolService(
         return new DevelopmentItemToolResponse(
             true,
             $"Granted {command.Quantity} x {command.DefinitionId} to {target.CharacterName}.",
-            await LoadDataAsync(cancellationToken));
+            await LoadDataAsync(packages, cancellationToken));
     }
 
     private async Task<DevelopmentItemToolResponse> ApplyPackageAsync(
         DevelopmentItemToolCommand command,
+        DevelopmentItemPackageDocument packages,
         CancellationToken cancellationToken)
     {
-        var package = Packages.SingleOrDefault(candidate => string.Equals(
-            candidate.PackageId,
-            command.PackageId,
-            StringComparison.Ordinal));
-        if (package is null)
-        {
-            throw new InvalidOperationException(
-                $"Unknown development item package '{command.PackageId}'.");
-        }
-
+        var package = FindPackage(packages, command.PackageId);
         var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
-        EnsureOffline(target);
-        EnsureEmpty(target);
-
-        if (string.Equals(package.PackageId, PhaseNinePackageId, StringComparison.Ordinal))
-        {
-            await phaseNineFixtureSeeder.SeedAsync(target.CharacterId, cancellationToken);
-        }
-        else
-        {
-            var grants = PackageGrants[package.PackageId];
-            await ValidatePackageDefinitionsAsync(grants, cancellationToken);
-            var grantedItems = new List<ItemRevisionExpectation>();
-            foreach (var grant in grants)
-            {
-                var transaction = await transactionService.ExecuteAsync(
-                    new ItemTransactionRequest<GrantItemCommand>(
-                        Guid.NewGuid(),
-                        ItemTransactionActor.ForSystem(),
-                        new GrantItemCommand(
-                            target.CharacterId,
-                            null,
-                            grant.DefinitionId,
-                            grant.Quantity,
-                            ResolveDestinationContainerId(target, grant.Destination),
-                            null)),
-                    cancellationToken);
-                RequireSuccess(transaction, $"grant package item '{grant.DefinitionId}'");
-                var item = transaction.ItemRevisions.Single();
-                grantedItems.Add(new ItemRevisionExpectation(item.ItemInstanceId, item.Revision));
-            }
-
-            if (string.Equals(
-                    package.PackageId,
-                    "recovery_delivery",
-                    StringComparison.Ordinal))
-            {
-                var transaction = await transactionService.ExecuteAsync(
-                    new ItemTransactionRequest<AddRecoveryDeliveryCommand>(
-                        Guid.NewGuid(),
-                        ItemTransactionActor.ForSystem(),
-                        new AddRecoveryDeliveryCommand(
-                            target.CharacterId,
-                            null,
-                            "development_item_tool",
-                            $"development-item-tool:{Guid.NewGuid():N}",
-                            DateTime.UtcNow,
-                            null,
-                            grantedItems)),
-                    cancellationToken);
-                RequireSuccess(transaction, "create the package Recovery delivery");
-            }
-        }
-
+        var result = await packageApplier.ApplyAsync(package, target.CharacterId, cancellationToken);
         return new DevelopmentItemToolResponse(
             true,
-            $"Applied {package.DisplayName} to {target.CharacterName}.",
-            await LoadDataAsync(cancellationToken));
+            $"Applied {package.DisplayName} to {target.CharacterName}: carry "
+                + $"{result.CarriedWeight}/{result.CarryCapacity} at revision {result.ItemStateRevision}.",
+            await LoadDataAsync(packages, cancellationToken));
+    }
+
+    private static DevelopmentItemPackage FindPackage(
+        DevelopmentItemPackageDocument packages,
+        string packageId)
+    {
+        return packages.Packages.SingleOrDefault(candidate => string.Equals(
+                candidate.Id,
+                packageId,
+                StringComparison.Ordinal))
+            ?? throw new InvalidOperationException(
+                $"Unknown development item package '{packageId}'.");
     }
 
     private async Task<DevelopmentItemToolData> LoadDataAsync(
+        DevelopmentItemPackageDocument packages,
         CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -555,17 +436,7 @@ internal sealed class DevelopmentItemToolService(
                 character.name as "CharacterName",
                 {AccountsSql.UsernameOf("character.account_id")} as "AccountUsername",
                 {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
-                (
-                    select count(*)::integer
-                    from item_instances item
-                    left join item_containers container on container.id = item.container_id
-                    left join item_instances source_bag
-                      on source_bag.id = container.bound_bag_item_instance_id
-                    where coalesce(
-                            item.equipped_character_id,
-                            container.owner_character_id,
-                            source_bag.equipped_character_id) = character.id
-                ) as "ItemCount",
+                {DevelopmentItemSql.OwnedItemCount("character.id")} as "ItemCount",
                 (
                     select count(*)::integer
                     from recovery_deliveries delivery
@@ -615,7 +486,11 @@ internal sealed class DevelopmentItemToolService(
                 row.MaximumStackSize,
                 row.UnitWeight,
                 row.SecureContainerEligible)).ToArray(),
-            Packages);
+            packages.Packages.Select(package => new DevelopmentItemToolPackage(
+                package.Id,
+                package.DisplayName,
+                package.Description,
+                true)).ToArray());
     }
 
     private async Task<TargetRow> LoadTargetAsync(
@@ -633,23 +508,12 @@ internal sealed class DevelopmentItemToolService(
             select
                 character.id as "CharacterId",
                 character.name as "CharacterName",
-                character.account_id as "AccountId",
                 state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                 state.bank_container_id as "BankContainerId",
                 state.secure_container_id as "SecureContainerId",
                 state.revision as "ItemStateRevision",
                 {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
-                (
-                    select count(*)::integer
-                    from item_instances item
-                    left join item_containers container on container.id = item.container_id
-                    left join item_instances source_bag
-                      on source_bag.id = container.bound_bag_item_instance_id
-                    where coalesce(
-                            item.equipped_character_id,
-                            container.owner_character_id,
-                            source_bag.equipped_character_id) = character.id
-                ) as "ItemCount",
+                {DevelopmentItemSql.OwnedItemCount("character.id")} as "ItemCount",
                 (
                     select count(*)::integer
                     from recovery_deliveries delivery
@@ -663,37 +527,6 @@ internal sealed class DevelopmentItemToolService(
             cancellationToken: cancellationToken))
             ?? throw new InvalidOperationException(
                 $"Character '{characterId}' does not have an initialized item state.");
-    }
-
-    private async Task ValidatePackageDefinitionsAsync(
-        IReadOnlyList<PackageGrant> grants,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var maximumStackSizes = (await connection.QueryAsync<StackLimitRow>(new CommandDefinition(
-            """
-            select
-                id as "DefinitionId",
-                maximum_stack_size as "MaximumStackSize"
-            from item_definitions
-            where is_active
-              and id = any(@DefinitionIds);
-            """,
-            new { DefinitionIds = grants.Select(grant => grant.DefinitionId).Distinct().ToArray() },
-            cancellationToken: cancellationToken))).ToDictionary(
-                row => row.DefinitionId,
-                StringComparer.Ordinal);
-        foreach (var grant in grants)
-        {
-            if (!maximumStackSizes.TryGetValue(grant.DefinitionId, out var definition)
-                || grant.Quantity <= 0
-                || grant.Quantity > definition.MaximumStackSize)
-            {
-                throw new InvalidOperationException(
-                    $"Development package definition '{grant.DefinitionId}' is not compatible "
-                    + "with the active canonical item catalog.");
-            }
-        }
     }
 
     private static Guid ResolveDestinationContainerId(
@@ -719,42 +552,6 @@ internal sealed class DevelopmentItemToolService(
         }
     }
 
-    private static void EnsureEmpty(TargetRow target)
-    {
-        if (target.ItemCount != 0 || target.RecoveryDeliveryCount != 0)
-        {
-            throw new InvalidOperationException(
-                "Development item packages require a character with no items or Recovery deliveries. "
-                + "Use the individual item grant for an existing offline character.");
-        }
-    }
-
-    private void EnsureGuardrails()
-    {
-        if (!environment.IsDevelopment())
-        {
-            throw new InvalidOperationException(
-                "The development item tool is available only in the Development environment.");
-        }
-
-        var connection = new NpgsqlConnectionStringBuilder(dataSource.ConnectionString);
-        var host = connection.Host?.Trim() ?? string.Empty;
-        if (!string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(host, "127.0.0.1", StringComparison.Ordinal)
-            && !string.Equals(host, "::1", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "The development item tool may target only a loopback PostgreSQL host.");
-        }
-
-        if (string.IsNullOrWhiteSpace(connection.Database)
-            || connection.Database.Contains("prod", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "The development item tool cannot target a production-like database name.");
-        }
-    }
-
     private static void RequireSuccess(ItemTransactionResult result, string operation)
     {
         if (!result.Succeeded)
@@ -763,11 +560,6 @@ internal sealed class DevelopmentItemToolService(
                 $"Could not {operation}: {result.Error?.Code}: {result.Error?.Message}");
         }
     }
-
-    private sealed record PackageGrant(
-        string DefinitionId,
-        int Quantity,
-        DevelopmentItemDestination Destination);
 
     private sealed class CharacterRow
     {
@@ -811,8 +603,6 @@ internal sealed class DevelopmentItemToolService(
 
         public string CharacterName { get; set; } = string.Empty;
 
-        public Guid AccountId { get; set; }
-
         public Guid PermanentInventoryContainerId { get; set; }
 
         public Guid BankContainerId { get; set; }
@@ -826,12 +616,5 @@ internal sealed class DevelopmentItemToolService(
         public int RecoveryDeliveryCount { get; set; }
 
         public long ItemStateRevision { get; set; }
-    }
-
-    private sealed class StackLimitRow
-    {
-        public string DefinitionId { get; set; } = string.Empty;
-
-        public int MaximumStackSize { get; set; }
     }
 }

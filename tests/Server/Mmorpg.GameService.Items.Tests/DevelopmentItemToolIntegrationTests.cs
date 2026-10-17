@@ -1,6 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
@@ -32,17 +34,17 @@ public sealed class DevelopmentItemToolIntegrationTests
         Assert.Equal(0, listedCharacter.ItemCount);
         Assert.Contains(
             list.Data.Definitions,
-            definition => definition.DefinitionId == "material.iron_ore"
+            definition => definition.DefinitionId == "fixture.ore"
                 && definition.MaximumStackSize == 100);
         Assert.Contains(
             list.Data.Packages,
-            package => package.PackageId == "phase9_full"
+            package => package.PackageId == "full_inventory"
                 && package.RequiresEmptyCharacter);
 
         var command = new DevelopmentItemToolCommand(
             DevelopmentItemToolCommandKind.Grant,
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             20,
             DevelopmentItemDestination.Bank,
             string.Empty);
@@ -60,7 +62,7 @@ public sealed class DevelopmentItemToolIntegrationTests
         Assert.Equal(2, inventory.Value!.Bank.Slots.Count(slot => slot.Item is not null));
         Assert.All(
             inventory.Value.Bank.Slots.Where(slot => slot.Item is not null),
-            slot => Assert.Equal("material.iron_ore", slot.Item!.DefinitionId));
+            slot => Assert.Equal("fixture.ore", slot.Item!.DefinitionId));
     }
 
     [PostgresIntegrationFact]
@@ -96,7 +98,7 @@ public sealed class DevelopmentItemToolIntegrationTests
                 new DevelopmentItemToolCommand(
                     DevelopmentItemToolCommandKind.Grant,
                     player.Character.Id,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     1,
                     DevelopmentItemDestination.PermanentInventory,
                     string.Empty),
@@ -200,18 +202,13 @@ public sealed class DevelopmentItemToolIntegrationTests
     private static DevelopmentItemToolService CreateService(
         PostgresIntegrationTestContext context)
     {
-        var environment = new DevelopmentHostEnvironment();
-        var phaseNineSeeder = new PhaseNineDevelopmentFixtureSeeder(
-            context.DataSource,
-            context.ItemTransactionService,
-            context.ItemQueryService,
-            environment);
         return new DevelopmentItemToolService(
             context.DataSource,
             context.ItemTransactionService,
-            phaseNineSeeder,
+            new DevelopmentItemPackageApplier(context.DataSource, context.ItemTransactionService),
+            context.Services.GetRequiredService<DevelopmentItemPackageSource>(),
             context.CorpseService,
-            environment);
+            new DevelopmentHostEnvironment());
     }
 
     private sealed class DevelopmentHostEnvironment : IHostEnvironment

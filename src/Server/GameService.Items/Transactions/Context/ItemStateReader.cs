@@ -193,6 +193,11 @@ internal sealed class ItemStateReader(
             where definition_id = @DefinitionId
             order by equipment_slot_id;
 
+            select equipment_slot_id
+            from item_definition_blocked_equipment_slots
+            where definition_id = @DefinitionId
+            order by equipment_slot_id;
+
             select policy_kind
             from item_definition_default_policies
             where definition_id = @DefinitionId
@@ -210,6 +215,7 @@ internal sealed class ItemStateReader(
 
         var tags = (await grid.ReadAsync<string>()).ToArray();
         var equipmentSlots = (await grid.ReadAsync<string>()).ToArray();
+        var blockedEquipmentSlots = (await grid.ReadAsync<string>()).ToArray();
         var defaultPolicies = (await grid.ReadAsync<string>()).ToArray();
         var definition = new ItemDefinition
         {
@@ -220,6 +226,7 @@ internal sealed class ItemStateReader(
             UnitWeight = row.UnitWeight,
             MaximumStackSize = row.MaximumStackSize,
             EquipmentSlots = equipmentSlots,
+            BlockedEquipmentSlots = blockedEquipmentSlots,
             PlayerDestroyable = row.PlayerDestroyable,
             LocationEligibility = new ItemLocationEligibility
             {

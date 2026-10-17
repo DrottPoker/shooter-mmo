@@ -257,7 +257,11 @@ public sealed class GameServiceConfigurationValidationTests
             ["Simulation:Topology:Shards:0:DisplayName"] = "Local Shard 1",
             ["Simulation:Topology:Shards:0:RuleSet"] = "mvp-open-risk",
             ["RateLimiting:Authentication:PermitLimit"] = "5",
-            ["RateLimiting:Authentication:WindowSeconds"] = "60"
+            ["RateLimiting:Authentication:WindowSeconds"] = "60",
+            ["Items:NpcLifecycle:InsurancePrice"] = "100",
+            ["Items:NpcLifecycle:QuestGrantId"] = "quest.fixture.letter",
+            ["Items:NpcLifecycle:QuestItemDefinitionId"] = "fixture.letter",
+            ["Items:NpcLifecycle:QuestItemQuantity"] = "1"
         };
 
         if (includeSecrets)

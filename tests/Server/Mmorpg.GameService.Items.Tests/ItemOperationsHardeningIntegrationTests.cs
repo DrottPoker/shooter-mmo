@@ -55,7 +55,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex)),
@@ -96,7 +96,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
             new GrantItemCommand(
                 player.Character.Id,
                 snapshot.ItemStateRevision,
-                "material.iron_ore",
+                "fixture.ore",
                 1,
                 snapshot.PermanentInventory.ContainerId,
                 snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex));
@@ -130,7 +130,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     0)),
@@ -182,7 +182,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     2,
                     snapshot.PermanentInventory.ContainerId,
                     snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex)),
@@ -385,7 +385,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     2,
                     snapshot.PermanentInventory.ContainerId,
                     0)),

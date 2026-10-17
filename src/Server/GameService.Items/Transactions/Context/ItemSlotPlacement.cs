@@ -56,7 +56,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
             from item_container_slots slot
             left join equipment_slots equipment_slot
               on @ContainerType = 'corpse_equipment'
-             and equipment_slot.sort_order = slot.slot_index
+             and equipment_slot.id = slot.equipment_slot_id
             left join item_container_slot_tags tag
               on tag.container_id = slot.container_id
              and tag.slot_index = slot.slot_index

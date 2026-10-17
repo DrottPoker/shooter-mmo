@@ -34,7 +34,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "material.iron_ore",
+            "fixture.ore",
             2,
             afterBagEquip.PermanentInventoryContainerId,
             0);
@@ -42,39 +42,39 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "bag.field_pack",
+            "fixture.pack",
             1,
             afterBagEquip.PermanentInventoryContainerId,
             1);
-        var rifleId = await GrantAsync(
+        var swordId = await GrantAsync(
             context,
             accountId,
             characterId,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             afterBagEquip.PermanentInventoryContainerId,
             2);
         var state = await LoadStateAsync(context, characterId);
-        var rifle = await LoadItemAsync(context, rifleId);
-        var equipRifle = await context.ItemTransactionService.ExecuteAsync(
+        var sword = await LoadItemAsync(context, swordId);
+        var equipSword = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<EquipItemCommand>(
                 Guid.NewGuid(),
                 actor,
                 new EquipItemCommand(
                     characterId,
                     state.Revision,
-                    rifleId,
-                    rifle.Revision,
-                    "primary_weapon")),
+                    swordId,
+                    sword.Revision,
+                    "main_hand")),
             CancellationToken.None);
-        AssertSucceeded(equipRifle);
+        AssertSucceeded(equipSword);
 
         var bagContainer = await LoadBagContainerAsync(context, equippedBagId);
         await GrantAsync(
             context,
             accountId,
             characterId,
-            "ammunition.training_556",
+            "fixture.arrow",
             10,
             bagContainer.ContainerId,
             6);
@@ -83,7 +83,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             state.SecureContainerId,
             0);
@@ -91,7 +91,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "material.iron_ore",
+            "fixture.ore",
             3,
             state.BankContainerId,
             0);
@@ -101,7 +101,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             state.PermanentInventoryContainerId,
             2);
@@ -127,7 +127,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "material.iron_ore",
+            "fixture.ore",
             5,
             state.PermanentInventoryContainerId,
             2);
@@ -157,7 +157,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             accountId,
             characterId,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             state.PermanentInventoryContainerId,
             2);
@@ -182,7 +182,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "ammunition.training_556",
+                    "fixture.arrow",
                     10,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -264,23 +264,23 @@ public sealed class ItemConcurrencyIntegrationTests
         Assert.Equal(7, (await LoadItemAsync(context, ammunitionId)).Quantity);
 
         state = await LoadStateAsync(context, player.Character.Id);
-        var grantRifle = await context.ItemTransactionService.ExecuteAsync(
+        var grantSword = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
                 Guid.NewGuid(),
                 actor,
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "weapon.training_rifle",
+                    "fixture.sword",
                     1,
                     state.PermanentInventoryContainerId,
                     3)),
             CancellationToken.None);
-        AssertSucceeded(grantRifle);
-        var rifleId = Assert.Single(grantRifle.ItemRevisions).ItemInstanceId;
+        AssertSucceeded(grantSword);
+        var swordId = Assert.Single(grantSword.ItemRevisions).ItemInstanceId;
 
         state = await LoadStateAsync(context, player.Character.Id);
-        var rifle = await LoadItemAsync(context, rifleId);
+        var sword = await LoadItemAsync(context, swordId);
         var equip = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<EquipItemCommand>(
                 Guid.NewGuid(),
@@ -288,15 +288,15 @@ public sealed class ItemConcurrencyIntegrationTests
                 new EquipItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    rifleId,
-                    rifle.Revision,
-                    "primary_weapon")),
+                    swordId,
+                    sword.Revision,
+                    "main_hand")),
             CancellationToken.None);
         AssertSucceeded(equip);
-        Assert.Equal("primary_weapon", (await LoadItemAsync(context, rifleId)).EquipmentSlotId);
+        Assert.Equal("main_hand", (await LoadItemAsync(context, swordId)).EquipmentSlotId);
 
         state = await LoadStateAsync(context, player.Character.Id);
-        rifle = await LoadItemAsync(context, rifleId);
+        sword = await LoadItemAsync(context, swordId);
         var unequip = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<UnequipItemCommand>(
                 Guid.NewGuid(),
@@ -304,16 +304,16 @@ public sealed class ItemConcurrencyIntegrationTests
                 new UnequipItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    rifleId,
-                    rifle.Revision,
+                    swordId,
+                    sword.Revision,
                     state.PermanentInventoryContainerId,
                     null)),
             CancellationToken.None);
         AssertSucceeded(unequip);
-        Assert.Equal(0, (await LoadItemAsync(context, rifleId)).ContainerSlotIndex);
+        Assert.Equal(0, (await LoadItemAsync(context, swordId)).ContainerSlotIndex);
 
         state = await LoadStateAsync(context, player.Character.Id);
-        rifle = await LoadItemAsync(context, rifleId);
+        sword = await LoadItemAsync(context, swordId);
         var destroy = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<DestroyItemCommand>(
                 Guid.NewGuid(),
@@ -321,12 +321,12 @@ public sealed class ItemConcurrencyIntegrationTests
                 new DestroyItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    rifleId,
-                    rifle.Revision,
+                    swordId,
+                    sword.Revision,
                     "player_discard")),
             CancellationToken.None);
         AssertSucceeded(destroy);
-        Assert.Null(await TryLoadItemAsync(context, rifleId));
+        Assert.Null(await TryLoadItemAsync(context, swordId));
 
         state = await LoadStateAsync(context, player.Character.Id);
         var grantBag = await context.ItemTransactionService.ExecuteAsync(
@@ -336,7 +336,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "bag.field_pack",
+                    "fixture.pack",
                     1,
                     state.PermanentInventoryContainerId,
                     null)),
@@ -377,7 +377,7 @@ public sealed class ItemConcurrencyIntegrationTests
             1,
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_destructions where item_instance_id = @ItemId;",
-                new { ItemId = rifleId }));
+                new { ItemId = swordId }));
         Assert.Equal(11, await connection.ExecuteScalarAsync<int>(
             "select count(*) from item_operations where status = 'committed';"));
         Assert.Equal(13, await connection.ExecuteScalarAsync<int>(
@@ -398,7 +398,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "bag.field_pack",
+                    "fixture.pack",
                     1,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -429,7 +429,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "ammunition.training_556",
+                    "fixture.arrow",
                     60,
                     bagContainer.ContainerId,
                     6)),
@@ -444,7 +444,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     1,
                     bagContainer.ContainerId,
                     4)),
@@ -458,7 +458,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "weapon.training_rifle",
+                    "fixture.sword",
                     1,
                     state.SecureContainerId,
                     0)),
@@ -472,7 +472,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     46,
                     state.PermanentInventoryContainerId,
                     1)),
@@ -489,7 +489,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     3,
                     state.PermanentInventoryContainerId,
                     2)),
@@ -530,7 +530,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     5,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -680,7 +680,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             1,
             firstState.SecureContainerId,
             3);
@@ -688,7 +688,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             2,
             firstState.SecureContainerId,
             4);
@@ -696,7 +696,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             3,
             firstState.SecureContainerId,
             5);
@@ -704,7 +704,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             secondCharacter.Id,
-            "material.iron_ore",
+            "fixture.ore",
             4,
             secondState.SecureContainerId,
             5);
@@ -785,7 +785,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "ammunition.training_556",
+            "fixture.arrow",
             10,
             firstBagContainer.ContainerId,
             6);
@@ -793,7 +793,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             secondCharacter.Id,
-            "material.iron_ore",
+            "fixture.ore",
             2,
             secondBagContainer.ContainerId,
             5);
@@ -904,7 +904,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             50,
             firstState.PermanentInventoryContainerId,
             0);
@@ -987,7 +987,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 new GrantItemCommand(
                     owner.Character.Id,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     1,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -998,7 +998,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             owner.Registration.AccountId,
             owner.Character.Id,
-            "ammunition.training_556",
+            "fixture.arrow",
             20,
             state.PermanentInventoryContainerId,
             0);
@@ -1062,7 +1062,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             owner.Registration.AccountId,
             owner.Character.Id,
-            "ammunition.training_556",
+            "fixture.arrow",
             5,
             state.PermanentInventoryContainerId,
             2);
@@ -1087,7 +1087,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             owner.Registration.AccountId,
             owner.Character.Id,
-            "quest_item.signal_transponder",
+            "fixture.letter",
             1,
             state.PermanentInventoryContainerId,
             3);
@@ -1114,7 +1114,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             1,
             state.PermanentInventoryContainerId,
             0);
@@ -1170,7 +1170,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             firstPlayer.Registration.AccountId,
             firstPlayer.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             1,
             firstState.PermanentInventoryContainerId,
             0);
@@ -1178,7 +1178,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             firstPlayer.Registration.AccountId,
             firstPlayer.Character.Id,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             firstState.PermanentInventoryContainerId,
             1);
@@ -1218,25 +1218,25 @@ public sealed class ItemConcurrencyIntegrationTests
             "equipment_player",
             "Equipment Hero");
         var equipmentState = await LoadStateAsync(context, secondPlayer.Character.Id);
-        var firstRifleId = await GrantAsync(
+        var firstSwordId = await GrantAsync(
             context,
             secondPlayer.Registration.AccountId,
             secondPlayer.Character.Id,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             equipmentState.PermanentInventoryContainerId,
             0);
-        var secondRifleId = await GrantAsync(
+        var secondSwordId = await GrantAsync(
             context,
             secondPlayer.Registration.AccountId,
             secondPlayer.Character.Id,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             equipmentState.PermanentInventoryContainerId,
             1);
         equipmentState = await LoadStateAsync(context, secondPlayer.Character.Id);
-        var firstRifle = await LoadItemAsync(context, firstRifleId);
-        var secondRifle = await LoadItemAsync(context, secondRifleId);
+        var firstSword = await LoadItemAsync(context, firstSwordId);
+        var secondSword = await LoadItemAsync(context, secondSwordId);
         var equipmentActor = ItemTransactionActor.ForAccount(secondPlayer.Registration.AccountId);
         var equipmentResults = await Task.WhenAll(
             context.ItemTransactionService.ExecuteAsync(
@@ -1246,9 +1246,9 @@ public sealed class ItemConcurrencyIntegrationTests
                     new EquipItemCommand(
                         secondPlayer.Character.Id,
                         equipmentState.Revision,
-                        firstRifleId,
-                        firstRifle.Revision,
-                        "primary_weapon")),
+                        firstSwordId,
+                        firstSword.Revision,
+                        "main_hand")),
                 CancellationToken.None),
             context.ItemTransactionService.ExecuteAsync(
                 new ItemTransactionRequest<EquipItemCommand>(
@@ -1257,9 +1257,9 @@ public sealed class ItemConcurrencyIntegrationTests
                     new EquipItemCommand(
                         secondPlayer.Character.Id,
                         equipmentState.Revision,
-                        secondRifleId,
-                        secondRifle.Revision,
-                        "primary_weapon")),
+                        secondSwordId,
+                        secondSword.Revision,
+                        "main_hand")),
                 CancellationToken.None));
         Assert.Single(equipmentResults, result => result.Succeeded);
 
@@ -1281,7 +1281,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 select count(*)
                 from item_instances
                 where equipped_character_id = @CharacterId
-                  and equipment_slot_id = 'primary_weapon';
+                  and equipment_slot_id = 'main_hand';
                 """,
                 new { CharacterId = secondPlayer.Character.Id }));
     }
@@ -1296,7 +1296,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "ammunition.training_556",
+            "fixture.arrow",
             20,
             state.PermanentInventoryContainerId,
             0);
@@ -1335,10 +1335,10 @@ public sealed class ItemConcurrencyIntegrationTests
             """
             select coalesce(sum(quantity), 0)::integer
             from item_instances
-            where definition_id = 'ammunition.training_556';
+            where definition_id = 'fixture.arrow';
             """);
         var itemCount = await connection.ExecuteScalarAsync<int>(
-            "select count(*) from item_instances where definition_id = 'ammunition.training_556';");
+            "select count(*) from item_instances where definition_id = 'fixture.arrow';");
         if (splitTask.Result.Succeeded)
         {
             Assert.Equal(20, quantity);
@@ -1365,7 +1365,7 @@ public sealed class ItemConcurrencyIntegrationTests
             new GrantItemCommand(
                 player.Character.Id,
                 state.Revision,
-                "material.iron_ore",
+                "fixture.ore",
                 1,
                 state.PermanentInventoryContainerId,
                 0));
@@ -1400,7 +1400,7 @@ public sealed class ItemConcurrencyIntegrationTests
         Assert.Equal(
             1,
             await connection.ExecuteScalarAsync<int>(
-                "select count(*) from item_instances where definition_id = 'material.iron_ore';"));
+                "select count(*) from item_instances where definition_id = 'fixture.ore';"));
     }
 
     [PostgresIntegrationFact]
@@ -1427,7 +1427,7 @@ public sealed class ItemConcurrencyIntegrationTests
             context,
             player.Registration.AccountId,
             player.Character.Id,
-            "ammunition.training_556",
+            "fixture.arrow",
             5,
             firstBagContainer.ContainerId,
             6);
@@ -1544,7 +1544,7 @@ public sealed class ItemConcurrencyIntegrationTests
                     context,
                     player.Registration.AccountId,
                     player.Character.Id,
-                    "armor.starter_vest",
+                    "fixture.tunic",
                     1,
                     firstBagContainer.ContainerId,
                     0);
@@ -1656,7 +1656,7 @@ public sealed class ItemConcurrencyIntegrationTests
         PostgresIntegrationTestContext context,
         Guid accountId,
         Guid characterId,
-        string definitionId = "bag.field_pack")
+        string definitionId = "fixture.pack")
     {
         var state = await LoadStateAsync(context, characterId);
         var bagId = await GrantAsync(
@@ -1713,7 +1713,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 player_destroyable,
                 repeat('c', 64)
             from item_definitions
-            where id = 'bag.field_pack';
+            where id = 'fixture.pack';
 
             insert into item_definition_equipment_slots (definition_id, equipment_slot_id)
             values (@DefinitionId, 'bag');
@@ -1727,12 +1727,12 @@ public sealed class ItemConcurrencyIntegrationTests
             insert into bag_definition_slots (definition_id, slot_index, slot_kind)
             select @DefinitionId, slot_index, slot_kind
             from bag_definition_slots
-            where definition_id = 'bag.field_pack';
+            where definition_id = 'fixture.pack';
 
             insert into bag_definition_slot_tags (definition_id, slot_index, tag_id)
             select @DefinitionId, slot_index, tag_id
             from bag_definition_slot_tags
-            where definition_id = 'bag.field_pack';
+            where definition_id = 'fixture.pack';
             """,
             new { DefinitionId = definitionId, CarryCapacityBonus = carryCapacityBonus });
     }

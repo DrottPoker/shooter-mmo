@@ -17,7 +17,7 @@ public sealed class ExpectedCharacterRevisionTests
         var player = await world.RegisterAsync("expected_revision");
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);
-        var itemId = await world.GrantAsync(characterId, "material.iron_ore", 1, state.PermanentInventoryContainerId, 0);
+        var itemId = await world.GrantAsync(characterId, "fixture.ore", 1, state.PermanentInventoryContainerId, 0);
         var item = await world.LoadItemAsync(itemId);
         var command = new RelocateItemCommand(
             characterId,

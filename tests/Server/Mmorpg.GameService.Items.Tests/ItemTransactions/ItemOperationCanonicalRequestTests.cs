@@ -32,10 +32,10 @@ public sealed class ItemOperationCanonicalRequestTests
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(
-                Request(new GrantItemCommand(A, 3, "material.iron_ore", 2, B, 4)),
+                Request(new GrantItemCommand(A, 3, "fixture.ore", 2, B, 4)),
                 CancellationToken.None),
             ItemOperationKinds.Grant,
-            $$"""{"characterId":"{{A}}","expectedCharacterRevision":3,"definitionId":"material.iron_ore","quantity":2,"destinationContainerId":"{{B}}","destinationSlotIndex":4,"policySourceKind":null,"policySourceId":null}""");
+            $$"""{"characterId":"{{A}}","expectedCharacterRevision":3,"definitionId":"fixture.ore","quantity":2,"destinationContainerId":"{{B}}","destinationSlotIndex":4,"policySourceKind":null,"policySourceId":null}""");
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(
@@ -344,7 +344,7 @@ public sealed class ItemOperationCanonicalRequestTests
                     CorpsePresentationKey,
                     90.25d,
                     30,
-                    [new MobCorpseLootEntryRequest(lootGrantId, "material.iron_ore", 3)])),
+                    [new MobCorpseLootEntryRequest(lootGrantId, "fixture.ore", 3)])),
             CancellationToken.None));
         await AssertOperationAsync(
             context,
@@ -352,7 +352,7 @@ public sealed class ItemOperationCanonicalRequestTests
             ItemOperationKinds.CreatePersistentMobCorpse,
             Canonical(
                 SystemActor,
-                $$"""{"corpseId":"{{mobCorpseId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1","sourceActorDefinitionId":"mob.feral_wolf","sourceDisplayName":"Feral Wolf","positionX":1.5,"positionY":0,"positionZ":-2,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.generic_loot_crate","lifetimeSeconds":90.25,"workerHeartbeatTimeoutSeconds":30,"loot":[{"grantId":"{{lootGrantId}}","definitionId":"material.iron_ore","quantity":3}]}"""),
+                $$"""{"corpseId":"{{mobCorpseId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1","sourceActorDefinitionId":"mob.feral_wolf","sourceDisplayName":"Feral Wolf","positionX":1.5,"positionY":0,"positionZ":-2,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.generic_loot_crate","lifetimeSeconds":90.25,"workerHeartbeatTimeoutSeconds":30,"loot":[{"grantId":"{{lootGrantId}}","definitionId":"fixture.ore","quantity":3}]}"""),
             null,
             null);
 
@@ -372,7 +372,7 @@ public sealed class ItemOperationCanonicalRequestTests
                     grantId,
                     sourceCorpseId,
                     "mob.feral_wolf",
-                    "material.iron_ore",
+                    "fixture.ore",
                     2,
                     looterState.PermanentInventoryContainerId,
                     inventoryRevision,
@@ -384,14 +384,14 @@ public sealed class ItemOperationCanonicalRequestTests
             ItemOperationKinds.GrantMobLoot,
             Canonical(
                 $$"""{"authority":3,"accountId":"{{session.AccountId}}","requiresOfflineCharacter":false,"simulationSessionId":"{{session.SimulationSessionId}}","characterId":"{{session.CharacterId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1"}""",
-                $$"""{"characterId":"{{looter.Character.Id}}","expectedCharacterRevision":{{looterState.Revision}},"grantId":"{{grantId}}","sourceCorpseId":"{{sourceCorpseId}}","sourceActorDefinitionId":"mob.feral_wolf","definitionId":"material.iron_ore","quantity":2,"destinationContainerId":"{{looterState.PermanentInventoryContainerId}}","expectedDestinationContainerRevision":{{inventoryRevision}},"destinationSlotIndex":0}"""),
+                $$"""{"characterId":"{{looter.Character.Id}}","expectedCharacterRevision":{{looterState.Revision}},"grantId":"{{grantId}}","sourceCorpseId":"{{sourceCorpseId}}","sourceActorDefinitionId":"mob.feral_wolf","definitionId":"fixture.ore","quantity":2,"destinationContainerId":"{{looterState.PermanentInventoryContainerId}}","expectedDestinationContainerRevision":{{inventoryRevision}},"destinationSlotIndex":0}"""),
             looter.Registration.AccountId,
             looter.Character.Id);
 
         // Recovery expiry.
         var itemId = await world.GrantAsync(
             looter.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             1,
             looterState.PermanentInventoryContainerId,
             1);

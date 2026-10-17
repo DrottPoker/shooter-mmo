@@ -20,6 +20,33 @@ namespace Mmorpg.WorldData.Editor.Items
     }
 
     [Serializable]
+    public sealed class ItemCatalogEditorEquipmentSlot
+    {
+        public string id;
+        public string displayName;
+        public int maximumQuantity;
+    }
+
+    [Serializable]
+    public sealed class ItemCatalogEditorCharacter
+    {
+        public long baseCarryCapacity;
+        public int inventorySlotCount;
+        public int bankSlotCount;
+    }
+
+    // Released ids that left the catalog. They stay locked so they are never reused.
+    [Serializable]
+    public sealed class ItemCatalogEditorRetired
+    {
+        public string[] categories;
+        public string[] tags;
+        public string[] equipmentSlots;
+        public string[] definitions;
+        public string[] secureContainerTiers;
+    }
+
+    [Serializable]
     public sealed class ItemCatalogEditorLocationEligibility
     {
         public bool secureContainer;
@@ -50,6 +77,7 @@ namespace Mmorpg.WorldData.Editor.Items
         public long unitWeight;
         public int maximumStackSize;
         public string[] equipmentSlots;
+        public string[] blockedEquipmentSlots;
         public bool playerDestroyable;
         public ItemCatalogEditorLocationEligibility locationEligibility;
         public string[] defaultPolicies;
@@ -62,11 +90,13 @@ namespace Mmorpg.WorldData.Editor.Items
         public int formatVersion;
         public string catalogId;
         public string baseSecureContainerTierId;
+        public ItemCatalogEditorCharacter character;
         public ItemCatalogEditorIdentity[] categories;
         public ItemCatalogEditorIdentity[] tags;
-        public ItemCatalogEditorIdentity[] equipmentSlots;
+        public ItemCatalogEditorEquipmentSlot[] equipmentSlots;
         public ItemCatalogEditorDefinition[] definitions;
         public ItemCatalogEditorSecureContainerTier[] secureContainerTiers;
+        public ItemCatalogEditorRetired retired;
 
         public ItemCatalogAuthoringDocument ToDomainDocument()
         {
@@ -75,9 +105,24 @@ namespace Mmorpg.WorldData.Editor.Items
                 FormatVersion = formatVersion,
                 CatalogId = catalogId,
                 BaseSecureContainerTierId = baseSecureContainerTierId,
+                Character = character == null
+                    ? null
+                    : new ItemCharacterSettingsEntry
+                    {
+                        BaseCarryCapacity = character.baseCarryCapacity,
+                        InventorySlotCount = character.inventorySlotCount,
+                        BankSlotCount = character.bankSlotCount
+                    },
                 Categories = ConvertIdentities(categories),
                 Tags = ConvertIdentities(tags),
-                EquipmentSlots = ConvertIdentities(equipmentSlots),
+                EquipmentSlots = (equipmentSlots ?? Array.Empty<ItemCatalogEditorEquipmentSlot>())
+                    .Select(slot => new ItemEquipmentSlotEntry
+                    {
+                        Id = slot.id,
+                        DisplayName = slot.displayName,
+                        MaximumQuantity = slot.maximumQuantity
+                    })
+                    .ToArray(),
                 Definitions = (definitions ?? Array.Empty<ItemCatalogEditorDefinition>())
                     .Select(ConvertDefinition)
                     .ToArray(),
@@ -89,7 +134,17 @@ namespace Mmorpg.WorldData.Editor.Items
                         DisplayName = tier.displayName,
                         SlotCapacity = tier.slotCapacity
                     })
-                    .ToArray()
+                    .ToArray(),
+                Retired = retired == null
+                    ? null
+                    : new ItemCatalogRetiredIdsEntry
+                    {
+                        Categories = retired.categories ?? Array.Empty<string>(),
+                        Tags = retired.tags ?? Array.Empty<string>(),
+                        EquipmentSlots = retired.equipmentSlots ?? Array.Empty<string>(),
+                        Definitions = retired.definitions ?? Array.Empty<string>(),
+                        SecureContainerTiers = retired.secureContainerTiers ?? Array.Empty<string>()
+                    }
             };
         }
 
@@ -117,6 +172,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 UnitWeight = definition.unitWeight,
                 MaximumStackSize = definition.maximumStackSize,
                 EquipmentSlots = definition.equipmentSlots ?? Array.Empty<string>(),
+                BlockedEquipmentSlots = definition.blockedEquipmentSlots ?? Array.Empty<string>(),
                 PlayerDestroyable = definition.playerDestroyable,
                 LocationEligibility = definition.locationEligibility == null
                     ? null
@@ -204,10 +260,12 @@ namespace Mmorpg.WorldData.Editor.Items
         public int formatVersion;
         public string catalogId;
         public string baseSecureContainerTierId;
+        public ItemCatalogEditorCharacter character;
         public ItemCatalogEditorIdentity[] categories;
         public ItemCatalogEditorIdentity[] tags;
-        public ItemCatalogEditorIdentity[] equipmentSlots;
+        public ItemCatalogEditorEquipmentSlot[] equipmentSlots;
         public ItemCatalogEditorSecureContainerTier[] secureContainerTiers;
+        public ItemCatalogEditorRetired retired;
     }
 
     public static class ItemCatalogEditorJson
@@ -268,8 +326,15 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             document.categories = document.categories ?? Array.Empty<ItemCatalogEditorIdentity>();
             document.tags = document.tags ?? Array.Empty<ItemCatalogEditorIdentity>();
+            // Equipment slots keep their authored order: it is the display order.
             document.equipmentSlots = document.equipmentSlots
-                ?? Array.Empty<ItemCatalogEditorIdentity>();
+                ?? Array.Empty<ItemCatalogEditorEquipmentSlot>();
+            document.retired = document.retired ?? new ItemCatalogEditorRetired();
+            document.retired.categories = SortStrings(document.retired.categories);
+            document.retired.tags = SortStrings(document.retired.tags);
+            document.retired.equipmentSlots = SortStrings(document.retired.equipmentSlots);
+            document.retired.definitions = SortStrings(document.retired.definitions);
+            document.retired.secureContainerTiers = SortStrings(document.retired.secureContainerTiers);
             document.secureContainerTiers = document.secureContainerTiers
                 ?? Array.Empty<ItemCatalogEditorSecureContainerTier>();
             document.definitions = (document.definitions
@@ -280,6 +345,7 @@ namespace Mmorpg.WorldData.Editor.Items
             {
                 definition.tags = SortStrings(definition.tags);
                 definition.equipmentSlots = SortStrings(definition.equipmentSlots);
+                definition.blockedEquipmentSlots = SortStrings(definition.blockedEquipmentSlots);
                 definition.defaultPolicies = SortStrings(definition.defaultPolicies);
                 if (definition.locationEligibility == null)
                 {
@@ -397,11 +463,13 @@ namespace Mmorpg.WorldData.Editor.Items
                 formatVersion = header.formatVersion,
                 catalogId = header.catalogId,
                 baseSecureContainerTierId = header.baseSecureContainerTierId,
+                character = header.character,
                 categories = header.categories,
                 tags = header.tags,
                 equipmentSlots = header.equipmentSlots,
                 definitions = definitions,
-                secureContainerTiers = header.secureContainerTiers
+                secureContainerTiers = header.secureContainerTiers,
+                retired = header.retired
             };
         }
 
@@ -423,10 +491,12 @@ namespace Mmorpg.WorldData.Editor.Items
                         formatVersion = normalized.formatVersion,
                         catalogId = normalized.catalogId,
                         baseSecureContainerTierId = normalized.baseSecureContainerTierId,
+                        character = normalized.character,
                         categories = normalized.categories,
                         tags = normalized.tags,
                         equipmentSlots = normalized.equipmentSlots,
-                        secureContainerTiers = normalized.secureContainerTiers
+                        secureContainerTiers = normalized.secureContainerTiers,
+                        retired = normalized.retired
                     })
             };
             foreach (var definition in normalized.definitions)
@@ -628,6 +698,8 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.formatVersion = authoring.formatVersion;
             Authoring.catalogId = authoring.catalogId;
             Authoring.baseSecureContainerTierId = authoring.baseSecureContainerTierId;
+            Authoring.character = authoring.character;
+            Authoring.retired = authoring.retired;
             Authoring.categories = authoring.categories;
             Authoring.tags = authoring.tags;
             Authoring.equipmentSlots = authoring.equipmentSlots;
@@ -645,6 +717,13 @@ namespace Mmorpg.WorldData.Editor.Items
                 && bakedDefinitionIds.Contains(definitionId);
         }
 
+        // A retired id was released once, so no new definition may take it.
+        public bool IsRetiredDefinitionId(string definitionId)
+        {
+            return Authoring.retired?.definitions != null
+                && Authoring.retired.definitions.Contains(definitionId, StringComparer.Ordinal);
+        }
+
         public ItemCatalogEditorDefinition CreateDefinition()
         {
             var definition = new ItemCatalogEditorDefinition
@@ -658,6 +737,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 unitWeight = 0,
                 maximumStackSize = 1,
                 equipmentSlots = Array.Empty<string>(),
+                blockedEquipmentSlots = Array.Empty<string>(),
                 playerDestroyable = true,
                 locationEligibility = new ItemCatalogEditorLocationEligibility(),
                 defaultPolicies = Array.Empty<string>(),
@@ -725,6 +805,12 @@ namespace Mmorpg.WorldData.Editor.Items
                 && string.Equals(candidate.id, newId, StringComparison.Ordinal)))
             {
                 error = "Another definition already uses id '" + newId + "'.";
+                return false;
+            }
+
+            if (IsRetiredDefinitionId(newId))
+            {
+                error = "Id '" + newId + "' was retired and can never be reused.";
                 return false;
             }
 
@@ -806,10 +892,11 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             var candidate = preferredId;
             var suffix = 2;
-            while (Authoring.definitions.Any(definition => string.Equals(
-                definition.id,
-                candidate,
-                StringComparison.Ordinal)))
+            while (IsRetiredDefinitionId(candidate)
+                || Authoring.definitions.Any(definition => string.Equals(
+                    definition.id,
+                    candidate,
+                    StringComparison.Ordinal)))
             {
                 candidate = preferredId + "_" + suffix;
                 suffix++;

@@ -35,41 +35,61 @@
       "id": "quest_item"
     }
   ],
+  "character": {
+    "bankSlotCount": 40,
+    "baseCarryCapacity": 200,
+    "inventorySlotCount": 20
+  },
   "equipmentSlots": [
     {
       "displayName": "Head",
-      "id": "head"
+      "id": "head",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Body Armor",
-      "id": "body_armor"
+      "id": "body_armor",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Primary Weapon",
-      "id": "primary_weapon"
+      "id": "primary_weapon",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Secondary Weapon",
-      "id": "secondary_weapon"
+      "id": "secondary_weapon",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Tool",
-      "id": "tool"
+      "id": "tool",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Ring 1",
-      "id": "ring_1"
+      "id": "ring_1",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Ring 2",
-      "id": "ring_2"
+      "id": "ring_2",
+      "maximumQuantity": 1
     },
     {
       "displayName": "Bag",
-      "id": "bag"
+      "id": "bag",
+      "maximumQuantity": 1
     }
   ],
-  "formatVersion": 2,
+  "formatVersion": 3,
+  "retired": {
+    "categories": [ ],
+    "definitions": [ ],
+    "equipmentSlots": [ ],
+    "secureContainerTiers": [ ],
+    "tags": [ ]
+  },
   "secureContainerTiers": [
     {
       "displayName": "Secure Container",

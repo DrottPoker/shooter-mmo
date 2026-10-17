@@ -670,7 +670,7 @@ $env:MMORPG_TEST_POSTGRES = `
   }).Split("=", 2)[1]
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
-  --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
+  --filter "FullyQualifiedName~DevelopmentItemPackage|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
@@ -727,7 +727,7 @@ routed through the worker that currently owns the character.
 5. For a complete scenario, choose a package and click `Give Package`. Available
    packages are:
 
-   - Phase 9 Full Test Pack
+   - Full Inventory Test Pack
    - Equipment Test Pack
    - Stack Split And Merge Pack
    - Encumbrance 100% Pack
@@ -736,16 +736,16 @@ routed through the worker that currently owns the character.
    - Recovery Delivery Pack
 
    Expected result: an empty offline character receives the selected
-   deterministic state. The full Phase 9 pack reports weight `122 / 250`. The
+   deterministic state. The Full Inventory Test Pack reports weight `122 / 250`. The
    encumbrance packs report `200 / 200` and `280 / 200`. Package controls become
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
    rejected by GameService without a partial item transaction.
 6. To create a durable corpse, keep a source character offline and use the
-   `Create Phase 11 Corpse` section. Leave Shard Id as `local-shard-1`, enter a
+   `Create Durable Corpse` section. Leave Shard Id as `local-shard-1`, enter a
    nearby safe World position such as `(0, 0, -1)`, and click
-   `Create Durable Corpse`. An empty source is seeded automatically with the
-   Phase 9 package. A non-empty source uses its current item state. A source with
+   `Create Durable Corpse`. An empty source first receives the corpse seed package, the
+   Full Inventory Test Pack. A non-empty source uses its current item state. A source with
    only pending Recovery deliveries cannot be auto-seeded.
 
    Expected result: the status reports the corpse id, exact Shard, absolute
@@ -780,22 +780,16 @@ dotnet run --project src/Server/GameService --configuration Release --no-build -
   --dev-items-grant <characterId> material.iron_ore 20 bank
 
 dotnet run --project src/Server/GameService --configuration Release --no-build -- `
-  --dev-items-package <characterId> phase9_full
+  --dev-items-package <characterId> full_inventory
 
 dotnet run --project src/Server/GameService --configuration Release --no-build -- `
   --dev-items-corpse <characterId> local-shard-1 0 0 -1
 ```
 
-The original full-fixture command remains compatible:
-
-```powershell
-dotnet run --project src/Server/GameService -- --seed-phase9-items <characterId>
-```
-
-Expected result: the process exits after logging 17 granted item instances, one
-Recovery delivery, the committed item-state revision, and carry `122/250`.
-Running it again fails with the empty-character guard instead of duplicating
-items.
+The packages come from `content/development/item-packages.json`, which GameService
+copies next to its build output. A package that names an unknown definition, or
+that no longer reaches its exact expected load, is rejected with a message that
+names the package.
 
 ### Manual Player Loop
 
@@ -939,10 +933,10 @@ at the same time:
    standalone player reaches LoginMenu.
 2. Start PostgreSQL, Redis, and GameService. Using the Editor client, create
    three disposable accounts with one character each: one offline corpse source
-   and two looters. Apply `Phase 9 Full Test Pack` to both looters while they are
+   and two looters. Apply `Full Inventory Test Pack` to both looters while they are
    offline so each has an occupied equipped Bag.
 3. In `MMORPG > Tools > Inventory Item Grants`, select the offline source.
-   Under `Create Phase 11 Corpse`, keep Shard Id `local-shard-1`, use World
+   Under `Create Durable Corpse`, keep Shard Id `local-shard-1`, use World
    Position `(0, 0, -1)`, and click `Create Durable Corpse`. Expected result:
    the tool reports a corpse id and an expiry five minutes in the future.
 4. Start or restart SimulationWorker after the fixture commits. Run the built

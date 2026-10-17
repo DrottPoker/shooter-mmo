@@ -1,5 +1,6 @@
 {
   "bag": null,
+  "blockedEquipmentSlots": [ ],
   "category": "tool",
   "defaultPolicies": [ ],
   "displayName": "Starter Pickaxe",

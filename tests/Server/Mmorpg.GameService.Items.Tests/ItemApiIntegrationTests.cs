@@ -121,7 +121,7 @@ public sealed class ItemApiIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     1,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -241,7 +241,7 @@ public sealed class ItemApiIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     1,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -358,7 +358,7 @@ public sealed class ItemApiIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     46,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -374,7 +374,7 @@ public sealed class ItemApiIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     character.Revision,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     3,
                     state.BankContainerId,
                     0)),

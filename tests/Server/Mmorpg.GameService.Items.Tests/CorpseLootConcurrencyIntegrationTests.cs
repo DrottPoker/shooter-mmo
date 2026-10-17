@@ -30,21 +30,21 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var firstItem = await GrantAsync(
             context,
             source,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             sourceSnapshot.PermanentInventory.ContainerId,
             0);
         var secondItem = await GrantAsync(
             context,
             source,
-            "tool.starter_pickaxe",
+            "fixture.pickaxe",
             1,
             sourceSnapshot.PermanentInventory.ContainerId,
             1);
         var contestedItem = await GrantAsync(
             context,
             source,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             sourceSnapshot.PermanentInventory.ContainerId,
             2);
@@ -135,7 +135,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var stackId = await GrantAsync(
             context,
             source,
-            "material.iron_ore",
+            "fixture.ore",
             10,
             sourceSnapshot.PermanentInventory.ContainerId,
             0);
@@ -167,7 +167,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.ItemStateConflict, stale.Error!.Code);
         await AssertDefinitionQuantityAsync(
             context,
-            "material.iron_ore",
+            "fixture.ore",
             10,
             stackId,
             firstDestination.ContainerId,
@@ -187,7 +187,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.True(retry.Succeeded, retry.Error?.Message);
         await AssertDefinitionQuantityAsync(
             context,
-            "material.iron_ore",
+            "fixture.ore",
             10,
             stackId,
             firstDestination.ContainerId,
@@ -215,7 +215,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var child = await GrantAsync(
             context,
             source,
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             sourceWithBag.EquippedBag!.Contents.ContainerId,
             0);
@@ -287,7 +287,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         await GrantAsync(
             context,
             source,
-            "material.iron_ore",
+            "fixture.ore",
             3,
             sourceSnapshot.EquippedBag!.Contents.ContainerId,
             0);
@@ -347,7 +347,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             itemIds.Add(await GrantAsync(
                 context,
                 source,
-                "material.iron_ore",
+                "fixture.ore",
                 1,
                 sourceSnapshot.PermanentInventory.ContainerId,
                 index));
@@ -428,7 +428,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var childId = await GrantAsync(
             context,
             source,
-            "material.iron_ore",
+            "fixture.ore",
             3,
             sourceSnapshot.EquippedBag!.Contents.ContainerId,
             0);
@@ -490,14 +490,14 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var contested = await GrantAsync(
             context,
             source,
-            "tool.starter_pickaxe",
+            "fixture.pickaxe",
             1,
             sourceSnapshot.PermanentInventory.ContainerId,
             0);
         var weighted = await GrantAsync(
             context,
             source,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             sourceSnapshot.PermanentInventory.ContainerId,
             1);
@@ -527,14 +527,14 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         await GrantAsync(
             context,
             cappedLooter,
-            "material.iron_ore",
+            "fixture.ore",
             46,
             cappedDestination.ContainerId,
             0);
         await GrantAsync(
             context,
             cappedLooter,
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             cappedDestination.ContainerId,
             1);
@@ -570,14 +570,14 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var corpseTool = await GrantAsync(
             context,
             source,
-            "tool.starter_pickaxe",
+            "fixture.pickaxe",
             1,
             sourceInventory.ContainerId,
             0);
         var corpseOre = await GrantAsync(
             context,
             source,
-            "material.iron_ore",
+            "fixture.ore",
             5,
             sourceInventory.ContainerId,
             2);
@@ -591,28 +591,28 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var playerRing = await GrantAsync(
             context,
             player,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             playerInventory.ContainerId,
             0);
-        var playerMedical = await GrantAsync(
+        var playerPotion = await GrantAsync(
             context,
             player,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             playerInventory.ContainerId,
             1);
         var playerOre = await GrantAsync(
             context,
             player,
-            "material.iron_ore",
+            "fixture.ore",
             4,
             playerInventory.ContainerId,
             2);
         var emptySlotDeposit = await GrantAsync(
             context,
             player,
-            "armor.starter_vest",
+            "fixture.tunic",
             1,
             playerInventory.ContainerId,
             3);
@@ -633,12 +633,12 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             context,
             player.Character.Id,
             death.Corpse.CorpseId,
-            await LoadItemAsync(context, playerMedical),
+            await LoadItemAsync(context, playerPotion),
             corpseInventoryId,
             0,
             await LoadItemAsync(context, playerRing));
         Assert.True(depositSwap.Succeeded, depositSwap.Error?.Message);
-        await AssertLocationAsync(context, playerMedical, corpseInventoryId, 0);
+        await AssertLocationAsync(context, playerPotion, corpseInventoryId, 0);
         await AssertLocationAsync(context, playerRing, playerInventory.ContainerId, 1);
 
         var partialDeposit = await DepositPartialWithTargetAsync(
@@ -691,21 +691,21 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var ring = await GrantAsync(
             context,
             source,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             sourceInventory.ContainerId,
             0);
-        var vest = await GrantAsync(
+        var tunic = await GrantAsync(
             context,
             source,
-            "armor.starter_vest",
+            "fixture.tunic",
             1,
             sourceInventory.ContainerId,
             1);
         var ore = await GrantAsync(
             context,
             source,
-            "material.iron_ore",
+            "fixture.ore",
             6,
             sourceInventory.ContainerId,
             2);
@@ -766,13 +766,13 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             await LoadItemAsync(context, ring),
             corpseInventoryId,
             1,
-            await LoadItemAsync(context, vest));
+            await LoadItemAsync(context, tunic));
         Assert.True(swapped.Succeeded, swapped.Error?.Message);
         Assert.Empty(swapped.CharacterRevisions);
         await AssertLocationAsync(context, ring, corpseInventoryId, 1);
-        await AssertLocationAsync(context, vest, corpseInventoryId, 5);
+        await AssertLocationAsync(context, tunic, corpseInventoryId, 5);
 
-        var ringSlotIndex = await LoadEquipmentSlotIndexAsync(context, "ring_1");
+        var ringSlotIndex = await LoadEquipmentSlotIndexAsync(context, corpseEquipmentId, "ring_1");
         var ringEquipped = await MoveWithinCorpseAsync(
             context,
             viewer.Character.Id,
@@ -783,28 +783,28 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         Assert.True(ringEquipped.Succeeded, ringEquipped.Error?.Message);
         await AssertLocationAsync(context, ring, corpseEquipmentId, ringSlotIndex);
 
-        var headSlotIndex = await LoadEquipmentSlotIndexAsync(context, "head");
+        var headSlotIndex = await LoadEquipmentSlotIndexAsync(context, corpseEquipmentId, "head");
         var incompatible = await MoveWithinCorpseAsync(
             context,
             viewer.Character.Id,
             death.Corpse.CorpseId,
-            await LoadItemAsync(context, vest),
+            await LoadItemAsync(context, tunic),
             corpseEquipmentId,
             headSlotIndex);
         Assert.False(incompatible.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.ItemSlotIncompatible, incompatible.Error!.Code);
-        await AssertLocationAsync(context, vest, corpseInventoryId, 5);
+        await AssertLocationAsync(context, tunic, corpseInventoryId, 5);
 
-        var bodySlotIndex = await LoadEquipmentSlotIndexAsync(context, "body_armor");
-        var vestEquipped = await MoveWithinCorpseAsync(
+        var bodySlotIndex = await LoadEquipmentSlotIndexAsync(context, corpseEquipmentId, "body");
+        var tunicEquipped = await MoveWithinCorpseAsync(
             context,
             viewer.Character.Id,
             death.Corpse.CorpseId,
-            await LoadItemAsync(context, vest),
+            await LoadItemAsync(context, tunic),
             corpseEquipmentId,
             bodySlotIndex);
-        Assert.True(vestEquipped.Succeeded, vestEquipped.Error?.Message);
-        await AssertLocationAsync(context, vest, corpseEquipmentId, bodySlotIndex);
+        Assert.True(tunicEquipped.Succeeded, tunicEquipped.Error?.Message);
+        await AssertLocationAsync(context, tunic, corpseEquipmentId, bodySlotIndex);
         Assert.Equal(viewerRevision, (await GetSnapshotAsync(context, viewer)).ItemStateRevision);
     }
 
@@ -824,7 +824,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var looseBag = await GrantAsync(
             context,
             source,
-            "bag.field_pack",
+            "fixture.pack",
             1,
             (await GetSnapshotAsync(context, source)).PermanentInventory.ContainerId,
             0);
@@ -837,7 +837,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             context,
             death.Corpse.CorpseId,
             "equipment");
-        var bagSlotIndex = await LoadEquipmentSlotIndexAsync(context, "bag");
+        var bagSlotIndex = await LoadEquipmentSlotIndexAsync(context, corpseEquipmentId, "bag");
         await AssertLocationAsync(context, corpseBag, corpseEquipmentId, bagSlotIndex);
         var looseBagSlotIndex = (await LoadItemAsync(context, looseBag)).ContainerSlotIndex!.Value;
 
@@ -887,7 +887,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var corpseTool = await GrantAsync(
             context,
             source,
-            "tool.starter_pickaxe",
+            "fixture.pickaxe",
             1,
             sourceInventory.ContainerId,
             0);
@@ -901,7 +901,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var protectedItem = await GrantAsync(
             context,
             protectedPlayer,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             protectedInventory.ContainerId,
             1);
@@ -932,14 +932,14 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         await GrantAsync(
             context,
             cappedPlayer,
-            "material.iron_ore",
+            "fixture.ore",
             46,
             cappedInventory.ContainerId,
             0);
         var cappedTarget = await GrantAsync(
             context,
             cappedPlayer,
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             cappedInventory.ContainerId,
             1);
@@ -981,7 +981,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var corpseItem = await GrantAsync(
             context,
             source,
-            "tool.starter_pickaxe",
+            "fixture.pickaxe",
             1,
             sourceInventory.ContainerId,
             0);
@@ -994,7 +994,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var depositedItem = await GrantAsync(
             context,
             depositor,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             depositorInventory.ContainerId,
             0);
@@ -1304,7 +1304,7 @@ public sealed class CorpseLootConcurrencyIntegrationTests
         var bagId = await GrantAsync(
             context,
             player,
-            "bag.field_pack",
+            "fixture.pack",
             1,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -1433,12 +1433,18 @@ public sealed class CorpseLootConcurrencyIntegrationTests
 
     private static async Task<int> LoadEquipmentSlotIndexAsync(
         PostgresIntegrationTestContext context,
+        Guid corpseEquipmentContainerId,
         string equipmentSlotId)
     {
         await using var connection = await context.DataSource.OpenConnectionAsync();
         return await connection.ExecuteScalarAsync<int>(
-            "select sort_order from equipment_slots where id = @EquipmentSlotId;",
-            new { EquipmentSlotId = equipmentSlotId });
+            """
+            select slot_index
+            from item_container_slots
+            where container_id = @ContainerId
+              and equipment_slot_id = @EquipmentSlotId;
+            """,
+            new { ContainerId = corpseEquipmentContainerId, EquipmentSlotId = equipmentSlotId });
     }
 
     private static async Task AssertLocationAsync(

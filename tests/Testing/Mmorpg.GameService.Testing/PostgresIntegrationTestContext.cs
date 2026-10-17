@@ -172,11 +172,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                     ["Simulation:JoinTicketLifetimeSeconds"] = "30",
                     ["Simulation:SessionLeaseLifetimeSeconds"] = "60",
                     ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30",
-                    ["Items:CatalogPath"] = Path.Combine(
-                        AppContext.BaseDirectory,
-                        "WorldData",
-                        "Items",
-                        "core.item-catalog.json")
+                    ["Items:CatalogPath"] = RepositoryPaths.ItemCatalogFixtureRuntimePath
                 })
                 .Build();
 

@@ -4,12 +4,19 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
+// Mirrors the compiled item catalog into PostgreSQL before item traffic is accepted. Ids
+// are never removed: an id that leaves the catalog must be listed as retired, and its row
+// is retired once nothing live references it. A change that live state depends on stops
+// startup until an explicit data migration makes the state compatible.
 internal sealed class ItemCatalogSeeder(
     NpgsqlDataSource dataSource,
     ItemCatalogSource catalogSource,
     ILogger<ItemCatalogSeeder> logger)
 {
     private const long CatalogLockId = 7_104_202_607_151_230;
+    private const string CharacterSettingsId = "character_default";
+    private const string MigrationAdvice =
+        "Apply an explicit data migration, or reset a local development database.";
 
     public async Task SeedAsync(CancellationToken cancellationToken)
     {
@@ -36,173 +43,276 @@ internal sealed class ItemCatalogSeeder(
                 transaction,
                 cancellationToken: cancellationToken));
 
-            var currentRevision = await connection.QuerySingleOrDefaultAsync<CatalogRevisionRow>(
-                new CommandDefinition(
-                    """
-                    select
-                        catalog_id as "CatalogId",
-                        revision as "Revision",
-                        base_secure_container_tier_id as "BaseSecureContainerTierId"
-                    from item_catalog_revisions
-                    where catalog_id = @CatalogId
-                      and is_current;
-                    """,
-                    new { canonical.CatalogId },
-                    transaction,
-                    cancellationToken: cancellationToken));
+            var mirror = new CatalogMirror(connection, transaction, canonical, cancellationToken);
+            var existing = await mirror.LoadExistingAsync();
+            existing.EnsureCompatibleIdentities(canonical);
+            await mirror.EnsureCompatibleStructureAsync(existing);
+            await mirror.EnsureCompatibleCharacterSettingsAsync();
 
-            var existingCategoryIds = (await connection.QueryAsync<string>(new CommandDefinition(
-                    "select id from item_categories where catalog_id = @CatalogId;",
-                    new { canonical.CatalogId },
-                    transaction,
-                    cancellationToken: cancellationToken)))
-                .ToArray();
-            var existingTagIds = (await connection.QueryAsync<string>(new CommandDefinition(
-                    "select id from item_tags where catalog_id = @CatalogId;",
-                    new { canonical.CatalogId },
-                    transaction,
-                    cancellationToken: cancellationToken)))
-                .ToArray();
-            var existingEquipmentSlots = (await connection.QueryAsync<EquipmentSlotRow>(
-                    new CommandDefinition(
-                        """
-                        select id as "Id", sort_order as "SortOrder"
-                        from equipment_slots;
-                        """,
-                        transaction: transaction,
-                        cancellationToken: cancellationToken)))
-                .ToDictionary(row => row.Id, StringComparer.Ordinal);
-            var existingDefinitions = (await connection.QueryAsync<DefinitionCompatibilityRow>(
-                    new CommandDefinition(
-                        """
-                        select
-                            id as "Id",
-                            structural_fingerprint as "StructuralFingerprint",
-                            is_active as "IsActive"
-                        from item_definitions
-                        where catalog_id = @CatalogId;
-                        """,
-                        new { canonical.CatalogId },
-                        transaction,
-                        cancellationToken: cancellationToken)))
-                .ToDictionary(row => row.Id, StringComparer.Ordinal);
-            var existingTiers = (await connection.QueryAsync<TierCompatibilityRow>(
-                    new CommandDefinition(
-                        """
-                        select
-                            id as "Id",
-                            structural_fingerprint as "StructuralFingerprint",
-                            is_active as "IsActive"
-                        from secure_container_tiers
-                        where catalog_id = @CatalogId;
-                        """,
-                        new { canonical.CatalogId },
-                        transaction,
-                        cancellationToken: cancellationToken)))
-                .ToDictionary(row => row.Id, StringComparer.Ordinal);
+            await mirror.WriteRevisionAsync();
+            await mirror.WriteVocabularyAsync(existing);
+            await mirror.WriteDefinitionsAsync();
+            await mirror.WriteSecureContainerTiersAsync();
+            await mirror.RetireAsync(existing);
+            await mirror.WriteCharacterSettingsAsync();
+            await mirror.MakeRevisionCurrentAsync();
 
-            EnsureNoIdentityRemoval(
+            await transaction.CommitAsync(cancellationToken);
+            revisionChanged = !string.Equals(
+                existing.CurrentRevision,
+                canonical.Revision,
+                StringComparison.Ordinal);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        if (revisionChanged)
+        {
+            logger.LogInformation(
+                "Mirrored item catalog {CatalogId} revision {CatalogRevision} with {DefinitionCount} definitions.",
+                canonical.CatalogId,
+                canonical.Revision,
+                canonical.Definitions.Length);
+        }
+    }
+
+    // The ids and states that the database holds before this catalog is mirrored.
+    private sealed class ExistingCatalog
+    {
+        public string? CurrentRevision { get; init; }
+
+        public required IReadOnlyDictionary<string, bool> Categories { get; init; }
+
+        public required IReadOnlyDictionary<string, bool> Tags { get; init; }
+
+        public required IReadOnlyDictionary<string, EquipmentSlotRow> EquipmentSlots { get; init; }
+
+        public required IReadOnlyDictionary<string, CompatibilityRow> Definitions { get; init; }
+
+        public required IReadOnlyDictionary<string, CompatibilityRow> SecureContainerTiers { get; init; }
+
+        public void EnsureCompatibleIdentities(ItemCatalogRuntimeDocument canonical)
+        {
+            EnsureCompatibleIdentity(
                 "category",
-                existingCategoryIds,
-                canonical.Categories.Select(entry => entry.Id));
-            EnsureNoIdentityRemoval(
+                Categories,
+                canonical.Categories.Select(entry => entry.Id),
+                canonical.Retired.Categories);
+            EnsureCompatibleIdentity(
                 "tag",
-                existingTagIds,
-                canonical.Tags.Select(entry => entry.Id));
-            EnsureNoIdentityRemoval(
+                Tags,
+                canonical.Tags.Select(entry => entry.Id),
+                canonical.Retired.Tags);
+            EnsureCompatibleIdentity(
                 "equipment slot",
-                existingEquipmentSlots.Keys,
-                canonical.EquipmentSlots.Select(entry => entry.Id));
-            EnsureNoIdentityRemoval(
+                EquipmentSlots.ToDictionary(pair => pair.Key, pair => pair.Value.IsActive),
+                canonical.EquipmentSlots.Select(slot => slot.Id),
+                canonical.Retired.EquipmentSlots);
+            EnsureCompatibleIdentity(
                 "item definition",
-                existingDefinitions.Keys,
-                canonical.Definitions.Select(definition => definition.Id));
-            EnsureNoIdentityRemoval(
+                Definitions.ToDictionary(pair => pair.Key, pair => pair.Value.IsActive),
+                canonical.Definitions.Select(definition => definition.Id),
+                canonical.Retired.Definitions);
+            EnsureCompatibleIdentity(
                 "Secure Container tier",
-                existingTiers.Keys,
-                canonical.SecureContainerTiers.Select(tier => tier.Id));
+                SecureContainerTiers.ToDictionary(pair => pair.Key, pair => pair.Value.IsActive),
+                canonical.SecureContainerTiers.Select(tier => tier.Id),
+                canonical.Retired.SecureContainerTiers);
+        }
 
-            foreach (var definition in canonical.Definitions)
+        private static void EnsureCompatibleIdentity(
+            string identityKind,
+            IReadOnlyDictionary<string, bool> existing,
+            IEnumerable<string> activeIds,
+            IEnumerable<string> retiredIds)
+        {
+            var active = activeIds.ToHashSet(StringComparer.Ordinal);
+            var retired = retiredIds.ToHashSet(StringComparer.Ordinal);
+            foreach (var (id, isActive) in existing.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
-                if (!existingDefinitions.TryGetValue(definition.Id, out var existing))
+                if (active.Contains(id))
                 {
+                    if (!isActive)
+                    {
+                        throw new ItemCatalogCompatibilityException(
+                            $"Retired {identityKind} id '{id}' cannot be reused.");
+                    }
+
                     continue;
                 }
 
-                if (!existing.IsActive)
+                if (!retired.Contains(id))
                 {
                     throw new ItemCatalogCompatibilityException(
-                        $"Retired item definition id '{definition.Id}' cannot be reused.");
+                        $"Existing {identityKind} id '{id}' is missing from the candidate catalog. "
+                        + "List it as retired instead of removing it.");
                 }
+            }
+        }
+    }
 
-                if (string.Equals(
-                    existing.StructuralFingerprint,
-                    definition.StructuralFingerprint,
-                    StringComparison.Ordinal))
-                {
-                    continue;
-                }
+    private sealed class CatalogMirror(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        ItemCatalogRuntimeDocument canonical,
+        CancellationToken cancellationToken)
+    {
+        public async Task<ExistingCatalog> LoadExistingAsync()
+        {
+            var currentRevision = await connection.ExecuteScalarAsync<string?>(Command(
+                """
+                select revision
+                from item_catalog_revisions
+                where catalog_id = @CatalogId
+                  and is_current;
+                """,
+                new { canonical.CatalogId }));
+            var categories = await QueryActivityAsync(
+                "select id as \"Id\", is_active as \"IsActive\" from item_categories where catalog_id = @CatalogId;");
+            var tags = await QueryActivityAsync(
+                "select id as \"Id\", is_active as \"IsActive\" from item_tags where catalog_id = @CatalogId;");
+            var equipmentSlots = (await connection.QueryAsync<EquipmentSlotRow>(Command(
+                    """
+                    select
+                        id as "Id",
+                        maximum_quantity as "MaximumQuantity",
+                        is_active as "IsActive"
+                    from equipment_slots;
+                    """)))
+                .ToDictionary(row => row.Id, StringComparer.Ordinal);
+            var definitions = (await connection.QueryAsync<CompatibilityRow>(Command(
+                    """
+                    select
+                        id as "Id",
+                        structural_fingerprint as "StructuralFingerprint",
+                        is_active as "IsActive"
+                    from item_definitions
+                    where catalog_id = @CatalogId;
+                    """,
+                    new { canonical.CatalogId })))
+                .ToDictionary(row => row.Id, StringComparer.Ordinal);
+            var tiers = (await connection.QueryAsync<CompatibilityRow>(Command(
+                    """
+                    select
+                        id as "Id",
+                        structural_fingerprint as "StructuralFingerprint",
+                        is_active as "IsActive"
+                    from secure_container_tiers
+                    where catalog_id = @CatalogId;
+                    """,
+                    new { canonical.CatalogId })))
+                .ToDictionary(row => row.Id, StringComparer.Ordinal);
+            return new ExistingCatalog
+            {
+                CurrentRevision = currentRevision,
+                Categories = categories,
+                Tags = tags,
+                EquipmentSlots = equipmentSlots,
+                Definitions = definitions,
+                SecureContainerTiers = tiers
+            };
+        }
 
-                var hasLiveInstances = await connection.ExecuteScalarAsync<bool>(
-                    new CommandDefinition(
-                        """
-                        select exists (
-                            select 1
-                            from item_instances
-                            where definition_id = @DefinitionId);
-                        """,
-                        new { DefinitionId = definition.Id },
-                        transaction,
-                        cancellationToken: cancellationToken));
-                if (hasLiveInstances)
+        // A structural change is accepted only while no live state depends on it.
+        public async Task EnsureCompatibleStructureAsync(ExistingCatalog existing)
+        {
+            foreach (var definition in canonical.Definitions)
+            {
+                if (existing.Definitions.TryGetValue(definition.Id, out var row)
+                    && !string.Equals(
+                        row.StructuralFingerprint,
+                        definition.StructuralFingerprint,
+                        StringComparison.Ordinal)
+                    && await ExistsAsync(
+                        "select exists (select 1 from item_instances where definition_id = @Id);",
+                        definition.Id))
                 {
                     throw new ItemCatalogCompatibilityException(
                         $"Item definition '{definition.Id}' has live instances and changed "
-                        + "structurally. Apply an explicit data migration before startup.");
+                        + "structurally. " + MigrationAdvice);
                 }
             }
 
             foreach (var tier in canonical.SecureContainerTiers)
             {
-                if (!existingTiers.TryGetValue(tier.Id, out var existing))
-                {
-                    continue;
-                }
-
-                if (!existing.IsActive)
-                {
-                    throw new ItemCatalogCompatibilityException(
-                        $"Retired Secure Container tier id '{tier.Id}' cannot be reused.");
-                }
-
-                if (string.Equals(
-                    existing.StructuralFingerprint,
-                    tier.StructuralFingerprint,
-                    StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var hasEntitlements = await connection.ExecuteScalarAsync<bool>(
-                    new CommandDefinition(
+                if (existing.SecureContainerTiers.TryGetValue(tier.Id, out var row)
+                    && !string.Equals(
+                        row.StructuralFingerprint,
+                        tier.StructuralFingerprint,
+                        StringComparison.Ordinal)
+                    && await ExistsAsync(
                         """
                         select exists (
                             select 1
                             from account_secure_container_entitlements
-                            where tier_id = @TierId);
+                            where tier_id = @Id);
                         """,
-                        new { TierId = tier.Id },
-                        transaction,
-                        cancellationToken: cancellationToken));
-                if (hasEntitlements)
+                        tier.Id))
                 {
                     throw new ItemCatalogCompatibilityException(
                         $"Secure Container tier '{tier.Id}' has live entitlements and changed "
-                        + "structurally. Apply an explicit data migration before startup.");
+                        + "structurally. " + MigrationAdvice);
                 }
             }
 
-            await connection.ExecuteAsync(new CommandDefinition(
+            foreach (var slot in canonical.EquipmentSlots)
+            {
+                if (existing.EquipmentSlots.TryGetValue(slot.Id, out var row)
+                    && slot.MaximumQuantity < row.MaximumQuantity
+                    && await connection.ExecuteScalarAsync<bool>(Command(
+                        """
+                        select exists (
+                            select 1
+                            from item_instances
+                            where equipment_slot_id = @Id
+                              and quantity > @MaximumQuantity);
+                        """,
+                        new { slot.Id, slot.MaximumQuantity })))
+                {
+                    throw new ItemCatalogCompatibilityException(
+                        $"Equipment slot '{slot.Id}' holds stacks above its new maximum quantity. "
+                        + MigrationAdvice);
+                }
+            }
+        }
+
+        // Every character copies the settings when its item state is created, so a change
+        // must not leave existing characters on different settings.
+        public async Task EnsureCompatibleCharacterSettingsAsync()
+        {
+            var current = await connection.QuerySingleAsync<CharacterSettingsRow>(Command(
+                """
+                select
+                    base_carry_capacity as "BaseCarryCapacity",
+                    permanent_inventory_slot_count as "InventorySlotCount",
+                    bank_slot_count as "BankSlotCount"
+                from item_system_settings
+                where id = @CharacterSettingsId;
+                """,
+                new { CharacterSettingsId }));
+            var candidate = canonical.Character;
+            if (current.BaseCarryCapacity == candidate.BaseCarryCapacity
+                && current.InventorySlotCount == candidate.InventorySlotCount
+                && current.BankSlotCount == candidate.BankSlotCount)
+            {
+                return;
+            }
+
+            if (await connection.ExecuteScalarAsync<bool>(Command(
+                    "select exists (select 1 from character_item_states);")))
+            {
+                throw new ItemCatalogCompatibilityException(
+                    "The item catalog character settings changed while characters already have "
+                    + "item state. " + MigrationAdvice);
+            }
+        }
+
+        public async Task WriteRevisionAsync()
+        {
+            await connection.ExecuteAsync(Command(
                 """
                 insert into item_catalog_revisions (
                     catalog_id,
@@ -224,36 +334,34 @@ internal sealed class ItemCatalogSeeder(
                     canonical.Revision,
                     canonical.FormatVersion,
                     canonical.BaseSecureContainerTierId
-                },
-                transaction,
-                cancellationToken: cancellationToken));
+                }));
 
-            var storedRevision = await connection.QuerySingleAsync<CatalogRevisionMetadataRow>(
-                new CommandDefinition(
-                    """
-                    select
-                        format_version as "FormatVersion",
-                        base_secure_container_tier_id as "BaseSecureContainerTierId"
-                    from item_catalog_revisions
-                    where catalog_id = @CatalogId
-                      and revision = @Revision;
-                    """,
-                    new { canonical.CatalogId, canonical.Revision },
-                    transaction,
-                    cancellationToken: cancellationToken));
-            if (storedRevision.FormatVersion != canonical.FormatVersion
+            var stored = await connection.QuerySingleAsync<CatalogRevisionMetadataRow>(Command(
+                """
+                select
+                    format_version as "FormatVersion",
+                    base_secure_container_tier_id as "BaseSecureContainerTierId"
+                from item_catalog_revisions
+                where catalog_id = @CatalogId
+                  and revision = @Revision;
+                """,
+                new { canonical.CatalogId, canonical.Revision }));
+            if (stored.FormatVersion != canonical.FormatVersion
                 || !string.Equals(
-                    storedRevision.BaseSecureContainerTierId,
+                    stored.BaseSecureContainerTierId,
                     canonical.BaseSecureContainerTierId,
                     StringComparison.Ordinal))
             {
                 throw new ItemCatalogCompatibilityException(
                     $"Catalog revision '{canonical.Revision}' conflicts with stored metadata.");
             }
+        }
 
+        public async Task WriteVocabularyAsync(ExistingCatalog existing)
+        {
             foreach (var category in canonical.Categories)
             {
-                await connection.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(Command(
                     """
                     insert into item_categories (
                         id,
@@ -273,20 +381,12 @@ internal sealed class ItemCatalogSeeder(
                        or item_categories.display_name is distinct from excluded.display_name
                        or not item_categories.is_active;
                     """,
-                    new
-                    {
-                        category.Id,
-                        canonical.CatalogId,
-                        canonical.Revision,
-                        category.DisplayName
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+                    new { category.Id, canonical.CatalogId, canonical.Revision, category.DisplayName }));
             }
 
             foreach (var tag in canonical.Tags)
             {
-                await connection.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(Command(
                     """
                     insert into item_tags (
                         id,
@@ -306,38 +406,43 @@ internal sealed class ItemCatalogSeeder(
                        or item_tags.display_name is distinct from excluded.display_name
                        or not item_tags.is_active;
                     """,
-                    new
-                    {
-                        tag.Id,
-                        canonical.CatalogId,
-                        canonical.Revision,
-                        tag.DisplayName
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+                    new { tag.Id, canonical.CatalogId, canonical.Revision, tag.DisplayName }));
             }
 
+            // The catalog lists slots in display order.
             for (var index = 0; index < canonical.EquipmentSlots.Length; index++)
             {
                 var slot = canonical.EquipmentSlots[index];
-                var sortOrder = existingEquipmentSlots.TryGetValue(slot.Id, out var existingSlot)
-                    ? existingSlot.SortOrder
-                    : 1000 + index;
-                await connection.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(Command(
                     """
                     insert into equipment_slots (
                         id,
                         display_name,
-                        sort_order,
+                        display_order,
+                        maximum_quantity,
+                        is_active,
                         catalog_id,
                         catalog_revision)
-                    values (@Id, @DisplayName, @SortOrder, @CatalogId, @Revision)
+                    values (
+                        @Id,
+                        @DisplayName,
+                        @DisplayOrder,
+                        @MaximumQuantity,
+                        true,
+                        @CatalogId,
+                        @Revision)
                     on conflict (id) do update
                     set display_name = excluded.display_name,
+                        display_order = excluded.display_order,
+                        maximum_quantity = excluded.maximum_quantity,
+                        is_active = true,
                         catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
                         updated_at = now()
                     where equipment_slots.display_name is distinct from excluded.display_name
+                       or equipment_slots.display_order is distinct from excluded.display_order
+                       or equipment_slots.maximum_quantity is distinct from excluded.maximum_quantity
+                       or not equipment_slots.is_active
                        or equipment_slots.catalog_id is distinct from excluded.catalog_id
                        or equipment_slots.catalog_revision is distinct from excluded.catalog_revision;
                     """,
@@ -345,17 +450,19 @@ internal sealed class ItemCatalogSeeder(
                     {
                         slot.Id,
                         slot.DisplayName,
-                        SortOrder = sortOrder,
+                        DisplayOrder = index,
+                        slot.MaximumQuantity,
                         canonical.CatalogId,
                         canonical.Revision
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+                    }));
             }
+        }
 
+        public async Task WriteDefinitionsAsync()
+        {
             foreach (var definition in canonical.Definitions)
             {
-                await connection.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(Command(
                     """
                     insert into item_definitions (
                         id,
@@ -411,20 +518,17 @@ internal sealed class ItemCatalogSeeder(
                         definition.MaximumStackSize,
                         definition.PlayerDestroyable,
                         definition.StructuralFingerprint
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+                    }));
 
-                await SynchronizeDefinitionStructureAsync(
-                    connection,
-                    transaction,
-                    definition,
-                    cancellationToken);
+                await WriteDefinitionStructureAsync(definition);
             }
+        }
 
+        public async Task WriteSecureContainerTiersAsync()
+        {
             foreach (var tier in canonical.SecureContainerTiers)
             {
-                await connection.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(Command(
                     """
                     insert into secure_container_tiers (
                         id,
@@ -465,12 +569,110 @@ internal sealed class ItemCatalogSeeder(
                         tier.DisplayName,
                         tier.SlotCapacity,
                         tier.StructuralFingerprint
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+                    }));
+            }
+        }
+
+        // Definitions first: active definitions only reference active vocabulary, so once
+        // the retired definitions are inactive nothing active references a retired id.
+        public async Task RetireAsync(ExistingCatalog existing)
+        {
+            foreach (var id in ActiveExisting(
+                canonical.Retired.Definitions,
+                id => existing.Definitions.TryGetValue(id, out var row) && row.IsActive))
+            {
+                if (await ExistsAsync(
+                        "select exists (select 1 from item_instances where definition_id = @Id);",
+                        id))
+                {
+                    throw new ItemCatalogCompatibilityException(
+                        $"Retired item definition '{id}' still has live item instances. "
+                        + MigrationAdvice);
+                }
+
+                await RetireRowAsync("item_definitions", id);
             }
 
-            await connection.ExecuteAsync(new CommandDefinition(
+            foreach (var id in ActiveExisting(
+                canonical.Retired.EquipmentSlots,
+                id => existing.EquipmentSlots.TryGetValue(id, out var row) && row.IsActive))
+            {
+                if (await ExistsAsync(
+                        "select exists (select 1 from item_instances where equipment_slot_id = @Id);",
+                        id))
+                {
+                    throw new ItemCatalogCompatibilityException(
+                        $"Retired equipment slot '{id}' still holds equipped items. "
+                        + MigrationAdvice);
+                }
+
+                await RetireRowAsync("equipment_slots", id);
+            }
+
+            foreach (var id in ActiveExisting(
+                canonical.Retired.SecureContainerTiers,
+                id => existing.SecureContainerTiers.TryGetValue(id, out var row) && row.IsActive))
+            {
+                if (await ExistsAsync(
+                        """
+                        select exists (
+                            select 1
+                            from account_secure_container_entitlements
+                            where tier_id = @Id);
+                        """,
+                        id))
+                {
+                    throw new ItemCatalogCompatibilityException(
+                        $"Retired Secure Container tier '{id}' still has account entitlements. "
+                        + MigrationAdvice);
+                }
+
+                await RetireRowAsync("secure_container_tiers", id);
+            }
+
+            foreach (var id in ActiveExisting(
+                canonical.Retired.Categories,
+                id => existing.Categories.TryGetValue(id, out var active) && active))
+            {
+                await RetireRowAsync("item_categories", id);
+            }
+
+            foreach (var id in ActiveExisting(
+                canonical.Retired.Tags,
+                id => existing.Tags.TryGetValue(id, out var active) && active))
+            {
+                await RetireRowAsync("item_tags", id);
+            }
+        }
+
+        public async Task WriteCharacterSettingsAsync()
+        {
+            await connection.ExecuteAsync(Command(
+                """
+                update item_system_settings
+                set catalog_id = @CatalogId,
+                    base_carry_capacity = @BaseCarryCapacity,
+                    permanent_inventory_slot_count = @InventorySlotCount,
+                    bank_slot_count = @BankSlotCount
+                where id = @CharacterSettingsId
+                  and (catalog_id is distinct from @CatalogId
+                       or base_carry_capacity is distinct from @BaseCarryCapacity
+                       or permanent_inventory_slot_count is distinct from @InventorySlotCount
+                       or bank_slot_count is distinct from @BankSlotCount);
+                """,
+                new
+                {
+                    CharacterSettingsId,
+                    canonical.CatalogId,
+                    canonical.Character.BaseCarryCapacity,
+                    canonical.Character.InventorySlotCount,
+                    canonical.Character.BankSlotCount
+                }));
+        }
+
+        public async Task MakeRevisionCurrentAsync()
+        {
+            await connection.ExecuteAsync(Command(
                 """
                 update item_catalog_revisions
                 set is_current = false
@@ -483,197 +685,168 @@ internal sealed class ItemCatalogSeeder(
                 where catalog_id = @CatalogId
                   and revision = @Revision;
                 """,
-                new { canonical.CatalogId, canonical.Revision },
-                transaction,
-                cancellationToken: cancellationToken));
-
-            await transaction.CommitAsync(cancellationToken);
-            revisionChanged = !string.Equals(
-                currentRevision?.Revision,
-                canonical.Revision,
-                StringComparison.Ordinal);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
+                new { canonical.CatalogId, canonical.Revision }));
         }
 
-        if (revisionChanged)
+        private async Task WriteDefinitionStructureAsync(ItemDefinition definition)
         {
-            logger.LogInformation(
-                "Mirrored item catalog {CatalogId} revision {CatalogRevision} with {DefinitionCount} definitions.",
-                canonical.CatalogId,
-                canonical.Revision,
-                canonical.Definitions.Length);
-        }
-    }
-
-    private static async Task SynchronizeDefinitionStructureAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        ItemDefinition definition,
-        CancellationToken cancellationToken)
-    {
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
-            delete from item_definition_tags where definition_id = @DefinitionId;
-            delete from item_definition_equipment_slots where definition_id = @DefinitionId;
-            delete from item_definition_location_rules where definition_id = @DefinitionId;
-            delete from item_definition_default_policies where definition_id = @DefinitionId;
-            delete from bag_definitions where definition_id = @DefinitionId;
-            """,
-            new { DefinitionId = definition.Id },
-            transaction,
-            cancellationToken: cancellationToken));
-
-        foreach (var tag in definition.Tags)
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
+            await connection.ExecuteAsync(Command(
                 """
-                insert into item_definition_tags (definition_id, tag_id)
-                values (@DefinitionId, @TagId);
+                delete from item_definition_tags where definition_id = @DefinitionId;
+                delete from item_definition_equipment_slots where definition_id = @DefinitionId;
+                delete from item_definition_blocked_equipment_slots where definition_id = @DefinitionId;
+                delete from item_definition_location_rules where definition_id = @DefinitionId;
+                delete from item_definition_default_policies where definition_id = @DefinitionId;
+                delete from bag_definitions where definition_id = @DefinitionId;
                 """,
-                new { DefinitionId = definition.Id, TagId = tag },
-                transaction,
-                cancellationToken: cancellationToken));
-        }
+                new { DefinitionId = definition.Id }));
 
-        foreach (var equipmentSlot in definition.EquipmentSlots)
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_definition_equipment_slots (
-                    definition_id,
-                    equipment_slot_id)
-                values (@DefinitionId, @EquipmentSlotId);
-                """,
-                new
-                {
-                    DefinitionId = definition.Id,
-                    EquipmentSlotId = equipmentSlot
-                },
-                transaction,
-                cancellationToken: cancellationToken));
-        }
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
-            insert into item_definition_location_rules (
-                definition_id,
-                location_kind,
-                is_allowed)
-            values (@DefinitionId, 'secure_container', @IsAllowed);
-            """,
-            new
+            foreach (var tag in definition.Tags)
             {
-                DefinitionId = definition.Id,
-                IsAllowed = definition.LocationEligibility.SecureContainer
-            },
-            transaction,
-            cancellationToken: cancellationToken));
-
-        foreach (var policy in definition.DefaultPolicies)
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_definition_default_policies (definition_id, policy_kind)
-                values (@DefinitionId, @PolicyKind);
-                """,
-                new { DefinitionId = definition.Id, PolicyKind = policy },
-                transaction,
-                cancellationToken: cancellationToken));
-        }
-
-        if (definition.Bag is null)
-        {
-            return;
-        }
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
-            insert into bag_definitions (definition_id, carry_capacity_bonus)
-            values (@DefinitionId, @CarryCapacityBonus);
-            """,
-            new
-            {
-                DefinitionId = definition.Id,
-                definition.Bag.CarryCapacityBonus
-            },
-            transaction,
-            cancellationToken: cancellationToken));
-
-        foreach (var slot in definition.Bag.Slots)
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into bag_definition_slots (definition_id, slot_index, slot_kind)
-                values (@DefinitionId, @SlotIndex, @SlotKind);
-                """,
-                new
-                {
-                    DefinitionId = definition.Id,
-                    SlotIndex = slot.Index,
-                    SlotKind = slot.Kind
-                },
-                transaction,
-                cancellationToken: cancellationToken));
-
-            foreach (var acceptedTag in slot.AcceptedTags)
-            {
-                await connection.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(Command(
                     """
-                    insert into bag_definition_slot_tags (
-                        definition_id,
-                        slot_index,
-                        tag_id)
-                    values (@DefinitionId, @SlotIndex, @TagId);
+                    insert into item_definition_tags (definition_id, tag_id)
+                    values (@DefinitionId, @TagId);
                     """,
-                    new
-                    {
-                        DefinitionId = definition.Id,
-                        SlotIndex = slot.Index,
-                        TagId = acceptedTag
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
+                    new { DefinitionId = definition.Id, TagId = tag }));
+            }
+
+            foreach (var equipmentSlot in definition.EquipmentSlots)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into item_definition_equipment_slots (definition_id, equipment_slot_id)
+                    values (@DefinitionId, @EquipmentSlotId);
+                    """,
+                    new { DefinitionId = definition.Id, EquipmentSlotId = equipmentSlot }));
+            }
+
+            foreach (var blockedSlot in definition.BlockedEquipmentSlots)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into item_definition_blocked_equipment_slots (
+                        definition_id,
+                        equipment_slot_id)
+                    values (@DefinitionId, @EquipmentSlotId);
+                    """,
+                    new { DefinitionId = definition.Id, EquipmentSlotId = blockedSlot }));
+            }
+
+            await connection.ExecuteAsync(Command(
+                """
+                insert into item_definition_location_rules (
+                    definition_id,
+                    location_kind,
+                    is_allowed)
+                values (@DefinitionId, 'secure_container', @IsAllowed);
+                """,
+                new
+                {
+                    DefinitionId = definition.Id,
+                    IsAllowed = definition.LocationEligibility.SecureContainer
+                }));
+
+            foreach (var policy in definition.DefaultPolicies)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into item_definition_default_policies (definition_id, policy_kind)
+                    values (@DefinitionId, @PolicyKind);
+                    """,
+                    new { DefinitionId = definition.Id, PolicyKind = policy }));
+            }
+
+            if (definition.Bag is null)
+            {
+                return;
+            }
+
+            await connection.ExecuteAsync(Command(
+                """
+                insert into bag_definitions (definition_id, carry_capacity_bonus)
+                values (@DefinitionId, @CarryCapacityBonus);
+                """,
+                new { DefinitionId = definition.Id, definition.Bag.CarryCapacityBonus }));
+
+            foreach (var slot in definition.Bag.Slots)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into bag_definition_slots (definition_id, slot_index, slot_kind)
+                    values (@DefinitionId, @SlotIndex, @SlotKind);
+                    """,
+                    new { DefinitionId = definition.Id, SlotIndex = slot.Index, SlotKind = slot.Kind }));
+
+                foreach (var acceptedTag in slot.AcceptedTags)
+                {
+                    await connection.ExecuteAsync(Command(
+                        """
+                        insert into bag_definition_slot_tags (definition_id, slot_index, tag_id)
+                        values (@DefinitionId, @SlotIndex, @TagId);
+                        """,
+                        new { DefinitionId = definition.Id, SlotIndex = slot.Index, TagId = acceptedTag }));
+                }
             }
         }
-    }
 
-    private static void EnsureNoIdentityRemoval(
-        string identityKind,
-        IEnumerable<string> existingIds,
-        IEnumerable<string> candidateIds)
-    {
-        var candidateSet = candidateIds.ToHashSet(StringComparer.Ordinal);
-        var removedId = existingIds.FirstOrDefault(id => !candidateSet.Contains(id));
-        if (removedId is not null)
+        private async Task RetireRowAsync(string table, string id)
         {
-            throw new ItemCatalogCompatibilityException(
-                $"Existing {identityKind} id '{removedId}' is missing from the candidate catalog. "
-                + "Retirement requires an explicit migration.");
+            // The table name is one of the fixed catalog tables above, never input.
+            await connection.ExecuteAsync(Command(
+                $"""
+                update {table}
+                set is_active = false,
+                    updated_at = now()
+                where id = @Id
+                  and is_active;
+                """,
+                new { Id = id }));
+        }
+
+        private async Task<IReadOnlyDictionary<string, bool>> QueryActivityAsync(string sql)
+        {
+            return (await connection.QueryAsync<ActivityRow>(Command(sql, new { canonical.CatalogId })))
+                .ToDictionary(row => row.Id, row => row.IsActive, StringComparer.Ordinal);
+        }
+
+        private Task<bool> ExistsAsync(string sql, string id)
+        {
+            return connection.ExecuteScalarAsync<bool>(Command(sql, new { Id = id }));
+        }
+
+        private CommandDefinition Command(string sql, object? parameters = null)
+        {
+            return new CommandDefinition(
+                sql,
+                parameters,
+                transaction,
+                cancellationToken: cancellationToken);
+        }
+
+        private static IEnumerable<string> ActiveExisting(
+            IEnumerable<string> retiredIds,
+            Func<string, bool> isActive)
+        {
+            return retiredIds.Where(isActive);
         }
     }
-
-    private sealed record CatalogRevisionRow(
-        string CatalogId,
-        string Revision,
-        string BaseSecureContainerTierId);
 
     private sealed record CatalogRevisionMetadataRow(
         int FormatVersion,
         string BaseSecureContainerTierId);
 
-    private sealed record EquipmentSlotRow(string Id, int SortOrder);
+    private sealed record ActivityRow(string Id, bool IsActive);
 
-    private sealed record DefinitionCompatibilityRow(
+    private sealed record EquipmentSlotRow(string Id, int MaximumQuantity, bool IsActive);
+
+    private sealed record CompatibilityRow(
         string Id,
         string StructuralFingerprint,
         bool IsActive);
 
-    private sealed record TierCompatibilityRow(
-        string Id,
-        string StructuralFingerprint,
-        bool IsActive);
+    private sealed record CharacterSettingsRow(
+        long BaseCarryCapacity,
+        int InventorySlotCount,
+        int BankSlotCount);
 }

@@ -30,13 +30,13 @@ public sealed class ItemCommandValidationTests
         {
             Loot =
             [
-                new MobCorpseLootEntryRequest(grantId, "material.iron_ore", 1),
-                new MobCorpseLootEntryRequest(grantId, "material.iron_ore", 2)
+                new MobCorpseLootEntryRequest(grantId, "fixture.ore", 1),
+                new MobCorpseLootEntryRequest(grantId, "fixture.ore", 2)
             ]
         });
         AssertMobCorpseInvalid(MobCorpse() with
         {
-            Loot = [new MobCorpseLootEntryRequest(Guid.NewGuid(), "material.iron_ore", 0)]
+            Loot = [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 0)]
         });
     }
 
@@ -147,7 +147,7 @@ public sealed class ItemCommandValidationTests
             "corpse.generic_loot_crate",
             60d,
             30,
-            [new MobCorpseLootEntryRequest(Guid.NewGuid(), "material.iron_ore", 1)]);
+            [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 1)]);
     }
 
     private static void AssertMobCorpseInvalid(CreatePersistentMobCorpseCommand command)

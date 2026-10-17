@@ -54,14 +54,24 @@ internal static class PlayerCorpseLayoutWriter
             select
                 @EquipmentContainerId,
                 'corpse_equipment',
-                max(sort_order) + 1,
+                count(*),
                 'active'
-            from equipment_slots;
-
-            insert into item_container_slots (container_id, slot_index, slot_kind)
-            select @EquipmentContainerId, sort_order, 'general'
             from equipment_slots
-            order by sort_order;
+            where is_active;
+
+            -- Each corpse equipment slot names its equipment slot, in display order.
+            insert into item_container_slots (
+                container_id,
+                slot_index,
+                slot_kind,
+                equipment_slot_id)
+            select
+                @EquipmentContainerId,
+                (row_number() over (order by display_order, id) - 1)::integer,
+                'general',
+                id
+            from equipment_slots
+            where is_active;
             """,
             new
             {
@@ -116,10 +126,7 @@ internal static class PlayerCorpseLayoutWriter
                         container_type,
                         slot_capacity,
                         lifecycle)
-                    values (@BagContainerId, 'corpse_bag_contents', 1, 'active');
-
-                    insert into item_container_slots (container_id, slot_index, slot_kind)
-                    values (@BagContainerId, 0, 'general');
+                    values (@BagContainerId, 'corpse_bag_contents', 0, 'active');
                     """,
                     new { BagContainerId = bagContainerId },
                     context.Transaction,
@@ -192,7 +199,7 @@ internal static class PlayerCorpseLayoutWriter
                          item.Disposition == ItemDeathDisposition.InsuredRecovery
                          && string.Equals(item.Source.SourceKind, "equipment", StringComparison.Ordinal)
                          && !item.IsEquippedBag)
-                     .OrderBy(item => item.Source.EquipmentSortOrder)
+                     .OrderBy(item => item.Source.EquipmentCorpseSlotIndex)
                      .ThenBy(item => item.Item.ItemInstanceId))
         {
             await InsertCorpseSnapshotAsync(

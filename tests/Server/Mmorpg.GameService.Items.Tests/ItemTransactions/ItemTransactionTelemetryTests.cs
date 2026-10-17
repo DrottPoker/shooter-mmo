@@ -198,7 +198,7 @@ public sealed class ItemTransactionTelemetryTests
                 new GrantItemCommand(
                     characterId,
                     state.Revision,
-                    "ring.starter_band",
+                    "fixture.ring",
                     1,
                     state.PermanentInventoryContainerId,
                     0)),
@@ -277,7 +277,7 @@ public sealed class ItemTransactionTelemetryTests
         return new ItemTransactionRequest<GrantItemCommand>(
             DerivedOperationId,
             ItemTransactionActor.ForAccount(Guid.NewGuid()),
-            new GrantItemCommand(Guid.NewGuid(), 1, "material.iron_ore", 1, Guid.NewGuid(), 0));
+            new GrantItemCommand(Guid.NewGuid(), 1, "fixture.ore", 1, Guid.NewGuid(), 0));
     }
 
     private static string Tag(ReadOnlySpan<KeyValuePair<string, object?>> tags, string key)

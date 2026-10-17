@@ -22,7 +22,7 @@ public sealed class ActiveSimulationSessionStoreTests
             DateTime.UtcNow.AddMinutes(1),
             0,
             0,
-            PlayerEncumbranceRules.BaseCharacterCapacity,
+            200,
             false)
         {
             IsSyntheticBot = true,
@@ -53,7 +53,7 @@ public sealed class ActiveSimulationSessionStoreTests
             DateTime.UtcNow.AddHours(5),
             0,
             0,
-            PlayerEncumbranceRules.BaseCharacterCapacity,
+            200,
             false)
         {
             SessionLeaseDurationMilliseconds = 30_000

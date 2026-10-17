@@ -491,10 +491,11 @@ internal sealed partial class CorpseService
                 bag_container.revision as "BagContentsRevision"
             from corpse_sections section
             join item_containers container on container.id = section.container_id
-            join item_container_slots slot on slot.container_id = container.id
+            -- A section without slots, such as a Mob corpse's equipment, still yields one row.
+            left join item_container_slots slot on slot.container_id = container.id
             left join equipment_slots equipment_slot
               on section.section_kind = 'equipment'
-             and equipment_slot.sort_order = slot.slot_index
+             and equipment_slot.id = slot.equipment_slot_id
             left join item_container_slot_tags tag
               on tag.container_id = slot.container_id
              and tag.slot_index = slot.slot_index
@@ -532,21 +533,22 @@ internal sealed partial class CorpseService
                 group.Key.ContainerType,
                 group.Key.ContainerRevision,
                 group.Key.SlotCapacity,
-                group.GroupBy(row => new
-                {
-                    row.SlotIndex,
-                    row.SlotKind,
-                    row.EquipmentSlotId,
-                    row.ItemInstanceId,
-                    row.DefinitionId,
-                    row.Quantity,
-                    row.ItemRevision,
-                    row.BagContentsContainerId,
-                    row.BagContentsRevision
-                })
+                group.Where(row => row.SlotIndex is not null)
+                    .GroupBy(row => new
+                    {
+                        row.SlotIndex,
+                        row.SlotKind,
+                        row.EquipmentSlotId,
+                        row.ItemInstanceId,
+                        row.DefinitionId,
+                        row.Quantity,
+                        row.ItemRevision,
+                        row.BagContentsContainerId,
+                        row.BagContentsRevision
+                    })
                     .Select(slot => new CorpseViewSlotResponse(
-                        slot.Key.SlotIndex,
-                        slot.Key.SlotKind,
+                        slot.Key.SlotIndex!.Value,
+                        slot.Key.SlotKind!,
                         slot.Where(row => row.AcceptedTag is not null)
                             .Select(row => row.AcceptedTag!)
                             .Distinct(StringComparer.Ordinal)
@@ -780,9 +782,9 @@ internal sealed partial class CorpseService
 
         public int SlotCapacity { get; set; }
 
-        public int SlotIndex { get; set; }
+        public int? SlotIndex { get; set; }
 
-        public string SlotKind { get; set; } = string.Empty;
+        public string? SlotKind { get; set; }
 
         public string EquipmentSlotId { get; set; } = string.Empty;
 

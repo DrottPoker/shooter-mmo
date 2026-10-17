@@ -816,7 +816,7 @@ internal static class RealtimeCorpseTestData
                                 ? null
                                 : new CorpseViewItemResponse(
                                     itemInstanceId.Value,
-                                    "material.iron_ore",
+                                    "fixture.ore",
                                     1,
                                     revision,
                                     null,

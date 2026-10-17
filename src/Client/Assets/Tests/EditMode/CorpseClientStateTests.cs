@@ -257,7 +257,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var bagContentsContainerId = Guid.NewGuid();
             var bag = new CorpseLootItem(new RealtimeCorpseItem(
                 Guid.NewGuid(),
-                "bag.field_pack",
+                "fixture.pack",
                 1,
                 2,
                 bagContentsContainerId,
@@ -304,7 +304,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         "general",
                         new CorpseLootItem(new RealtimeCorpseItem(
                             Guid.NewGuid(),
-                            "material.iron_ore",
+                            "fixture.ore",
                             1,
                             1,
                             Guid.Empty,
@@ -449,7 +449,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 "general",
                 new RealtimeCorpseItem(
                     itemId,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     quantity,
                     revision,
                     Guid.Empty,

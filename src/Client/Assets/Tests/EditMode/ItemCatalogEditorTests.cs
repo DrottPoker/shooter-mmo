@@ -99,7 +99,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     {
                         index = 1,
                         kind = BagSlotKindIds.Specialized,
-                        acceptedTags = new[] { ItemTagIds.Ammunition }
+                        acceptedTags = new[] { workspace.Authoring.tags[0].id }
                     }
                 }
             };
@@ -144,13 +144,19 @@ namespace Mmorpg.Client.Tests.EditMode
                 var contentRoot = Path.Combine(temporaryDirectory, "content");
                 var generatedRoot = Path.Combine(temporaryDirectory, "generated");
                 var itemsDirectory = ContentLayout.ItemsDirectory(contentRoot);
+                var fixtureItemsDirectory = ContentLayout.ItemsDirectory(Path.Combine(
+                    paths.RepositoryRoot,
+                    "tests",
+                    "Fixtures",
+                    "ItemCatalog",
+                    "content"));
                 WriteFiles(
                     itemsDirectory,
                     ItemCatalogEditorContent.CreateFiles(
-                        ItemCatalogEditorContent.Load(paths.ItemsDirectory)));
+                        ItemCatalogEditorContent.Load(fixtureItemsDirectory)));
                 var definitionPath = ContentLayout.DefinitionPath(
                     itemsDirectory,
-                    "ammunition.training_556");
+                    "fixture.arrow");
                 var source = File.ReadAllText(definitionPath);
                 const string integerWeight = "\"unitWeight\": 1";
                 Assert.That(source, Does.Contain(integerWeight));

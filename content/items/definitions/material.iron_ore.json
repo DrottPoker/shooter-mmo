@@ -1,5 +1,6 @@
 {
   "bag": null,
+  "blockedEquipmentSlots": [ ],
   "category": "material",
   "defaultPolicies": [ ],
   "displayName": "Iron Ore",

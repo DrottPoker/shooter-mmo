@@ -688,9 +688,9 @@ response is machine-readable and refreshes the Editor view after a successful
 mutation.
 
 The same window can create a durable corpse for an offline source character at
-a selected Shard position. An empty source is first populated by the standard
-Phase 9 package, then the normal system-death adapter performs the Phase 10
-partition. The Editor does not manufacture corpse rows, custody, revisions, or
+a selected Shard position. An empty source first receives the corpse seed package
+of `content/development/item-packages.json`, then the normal system-death
+adapter performs the death partition. The Editor does not manufacture corpse rows, custody, revisions, or
 snapshots. SimulationWorker restores the committed corpse through its normal
 runtime registration path. These Development commands add no remotely callable
 gameplay route.

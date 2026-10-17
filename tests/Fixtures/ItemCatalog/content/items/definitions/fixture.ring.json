@@ -1,0 +1,19 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "jewelry",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Ring",
+  "equipmentSlots": [
+    "ring_1",
+    "ring_2"
+  ],
+  "id": "fixture.ring",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 1
+}

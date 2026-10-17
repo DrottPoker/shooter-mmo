@@ -29,7 +29,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -87,7 +87,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -196,7 +196,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "material.iron_ore",
+            "fixture.ore",
             2,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -255,7 +255,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "material.iron_ore",
+            "fixture.ore",
             10,
             snapshot.SecureContainer.Contents.ContainerId,
             0);
@@ -356,7 +356,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             snapshot.Bank.ContainerId,
             0);
@@ -367,7 +367,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -456,7 +456,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "ring.starter_band",
+            "fixture.ring",
             1,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -524,11 +524,11 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             snapshot.PermanentInventory.ContainerId,
             0);
-        var rifle = Assert.Single(grant.ItemRevisions);
+        var sword = Assert.Single(grant.ItemRevisions);
         snapshot = await GetSnapshotAsync(context, player);
         Assert.Equal(25, snapshot.CarriedWeight);
         var session = await JoinAsync(context, player);
@@ -547,14 +547,14 @@ public sealed class SimulationItemMutationIntegrationTests
                 new SimulationItemAccessRequest(false, false, false),
                 ItemOperationKinds.Equip,
                 snapshot.ItemStateRevision,
-                rifle.ItemInstanceId,
-                rifle.Revision,
-                EquipmentSlotId: "primary_weapon"),
+                sword.ItemInstanceId,
+                sword.Revision,
+                EquipmentSlotId: "main_hand"),
             CancellationToken.None);
 
         Assert.True(equip.Succeeded, equip.Error?.Message);
         var equippedCarry = Assert.Single(equip.Value!.CharacterRevisions);
-        var equippedRifle = Assert.Single(equip.Value.ItemRevisions);
+        var equippedSword = Assert.Single(equip.Value.ItemRevisions);
         Assert.Equal(0, equippedCarry.CarriedWeight);
         Assert.Equal(200, equippedCarry.CarryCapacity);
 
@@ -572,8 +572,8 @@ public sealed class SimulationItemMutationIntegrationTests
                 new SimulationItemAccessRequest(false, false, false),
                 ItemOperationKinds.Unequip,
                 equippedCarry.Revision,
-                equippedRifle.ItemInstanceId,
-                equippedRifle.Revision,
+                equippedSword.ItemInstanceId,
+                equippedSword.Revision,
                 DestinationContainerId: snapshot.PermanentInventory.ContainerId,
                 DestinationSlotIndex: 1),
             CancellationToken.None);
@@ -585,7 +585,7 @@ public sealed class SimulationItemMutationIntegrationTests
         var restored = await GetSnapshotAsync(context, player);
         Assert.Equal(25, restored.CarriedWeight);
         Assert.Equal(
-            rifle.ItemInstanceId,
+            sword.ItemInstanceId,
             restored.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 1).Item!.ItemInstanceId);
     }
 
@@ -602,7 +602,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "material.iron_ore",
+            "fixture.ore",
             2,
             snapshot.PermanentInventory.ContainerId,
             0);
@@ -611,7 +611,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             snapshot.Bank.ContainerId,
             0);
@@ -620,7 +620,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             snapshot.SecureContainer.Contents.ContainerId,
             0);
@@ -629,7 +629,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "bag.field_pack",
+            "fixture.pack",
             1,
             snapshot.PermanentInventory.ContainerId,
             1);
@@ -652,7 +652,7 @@ public sealed class SimulationItemMutationIntegrationTests
             context,
             player,
             snapshot,
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             snapshot.EquippedBag!.Contents.ContainerId,
             4);
@@ -660,7 +660,7 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(16, snapshot.CarriedWeight);
         Assert.Equal(250, snapshot.CarryCapacity);
         var ore = snapshot.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item!;
-        var rifle = snapshot.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!;
+        var sword = snapshot.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!;
         var session = await JoinAsync(context, player);
 
         var swapped = await context.SimulationItemMutationService.ExecuteAsync(
@@ -679,8 +679,8 @@ public sealed class SimulationItemMutationIntegrationTests
                 snapshot.ItemStateRevision,
                 ore.ItemInstanceId,
                 ore.Revision,
-                TargetItemInstanceId: rifle.ItemInstanceId,
-                ExpectedTargetItemRevision: rifle.Revision),
+                TargetItemInstanceId: sword.ItemInstanceId,
+                ExpectedTargetItemRevision: sword.Revision),
             CancellationToken.None);
 
         Assert.True(swapped.Succeeded, swapped.Error?.Message);
@@ -689,14 +689,14 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(2, swapped.Value.ItemRevisions.Count);
 
         var afterSwap = await GetSnapshotAsync(context, player);
-        var permanentRifle = afterSwap.PermanentInventory.Slots
+        var permanentSword = afterSwap.PermanentInventory.Slots
             .Single(slot => slot.SlotIndex == 0).Item!;
         var bankOre = afterSwap.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!;
-        var secureMedical = afterSwap.SecureContainer.Contents.Slots
+        var securePotion = afterSwap.SecureContainer.Contents.Slots
             .Single(slot => slot.SlotIndex == 0).Item!;
-        var bagMedical = afterSwap.EquippedBag!.Contents.Slots
+        var bagPotion = afterSwap.EquippedBag!.Contents.Slots
             .Single(slot => slot.SlotIndex == 4).Item!;
-        Assert.Equal(rifle.ItemInstanceId, permanentRifle.ItemInstanceId);
+        Assert.Equal(sword.ItemInstanceId, permanentSword.ItemInstanceId);
         Assert.Equal(ore.ItemInstanceId, bankOre.ItemInstanceId);
 
         var specializedRejected = await context.SimulationItemMutationService.ExecuteAsync(
@@ -713,10 +713,10 @@ public sealed class SimulationItemMutationIntegrationTests
                 new SimulationItemAccessRequest(false, false, false),
                 ItemOperationKinds.SwapContainerItems,
                 afterSwap.ItemStateRevision,
-                permanentRifle.ItemInstanceId,
-                permanentRifle.Revision,
-                TargetItemInstanceId: bagMedical.ItemInstanceId,
-                ExpectedTargetItemRevision: bagMedical.Revision),
+                permanentSword.ItemInstanceId,
+                permanentSword.Revision,
+                TargetItemInstanceId: bagPotion.ItemInstanceId,
+                ExpectedTargetItemRevision: bagPotion.Revision),
             CancellationToken.None);
 
         Assert.False(specializedRejected.Succeeded);
@@ -738,10 +738,10 @@ public sealed class SimulationItemMutationIntegrationTests
                 new SimulationItemAccessRequest(false, false, false),
                 ItemOperationKinds.SwapContainerItems,
                 afterSwap.ItemStateRevision,
-                permanentRifle.ItemInstanceId,
-                permanentRifle.Revision,
-                TargetItemInstanceId: secureMedical.ItemInstanceId,
-                ExpectedTargetItemRevision: secureMedical.Revision),
+                permanentSword.ItemInstanceId,
+                permanentSword.Revision,
+                TargetItemInstanceId: securePotion.ItemInstanceId,
+                ExpectedTargetItemRevision: securePotion.Revision),
             CancellationToken.None);
 
         Assert.False(secureRejected.Succeeded);
@@ -751,13 +751,13 @@ public sealed class SimulationItemMutationIntegrationTests
         var afterRejection = await GetSnapshotAsync(context, player);
         Assert.Equal(afterSwap.ItemStateRevision, afterRejection.ItemStateRevision);
         Assert.Equal(
-            permanentRifle.ItemInstanceId,
+            permanentSword.ItemInstanceId,
             afterRejection.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
         Assert.Equal(
-            bagMedical.ItemInstanceId,
+            bagPotion.ItemInstanceId,
             afterRejection.EquippedBag!.Contents.Slots.Single(slot => slot.SlotIndex == 4).Item!.ItemInstanceId);
         Assert.Equal(
-            secureMedical.ItemInstanceId,
+            securePotion.ItemInstanceId,
             afterRejection.SecureContainer.Contents.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
     }
 

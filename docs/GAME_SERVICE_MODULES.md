@@ -95,7 +95,7 @@ tests. Startup runs in this order:
 5. When `Database:RunMigrationsOnStartup` is true, apply the merged migration
    history, run every `IDatabaseSeeder` (the item catalog, then the item state
    backfill), and seed the topology through `PlacementModule.SeedTopologyAsync`.
-6. Run a `--seed-phase9-items` or `--dev-items-*` command through
+6. Run a `--dev-items-*` command through
    `ItemsCommandLine` and exit, if one is given. Hosted services never start in
    that mode.
 7. Map the health routes, then each module's routes, and run.

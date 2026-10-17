@@ -1,6 +1,5 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
-using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Placement;
 
@@ -9,6 +8,9 @@ internal sealed class DevelopmentSimulationBotAuthority(
     TimeProvider timeProvider)
 {
     private const string TicketPrefix = "development-bot.";
+
+    // Synthetic bots own no items, so any positive capacity keeps them at full speed.
+    private const long SyntheticBotCarryCapacity = 1;
     private static readonly TimeSpan SessionTombstoneLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan InactiveIdentityLifetime = TimeSpan.FromHours(25);
 
@@ -218,7 +220,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
                     session.ExpiresAt,
                     0,
                     0,
-                    CarryWeightDefaults.BaseCharacterCapacity,
+                    SyntheticBotCarryCapacity,
                     false)
                 {
                     IsSyntheticBot = true,
@@ -351,7 +353,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
                     release ? now : updated.ExpiresAt,
                     0,
                     0,
-                    CarryWeightDefaults.BaseCharacterCapacity,
+                    SyntheticBotCarryCapacity,
                     release)
                 {
                     LeaseDurationMilliseconds = release

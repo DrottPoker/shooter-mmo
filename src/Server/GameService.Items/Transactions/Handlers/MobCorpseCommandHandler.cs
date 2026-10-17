@@ -156,17 +156,13 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             insert into item_containers (id, container_type, slot_capacity, lifecycle)
             values
                 (@GeneralContainerId, 'corpse_inventory', @GeneralCapacity, 'active'),
-                (@EquipmentContainerId, 'corpse_equipment', 1, 'active'),
-                (@BagContainerId, 'corpse_bag_contents', 1, 'active');
+                (@EquipmentContainerId, 'corpse_equipment', 0, 'active'),
+                (@BagContainerId, 'corpse_bag_contents', 0, 'active');
 
+            -- A Mob corpse carries only general loot.
             insert into item_container_slots (container_id, slot_index, slot_kind)
             select @GeneralContainerId, slot_index, 'general'
             from generate_series(0, @GeneralCapacity - 1) slot_index;
-
-            insert into item_container_slots (container_id, slot_index, slot_kind)
-            values
-                (@EquipmentContainerId, 0, 'general'),
-                (@BagContainerId, 0, 'general');
 
             insert into corpse_sections (corpse_id, section_kind, container_id)
             values

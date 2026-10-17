@@ -1,0 +1,19 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "weapon",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Sword",
+  "equipmentSlots": [
+    "main_hand",
+    "off_hand"
+  ],
+  "id": "fixture.sword",
+  "locationEligibility": {
+    "secureContainer": false
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 25
+}

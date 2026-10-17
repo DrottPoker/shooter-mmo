@@ -404,7 +404,7 @@ public sealed class RealtimeCorpseInteractionTests
             1,
             createdAt,
             createdAt.AddMinutes(2),
-            [new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "material.iron_ore", 3, 0)]));
+            [new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 3, 0)]));
         var character = harness.AddCharacter("Live Looter");
         await harness.StartAsync();
         var client = await harness.JoinAsync(character);

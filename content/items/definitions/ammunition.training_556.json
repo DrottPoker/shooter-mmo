@@ -1,5 +1,6 @@
 {
   "bag": null,
+  "blockedEquipmentSlots": [ ],
   "category": "ammunition",
   "defaultPolicies": [ ],
   "displayName": "Training 5.56 Ammunition",

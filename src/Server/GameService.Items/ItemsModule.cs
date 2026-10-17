@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Placement.Contracts;
@@ -42,7 +43,8 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddScoped<QuestItemService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();
-        services.AddScoped<PhaseNineDevelopmentFixtureSeeder>();
+        services.AddSingleton(options.DevelopmentItemPackages);
+        services.AddScoped<DevelopmentItemPackageApplier>();
         services.AddScoped<DevelopmentItemToolService>();
         services.AddScoped<StackStressFixtureService>();
         services.AddHostedService<CorpseExpiryHostedService>();

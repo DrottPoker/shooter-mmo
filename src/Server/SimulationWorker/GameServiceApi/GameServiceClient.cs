@@ -653,7 +653,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 || section.ContainerId == Guid.Empty
                 || string.IsNullOrWhiteSpace(section.ContainerType)
                 || section.ContainerRevision < 0
-                || section.SlotCapacity <= 0
+                || section.SlotCapacity < 0
                 || section.SlotCapacity > RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity
                 || section.Slots is null
                 || section.Slots.Count != section.SlotCapacity)

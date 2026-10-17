@@ -152,7 +152,7 @@ public sealed class ItemTransactionKernelTests
         return new ItemTransactionRequest<GrantItemCommand>(
             Guid.NewGuid(),
             ItemTransactionActor.ForSystem(),
-            new GrantItemCommand(Guid.NewGuid(), null, "material.iron_ore", 1, Guid.NewGuid(), 0));
+            new GrantItemCommand(Guid.NewGuid(), null, "fixture.ore", 1, Guid.NewGuid(), 0));
     }
 
     internal static async Task<string?> LoadStatusAsync(

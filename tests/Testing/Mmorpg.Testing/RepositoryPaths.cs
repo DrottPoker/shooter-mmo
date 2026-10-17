@@ -17,6 +17,17 @@ public static class RepositoryPaths
 
     public static string Worlds => ContentLayout.WorldsDirectory(Content);
 
+    // The test-owned item catalog. Rule tests use it, so content and balance changes never
+    // break them; content tests still read the real catalog.
+    public static string ItemCatalogFixtureContent =>
+        Path.Combine(Root, "tests", "Fixtures", "ItemCatalog", "content");
+
+    public static string ItemCatalogFixtureGenerated =>
+        Path.Combine(Root, "tests", "Fixtures", "ItemCatalog", "generated");
+
+    public static string ItemCatalogFixtureRuntimePath =>
+        ContentLayout.GeneratedItemCatalogPath(ItemCatalogFixtureGenerated);
+
     // The source folder of a test project, for files the project keeps next to its tests.
     // Compile-time paths are not used because ContinuousIntegrationBuild remaps them.
     public static string ProjectDirectory(Assembly testAssembly)

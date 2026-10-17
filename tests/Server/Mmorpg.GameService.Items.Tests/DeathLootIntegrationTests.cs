@@ -98,42 +98,42 @@ public sealed class DeathLootIntegrationTests
         var initial = await fixture.GetSnapshotAsync();
 
         var inventoryOre = await fixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             3,
             initial.PermanentInventory.ContainerId,
             0);
         var protectedRing = await fixture.GrantAsync(
-            "ring.starter_band",
+            "fixture.ring",
             1,
             initial.PermanentInventory.ContainerId,
             1);
         await fixture.ApplyProtectedAsync(protectedRing, "death-test-protection");
         var insuredArmor = await fixture.GrantAsync(
-            "armor.starter_vest",
+            "fixture.tunic",
             1,
             initial.PermanentInventory.ContainerId,
             2);
-        await fixture.EquipAsync(insuredArmor, "body_armor");
+        await fixture.EquipAsync(insuredArmor, "body");
         await fixture.ApplyInsuranceAsync(insuredArmor, "death-test-insurance");
         var bag = await fixture.GrantAsync(
-            "bag.field_pack",
+            "fixture.pack",
             1,
             initial.PermanentInventory.ContainerId,
             3);
         await fixture.EquipAsync(bag, "bag");
         var equippedBag = (await fixture.GetSnapshotAsync()).EquippedBag!;
         var bagChild = await fixture.GrantAsync(
-            "ammunition.training_556",
+            "fixture.arrow",
             8,
             equippedBag.Contents.ContainerId,
             0);
         var secureItem = await fixture.GrantAsync(
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             initial.SecureContainer.Contents.ContainerId,
             0);
         var bankItem = await fixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             2,
             initial.Bank.ContainerId,
             0);
@@ -227,8 +227,8 @@ public sealed class DeathLootIntegrationTests
                     from corpse_snapshots
                     where corpse_id = @CorpseId
                       and snapshot_kind = 'insured_equipment'
-                      and definition_id = 'armor.starter_vest'
-                      and equipment_slot_id = 'body_armor';
+                      and definition_id = 'fixture.tunic'
+                      and equipment_slot_id = 'body';
                     """,
                     new { partition.Corpse.CorpseId }));
             var securePayload = await connection.ExecuteScalarAsync<string>(
@@ -292,19 +292,19 @@ public sealed class DeathLootIntegrationTests
         var insuredFixture = new DeathInventoryFixture(context, insuredPlayer);
         var insuredInitial = await insuredFixture.GetSnapshotAsync();
         var insuredBag = await insuredFixture.GrantAsync(
-            "bag.field_pack",
+            "fixture.pack",
             1,
             insuredInitial.PermanentInventory.ContainerId,
             0);
         await insuredFixture.EquipAsync(insuredBag, "bag");
         var insuredSourceContainer = (await insuredFixture.GetSnapshotAsync()).EquippedBag!.Contents;
         var insuredChild = await insuredFixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             2,
             insuredSourceContainer.ContainerId,
             0);
         var insuredBagProtectedChild = await insuredFixture.GrantAsync(
-            "ring.starter_band",
+            "fixture.ring",
             1,
             insuredSourceContainer.ContainerId,
             1);
@@ -312,7 +312,7 @@ public sealed class DeathLootIntegrationTests
             insuredBagProtectedChild,
             "protected-bag-child");
         var insuredBagInsuredChild = await insuredFixture.GrantAsync(
-            "ring.starter_band",
+            "fixture.ring",
             1,
             insuredSourceContainer.ContainerId,
             2);
@@ -383,14 +383,14 @@ public sealed class DeathLootIntegrationTests
         var protectedFixture = new DeathInventoryFixture(context, protectedPlayer);
         var protectedInitial = await protectedFixture.GetSnapshotAsync();
         var protectedBag = await protectedFixture.GrantAsync(
-            "bag.field_pack",
+            "fixture.pack",
             1,
             protectedInitial.PermanentInventory.ContainerId,
             0);
         await protectedFixture.EquipAsync(protectedBag, "bag");
         var protectedSourceContainer = (await protectedFixture.GetSnapshotAsync()).EquippedBag!.Contents;
         var protectedChild = await protectedFixture.GrantAsync(
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             protectedSourceContainer.ContainerId,
             0);
@@ -438,13 +438,13 @@ public sealed class DeathLootIntegrationTests
         var fixture = new DeathInventoryFixture(context, player);
         var initial = await fixture.GetSnapshotAsync();
         var bag = await fixture.GrantAsync(
-            "bag.field_pack",
+            "fixture.pack",
             1,
             initial.PermanentInventory.ContainerId,
             0);
         await fixture.EquipAsync(bag, "bag");
         var ore = await fixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             50,
             initial.SecureContainer.Contents.ContainerId,
             0);
@@ -484,7 +484,7 @@ public sealed class DeathLootIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     reduced.ItemStateRevision,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     1,
                     initial.PermanentInventory.ContainerId,
                     0)),
@@ -525,7 +525,7 @@ public sealed class DeathLootIntegrationTests
                 select count(*)
                 from item_instances
                 where container_id = @ContainerId
-                  and definition_id = 'medical.field_dressing';
+                  and definition_id = 'fixture.potion';
                 """,
                 new { ContainerId = initial.PermanentInventory.ContainerId }));
     }
@@ -541,13 +541,13 @@ public sealed class DeathLootIntegrationTests
         var fixture = new DeathInventoryFixture(context, player);
         var initial = await fixture.GetSnapshotAsync();
         var bag = await fixture.GrantAsync(
-            "bag.field_pack",
+            "fixture.pack",
             1,
             initial.PermanentInventory.ContainerId,
             0);
         await fixture.EquipAsync(bag, "bag");
         await fixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             50,
             initial.SecureContainer.Contents.ContainerId,
             0);
@@ -678,19 +678,19 @@ public sealed class DeathLootIntegrationTests
         var fixture = new DeathInventoryFixture(context, player);
         var initial = await fixture.GetSnapshotAsync();
         var ore = await fixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             4,
             initial.PermanentInventory.ContainerId,
             0);
         var bag = await fixture.GrantAsync(
-            "bag.field_pack",
+            "fixture.pack",
             1,
             initial.PermanentInventory.ContainerId,
             1);
         await fixture.EquipAsync(bag, "bag");
         var bagContainer = (await fixture.GetSnapshotAsync()).EquippedBag!.Contents.ContainerId;
         var child = await fixture.GrantAsync(
-            "medical.field_dressing",
+            "fixture.potion",
             2,
             bagContainer,
             0);
@@ -766,7 +766,7 @@ public sealed class DeathLootIntegrationTests
         var fixture = new DeathInventoryFixture(context, player);
         var initial = await fixture.GetSnapshotAsync();
         var itemId = await fixture.GrantAsync(
-            "material.iron_ore",
+            "fixture.ore",
             1,
             initial.PermanentInventory.ContainerId,
             0);
@@ -933,7 +933,7 @@ public sealed class DeathLootIntegrationTests
         var fixture = new DeathInventoryFixture(context, player);
         var beforeDeath = await fixture.GetSnapshotAsync();
         var itemId = await fixture.GrantAsync(
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             beforeDeath.PermanentInventory.ContainerId,
             0);

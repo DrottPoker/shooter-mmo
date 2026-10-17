@@ -48,13 +48,14 @@ public sealed class ItemCatalogTests
         var reorderedAuthoring = ItemCatalogTestData.LoadAuthoring();
         Array.Reverse(reorderedAuthoring.Categories);
         Array.Reverse(reorderedAuthoring.Tags);
-        Array.Reverse(reorderedAuthoring.EquipmentSlots);
         Array.Reverse(reorderedAuthoring.Definitions);
         Array.Reverse(reorderedAuthoring.SecureContainerTiers);
+        Array.Reverse(reorderedAuthoring.Retired.EquipmentSlots);
         foreach (var definition in reorderedAuthoring.Definitions)
         {
             Array.Reverse(definition.Tags);
             Array.Reverse(definition.EquipmentSlots);
+            Array.Reverse(definition.BlockedEquipmentSlots);
             Array.Reverse(definition.DefaultPolicies);
             if (definition.Bag is null)
             {
@@ -74,6 +75,26 @@ public sealed class ItemCatalogTests
         Assert.Equal(first.Revision, reordered.Revision);
         Assert.Equal(
             first.Definitions.Select(definition => definition.StructuralFingerprint),
+            reordered.Definitions.Select(definition => definition.StructuralFingerprint));
+    }
+
+    // Equipment slots are listed in display order, so their order is part of the revision
+    // but never of a structural fingerprint.
+    [Fact]
+    public void EquipmentSlotDisplayOrderChangesOnlyTheRevision()
+    {
+        var authoring = ItemCatalogTestData.LoadAuthoring();
+        var original = ItemCatalogCompiler.Compile(authoring);
+        Array.Reverse(authoring.EquipmentSlots);
+
+        var reordered = ItemCatalogCompiler.Compile(authoring);
+
+        Assert.NotEqual(original.Revision, reordered.Revision);
+        Assert.Equal(
+            original.EquipmentSlots.Select(slot => slot.Id).Reverse(),
+            reordered.EquipmentSlots.Select(slot => slot.Id));
+        Assert.Equal(
+            original.Definitions.Select(definition => definition.StructuralFingerprint),
             reordered.Definitions.Select(definition => definition.StructuralFingerprint));
     }
 

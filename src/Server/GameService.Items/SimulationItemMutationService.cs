@@ -6,11 +6,9 @@ namespace Mmorpg.GameService.Items;
 
 internal sealed class SimulationItemMutationService(
     ItemTransactionService transactionService,
-    NpcItemLifecycleOptions? configuredNpcOptions = null)
+    NpcItemLifecycleOptions npcOptions)
 {
     public const int MaximumRecoveryClaimItems = 24;
-    private readonly NpcItemLifecycleOptions npcOptions =
-        configuredNpcOptions ?? NpcItemLifecycleOptions.Default;
 
     public async Task<ServiceResult<ItemTransactionResult>> ExecuteAsync(
         string authenticatedWorkerId,

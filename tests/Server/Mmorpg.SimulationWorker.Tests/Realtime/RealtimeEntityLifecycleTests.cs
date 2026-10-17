@@ -371,7 +371,7 @@ public sealed class RealtimeEntityLifecycleTests
                     DateTime.UtcNow.AddSeconds(30),
                     0,
                     0,
-                    PlayerEncumbranceRules.BaseCharacterCapacity,
+                    200,
                     false)
                 {
                     SessionLeaseDurationMilliseconds = 30_000
@@ -391,7 +391,7 @@ public sealed class RealtimeEntityLifecycleTests
                     DateTime.UtcNow,
                     0,
                     0,
-                    PlayerEncumbranceRules.BaseCharacterCapacity,
+                    200,
                     true)
                 {
                     LeaseDurationMilliseconds = 30_000

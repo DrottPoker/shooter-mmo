@@ -1,0 +1,63 @@
+{
+  "bag": {
+    "carryCapacityBonus": 50,
+    "slots": [
+      {
+        "acceptedTags": [ ],
+        "index": 0,
+        "kind": "general"
+      },
+      {
+        "acceptedTags": [ ],
+        "index": 1,
+        "kind": "general"
+      },
+      {
+        "acceptedTags": [ ],
+        "index": 2,
+        "kind": "general"
+      },
+      {
+        "acceptedTags": [ ],
+        "index": 3,
+        "kind": "general"
+      },
+      {
+        "acceptedTags": [
+          "potion"
+        ],
+        "index": 4,
+        "kind": "specialized"
+      },
+      {
+        "acceptedTags": [
+          "material"
+        ],
+        "index": 5,
+        "kind": "specialized"
+      },
+      {
+        "acceptedTags": [
+          "ammunition"
+        ],
+        "index": 6,
+        "kind": "specialized"
+      }
+    ]
+  },
+  "blockedEquipmentSlots": [ ],
+  "category": "bag",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Pack",
+  "equipmentSlots": [
+    "bag"
+  ],
+  "id": "fixture.pack",
+  "locationEligibility": {
+    "secureContainer": false
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 10
+}

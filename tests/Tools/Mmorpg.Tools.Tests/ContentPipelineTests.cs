@@ -11,10 +11,10 @@ namespace Mmorpg.Tools.Tests;
 public sealed class ContentPipelineTests
 {
     [Theory]
-    [InlineData("weapon.training_rifle")]
+    [InlineData("weapon.training_shortbow")]
     [InlineData("mob.feral_wolf")]
     [InlineData("a")]
-    [InlineData("quest_item.signal-transponder2")]
+    [InlineData("quest_item.sealed-letter2")]
     [InlineData("console.panel")]
     public void PortableDefinitionIdsNameContentFiles(string definitionId)
     {
@@ -28,10 +28,10 @@ public sealed class ContentPipelineTests
     [InlineData(".hidden")]
     [InlineData("trailing.")]
     [InlineData("-leading")]
-    [InlineData("Weapon.rifle")]
-    [InlineData("weapon/rifle")]
-    [InlineData("weapon\\rifle")]
-    [InlineData("weapon rifle")]
+    [InlineData("Weapon.bow")]
+    [InlineData("weapon/bow")]
+    [InlineData("weapon\\bow")]
+    [InlineData("weapon bow")]
     [InlineData("con")]
     [InlineData("nul.item")]
     [InlineData("lpt1.tool")]
@@ -47,7 +47,7 @@ public sealed class ContentPipelineTests
         var items = ContentLayout.ListDefinitionFiles(ItemCatalogTestData.ItemsDirectory);
         var actors = ContentLayout.ListDefinitionFiles(WorldActorTestData.ActorsDirectory);
 
-        Assert.Equal(9, items.Length);
+        Assert.NotEmpty(items);
         Assert.Equal(items.Select(file => file.Id).Order(StringComparer.Ordinal), items.Select(file => file.Id));
         Assert.Equal(
             ["mob.feral_alpha", "mob.feral_wolf", "npc.city_guard", "npc.city_services"],
@@ -57,14 +57,14 @@ public sealed class ContentPipelineTests
     [Fact]
     public void DefinitionFileMustContainItsOwnId()
     {
-        using var content = TemporaryContent.CopyOf(ItemCatalogTestData.ItemsDirectory);
-        var source = ContentLayout.DefinitionPath(content.Path, "armor.starter_vest");
-        File.Move(source, ContentLayout.DefinitionPath(content.Path, "armor.renamed_vest"));
+        using var content = TemporaryContent.CopyOf(ItemCatalogTestData.FixtureItemsDirectory);
+        var source = ContentLayout.DefinitionPath(content.Path, "fixture.tunic");
+        File.Move(source, ContentLayout.DefinitionPath(content.Path, "fixture.renamed_tunic"));
 
         var exception = Assert.Throws<InvalidDataException>(
             () => ItemCatalogContent.Load(content.Path));
 
-        Assert.Contains("must contain id 'armor.renamed_vest'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("must contain id 'fixture.renamed_tunic'", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,12 +81,23 @@ public sealed class ContentPipelineTests
     [Fact]
     public void HiddenFilesInDefinitionsDirectoryAreIgnored()
     {
-        using var content = TemporaryContent.CopyOf(ItemCatalogTestData.ItemsDirectory);
+        using var content = TemporaryContent.CopyOf(ItemCatalogTestData.FixtureItemsDirectory);
         File.WriteAllText(
             Path.Combine(ContentLayout.DefinitionsDirectory(content.Path), ".DS_Store"),
             "operating system metadata");
 
-        Assert.Equal(9, ItemCatalogContent.Load(content.Path).Definitions.Length);
+        Assert.Equal(
+            ContentLayout.ListDefinitionFiles(ItemCatalogTestData.FixtureItemsDirectory).Length,
+            ItemCatalogContent.Load(content.Path).Definitions.Length);
+    }
+
+    // The fixture catalog is checked in compiled, so .NET and Unity tests read the same file.
+    [Fact]
+    public void CompiledFixtureCatalogMatchesItsAuthoring()
+    {
+        Assert.Equal(
+            ItemCatalogJson.SerializeRuntime(ItemCatalogTestData.CompileFixture()),
+            StrictContentJson.NormalizeLineEndings(ItemCatalogTestData.FixtureRuntimeJson));
     }
 
     [Fact]

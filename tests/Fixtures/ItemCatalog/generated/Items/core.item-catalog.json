@@ -1,0 +1,381 @@
+{
+  "formatVersion": 3,
+  "catalogId": "core",
+  "revision": "5b07919c5db348dcc97e4f6eb444be093b6e8322556d250395478f88a59db292",
+  "baseSecureContainerTierId": "secure_container.base",
+  "character": {
+    "baseCarryCapacity": 200,
+    "inventorySlotCount": 20,
+    "bankSlotCount": 40
+  },
+  "categories": [
+    {
+      "id": "ammunition",
+      "displayName": "Ammunition"
+    },
+    {
+      "id": "armor",
+      "displayName": "Armor"
+    },
+    {
+      "id": "bag",
+      "displayName": "Bag"
+    },
+    {
+      "id": "jewelry",
+      "displayName": "Jewelry"
+    },
+    {
+      "id": "material",
+      "displayName": "Material"
+    },
+    {
+      "id": "potion",
+      "displayName": "Potion"
+    },
+    {
+      "id": "quest_item",
+      "displayName": "Quest Item"
+    },
+    {
+      "id": "tool",
+      "displayName": "Tool"
+    },
+    {
+      "id": "weapon",
+      "displayName": "Weapon"
+    }
+  ],
+  "tags": [
+    {
+      "id": "ammunition",
+      "displayName": "Ammunition"
+    },
+    {
+      "id": "material",
+      "displayName": "Material"
+    },
+    {
+      "id": "potion",
+      "displayName": "Potion"
+    }
+  ],
+  "equipmentSlots": [
+    {
+      "id": "head",
+      "displayName": "Head",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "body",
+      "displayName": "Body",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "main_hand",
+      "displayName": "Main Hand",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "off_hand",
+      "displayName": "Off Hand",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "ammunition",
+      "displayName": "Ammunition",
+      "maximumQuantity": 50
+    },
+    {
+      "id": "tool",
+      "displayName": "Tool",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "ring_1",
+      "displayName": "Ring 1",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "ring_2",
+      "displayName": "Ring 2",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "bag",
+      "displayName": "Bag",
+      "maximumQuantity": 1
+    }
+  ],
+  "definitions": [
+    {
+      "id": "fixture.arrow",
+      "displayName": "Fixture Arrow",
+      "category": "ammunition",
+      "tags": [
+        "ammunition"
+      ],
+      "unitWeight": 1,
+      "maximumStackSize": 60,
+      "equipmentSlots": [
+        "ammunition"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "7fb6d75b6d56f0718ebec3a26e0ba4ab20bc0b2aff49bffe1c49e153cf797f96"
+    },
+    {
+      "id": "fixture.bow",
+      "displayName": "Fixture Bow",
+      "category": "weapon",
+      "tags": [],
+      "unitWeight": 25,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "main_hand"
+      ],
+      "blockedEquipmentSlots": [
+        "off_hand"
+      ],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "beccc98b883fc9dede55f3f265dfe54397dcba68257d063088fda8fb900b7a1d"
+    },
+    {
+      "id": "fixture.letter",
+      "displayName": "Fixture Letter",
+      "category": "quest_item",
+      "tags": [],
+      "unitWeight": 1,
+      "maximumStackSize": 1,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": false,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [
+        "protected_on_death"
+      ],
+      "structuralFingerprint": "9efd26d2e05687ae549dc17784fe592ac190d4aa56b46197aeb2926ded0c9ef1"
+    },
+    {
+      "id": "fixture.ore",
+      "displayName": "Fixture Ore",
+      "category": "material",
+      "tags": [
+        "material"
+      ],
+      "unitWeight": 6,
+      "maximumStackSize": 100,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "8b2c2cf795764d86f065788eec2457290e90f3ce1e9eb6e72f126f71e51f0a13"
+    },
+    {
+      "id": "fixture.pack",
+      "displayName": "Fixture Pack",
+      "category": "bag",
+      "tags": [],
+      "unitWeight": 10,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "bag"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "bag": {
+        "carryCapacityBonus": 50,
+        "slots": [
+          {
+            "index": 0,
+            "kind": "general",
+            "acceptedTags": []
+          },
+          {
+            "index": 1,
+            "kind": "general",
+            "acceptedTags": []
+          },
+          {
+            "index": 2,
+            "kind": "general",
+            "acceptedTags": []
+          },
+          {
+            "index": 3,
+            "kind": "general",
+            "acceptedTags": []
+          },
+          {
+            "index": 4,
+            "kind": "specialized",
+            "acceptedTags": [
+              "potion"
+            ]
+          },
+          {
+            "index": 5,
+            "kind": "specialized",
+            "acceptedTags": [
+              "material"
+            ]
+          },
+          {
+            "index": 6,
+            "kind": "specialized",
+            "acceptedTags": [
+              "ammunition"
+            ]
+          }
+        ]
+      },
+      "structuralFingerprint": "f14410448540c19e36f9efe69dd477428ef8e9971564eaab1b2a797f6bcdbc88"
+    },
+    {
+      "id": "fixture.pickaxe",
+      "displayName": "Fixture Pickaxe",
+      "category": "tool",
+      "tags": [],
+      "unitWeight": 15,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "tool"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "5c4c07b621e6fadf564b60b3d7d689952fcf475cc9791272908f73b3e4b7234a"
+    },
+    {
+      "id": "fixture.potion",
+      "displayName": "Fixture Potion",
+      "category": "potion",
+      "tags": [
+        "potion"
+      ],
+      "unitWeight": 2,
+      "maximumStackSize": 10,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "d17cde103b76a4ceca040688b9e15b4853cbc19297ee778664d75c62417956f7"
+    },
+    {
+      "id": "fixture.ring",
+      "displayName": "Fixture Ring",
+      "category": "jewelry",
+      "tags": [],
+      "unitWeight": 1,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "ring_1",
+        "ring_2"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "d68675b36018cdc072453c639de9492ab929201fef0c528b10d82cb5c0876069"
+    },
+    {
+      "id": "fixture.shield",
+      "displayName": "Fixture Shield",
+      "category": "armor",
+      "tags": [],
+      "unitWeight": 20,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "off_hand"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "728bfa69c8c562741b08f737e857e7b9eac2f06f30abd35e41b2463664a2deff"
+    },
+    {
+      "id": "fixture.sword",
+      "displayName": "Fixture Sword",
+      "category": "weapon",
+      "tags": [],
+      "unitWeight": 25,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "main_hand",
+        "off_hand"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "6560a1a692f26aa54ccb92eba469b28e30ffae3efe983fbe92e53dec60ce2d36"
+    },
+    {
+      "id": "fixture.tunic",
+      "displayName": "Fixture Tunic",
+      "category": "armor",
+      "tags": [],
+      "unitWeight": 20,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "68513dd62870e93d07e50802313d3b6b73c2625ede32430e82713c8cf27e203f"
+    }
+  ],
+  "secureContainerTiers": [
+    {
+      "id": "secure_container.base",
+      "displayName": "Fixture Pouch",
+      "slotCapacity": 4,
+      "structuralFingerprint": "9462228681fa92f812285851c4bc7b06ed9b5c436dc8a86c05011756a79d5dca"
+    }
+  ],
+  "retired": {
+    "categories": [],
+    "tags": [],
+    "equipmentSlots": [
+      "body_armor",
+      "primary_weapon",
+      "secondary_weapon"
+    ],
+    "definitions": [],
+    "secureContainerTiers": []
+  }
+}

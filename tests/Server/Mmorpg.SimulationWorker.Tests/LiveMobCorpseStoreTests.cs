@@ -31,13 +31,13 @@ public sealed class LiveMobCorpseStoreTests
         var first = new LiveMobCorpseLootEntry(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "material.iron_ore",
+            "fixture.ore",
             2,
             0);
         var second = new LiveMobCorpseLootEntry(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "medical.field_dressing",
+            "fixture.potion",
             1,
             1);
         var corpse = CreateCorpse(createdAt, 120d) with { Loot = [first, second] };
@@ -121,7 +121,7 @@ public sealed class LiveMobCorpseStoreTests
             [new LiveMobCorpseLootEntry(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
-                "material.iron_ore",
+                "fixture.ore",
                 1,
                 0)]);
     }

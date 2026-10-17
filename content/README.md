@@ -9,8 +9,10 @@ tools. Compiled data is generated from it and never edited directly.
 ```text
 content/
   items/
-    catalog.json                    categories, tags, equipment slots, tiers
+    catalog.json                    character settings, categories, tags, equipment slots, tiers, retired ids
     definitions/<definition-id>.json one item definition per file
+  development/
+    item-packages.json              item states for the development item tool
   actors/
     catalog.json                    factions, presentation, activity and respawn profiles
     definitions/<actor-id>.json     one NPC or mob definition per file
@@ -25,8 +27,8 @@ change different definitions without merge conflicts in one large file.
 
 ## Rules
 
-- A definition file is named after its id: `definitions/weapon.training_rifle.json`
-  must contain `"id": "weapon.training_rifle"`. Ids use lowercase letters,
+- A definition file is named after its id: `definitions/weapon.training_shortbow.json`
+  must contain `"id": "weapon.training_shortbow"`. Ids use lowercase letters,
   digits, `.`, `_`, and `-`, start and end with a letter or digit, and never use
   a Windows device name such as `con` or `nul` before the first dot.
 - A definitions directory contains only `<id>.json` files. Hidden files are
@@ -45,7 +47,13 @@ change different definitions without merge conflicts in one large file.
   four-space indentation and the shortest text for each float. EditMode tests
   fail when a committed file is not canonical.
 - Released definition ids are permanent. Item ids that reached runtime JSON are
-  locked by the Item Catalog tool, and persisted state refers to them.
+  locked by the Item Catalog tool, and persisted state refers to them. A released
+  item id that is removed moves to the catalog's retired ids and can never be
+  reused.
+- `development/item-packages.json` names item definitions for the development
+  item tool. Its packages are checked against the compiled catalog by
+  `ContentPackagesFitTheCompiledItemCatalog`, so a content change that breaks a
+  package fails a test.
 
 The item authoring contract is described in [items/README.md](items/README.md).
 The actor and spawn contract is described in

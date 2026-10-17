@@ -234,13 +234,13 @@ public sealed class SharedSimulationHardeningTests
     public void ItemCatalogRejectsTagsAndEquipmentSlotIdsLongerThanTheProtocolAllows()
     {
         var longId = "a" + new string('b', ItemCatalogFormat.MaximumTagLength);
-        var withLongTag = ItemCatalogTestData.LoadAuthoring();
+        var withLongTag = ItemCatalogTestData.LoadFixtureAuthoring();
         withLongTag.Tags = withLongTag.Tags
             .Append(new ItemCatalogIdentityEntry { Id = longId, DisplayName = "Long Tag" })
             .ToArray();
-        var withLongSlot = ItemCatalogTestData.LoadAuthoring();
+        var withLongSlot = ItemCatalogTestData.LoadFixtureAuthoring();
         withLongSlot.EquipmentSlots = withLongSlot.EquipmentSlots
-            .Append(new ItemCatalogIdentityEntry { Id = longId, DisplayName = "Long Slot" })
+            .Append(new ItemEquipmentSlotEntry { Id = longId, DisplayName = "Long Slot", MaximumQuantity = 1 })
             .ToArray();
 
         var tagError = Assert.Throws<ItemCatalogValidationException>(

@@ -8,21 +8,22 @@ trace:
   c1 sql select assignment.worker_id from simulation_assignments assignment where assignment.worker_id = $1 and assignment.shard_id = $2 and assignment.released_at is null for no key update of assignment
   c1 sql select pg_advisory_xact_lock($1, $2)
   c1 sql select exists (select 1 from corpses where id = $1)
-  c1 batch 4
+  c1 batch 5
     > select definition.id as "Id", definition.display_name as "DisplayName", definition.category_id as "Category", definition.unit_weight as "UnitWeight", definition.maximum_stack_size as "MaximumStackSize", definition.player_destroyable as "PlayerDestroyable", definition.structural_fingerprint as "StructuralFingerprint", coalesce(location.is_allowed, false) as "SecureContainerEligible", bag.carry_capacity_bonus as "BagCarryCapacityBonus" from item_definitions definition left join item_definition_location_rules location on location.definition_id = definition.id and location.location_kind = 'secure_container' left join bag_definitions bag on bag.definition_id = definition.id where definition.id = $1 and definition.is_active
     > select tag_id from item_definition_tags where definition_id = $1 order by tag_id
     > select equipment_slot_id from item_definition_equipment_slots where definition_id = $1 order by equipment_slot_id
+    > select equipment_slot_id from item_definition_blocked_equipment_slots where definition_id = $1 order by equipment_slot_id
     > select policy_kind from item_definition_default_policies where definition_id = $1 order by policy_kind
-  c1 batch 4
+  c1 batch 5
     > select definition.id as "Id", definition.display_name as "DisplayName", definition.category_id as "Category", definition.unit_weight as "UnitWeight", definition.maximum_stack_size as "MaximumStackSize", definition.player_destroyable as "PlayerDestroyable", definition.structural_fingerprint as "StructuralFingerprint", coalesce(location.is_allowed, false) as "SecureContainerEligible", bag.carry_capacity_bonus as "BagCarryCapacityBonus" from item_definitions definition left join item_definition_location_rules location on location.definition_id = definition.id and location.location_kind = 'secure_container' left join bag_definitions bag on bag.definition_id = definition.id where definition.id = $1 and definition.is_active
     > select tag_id from item_definition_tags where definition_id = $1 order by tag_id
     > select equipment_slot_id from item_definition_equipment_slots where definition_id = $1 order by equipment_slot_id
+    > select equipment_slot_id from item_definition_blocked_equipment_slots where definition_id = $1 order by equipment_slot_id
     > select policy_kind from item_definition_default_policies where definition_id = $1 order by policy_kind
   c1 sql insert into corpses ( id, source_type, source_character_id, source_npc_definition_id, source_display_name, shard_id, position_x, position_y, position_z, rotation_x, rotation_y, rotation_z, rotation_w, persistence_mode, presentation_key, revision, expires_at, expiry_operation_id) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'durable', $14, $15, now() + make_interval(secs => $16), $17) returning created_at as "CreatedAt", expires_at as "ExpiresAt"
-  c1 batch 4
-    > insert into item_containers (id, container_type, slot_capacity, lifecycle) values ($1, 'corpse_inventory', $2, 'active'), ($3, 'corpse_equipment', 1, 'active'), ($4, 'corpse_bag_contents', 1, 'active')
-    > insert into item_container_slots (container_id, slot_index, slot_kind) select $1, slot_index, 'general' from generate_series(0, $2 - 1) slot_index
-    > insert into item_container_slots (container_id, slot_index, slot_kind) values ($1, 0, 'general'), ($2, 0, 'general')
+  c1 batch 3
+    > insert into item_containers (id, container_type, slot_capacity, lifecycle) values ($1, 'corpse_inventory', $2, 'active'), ($3, 'corpse_equipment', 0, 'active'), ($4, 'corpse_bag_contents', 0, 'active')
+    > -- A Mob corpse carries only general loot. insert into item_container_slots (container_id, slot_index, slot_kind) select $1, slot_index, 'general' from generate_series(0, $2 - 1) slot_index
     > insert into corpse_sections (corpse_id, section_kind, container_id) values ($1, 'general_inventory', $2), ($1, 'equipment', $3), ($1, 'bag', $4)
   c1 sql insert into item_instances ( id, definition_id, quantity, container_id, container_slot_index) values ( $1, $2, $3, $4, $5)
   c1 sql select item.id as "ItemInstanceId", item.definition_id as "DefinitionId", item.quantity as "Quantity", item.revision as "Revision", item.container_id as "ContainerId", item.container_slot_index as "ContainerSlotIndex", item.equipped_character_id as "EquippedCharacterId", item.equipment_slot_id as "EquipmentSlotId", source_container.container_type as "SourceContainerType", source_container.lifecycle as "SourceContainerLifecycle", source_container.bound_bag_item_instance_id as "SourceBagItemInstanceId", coalesce( item.equipped_character_id, source_container.owner_character_id, source_bag.equipped_character_id) as "OwningCharacterId", (bag.definition_id is not null) as "IsBag", bag.carry_capacity_bonus as "BagCarryCapacityBonus", bag_container.id as "BagContentsContainerId", bag_container.lifecycle as "BagContentsLifecycle", bag_container.revision as "BagContentsRevision" from item_instances item left join item_containers source_container on source_container.id = item.container_id left join item_instances source_bag on source_bag.id = source_container.bound_bag_item_instance_id left join bag_definitions bag on bag.definition_id = item.definition_id left join item_containers bag_container on bag_container.bound_bag_item_instance_id = item.id and bag_container.container_type = 'bag_contents' where item.id = $1

@@ -1,4 +1,4 @@
-using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Development;
 
 namespace Mmorpg.GameService.Items.Tests;
 
@@ -40,7 +40,7 @@ public sealed class DevelopmentItemToolCommandParserTests
             [
                 "--dev-items-grant",
                 characterId.ToString(),
-                "material.iron_ore",
+                "fixture.ore",
                 "17",
                 "bank"
             ],
@@ -51,7 +51,7 @@ public sealed class DevelopmentItemToolCommandParserTests
         Assert.NotNull(command);
         Assert.Equal(DevelopmentItemToolCommandKind.Grant, command.Kind);
         Assert.Equal(characterId, command.CharacterId);
-        Assert.Equal("material.iron_ore", command.DefinitionId);
+        Assert.Equal("fixture.ore", command.DefinitionId);
         Assert.Equal(17, command.Quantity);
         Assert.Equal(DevelopmentItemDestination.Bank, command.Destination);
         Assert.Empty(error);
@@ -117,7 +117,7 @@ public sealed class DevelopmentItemToolCommandParserTests
             [
                 "--dev-items-grant",
                 characterId,
-                "material.iron_ore",
+                "fixture.ore",
                 quantity,
                 destination
             ],

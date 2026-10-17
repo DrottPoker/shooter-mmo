@@ -11,11 +11,11 @@ namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 // kernel must keep every golden file byte-identical.
 public sealed class ItemTransactionTraceGoldenTests
 {
-    private const string IronOre = "material.iron_ore";
-    private const string FieldDressing = "medical.field_dressing";
-    private const string Ring = "ring.starter_band";
-    private const string FieldPack = "bag.field_pack";
-    private const string QuestItem = "quest_item.signal_transponder";
+    private const string Ore = "fixture.ore";
+    private const string Potion = "fixture.potion";
+    private const string Ring = "fixture.ring";
+    private const string Pack = "fixture.pack";
+    private const string QuestItem = "fixture.letter";
     private const string QuestGrantId = "golden_quest";
 
     [PostgresIntegrationFact]
@@ -35,7 +35,7 @@ public sealed class ItemTransactionTraceGoldenTests
             new ItemTransactionRequest<GrantItemCommand>(
                 grantId,
                 ItemTransactionActor.ForSystem(),
-                new GrantItemCommand(characterId, state.Revision, IronOre, 10, inventoryId, 0)),
+                new GrantItemCommand(characterId, state.Revision, Ore, 10, inventoryId, 0)),
             CancellationToken.None));
         AssertCommitted(grant);
         var oreId = Assert.Single(grant.ItemRevisions).ItemInstanceId;
@@ -153,7 +153,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     state.Revision,
                     ringId,
                     ring.Revision,
-                    ItemEquipmentSlotIds.Ring1)),
+                    "ring_1")),
             CancellationToken.None)));
 
         state = await world.LoadStateAsync(characterId);
@@ -281,13 +281,13 @@ public sealed class ItemTransactionTraceGoldenTests
         var secondState = await world.LoadStateAsync(second.Character.Id);
         var firstBagId = await world.GrantAsync(
             first.Character.Id,
-            FieldPack,
+            Pack,
             1,
             firstState.PermanentInventoryContainerId,
             0);
         var secondBagId = await world.GrantAsync(
             second.Character.Id,
-            FieldPack,
+            Pack,
             1,
             secondState.PermanentInventoryContainerId,
             0);
@@ -318,7 +318,7 @@ public sealed class ItemTransactionTraceGoldenTests
 
         var characterId = first.Character.Id;
         var inventoryId = firstState.PermanentInventoryContainerId;
-        var oreId = await world.GrantAsync(characterId, IronOre, 4, inventoryId, 1);
+        var oreId = await world.GrantAsync(characterId, Ore, 4, inventoryId, 1);
         var state = await world.LoadStateAsync(characterId);
         var ore = await world.LoadItemAsync(oreId);
         var addId = Guid.NewGuid();
@@ -354,7 +354,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     [new ItemRevisionExpectation(oreId, ore.Revision)])),
             CancellationToken.None)));
 
-        var expiringOreId = await world.GrantAsync(characterId, IronOre, 2, inventoryId, 2);
+        var expiringOreId = await world.GrantAsync(characterId, Ore, 2, inventoryId, 2);
         var expiringDeliveryId = await world.AddRecoveryDeliveryAsync(
             characterId,
             expiringOreId,
@@ -389,7 +389,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     [new CharacterRevisionExpectation(characterId, state.Revision)])),
             CancellationToken.None)));
 
-        await world.GrantAsync(characterId, IronOre, 1, state.SecureContainerId, 5);
+        await world.GrantAsync(characterId, Ore, 1, state.SecureContainerId, 5);
         var reduceId = Guid.NewGuid();
         AssertCommitted(await traced.AssertGoldenAsync("change_secure_container_tier.reduce_with_overflow", reduceId, service => service.ExecuteAsync(
             new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
@@ -428,10 +428,10 @@ public sealed class ItemTransactionTraceGoldenTests
         var victimState = await world.LoadStateAsync(victimId);
         var looterState = await world.LoadStateAsync(looterId);
         var looterInventoryId = looterState.PermanentInventoryContainerId;
-        var oreId = await world.GrantAsync(victimId, IronOre, 10, victimState.PermanentInventoryContainerId, 0);
+        var oreId = await world.GrantAsync(victimId, Ore, 10, victimState.PermanentInventoryContainerId, 0);
         await world.GrantAsync(victimId, QuestItem, 1, victimState.PermanentInventoryContainerId, 1);
         var ringId = await world.GrantAsync(victimId, Ring, 1, victimState.PermanentInventoryContainerId, 2);
-        await world.EquipAsync(victimId, ringId, ItemEquipmentSlotIds.Ring1);
+        await world.EquipAsync(victimId, ringId, "ring_1");
 
         victimState = await world.LoadStateAsync(victimId);
         var deathCommand = CreateDeathCommand(victimId, victimState.Revision);
@@ -599,10 +599,10 @@ public sealed class ItemTransactionTraceGoldenTests
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);
         var inventoryId = state.PermanentInventoryContainerId;
-        var lostBagId = await world.GrantAsync(characterId, FieldPack, 1, inventoryId, 0);
+        var lostBagId = await world.GrantAsync(characterId, Pack, 1, inventoryId, 0);
         await world.EquipAsync(characterId, lostBagId, ItemEquipmentSlotIds.Bag);
         var corpseId = await world.ProcessDeathAsync(characterId);
-        var newBagId = await world.GrantAsync(characterId, FieldPack, 1, inventoryId, 0);
+        var newBagId = await world.GrantAsync(characterId, Pack, 1, inventoryId, 0);
         await world.EquipAsync(characterId, newBagId, ItemEquipmentSlotIds.Bag);
 
         var lostBag = await world.LoadItemAsync(lostBagId);
@@ -658,8 +658,8 @@ public sealed class ItemTransactionTraceGoldenTests
                     300d,
                     30,
                     [
-                        new MobCorpseLootEntryRequest(Guid.NewGuid(), IronOre, 3),
-                        new MobCorpseLootEntryRequest(Guid.NewGuid(), FieldDressing, 2)
+                        new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 3),
+                        new MobCorpseLootEntryRequest(Guid.NewGuid(), Potion, 2)
                     ])),
             CancellationToken.None)));
 
@@ -677,7 +677,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     grantId,
                     Guid.NewGuid(),
                     "mob.feral_wolf",
-                    IronOre,
+                    Ore,
                     2,
                     state.PermanentInventoryContainerId,
                     mobLootDestinationRevision,
@@ -696,7 +696,7 @@ public sealed class ItemTransactionTraceGoldenTests
         var accountId = player.Registration.AccountId;
         var state = await world.LoadStateAsync(characterId);
         var inventoryId = state.PermanentInventoryContainerId;
-        var oreId = await world.GrantAsync(characterId, IronOre, 5, inventoryId, 0);
+        var oreId = await world.GrantAsync(characterId, Ore, 5, inventoryId, 0);
 
         // Live simulation authority.
         var session = await world.JoinAsync(player);
@@ -732,7 +732,7 @@ public sealed class ItemTransactionTraceGoldenTests
         var grantRequest = new ItemTransactionRequest<GrantItemCommand>(
             Guid.NewGuid(),
             ItemTransactionActor.ForSystem(),
-            new GrantItemCommand(characterId, state.Revision, IronOre, 1, inventoryId, 3));
+            new GrantItemCommand(characterId, state.Revision, Ore, 1, inventoryId, 3));
         AssertCommitted(await context.ItemTransactionService.ExecuteAsync(grantRequest, CancellationToken.None));
         AssertCommitted(await traced.AssertGoldenAsync("kernel.claim_replay_committed", grantRequest.OperationId, service =>
             service.ExecuteAsync(grantRequest, CancellationToken.None)));
@@ -785,7 +785,7 @@ public sealed class ItemTransactionTraceGoldenTests
             ItemTransactionErrorCodes.CorpseNotFound);
 
         // The finalizer rejects a grant that would exceed the carry-weight hard cap.
-        await world.GrantAsync(characterId, IronOre, 40, inventoryId, 5);
+        await world.GrantAsync(characterId, Ore, 40, inventoryId, 5);
         state = await world.LoadStateAsync(characterId);
         var heavyGrantId = Guid.NewGuid();
         AssertRejected(
@@ -794,7 +794,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     new ItemTransactionRequest<GrantItemCommand>(
                         heavyGrantId,
                         ItemTransactionActor.ForSystem(),
-                        new GrantItemCommand(characterId, state.Revision, IronOre, 10, inventoryId, 6)),
+                        new GrantItemCommand(characterId, state.Revision, Ore, 10, inventoryId, 6)),
                     CancellationToken.None)),
             ItemTransactionErrorCodes.CarryWeightLimitExceeded);
 
@@ -806,7 +806,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     new ItemTransactionRequest<GrantItemCommand>(
                         derivedId,
                         ItemTransactionActor.ForAccount(accountId),
-                        new GrantItemCommand(characterId, state.Revision, IronOre, 1, inventoryId, 7)),
+                        new GrantItemCommand(characterId, state.Revision, Ore, 1, inventoryId, 7)),
                     CancellationToken.None)),
             ItemTransactionErrorCodes.ItemOperationIdInvalid);
     }
@@ -849,7 +849,7 @@ public sealed class ItemTransactionTraceGoldenTests
                             new GrantItemCommand(
                                 characterId,
                                 state.Revision,
-                                IronOre,
+                                Ore,
                                 1,
                                 state.PermanentInventoryContainerId,
                                 0)),

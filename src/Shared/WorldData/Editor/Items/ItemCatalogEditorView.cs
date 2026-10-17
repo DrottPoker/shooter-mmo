@@ -462,6 +462,15 @@ namespace Mmorpg.WorldData.Editor.Items
                 definition => definition.equipmentSlots,
                 (definition, value) => definition.equipmentSlots = value,
                 "No equipment slots are defined in the catalog."));
+            var blocked = form.Flags(
+                "Blocked Equipment Slots",
+                "blockedEquipmentSlots",
+                EquipmentSlotNames,
+                definition => definition.blockedEquipmentSlots,
+                (definition, value) => definition.blockedEquipmentSlots = value,
+                "No equipment slots are defined in the catalog.");
+            blocked.tooltip = "Slots that stay empty while this item is equipped, such as the off hand for a two-handed weapon.";
+            compatibility.Add(blocked);
             toolLayout.Detail.Add(compatibility);
 
             var rules = ContentToolStyles.CreateSection("Eligibility And Policies");
@@ -852,7 +861,8 @@ namespace Mmorpg.WorldData.Editor.Items
 
         private IEnumerable<(string Value, string Label)> EquipmentSlotNames()
         {
-            return IdentityNames(workspace?.Authoring.equipmentSlots);
+            return (workspace?.Authoring.equipmentSlots ?? Array.Empty<ItemCatalogEditorEquipmentSlot>())
+                .Select(slot => (slot.id, slot.displayName));
         }
 
         private static IEnumerable<(string Value, string Label)> PolicyOptions()

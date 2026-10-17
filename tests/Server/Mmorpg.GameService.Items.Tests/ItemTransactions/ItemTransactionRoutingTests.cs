@@ -90,7 +90,7 @@ public sealed class ItemTransactionRoutingTests
             [ItemOperationKinds.Grant] = (service, actor) => Run(
                 service,
                 actor,
-                new GrantItemCommand(Id, 1, "material.iron_ore", 1, Id, 0),
+                new GrantItemCommand(Id, 1, "fixture.ore", 1, Id, 0),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.Relocate] = (service, actor) => Run(
                 service,
@@ -181,7 +181,7 @@ public sealed class ItemTransactionRoutingTests
             [ItemOperationKinds.GrantMobLoot] = (service, actor) => Run(
                 service,
                 actor,
-                new GrantMobLootCommand(Id, 1, Id, Id, "mob", "material.iron_ore", 1, Id, 1, 0),
+                new GrantMobLootCommand(Id, 1, Id, Id, "mob", "fixture.ore", 1, Id, 1, 0),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ExpireCorpse] = (service, actor) => Run(
                 service,

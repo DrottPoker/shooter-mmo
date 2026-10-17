@@ -40,7 +40,7 @@ public sealed class ItemGrantQuantityTests
                 new GrantItemCommand(
                     characterId,
                     state.Revision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     quantity,
                     state.PermanentInventoryContainerId,
                     0)),

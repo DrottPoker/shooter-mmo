@@ -19,10 +19,10 @@ public sealed class ItemTransactionCommitFailureTests
         var world = new ItemScenarioWorld(context);
         var player = await world.RegisterAsync("commit_conflict");
         var state = await world.LoadStateAsync(player.Character.Id);
-        await world.GrantAsync(player.Character.Id, "material.iron_ore", 1, state.PermanentInventoryContainerId, 0);
+        await world.GrantAsync(player.Character.Id, "fixture.ore", 1, state.PermanentInventoryContainerId, 0);
         var secondId = await world.GrantAsync(
             player.Character.Id,
-            "material.iron_ore",
+            "fixture.ore",
             1,
             state.PermanentInventoryContainerId,
             1);
@@ -77,7 +77,7 @@ public sealed class ItemTransactionCommitFailureTests
                 "shard-1",
                 "token-hash",
                 ItemTransactionLiveAccess.None),
-            new GrantItemCommand(Guid.NewGuid(), 1, "material.iron_ore", 1, Guid.NewGuid(), 0));
+            new GrantItemCommand(Guid.NewGuid(), 1, "fixture.ore", 1, Guid.NewGuid(), 0));
 
         // The command character does not match the simulation character, so live
         // authority rejects; the committed replay lookup then cannot connect.

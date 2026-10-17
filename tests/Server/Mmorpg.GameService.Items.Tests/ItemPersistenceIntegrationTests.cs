@@ -33,7 +33,17 @@ public sealed class ItemPersistenceIntegrationTests
             await connection.ExecuteScalarAsync<int>("select count(*) from item_tags;"));
         Assert.Equal(
             catalog.EquipmentSlots.Length,
-            await connection.ExecuteScalarAsync<int>("select count(*) from equipment_slots;"));
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from equipment_slots where is_active;"));
+        // The schema seeds the original slots; the catalog retires the ones it no longer uses.
+        Assert.Equal(
+            catalog.Retired.EquipmentSlots,
+            (await connection.QueryAsync<string>(
+                "select id from equipment_slots where not is_active order by id;")).ToArray());
+        Assert.Equal(
+            catalog.EquipmentSlots.Select(slot => slot.Id),
+            await connection.QueryAsync<string>(
+                "select id from equipment_slots where is_active order by display_order;"));
         Assert.Equal(
             catalog.Definitions.Length,
             await connection.ExecuteScalarAsync<int>("select count(*) from item_definitions;"));
@@ -44,6 +54,10 @@ public sealed class ItemPersistenceIntegrationTests
             catalog.Definitions.Sum(definition => definition.EquipmentSlots.Length),
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_definition_equipment_slots;"));
+        Assert.Equal(
+            catalog.Definitions.Sum(definition => definition.BlockedEquipmentSlots.Length),
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from item_definition_blocked_equipment_slots;"));
         Assert.Equal(
             catalog.Definitions.Length,
             await connection.ExecuteScalarAsync<int>(
@@ -71,7 +85,7 @@ public sealed class ItemPersistenceIntegrationTests
         await connection.ExecuteAsync(
             """
             delete from item_definition_tags
-            where definition_id = 'material.iron_ore'
+            where definition_id = 'fixture.ore'
               and tag_id = 'material';
             """);
         await context.ItemCatalogSeeder.SeedAsync(CancellationToken.None);
@@ -206,13 +220,13 @@ public sealed class ItemPersistenceIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "weapon.training_rifle",
+                    "fixture.sword",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     0)),
             CancellationToken.None);
         Assert.True(grant.Succeeded, grant.Error?.Message);
-        var rifle = Assert.Single(grant.ItemRevisions);
+        var sword = Assert.Single(grant.ItemRevisions);
         var equip = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<EquipItemCommand>(
                 Guid.NewGuid(),
@@ -220,9 +234,9 @@ public sealed class ItemPersistenceIntegrationTests
                 new EquipItemCommand(
                     player.Character.Id,
                     Assert.Single(grant.CharacterRevisions).Revision,
-                    rifle.ItemInstanceId,
-                    rifle.Revision,
-                    "primary_weapon")),
+                    sword.ItemInstanceId,
+                    sword.Revision,
+                    "main_hand")),
             CancellationToken.None);
         Assert.True(equip.Succeeded, equip.Error?.Message);
         Assert.Equal(0, Assert.Single(equip.CharacterRevisions).CarriedWeight);
@@ -313,10 +327,10 @@ public sealed class ItemPersistenceIntegrationTests
                 equipment_slot_id)
             values (
                 @ItemId,
-                'weapon.training_rifle',
+                'fixture.sword',
                 1,
                 @CharacterId,
-                'primary_weapon');
+                'main_hand');
             """,
             new { ItemId = Guid.NewGuid(), CharacterId = player.Character.Id });
         var duplicateEquipment = await Assert.ThrowsAsync<PostgresException>(() =>
@@ -330,10 +344,10 @@ public sealed class ItemPersistenceIntegrationTests
                     equipment_slot_id)
                 values (
                     @ItemId,
-                    'weapon.training_rifle',
+                    'fixture.sword',
                     1,
                     @CharacterId,
-                    'primary_weapon');
+                    'main_hand');
                 """,
                 new { ItemId = Guid.NewGuid(), CharacterId = player.Character.Id }));
         AssertConstraint(duplicateEquipment, "ux_item_instances_equipment_slot");
@@ -346,7 +360,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@ItemId, 'material.iron_ore', 1, @ContainerId, 0);
+            values (@ItemId, 'fixture.ore', 1, @ContainerId, 0);
             """,
             new { ItemId = Guid.NewGuid(), ContainerId = inventoryId });
         var duplicateContainerSlot = await Assert.ThrowsAsync<PostgresException>(() =>
@@ -358,7 +372,7 @@ public sealed class ItemPersistenceIntegrationTests
                     quantity,
                     container_id,
                     container_slot_index)
-                values (@ItemId, 'medical.field_dressing', 1, @ContainerId, 0);
+                values (@ItemId, 'fixture.potion', 1, @ContainerId, 0);
                 """,
                 new { ItemId = Guid.NewGuid(), ContainerId = inventoryId }));
         AssertConstraint(duplicateContainerSlot, "ux_item_instances_container_slot");
@@ -372,7 +386,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@ItemId, 'bag.field_pack', 1, @ContainerId, 1);
+            values (@ItemId, 'fixture.pack', 1, @ContainerId, 1);
             """,
             new { ItemId = bagItemId, ContainerId = inventoryId });
         await connection.ExecuteAsync(
@@ -468,8 +482,8 @@ public sealed class ItemPersistenceIntegrationTests
                 container_id,
                 container_slot_index)
             values
-                (@FirstContainerItemId, 'material.iron_ore', 1, @ContainerId, 0),
-                (@SecondContainerItemId, 'medical.field_dressing', 1, @ContainerId, 1);
+                (@FirstContainerItemId, 'fixture.ore', 1, @ContainerId, 0),
+                (@SecondContainerItemId, 'fixture.potion', 1, @ContainerId, 1);
 
             insert into item_instances (
                 id,
@@ -478,8 +492,8 @@ public sealed class ItemPersistenceIntegrationTests
                 equipped_character_id,
                 equipment_slot_id)
             values
-                (@FirstEquipmentItemId, 'weapon.training_rifle', 1, @CharacterId, 'primary_weapon'),
-                (@SecondEquipmentItemId, 'weapon.training_rifle', 1, @CharacterId, 'secondary_weapon');
+                (@FirstEquipmentItemId, 'fixture.sword', 1, @CharacterId, 'main_hand'),
+                (@SecondEquipmentItemId, 'fixture.sword', 1, @CharacterId, 'off_hand');
             """,
             new
             {
@@ -512,11 +526,11 @@ public sealed class ItemPersistenceIntegrationTests
                 where id = @SecondItemId;
 
                 update item_instances
-                set equipment_slot_id = 'secondary_weapon'
+                set equipment_slot_id = 'off_hand'
                 where id = @FirstEquipmentItemId;
 
                 update item_instances
-                set equipment_slot_id = 'primary_weapon'
+                set equipment_slot_id = 'main_hand'
                 where id = @SecondEquipmentItemId;
                 """,
                 new
@@ -541,12 +555,12 @@ public sealed class ItemPersistenceIntegrationTests
                 "select container_slot_index from item_instances where id = @ItemId;",
                 new { ItemId = secondContainerItemId }));
         Assert.Equal(
-            "secondary_weapon",
+            "off_hand",
             await connection.ExecuteScalarAsync<string>(
                 "select equipment_slot_id from item_instances where id = @ItemId;",
                 new { ItemId = firstEquipmentItemId }));
         Assert.Equal(
-            "primary_weapon",
+            "main_hand",
             await connection.ExecuteScalarAsync<string>(
                 "select equipment_slot_id from item_instances where id = @ItemId;",
                 new { ItemId = secondEquipmentItemId }));
@@ -570,7 +584,7 @@ public sealed class ItemPersistenceIntegrationTests
             connection.ExecuteAsync(
                 """
                 insert into item_instances (id, definition_id, quantity)
-                values (@ItemId, 'material.iron_ore', 1);
+                values (@ItemId, 'fixture.ore', 1);
                 """,
                 new { ItemId = Guid.NewGuid() }));
         AssertCheckConstraint(missingLocation, "ck_item_instances_location_union");
@@ -588,12 +602,12 @@ public sealed class ItemPersistenceIntegrationTests
                     equipment_slot_id)
                 values (
                     @ItemId,
-                    'weapon.training_rifle',
+                    'fixture.sword',
                     1,
                     @ContainerId,
                     0,
                     @CharacterId,
-                    'primary_weapon');
+                    'main_hand');
                 """,
                 new
                 {
@@ -613,7 +627,7 @@ public sealed class ItemPersistenceIntegrationTests
                     revision,
                     container_id,
                     container_slot_index)
-                values (@ItemId, 'material.iron_ore', 1, -1, @ContainerId, 0);
+                values (@ItemId, 'fixture.ore', 1, -1, @ContainerId, 0);
                 """,
                 new { ItemId = Guid.NewGuid(), ContainerId = inventoryId }));
         AssertCheckConstraint(negativeItemRevision, "ck_item_instances_revision");
@@ -654,7 +668,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@BagItemId, 'bag.field_pack', 1, @InventoryId, 0);
+            values (@BagItemId, 'fixture.pack', 1, @InventoryId, 0);
             """,
             new { BagItemId = bagItemId, InventoryId = containers.PermanentInventoryId });
         var bagContainerId = Guid.NewGuid();
@@ -676,7 +690,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@ChildItemId, 'medical.field_dressing', 1, @ContainerId, 0);
+            values (@ChildItemId, 'fixture.potion', 1, @ContainerId, 0);
             """,
             new
             {
@@ -698,7 +712,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@RecoveryItemId, 'quest_item.signal_transponder', 1, @RecoveryContainerId, 0);
+            values (@RecoveryItemId, 'fixture.letter', 1, @RecoveryContainerId, 0);
 
             insert into recovery_deliveries (
                 id,
@@ -735,7 +749,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 equipped_character_id,
                 equipment_slot_id)
-            values (@ItemId, 'tool.starter_pickaxe', 1, @CharacterId, 'tool');
+            values (@ItemId, 'fixture.pickaxe', 1, @CharacterId, 'tool');
             """,
             new { ItemId = Guid.NewGuid(), CharacterId = player.Character.Id });
 
@@ -754,7 +768,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@ItemId, 'material.iron_ore', 1, @ContainerId, 0);
+            values (@ItemId, 'fixture.ore', 1, @ContainerId, 0);
             """,
             new { ContainerId = corpseContainerId, ItemId = Guid.NewGuid() });
 
@@ -810,7 +824,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@ItemId, 'material.iron_ore', 1, @InventoryId, 0);
+            values (@ItemId, 'fixture.ore', 1, @InventoryId, 0);
 
             insert into item_instances (
                 id,
@@ -818,7 +832,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@BagItemId, 'bag.field_pack', 1, @InventoryId, 1);
+            values (@BagItemId, 'fixture.pack', 1, @InventoryId, 1);
 
             insert into item_containers (
                 id,
@@ -836,7 +850,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@BagChildItemId, 'ammunition.training_556', 1, @BagContainerId, 0);
+            values (@BagChildItemId, 'fixture.arrow', 1, @BagContainerId, 0);
 
             insert into item_instances (
                 id,
@@ -844,7 +858,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 equipped_character_id,
                 equipment_slot_id)
-            values (@EquippedItemId, 'tool.starter_pickaxe', 1, @CharacterId, 'tool');
+            values (@EquippedItemId, 'fixture.pickaxe', 1, @CharacterId, 'tool');
 
             insert into item_container_slots (container_id, slot_index, slot_kind)
             values (@RecoveryId, 0, 'general');
@@ -855,7 +869,7 @@ public sealed class ItemPersistenceIntegrationTests
                 quantity,
                 container_id,
                 container_slot_index)
-            values (@RecoveryItemId, 'medical.field_dressing', 1, @RecoveryId, 0);
+            values (@RecoveryItemId, 'fixture.potion', 1, @RecoveryId, 0);
 
             insert into recovery_deliveries (
                 id,
@@ -1012,7 +1026,7 @@ public sealed class ItemPersistenceIntegrationTests
             context.CatalogSource.RuntimeCatalogPath,
             CancellationToken.None);
         var sourceDefinition = catalog.Definitions.Single(
-            definition => definition.Id == "material.iron_ore");
+            definition => definition.Id == "fixture.ore");
         await using var connection = await context.DataSource.OpenConnectionAsync();
         var inventoryId = await connection.ExecuteScalarAsync<Guid>(
             """
@@ -1134,66 +1148,11 @@ public sealed class ItemPersistenceIntegrationTests
         string displayName,
         long unitWeight)
     {
-        var authoring = new ItemCatalogAuthoringDocument
-        {
-            FormatVersion = source.FormatVersion,
-            CatalogId = source.CatalogId,
-            BaseSecureContainerTierId = source.BaseSecureContainerTierId,
-            Categories = source.Categories.Select(CloneIdentity).ToArray(),
-            Tags = source.Tags.Select(CloneIdentity).ToArray(),
-            EquipmentSlots = source.EquipmentSlots.Select(CloneIdentity).ToArray(),
-            Definitions = source.Definitions.Select(definition =>
-            {
-                var isChanged = definition.Id == changedDefinitionId;
-                return new ItemDefinitionAuthoringEntry
-                {
-                    Id = definition.Id,
-                    DisplayName = isChanged ? displayName : definition.DisplayName,
-                    Category = definition.Category,
-                    Tags = definition.Tags.ToArray(),
-                    UnitWeight = isChanged ? unitWeight : definition.UnitWeight,
-                    MaximumStackSize = definition.MaximumStackSize,
-                    EquipmentSlots = definition.EquipmentSlots.ToArray(),
-                    PlayerDestroyable = definition.PlayerDestroyable,
-                    LocationEligibility = new ItemLocationEligibilityAuthoringEntry
-                    {
-                        SecureContainer = definition.LocationEligibility.SecureContainer
-                    },
-                    DefaultPolicies = definition.DefaultPolicies.ToArray(),
-                    Bag = definition.Bag is null
-                        ? null
-                        : new BagDefinitionAuthoringEntry
-                        {
-                            CarryCapacityBonus = definition.Bag.CarryCapacityBonus,
-                            Slots = definition.Bag.Slots.Select(slot =>
-                                new BagSlotAuthoringEntry
-                                {
-                                    Index = slot.Index,
-                                    Kind = slot.Kind,
-                                    AcceptedTags = slot.AcceptedTags.ToArray()
-                                }).ToArray()
-                        }
-                };
-            }).ToArray(),
-            SecureContainerTiers = source.SecureContainerTiers.Select(tier =>
-                new SecureContainerTierAuthoringEntry
-                {
-                    Id = tier.Id,
-                    DisplayName = tier.DisplayName,
-                    SlotCapacity = tier.SlotCapacity
-                }).ToArray()
-        };
-
+        var authoring = ItemCatalogRuntimeVerifier.ToAuthoring(source);
+        var changed = authoring.Definitions.Single(definition => definition.Id == changedDefinitionId);
+        changed.DisplayName = displayName;
+        changed.UnitWeight = unitWeight;
         return ItemCatalogCompiler.Compile(authoring);
-    }
-
-    private static ItemCatalogIdentityEntry CloneIdentity(ItemCatalogIdentityEntry source)
-    {
-        return new ItemCatalogIdentityEntry
-        {
-            Id = source.Id,
-            DisplayName = source.DisplayName
-        };
     }
 
     private static void AssertConstraint(PostgresException exception, string constraintName)

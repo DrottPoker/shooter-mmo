@@ -1,0 +1,100 @@
+{
+  "formatVersion": 1,
+  "corpseSeedPackageId": "full_inventory",
+  "packages": [
+    {
+      "id": "full_inventory",
+      "displayName": "Full Inventory Test Pack",
+      "description": "An equipped Bag with filled specialized slots, equipment candidates in Permanent Inventory, a Secure Container item, Bank stacks, and one Recovery delivery.",
+      "expectedLoadPercent": null,
+      "grants": [
+        { "definitionId": "fixture.pack", "quantity": 1, "destination": "equipment", "slotIndex": null, "equipmentSlotId": "bag" },
+        { "definitionId": "fixture.potion", "quantity": 5, "destination": "bag", "slotIndex": 4, "equipmentSlotId": null },
+        { "definitionId": "fixture.ore", "quantity": 5, "destination": "bag", "slotIndex": 5, "equipmentSlotId": null },
+        { "definitionId": "fixture.arrow", "quantity": 10, "destination": "bag", "slotIndex": 6, "equipmentSlotId": null },
+        { "definitionId": "fixture.pack", "quantity": 1, "destination": "inventory", "slotIndex": 1, "equipmentSlotId": null },
+        { "definitionId": "fixture.sword", "quantity": 1, "destination": "inventory", "slotIndex": 2, "equipmentSlotId": null },
+        { "definitionId": "fixture.tunic", "quantity": 1, "destination": "inventory", "slotIndex": 3, "equipmentSlotId": null },
+        { "definitionId": "fixture.pickaxe", "quantity": 1, "destination": "inventory", "slotIndex": 4, "equipmentSlotId": null },
+        { "definitionId": "fixture.ring", "quantity": 1, "destination": "inventory", "slotIndex": 5, "equipmentSlotId": null },
+        { "definitionId": "fixture.letter", "quantity": 1, "destination": "secure_container", "slotIndex": 0, "equipmentSlotId": null },
+        { "definitionId": "fixture.ore", "quantity": 20, "destination": "bank", "slotIndex": 0, "equipmentSlotId": null },
+        { "definitionId": "fixture.ore", "quantity": 16, "destination": "bank", "slotIndex": 1, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 1, "destination": "bank", "slotIndex": 2, "equipmentSlotId": null },
+        { "definitionId": "fixture.arrow", "quantity": 1, "destination": "bank", "slotIndex": 3, "equipmentSlotId": null },
+        { "definitionId": "fixture.pack", "quantity": 1, "destination": "bank", "slotIndex": 4, "equipmentSlotId": null },
+        { "definitionId": "fixture.ore", "quantity": 2, "destination": "recovery", "slotIndex": 10, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 2, "destination": "recovery", "slotIndex": 11, "equipmentSlotId": null }
+      ]
+    },
+    {
+      "id": "equipment",
+      "displayName": "Equipment Test Pack",
+      "description": "A Bag, a weapon, armor, a tool, and a ring in Permanent Inventory, ready to equip.",
+      "expectedLoadPercent": null,
+      "grants": [
+        { "definitionId": "fixture.pack", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.sword", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.tunic", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.pickaxe", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.ring", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
+      ]
+    },
+    {
+      "id": "stack_operations",
+      "displayName": "Stack Split And Merge Pack",
+      "description": "Pairs of material, consumable, and ammunition stacks in the Bank.",
+      "expectedLoadPercent": null,
+      "grants": [
+        { "definitionId": "fixture.ore", "quantity": 20, "destination": "bank", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.ore", "quantity": 16, "destination": "bank", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 6, "destination": "bank", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 4, "destination": "bank", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.arrow", "quantity": 35, "destination": "bank", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.arrow", "quantity": 25, "destination": "bank", "slotIndex": null, "equipmentSlotId": null }
+      ]
+    },
+    {
+      "id": "encumbrance_100",
+      "displayName": "Encumbrance 100% Pack",
+      "description": "Carried weight exactly at the base carry capacity.",
+      "expectedLoadPercent": 100,
+      "grants": [
+        { "definitionId": "fixture.ore", "quantity": 33, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
+      ]
+    },
+    {
+      "id": "encumbrance_140",
+      "displayName": "Encumbrance 140% Pack",
+      "description": "Carried weight exactly at the 140 percent hard cap of the base carry capacity.",
+      "expectedLoadPercent": 140,
+      "grants": [
+        { "definitionId": "fixture.ore", "quantity": 46, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 2, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
+      ]
+    },
+    {
+      "id": "secure_container",
+      "displayName": "Secure Container Pack",
+      "description": "Four eligible stacks that fill the base Secure Container.",
+      "expectedLoadPercent": null,
+      "grants": [
+        { "definitionId": "fixture.letter", "quantity": 1, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.arrow", "quantity": 10, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 2, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.ore", "quantity": 1, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null }
+      ]
+    },
+    {
+      "id": "recovery_delivery",
+      "displayName": "Recovery Delivery Pack",
+      "description": "One ready Recovery delivery with a material and a consumable stack.",
+      "expectedLoadPercent": null,
+      "grants": [
+        { "definitionId": "fixture.ore", "quantity": 8, "destination": "recovery", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "fixture.potion", "quantity": 3, "destination": "recovery", "slotIndex": null, "equipmentSlotId": null }
+      ]
+    }
+  ]
+}

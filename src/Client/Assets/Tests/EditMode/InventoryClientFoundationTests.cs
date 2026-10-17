@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
@@ -22,13 +23,7 @@ namespace Mmorpg.Client.Tests.EditMode
             ItemPresentationCatalogLoader.ResetCache();
             config = ClientConfig.Load(out configHandle);
             Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
-            Assert.That(
-                ClientItemCatalog.TryLoad(
-                    config.ItemGameplayCatalog,
-                    out catalog,
-                    out var error),
-                Is.True,
-                error);
+            catalog = FixtureItemCatalog.Load();
         }
 
         [TearDown]
@@ -40,23 +35,23 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void CatalogLoadsGameplayAndPresentationOnceByDefinitionId()
+        public void BundledCatalogLoadsGameplayAndPresentationOnceByDefinitionId()
         {
             Assert.That(
-                ClientItemCatalog.TryLoad(
-                    config.ItemGameplayCatalog,
-                    out var secondCatalog,
-                    out var error),
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var bundled, out var error),
+                Is.True,
+                error);
+            Assert.That(
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var secondCatalog, out error),
                 Is.True,
                 error);
 
-            Assert.That(secondCatalog.Revision, Is.EqualTo(catalog.Revision));
-            Assert.That(secondCatalog.Presentation, Is.SameAs(catalog.Presentation));
-            Assert.That(catalog.GetDisplayName("bag.field_pack"), Is.EqualTo("Field Pack"));
-            Assert.That(catalog.GetLocalizationKey("bag.field_pack"), Is.Not.Empty);
-            Assert.That(catalog.GetPrefabPresentationKey("bag.field_pack"), Is.EqualTo(string.Empty));
-            Assert.That(catalog.LoadIcon("bag.field_pack"), Is.SameAs(
-                catalog.LoadIcon("bag.field_pack")));
+            var definition = bundled.Definitions.First();
+            Assert.That(secondCatalog.Revision, Is.EqualTo(bundled.Revision));
+            Assert.That(secondCatalog.Presentation, Is.SameAs(bundled.Presentation));
+            Assert.That(bundled.GetDisplayName(definition.Id), Is.Not.Empty);
+            Assert.That(bundled.GetLocalizationKey(definition.Id), Is.Not.Empty);
+            Assert.That(bundled.LoadIcon(definition.Id), Is.SameAs(bundled.LoadIcon(definition.Id)));
         }
 
         [Test]
@@ -156,7 +151,7 @@ namespace Mmorpg.Client.Tests.EditMode
             response.bank.slots[0].item = new ItemInstanceSnapshotResponse
             {
                 itemInstanceId = Guid.NewGuid().ToString(),
-                definitionId = "material.iron_ore",
+                definitionId = "fixture.ore",
                 quantity = 1,
                 revision = 0,
                 policies = Array.Empty<ItemPolicySummaryResponse>()
@@ -180,7 +175,7 @@ namespace Mmorpg.Client.Tests.EditMode
             response.bank.slots[0].item = new ItemInstanceSnapshotResponse
             {
                 itemInstanceId = Guid.NewGuid().ToString(),
-                definitionId = "material.iron_ore",
+                definitionId = "fixture.ore",
                 quantity = 1,
                 revision = 2,
                 policies = new[]
@@ -359,8 +354,8 @@ namespace Mmorpg.Client.Tests.EditMode
         public void TargetAdvisorUsesCanonicalSlotsSecureEligibilityBagRulesAndHardCap()
         {
             var state = CreateAdvisorState(132, 250);
-            var medical = CreateItem("medical.field_dressing", 1);
-            var weapon = CreateItem("weapon.training_rifle", 1);
+            var potion = CreateItem("fixture.potion", 1);
+            var weapon = CreateItem("fixture.sword", 1);
             var external = new InventoryItemLocation(
                 InventoryItemLocationKind.Container,
                 state.Bank.ContainerId,
@@ -368,25 +363,25 @@ namespace Mmorpg.Client.Tests.EditMode
                 0,
                 string.Empty,
                 Guid.Empty);
-            var bagMedicalSlot = state.FullSnapshot.EquippedBag.Contents.Slots[0];
+            var bagPotionSlot = state.FullSnapshot.EquippedBag.Contents.Slots[0];
 
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
                     state,
-                    medical,
+                    potion,
                     external,
                     state.FullSnapshot.EquippedBag.Contents,
-                    bagMedicalSlot,
-                    out var medicalReason),
+                    bagPotionSlot,
+                    out var potionReason),
                 Is.True,
-                medicalReason);
+                potionReason);
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
                     state,
                     weapon,
                     external,
                     state.FullSnapshot.EquippedBag.Contents,
-                    bagMedicalSlot,
+                    bagPotionSlot,
                     out _),
                 Is.False);
             Assert.That(
@@ -419,7 +414,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(bagReason, Does.Contain("non-empty Bag"));
 
             var hardCapState = CreateAdvisorState(350, 250);
-            var ammunition = CreateItem("ammunition.training_556", 1);
+            var ammunition = CreateItem("fixture.arrow", 1);
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
                     hardCapState,
@@ -431,7 +426,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.False);
             Assert.That(hardCapReason, Does.Contain("140 percent"));
 
-            var carriedAmmunition = CreateItem("ammunition.training_556", 1);
+            var carriedAmmunition = CreateItem("fixture.arrow", 1);
             Assert.That(
                 InventoryTargetAdvisor.CanMerge(
                     hardCapState,
@@ -477,7 +472,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     out _),
                 Is.True);
 
-            var partialStack = CreateItem("material.iron_ore", 3);
+            var partialStack = CreateItem("fixture.ore", 3);
             var partialState = CreateAdvisorState(338, 250);
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
@@ -501,7 +496,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.False);
 
             var noBagState = CreateAdvisorStateWithoutBag(275, 200);
-            var externalBag = CreateItem("bag.field_pack", 1);
+            var externalBag = CreateItem("fixture.pack", 1);
             var bagEquipmentSlot = new InventoryEquipmentSlot("bag", 0, null);
             Assert.That(
                 InventoryTargetAdvisor.CanEquip(
@@ -538,7 +533,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     out _),
                 Is.False);
 
-            var equippedWeapon = CreateItem("weapon.training_rifle", 1);
+            var equippedWeapon = CreateItem("fixture.sword", 1);
             var overloadedUnequipState = CreateAdvisorStateWithoutBag(270, 200);
             Assert.That(
                 InventoryTargetAdvisor.CanUnequip(
@@ -576,9 +571,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventoryTargetAdvisor.CanSwap(
                     hardCapState,
-                    CreateItem("ammunition.training_556", 1),
+                    CreateItem("fixture.arrow", 1),
                     bankLocation,
-                    CreateItem("weapon.training_rifle", 1),
+                    CreateItem("fixture.sword", 1),
                     permanentLocation,
                     out var reducingSwapReason),
                 Is.True,
@@ -588,7 +583,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventoryTargetAdvisor.CanSwap(
                     swapHardCapState,
-                    CreateItem("weapon.training_rifle", 1),
+                    CreateItem("fixture.sword", 1),
                     new InventoryItemLocation(
                         InventoryItemLocationKind.Container,
                         swapHardCapState.Bank.ContainerId,
@@ -596,7 +591,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         0,
                         string.Empty,
                         Guid.Empty),
-                    CreateItem("ammunition.training_556", 1),
+                    CreateItem("fixture.arrow", 1),
                     new InventoryItemLocation(
                         InventoryItemLocationKind.Container,
                         swapHardCapState.FullSnapshot.PermanentInventory.ContainerId,
@@ -608,17 +603,17 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.False);
             Assert.That(swapHardCapReason, Does.Contain("140 percent"));
 
-            var medicalSlotLocation = new InventoryItemLocation(
+            var potionSlotLocation = new InventoryItemLocation(
                 InventoryItemLocationKind.Container,
                 state.FullSnapshot.EquippedBag.Contents.ContainerId,
                 "bag_contents",
-                bagMedicalSlot.SlotIndex,
+                bagPotionSlot.SlotIndex,
                 string.Empty,
                 Guid.Empty);
             Assert.That(
                 InventoryTargetAdvisor.CanSwap(
                     state,
-                    CreateItem("weapon.training_rifle", 1),
+                    CreateItem("fixture.sword", 1),
                     new InventoryItemLocation(
                         InventoryItemLocationKind.Container,
                         state.FullSnapshot.PermanentInventory.ContainerId,
@@ -626,8 +621,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         0,
                         string.Empty,
                         Guid.Empty),
-                    CreateItem("medical.field_dressing", 1),
-                    medicalSlotLocation,
+                    CreateItem("fixture.potion", 1),
+                    potionSlotLocation,
                     out var specializedSwapReason),
                 Is.False);
             Assert.That(specializedSwapReason, Does.Contain("accepted tags"));
@@ -644,7 +639,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventoryTargetAdvisor.CanSwapWithExternalContainer(
                     swapHardCapState,
-                    CreateItem("ammunition.training_556", 1),
+                    CreateItem("fixture.arrow", 1),
                     new InventoryItemLocation(
                         InventoryItemLocationKind.Container,
                         swapHardCapState.FullSnapshot.PermanentInventory.ContainerId,
@@ -652,7 +647,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         0,
                         string.Empty,
                         Guid.Empty),
-                    CreateItem("weapon.training_rifle", 1),
+                    CreateItem("fixture.sword", 1),
                     corpseContainer,
                     corpseContainer.Slots[0],
                     out var externalSwapCapReason),
@@ -661,9 +656,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventoryTargetAdvisor.CanSwapWithExternalContainer(
                     hardCapState,
-                    CreateItem("weapon.training_rifle", 1),
+                    CreateItem("fixture.sword", 1),
                     permanentLocation,
-                    CreateItem("ammunition.training_556", 1),
+                    CreateItem("fixture.arrow", 1),
                     corpseContainer,
                     corpseContainer.Slots[0],
                     out var externalReducingReason),
@@ -765,7 +760,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
                     overflowState,
-                    CreateItem("ammunition.training_556", 1),
+                    CreateItem("fixture.arrow", 1),
                     external,
                     overflowState.FullSnapshot.PermanentInventory,
                     overflowState.FullSnapshot.PermanentInventory.Slots[0],
@@ -776,9 +771,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventoryTargetAdvisor.CanSwap(
                     overflowState,
-                    CreateItem("ammunition.training_556", 1),
+                    CreateItem("fixture.arrow", 1),
                     external,
-                    CreateItem("weapon.training_rifle", 1),
+                    CreateItem("fixture.sword", 1),
                     permanentLocation,
                     out var shrinkReason),
                 Is.True,
@@ -791,7 +786,7 @@ namespace Mmorpg.Client.Tests.EditMode
             bool bagHasContents = true)
         {
             var characterId = Guid.NewGuid();
-            var equippedBagItem = CreateItem("bag.field_pack", 1);
+            var equippedBagItem = CreateItem("fixture.pack", 1);
             var bagContents = new InventoryContainer(
                 Guid.NewGuid(),
                 "bag_contents",
@@ -799,12 +794,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 7,
                 new[]
                 {
-                    new InventorySlot(4, "specialized", new[] { "medical" }, null),
+                    new InventorySlot(4, "specialized", new[] { "potion" }, null),
                     new InventorySlot(
                         5,
                         "specialized",
                         new[] { "material" },
-                        bagHasContents ? CreateItem("material.iron_ore", 1) : null),
+                        bagHasContents ? CreateItem("fixture.ore", 1) : null),
                     new InventorySlot(6, "specialized", new[] { "ammunition" }, null)
                 });
             var snapshot = new CharacterInventorySnapshot(

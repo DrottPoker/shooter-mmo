@@ -757,14 +757,16 @@ concurrent inspection, and authoritative looting:
 - Gameplay and presentation catalogs load once and must share a source revision.
   Server snapshots must match the same bundled gameplay revision or the client
   reports `item_catalog_update_required` and refuses stale item state.
-- `--seed-phase9-items <characterId>` is a process-local Development fixture
-  command, not an HTTP route. It calls only `ItemTransactionService`, requires a
-  new empty offline character, restricts PostgreSQL to loopback and a
-  non-production-like database name, and refuses replay after the first item or
-  Recovery delivery exists.
+- `--dev-items-package <characterId> <packageId>` is a process-local Development
+  command, not an HTTP route. It applies one package from
+  `content/development/item-packages.json` through `ItemTransactionService`,
+  requires a new empty offline character, restricts PostgreSQL to loopback and a
+  non-production-like database name, refuses replay after the first item or
+  Recovery delivery exists, and rejects a package that misses its exact expected
+  load.
 - `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` is the matching
-  process-local corpse fixture. It seeds an empty source through the Phase 9
-  package when necessary, then uses the normal durable death transaction. The
+  process-local corpse fixture. It applies the corpse seed package to an empty
+  source when necessary, then uses the normal durable death transaction. The
   source must be offline and the resulting corpse keeps its database deadline
   across worker restart.
 
@@ -773,8 +775,8 @@ runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
 GameService exposes authenticated owned-character reads, offline account item
 write routes, and one service-authenticated active-session item route. It exposes
-no development grant route. The one-shot Phase 9 fixture is a guarded local
-process command rather than a remotely callable service. SimulationWorker has no
+no development grant route. The development item packages are applied by a
+guarded local process command rather than a remotely callable service. SimulationWorker has no
 inventory database access and holds no item collection. Unity is not an item-rule
 authority.
 
@@ -1061,8 +1063,9 @@ the test connection variable at development or production data.
   identity mismatch, stale assignment, duplicate intent replay, account-versus-
   worker races, bank and Recovery access, Secure Container carry changes, and
   reconnect restoration.
-- Phase 9 backend tests cover fixture command validation, one real PostgreSQL
-  transaction-service fixture flow and readback, one-shot rejection, and the
+- Development item package tests cover package file validation, one real
+  PostgreSQL package flow and readback, one-shot rejection, stale expected
+  loads, that the checked-in packages fit the compiled catalog, and the
   Recovery delivery revision
   exposed to Unity. Unity EditMode tests cover catalog cache reuse, revision
   mismatch, snapshot validation and coherence, operation correlation,

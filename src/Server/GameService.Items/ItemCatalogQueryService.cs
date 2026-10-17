@@ -63,11 +63,16 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                   and is_active
                 order by id;
 
-                select id as "Id", display_name as "DisplayName", sort_order as "SortOrder"
+                select
+                    id as "Id",
+                    display_name as "DisplayName",
+                    display_order as "SortOrder",
+                    maximum_quantity as "MaximumQuantity"
                 from equipment_slots
                 where catalog_id = @CatalogId
                   and catalog_revision = @Revision
-                order by sort_order, id;
+                  and is_active
+                order by display_order, id;
 
                 select
                     id as "Id",
@@ -94,6 +99,16 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                     relation.definition_id as "DefinitionId",
                     relation.equipment_slot_id as "Value"
                 from item_definition_equipment_slots relation
+                join item_definitions definition on definition.id = relation.definition_id
+                where definition.catalog_id = @CatalogId
+                  and definition.catalog_revision = @Revision
+                  and definition.is_active
+                order by relation.definition_id, relation.equipment_slot_id;
+
+                select
+                    relation.definition_id as "DefinitionId",
+                    relation.equipment_slot_id as "Value"
+                from item_definition_blocked_equipment_slots relation
                 join item_definitions definition on definition.id = relation.definition_id
                 where definition.catalog_id = @CatalogId
                   and definition.catalog_revision = @Revision
@@ -170,6 +185,7 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
             var definitions = (await grid.ReadAsync<DefinitionRow>()).ToArray();
             var definitionTags = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
             var definitionEquipmentSlots = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
+            var definitionBlockedSlots = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
             var secureEligibility = (await grid.ReadAsync<DefinitionEligibilityRow>())
                 .ToDictionary(row => row.DefinitionId, row => row.IsAllowed, StringComparer.Ordinal);
             var defaultPolicies = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
@@ -184,6 +200,10 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                 row => row.Value,
                 StringComparer.Ordinal);
             var equipmentSlotsByDefinition = definitionEquipmentSlots.ToLookup(
+                row => row.DefinitionId,
+                row => row.Value,
+                StringComparer.Ordinal);
+            var blockedSlotsByDefinition = definitionBlockedSlots.ToLookup(
                 row => row.DefinitionId,
                 row => row.Value,
                 StringComparer.Ordinal);
@@ -212,7 +232,8 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                 equipmentSlots.Select(row => new ItemCatalogEquipmentSlotResponse(
                     row.Id,
                     row.DisplayName,
-                    row.SortOrder)).ToArray(),
+                    row.SortOrder,
+                    row.MaximumQuantity)).ToArray(),
                 definitions.Select(definition => new ItemCatalogDefinitionResponse(
                     definition.Id,
                     definition.DisplayName,
@@ -222,6 +243,7 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                     definition.PlayerDestroyable,
                     tagsByDefinition[definition.Id].ToArray(),
                     equipmentSlotsByDefinition[definition.Id].ToArray(),
+                    blockedSlotsByDefinition[definition.Id].ToArray(),
                     secureEligibility.GetValueOrDefault(definition.Id),
                     policiesByDefinition[definition.Id].ToArray(),
                     CreateBagResponse(
@@ -287,6 +309,8 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
     private sealed class EquipmentSlotRow : IdentityRow
     {
         public int SortOrder { get; set; }
+
+        public int MaximumQuantity { get; set; }
     }
 
     private sealed class DefinitionRow
