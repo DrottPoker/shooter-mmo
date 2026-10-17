@@ -1873,11 +1873,27 @@ experimental, review its changelog, update it in a focused branch with
 The `Unity quality gate` job in `.github/workflows/ci.yml` runs both Unity
 suites through `tools/Run-UnityTests.ps1` on a self-hosted Windows runner.
 GitHub-hosted runners cannot activate a Unity Personal license, so the runner
-runs on the development machine under the developer's own Windows account and
-starts at sign-in. It reuses the Unity installation, the Unity CLI sign-in, and
-the Personal license that a local headless run uses, so the Unity gate runs only
-while that account is signed in. A queued job waits until the runner is online,
-and GitHub cancels it after 24 hours.
+runs on the development machine under the developer's own Windows account. It
+reuses the Unity installation, the Unity CLI sign-in, and the Personal license
+that a local headless run uses, so the Unity gate runs only while that account
+is signed in. A locked screen is fine. A queued job waits until the runner is
+online, and GitHub cancels it after 24 hours.
+
+The scheduled task `GitHub Actions Unity runner`, registered by
+`tools/Register-UnityRunnerTask.ps1`, keeps the runner running:
+
+- It starts `C:\actions-runner\run.cmd` at sign-in, after the machine wakes from
+  sleep, and every five minutes when the runner is not running. A runner that
+  exits for any reason, such as a crash, a killed process, or a network failure
+  that ends the listener, comes back on its own within a few minutes.
+- Only one runner runs at a time. It has no window that could be closed by
+  mistake or paused by a click, and it runs at normal priority instead of the
+  Task Scheduler default below normal.
+- The Task Scheduler service starts it, so it does not belong to any terminal
+  or app. A runner started from a terminal of an app, for example a Claude Code
+  session, stops when that app closes or updates. On 2026-10-16 an update of
+  the Claude desktop app stopped the runner that way, and the Unity gate waited
+  overnight. Never start `run.cmd` by hand; use the task.
 
 The job runs for pull requests, pushes to `development` and `main`, and manual
 runs from `Actions > CI > Run workflow`. Pull requests from forks skip it. While
@@ -1959,14 +1975,8 @@ Remove-Variable token
 Copy-Item tools\Assert-TrustedRunnerJob.ps1 C:\actions-runner-hooks\ -Force
 Set-Content C:\actions-runner\.env "ACTIONS_RUNNER_HOOK_JOB_STARTED=C:\actions-runner-hooks\Assert-TrustedRunnerJob.ps1" -Encoding Ascii
 
-# Start the runner hidden at every sign-in, and once now.
-$launcher = "-NoProfile -WindowStyle Hidden -Command Start-Process -FilePath C:\actions-runner\run.cmd -WorkingDirectory C:\actions-runner -WindowStyle Hidden"
-$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath("Startup")) "GitHub Actions runner.lnk"))
-$shortcut.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-$shortcut.Arguments = $launcher
-$shortcut.WindowStyle = 7
-$shortcut.Save()
-Start-Process powershell.exe -ArgumentList $launcher -WindowStyle Hidden
+# Register the scheduled task that keeps the runner running, and start it.
+& .\tools\Register-UnityRunnerTask.ps1
 
 # Enable the job, require approval for fork workflows, and require green CI for development.
 gh variable set UNITY_CI_ENABLED --body true --repo DrottPoker/shooter-mmo
@@ -1977,12 +1987,14 @@ gh api -X POST repos/DrottPoker/shooter-mmo/rulesets --input .github/rulesets/de
 Verify the runner:
 
 ```powershell
+Get-ScheduledTask -TaskName "GitHub Actions Unity runner"
 gh api repos/DrottPoker/shooter-mmo/actions/runners --jq '.runners[] | {id, name, status, labels: [.labels[].name]}'
 gh workflow run ci.yml --repo DrottPoker/shooter-mmo --ref development
 ```
 
 Expected result:
 
+- The task state is `Running`.
 - The runner is listed with name `<COMPUTERNAME>-unity`, status `online`, and
   labels `self-hosted`, `Windows`, `X64`, and `unity-6000.5.4f1`.
 - The manual CI run passes the `Unity quality gate` job. Its `Set up runner`
@@ -1990,13 +2002,40 @@ Expected result:
   the job summary lists both suites as passed, and the run uploads the XML
   results and Unity logs as `unity-test-results`.
 
+To check that the runner recovers on its own, stop its listener while no job
+runs, as a crash would:
+
+```powershell
+Stop-Process -Name Runner.Listener -Force
+```
+
+Expected result: the task state changes to `Ready`. At the next five-minute
+check it is `Running` again. Within a few more minutes the newest
+`Runner_*.log` in `C:\actions-runner\_diag` contains `Listening for Jobs`, and
+GitHub lists the runner as `online`. In a test on 2026-10-17 the runner was back
+four and a half minutes after the stop; the whole recovery takes at most about
+ten minutes.
+
 ### Operate The Runner
 
 - Status: `Settings > Actions > Runners` on GitHub, or the `gh api` command
-  above. Runner logs are in `C:\actions-runner\_diag`.
-- Start it without signing out and in again:
-  `Start-Process C:\actions-runner\run.cmd -WorkingDirectory C:\actions-runner -WindowStyle Hidden`.
-  Stop it with `Stop-Process -Name Runner.Listener`.
+  above. On the machine,
+  `Get-ScheduledTask -TaskName "GitHub Actions Unity runner"` reports
+  `Running` while the runner runs, and `Get-ScheduledTaskInfo` on the same task
+  shows the last start. Runner logs are in `C:\actions-runner\_diag`, one
+  `Runner_*.log` per start.
+- Start it now instead of waiting for the next check:
+  `Start-ScheduledTask -TaskName "GitHub Actions Unity runner"`.
+- Restart it, for example after a change to `C:\actions-runner\.env`, with
+  `Stop-ScheduledTask` and then `Start-ScheduledTask` on the same task.
+  Stopping cancels a running job. After a hard stop GitHub keeps the old
+  session for a few minutes, so the new listener logs
+  `A session for this runner already exists` and retries until it connects.
+- Keep it stopped with `Disable-ScheduledTask` and then `Stop-ScheduledTask`
+  on the task. `Enable-ScheduledTask` and `Start-ScheduledTask` undo that.
+- After a change to `tools/Register-UnityRunnerTask.ps1`, run it again. It
+  updates the task and leaves a running runner alone; the change applies at the
+  next start.
 - A job that fails with Unity exit code `198`, `Access token is unavailable`, or
   `No valid Unity Editor license found` lost the Unity sign-in. Run
   `unity auth login`, check `unity license status`, and rerun the job.
@@ -2008,9 +2047,11 @@ Expected result:
   `gh api -X PUT "repos/DrottPoker/shooter-mmo/actions/runners/<id>/labels" -f "labels[]=unity-<version>"`.
   The runner id is in the runner listing above.
 - To remove the runner, set `UNITY_CI_ENABLED` to `false`, run
-  `& C:\actions-runner\config.cmd remove --token (gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/remove-token --jq .token)`,
-  stop it, and delete `C:\actions-runner`, `C:\actions-runner-hooks`, and the
-  `GitHub Actions runner` shortcut in the Startup folder.
+  `Stop-ScheduledTask` and then
+  `Unregister-ScheduledTask -Confirm:$false` on the task
+  `GitHub Actions Unity runner`, run
+  `& C:\actions-runner\config.cmd remove --token (gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/remove-token --jq .token)`
+  and delete `C:\actions-runner` and `C:\actions-runner-hooks`.
 
 ## One-Time Unity World Scene Authoring
 
