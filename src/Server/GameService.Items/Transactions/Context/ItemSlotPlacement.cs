@@ -26,7 +26,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
         CancellationToken cancellationToken,
         Guid? permittedOccupantItemInstanceId = null)
     {
-        if (string.Equals(container.ContainerType, "recovery_storage", StringComparison.Ordinal))
+        if (string.Equals(container.ContainerType, ItemContainerTypeIds.RecoveryStorage, StringComparison.Ordinal))
         {
             if (!allowRecoveryStorage)
             {
@@ -40,7 +40,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
                 "Recovery Storage delivery slots are allocated by the transaction kernel.");
         }
 
-        if (string.Equals(container.ContainerType, "secure_container", StringComparison.Ordinal)
+        if (string.Equals(container.ContainerType, ItemContainerTypeIds.SecureContainer, StringComparison.Ordinal)
             && !SecureContainerRules.IsEligible(definition.RuntimeDefinition))
         {
             Reject(
@@ -97,7 +97,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
         {
             if (string.Equals(
                     container.ContainerType,
-                    "corpse_equipment",
+                    ItemContainerTypeIds.CorpseEquipment,
                     StringComparison.Ordinal)
                 && (string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
                     || !ItemEquipmentRules.IsCompatible(
@@ -109,13 +109,16 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 
             if (definition.IsBag)
             {
-                var destinationKind = ResolveBagDestinationKind(container.ContainerType, slot.SlotKind);
                 var wouldCreateCycle = movingBagItemId is not null
                     && container.BoundBagItemInstanceId == movingBagItemId;
-                return BagLocationRules.CanPlace(
-                    bagHasContents,
-                    destinationKind,
-                    wouldCreateCycle);
+                return BagDestinationRules.TryResolve(
+                        container.ContainerType,
+                        slot.SlotKind,
+                        out var destinationKind)
+                    && BagLocationRules.CanPlace(
+                        bagHasContents,
+                        destinationKind,
+                        wouldCreateCycle);
             }
 
             return ItemSlotRules.Accepts(
@@ -314,44 +317,6 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
                 $"Equipment slot '{slot.EquipmentSlotId}' holds at most "
                 + $"{ItemEquipmentRules.MaximumQuantity(definition.RuntimeDefinition, entry)} of the item.");
         }
-    }
-
-    private static BagDestinationKind ResolveBagDestinationKind(
-        string containerType,
-        string slotKind)
-    {
-        if (string.Equals(containerType, "permanent_inventory", StringComparison.Ordinal)
-            && string.Equals(slotKind, BagSlotKindIds.General, StringComparison.Ordinal))
-        {
-            return BagDestinationKind.PermanentInventoryGeneralSlot;
-        }
-
-        if (string.Equals(containerType, "bank", StringComparison.Ordinal)
-            && string.Equals(slotKind, BagSlotKindIds.General, StringComparison.Ordinal))
-        {
-            return BagDestinationKind.BankGeneralSlot;
-        }
-
-        if (string.Equals(containerType, "bag_contents", StringComparison.Ordinal))
-        {
-            return string.Equals(slotKind, BagSlotKindIds.General, StringComparison.Ordinal)
-                ? BagDestinationKind.BagGeneralSlot
-                : BagDestinationKind.BagSpecializedSlot;
-        }
-
-        if (string.Equals(containerType, "recovery_storage", StringComparison.Ordinal))
-        {
-            return BagDestinationKind.RecoveryStorageSlot;
-        }
-
-        if (string.Equals(containerType, "corpse_inventory", StringComparison.Ordinal)
-            || string.Equals(containerType, "corpse_equipment", StringComparison.Ordinal)
-            || string.Equals(containerType, "corpse_bag_contents", StringComparison.Ordinal))
-        {
-            return BagDestinationKind.CorpseStorageSlot;
-        }
-
-        return BagDestinationKind.SecureContainerSlot;
     }
 
     private sealed class ContainerSlotQueryRow

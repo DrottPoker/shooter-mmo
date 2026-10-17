@@ -200,7 +200,7 @@ public sealed class ItemPolicyLifecycleIntegrationTests
                 0d,
                 0d,
                 1d,
-                "corpse.generic_loot_crate"),
+                "corpse.remains"),
             CancellationToken.None);
         Assert.True(death.Succeeded, death.Error?.Message);
 

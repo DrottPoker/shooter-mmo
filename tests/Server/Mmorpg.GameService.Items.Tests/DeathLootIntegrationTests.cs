@@ -19,7 +19,7 @@ public sealed class DeathLootIntegrationTests
     private const string WorkerId = "local-simulation-worker-1";
     private const string WorkerRuntimeId = "integration-worker-runtime";
     private const string ShardId = "local-shard-1";
-    private const string CorpsePresentationKey = "corpse.generic_loot_crate";
+    private const string CorpsePresentationKey = "corpse.remains";
 
     [PostgresIntegrationFact]
     public async Task CorpseMigrationIsIdempotentAndEnforcesPlayerLifetimeAndSnapshotShape()

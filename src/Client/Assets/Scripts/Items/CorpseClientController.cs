@@ -1,6 +1,7 @@
 using System;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 using UnityEngine;
 
 namespace Mmorpg.Client.Items
@@ -213,7 +214,7 @@ namespace Mmorpg.Client.Items
                     out var currentBag,
                     out var section,
                     out _)
-                || !string.Equals(section.SectionKind, "equipment", StringComparison.Ordinal))
+                || !string.Equals(section.SectionKind, CorpseSectionKindIds.Equipment, StringComparison.Ordinal))
             {
                 error = "The corpse Bag equipment state changed.";
                 return false;
@@ -265,7 +266,7 @@ namespace Mmorpg.Client.Items
                     out var currentItem,
                     out var sourceLocation)
                 || sourceLocation.Kind != InventoryItemLocationKind.Container
-                || !IsCarriedContainerType(sourceLocation.ContainerType))
+                || !ItemContainerTypeIds.IsCarried(sourceLocation.ContainerType))
             {
                 error = "Only items in carried inventory, Bag, or Secure Container slots can enter a corpse.";
                 return false;
@@ -521,13 +522,6 @@ namespace Mmorpg.Client.Items
                 refreshAfterPending = false;
                 TryRefresh(out _);
             }
-        }
-
-        private static bool IsCarriedContainerType(string containerType)
-        {
-            return string.Equals(containerType, "permanent_inventory", StringComparison.Ordinal)
-                || string.Equals(containerType, "bag_contents", StringComparison.Ordinal)
-                || string.Equals(containerType, "secure_container", StringComparison.Ordinal);
         }
 
         private void OnViewClosed(RealtimeCorpseViewClosed closed)

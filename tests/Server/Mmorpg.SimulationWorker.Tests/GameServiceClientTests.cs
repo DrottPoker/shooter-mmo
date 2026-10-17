@@ -189,7 +189,7 @@ public sealed class GameServiceClientTests
             0d,
             0d,
             1d,
-            "corpse.generic_loot_crate");
+            "corpse.remains");
         var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
             operationId,
@@ -207,7 +207,7 @@ public sealed class GameServiceClientTests
                 rotationY = 0d,
                 rotationZ = 0d,
                 rotationW = 1d,
-                presentationKey = "corpse.generic_loot_crate",
+                presentationKey = "corpse.remains",
                 revision = 1,
                 createdAt,
                 expiresAt = createdAt.AddMinutes(5),
@@ -336,7 +336,7 @@ public sealed class GameServiceClientTests
                     rotationY = 0d,
                     rotationZ = 0d,
                     rotationW = 1d,
-                    presentationKey = "corpse.generic_loot_crate",
+                    presentationKey = "corpse.remains",
                     revision = 1,
                     createdAt = databaseTime.AddMinutes(-1),
                     expiresAt = databaseTime.AddMinutes(4),
@@ -385,7 +385,7 @@ public sealed class GameServiceClientTests
                     rotationY = 0d,
                     rotationZ = 0d,
                     rotationW = 1d,
-                    presentationKey = "corpse.generic_loot_crate",
+                    presentationKey = "corpse.remains",
                     revision = 0,
                     createdAt = databaseTime.AddMinutes(-5),
                     expiresAt = databaseTime,
@@ -954,7 +954,7 @@ public sealed class GameServiceClientTests
             positionX = 1d,
             positionY = 2d,
             positionZ = 3d,
-            presentationKey = "corpse.generic_loot_crate",
+            presentationKey = "corpse.remains",
             revision,
             createdAt,
             expiresAt = createdAt.AddMinutes(5),

@@ -298,7 +298,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     2_000_000_000_000L,
                     false,
                     "Fallen Hero",
-                    "corpse.generic_loot_crate")));
+                    "corpse.remains")));
 
                 Assert.That(
                     target.TargetKind,

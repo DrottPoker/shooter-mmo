@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
 {
@@ -287,11 +288,11 @@ namespace Mmorpg.Client.Items
         {
             switch (sectionKind)
             {
-                case "equipment":
+                case CorpseSectionKindIds.Equipment:
                     return 0;
-                case "general_inventory":
+                case CorpseSectionKindIds.GeneralInventory:
                     return 1;
-                case "bag":
+                case CorpseSectionKindIds.Bag:
                     return 2;
                 default:
                     return 3;
@@ -555,9 +556,9 @@ namespace Mmorpg.Client.Items
                 .ToHashSet(StringComparer.Ordinal);
             if (!sectionKinds.SetEquals(new[]
                 {
-                    "general_inventory",
-                    "equipment",
-                    "bag"
+                    CorpseSectionKindIds.GeneralInventory,
+                    CorpseSectionKindIds.Equipment,
+                    CorpseSectionKindIds.Bag
                 }))
             {
                 return false;

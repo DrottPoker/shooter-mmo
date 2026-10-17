@@ -3,7 +3,7 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 // Validation of corpse presentation and transforms.
 internal static class CorpseTransformRules
 {
-    public const string PlayerCorpsePresentationKey = "corpse.generic_loot_crate";
+    public const string PlayerCorpsePresentationKey = "corpse.remains";
 
     public static bool IsFinitePosition(double value)
     {

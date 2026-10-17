@@ -660,9 +660,10 @@ another corpse slot submits an authoritative internal move, split, merge, or
 complete swap. Equipment destinations show the catalog display name and stable
 equipment-slot id, and local feedback rejects obvious type mismatches. Dropping
 a corpse Bag onto the occupied player Bag slot submits one atomic aggregate
-swap. Green and red target feedback remains advisory, while GameService owns all
-final slot, equipment, policy, revision, weight, capacity, and hard-cap
-validation.
+swap. `CorpseTargetAdvisor` in `Mmorpg.Client.Items` holds these corpse target
+rules next to `InventoryTargetAdvisor`, and EditMode tests cover both. Green and
+red target feedback remains advisory, while GameService owns all final slot,
+equipment, policy, revision, weight, capacity, and hard-cap validation.
 
 ### Development Item Tools
 

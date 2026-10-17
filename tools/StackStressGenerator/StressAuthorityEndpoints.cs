@@ -117,7 +117,7 @@ public static class StressAuthorityEndpoints
     {
         return Results.Json(
             new StressProblemDetails(
-                "https://shooter-mmo.local/problems/invalid_service_credentials",
+                "https://mmorpg.local/problems/invalid_service_credentials",
                 "Unauthorized",
                 StatusCodes.Status401Unauthorized,
                 "invalid_service_credentials",

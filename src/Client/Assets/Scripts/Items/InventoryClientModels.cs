@@ -475,6 +475,9 @@ namespace Mmorpg.Client.Items
 
     public sealed class InventoryItemLocation
     {
+        // Equipped items have no container, so their location names the equipment slot.
+        public const string EquipmentContainerType = "equipment";
+
         public InventoryItemLocation(
             InventoryItemLocationKind kind,
             Guid containerId,
@@ -489,6 +492,17 @@ namespace Mmorpg.Client.Items
             SlotIndex = slotIndex;
             EquipmentSlotId = equipmentSlotId ?? string.Empty;
             RecoveryDeliveryId = recoveryDeliveryId;
+        }
+
+        public static InventoryItemLocation ForEquipment(string equipmentSlotId)
+        {
+            return new InventoryItemLocation(
+                InventoryItemLocationKind.Equipment,
+                Guid.Empty,
+                EquipmentContainerType,
+                -1,
+                equipmentSlotId,
+                Guid.Empty);
         }
 
         public InventoryItemLocationKind Kind { get; }
@@ -507,7 +521,7 @@ namespace Mmorpg.Client.Items
         {
             get
             {
-                return string.Equals(ContainerType, "bank", StringComparison.Ordinal)
+                return string.Equals(ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal)
                     || Kind == InventoryItemLocationKind.RecoveryStorage
                     || Kind == InventoryItemLocationKind.Corpse;
             }
@@ -821,13 +835,7 @@ namespace Mmorpg.Client.Items
                     && equipmentSlot.Item.ItemInstanceId == itemInstanceId)
                 {
                     item = equipmentSlot.Item;
-                    location = new InventoryItemLocation(
-                        InventoryItemLocationKind.Equipment,
-                        Guid.Empty,
-                        "equipment",
-                        -1,
-                        equipmentSlot.SlotId,
-                        Guid.Empty);
+                    location = InventoryItemLocation.ForEquipment(equipmentSlot.SlotId);
                     return true;
                 }
             }
@@ -877,7 +885,7 @@ namespace Mmorpg.Client.Items
                         location = new InventoryItemLocation(
                             InventoryItemLocationKind.RecoveryStorage,
                             RecoveryStorage.ContainerId,
-                            "recovery_storage",
+                            ItemContainerTypeIds.RecoveryStorage,
                             deliveryItem.SlotIndex,
                             string.Empty,
                             delivery.DeliveryId);

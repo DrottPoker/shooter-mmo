@@ -275,14 +275,14 @@ public sealed class ItemOperationCanonicalRequestTests
                     CorpsePresentationKey)),
             CancellationToken.None));
         var deathFingerprint =
-            $$"""{"deathEventId":"{{deathEventId}}","characterId":"{{victim.Character.Id}}","shardId":"local-shard-1","positionX":12.5,"positionY":-3.25,"positionZ":0,"rotationX":0,"rotationY":0.6,"rotationZ":0,"rotationW":0.8,"presentationKey":"corpse.generic_loot_crate"}""";
+            $$"""{"deathEventId":"{{deathEventId}}","characterId":"{{victim.Character.Id}}","shardId":"local-shard-1","positionX":12.5,"positionY":-3.25,"positionZ":0,"rotationX":0,"rotationY":0.6,"rotationZ":0,"rotationW":0.8,"presentationKey":"corpse.remains"}""";
         await AssertOperationAsync(
             context,
             deathOperationId,
             ItemOperationKinds.ProcessPlayerDeath,
             Canonical(
                 SystemActor,
-                $$"""{"deathEventId":"{{deathEventId}}","characterId":"{{victim.Character.Id}}","expectedCharacterRevision":{{victimState.Revision}},"shardId":"local-shard-1","positionX":12.5,"positionY":-3.25,"positionZ":0,"rotationX":0,"rotationY":0.6,"rotationZ":0,"rotationW":0.8,"presentationKey":"corpse.generic_loot_crate"}"""),
+                $$"""{"deathEventId":"{{deathEventId}}","characterId":"{{victim.Character.Id}}","expectedCharacterRevision":{{victimState.Revision}},"shardId":"local-shard-1","positionX":12.5,"positionY":-3.25,"positionZ":0,"rotationX":0,"rotationY":0.6,"rotationZ":0,"rotationW":0.8,"presentationKey":"corpse.remains"}"""),
             null,
             victim.Character.Id);
         await using (var connection = await context.DataSource.OpenConnectionAsync())
@@ -352,7 +352,7 @@ public sealed class ItemOperationCanonicalRequestTests
             ItemOperationKinds.CreatePersistentMobCorpse,
             Canonical(
                 SystemActor,
-                $$"""{"corpseId":"{{mobCorpseId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1","sourceActorDefinitionId":"mob.feral_wolf","sourceDisplayName":"Feral Wolf","positionX":1.5,"positionY":0,"positionZ":-2,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.generic_loot_crate","lifetimeSeconds":90.25,"workerHeartbeatTimeoutSeconds":30,"loot":[{"grantId":"{{lootGrantId}}","definitionId":"fixture.ore","quantity":3}]}"""),
+                $$"""{"corpseId":"{{mobCorpseId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1","sourceActorDefinitionId":"mob.feral_wolf","sourceDisplayName":"Feral Wolf","positionX":1.5,"positionY":0,"positionZ":-2,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.remains","lifetimeSeconds":90.25,"workerHeartbeatTimeoutSeconds":30,"loot":[{"grantId":"{{lootGrantId}}","definitionId":"fixture.ore","quantity":3}]}"""),
             null,
             null);
 

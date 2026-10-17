@@ -603,8 +603,8 @@ section even though the real Bag has moved to Recovery Storage.
 - Multiple players may inspect and loot the same corpse concurrently.
 - Each player may have only one active loot interaction at a time.
 - When the assigned SimulationWorker restarts, it restores every unexpired
-  player corpse. It may present a restored corpse as a generic loot crate at the
-  recorded location while preserving the same durable corpse id and custody.
+  player corpse. It presents a restored corpse with the generic `corpse.remains` key at
+  the recorded location while preserving the same durable corpse id and custody.
 - When expiry wins the corpse lock, all remaining loot is destroyed with audit
   records and the live representation is removed.
 - An in-flight committed loot transaction wins before cleanup. A request that

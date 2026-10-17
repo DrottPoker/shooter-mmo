@@ -200,7 +200,7 @@ public sealed record StressAuthorityResult<T>(T? Value, StressProblemDetails? Pr
         return new StressAuthorityResult<T>(
             default,
             new StressProblemDetails(
-                $"https://shooter-mmo.local/problems/{code}",
+                $"https://mmorpg.local/problems/{code}",
                 title,
                 status,
                 code,

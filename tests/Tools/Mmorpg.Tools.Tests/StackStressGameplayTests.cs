@@ -76,7 +76,7 @@ public sealed class StackStressGameplayTests
             1,
             DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
             "Stress Corpse",
-            "corpse.generic_loot_crate",
+            "corpse.remains",
             0,
             1,
             "general_inventory",

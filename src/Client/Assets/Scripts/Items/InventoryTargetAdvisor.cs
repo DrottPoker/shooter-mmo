@@ -74,7 +74,7 @@ namespace Mmorpg.Client.Items
 
             if (string.Equals(
                     destination.ContainerType,
-                    "secure_container",
+                    ItemContainerTypeIds.SecureContainer,
                     StringComparison.Ordinal)
                 && !SecureContainerRules.IsEligible(definition))
             {
@@ -89,7 +89,7 @@ namespace Mmorpg.Client.Items
             }
 
             if (IsWeightless(source)
-                && IsCarriedContainer(destination.ContainerType)
+                && ItemContainerTypeIds.IsCarried(destination.ContainerType)
                 && !FitsHardCap(state.FullSnapshot, definition, movedQuantity))
             {
                 reason = "The move would exceed the 140 percent carry cap.";
@@ -171,13 +171,7 @@ namespace Mmorpg.Client.Items
             if (!CanPlaceInContainer(
                 state,
                 item,
-                new InventoryItemLocation(
-                    InventoryItemLocationKind.Equipment,
-                    Guid.Empty,
-                    "equipment",
-                    -1,
-                    string.Empty,
-                    Guid.Empty),
+                InventoryItemLocation.ForEquipment(string.Empty),
                 destination,
                 destinationSlot,
                 out reason))
@@ -465,12 +459,12 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (string.Equals(destination.ContainerType, "bank", StringComparison.Ordinal))
+            if (string.Equals(destination.ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal))
             {
                 return true;
             }
 
-            if (!IsCarriedContainer(destination.ContainerType))
+            if (!ItemContainerTypeIds.IsCarried(destination.ContainerType))
             {
                 reason = "This container is not a supported Recovery destination.";
                 return false;
@@ -568,7 +562,15 @@ namespace Mmorpg.Client.Items
             out string reason)
         {
             var hasContents = IsEquippedBagWithContents(state, item.ItemInstanceId);
-            var destinationKind = ToBagDestination(destination, destinationSlot);
+            if (!BagDestinationRules.TryResolve(
+                    destination.ContainerType,
+                    destinationSlot.SlotKind,
+                    out var destinationKind))
+            {
+                reason = "The Bag cannot enter this container.";
+                return false;
+            }
+
             var wouldCycle = state.FullSnapshot.EquippedBag != null
                 && state.FullSnapshot.EquippedBag.Item.ItemInstanceId == item.ItemInstanceId
                 && state.FullSnapshot.EquippedBag.Contents.ContainerId == destination.ContainerId;
@@ -582,42 +584,6 @@ namespace Mmorpg.Client.Items
 
             reason = string.Empty;
             return true;
-        }
-
-        private static BagDestinationKind ToBagDestination(
-            InventoryContainer destination,
-            InventorySlot slot)
-        {
-            if (string.Equals(destination.ContainerType, "permanent_inventory", StringComparison.Ordinal))
-            {
-                return BagDestinationKind.PermanentInventoryGeneralSlot;
-            }
-
-            if (string.Equals(destination.ContainerType, "bag_contents", StringComparison.Ordinal))
-            {
-                return string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal)
-                    ? BagDestinationKind.BagGeneralSlot
-                    : BagDestinationKind.BagSpecializedSlot;
-            }
-
-            if (string.Equals(destination.ContainerType, "bank", StringComparison.Ordinal))
-            {
-                return BagDestinationKind.BankGeneralSlot;
-            }
-
-            if (string.Equals(destination.ContainerType, "recovery_storage", StringComparison.Ordinal))
-            {
-                return BagDestinationKind.RecoveryStorageSlot;
-            }
-
-            if (string.Equals(destination.ContainerType, "corpse_inventory", StringComparison.Ordinal)
-                || string.Equals(destination.ContainerType, "corpse_equipment", StringComparison.Ordinal)
-                || string.Equals(destination.ContainerType, "corpse_bag_contents", StringComparison.Ordinal))
-            {
-                return BagDestinationKind.CorpseStorageSlot;
-            }
-
-            return BagDestinationKind.SecureContainerSlot;
         }
 
         private static bool IsEquippedBagWithContents(
@@ -664,7 +630,7 @@ namespace Mmorpg.Client.Items
                     : definition.Bag.CarryCapacityBonus;
                 var finalCapacity = checked(snapshot.CarryCapacity - capacityBonus);
                 var finalWeight = snapshot.CarriedWeight;
-                if (IsCarriedContainer(destinationContainerType))
+                if (ItemContainerTypeIds.IsCarried(destinationContainerType))
                 {
                     finalWeight = checked(
                         finalWeight + ItemWeightRules.CalculateStackWeight(
@@ -713,7 +679,7 @@ namespace Mmorpg.Client.Items
 
             if (string.Equals(
                     destination.ContainerType,
-                    "secure_container",
+                    ItemContainerTypeIds.SecureContainer,
                     StringComparison.Ordinal)
                 && !SecureContainerRules.IsEligible(definition))
             {
@@ -738,8 +704,8 @@ namespace Mmorpg.Client.Items
             string sourceContainerType,
             string destinationContainerType)
         {
-            var sourceCarried = IsCarriedContainer(sourceContainerType);
-            var destinationCarried = IsCarriedContainer(destinationContainerType);
+            var sourceCarried = ItemContainerTypeIds.IsCarried(sourceContainerType);
+            var destinationCarried = ItemContainerTypeIds.IsCarried(destinationContainerType);
             if (sourceCarried == destinationCarried)
             {
                 return currentWeight;
@@ -810,13 +776,6 @@ namespace Mmorpg.Client.Items
                 && !string.IsNullOrWhiteSpace(slot.DisplayName)
                     ? slot.DisplayName
                     : equipmentSlotId;
-        }
-
-        private static bool IsCarriedContainer(string containerType)
-        {
-            return string.Equals(containerType, "permanent_inventory", StringComparison.Ordinal)
-                || string.Equals(containerType, "bag_contents", StringComparison.Ordinal)
-                || string.Equals(containerType, "secure_container", StringComparison.Ordinal);
         }
 
         private static ItemStackState ToStackState(

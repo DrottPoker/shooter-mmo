@@ -8,7 +8,7 @@ namespace Mmorpg.GameService.Items.Tests;
 public sealed class CorpseLootConcurrencyIntegrationTests
 {
     private const string ShardId = "local-shard-1";
-    private const string CorpsePresentationKey = "corpse.generic_loot_crate";
+    private const string CorpsePresentationKey = "corpse.remains";
 
     [PostgresIntegrationFact]
     public async Task UnrelatedConcurrentLootCommitsAndSameItemHasOneWinner()

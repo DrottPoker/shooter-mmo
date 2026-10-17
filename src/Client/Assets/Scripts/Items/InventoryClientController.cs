@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.WorldData.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
@@ -890,7 +891,7 @@ namespace Mmorpg.Client.Items
             Guid destinationContainerId)
         {
             return source != null
-                && string.Equals(source.ContainerType, "bank", StringComparison.Ordinal)
+                && string.Equals(source.ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal)
                 && State.Bank != null
                 && State.Bank.ContainerId == destinationContainerId
                     ? InventoryRefreshScope.Bank

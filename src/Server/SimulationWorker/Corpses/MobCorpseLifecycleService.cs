@@ -47,7 +47,7 @@ public sealed class MobCorpseLifecycleService(
     SimulationWorkerIdentity identity,
     TimeProvider timeProvider)
 {
-    public const string DefaultPresentationKey = "corpse.generic_loot_crate";
+    public const string DefaultPresentationKey = "corpse.remains";
 
     public async Task<MobCorpseCreationResult> CreateAsync(
         CreateMobCorpseRequest request,
