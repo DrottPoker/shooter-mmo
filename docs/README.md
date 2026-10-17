@@ -48,6 +48,9 @@ operations, and future design do not drift into duplicate descriptions.
   baseline, every finding from the October 2026 audit of the existing
   foundation, open decisions, and the fix order. It is completed before new
   gameplay work starts.
+- [Items And Inventory Alignment Plan](ITEMS_INVENTORY_ALIGNMENT_PLAN.md)
+  records the October 2026 audit of the item and inventory system against the
+  fantasy design, the product decisions it needs, and the fix order.
 
 ## Product Direction
 
