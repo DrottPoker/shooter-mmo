@@ -1801,9 +1801,8 @@ namespace Mmorpg.Client.Ui
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             grid.constraintCount = Mathf.Max(1, columns);
             grid.childAlignment = TextAnchor.UpperLeft;
-            var count = 1;
             var layout = gridObject.AddComponent<LayoutElement>();
-            layout.preferredHeight = cellHeight * count;
+            layout.preferredHeight = cellHeight;
             StartCoroutine(UpdateGridHeightNextFrame(grid, layout, columns, cellHeight));
             return gridObject.GetComponent<RectTransform>();
         }

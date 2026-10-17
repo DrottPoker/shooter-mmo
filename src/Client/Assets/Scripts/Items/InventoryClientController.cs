@@ -2,9 +2,9 @@ using System;
 using System.Collections;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
-using Mmorpg.WorldData.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 using UnityEngine;
 
 namespace Mmorpg.Client.Items
@@ -25,16 +25,9 @@ namespace Mmorpg.Client.Items
 
         public bool AwaitingRefresh { get; private set; }
 
-        public bool Uncertain { get; private set; }
-
         public void MarkAwaitingRefresh()
         {
             AwaitingRefresh = true;
-        }
-
-        public void MarkUncertain()
-        {
-            Uncertain = true;
         }
     }
 
@@ -76,11 +69,6 @@ namespace Mmorpg.Client.Items
         public void MarkAwaitingRefresh()
         {
             Pending?.MarkAwaitingRefresh();
-        }
-
-        public void MarkUncertain()
-        {
-            Pending?.MarkUncertain();
         }
 
         public void Complete()
@@ -265,7 +253,10 @@ namespace Mmorpg.Client.Items
                 item.Revision,
                 destinationContainerId,
                 destinationSlotIndex);
-            return TrySubmit(intent, DetermineRefreshScope(source, destinationContainerId), out error);
+            return TrySubmit(
+                intent,
+                InventoryRefreshScopes.ForMove(State, source, destinationContainerId),
+                out error);
         }
 
         public bool TryEquip(
@@ -329,7 +320,10 @@ namespace Mmorpg.Client.Items
                 quantity,
                 destinationContainerId,
                 destinationSlotIndex);
-            return TrySubmit(intent, DetermineRefreshScope(source, destinationContainerId), out error);
+            return TrySubmit(
+                intent,
+                InventoryRefreshScopes.ForMove(State, source, destinationContainerId),
+                out error);
         }
 
         public bool TryMerge(
@@ -363,10 +357,10 @@ namespace Mmorpg.Client.Items
                 sourceItem.Revision,
                 targetItem.ItemInstanceId,
                 targetItem.Revision);
-            var scope = source.IsExternal && target.IsExternal
-                ? InventoryRefreshScope.Bank
-                : InventoryRefreshScope.Full;
-            return TrySubmit(intent, scope, out error);
+            return TrySubmit(
+                intent,
+                InventoryRefreshScopes.ForLocations(State, source, target),
+                out error);
         }
 
         public bool TrySwap(
@@ -403,10 +397,10 @@ namespace Mmorpg.Client.Items
                 firstItem.Revision,
                 currentSecondItem.ItemInstanceId,
                 currentSecondItem.Revision);
-            var scope = firstLocation.IsExternal && secondLocation.IsExternal
-                ? InventoryRefreshScope.Bank
-                : InventoryRefreshScope.Full;
-            return TrySubmit(intent, scope, out error);
+            return TrySubmit(
+                intent,
+                InventoryRefreshScopes.ForLocations(State, firstLocation, secondLocation),
+                out error);
         }
 
         public bool TryDestroy(InventoryItem item, out string error)
@@ -424,7 +418,7 @@ namespace Mmorpg.Client.Items
                 item.Revision);
             return TrySubmit(
                 intent,
-                source.IsExternal ? InventoryRefreshScope.Bank : InventoryRefreshScope.Full,
+                InventoryRefreshScopes.ForLocations(State, source),
                 out error);
         }
 
@@ -579,13 +573,7 @@ namespace Mmorpg.Client.Items
 
         private void OnSessionEnded(RealtimeClientError error)
         {
-            var pending = operationJournal.Pending != null;
-            if (pending)
-            {
-                operationJournal.MarkUncertain();
-            }
-
-            State.MarkDisconnected(pending);
+            State.MarkDisconnected(operationJournal.Pending != null);
             operationJournal.Reset();
             observedRealtimeJoin = false;
         }
@@ -884,18 +872,6 @@ namespace Mmorpg.Client.Items
                     ClientSession.SelectedCharacter?.id,
                     out characterId)
                 && characterId != Guid.Empty;
-        }
-
-        private InventoryRefreshScope DetermineRefreshScope(
-            InventoryItemLocation source,
-            Guid destinationContainerId)
-        {
-            return source != null
-                && string.Equals(source.ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal)
-                && State.Bank != null
-                && State.Bank.ContainerId == destinationContainerId
-                    ? InventoryRefreshScope.Bank
-                    : InventoryRefreshScope.Full;
         }
 
         private void QueueRefresh(
