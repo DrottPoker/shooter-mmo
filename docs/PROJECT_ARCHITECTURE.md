@@ -453,8 +453,8 @@ source consumed by SimulationWorker.
 The current pure rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, Secure Container eligibility, empty and non-empty Bag
 locations, Bag containment-cycle rejection, unitless integer weight arithmetic,
-base character capacity `200`, the 140 percent hard cap, and the linear
-fixed-point encumbrance multiplier. GameSimulation wraps the carry tuple in an
+the 140 percent hard cap, and the linear fixed-point encumbrance multiplier. The
+base character capacity comes from catalog content. GameSimulation wraps the carry tuple in an
 immutable shared movement state and applies the same multiplier in
 SimulationWorker and Unity prediction. These rules have
 no HTTP, PostgreSQL, UnityEngine, or SimulationWorker runtime dependency.

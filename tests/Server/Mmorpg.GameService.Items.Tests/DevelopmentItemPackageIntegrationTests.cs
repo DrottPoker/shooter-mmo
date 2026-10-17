@@ -14,7 +14,8 @@ public sealed class DevelopmentItemPackageIntegrationTests
         var player = await context.RegisterPlayerAsync();
         var applier = new DevelopmentItemPackageApplier(
             context.DataSource,
-            context.ItemTransactionService);
+            context.ItemTransactionService,
+            context.CatalogSource);
         var package = LoadFixturePackage(context, "full_inventory");
 
         var result = await applier.ApplyAsync(package, player.Character.Id, CancellationToken.None);
@@ -77,13 +78,22 @@ public sealed class DevelopmentItemPackageIntegrationTests
         var player = await context.RegisterPlayerAsync();
         var applier = new DevelopmentItemPackageApplier(
             context.DataSource,
-            context.ItemTransactionService);
+            context.ItemTransactionService,
+            context.CatalogSource);
         var package = LoadFixturePackage(context, "encumbrance_100") with { ExpectedLoadPercent = 90 };
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             applier.ApplyAsync(package, player.Character.Id, CancellationToken.None));
 
         Assert.Contains("instead of exactly 90 percent", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Nothing was granted", error.Message, StringComparison.Ordinal);
+
+        // The character stays empty, so the corrected package can still be applied.
+        var corrected = await applier.ApplyAsync(
+            LoadFixturePackage(context, "encumbrance_100"),
+            player.Character.Id,
+            CancellationToken.None);
+        Assert.Equal(corrected.CarryCapacity, corrected.CarriedWeight);
     }
 
     private static DevelopmentItemPackage LoadFixturePackage(

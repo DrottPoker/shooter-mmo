@@ -84,44 +84,20 @@ public sealed class DevelopmentItemPackageLoaderTests
             + " ] }";
     }
 
-    // Recomputes each package with the catalog's own values: every grant names an active
-    // definition within its stack size, equipment fits its slot, and an expected load is
-    // reached exactly.
+    // Uses the same planner as the package tool, with the catalog's base carry capacity.
     private static void AssertPackagesFit(
         DevelopmentItemPackageDocument packages,
         ItemCatalogRuntimeDocument catalog)
     {
-        var definitions = catalog.Definitions.ToDictionary(definition => definition.Id, StringComparer.Ordinal);
         foreach (var package in packages.Packages)
         {
-            var carriedWeight = 0L;
-            var capacity = catalog.Character.BaseCarryCapacity;
-            foreach (var grant in package.Grants)
-            {
-                Assert.True(
-                    definitions.TryGetValue(grant.DefinitionId, out var definition),
-                    $"Package '{package.Id}' grants unknown definition '{grant.DefinitionId}'.");
-                Assert.InRange(grant.Quantity, 1, definition!.MaximumStackSize);
-                if (grant.Destination == DevelopmentItemPackageDestinations.Equipment)
-                {
-                    Assert.True(
-                        ItemEquipmentRules.IsCompatible(definition, grant.EquipmentSlotId),
-                        $"Package '{package.Id}' equips '{grant.DefinitionId}' into '{grant.EquipmentSlotId}'.");
-                    capacity += definition.Bag?.CarryCapacityBonus ?? 0;
-                }
-
-                if (DevelopmentItemPackageDestinations.IsCarried(grant.Destination))
-                {
-                    carriedWeight += ItemWeightRules.CalculateStackWeight(definition.UnitWeight, grant.Quantity);
-                }
-            }
-
-            if (package.ExpectedLoadPercent is int expectedLoadPercent)
-            {
-                Assert.True(
-                    carriedWeight * 100 == capacity * expectedLoadPercent,
-                    $"Package '{package.Id}' carries {carriedWeight}/{capacity}, not exactly {expectedLoadPercent} percent.");
-            }
+            var problems = DevelopmentItemPackagePlanner.FindProblems(
+                package,
+                catalog,
+                catalog.Character.BaseCarryCapacity);
+            Assert.True(
+                problems.Count == 0,
+                $"Package '{package.Id}' does not fit: {string.Join("; ", problems)}.");
         }
     }
 }

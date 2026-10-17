@@ -398,8 +398,8 @@ $snapshot.bank.slots.Count
 $snapshot.secureContainer.contents.slots.Count
 ```
 
-Expected result: the values are `9`, `20`, `40`, and `4`. The snapshot is empty
-but complete, reports capacity `200`, and contains no operation payload,
+Expected result: the values are `10`, `20`, `40`, and `4`. The snapshot is empty
+but complete, reports capacity `2000`, and contains no operation payload,
 credentials, client icon, or repeated definition metadata. No Unity Editor
 action is required for this verification.
 
@@ -563,7 +563,7 @@ docker compose -f docker-compose.test.yml down
 ```
 
 Expected result: every selected test passes. The suite verifies base capacity
-`200`, equipped Bag capacity, exact custody contribution, exclusion of bank,
+from the catalog, equipped Bag capacity, exact custody contribution, exclusion of bank,
 Recovery Storage, and corpse custody, lower-capacity Bag rollback, full
 movement through 100 percent, the linear multiplier through `0.20` at 140 percent,
 monotonic active-session propagation, protocol validation, and reconnect
@@ -589,7 +589,7 @@ For a manual default-state and reconnect check:
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
-   `0 / 200`, movement `100%`, and its committed item-state revision.
+   `0 / 2000`, movement `100%`, and its committed item-state revision.
 6. Leave to CharacterSelect and join the same character again. The carry tuple
    and revision are restored and movement remains available.
 7. Exit Play Mode and stop both backend processes and Compose services.
@@ -679,8 +679,9 @@ powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 
 Expected result: every selected backend test passes, including one real
 PostgreSQL transaction-service fixture flow, Editor-tool list and grant flows,
-exact 140 percent package weight, hard-cap rejection, readback, Recovery
-revision, and replay refusal. Both Unity suites pass. EditMode coverage
+exact 140 percent package weight, the package check against the catalog before
+the first grant, hard-cap rejection, readback, Recovery revision, and replay
+refusal. Both Unity suites pass. EditMode coverage
 verifies the shared Editor menu root and machine-readable tool response, the
 presentation catalog cache, catalog mismatch, complete and focused snapshots,
 monotonic and divergent revisions, operation correlation, specialized targets,
@@ -788,9 +789,12 @@ dotnet run --project src/Server/GameService --configuration Release --no-build -
 ```
 
 The packages come from `content/development/item-packages.json`, which GameService
-copies next to its build output. A package that names an unknown definition, or
-that no longer reaches its exact expected load, is rejected with a message that
-names the package.
+copies next to its build output. Before the first grant, the tool checks the
+package against the current item catalog. A package that names an unknown
+definition, exceeds a stack size, equips an item into a slot that cannot hold it
+or that another equipped item blocks, or no longer reaches its exact expected load
+is rejected with a message that names the package and every problem. Nothing is
+granted, so the character stays empty for the corrected package.
 
 ### Manual Player Loop
 

@@ -213,8 +213,8 @@ Status: Temporary UI presentation
 Status: Implemented authority and transport foundation
 
 Every accepted world session receives the character's authoritative unitless
-carried weight, capacity, and item-state revision. Base capacity is `200`, and an
-equipped Bag can add its authored capacity bonus. Permanent inventory,
+carried weight, capacity, and item-state revision. Base capacity is `2000`, set in
+catalog content, and an equipped Bag can add its authored capacity bonus. Permanent inventory,
 Bag contents, carried empty Bags, and Secure Container contents contribute to
 weight. Items assigned to equipment slots, including the equipped Bag item
 itself, do not. The equipped Bag's capacity bonus still applies. Bank, Recovery
