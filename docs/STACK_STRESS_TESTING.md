@@ -87,7 +87,7 @@ harness does not create one transport thread per bot.
 
 ### Dense Replication And Shared Corpse Scheduling
 
-Protocol version `15` separates local authority from degradable remote
+The realtime protocol separates local authority from degradable remote
 presentation. Every joined client receives a small owner snapshot at the full
 configured 15 Hz. That packet carries the authoritative local state and input
 acknowledgement. Remote visible entities use MTU-safe chunks of at most 24

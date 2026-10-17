@@ -236,6 +236,40 @@ uses HTTP API error codes; and only the types named in
 [Cross-Module Statements](#cross-module-statements) use another module's
 contracts or SQL fragments.
 
+## Items Tables
+
+| Table | Responsibility |
+| --- | --- |
+| `item_catalog_revisions` | Applied deterministic catalog revisions and the current one |
+| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings |
+| `item_categories`, `item_tags`, `equipment_slots` | Catalog vocabulary with display order, slot maximum quantity, and active state |
+| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, structural fingerprint, and active state |
+| `item_definition_tags`, `item_definition_default_policies` | Many-to-many definition tags and default policies |
+| `item_definition_equipment_slots`, `item_definition_blocked_equipment_slots` | Compatible equipment slots and the slots an equipped definition blocks |
+| `item_definition_location_rules` | Secure Container and other explicit location eligibility |
+| `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Bag carry bonus and its stable general and specialized slots |
+| `secure_container_tiers`, `account_secure_container_entitlements` | Secure Container tiers and the account's selected tier |
+| `character_item_states` | Aggregate revision, carried weight, carry capacity, and the owned top-level container ids |
+| `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed containers with owner binding, slot kinds, accepted tags, revision, and lifecycle |
+| `item_instances` | Durable identity, definition, quantity, revision, and exactly one location: a container slot or an equipment slot |
+| `item_instance_policies` | Protected-on-death and one-death insurance lifecycle records |
+| `recovery_deliveries`, `recovery_delivery_items` | System deliveries with source, availability, expiry, and their items |
+| `item_operations`, `item_operation_changes`, `item_destructions` | Operation ids with canonical request hash and replayable result, the append-only audit, and destruction records |
+| `corpses`, `corpse_sections`, `corpse_snapshots`, `death_events` | Durable player and persistent Mob corpses, their three sections, non-interactive presentation snapshots, and idempotent death events |
+
+CHECK constraints enforce the location union of `item_instances`, and partial
+unique indexes allow one item per container slot and per equipment slot. A
+retired catalog row stays with `is_active = false`, so audit records and old
+corpses keep their references. Normal non-persistent Mob corpses stay
+SimulationWorker state.
+
+Every mutation carries an operation id. Replaying the same id and canonical
+payload returns the stored result; reusing it with another payload is a stable
+conflict. Player mutations also carry the expected character item-state
+revision, and targeted item, Bag, and corpse mutations carry the revisions of
+the rows they target. An unrelated change in the same container does not reject
+a targeted loot request.
+
 ## Lock Order
 
 Every transaction that spans modules takes locks in this order:
@@ -376,7 +410,7 @@ is Placement, and Itm is Items. R is read, W is write, and L is lock.
 | S36 | Inventory reads check character ownership | Chr R | `CharactersSql.ActiveCharacters` |
 | S37 | Development item tool lists characters | Chr R, Acc R, Plc R | `CharactersSql.ActiveCharacters`, `AccountsSql.UsernameOf`, `PlacementSql.HasActiveSimulationSession` |
 | S38 | Development item tool loads a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
-| S39 | Phase 9 fixture loads and validates a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
+| S39 | The Development item tool loads and validates a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
 | S40 | Baseline migrations #1 and #6 | mixed DDL | R4, frozen |
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,

@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-16
+Last updated: 2026-10-17
 
 This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -50,7 +50,7 @@ operations, and future design do not drift into duplicate descriptions.
   gameplay work starts.
 - [Items And Inventory Alignment Plan](ITEMS_INVENTORY_ALIGNMENT_PLAN.md)
   records the October 2026 audit of the item and inventory system against the
-  fantasy design, the product decisions it needs, and the fix order.
+  fantasy design, the product decisions it settled, and the fixes.
 
 ## Product Direction
 
@@ -68,28 +68,12 @@ operations, and future design do not drift into duplicate descriptions.
   distinction, composable NPC capabilities, visual spawn authoring, click
   interaction, runtime ownership, and actor scaling rules.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
-  current product and domain source of truth for planned items, slot inventory,
-  Bags, Secure Container, carry weight, death loot, corpses, insurance, and
-  Recovery Storage.
-- [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
-  defines the dependency-ordered delivery phases, proposed persistence model,
-  service boundaries, and verification gates for that design. Phases 1 through
-  15 are implemented, including the item catalog, Unity authoring, PostgreSQL
-  schema,
-  transactional catalog mirror, character item-state bootstrap, authoritative
-  reads, the race-safe transaction kernel, policy and quest-grant lifecycle,
-  offline-safe account APIs, exact-session carry-state delivery, and shared
-  SimulationWorker and Unity encumbrance. The exact-session in-world mutation
-  boundary, persistent Unity inventory foundation, idempotent death partition,
-  durable player corpses, worker restart restoration, and audited expiry are also
-  complete, together with concurrent bidirectional corpse interaction. Phase 12
-  adds deterministic actor content and tools, bounded worker actors, shared
-  interaction targeting, and authoritative NPC interaction. Phase 13 adds
-  protocol version `13` and insurance plus quest item-lifecycle handlers on that
-  interaction. Phase 14 adds content-controlled live or durable Mob corpse
-  variants, retry-safe loot claims, and selected boss restart restoration.
-  Phase 15 adds bounded operations, low-cardinality metrics, retention cleanup,
-  concurrent load scenarios, and the rerun movement and network baseline.
+  product and domain source of truth for items, equipment, slot inventory, Bags,
+  the Secure Container, carry weight, death loot, corpses, insurance, and
+  Recovery Storage, split into decided, proposed, and open rules.
+- [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
+  records the delivered phases of the item and world-actor foundation. The
+  current implementation status is in [Project Overview](PROJECT_OVERVIEW.md).
 - [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
   project vision and broader historical design context. Current architecture and
   feature-specific design documents supersede conflicting details in that brief.

@@ -53,11 +53,11 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   reconciliation, and remote interpolation.
 - Shared checksummed World collision chunks with ramps, walls, steps, slope
   handling, and position-driven streaming.
-- Strict WorldData item authoring with nine representative definitions,
-  deterministic runtime catalog and structural fingerprints, stable category,
-  tag, equipment-slot, and Secure Container tier identities, and pure item,
-  Bag, unitless integer weight, and encumbrance rules. The shared base character
-  capacity is 200.
+- Strict item catalog authoring with ten fantasy definitions, retired-id
+  tombstones, deterministic runtime catalog and structural fingerprints, stable
+  category, tag, equipment-slot, and Secure Container tier identities, and pure
+  item, equipment stack, blocked-slot, Bag, unitless integer weight, and
+  encumbrance rules. The base character carry capacity is 2000.
 - A Unity item catalog window for searchable gameplay authoring, strict shared
   validation, deterministic baking, structural-change review, and client-owned
   icons and presentation metadata cached from a bundled Addressables catalog.
@@ -93,8 +93,8 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   restoration, and stable update-required handling for catalog mismatch.
 - A temporary uGUI inventory panel on the permanent client foundation, with the
   canonical layout, `B` character-storage, `C` equipment plus character-storage,
-  and `I` complete Development views, plus protocol-v11 controls for every
-  currently exposed live item and corpse mutation, including atomic occupied
+  and `I` complete views, plus controls for every currently exposed live item
+  and corpse mutation, including atomic occupied
   slot and Bag aggregate swaps, corpse-internal rearrangement, and typed corpse
   equipment destinations.
 - Persistent Unity corpse presence and view state with complete chunk assembly,
@@ -128,33 +128,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Temporary UI only. Networking, gameplay, state, service, and tooling code are
   maintained as long-term foundations.
 
-Phases 1 through 15 of the slot-based item and world-actor foundation are
-implemented. Shared content, pure rules, Unity authoring, deterministic baking,
-the transactional PostgreSQL catalog mirror, constrained custody schema, and
-complete empty character item-state bootstrap now exist. GameService exposes
-revision-cached catalog reads, owned item-state, bank and Recovery Storage reads, and
-account-authenticated offline mutation routes. The same transaction kernel owns
-policy records, insurance removal, quest-grant cleanup, Secure Container tier
-changes, Recovery claims, idempotency, revisions, weight, and audit. Active
-characters now mutate through an exact-session, exact-worker SimulationWorker
-boundary with live service access and committed carry propagation. Unity now
-loads and reconciles authoritative item snapshots through a persistent client
-controller and presents the first temporary but complete uGUI inventory loop.
-Carry state drives shared authoritative and predicted movement. GameService now
-owns durable player-death partition, corpse custody, Recovery policy results,
-absolute expiry, and restart restoration. SimulationWorker and Unity now expose
-the concurrent interactive corpse loop over that durable authority. The combat
-death producer, final corpse art, and final UI art remain later phases. The
-scalable NPC, Mob, spawn-authoring, and generic interaction foundation now uses
-deterministic WorldData, protocol version `15`, bounded worker state, existing
-spatial interest, server-authoritative interaction sessions, shared corpse
-targeting, typed insurance and quest item-lifecycle handlers, and permanent
-Unity state below a temporary uGUI panel. Normal live Mob corpses and selected
-durable boss corpse custody reuse that client and service foundation. Operations
-now have bounded database and payload work, retention cleanup, low-cardinality
-metrics, load scenarios, and a rerun Release movement baseline. Combat, damage,
+The slot-based item and world-actor foundation is implemented; its status is
+summarized in [Project Overview](docs/PROJECT_OVERVIEW.md). Combat, damage,
 death-event production, loot-table generation, durable unique actors, zones,
-layers, complex terrain meshes, and production orchestration remain deferred.
+layers, and production orchestration remain deferred.
 
 ## Requirements
 
@@ -321,11 +298,11 @@ The agreed setting, movement, camera, combat triangle, damage type, weapon,
 ammunition, and magic direction is in
 [Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md).
 
-The locked planned item, inventory, carry-weight, death-loot, corpse, insurance,
-and recovery rules are in
-[Inventory And Death Loot Design](docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
-complete dependency-ordered delivery plan is in
-[Items And Inventory Implementation Plan](docs/ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The item, inventory, carry-weight, death-loot, corpse, insurance, and recovery
+rules are in
+[Inventory And Death Loot Design](docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md), and
+the delivered phases in
+[Items And Inventory Delivery History](docs/ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 The implemented scalable world-actor, NPC, Mob, visual spawn-authoring, and
 interaction foundation plus its deferred contract is in
 [NPC And Mob System Design](docs/NPC_AND_MOB_SYSTEM_DESIGN.md).

@@ -90,7 +90,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports nine definitions, one base Secure Container
   tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 15 with 27 messages
+- Protocol verification reports realtime protocol version 16 with 27 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -164,14 +164,14 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 15 with 27
+Expected result: both commands report realtime protocol version 16 with 27
 messages. The first command rewrites only changed files and removes files that
 the schema no longer produces. The second fails and names the file when a
 generated file is stale, missing, or not produced by the schema. Commit the
 schema, `realtime-protocol.lock.json`, the generated `.cs` files, and their
 `.meta` files together.
 
-When generation reports that the wire contract of protocol version 15 changed,
+When generation reports that the wire contract of the current protocol version changed,
 the schema change alters bytes or acceptance. Increase `protocol.version` in
 the schema and generate again; the lock then records the new version next to
 the old ones. No Unity
@@ -274,9 +274,9 @@ writes nothing, and a failed multi-file bake restores every previous catalog
 file. Correct or discard the draft, select `Reload` to return to checked-in
 content when appropriate, and run the command-line `--verify` command above.
 
-## Phase 3 PostgreSQL Item Foundation Verification
+## Item Persistence Verification
 
-Start the isolated temporary PostgreSQL database and run only the Phase 3
+Start the isolated temporary PostgreSQL database and run only the item persistence
 integration suite:
 
 ```powershell
@@ -324,7 +324,7 @@ docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" 
 
 Expected result: catalog `core` has exactly one row with `is_current = true`,
 and `active_characters_missing_item_state` is `0`. No Unity Editor action is
-required for Phase 3 verification.
+required for this verification.
 
 Stop the isolated test database when finished:
 
@@ -332,10 +332,11 @@ Stop the isolated test database when finished:
 docker compose -f docker-compose.test.yml down
 ```
 
-## Phase 4 Item Read Model Verification
+## Item Read Model Verification
 
 Start the isolated PostgreSQL database, configure the dedicated test connection
-as shown in the Phase 3 section, then run the read-model suite:
+as shown in [Item Persistence Verification](#item-persistence-verification), then
+run the read-model suite:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
@@ -384,7 +385,7 @@ $character = Invoke-RestMethod `
   -Uri http://localhost:5000/api/characters/ `
   -Headers $headers `
   -ContentType application/json `
-  -Body (@{ name = "Phase Four $($suffix.Substring(0, 8))" } | ConvertTo-Json)
+  -Body (@{ name = "Item Tester $($suffix.Substring(0, 8))" } | ConvertTo-Json)
 $catalog = Invoke-RestMethod `
   -Uri http://localhost:5000/api/item-catalog `
   -Headers $headers
@@ -400,11 +401,11 @@ $snapshot.secureContainer.contents.slots.Count
 Expected result: the values are `9`, `20`, `40`, and `4`. The snapshot is empty
 but complete, reports capacity `200`, and contains no operation payload,
 credentials, client icon, or repeated definition metadata. No Unity Editor
-action is required for Phase 4 verification.
+action is required for this verification.
 
-## Phase 5 Item Transaction Kernel Verification
+## Item Transaction Kernel Verification
 
-Phase 5 has no HTTP or Unity mutation flow. Verify the internal kernel against
+The kernel has no HTTP or Unity flow of its own. Verify it against
 the isolated PostgreSQL database:
 
 ```powershell
@@ -435,12 +436,11 @@ recomputation, exact hard-cap rollback, canonical operation replay, competing
 item, slot, equipment, and quantity races, the shared Bag aggregate lock, and
 failed-swap rollback. The dedicated database is reset between tests.
 
-No GameService item write endpoint should be manually invoked because Phase 5
-does not expose one. No Unity Editor action is required for Phase 5 verification.
+No Unity Editor action is required for this verification.
 
-## Phase 6 Policy And Offline Item API Verification
+## Item Policy And Offline Item API Verification
 
-Run the Phase 6 policy and HTTP integration suites against the isolated test
+Run the policy and HTTP integration suites against the isolated test
 database:
 
 ```powershell
@@ -471,9 +471,10 @@ bank and Recovery rejection, system delivery, successful kernel bank claim, and
 hard-cap claim rollback. The test host uses the real account
 session authentication handler and item endpoints over loopback HTTP.
 
-To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and
+To inspect the account HTTP contract manually, start local PostgreSQL and
 Redis with `docker compose up -d --wait`, run
-`dotnet run --project src/Server/GameService`, and use the Phase 4 registration commands to
+`dotnet run --project src/Server/GameService`, and use the registration commands from
+[Item Read Model Verification](#item-read-model-verification) to
 create `$headers` and `$character`. The `-SkipHttpErrorCheck` switch needs
 PowerShell 7 (`pwsh`), so run this snippet in `pwsh`, not Windows PowerShell 5.1.
 Then run:
@@ -534,9 +535,9 @@ destruction, Recovery claims, active-session rejection, and policy lifecycle are
 covered by the isolated integration suite until gameplay grants create real
 items for manual interaction.
 
-No Unity Editor action is required for Phase 6 verification.
+No Unity Editor action is required for this verification.
 
-## Phase 7 Carry State And Shared Encumbrance Verification
+## Carry State And Encumbrance Verification
 
 Run the carry-state unit, protocol, worker, and isolated PostgreSQL coverage
 against the dedicated test database:
@@ -583,7 +584,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `15` and simulation revision
+   startup reports realtime protocol version `16` and simulation revision
    `movement-simulation-v6`.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -594,11 +595,12 @@ For a manual default-state and reconnect check:
 7. Exit Play Mode and stop both backend processes and Compose services.
 
 No Inspector, scene, prefab, package, input-action, or build-setting change is
-required for Phase 7.
+required for this verification.
 
-## Phase 8 In-World Mutation Boundary Verification
+## In-World Item Mutation Verification
 
-Run the Phase 8 protocol, worker, HTTP client, and isolated PostgreSQL coverage:
+Run the in-world mutation protocol, worker, HTTP client, and isolated PostgreSQL
+coverage:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
@@ -633,7 +635,7 @@ Run all Unity tests:
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
-Expected result: all EditMode and PlayMode tests pass. Phase 8 EditMode tests
+Expected result: all EditMode and PlayMode tests pass. EditMode tests
 round-trip typed item intents and committed results through the same protocol
 source compiled by the backend and Unity.
 
@@ -648,15 +650,15 @@ For a manual runtime smoke check:
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
-   This step verifies the Phase 8 boundary. The current Phase 9 build also has
-   the inventory panel documented below.
+   This step verifies the in-world mutation boundary. The inventory panel is
+   documented in [Unity Inventory Verification](#unity-inventory-verification).
 6. Leave and reconnect. Confirm the same committed carry revision is restored.
 7. Exit Play Mode and stop both backend processes and Compose services.
 
 No Inspector, scene, prefab, package, input-action, or build-setting changes are
-required for Phase 8. No manual Unity Editor setup is required.
+required for this verification. No manual Unity Editor setup is required.
 
-## Phase 9 Unity Inventory Foundation Verification
+## Unity Inventory Verification
 
 Run the dedicated fixture and client-foundation coverage against the isolated
 test database:
@@ -678,7 +680,7 @@ powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 Expected result: every selected backend test passes, including one real
 PostgreSQL transaction-service fixture flow, Editor-tool list and grant flows,
 exact 140 percent package weight, hard-cap rejection, readback, Recovery
-revision, and replay refusal. Both Unity suites pass. Phase 9 EditMode coverage
+revision, and replay refusal. Both Unity suites pass. EditMode coverage
 verifies the shared Editor menu root and machine-readable tool response, the
 presentation catalog cache, catalog mismatch, complete and focused snapshots,
 monotonic and divergent revisions, operation correlation, specialized targets,
@@ -882,12 +884,12 @@ revision is refused and the controller presents `item_catalog_update_required`
 instead of rendering item slots.
 
 World-loot keeps its reserved context identity. Corpse inspection, concurrent
-loot, partial stacks, and atomic equipped-Bag swaps are implemented by Phase 11
-and use the separate verification flow below.
+loot, partial stacks, and atomic equipped-Bag swaps use the separate flow in
+[Concurrent Corpse Interaction Verification](#concurrent-corpse-interaction-verification).
 
-## Phase 10 Death And Durable Corpse Verification
+## Player Death And Durable Corpse Verification
 
-Phase 10 has no fabricated combat or Unity death flow. Verify its complete
+No combat produces a death yet, and Unity has no death flow. Verify the complete
 durable boundary against the isolated PostgreSQL database:
 
 ```powershell
@@ -913,14 +915,15 @@ rejection of further weight gain, cross-Shard worker restoration, empty-corpse
 lifetime, one audited destruction per remaining item, and a
 custody-versus-expiry race with one final outcome.
 
-No manual Unity Editor steps are required for Phase 10. Do not change a scene,
-prefab, Inspector property, input action, package, or build setting. Phase 11
+No manual Unity Editor steps are required for this verification. Do not change a
+scene, prefab, Inspector property, input action, package, or build setting. The
+corpse interaction verification below
 uses the prepared exact-session death boundary for its Development corpse
 fixture without fabricating the future combat producer.
 
-## Phase 11 Concurrent Corpse Container Verification
+## Concurrent Corpse Interaction Verification
 
-Run the complete Phase 11 backend coverage against the isolated PostgreSQL
+Run the complete corpse interaction backend coverage against the isolated PostgreSQL
 database, then run both Unity suites:
 
 ```powershell
@@ -1011,7 +1014,7 @@ The future combat system is not required for this test. The fixture enters the
 same durable death, restore, interaction, transaction, and expiry boundaries
 that combat must call later.
 
-## Phase 12 World Actor And Interaction Verification
+## World Actor And Interaction Verification
 
 Compile or verify the canonical actor content from any repository directory:
 
@@ -1149,7 +1152,7 @@ presentation mapping:
 15. Join with two clients and open Mira independently. Expected result: both
     sessions coexist. One client cannot open a corpse while its NPC interaction
     is active. After closing it with `Escape`, click a corpse and verify the existing
-    Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
+    corpse inspection, drag-and-drop, and authoritative mutation flow is
     unchanged.
 16. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
     from compiled WorldData with fresh runtime identities, normal interest
@@ -1187,9 +1190,9 @@ snapshot, and leave flow. Configuration, startup commands, expected behavior,
 capacity reservation, Ctrl+C cleanup, and the visual Unity test are documented
 in [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md).
 
-## Phase 13 Insurance And Quest Item Lifecycle
+## NPC Insurance And Quest Item Verification
 
-Phase 13 uses Mira the Quartermaster and the existing Phase 12 world interaction
+The NPC lifecycle uses Mira the Quartermaster and the shared world interaction
 session. No scene object, inspector assignment, or new Unity asset is required.
 The default GameService lifecycle profile charges `100` currency for one-death
 insurance and grants one `quest_item.sealed_letter` with lineage
@@ -1226,20 +1229,20 @@ Expected result:
 - Generic destroy rejects the protected quest item. NPC abandonment removes only
   that grant lineage, and reacceptance creates exactly one new required item.
 - Moving beyond `3.5` metres or losing line of sight still closes the interaction
-  through the Phase 12 authority path.
+  through the shared interaction authority path.
 
 Recovery Storage headings label `death_recovered_insured` as consumed insurance
-and `death_recovered_protected` as protected-on-death. Phase 13 intentionally has
-no Mob combat or other new death producer. Use the existing backend death
+and `death_recovered_protected` as protected-on-death. No Mob combat or other death
+producer exists yet. Use the existing backend death
 fixture to verify first-death consumption and replay idempotency.
 
-No manual Unity Editor setup is required for Phase 13. Editor actions are needed
+No manual Unity Editor setup is required for this verification. Editor actions are needed
 only for the optional offline item grant used by this manual workflow.
 
-## Phase 14 Mob Corpse Variants
+## Mob Corpse Verification
 
-Phase 14 reuses the existing corpse presence, view, drag, inventory refresh, and
-generic loot-crate presentation. It adds no scene object, prefab, inspector
+Mob corpses reuse the corpse presence, view, drag, inventory refresh, and
+generic `corpse.remains` presentation. It adds no scene object, prefab, inspector
 reference, or protocol version. Mob definitions own the persistence choice and
 lifetime:
 
@@ -1293,10 +1296,10 @@ Mob fixture in this phase. `MobCorpseLifecycleService` consumes an authoritative
 death event and already resolved loot seeds, but combat, damage, death detection,
 loot-table generation, and respawn remain future producers.
 
-## Phase 15 Performance And Operations Hardening
+## Item Operations Hardening Verification
 
-Phase 15 keeps the existing item, corpse, actor, capability, interaction, and
-authority graph. Checked-in GameService defaults live under `Items:Operations`:
+The operations hardening keeps the item, corpse, actor, capability,
+interaction, and authority graph. Checked-in GameService defaults live under `Items:Operations`:
 
 - `TransactionTimeoutMilliseconds`: `10000`.
 - `LockTimeoutMilliseconds`: `2000`.
@@ -1359,7 +1362,7 @@ SimulationWorker status distinguishes actor tiers and live versus durable corpse
 counts. Credentials, session tokens, and command bodies must not appear.
 
 No manual Unity Editor scene, prefab, inspector, package, input, or build-setting
-steps are required for Phase 15. Run `tools/Run-UnityTests.ps1` as regression
+steps are required for this verification. Run `tools/Run-UnityTests.ps1` as regression
 coverage and expect all EditMode and PlayMode tests to pass unchanged.
 
 ## Isolated PostgreSQL Integration Tests
@@ -1528,7 +1531,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 15, simulation revision,
+`27015`, runtime id, realtime protocol version 16, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
@@ -2378,7 +2381,7 @@ to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
 restart SimulationWorker so both processes use the current protocol implementation.
-Protocol version 8 also validates shard and World identity, the exact placement,
+The protocol also validates shard and World identity, the exact placement,
 the compiled movement-simulation revision, the initial carry tuple,
 server-assigned network entity ids, reliable carry-state updates, reliable item
 operation intents and results, and reliable entity lifecycle messages.

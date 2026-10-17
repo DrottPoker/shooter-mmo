@@ -282,9 +282,10 @@ fits the situation.
   click based.
 - Gear and talents can grant a short dash or blink for avoiding mechanics.
 - Two saved equipment loadouts can be swapped with one key as a convenience. A
-  swap includes the matching ammunition. The existing primary and secondary
-  weapon slots fit this model. A loadout swap is one equipment change and has
-  the same short attack lockout as changing a single item.
+  swap includes the matching ammunition. It is a later feature of its own and
+  needs no second weapon slot, because the equipment slots are `main_hand` and
+  `off_hand`. A loadout swap is one equipment change and has the same short
+  attack lockout as changing a single item.
 
 ### Defense
 
@@ -446,6 +447,9 @@ bypassing armor and becoming strictly better against armored targets.
   used to haul tradeable ammunition past the carry-weight system. It is content
   data, not hard-coded, so it can be tuned after playtests.
 - Ammunition carried in the inventory has normal weight.
+- Ammunition in the slot follows the normal death rules for equipment in
+  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), and
+  corpse loot enters carried storage only, never the ammunition slot directly.
 
 ### Proposed
 
@@ -461,8 +465,6 @@ Weapon families and their feel:
   depending on tier, instead of a flat value. A flat bonus would make expensive
   ammunition a huge upgrade on a weak weapon. A percentage keeps the bonus
   proportional, so top-tier ammunition only pays off with a good weapon.
-- Ammunition in the slot follows the same death rules as other equipment in
-  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 - The lowest ammunition tier is very cheap. Ranged is the only style that
   costs money per attack, and new players must not be priced out of it.
 - Gear or perks may later grant a chance to save ammunition on a shot. A saved

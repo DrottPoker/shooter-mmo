@@ -8,7 +8,7 @@ This document is the source of truth for the current Unity client architecture.
 It describes runtime responsibilities, dependencies, state, scene flow, API
 handling, and local gameplay controls.
 
-The implemented Phase 12 client and Editor contract for world actors is defined
+The implemented client and Editor contract for world actors is defined
 in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). Later capability
 business behavior and final presentation remain explicitly outside the current
 runtime claim.
@@ -253,7 +253,7 @@ transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic GameService validation provides the same recovery when
 the displaced client is not connected to a shard.
 
-Protocol version 15 uses two explicit LiteNetLib channels plus unchanneled
+The realtime protocol uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
@@ -537,8 +537,8 @@ prediction and reconciliation replay. The temporary F2 panel exposes weight,
 capacity, item-state revision, and movement percentage for observation without
 becoming inventory state or authority.
 
-`RealtimeSimulationClient.TrySendItemOperation` accepts only a typed Phase 8
-protocol intent while joined and sends it on the reliable ordered control path.
+`RealtimeSimulationClient.TrySendItemOperation` accepts only a typed protocol intent while
+joined and sends it on the reliable ordered control path.
 Committed or rejected results are decoded only in the joined state. A committed
 newer carry revision advances `NetworkMovementSession` before
 `ItemOperationCompleted` is raised. The transport does not own item collections.
@@ -584,7 +584,7 @@ to resolve the committed outcome.
 
 ### Inventory UI
 
-`TemporaryInventoryPanel` is the only replaceable part of the Phase 9 inventory
+`TemporaryInventoryPanel` is the only replaceable part of the inventory
 implementation. It creates runtime uGUI below a World-scene controller and reads
 the persistent state without embedding API, protocol, revision, or item-rule
 ownership. `B` toggles character storage only, `C` toggles equipment plus
@@ -621,7 +621,7 @@ rules to disable obvious invalid targets. Server authority always revalidates an
 submitted action, and the client never applies an optimistic custody change.
 
 World-loot retains a reserved context identity without inventing snapshots or
-operations. Corpse context is active through the Phase 11 state described below.
+operations. Corpse context is active through the corpse state described below.
 
 ### Corpse Client State And Presentation
 
@@ -633,7 +633,7 @@ when a stale base or concurrency result requires it. It never writes inventory
 or corpse custody locally. A disconnect clears uncertain transient state, and a
 new joined session rebuilds presence and views from server authority.
 
-Protocol version `11` carries chunked presence, destination slot tags,
+The corpse protocol carries chunked presence, destination slot tags,
 canonical corpse equipment-slot ids, open, close, refresh, full-item and
 partial-stack loot or deposit, corpse-internal move, ordinary slot swap, atomic
 Bag swap, operation-result, targeted view-state, and view-closure messages on
@@ -799,11 +799,11 @@ dimensions, slope limit, step height, ground snap distance, and substep budget
 come from the validated server join settings. Movement never uses Unity
 CharacterController or PhysX to decide network position.
 
-## Phase 12 World Actor And Interaction Client
+## World Actor And Interaction Client
 
 Status: Permanent client foundation implemented with replaceable presentation
 
-Phase 12 adds permanent client state below replaceable presentation:
+The client keeps permanent state below replaceable presentation:
 
 - `WorldActorClientController` owns immutable, monotonic actor presence and
   replicated state across scene transitions and reconnect cleanup.
@@ -830,24 +830,18 @@ Phase 12 adds permanent client state below replaceable presentation:
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts.
 
-The actor and interaction messages introduced through protocol version `13`
-remain part of current protocol version `15`. The persistent realtime client
-decodes them through the shared GameProtocol source and keeps the existing
-explicit mismatch path for older or partially updated clients.
-Phase 13 adds typed insurance apply or remove and quest accept or abandon
-payloads to the existing capability action instead of adding a second NPC or
-item interaction transport.
+The persistent realtime client decodes the actor and interaction messages
+through the shared GameProtocol source and keeps the explicit mismatch path for
+older or partially updated clients. Typed insurance apply or remove and quest
+accept or abandon payloads ride on the capability action instead of a second
+NPC or item interaction transport. A confirmed Character Bank or Recovery Storage
+capability raises `StorageCapabilityOpened`, which opens the inventory with that
+storage.
 
-Phase 14 requires no protocol bump or parallel Mob-loot controller. The existing
-corpse presence and nullable source-character contracts represent both live Mob
+Mob loot needs no parallel controller. The corpse presence and nullable source-character contracts represent both live Mob
 and durable player or boss corpses. The same client view, pointer target,
 operation journal, canonical three-section snapshot, committed delta, inventory
 refresh, and reconnect cleanup paths remain authoritative.
-
-Phase 15 is server and tooling hardening. It does not add Unity state, a new
-packet, scene object, prefab, inspector reference, or presentation flow. The
-licensed EditMode and PlayMode suites remain the regression gate for the
-persistent inventory, corpse, actor, interaction, and bootstrap ownership above.
 
 The pointer selects targets: a direct ray through the cursor first, then a
 `0.15` metre spherecast tolerance, among registered targets within `100` metres
@@ -885,9 +879,9 @@ insurance or protected-on-death delivery labels.
 
 Current corpse presentation registers with the shared target controller and
 its open view consumes the shared one-active-interaction lease while retaining
-`CorpseClientController`, the Phase 11 corpse protocol, and durable transaction
-authority. Phase 12 changes selection and session coordination, not corpse
-custody.
+`CorpseClientController`, the corpse protocol, and durable transaction
+authority. Shared targeting changes selection and session coordination, not
+corpse custody.
 
 All new Editor tools remain under the established menu root:
 
@@ -920,34 +914,30 @@ with intent and path ids, remote interpolation, collision resource loading,
 authored player prefab and orbit camera contracts, and development-world scene
 composition. They also execute the shared encumbrance reference points, movement
 prediction, the movement and planner determinism fingerprints, and monotonic
-carry-revision handling used by SimulationWorker. Phase 8 EditMode coverage also round-trips
+carry-revision handling used by SimulationWorker. EditMode coverage also round-trips
 typed Secure Container intents and committed item results without adding client
-authority fields. Phase 9 coverage loads the real bundled gameplay and
+authority fields, loads the real bundled gameplay and
 presentation catalogs, verifies cache reuse and mismatch rejection, validates
 complete and focused snapshots, exercises stale and divergent revision handling,
 correlates operation ids, and checks specialized slots, Secure Container rules,
 non-empty Bags, split quantities, the exact hard cap, external corpse swaps, and
-committed-revision refresh eligibility. Phase 11 coverage
-verifies presence assembly, duplicate and stale chunks, complete canonical
+committed-revision refresh eligibility. Corpse coverage verifies presence assembly, duplicate and stale chunks, complete canonical
 three-section views, targeted delta consistency, monotonic revisions, every
 typed corpse intent, and corpse drag payload identity.
 
-Phase 12 EditMode coverage verifies monotonic actor presence and state,
+World actor coverage verifies monotonic actor presence and state,
 reconnect cleanup, operation correlation, authoritative capability summaries,
 direct-ray and spherecast target selection, unrelated-collider filtering, and
 deterministic Actor Studio and Spawn Authoring compiler integration.
 
-Phase 13 coverage round-trips typed lifecycle payloads and committed
+NPC lifecycle coverage round-trips typed lifecycle payloads and committed
 item-revision messages, verifies safe policy-source mapping, and keeps the
 temporary panel below the persistent inventory and interaction controllers.
 
-Phase 14 EditMode coverage verifies the normal and boss corpse settings through
+Mob corpse coverage verifies the normal and boss corpse settings through
 the neutral Actor Studio round trip. Existing corpse protocol and client tests
 continue to cover the shared Mob presentation path, so no scene or prefab
 fixture is added.
-
-Phase 15 adds no Unity test fixture because it has no Unity-facing behavior. All
-EditMode and PlayMode tests still run as the release-hardening regression gate.
 
 `ClientAssemblyArchitectureTests` pins the assembly graph described in
 [Assemblies](#assemblies). `ClientAddressablesTests` compares the committed

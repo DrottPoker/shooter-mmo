@@ -331,7 +331,7 @@ only for its hand-written cross-field rules, as `Movement`, `Items`, `Corpses`,
 and `WorldActors` do; `Session` and `Replication` need none. The list is in
 [Realtime Protocol](REALTIME_PROTOCOL.md#schema-and-generator).
 
-Protocol version 15 includes:
+The current protocol version includes:
 
 - Join, leave, rejection, and structured disconnect messages.
 - Shard and World identity in join acceptance.
@@ -548,13 +548,8 @@ occupying every connection slot needed by real local players.
 
 ### Durable Item Boundary
 
-Status: Phases 1 through 15 content, authoring, schema, catalog mirror, character
-bootstrap, authoritative reads, policy lifecycle, internal transaction kernel,
-offline account APIs, carry-state delivery, shared encumbrance, and realtime item
-mutation plus Unity inventory integration, death partition, durable player
-corpse custody, concurrent corpse interaction, NPC insurance and quest item
-  lifecycle, live or durable Mob corpse variants, and operational hardening
-  implemented
+Status: Implemented. The delivered phases are listed in
+[Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
 GameService owns the durable item schema, mirrored definitions, character item
 states, top-level container identities, account Secure Container entitlements,
@@ -573,8 +568,9 @@ instance rows contain stable definition ids and active policy summaries rather
 than repeated definitions, presentation data, policy sources, or operation
 metadata.
 
-Account-session mutation routes cover relocation, stack split and merge,
-allowed destruction, Recovery claims, and account Secure Container tier changes.
+Account-session mutation routes cover relocation, stack split and merge, and
+allowed destruction in carried storage, and account Secure Container tier
+changes. Bank and Recovery Storage stay world-only.
 They submit only an account actor derived from authentication and require the
 character to be offline. The transaction locks both the character and its item
 state before checking active simulation-session ownership. Simulation admission
@@ -640,10 +636,11 @@ worker, runtime, Shard, and assignment inside the same transaction as the
 mutation. The worker applies carry state only from a committed result and never
 writes inventory tables or holds an item collection.
 
-Bank and Recovery Storage operations require a matching worker-validated service
-point. Secure Container operations require no city service. Insurance and quest
-item-lifecycle operations require a matching Phase 12 interaction session and
-capability handler. The worker asserts only the access already validated by that
+Bank and Recovery Storage operations require an open interaction with a world
+actor whose bank or recovery_storage capability is available, which the worker
+evaluates when the operation starts. Secure Container operations require no
+city service. Insurance and quest item-lifecycle operations require a matching
+interaction session and capability handler. The worker asserts only the access already validated by that
 session. GameService revalidates the live authority tuple, uses server-owned
 insurance price and quest grant configuration, and commits through the same item
 transaction kernel.
@@ -693,44 +690,32 @@ the exact-session item transaction boundary, while durable Mob corpses share the
 player corpse record, restoration, interaction, and expiry code. These choices
 do not introduce Zone or Layer ownership.
 
-Phase 4 added authenticated reads. Phase 5 added the internal transaction kernel.
-Phase 6 adds policy-safe account reads and offline mutations on that kernel.
-Phase 7 adds session-bound carry state and shared SimulationWorker and Unity
-encumbrance. Phase 8 adds service-authenticated active-character item mutation
-without adding worker inventory state. Phase 9 adds the persistent Unity catalog,
-snapshot, revision, operation-journal, targeted-refresh, reusable drag-and-drop
-interaction layer, and temporary uGUI presentation. Unity still has no item
-authority, SimulationWorker still holds no item collection, and there is no
-gameplay grant route. A guarded one-shot Development fixture command uses the
-existing durable kernel and is not a service endpoint.
+Unity has no item authority, SimulationWorker holds no item collection, and no
+HTTP grant route exists. A guarded process-local Development command applies
+content-defined item packages through the durable kernel.
 
-Phase 10 adds an exact-session player-death route, an internal system death
-adapter, durable corpse restoration for the assigned worker, and an idempotent
-GameService expiry loop. SimulationWorker holds only the bounded runtime corpse
-identity and presentation state returned by GameService, never PostgreSQL item
-rows or an alternate custody model. Phase 11 adds exact-session corpse reads and
-mutations, shared viewers, proximity and lifetime enforcement, committed deltas,
+The player-death route, the internal system death adapter, durable corpse
+restoration for the assigned worker, and an idempotent GameService expiry loop
+share the kernel. SimulationWorker holds only the bounded runtime corpse identity
+and presentation state returned by GameService, never PostgreSQL item rows or an
+alternate custody model. Exact-session corpse reads and mutations cover shared viewers, proximity and lifetime enforcement, committed deltas,
 Unity presence and view state, temporary presentation, bidirectional item
 transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
 death generation remains a later gameplay boundary.
 
-Protocol version `11` (now `15`) retained the existing framing and added corpse presence,
-interaction, result, chunked view-state, and view-closure message types. Corpse
-chunks are packed by encoded UTF-8 size under the existing `1200` byte limit.
-The Phase 8 ordinary container-item swap continues to reuse its existing
-two-item id and revision intent shape.
+The realtime protocol carries corpse presence, interaction, result, chunked
+view-state, and view-closure messages. Corpse chunks are packed by encoded UTF-8
+size under the `1200` byte limit.
 
-The complete planned contract is defined in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), with the
-proposed schema and delivery order in
-[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The item rules are defined in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), and the item
+tables and lock order in [GameService Modules](GAME_SERVICE_MODULES.md).
 
 ### World Actor And Interaction Boundary
 
-Status: Phase 12 foundation plus Phase 13 and 14 lifecycle integration implemented
+Status: Implemented
 
-Phase 12 extends the repository boundaries without creating a new service or
-topology layer:
+The world-actor boundary adds no new service or topology layer:
 
 - WorldData owns deterministic actor definitions, NPC capability descriptors,
   factions, presentation references, spawn definitions, spawn groups, spawn
@@ -738,9 +723,9 @@ topology layer:
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
   authoritative interaction, range and line-of-sight validation, NPC capability
   dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol uses version `15` for actor presence, interaction messages, and
-  typed insurance or quest item-lifecycle actions
-  compiled from the same source for .NET and Unity.
+- GameProtocol carries actor presence, interaction messages, and typed insurance
+  or quest item-lifecycle actions, compiled from the same source for .NET and
+  Unity.
 - Unity owns advisory pointer targeting, immutable replicated actor and
   interaction state, prefab presentation, temporary uGUI, and Editor authoring
   tools.
@@ -768,9 +753,10 @@ pass drops a tombstone once no connection still sees the actor, and all clear on
 assignment reconstruction or worker shutdown.
 
 The typed capability registry maps every supported capability kind to one
-authoritative handler. Deferred handlers remain the safe default. Phase 13
-registers async insurance, quest-offer, and explicit quest-turn-in handlers
-without changing actor identity or targeting. Insurance apply or removal and
+authoritative handler. Deferred handlers remain the safe default. Insurance,
+quest-offer, quest-turn-in, bank, and Recovery Storage handlers are registered
+without changing actor identity or targeting. Bank and Recovery Storage only
+confirm the capability; their item access follows the open session. Insurance apply or removal and
 quest accept or abandon reuse the established interaction session. Quest
 completion remains unavailable because no progression authority exists yet.
 
@@ -807,16 +793,16 @@ permanent Editor entry points are
 `MMORPG > Tools > Content > Spawn Authoring`, with visual scene handles
 that export canonical neutral WorldData.
 
-The existing corpse view and transaction protocols remain authoritative. Phase
-12 registers corpse presentation in the shared client target-selection
-foundation and makes its view consume the shared interaction lease. Phase 13
-adds policy and quest item lifecycle. Phase 14 combines live worker-owned Mob
-corpses and durable player or selected boss corpses through that same presence,
-view, range, lease, mutation, carry-state, and closure foundation. Vendor
+The corpse view and transaction protocols remain authoritative. Corpse
+presentation joins the shared client target selection, and its view consumes
+the shared interaction lease. Policy and quest item lifecycle run on NPC
+interactions. Live worker-owned Mob corpses and durable player or selected boss
+corpses share the same presence, view, range, lease, mutation, carry-state, and
+closure foundation. Vendor
 transactions, quest progression, complete Mob AI, combat, damage, death-event
-production, and loot-table generation remain later phases.
+production, and loot-table generation remain later work.
 
-Phase 15 hardens this existing authority graph rather than adding a new service
+Operational hardening bounds this authority graph without adding a new service
 or mutation path. GameService bounds HTTP bodies, canonical commands,
 PostgreSQL statements, and lock waits. It publishes identity-free item and corpse
 measurements, carries a bounded correlation id across worker HTTP calls, and
@@ -1088,8 +1074,8 @@ No database transaction remains open across a client network round trip.
 
 ### Authoritative Player Death, Restoration, And Loot
 
-Status: Durable Phase 10 and interactive Phase 11 boundaries implemented, live
-combat producer pending
+Status: Durable and interactive boundaries implemented, live combat producer
+pending
 
 1. The future authoritative combat system produces one unique death event only
    after its owning SimulationWorker has resolved death. Until that producer

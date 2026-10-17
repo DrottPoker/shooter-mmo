@@ -2,10 +2,11 @@
 
 Last updated: 2026-10-17
 
-Status: Active. The audit is complete, and the product owner accepted every
-recommendation on 2026-10-17. This document is a work plan, not a description
-of implemented behavior. Each finding moves to `Fixed` only together with a
-regression test or a documented manual verification.
+Status: Done. The product owner accepted every recommendation on 2026-10-17, and
+every finding is fixed except B11, which waits for the combat work as decided in
+D7. Each finding moved to `Fixed` together with a regression test or a
+documented manual verification. The current rules live in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
 ## Purpose
 
@@ -127,7 +128,7 @@ documentation drift. No P0 finding was found.
 | B08 | Service access | Bank and Recovery use radius service points while the NPC capabilities for them answer as deferred. Insurance uses the NPC capability, so the `insurance_npc` service point is dead configuration. | `ItemInteractionAccessService.cs`, `ItemInteractionConfig.cs`, `DeferredWorldActorCapabilityHandler` | Fixed |
 | B09 | Unity flow | Panel texts tell the player to press `E`, which no longer exists. Escape is read directly by the panel and through the Cancel action, so one press sends two corpse closes. The interaction prompt sits at the old crosshair position. | `TemporaryInventoryPanel.cs`, `TemporaryWorldInteractionPanel.cs` | Fixed |
 | B10 | Wording | The protocol documents carry weight in grams, the corpse presentation key says loot crate, and problem URIs use `shooter-mmo.local`. | `realtime-protocol.json`, `CorpseTransformRules.cs`, stack stress tools | Fixed |
-| B11 | Consumption | No consume or use intent exists, and the kernel's consume command is a full durable transaction. Per-shot ammunition and potion use need a batched design. See D7. | protocol schema, `ItemStackCommandHandler.cs` | Open |
+| B11 | Consumption | No consume or use intent exists, and the kernel's consume command is a full durable transaction. Per-shot ammunition and potion use need a batched design. See D7. | protocol schema, `ItemStackCommandHandler.cs` | Planned (D7) |
 
 ### P2 Findings: Code Quality
 
@@ -147,10 +148,10 @@ documentation drift. No P0 finding was found.
 
 | Id | Area | Finding | Status |
 | --- | --- | --- | --- |
-| E01 | Shooter wording | `medical`, the pistol and rifle weight anchor, weapon attachments, penetration, the Field Pack, and shooter pointer capture in manual test steps. | Open |
-| E02 | Stale statements | The MVP lists click-to-move as future work and has an outdated implementation note; old protocol versions are presented as current; status headers contradict their content; insurance and quest grants are described as missing. | Open |
-| E03 | Contradictions | Offline Recovery claims, Recovery withdrawal granularity, Bank and Recovery access, and the lock order differ between documents. | Open |
-| E04 | Structure | The Phase 1 to 15 story is repeated in nine documents, the MVP repeats the inventory rules, Local Development organizes item tests by phase, and the implementation plan mixes 1850 lines of history with the only table map and error contract. | Open |
+| E01 | Shooter wording | `medical`, the pistol and rifle weight anchor, weapon attachments, penetration, the Field Pack, and shooter pointer capture in manual test steps. | Fixed |
+| E02 | Stale statements | The MVP lists click-to-move as future work and has an outdated implementation note; old protocol versions are presented as current; status headers contradict their content; insurance and quest grants are described as missing. | Fixed |
+| E03 | Contradictions | Offline Recovery claims, Recovery withdrawal granularity, Bank and Recovery access, and the lock order differ between documents. | Fixed |
+| E04 | Structure | The Phase 1 to 15 story is repeated in nine documents, the MVP repeats the inventory rules, Local Development organizes item tests by phase, and the implementation plan mixes 1850 lines of history with the only table map and error contract. | Fixed |
 
 ## Fix Order
 
