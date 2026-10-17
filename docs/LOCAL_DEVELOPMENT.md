@@ -1444,6 +1444,28 @@ placing active credentials in application settings or Compose YAML.
 `SIMULATION_WORKER_ADVERTISED_UDP_PORT` override the client-facing endpoint
 without changing the local bind port.
 
+### Reset The Local Development Database
+
+GameService refuses to start when a catalog change would invalidate live item
+state, and the error names the affected definition, equipment slot, tier, or
+character setting. On a local development database the alternative to an
+explicit data migration is a reset. It deletes every local account, character,
+item, corpse, and Recovery delivery.
+
+1. Stop GameService and SimulationWorker.
+2. From the main repository checkout, not a worktree, remove the PostgreSQL
+   volume and start the containers again. Compose names the volume after the
+   checkout directory, so a worktree would not reach it. Redis keeps no data.
+
+   ```powershell
+   docker compose down -v
+   docker compose up -d --wait
+   ```
+
+3. Start GameService. Expected result: it applies every migration, seeds the
+   current item catalog, and reports ready. Create a new account and character
+   in the client.
+
 ## Backend Services
 
 Run GameService in the first terminal:

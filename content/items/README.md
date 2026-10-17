@@ -105,7 +105,8 @@ when the change would invalidate live state:
 Regenerating runtime JSON is never sufficient authorization to invalidate live
 state. A change that live state depends on needs an explicit data migration. On
 a local development database the documented alternative is a database reset,
-described in [Local Development](../../docs/LOCAL_DEVELOPMENT.md).
+described in
+[Local Development](../../docs/LOCAL_DEVELOPMENT.md#reset-the-local-development-database).
 
 ## Unity Editor Workflow
 
