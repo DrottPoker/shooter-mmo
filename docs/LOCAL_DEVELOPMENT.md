@@ -2010,9 +2010,11 @@ Stop-Process -Name Runner.Listener -Force
 ```
 
 Expected result: the task state changes to `Ready`. At the next five-minute
-check it is `Running` again, and a minute or two later the newest `Runner_*.log`
-in `C:\actions-runner\_diag` contains `Listening for Jobs` and GitHub lists the
-runner as `online`. The whole recovery takes at most about ten minutes.
+check it is `Running` again. Within a few more minutes the newest
+`Runner_*.log` in `C:\actions-runner\_diag` contains `Listening for Jobs`, and
+GitHub lists the runner as `online`. In a test on 2026-10-17 the runner was back
+four and a half minutes after the stop; the whole recovery takes at most about
+ten minutes.
 
 ### Operate The Runner
 
