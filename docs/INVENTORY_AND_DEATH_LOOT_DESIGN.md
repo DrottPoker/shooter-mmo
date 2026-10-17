@@ -473,9 +473,9 @@ only split and destruction actions, and dropping any Recovery item withdraws its
 complete delivery atomically. Bank and Recovery Storage may be inspected globally
 by the owning account, but their mutations still require SimulationWorker's live
 access evaluation. Local Development can explicitly evaluate Bank and Recovery
-as globally accessible for testing. Production continues to evaluate authored
-major-city service points, and the Development option never includes insurance
-access or bypasses GameService authority.
+as globally accessible for testing. Production requires an open interaction with an NPC
+whose Bank or Recovery Storage capability is available, and the Development
+option never includes insurance access or bypasses GameService authority.
 The corpse context adapter exposes durable corpse custody as a bidirectional
 container without changing custody optimistically. Carried items may be
 deposited into corpse slots, and corpse items may be looted into carried slots.
@@ -730,8 +730,9 @@ runtime, and Shard before accepting an in-world command.
 
 Bank and Recovery Storage access additionally require a city-service validation
 from SimulationWorker. Offline account routes can never reach the bank or
-Recovery Storage, because both are city services that need a live character at
-a validated service point. Recovery is therefore claimed only in the world. Secure Container operations are allowed in the world but
+Recovery Storage, because both are city services that need a live character in
+an open interaction with an NPC that offers them. Recovery is therefore claimed
+only in the world. Secure Container operations are allowed in the world but
 remain category, slot, policy, weight, and session validated.
 
 Phase 12 adds the generic NPC and world-interaction session that later service
@@ -815,8 +816,8 @@ authority.
 
 Phase 8 adds the live SimulationWorker item-mutation path over the same durable
 kernel. A versioned reliable intent is bound to the exact account, character,
-simulation session, worker runtime, assignment, and Shard. The worker validates
-its authoritative position against configured service points, while GameService
+simulation session, worker runtime, assignment, and Shard. The worker grants
+Bank and Recovery access from the open NPC interaction, while GameService
 revalidates the complete live authority inside the mutation transaction. Bank
 and Recovery Storage require their matching live access. Secure Container
 operations do not require city access. Only a committed result can advance the

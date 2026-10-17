@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
@@ -30,25 +31,24 @@ internal sealed class QuestItemCommandHandler
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
         var questGrantId = command.QuestGrantId.Trim();
+        var parameters = new
+        {
+            command.CharacterId,
+            QuestGrantId = questGrantId,
+            SourceKind = ItemPolicySourceKinds.QuestGrant,
+            QuestItemCategoryId = ItemCategoryIds.QuestItem,
+            PolicyKind = ItemPolicyIds.ProtectedOnDeath,
+            ActiveStatus = ItemPolicyRules.ActiveStatus
+        };
         var itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
             QuestGrantItemIdsSql,
-            new
-            {
-                command.CharacterId,
-                QuestGrantId = questGrantId,
-                SourceKind = ItemPolicySourceKinds.QuestGrant
-            },
+            parameters,
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
         await context.Locks.LockMutationScopeAsync(itemIds, [], cancellationToken);
         itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
             QuestGrantItemIdsSql,
-            new
-            {
-                command.CharacterId,
-                QuestGrantId = questGrantId,
-                SourceKind = ItemPolicySourceKinds.QuestGrant
-            },
+            parameters,
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
 
@@ -134,14 +134,14 @@ internal sealed class QuestItemCommandHandler
         from item_instances item
         join item_definitions definition
           on definition.id = item.definition_id
-         and definition.category_id = 'quest_item'
+         and definition.category_id = @QuestItemCategoryId
         left join item_containers container on container.id = item.container_id
         left join item_instances source_bag
           on source_bag.id = container.bound_bag_item_instance_id
         join item_instance_policies policy
           on policy.item_instance_id = item.id
-         and policy.policy_kind = 'protected_on_death'
-         and policy.status = 'active'
+         and policy.policy_kind = @PolicyKind
+         and policy.status = @ActiveStatus
          and policy.source_kind = @SourceKind
         where coalesce(
                 item.equipped_character_id,

@@ -5,6 +5,7 @@ using System.Linq;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
+using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -106,6 +107,11 @@ namespace Mmorpg.Client.Ui
                 corpseController.State.Changed += OnCorpseStateChanged;
             }
 
+            if (worldInteractionController != null)
+            {
+                worldInteractionController.StorageCapabilityOpened += OnStorageCapabilityOpened;
+            }
+
             FindPlayerPresentation();
             BuildUi();
             SetOpen(false);
@@ -158,6 +164,11 @@ namespace Mmorpg.Client.Ui
             if (corpseController != null)
             {
                 corpseController.State.Changed -= OnCorpseStateChanged;
+            }
+
+            if (worldInteractionController != null)
+            {
+                worldInteractionController.StorageCapabilityOpened -= OnStorageCapabilityOpened;
             }
         }
 
@@ -231,6 +242,21 @@ namespace Mmorpg.Client.Ui
             dragCoordinator?.Cancel();
             ClearSelection();
             Show(requestedMode);
+        }
+
+        // An NPC that offers the Character Bank or Recovery Storage opens it in the complete
+        // view. Its item operations are allowed while the interaction stays open.
+        private void OnStorageCapabilityOpened(RealtimeWorldActorCapabilityKind kind)
+        {
+            var next = kind == RealtimeWorldActorCapabilityKind.Bank
+                ? InventoryContextKind.Bank
+                : InventoryContextKind.RecoveryStorage;
+            if (!isOpen || mode != InventoryPanelMode.Complete)
+            {
+                Show(InventoryPanelMode.Complete);
+            }
+
+            SetContext(next);
         }
 
         private void OnCorpseStateChanged()

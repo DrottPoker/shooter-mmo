@@ -234,9 +234,10 @@ revision, and movement percentage.
 Active characters now have one authoritative in-world mutation path for
 relocation, equip, unequip, stack split and merge, allowed destruction, Secure
 Container access, ordinary occupied-slot swap, and complete Recovery Storage
-claims. Bank and Recovery
-Storage require proximity to their configured worker service points. Secure
-Container access has no city requirement. Only committed GameService results can
+claims. Bank and Recovery Storage require an open interaction with an NPC that
+offers them, such as Mira the Quartermaster. Walking out of range or losing line
+of sight closes the interaction and ends the access. Secure Container access has
+no city requirement. Only committed GameService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
 Local Development explicitly enables global Bank and Recovery access so item
@@ -433,7 +434,7 @@ GameService supports owned
 item-state, bank, Secure Container, and Recovery reads plus offline relocation,
 split, merge, allowed destruction, and tier-change operations. Offline operations
 never reach the bank or Recovery Storage; those city services and Recovery claims
-work only in the world at a validated service point.
+work only in the world through an NPC that offers them.
 Internal policy and quest services apply auditable lineage without adding a
 gameplay quest or insurance NPC operation. SimulationWorker now serializes
 reliable item intents, validates live service access, uses the exact-session

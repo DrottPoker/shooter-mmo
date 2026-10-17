@@ -61,16 +61,9 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(30, config.MovementSimulation.TickRateHz);
         Assert.Equal(15, config.SnapshotRateHz);
         Assert.Equal(0.35f, config.MovementSimulation.CharacterCollision.Radius);
-        Assert.Equal(3, config.ItemInteraction.ServicePoints.Count);
         Assert.Equal(3f, config.ItemInteraction.CorpseInteractionRadius);
         Assert.Equal(32f, config.ItemInteraction.CorpseDiscoveryRadius);
         Assert.Equal(TimeSpan.FromSeconds(30), config.ItemInteraction.DurableCorpseRefreshInterval);
-
-        var access = new ItemInteractionAccessService(config);
-        Assert.True(access.Evaluate(0f, 0f, -1f).Bank);
-        Assert.True(access.Evaluate(0f, 0f, -1f).RecoveryStorage);
-        Assert.True(access.Evaluate(0f, 0f, -1f).InsuranceNpc);
-        Assert.False(access.Evaluate(4f, 0f, -1f).Bank);
     }
 
     [Fact]
@@ -92,9 +85,6 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(-254f, config.MovementSimulation.MinimumX);
         Assert.Equal(254f, config.MovementSimulation.MaximumX);
         Assert.Equal(-16f, config.MovementSpawn.Z);
-        Assert.Contains(
-            config.ItemInteraction.ServicePoints,
-            point => point.Id == "development_world_2_city_bank" && point.X == -8f);
     }
 
     [Fact]
@@ -134,18 +124,6 @@ public sealed class SimulationWorkerConfigurationValidationTests
             configuration,
             isDevelopment: true);
         Assert.True(options.GlobalBankAndRecoveryAccess);
-
-        var workerConfiguration = new ConfigurationBuilder()
-            .AddInMemoryCollection(WorkerSettings())
-            .Build();
-        var config = SimulationWorkerConfig.FromConfiguration(workerConfiguration);
-        var access = new ItemInteractionAccessService(config, options).Evaluate(
-            500f,
-            500f,
-            500f);
-        Assert.True(access.Bank);
-        Assert.True(access.RecoveryStorage);
-        Assert.False(access.InsuranceNpc);
     }
 
     [Fact]

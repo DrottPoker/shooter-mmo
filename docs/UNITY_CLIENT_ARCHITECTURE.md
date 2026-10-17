@@ -702,8 +702,8 @@ local Development character use Bank and Recovery Storage from any authoritative
 world position. The option is rejected if enabled outside the Development
 environment. It does not grant insurance access or weaken session, worker,
 runtime, Shard, assignment, GameService transaction, item-rule, or hard-cap
-authority. Production continues to derive Bank and Recovery access from authored
-service points.
+authority. Production derives Bank and Recovery access from an open interaction with an
+NPC that offers them.
 
 All Unity Editor commands owned by the project use the shared
 `MMORPG > Tools` root. The item catalog authoring window is at

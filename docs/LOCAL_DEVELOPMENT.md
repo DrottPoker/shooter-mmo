@@ -40,7 +40,7 @@ derives `world-actors.json` and the `Collision` chunk folder below the same Worl
 directory. The build copies `content/worlds/<WorldId>/world.json` and the
 generated actor and collision data from `src/Shared/WorldData/Generated` into
 that layout for both development Worlds, in build and publish output. Startup
-validates identity, bounds, spawn, service points, actor revisions, references,
+validates identity, bounds, spawn, actor revisions, references,
 ordering, collision checksums, and content semantics before UDP admission
 begins. `SimulationWorker__WorldDataPath` can point a deployment at a different
 canonical Worlds root.
@@ -642,9 +642,8 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `15` and loads the configured local bank,
-   Recovery Storage, and insurance NPC service points without a configuration
-   error.
+   reports the current realtime protocol version and loads the configured World
+   without a configuration error.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
@@ -850,10 +849,32 @@ names the package.
 
 The checked-in `src/Server/SimulationWorker/Config/appsettings.Development.json` sets
 `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess=true`. This is a local
-testing capability, not an GameService or protocol bypass. If the same setting is
+testing capability, not a GameService or protocol bypass. If the same setting is
 enabled outside the Development environment, SimulationWorker refuses startup.
-Production continues to require authored Bank and Recovery service-point
-proximity, and insurance access always remains proximity based.
+Production requires an open interaction with an NPC that offers Bank or Recovery
+Storage, and insurance always requires the insurance NPC capability.
+
+To test the production access path, start SimulationWorker with the global
+access turned off:
+
+```powershell
+$env:DevelopmentItemInteractions__GlobalBankAndRecoveryAccess = "false"
+dotnet run --project src/Server/SimulationWorker
+```
+
+1. Join the shard, press `I`, and move a Bank item into Permanent inventory.
+   Expected result: the move is rejected with `bank_access_required`.
+2. Left-click Mira the Quartermaster and select `Character Bank` in the
+   interaction panel. Expected result: the interaction reports that the Character
+   Bank is open, and the inventory opens in the complete view with the Bank
+   context. Moving an item between Bank and Permanent inventory now commits.
+3. Select `Recovery Storage` in the same interaction. Expected result: the
+   Recovery context opens, and a prepared delivery can be claimed.
+4. Walk away from Mira until the interaction closes, then move a Bank item again.
+   Expected result: the move is rejected with `bank_access_required`.
+
+Remove the variable with `Remove-Item Env:DevelopmentItemInteractions__GlobalBankAndRecoveryAccess`
+when finished.
 
 The catalog-update path is covered by
 `MapperRejectsCatalogMismatchAndInvalidDeliveryRevision`: a mismatched server
@@ -2383,7 +2404,8 @@ generations. It is not a runtime map switch. Prepare all target World content
 before changing a shard:
 
 - Add `content/worlds/<WorldId>/world.json` with the stable identity, client
-  scene, bounds, spawn, and item service points.
+  scene, bounds, and spawn. Item services such as Bank and Recovery Storage come
+  from NPC capabilities in the actor spawns.
 - Provide `content/worlds/<WorldId>/collision.json` and its compiled collision
   data below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
 - Provide `content/worlds/<WorldId>/actor-spawns.json` with at least one spawn

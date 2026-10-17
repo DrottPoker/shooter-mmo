@@ -17,18 +17,14 @@ internal sealed class ItemAuthorityOperations(
         RealtimePeerContext context,
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent,
-        float positionX,
-        float positionY,
-        float positionZ)
+        ItemInteractionAccess access)
     {
         try
         {
             var result = await itemInteractionService.ExecuteAsync(
                 session,
                 intent,
-                positionX,
-                positionY,
-                positionZ,
+                access,
                 CancellationToken.None);
             completions.Post(completionHandler, new ItemOperationCompleted(
                 context,

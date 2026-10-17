@@ -88,9 +88,7 @@ public sealed class RealtimeSimulationServiceTests
                 carryStateStore),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),
@@ -247,9 +245,7 @@ public sealed class RealtimeSimulationServiceTests
                 carryStateStore),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),
@@ -511,9 +507,7 @@ public sealed class RealtimeSimulationServiceTests
                 [TimeSpan.Zero]),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),

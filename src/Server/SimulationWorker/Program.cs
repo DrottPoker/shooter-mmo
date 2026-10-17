@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Telemetry;
@@ -92,7 +93,6 @@ builder.Services.AddSingleton<DurableCorpseStore>();
 builder.Services.AddSingleton<LiveMobCorpseStore>();
 builder.Services.AddSingleton<CorpseRuntimeMetrics>();
 builder.Services.AddSingleton<CorpseViewerRegistry>();
-builder.Services.AddSingleton<ItemInteractionAccessService>();
 builder.Services.AddSingleton<SimulationItemInteractionService>();
 builder.Services.AddSingleton<SimulationCorpseInteractionService>();
 builder.Services.AddSingleton<LiveMobCorpseInteractionService>();
@@ -110,6 +110,10 @@ builder.Services.AddSingleton<IWorldActorCapabilityHandler,
     QuestOfferWorldActorCapabilityHandler>();
 builder.Services.AddSingleton<IWorldActorCapabilityHandler,
     QuestTurnInWorldActorCapabilityHandler>();
+builder.Services.AddSingleton<IWorldActorCapabilityHandler>(
+    new ItemStorageWorldActorCapabilityHandler(RealtimeWorldActorCapabilityKind.Bank));
+builder.Services.AddSingleton<IWorldActorCapabilityHandler>(
+    new ItemStorageWorldActorCapabilityHandler(RealtimeWorldActorCapabilityKind.RecoveryStorage));
 builder.Services.AddSingleton<WorldActorCapabilityRegistry>();
 builder.Services.AddSingleton<WorldActorLineOfSightService>();
 builder.Services.AddSingleton<WorldActorMetrics>();

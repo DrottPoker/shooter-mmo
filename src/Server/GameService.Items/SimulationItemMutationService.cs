@@ -290,7 +290,7 @@ internal sealed class SimulationItemMutationService(
         CancellationToken cancellationToken)
     {
         return HasItem(request)
-            && HasNpcContext(request, "services.insurance")
+            && HasNpcContext(request)
             && request.Access!.InsuranceNpc
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<ApplyItemPolicyCommand>(
@@ -315,7 +315,7 @@ internal sealed class SimulationItemMutationService(
         CancellationToken cancellationToken)
     {
         return HasItem(request)
-            && HasNpcContext(request, "services.insurance")
+            && HasNpcContext(request)
             && request.Access!.InsuranceNpc
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<RemoveInsurancePolicyCommand>(
@@ -335,7 +335,7 @@ internal sealed class SimulationItemMutationService(
         SimulationItemOperationRequest request,
         CancellationToken cancellationToken)
     {
-        return HasNpcContext(request, "services.quest_offer")
+        return HasNpcContext(request)
             && request.Access!.QuestNpc
             && request.DestinationContainerId is not null
             && request.DestinationContainerId != Guid.Empty
@@ -362,7 +362,7 @@ internal sealed class SimulationItemMutationService(
         SimulationItemOperationRequest request,
         CancellationToken cancellationToken)
     {
-        return HasNpcContext(request, "services.quest_offer")
+        return HasNpcContext(request)
             && request.Access!.QuestNpc
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<AbandonQuestItemsCommand>(
@@ -415,16 +415,13 @@ internal sealed class SimulationItemMutationService(
             && request.DestinationSlotIndex is null or >= 0;
     }
 
-    private static bool HasNpcContext(
-        SimulationItemOperationRequest request,
-        string expectedCapabilityId)
+    // The worker validated the interaction and the capability kind, which its access flags
+    // carry. The capability id is content, so only its presence is checked here.
+    private static bool HasNpcContext(SimulationItemOperationRequest request)
     {
         return request.InteractionSessionId is not null
             && request.InteractionSessionId != Guid.Empty
-            && string.Equals(
-                request.CapabilityId,
-                expectedCapabilityId,
-                StringComparison.Ordinal);
+            && !string.IsNullOrWhiteSpace(request.CapabilityId);
     }
 
     private static string CreateInsuranceGrantId(SimulationItemOperationRequest request)

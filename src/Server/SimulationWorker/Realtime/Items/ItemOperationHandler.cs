@@ -19,6 +19,7 @@ internal sealed class ItemOperationHandler(
     RealtimeSessionTeardown teardown,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
+    ItemInteractionAccessService accessService,
     ItemAuthorityOperations authority) : IRealtimeCompletionHandler
 {
     public void HandleIntent(in RealtimeInboundMessage message)
@@ -80,17 +81,16 @@ internal sealed class ItemOperationHandler(
     private void Start(
         RealtimePeerContext context,
         ActiveSimulationSession session,
-        RealtimeItemOperationIntent intent,
-        PlayerMovementState state)
+        RealtimeItemOperationIntent intent)
     {
+        // Access is evaluated on the loop when the operation starts, while the interaction
+        // that grants it is still known to be open.
         operationTracker.Track(authority.RunAsync(
             this,
             context,
             session,
             intent,
-            state.PositionX,
-            state.PositionY,
-            state.PositionZ));
+            accessService.Evaluate(context.PeerId, session)));
     }
 
     public void Complete(RealtimeOperationResult completion)
@@ -274,11 +274,7 @@ internal sealed class ItemOperationHandler(
             PlayerSimulationEntity entity,
             PlayerMovementState state)
         {
-            Owner.Start(
-                context,
-                context.Session!,
-                Intent,
-                state);
+            Owner.Start(context, context.Session!, Intent);
         }
     }
 }

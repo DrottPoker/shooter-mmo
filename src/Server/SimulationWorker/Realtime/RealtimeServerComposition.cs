@@ -41,7 +41,9 @@ internal sealed record RealtimeServerDependencies(
     SimulationWorkerIdentity? WorkerIdentity,
     LiveMobCorpseStore? LiveMobCorpseStore,
     LiveMobCorpseInteractionService? LiveMobCorpseInteractionService,
-    CorpseRuntimeMetrics? CorpseRuntimeMetrics);
+    CorpseRuntimeMetrics? CorpseRuntimeMetrics,
+    DevelopmentItemInteractionOptions? DevelopmentItemInteractions,
+    IWorldActorCapabilityAvailabilityPolicy? CapabilityAvailability);
 
 // The only place realtime components are created. Components are not registered in
 // dependency injection, which keeps loop-confined state out of reach of other services.
@@ -128,6 +130,12 @@ internal static class RealtimeServerComposition
             teardown,
             authorityScheduler,
             operationTracker,
+            new ItemInteractionAccessService(
+                dependencies.DevelopmentItemInteractions ?? DevelopmentItemInteractionOptions.Disabled,
+                worldInteractionLeases,
+                worldActorStore,
+                dependencies.CapabilityAvailability
+                    ?? new DefaultWorldActorCapabilityAvailabilityPolicy()),
             new ItemAuthorityOperations(
                 dependencies.ItemInteractionService,
                 completions,

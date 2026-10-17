@@ -1,73 +1,67 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.SimulationWorker.Items;
 
+// Decides which item services an operation may use. Bank and Recovery Storage require an
+// open interaction with a world actor that offers the service as an available capability,
+// so walking away or losing line of sight closes the interaction and ends the access. The
+// Development option grants both everywhere and never grants insurance.
 public sealed class ItemInteractionAccessService
 {
-    private readonly SimulationWorkerConfig config;
     private readonly DevelopmentItemInteractionOptions developmentOptions;
-
-    public ItemInteractionAccessService(SimulationWorkerConfig config)
-        : this(config, DevelopmentItemInteractionOptions.Disabled)
-    {
-    }
+    private readonly WorldInteractionLeaseRegistry? leases;
+    private readonly WorldActorStore? actors;
+    private readonly IWorldActorCapabilityAvailabilityPolicy availabilityPolicy;
 
     public ItemInteractionAccessService(
-        SimulationWorkerConfig config,
-        DevelopmentItemInteractionOptions developmentOptions)
+        DevelopmentItemInteractionOptions developmentOptions,
+        WorldInteractionLeaseRegistry? leases,
+        WorldActorStore? actors,
+        IWorldActorCapabilityAvailabilityPolicy availabilityPolicy)
     {
-        this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.developmentOptions = developmentOptions
             ?? throw new ArgumentNullException(nameof(developmentOptions));
+        this.leases = leases;
+        this.actors = actors;
+        this.availabilityPolicy = availabilityPolicy
+            ?? throw new ArgumentNullException(nameof(availabilityPolicy));
     }
 
-    public ItemInteractionAccess Evaluate(float positionX, float positionY, float positionZ)
+    public ItemInteractionAccess Evaluate(int peerId, ActiveSimulationSession session)
     {
+        ArgumentNullException.ThrowIfNull(session);
         var bank = developmentOptions.GlobalBankAndRecoveryAccess;
         var recoveryStorage = developmentOptions.GlobalBankAndRecoveryAccess;
-        var insuranceNpc = false;
-        foreach (var point in config.ItemInteraction.ServicePoints)
+        if (leases is not null
+            && actors is not null
+            && leases.TryGet(peerId, out var lease)
+            && lease!.TargetKind == RealtimeWorldInteractionTargetKind.WorldActor
+            && actors.TryGetByRuntimeId(lease.TargetRuntimeId, out var actor))
         {
-            if (!IsWithin(point, positionX, positionY, positionZ))
+            foreach (var capability in actor!.Definition.Capabilities)
             {
-                continue;
-            }
+                if (!availabilityPolicy.IsAvailable(session, actor, capability))
+                {
+                    continue;
+                }
 
-            switch (point.Kind)
-            {
-                case ItemServiceKind.Bank:
-                    bank = true;
-                    break;
-                case ItemServiceKind.RecoveryStorage:
-                    recoveryStorage = true;
-                    break;
-                case ItemServiceKind.InsuranceNpc:
-                    insuranceNpc = true;
-                    break;
-                default:
-                    throw new InvalidOperationException(
-                        $"Unsupported item service kind '{point.Kind}'.");
+                bank |= string.Equals(
+                    capability.Kind,
+                    WorldActorCapabilityKindIds.Bank,
+                    StringComparison.Ordinal);
+                recoveryStorage |= string.Equals(
+                    capability.Kind,
+                    WorldActorCapabilityKindIds.RecoveryStorage,
+                    StringComparison.Ordinal);
             }
         }
 
-        return new ItemInteractionAccess(bank, recoveryStorage, insuranceNpc);
-    }
-
-    private static bool IsWithin(
-        ItemServicePointConfig point,
-        float positionX,
-        float positionY,
-        float positionZ)
-    {
-        var deltaX = positionX - point.X;
-        var deltaY = positionY - point.Y;
-        var deltaZ = positionZ - point.Z;
-        return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)
-            <= point.Radius * point.Radius;
+        return new ItemInteractionAccess(bank, recoveryStorage);
     }
 }
 
-public sealed record ItemInteractionAccess(
-    bool Bank,
-    bool RecoveryStorage,
-    bool InsuranceNpc);
+public sealed record ItemInteractionAccess(bool Bank, bool RecoveryStorage);

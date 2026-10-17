@@ -44,7 +44,9 @@ public sealed class RealtimeSimulationService(
     SimulationWorkerIdentity? workerIdentity = null,
     LiveMobCorpseStore? providedLiveMobCorpseStore = null,
     LiveMobCorpseInteractionService? providedLiveMobCorpseInteractionService = null,
-    CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null)
+    CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null,
+    DevelopmentItemInteractionOptions? developmentItemInteractions = null,
+    IWorldActorCapabilityAvailabilityPolicy? capabilityAvailability = null)
     : BackgroundService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
@@ -76,7 +78,9 @@ public sealed class RealtimeSimulationService(
             workerIdentity,
             providedLiveMobCorpseStore,
             providedLiveMobCorpseInteractionService,
-            providedCorpseRuntimeMetrics),
+            providedCorpseRuntimeMetrics,
+            developmentItemInteractions,
+            capabilityAvailability),
         logger);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

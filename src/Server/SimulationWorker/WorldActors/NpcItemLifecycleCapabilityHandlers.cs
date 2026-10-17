@@ -48,7 +48,7 @@ public sealed class QuestTurnInWorldActorCapabilityHandler : IWorldActorCapabili
         return Task.FromResult(new WorldActorCapabilityDispatchResult(
             false,
             "quest_turn_in_unavailable",
-            "Quest completion is outside the Phase 13 item lifecycle scope."));
+            "Quest completion arrives together with quest definitions."));
     }
 }
 

@@ -153,7 +153,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
         return new ConnectedPlayer(context, peer, entity, session);
     }
 
-    public ItemOperationHandler CreateItemHandler(ItemAuthorityOperations authority)
+    public ItemOperationHandler CreateItemHandler(
+        ItemAuthorityOperations authority,
+        DevelopmentItemInteractionOptions? developmentOptions = null)
     {
         return new ItemOperationHandler(
             Registry,
@@ -165,6 +167,11 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Teardown,
             Scheduler,
             OperationTracker,
+            new ItemInteractionAccessService(
+                developmentOptions ?? DevelopmentItemInteractionOptions.Disabled,
+                Leases,
+                WorldActors,
+                new DefaultWorldActorCapabilityAvailabilityPolicy()),
             authority);
     }
 

@@ -651,11 +651,14 @@ concurrent inspection, and authoritative looting:
   channel 0, processes at most one per peer at a time, and bounds each pending
   queue to eight operations. Synthetic development bots cannot mutate durable
   items.
-- Configured `bank`, `recovery_storage`, and `insurance_npc` service points are
-  evaluated against the worker's authoritative player position. Bank and
-  Recovery Storage custody require the matching access flag. Secure Container
-  custody has no city requirement. The insurance flag is available to the
-  boundary, but no insurance purchase operation exists yet.
+- Bank and Recovery Storage custody require the matching access flag. The worker
+  sets it when the operation starts while the player has an open interaction
+  with a world actor whose `bank` or `recovery_storage` capability is available.
+  The interaction closes when the player leaves its range or loses line of
+  sight, which ends the access. Opening either capability only confirms it, so
+  the client can present the storage. Secure Container custody has no city
+  requirement. Insurance and quest lifecycle actions pass their flags only
+  through their own NPC capability.
 - The worker service-authenticated endpoint carries the exact account,
   character, simulation session token, worker id, runtime id, and Shard. The
   authenticated worker id must match the body. GameService locks and validates
@@ -753,12 +756,11 @@ concurrent inspection, and authoritative looting:
   corpse. Item clicks
   select only the split and allowed-destruction controls. Bank and Recovery
   reads are globally inspectable by the owning account.
-- SimulationWorker normally derives Bank, Recovery Storage, and insurance access
-  from authored service points at the authoritative player position. Its
-  environment-specific Development configuration can explicitly grant global
-  Bank and Recovery access for local item testing. Enabling that option outside
-  Development is rejected at startup, and insurance access remains proximity
-  based. Every mutation still requires the joined worker path and GameService's
+- SimulationWorker normally derives Bank and Recovery Storage access from the
+  open NPC interaction. Its environment-specific Development configuration can
+  explicitly grant global Bank and Recovery access for local item testing.
+  Enabling that option outside Development is rejected at startup, and insurance
+  access always requires the insurance NPC capability. Every mutation still requires the joined worker path and GameService's
   exact session, runtime, assignment, transaction, item-rule, and capacity
   validation.
 - Gameplay and presentation catalogs load once and must share a source revision.
@@ -967,11 +969,10 @@ environment variables and command-line options have higher precedence.
 SimulationWorker requires one valid `WorldData/Worlds/<WorldId>/world.json` in its
 output folder for its configured `WorldId`, built from
 `content/worlds/<WorldId>/world.json`. The manifest supplies the client scene, movement
-bounds, authoritative spawn, and bank, Recovery Storage, and insurance service
-points. Actor and collision data resolve below the same World directory. This
+bounds, and authoritative spawn. Actor and collision data resolve below the same World directory. This
 prevents a shard restart on another World from silently retaining coordinates
 from the previous map. Missing manifests, invalid bounds, out-of-bounds spawns,
-invalid service points, or invalid runtime content fail before UDP admission.
+or invalid runtime content fail before UDP admission.
 
 GameService seeds World definitions from those manifests but does not select a
 World for a shard. The worker proposes its desired `WorldId` in the heartbeat.

@@ -139,9 +139,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 options.DetachedReleaseRetryDelays),
             SessionStore,
             CarryStateStore,
-            new SimulationItemInteractionService(
-                GameServiceClient,
-                new ItemInteractionAccessService(Config)),
+            new SimulationItemInteractionService(GameServiceClient),
             new SimulationCorpseInteractionService(GameServiceClient),
             CorpseStore,
             CorpseViewers,

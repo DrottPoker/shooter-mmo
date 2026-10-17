@@ -51,9 +51,7 @@ public sealed class RealtimeEntityLifecycleTests
                 carryStateStore),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),
