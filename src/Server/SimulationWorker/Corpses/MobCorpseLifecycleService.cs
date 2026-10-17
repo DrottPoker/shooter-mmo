@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Registry;
@@ -72,7 +71,7 @@ public sealed class MobCorpseLifecycleService(
                 "The Mob corpse source is not owned by this worker runtime and Shard."));
         }
 
-        var corpseId = CreateScopedGuid("mob-corpse", request.DeathEventId);
+        var corpseId = ScopedGuid.Create("mob-corpse", request.DeathEventId);
         var loot = request.Loot
             .Select((seed, index) => new ResolvedLoot(
                 CreateIndexedScopedGuid("mob-loot-entry", request.DeathEventId, index),
@@ -100,9 +99,9 @@ public sealed class MobCorpseLifecycleService(
                 actor.PositionY,
                 actor.PositionZ,
                 DefaultPresentationKey,
-                CreateScopedGuid("mob-corpse-general", corpseId),
-                CreateScopedGuid("mob-corpse-equipment", corpseId),
-                CreateScopedGuid("mob-corpse-bag", corpseId),
+                ScopedGuid.Create("mob-corpse-general", corpseId),
+                ScopedGuid.Create("mob-corpse-equipment", corpseId),
+                ScopedGuid.Create("mob-corpse-bag", corpseId),
                 1,
                 createdAt,
                 createdAt.AddSeconds(definition.CorpseLifetimeSeconds),
@@ -127,7 +126,7 @@ public sealed class MobCorpseLifecycleService(
         }
 
         var halfYawRadians = actor.YawDegrees * Math.PI / 360d;
-        var operationId = CreateScopedGuid("mob-corpse-create", request.DeathEventId);
+        var operationId = ScopedGuid.Create("mob-corpse-create", request.DeathEventId);
         var durableResult = await gameServiceClient.CreatePersistentMobCorpseAsync(
             new CreatePersistentMobCorpseRequest(
                 operationId,
@@ -169,7 +168,7 @@ public sealed class MobCorpseLifecycleService(
             || request.Loot is null
             || request.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries
             || request.Loot.Any(seed =>
-                !IsContentIdentifier(seed.DefinitionId)
+                !Identifiers.IsContentIdentifier(seed.DefinitionId)
                 || seed.Quantity <= 0))
         {
             throw new ArgumentException(
@@ -178,29 +177,10 @@ public sealed class MobCorpseLifecycleService(
         }
     }
 
-    private static bool IsContentIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && string.Equals(value, value.Trim(), StringComparison.Ordinal)
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character)
-                || character is '-' or '_' or '.');
-    }
 
     private static Guid CreateIndexedScopedGuid(string scope, Guid sourceId, int index)
     {
-        return CreateScopedGuid(scope + ":" + index, sourceId);
-    }
-
-    private static Guid CreateScopedGuid(string scope, Guid sourceId)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(
-            scope + ":" + sourceId.ToString("N")));
-        var bytes = hash[..16];
-        bytes[7] = (byte)((bytes[7] & 0x0f) | 0x50);
-        bytes[8] = (byte)((bytes[8] & 0x3f) | 0x80);
-        return new Guid(bytes);
+        return ScopedGuid.Create(scope + ":" + index, sourceId);
     }
 
     private sealed record ResolvedLoot(

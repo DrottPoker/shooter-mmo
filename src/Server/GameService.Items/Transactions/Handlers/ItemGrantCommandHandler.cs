@@ -80,20 +80,15 @@ internal sealed class ItemGrantCommandHandler
 
             var existingQuestItemId = await context.Connection.QuerySingleOrDefaultAsync<Guid?>(
                 new CommandDefinition(
-                    """
+                    $"""
                     select item.id
                     from item_instances item
-                    left join item_containers container on container.id = item.container_id
-                    left join item_instances source_bag
-                      on source_bag.id = container.bound_bag_item_instance_id
+                    {ItemOwnershipSql.Joins}
                     join item_instance_policies policy
                       on policy.item_instance_id = item.id
-                     and policy.policy_kind = 'protected_on_death'
-                     and policy.status = 'active'
-                    where coalesce(
-                            item.equipped_character_id,
-                            container.owner_character_id,
-                            source_bag.equipped_character_id) = @CharacterId
+                     and policy.policy_kind = @PolicyKind
+                     and policy.status = @ActiveStatus
+                    where {ItemOwnershipSql.OwningCharacterId} = @CharacterId
                       and item.definition_id = @DefinitionId
                       and policy.source_kind = @SourceKind
                       and policy.source_id = @SourceId
@@ -105,7 +100,9 @@ internal sealed class ItemGrantCommandHandler
                         command.CharacterId,
                         DefinitionId = definition.RuntimeDefinition.Id,
                         SourceKind = policySourceKind,
-                        SourceId = policySourceId
+                        SourceId = policySourceId,
+                        PolicyKind = ItemPolicyIds.ProtectedOnDeath,
+                        ActiveStatus = ItemPolicyRules.ActiveStatus
                     },
                     context.Transaction,
                     cancellationToken: cancellationToken));

@@ -1,5 +1,9 @@
-namespace Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items;
 
+namespace Mmorpg.GameService.Testing;
+
+// Quest grant and abandon commands as a system actor, for tests that prepare protected
+// quest items without an NPC interaction.
 internal sealed class QuestItemService(ItemTransactionService transactionService)
 {
     public Task<ItemTransactionResult> GrantRequiredItemAsync(

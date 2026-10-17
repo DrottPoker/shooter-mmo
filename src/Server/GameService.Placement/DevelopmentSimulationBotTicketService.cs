@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Placement;
 
@@ -11,7 +12,7 @@ internal sealed class DevelopmentSimulationBotTicketService(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!IsValidIdentifier(request.ShardId))
+        if (!Identifiers.IsServiceIdentifier(request.ShardId))
         {
             return ServiceResult<DevelopmentSimulationBotTicketResponse>.BadRequest(
                 "invalid_shard_id",
@@ -26,13 +27,5 @@ internal sealed class DevelopmentSimulationBotTicketService(
                 "development_bot_placement_unavailable",
                 "The requested shard has no healthy assigned simulation worker.")
             : authority.IssueTicket(request, placement);
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 }

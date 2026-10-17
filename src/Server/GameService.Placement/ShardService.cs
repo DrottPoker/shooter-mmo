@@ -5,6 +5,7 @@ using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
@@ -107,7 +108,7 @@ internal sealed class ShardService(
                 "Character id is required.");
         }
 
-        if (!IsValidIdentifier(shardId))
+        if (!Identifiers.IsServiceIdentifier(shardId))
         {
             return ServiceResult<JoinShardResponse>.BadRequest(
                 "invalid_shard_id",
@@ -859,9 +860,9 @@ internal sealed class ShardService(
                 "Join ticket is required.");
         }
 
-        if (!IsValidIdentifier(request.WorkerId)
-            || !IsValidIdentifier(request.RuntimeId)
-            || !IsValidIdentifier(request.ShardId))
+        if (!Identifiers.IsServiceIdentifier(request.WorkerId)
+            || !Identifiers.IsServiceIdentifier(request.RuntimeId)
+            || !Identifiers.IsServiceIdentifier(request.ShardId))
         {
             return ServiceResult<ConsumedSimulationJoinTicketResponse>.BadRequest(
                 "invalid_simulation_target",
@@ -876,13 +877,6 @@ internal sealed class ShardService(
         return ServiceResult<ConsumedSimulationJoinTicketResponse>.Unauthorized(
             "invalid_ticket",
             "Join ticket is invalid or expired.");
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 
     private sealed record SimulationJoinTicketRow(

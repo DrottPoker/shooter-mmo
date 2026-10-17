@@ -42,7 +42,7 @@ public sealed class ModulePublicSurfaceTests
                 "Mmorpg.GameService.Items.ItemsModule",
                 "Mmorpg.GameService.Items.ItemsModuleOptions",
                 "Mmorpg.GameService.Items.NpcItemLifecycleOptions",
-                "Mmorpg.GameService.Items.StackStressFixtureOptions"
+                "Mmorpg.GameService.Items.StackStress.StackStressFixtureOptions"
             ]
         };
 

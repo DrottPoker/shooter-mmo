@@ -1,6 +1,7 @@
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Items.StackStress;
 
 // The definitions the stress fixtures grant come from configuration, so the fixture never
 // names game content.
@@ -73,10 +74,7 @@ public sealed record StackStressFixtureOptions(bool Enabled, string AuthoritySec
         try
         {
             var builder = new NpgsqlConnectionStringBuilder(connectionString);
-            var host = builder.Host?.Trim() ?? string.Empty;
-            if (!string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(host, "127.0.0.1", StringComparison.Ordinal)
-                && !string.Equals(host, "::1", StringComparison.Ordinal))
+            if (!PostgresHost.IsLoopback(builder))
             {
                 errors.Add("Stack stress fixtures require a loopback PostgreSQL host.");
             }

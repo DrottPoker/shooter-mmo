@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Development;
@@ -15,10 +16,7 @@ internal static class DevelopmentDatabaseGuard
         }
 
         var connection = new NpgsqlConnectionStringBuilder(dataSource.ConnectionString);
-        var host = connection.Host?.Trim() ?? string.Empty;
-        if (!string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(host, "127.0.0.1", StringComparison.Ordinal)
-            && !string.Equals(host, "::1", StringComparison.Ordinal))
+        if (!PostgresHost.IsLoopback(connection))
         {
             throw new InvalidOperationException(
                 $"The {toolName} may target only a loopback PostgreSQL host.");

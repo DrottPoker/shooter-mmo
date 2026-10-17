@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Placement;
 
@@ -388,7 +389,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
                 "Development bot index must be between 1 and 1000000.");
         }
 
-        if (!IsValidIdentifier(request.ShardId))
+        if (!Identifiers.IsServiceIdentifier(request.ShardId))
         {
             return ServiceResult<DevelopmentSimulationBotTicketResponse>.BadRequest(
                 "invalid_shard_id",
@@ -435,14 +436,6 @@ internal sealed class DevelopmentSimulationBotAuthority(
         {
             identities.Remove(botInstanceId);
         }
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 
     private sealed record BotIdentity(

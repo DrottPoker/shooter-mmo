@@ -6,6 +6,7 @@ using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -629,9 +630,9 @@ internal sealed partial class CorpseService
             || corpseId == Guid.Empty
             || accountId == Guid.Empty
             || characterId == Guid.Empty
-            || !IsValidIdentifier(workerId)
-            || !IsValidIdentifier(workerRuntimeId)
-            || !IsValidIdentifier(shardId)
+            || !Identifiers.IsServiceIdentifier(workerId)
+            || !Identifiers.IsServiceIdentifier(workerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(shardId)
             || string.IsNullOrWhiteSpace(sessionToken)
             || sessionToken.Length > 1024
                 ? new SnapshotError(

@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
@@ -183,7 +184,7 @@ internal sealed class SimulationWorkerRegistryService(
         SimulationWorkerOfflineRequest request,
         CancellationToken cancellationToken)
     {
-        if (!IsValidIdentifier(workerId) || !IsValidIdentifier(request.RuntimeId))
+        if (!Identifiers.IsServiceIdentifier(workerId) || !Identifiers.IsServiceIdentifier(request.RuntimeId))
         {
             return ServiceResult<SimulationWorkerOfflineResponse>.BadRequest(
                 "invalid_worker_runtime",
@@ -631,12 +632,12 @@ internal sealed class SimulationWorkerRegistryService(
         string workerId,
         SimulationWorkerHeartbeatRequest request)
     {
-        if (!IsValidIdentifier(workerId)
-            || !IsValidIdentifier(request.FleetId)
-            || !IsValidIdentifier(request.NodeId)
-            || !IsValidIdentifier(request.ShardId)
-            || !IsValidIdentifier(request.WorldId)
-            || !IsValidIdentifier(request.RuntimeId))
+        if (!Identifiers.IsServiceIdentifier(workerId)
+            || !Identifiers.IsServiceIdentifier(request.FleetId)
+            || !Identifiers.IsServiceIdentifier(request.NodeId)
+            || !Identifiers.IsServiceIdentifier(request.ShardId)
+            || !Identifiers.IsServiceIdentifier(request.WorldId)
+            || !Identifiers.IsServiceIdentifier(request.RuntimeId))
         {
             return (
                 "invalid_simulation_worker_identity",
@@ -689,13 +690,6 @@ internal sealed class SimulationWorkerRegistryService(
         }
 
         return null;
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 
     private static bool IsValidRevision(string? revision)

@@ -51,7 +51,7 @@ internal sealed class ItemStateReader(
         CancellationToken cancellationToken)
     {
         return Connection.QuerySingleOrDefaultAsync<LockedItem>(new CommandDefinition(
-            """
+            $"""
             select
                 item.id as "ItemInstanceId",
                 item.definition_id as "DefinitionId",
@@ -61,22 +61,17 @@ internal sealed class ItemStateReader(
                 item.container_slot_index as "ContainerSlotIndex",
                 item.equipped_character_id as "EquippedCharacterId",
                 item.equipment_slot_id as "EquipmentSlotId",
-                source_container.container_type as "SourceContainerType",
-                source_container.lifecycle as "SourceContainerLifecycle",
-                source_container.bound_bag_item_instance_id as "SourceBagItemInstanceId",
-                coalesce(
-                    item.equipped_character_id,
-                    source_container.owner_character_id,
-                    source_bag.equipped_character_id) as "OwningCharacterId",
+                container.container_type as "SourceContainerType",
+                container.lifecycle as "SourceContainerLifecycle",
+                container.bound_bag_item_instance_id as "SourceBagItemInstanceId",
+                {ItemOwnershipSql.OwningCharacterId} as "OwningCharacterId",
                 (bag.definition_id is not null) as "IsBag",
                 bag.carry_capacity_bonus as "BagCarryCapacityBonus",
                 bag_container.id as "BagContentsContainerId",
                 bag_container.lifecycle as "BagContentsLifecycle",
                 bag_container.revision as "BagContentsRevision"
             from item_instances item
-            left join item_containers source_container on source_container.id = item.container_id
-            left join item_instances source_bag
-              on source_bag.id = source_container.bound_bag_item_instance_id
+            {ItemOwnershipSql.Joins}
             left join bag_definitions bag on bag.definition_id = item.definition_id
             left join item_containers bag_container
               on bag_container.bound_bag_item_instance_id = item.id

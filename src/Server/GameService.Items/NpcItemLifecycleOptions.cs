@@ -1,3 +1,5 @@
+using Mmorpg.Server.Common.Identity;
+
 namespace Mmorpg.GameService.Items;
 
 // The insurance price and the one quest whose item the NPC lifecycle grants, until quest
@@ -20,8 +22,8 @@ public sealed record NpcItemLifecycleOptions(
         var questItemQuantity = section.GetValue<int?>("QuestItemQuantity");
 
         if (insurancePrice is not > 0
-            || !IsValidLineage(questGrantId)
-            || !IsValidLineage(questItemDefinitionId)
+            || !Identifiers.IsContentIdentifier(questGrantId)
+            || !Identifiers.IsContentIdentifier(questItemDefinitionId)
             || questItemQuantity is not > 0)
         {
             throw new InvalidOperationException(
@@ -35,12 +37,4 @@ public sealed record NpcItemLifecycleOptions(
             questItemQuantity.Value);
     }
 
-    private static bool IsValidLineage(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character)
-                || character is '-' or '_' or '.');
-    }
 }

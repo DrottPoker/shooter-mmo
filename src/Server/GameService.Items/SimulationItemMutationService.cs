@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
@@ -385,9 +386,9 @@ internal sealed class SimulationItemMutationService(
             || request.AccountId == Guid.Empty
             || request.CharacterId == Guid.Empty
             || request.ExpectedCharacterRevision < 0
-            || !IsValidIdentifier(request.WorkerId)
-            || !IsValidIdentifier(request.WorkerRuntimeId)
-            || !IsValidIdentifier(request.ShardId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(request.ShardId)
             || string.IsNullOrWhiteSpace(request.SessionToken)
             || request.SessionToken.Length > 1024
             || request.Access is null
@@ -430,13 +431,6 @@ internal sealed class SimulationItemMutationService(
             + ":" + request.OperationId.ToString("N");
     }
 
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     private static ServiceResult<ItemTransactionResult> Invalid(string message)
     {

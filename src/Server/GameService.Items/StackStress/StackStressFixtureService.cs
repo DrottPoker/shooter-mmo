@@ -1,7 +1,8 @@
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.Server.Common.Identity;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Items.StackStress;
 
 internal sealed record StackStressInventoryFixtureRequest(string Workload, string RunId);
 
@@ -132,9 +133,9 @@ internal sealed class StackStressFixtureService(
             CancellationToken cancellationToken)
     {
         if (!IsRunId(request.RunId)
-            || !IsIdentifier(request.WorkerId)
-            || !IsIdentifier(request.WorkerRuntimeId)
-            || !IsIdentifier(request.ShardId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(request.ShardId)
             || !IsFinitePosition(request.PositionX)
             || !IsFinitePosition(request.PositionY)
             || !IsFinitePosition(request.PositionZ)
@@ -216,13 +217,6 @@ internal sealed class StackStressFixtureService(
             && value.All(char.IsAsciiLetterOrDigit);
     }
 
-    private static bool IsIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     private static bool IsFinitePosition(double value)
     {

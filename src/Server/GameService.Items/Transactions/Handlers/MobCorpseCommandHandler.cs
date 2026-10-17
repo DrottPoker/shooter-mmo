@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
@@ -53,7 +54,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
         var generalContainerId = Guid.NewGuid();
         var equipmentContainerId = Guid.NewGuid();
         var bagContainerId = Guid.NewGuid();
-        var expiryOperationId = MobLootRules.CreateScopedGuid("mob-corpse-expiry", command.CorpseId);
+        var expiryOperationId = ScopedGuid.Create("mob-corpse-expiry", command.CorpseId);
         var corpseTimes = await DurableCorpseRecords.CreateDurableCorpseRecordAsync(
             context,
             command.CorpseId,
@@ -88,7 +89,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
         {
             var loot = command.Loot[index];
             var definition = definitions[index];
-            var itemInstanceId = MobLootRules.CreateScopedGuid("mob-loot-item", loot.GrantId);
+            var itemInstanceId = ScopedGuid.Create("mob-loot-item", loot.GrantId);
             await context.Connection.ExecuteAsync(new CommandDefinition(
                 """
                 insert into item_instances (
@@ -186,10 +187,10 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
         CreatePersistentMobCorpseCommand command)
     {
         if (command.CorpseId == Guid.Empty
-            || !MobLootRules.IsMobIdentifier(command.WorkerId)
-            || !MobLootRules.IsMobIdentifier(command.WorkerRuntimeId)
-            || !MobLootRules.IsMobIdentifier(command.ShardId)
-            || !MobLootRules.IsMobIdentifier(command.SourceActorDefinitionId)
+            || !Identifiers.IsContentIdentifier(command.WorkerId)
+            || !Identifiers.IsContentIdentifier(command.WorkerRuntimeId)
+            || !Identifiers.IsContentIdentifier(command.ShardId)
+            || !Identifiers.IsContentIdentifier(command.SourceActorDefinitionId)
             || string.IsNullOrWhiteSpace(command.SourceDisplayName)
             || command.SourceDisplayName.Length > 128
             || !string.Equals(
@@ -213,7 +214,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             || command.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries
             || command.Loot.Any(loot =>
                 loot.GrantId == Guid.Empty
-                || !MobLootRules.IsMobIdentifier(loot.DefinitionId)
+                || !Identifiers.IsContentIdentifier(loot.DefinitionId)
                 || loot.Quantity <= 0)
             || command.Loot.Select(loot => loot.GrantId).Distinct().Count()
                 != command.Loot.Count)

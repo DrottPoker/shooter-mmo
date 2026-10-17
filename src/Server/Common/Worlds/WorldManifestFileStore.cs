@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Worlds;
 
@@ -54,7 +55,7 @@ public static class WorldManifestFileStore
 
     public static WorldManifestDocument Load(string configuredRootPath, string worldId)
     {
-        if (!IsValidIdentifier(worldId))
+        if (!Identifiers.IsServiceIdentifier(worldId))
         {
             throw new InvalidDataException("Configured WorldId is invalid.");
         }
@@ -66,7 +67,7 @@ public static class WorldManifestFileStore
 
     public static string ResolveWorldDirectory(string configuredRootPath, string worldId)
     {
-        if (!IsValidIdentifier(worldId))
+        if (!Identifiers.IsServiceIdentifier(worldId))
         {
             throw new InvalidDataException("Configured WorldId is invalid.");
         }
@@ -167,13 +168,5 @@ public static class WorldManifestFileStore
         }
 
         return worldDirectory;
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 }

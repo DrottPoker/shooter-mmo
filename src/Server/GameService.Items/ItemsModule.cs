@@ -2,6 +2,7 @@ using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Items.Persistence;
+using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
@@ -9,7 +10,7 @@ using Mmorpg.GameService.Platform.Modules;
 namespace Mmorpg.GameService.Items;
 
 // Items: the item catalog, item state and transactions, corpses, policies, item
-// operations maintenance, and the item development tools.
+// operations maintenance, the Development item tools, and the stack stress fixtures.
 public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 {
     public string Name => "Items";
@@ -39,14 +40,16 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddScoped<ItemTransactionService>();
         services.AddScoped<AccountItemMutationService>();
         services.AddScoped<SimulationItemMutationService>();
-        services.AddScoped<ItemPolicyService>();
-        services.AddScoped<QuestItemService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();
         services.AddSingleton(options.DevelopmentItemPackages);
         services.AddScoped<DevelopmentItemPackageApplier>();
         services.AddScoped<DevelopmentItemToolService>();
-        services.AddScoped<StackStressFixtureService>();
+        if (options.StackStressFixtures.Enabled)
+        {
+            services.AddScoped<StackStressFixtureService>();
+        }
+
         services.AddHostedService<CorpseExpiryHostedService>();
         services.AddHostedService<ItemOperationsMetricsReporterService>();
         services.AddHostedService<ItemOperationsMaintenanceHostedService>();

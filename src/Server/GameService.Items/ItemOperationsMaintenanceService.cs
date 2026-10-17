@@ -1,8 +1,7 @@
 using System.Data;
-using System.Security.Cryptography;
-using System.Text;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -62,7 +61,7 @@ internal sealed class ItemOperationsMaintenanceService(
         var expiredCount = 0;
         foreach (var deliveryId in deliveryIds)
         {
-            var operationId = CreateScopedGuid("recovery-expiry", deliveryId);
+            var operationId = ScopedGuid.Create("recovery-expiry", deliveryId);
             var result = await transactionService.ExecuteAsync(
                 new ItemTransactionRequest<ExpireRecoveryDeliveryCommand>(
                     operationId,
@@ -242,16 +241,6 @@ internal sealed class ItemOperationsMaintenanceService(
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
-    }
-
-    private static Guid CreateScopedGuid(string scope, Guid sourceId)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(
-            scope + ":" + sourceId.ToString("N")));
-        var bytes = hash[..16];
-        bytes[7] = (byte)((bytes[7] & 0x0f) | 0x50);
-        bytes[8] = (byte)((bytes[8] & 0x3f) | 0x80);
-        return new Guid(bytes);
     }
 }
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.StackStress;
 using Npgsql;
 
 namespace Mmorpg.GameService.Tests;

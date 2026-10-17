@@ -610,13 +610,14 @@ simulation-worker authorization contexts are explicit command inputs. Offline
 access and exact live-session access are actor requirements enforced while the
 durable character lock is held.
 
-`ItemPolicyService` applies protected-on-death and eligible one-death insurance
-records and removes active insurance through idempotent transactions.
-`QuestItemService` grants protected quest items with exact quest-grant lineage,
-suppresses duplicate active grants, and removes only that lineage on abandon.
-Phase 13 exposes no account-owned policy or grant route. The live path begins in
-the validated NPC interaction and uses the service-authenticated simulation item
-boundary.
+Policy commands apply protected-on-death and eligible one-death insurance
+records and remove active insurance through idempotent transactions. Quest
+commands grant protected quest items with exact quest-grant lineage, suppress
+duplicate active grants, and remove only that lineage on abandon. No
+account-owned policy or grant route exists. The live path begins in the
+validated NPC interaction and uses the service-authenticated simulation item
+boundary. Tests issue the same commands as a system actor through helpers in
+`Mmorpg.GameService.Testing`.
 
 Bag content containers and Bag item rows form one aggregate. Every child command
 locks the Bag item before its child container or item, and aggregate swaps verify

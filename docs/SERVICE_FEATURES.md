@@ -608,8 +608,8 @@ concurrent inspection, and authoritative looting:
 - `ItemPolicyRules` independently evaluates trade, auction, vendor sale, player
   destruction, death disposition, insurance eligibility, and stacking
   capability. Protected and insured items block every transfer capability.
-- `ItemPolicyService` and `QuestItemService` are system-only adapters over the
-  same transaction kernel. Insurance removal changes policy lifecycle without
+- Policy and quest commands run only through the NPC capability path or as a
+  system actor. Insurance removal changes policy lifecycle without
   replacing the item. Quest abandon removes only active protected items with the
   exact quest-grant source id, and reaccept suppresses duplicate active grants.
   Abandoning an item held in Recovery Storage also removes its slot row and any

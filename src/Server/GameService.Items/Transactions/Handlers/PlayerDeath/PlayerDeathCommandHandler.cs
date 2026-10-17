@@ -5,6 +5,7 @@ using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
@@ -416,7 +417,7 @@ internal sealed class PlayerDeathCommandHandler
                 "A death event and character id are required.");
         }
 
-        if (!IsDeathIdentifier(command.ShardId))
+        if (!Identifiers.IsServiceIdentifier(command.ShardId))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.SimulationSessionInvalid,
@@ -460,13 +461,6 @@ internal sealed class PlayerDeathCommandHandler
         }
     }
 
-    private static bool IsDeathIdentifier(string value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     private static bool IsPresentationKey(string value)
     {

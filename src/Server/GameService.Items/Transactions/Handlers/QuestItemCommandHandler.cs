@@ -129,24 +129,19 @@ internal sealed class QuestItemCommandHandler
     }
 
     private const string QuestGrantItemIdsSql =
-        """
+        $"""
         select item.id
         from item_instances item
         join item_definitions definition
           on definition.id = item.definition_id
          and definition.category_id = @QuestItemCategoryId
-        left join item_containers container on container.id = item.container_id
-        left join item_instances source_bag
-          on source_bag.id = container.bound_bag_item_instance_id
+        {ItemOwnershipSql.Joins}
         join item_instance_policies policy
           on policy.item_instance_id = item.id
          and policy.policy_kind = @PolicyKind
          and policy.status = @ActiveStatus
          and policy.source_kind = @SourceKind
-        where coalesce(
-                item.equipped_character_id,
-                container.owner_character_id,
-                source_bag.equipped_character_id) = @CharacterId
+        where {ItemOwnershipSql.OwningCharacterId} = @CharacterId
           and policy.source_id = @QuestGrantId
         order by item.id;
         """;

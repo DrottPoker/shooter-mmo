@@ -5,7 +5,7 @@ using System.Text;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Platform.Http;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Items.StackStress;
 
 internal static class StackStressFixtureEndpoints
 {

@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
@@ -283,13 +284,8 @@ internal static class DevelopmentItemSql
             (
                 select count(*)::integer
                 from item_instances item
-                left join item_containers container on container.id = item.container_id
-                left join item_instances source_bag
-                  on source_bag.id = container.bound_bag_item_instance_id
-                where coalesce(
-                        item.equipped_character_id,
-                        container.owner_character_id,
-                        source_bag.equipped_character_id) = {characterIdExpression}
+                {ItemOwnershipSql.Joins}
+                where {ItemOwnershipSql.OwningCharacterId} = {characterIdExpression}
             )
             """;
     }

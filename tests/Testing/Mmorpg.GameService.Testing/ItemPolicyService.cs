@@ -1,7 +1,10 @@
+using Mmorpg.GameService.Items;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Testing;
 
+// Policy commands as a system actor, for tests that prepare protected or insured items
+// without an NPC interaction.
 internal sealed class ItemPolicyService(ItemTransactionService transactionService)
 {
     public Task<ItemTransactionResult> ApplyProtectedOnDeathAsync(

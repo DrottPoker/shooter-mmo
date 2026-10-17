@@ -4,6 +4,7 @@ using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -204,9 +205,9 @@ internal sealed partial class CorpseService(
         string shardId,
         CancellationToken cancellationToken)
     {
-        if (!IsValidIdentifier(workerId)
-            || !IsValidIdentifier(workerRuntimeId)
-            || !IsValidIdentifier(shardId))
+        if (!Identifiers.IsServiceIdentifier(workerId)
+            || !Identifiers.IsServiceIdentifier(workerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(shardId))
         {
             return ServiceResult<CorpseRestoreResponse>.BadRequest(
                 ItemApiErrorCodes.SimulationOperationInvalid,
@@ -709,9 +710,9 @@ internal sealed partial class CorpseService(
             && request.AccountId != Guid.Empty
             && request.CharacterId != Guid.Empty
             && request.ExpectedCharacterRevision >= 0
-            && IsValidIdentifier(request.WorkerId)
-            && IsValidIdentifier(request.WorkerRuntimeId)
-            && IsValidIdentifier(request.ShardId)
+            && Identifiers.IsServiceIdentifier(request.WorkerId)
+            && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            && Identifiers.IsServiceIdentifier(request.ShardId)
             && !string.IsNullOrWhiteSpace(request.SessionToken)
             && request.SessionToken.Length <= 1024
             && string.Equals(
@@ -725,10 +726,10 @@ internal sealed partial class CorpseService(
     {
         return request.OperationId != Guid.Empty
             && request.CorpseId != Guid.Empty
-            && IsValidIdentifier(request.WorkerId)
-            && IsValidIdentifier(request.WorkerRuntimeId)
-            && IsValidIdentifier(request.ShardId)
-            && IsValidContentIdentifier(request.SourceActorDefinitionId)
+            && Identifiers.IsServiceIdentifier(request.WorkerId)
+            && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            && Identifiers.IsServiceIdentifier(request.ShardId)
+            && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
             && !string.IsNullOrWhiteSpace(request.SourceDisplayName)
             && request.SourceDisplayName.Length <= 128
             && string.Equals(
@@ -744,7 +745,7 @@ internal sealed partial class CorpseService(
                 and <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLootEntries
             && request.Loot.All(loot =>
                 loot.GrantId != Guid.Empty
-                && IsValidContentIdentifier(loot.DefinitionId)
+                && Identifiers.IsContentIdentifier(loot.DefinitionId)
                 && loot.Quantity > 0)
             && request.Loot.Select(loot => loot.GrantId).Distinct().Count()
                 == request.Loot.Count;
@@ -759,36 +760,20 @@ internal sealed partial class CorpseService(
             && request.AccountId != Guid.Empty
             && request.CharacterId != Guid.Empty
             && request.ExpectedCharacterRevision >= 0
-            && IsValidIdentifier(request.WorkerId)
-            && IsValidIdentifier(request.WorkerRuntimeId)
-            && IsValidIdentifier(request.ShardId)
+            && Identifiers.IsServiceIdentifier(request.WorkerId)
+            && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            && Identifiers.IsServiceIdentifier(request.ShardId)
             && !string.IsNullOrWhiteSpace(request.SessionToken)
             && request.SessionToken.Length <= 1024
             && request.SourceCorpseId != Guid.Empty
-            && IsValidContentIdentifier(request.SourceActorDefinitionId)
-            && IsValidContentIdentifier(request.DefinitionId)
+            && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
+            && Identifiers.IsContentIdentifier(request.DefinitionId)
             && request.Quantity > 0
             && request.DestinationContainerId != Guid.Empty
             && request.ExpectedDestinationContainerRevision >= 0
             && request.DestinationSlotIndex >= 0;
     }
 
-    private static bool IsValidContentIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character)
-                || character is '-' or '_' or '.');
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     private interface ICorpseRow
     {
