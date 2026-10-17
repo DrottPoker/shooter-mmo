@@ -5,7 +5,8 @@ namespace Mmorpg.WorldData.Worlds
 {
     public static class WorldManifestFormat
     {
-        public const int Version = 1;
+        // Version 2 removed radius service points; world actor capabilities grant item services.
+        public const int Version = 2;
         public const string FileName = "world.json";
     }
 
@@ -19,7 +20,6 @@ namespace Mmorpg.WorldData.Worlds
         public float groundHeight;
         public WorldBoundsDocument bounds = new WorldBoundsDocument();
         public WorldSpawnDocument spawn = new WorldSpawnDocument();
-        public WorldServicePointDocument[] servicePoints = Array.Empty<WorldServicePointDocument>();
     }
 
     [Serializable]
@@ -38,17 +38,6 @@ namespace Mmorpg.WorldData.Worlds
         public float y;
         public float z;
         public float yawDegrees;
-    }
-
-    [Serializable]
-    public sealed class WorldServicePointDocument
-    {
-        public string id = string.Empty;
-        public string kind = string.Empty;
-        public float x;
-        public float y;
-        public float z;
-        public float radius;
     }
 
     public sealed class WorldManifestValidationException : Exception
@@ -106,54 +95,6 @@ namespace Mmorpg.WorldData.Worlds
                 "Spawn");
             ValidateFinite(document.spawn.yawDegrees, "Spawn.YawDegrees");
             ValidateInsideBounds(document, document.spawn.x, document.spawn.z, "Spawn");
-
-            if (document.servicePoints == null)
-            {
-                throw new WorldManifestValidationException("ServicePoints are required.");
-            }
-
-            var servicePointIds = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var servicePoint in document.servicePoints)
-            {
-                if (servicePoint == null)
-                {
-                    throw new WorldManifestValidationException(
-                        "ServicePoints cannot contain null entries.");
-                }
-
-                ValidateIdentifier(servicePoint.id, "ServicePoint.Id");
-                ValidateIdentifier(servicePoint.kind, "ServicePoint.Kind");
-                if (servicePoint.kind != "bank"
-                    && servicePoint.kind != "recovery_storage"
-                    && servicePoint.kind != "insurance_npc")
-                {
-                    throw new WorldManifestValidationException(
-                        "ServicePoint kind must be bank, recovery_storage, or insurance_npc.");
-                }
-                if (!servicePointIds.Add(servicePoint.id))
-                {
-                    throw new WorldManifestValidationException(
-                        "ServicePoint ids must be unique within a World.");
-                }
-
-                ValidatePosition(
-                    servicePoint.x,
-                    servicePoint.y,
-                    servicePoint.z,
-                    "ServicePoint");
-                ValidateFinite(servicePoint.radius, "ServicePoint.Radius");
-                if (servicePoint.radius <= 0f || servicePoint.radius > 100f)
-                {
-                    throw new WorldManifestValidationException(
-                        "ServicePoint radius must be greater than 0 and at most 100.");
-                }
-
-                ValidateInsideBounds(
-                    document,
-                    servicePoint.x,
-                    servicePoint.z,
-                    "ServicePoint");
-            }
         }
 
         private static void ValidateInsideBounds(

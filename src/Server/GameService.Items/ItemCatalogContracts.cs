@@ -18,7 +18,8 @@ internal sealed record ItemCatalogIdentityResponse(
 internal sealed record ItemCatalogEquipmentSlotResponse(
     string Id,
     string DisplayName,
-    int SortOrder);
+    int SortOrder,
+    int MaximumQuantity);
 
 internal sealed record ItemCatalogDefinitionResponse(
     string Id,
@@ -29,6 +30,7 @@ internal sealed record ItemCatalogDefinitionResponse(
     bool PlayerDestroyable,
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> EquipmentSlots,
+    IReadOnlyList<string> BlockedEquipmentSlots,
     bool SecureContainerEligible,
     IReadOnlyList<string> DefaultPolicies,
     ItemCatalogBagResponse? Bag);

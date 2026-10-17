@@ -32,6 +32,10 @@
              Link="WorldData\Items\core.item-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\content\development\item-packages.json"
+             Link="Content\Development\item-packages.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\..\content\worlds\**\world.json"
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"

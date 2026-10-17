@@ -27,8 +27,8 @@ internal static class DeathCustodyTransfers
         else if (string.Equals(item.Source.SourceKind, "equipment", StringComparison.Ordinal))
         {
             destinationContainerId = equipmentContainerId;
-            destinationSlotIndex = item.Source.EquipmentSortOrder
-                ?? throw new InvalidOperationException("An equipped death item has no stable sort order.");
+            destinationSlotIndex = item.Source.EquipmentCorpseSlotIndex
+                ?? throw new InvalidOperationException("An equipped death item has no corpse equipment slot.");
         }
         else
         {

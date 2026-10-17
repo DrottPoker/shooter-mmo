@@ -40,7 +40,7 @@ derives `world-actors.json` and the `Collision` chunk folder below the same Worl
 directory. The build copies `content/worlds/<WorldId>/world.json` and the
 generated actor and collision data from `src/Shared/WorldData/Generated` into
 that layout for both development Worlds, in build and publish output. Startup
-validates identity, bounds, spawn, service points, actor revisions, references,
+validates identity, bounds, spawn, actor revisions, references,
 ordering, collision checksums, and content semantics before UDP admission
 begins. `SimulationWorker__WorldDataPath` can point a deployment at a different
 canonical Worlds root.
@@ -90,7 +90,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports nine definitions, one base Secure Container
   tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 15 with 27 messages
+- Protocol verification reports realtime protocol version 16 with 27 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -164,14 +164,14 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 15 with 27
+Expected result: both commands report realtime protocol version 16 with 27
 messages. The first command rewrites only changed files and removes files that
 the schema no longer produces. The second fails and names the file when a
 generated file is stale, missing, or not produced by the schema. Commit the
 schema, `realtime-protocol.lock.json`, the generated `.cs` files, and their
 `.meta` files together.
 
-When generation reports that the wire contract of protocol version 15 changed,
+When generation reports that the wire contract of the current protocol version changed,
 the schema change alters bytes or acceptance. Increase `protocol.version` in
 the schema and generate again; the lock then records the new version next to
 the old ones. No Unity
@@ -186,10 +186,10 @@ category, tag, equipment-slot, and Secure Container tier content, and
 location eligibility, and policy defaults. The generated runtime catalog is
 `src/Shared/WorldData/Generated/Items/core.item-catalog.json`.
 
-Catalog format version 2 uses unitless non-negative integer `unitWeight` and
-`carryCapacityBonus` fields. Do not add physical-unit or decimal weight fields.
-The baseline scale is ammunition `1`, pistol `10`, and base character capacity
-`200`.
+Catalog format version 3 uses unitless non-negative integer `unitWeight`,
+`carryCapacityBonus`, and `baseCarryCapacity` fields. Do not add physical-unit or
+decimal weight fields. The baseline scale is ammunition `1`, a one-handed weapon
+about `100`, and base character capacity `2000`.
 
 The canonical content workflow is available in Unity at
 `MMORPG > Tools > Item Catalog`:
@@ -274,9 +274,9 @@ writes nothing, and a failed multi-file bake restores every previous catalog
 file. Correct or discard the draft, select `Reload` to return to checked-in
 content when appropriate, and run the command-line `--verify` command above.
 
-## Phase 3 PostgreSQL Item Foundation Verification
+## Item Persistence Verification
 
-Start the isolated temporary PostgreSQL database and run only the Phase 3
+Start the isolated temporary PostgreSQL database and run only the item persistence
 integration suite:
 
 ```powershell
@@ -324,7 +324,7 @@ docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" 
 
 Expected result: catalog `core` has exactly one row with `is_current = true`,
 and `active_characters_missing_item_state` is `0`. No Unity Editor action is
-required for Phase 3 verification.
+required for this verification.
 
 Stop the isolated test database when finished:
 
@@ -332,10 +332,11 @@ Stop the isolated test database when finished:
 docker compose -f docker-compose.test.yml down
 ```
 
-## Phase 4 Item Read Model Verification
+## Item Read Model Verification
 
 Start the isolated PostgreSQL database, configure the dedicated test connection
-as shown in the Phase 3 section, then run the read-model suite:
+as shown in [Item Persistence Verification](#item-persistence-verification), then
+run the read-model suite:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
@@ -384,12 +385,12 @@ $character = Invoke-RestMethod `
   -Uri http://localhost:5000/api/characters/ `
   -Headers $headers `
   -ContentType application/json `
-  -Body (@{ name = "Phase Four $($suffix.Substring(0, 8))" } | ConvertTo-Json)
+  -Body (@{ name = "Item Tester $($suffix.Substring(0, 8))" } | ConvertTo-Json)
 $catalog = Invoke-RestMethod `
-  -Uri http://localhost:5000/api/items/catalog `
+  -Uri http://localhost:5000/api/item-catalog `
   -Headers $headers
 $snapshot = Invoke-RestMethod `
-  -Uri "http://localhost:5000/api/characters/$($character.id)/inventory" `
+  -Uri "http://localhost:5000/api/characters/$($character.id)/item-state" `
   -Headers $headers
 $catalog.definitions.Count
 $snapshot.permanentInventory.slots.Count
@@ -400,11 +401,11 @@ $snapshot.secureContainer.contents.slots.Count
 Expected result: the values are `9`, `20`, `40`, and `4`. The snapshot is empty
 but complete, reports capacity `200`, and contains no operation payload,
 credentials, client icon, or repeated definition metadata. No Unity Editor
-action is required for Phase 4 verification.
+action is required for this verification.
 
-## Phase 5 Item Transaction Kernel Verification
+## Item Transaction Kernel Verification
 
-Phase 5 has no HTTP or Unity mutation flow. Verify the internal kernel against
+The kernel has no HTTP or Unity flow of its own. Verify it against
 the isolated PostgreSQL database:
 
 ```powershell
@@ -435,12 +436,11 @@ recomputation, exact hard-cap rollback, canonical operation replay, competing
 item, slot, equipment, and quantity races, the shared Bag aggregate lock, and
 failed-swap rollback. The dedicated database is reset between tests.
 
-No GameService item write endpoint should be manually invoked because Phase 5
-does not expose one. No Unity Editor action is required for Phase 5 verification.
+No Unity Editor action is required for this verification.
 
-## Phase 6 Policy And Offline Item API Verification
+## Item Policy And Offline Item API Verification
 
-Run the Phase 6 policy and HTTP integration suites against the isolated test
+Run the policy and HTTP integration suites against the isolated test
 database:
 
 ```powershell
@@ -471,9 +471,10 @@ bank and Recovery rejection, system delivery, successful kernel bank claim, and
 hard-cap claim rollback. The test host uses the real account
 session authentication handler and item endpoints over loopback HTTP.
 
-To inspect the account Phase 6 HTTP contract manually, start local PostgreSQL and
+To inspect the account HTTP contract manually, start local PostgreSQL and
 Redis with `docker compose up -d --wait`, run
-`dotnet run --project src/Server/GameService`, and use the Phase 4 registration commands to
+`dotnet run --project src/Server/GameService`, and use the registration commands from
+[Item Read Model Verification](#item-read-model-verification) to
 create `$headers` and `$character`. The `-SkipHttpErrorCheck` switch needs
 PowerShell 7 (`pwsh`), so run this snippet in `pwsh`, not Windows PowerShell 5.1.
 Then run:
@@ -534,9 +535,9 @@ destruction, Recovery claims, active-session rejection, and policy lifecycle are
 covered by the isolated integration suite until gameplay grants create real
 items for manual interaction.
 
-No Unity Editor action is required for Phase 6 verification.
+No Unity Editor action is required for this verification.
 
-## Phase 7 Carry State And Shared Encumbrance Verification
+## Carry State And Encumbrance Verification
 
 Run the carry-state unit, protocol, worker, and isolated PostgreSQL coverage
 against the dedicated test database:
@@ -583,7 +584,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `15` and simulation revision
+   startup reports realtime protocol version `16` and simulation revision
    `movement-simulation-v6`.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -594,11 +595,12 @@ For a manual default-state and reconnect check:
 7. Exit Play Mode and stop both backend processes and Compose services.
 
 No Inspector, scene, prefab, package, input-action, or build-setting change is
-required for Phase 7.
+required for this verification.
 
-## Phase 8 In-World Mutation Boundary Verification
+## In-World Item Mutation Verification
 
-Run the Phase 8 protocol, worker, HTTP client, and isolated PostgreSQL coverage:
+Run the in-world mutation protocol, worker, HTTP client, and isolated PostgreSQL
+coverage:
 
 ```powershell
 docker compose -f docker-compose.test.yml up -d --wait
@@ -633,7 +635,7 @@ Run all Unity tests:
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
 
-Expected result: all EditMode and PlayMode tests pass. Phase 8 EditMode tests
+Expected result: all EditMode and PlayMode tests pass. EditMode tests
 round-trip typed item intents and committed results through the same protocol
 source compiled by the backend and Unity.
 
@@ -642,22 +644,21 @@ For a manual runtime smoke check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm it
-   reports realtime protocol version `15` and loads the configured local bank,
-   Recovery Storage, and insurance NPC service points without a configuration
-   error.
+   reports the current realtime protocol version and loads the configured World
+   without a configuration error.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
-   This step verifies the Phase 8 boundary. The current Phase 9 build also has
-   the inventory panel documented below.
+   This step verifies the in-world mutation boundary. The inventory panel is
+   documented in [Unity Inventory Verification](#unity-inventory-verification).
 6. Leave and reconnect. Confirm the same committed carry revision is restored.
 7. Exit Play Mode and stop both backend processes and Compose services.
 
 No Inspector, scene, prefab, package, input-action, or build-setting changes are
-required for Phase 8. No manual Unity Editor setup is required.
+required for this verification. No manual Unity Editor setup is required.
 
-## Phase 9 Unity Inventory Foundation Verification
+## Unity Inventory Verification
 
 Run the dedicated fixture and client-foundation coverage against the isolated
 test database:
@@ -670,7 +671,7 @@ $env:MMORPG_TEST_POSTGRES = `
   }).Split("=", 2)[1]
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests `
   --configuration Release `
-  --filter "FullyQualifiedName~PhaseNineDevelopmentFixture|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
+  --filter "FullyQualifiedName~DevelopmentItemPackage|FullyQualifiedName~DevelopmentItemTool|FullyQualifiedName~ItemReadModelIntegrationTests"
 Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
@@ -679,7 +680,7 @@ powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 Expected result: every selected backend test passes, including one real
 PostgreSQL transaction-service fixture flow, Editor-tool list and grant flows,
 exact 140 percent package weight, hard-cap rejection, readback, Recovery
-revision, and replay refusal. Both Unity suites pass. Phase 9 EditMode coverage
+revision, and replay refusal. Both Unity suites pass. EditMode coverage
 verifies the shared Editor menu root and machine-readable tool response, the
 presentation catalog cache, catalog mismatch, complete and focused snapshots,
 monotonic and divergent revisions, operation correlation, specialized targets,
@@ -727,7 +728,7 @@ routed through the worker that currently owns the character.
 5. For a complete scenario, choose a package and click `Give Package`. Available
    packages are:
 
-   - Phase 9 Full Test Pack
+   - Full Inventory Test Pack
    - Equipment Test Pack
    - Stack Split And Merge Pack
    - Encumbrance 100% Pack
@@ -736,16 +737,16 @@ routed through the worker that currently owns the character.
    - Recovery Delivery Pack
 
    Expected result: an empty offline character receives the selected
-   deterministic state. The full Phase 9 pack reports weight `122 / 250`. The
-   encumbrance packs report `200 / 200` and `280 / 200`. Package controls become
+   deterministic state. The Full Inventory Test Pack reports weight `1040 / 2500`. The
+   encumbrance packs report `2000 / 2000` and `2800 / 2000`. Package controls become
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
    rejected by GameService without a partial item transaction.
 6. To create a durable corpse, keep a source character offline and use the
-   `Create Phase 11 Corpse` section. Leave Shard Id as `local-shard-1`, enter a
+   `Create Durable Corpse` section. Leave Shard Id as `local-shard-1`, enter a
    nearby safe World position such as `(0, 0, -1)`, and click
-   `Create Durable Corpse`. An empty source is seeded automatically with the
-   Phase 9 package. A non-empty source uses its current item state. A source with
+   `Create Durable Corpse`. An empty source first receives the corpse seed package, the
+   Full Inventory Test Pack. A non-empty source uses its current item state. A source with
    only pending Recovery deliveries cannot be auto-seeded.
 
    Expected result: the status reports the corpse id, exact Shard, absolute
@@ -780,79 +781,102 @@ dotnet run --project src/Server/GameService --configuration Release --no-build -
   --dev-items-grant <characterId> material.iron_ore 20 bank
 
 dotnet run --project src/Server/GameService --configuration Release --no-build -- `
-  --dev-items-package <characterId> phase9_full
+  --dev-items-package <characterId> full_inventory
 
 dotnet run --project src/Server/GameService --configuration Release --no-build -- `
   --dev-items-corpse <characterId> local-shard-1 0 0 -1
 ```
 
-The original full-fixture command remains compatible:
-
-```powershell
-dotnet run --project src/Server/GameService -- --seed-phase9-items <characterId>
-```
-
-Expected result: the process exits after logging 17 granted item instances, one
-Recovery delivery, the committed item-state revision, and carry `122/250`.
-Running it again fails with the empty-character guard instead of duplicating
-items.
+The packages come from `content/development/item-packages.json`, which GameService
+copies next to its build output. A package that names an unknown definition, or
+that no longer reaches its exact expected load, is rejected with a message that
+names the package.
 
 ### Manual Player Loop
 
-1. Press `B` and verify only Permanent inventory, the equipped Field Pack
+1. Press `B` and verify only Permanent inventory, the equipped Traveler's Pack
    contents, and Secure Container are shown. Press `C` and verify equipment plus
    character storage are shown. Press `I` and verify the complete Development
    view adds the upper-right Bank and Recovery context. Pressing the active key
    closes that view, pressing another inventory key switches views, and
-   `Escape` closes any view and restores shooter pointer capture. Verify that
+   `Escape` closes any view; the cursor stays free. Verify that
    hidden modules leave no background or header behind and that Character
    Inventory keeps the same position and size in all three views.
-2. Drag the rifle, vest, pickaxe, or ring from Permanent inventory onto a
+2. Drag the shortbow, jerkin, pickaxe, or ring from Permanent inventory onto a
    compatible empty equipment slot. Drag the equipped item onto an empty
    Permanent slot to unequip it. Valid targets highlight green, invalid targets
    highlight red, and the UI waits for the committed refresh before showing the
    new location. The header drops by the equipped item's own weight and restores
    it when the item is unequipped into carried storage. Clicking a destination
    without dragging does not move an item.
-3. Drag the empty Field Pack from Permanent inventory into one of the equipped
-   Bag's general slots and back. Open Bank and drag the second empty Field Pack
-   between Bank and Permanent inventory. Click the equipped non-empty Field Pack
+3. Drag the 100 Bronze Arrows from the Bag ammunition slot onto the Ammunition
+   equipment slot. The weight drops by `100`. Select the equipped arrows, enter
+   `40`, enable `Split to Target`, and drag them onto an empty Permanent slot:
+   `60` stay equipped and the weight rises by `40`. Drag the `40` arrows back
+   onto the equipped stack to top it up to `100`, then drag the equipped stack
+   back onto the Bag ammunition slot. The weight returns to `1040 / 2500`.
+4. Drag the empty Traveler's Pack from Permanent inventory into one of the
+   equipped Bag's general slots and back. Open Bank and drag the second empty
+   Traveler's Pack between Bank and Permanent inventory. Click the equipped
+   non-empty Traveler's Pack
    only to inspect its actions, then drag it and confirm ordinary Permanent, Bag,
    and Bank destinations reject it.
-4. Drag the field dressing, iron ore, and ammunition out of and back into the
-   medical, material, and ammunition specialized slots. Drag the rifle across a
+5. Drag the healing potion, iron ore, and arrows out of and back into the
+   supplies, material, and ammunition specialized slots. Drag the shortbow across a
    specialized slot and Secure Container target and confirm both reject it.
-5. In Bank, click an iron-ore stack, enter the split quantity, enable
+6. In Bank, click an iron-ore stack, enter the split quantity, enable
    `Split to Target`, then drag that selected stack onto an empty Bank slot. Drag
    the resulting stack onto its compatible peer to merge it back. Confirm source
    quantities and item identities change only after the server result and
    refresh. Drag two unlike items between compatible occupied ordinary slots and
    confirm they exchange slots in one committed refresh. Repeat against an
    incompatible specialized or Secure Container slot and confirm neither moves.
-6. In Recovery, drag either item in the prepared delivery onto a Permanent or
+7. In Recovery, drag either item in the prepared delivery onto a Permanent or
    Bank slot. The complete delivery disappears and both original item instances
    appear in the chosen container only after the committed full refresh.
-7. Starting from fixture weight `122 / 250`, move Bank iron ore quantity `20` to
-   Permanent inventory. Weight becomes `242 / 250`. Move Bank iron ore quantity
-   `16` to reach `338 / 250`, where the movement multiplier begins its linear
-   decline. Move the single field dressing to reach
-   `340 / 250`, followed by the empty Bank Field Pack to reach exactly
-   `350 / 250`, load `140%`, and movement `20%`.
-8. Attempt to move the single Bank ammunition item into carried storage. The
-   local target is disabled. Any equivalent authoritative request is rejected by
-   the server, and the committed weight remains exactly `350 / 250`.
-9. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
+8. Starting from fixture weight `1040 / 2500`, move Bank iron ore quantity `20`
+   to Permanent inventory. Weight becomes `2240 / 2500`. Move Bank iron ore
+   quantity `19` to reach `3380 / 2500`, above 100 percent, where the movement
+   multiplier declines linearly. Move the single healing potion to reach
+   `3400 / 2500`, followed by the empty Bank Traveler's Pack to reach exactly
+   `3500 / 2500`, load `140%`, and movement `20%`.
+9. Attempt to move the Bank arrow stack into carried storage. The local target
+   is disabled. Any equivalent authoritative request is rejected by the server,
+   and the committed weight remains exactly `3500 / 2500`.
+10. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
    quantity, carry value, and revision is restored without loss or duplication.
-10. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
+11. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
     references remain stable. Automated EditMode coverage also asserts that both
     catalog loads return the same presentation index and icon cache.
 
 The checked-in `src/Server/SimulationWorker/Config/appsettings.Development.json` sets
 `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess=true`. This is a local
-testing capability, not an GameService or protocol bypass. If the same setting is
+testing capability, not a GameService or protocol bypass. If the same setting is
 enabled outside the Development environment, SimulationWorker refuses startup.
-Production continues to require authored Bank and Recovery service-point
-proximity, and insurance access always remains proximity based.
+Production requires an open interaction with an NPC that offers Bank or Recovery
+Storage, and insurance always requires the insurance NPC capability.
+
+To test the production access path, start SimulationWorker with the global
+access turned off:
+
+```powershell
+$env:DevelopmentItemInteractions__GlobalBankAndRecoveryAccess = "false"
+dotnet run --project src/Server/SimulationWorker
+```
+
+1. Join the shard, press `I`, and move a Bank item into Permanent inventory.
+   Expected result: the move is rejected with `bank_access_required`.
+2. Left-click Mira the Quartermaster and select `Character Bank` in the
+   interaction panel. Expected result: the interaction reports that the Character
+   Bank is open, and the inventory opens in the complete view with the Bank
+   context. Moving an item between Bank and Permanent inventory now commits.
+3. Select `Recovery Storage` in the same interaction. Expected result: the
+   Recovery context opens, and a prepared delivery can be claimed.
+4. Walk away from Mira until the interaction closes, then move a Bank item again.
+   Expected result: the move is rejected with `bank_access_required`.
+
+Remove the variable with `Remove-Item Env:DevelopmentItemInteractions__GlobalBankAndRecoveryAccess`
+when finished.
 
 The catalog-update path is covered by
 `MapperRejectsCatalogMismatchAndInvalidDeliveryRevision`: a mismatched server
@@ -860,12 +884,12 @@ revision is refused and the controller presents `item_catalog_update_required`
 instead of rendering item slots.
 
 World-loot keeps its reserved context identity. Corpse inspection, concurrent
-loot, partial stacks, and atomic equipped-Bag swaps are implemented by Phase 11
-and use the separate verification flow below.
+loot, partial stacks, and atomic equipped-Bag swaps use the separate flow in
+[Concurrent Corpse Interaction Verification](#concurrent-corpse-interaction-verification).
 
-## Phase 10 Death And Durable Corpse Verification
+## Player Death And Durable Corpse Verification
 
-Phase 10 has no fabricated combat or Unity death flow. Verify its complete
+No combat produces a death yet, and Unity has no death flow. Verify the complete
 durable boundary against the isolated PostgreSQL database:
 
 ```powershell
@@ -891,14 +915,15 @@ rejection of further weight gain, cross-Shard worker restoration, empty-corpse
 lifetime, one audited destruction per remaining item, and a
 custody-versus-expiry race with one final outcome.
 
-No manual Unity Editor steps are required for Phase 10. Do not change a scene,
-prefab, Inspector property, input action, package, or build setting. Phase 11
+No manual Unity Editor steps are required for this verification. Do not change a
+scene, prefab, Inspector property, input action, package, or build setting. The
+corpse interaction verification below
 uses the prepared exact-session death boundary for its Development corpse
 fixture without fabricating the future combat producer.
 
-## Phase 11 Concurrent Corpse Container Verification
+## Concurrent Corpse Interaction Verification
 
-Run the complete Phase 11 backend coverage against the isolated PostgreSQL
+Run the complete corpse interaction backend coverage against the isolated PostgreSQL
 database, then run both Unity suites:
 
 ```powershell
@@ -939,10 +964,10 @@ at the same time:
    standalone player reaches LoginMenu.
 2. Start PostgreSQL, Redis, and GameService. Using the Editor client, create
    three disposable accounts with one character each: one offline corpse source
-   and two looters. Apply `Phase 9 Full Test Pack` to both looters while they are
+   and two looters. Apply `Full Inventory Test Pack` to both looters while they are
    offline so each has an occupied equipped Bag.
 3. In `MMORPG > Tools > Inventory Item Grants`, select the offline source.
-   Under `Create Phase 11 Corpse`, keep Shard Id `local-shard-1`, use World
+   Under `Create Durable Corpse`, keep Shard Id `local-shard-1`, use World
    Position `(0, 0, -1)`, and click `Create Durable Corpse`. Expected result:
    the tool reports a corpse id and an expiry five minutes in the future.
 4. Start or restart SimulationWorker after the fixture commits. Run the built
@@ -973,7 +998,7 @@ at the same time:
    commits as corpse-only movement, both clients receive the result, and the
    character weight and item-state revision do not change. Verify that each
    Corpse Equipment button shows a type such as `Head [head]` or
-   `Body Armour [body_armor]`. A compatible item is accepted and an incompatible
+   `Body [body]`. A compatible item is accepted and an incompatible
    item is rejected without moving either item.
 10. In one client, drag a corpse Bag child. At the same time in the other client,
    drag the corpse Bag root onto the occupied player Bag equipment slot.
@@ -989,7 +1014,7 @@ The future combat system is not required for this test. The fixture enters the
 same durable death, restore, interaction, transaction, and expiry boundaries
 that combat must call later.
 
-## Phase 12 World Actor And Interaction Verification
+## World Actor And Interaction Verification
 
 Compile or verify the canonical actor content from any repository directory:
 
@@ -1127,7 +1152,7 @@ presentation mapping:
 15. Join with two clients and open Mira independently. Expected result: both
     sessions coexist. One client cannot open a corpse while its NPC interaction
     is active. After closing it with `Escape`, click a corpse and verify the existing
-    Phase 11 inspection, drag-and-drop, and authoritative mutation flow is
+    corpse inspection, drag-and-drop, and authoritative mutation flow is
     unchanged.
 16. Restart SimulationWorker and reconnect. Expected result: actors reconstruct
     from compiled WorldData with fresh runtime identities, normal interest
@@ -1165,18 +1190,18 @@ snapshot, and leave flow. Configuration, startup commands, expected behavior,
 capacity reservation, Ctrl+C cleanup, and the visual Unity test are documented
 in [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md).
 
-## Phase 13 Insurance And Quest Item Lifecycle
+## NPC Insurance And Quest Item Verification
 
-Phase 13 uses Mira the Quartermaster and the existing Phase 12 world interaction
+The NPC lifecycle uses Mira the Quartermaster and the shared world interaction
 session. No scene object, inspector assignment, or new Unity asset is required.
 The default GameService lifecycle profile charges `100` currency for one-death
-insurance and grants one `quest_item.signal_transponder` with lineage
-`quest.local.signal_transponder`.
+insurance and grants one `quest_item.sealed_letter` with lineage
+`quest.local.sealed_letter`.
 
 Prepare a local character while it is offline:
 
 1. Open `MMORPG > Tools > Inventory Item Grants` and grant
-   `weapon.training_rifle` into a free Permanent Inventory slot.
+   `weapon.training_shortbow` into a free Permanent Inventory slot.
 2. Give the character local development currency. With the default Compose
    database values, replace the character name and run:
 
@@ -1199,25 +1224,25 @@ Expected result:
   NPC`. The server charges the configured price atomically and rejects a second
   active policy.
 - Explicit removal keeps the item instance and removes the insured label.
-- Accepting the quest creates one protected Signal Transponder with source
+- Accepting the quest creates one protected Sealed Letter with source
   `Quest grant`. Repeated acceptance does not create a duplicate.
 - Generic destroy rejects the protected quest item. NPC abandonment removes only
   that grant lineage, and reacceptance creates exactly one new required item.
 - Moving beyond `3.5` metres or losing line of sight still closes the interaction
-  through the Phase 12 authority path.
+  through the shared interaction authority path.
 
 Recovery Storage headings label `death_recovered_insured` as consumed insurance
-and `death_recovered_protected` as protected-on-death. Phase 13 intentionally has
-no Mob combat or other new death producer. Use the existing backend death
+and `death_recovered_protected` as protected-on-death. No Mob combat or other death
+producer exists yet. Use the existing backend death
 fixture to verify first-death consumption and replay idempotency.
 
-No manual Unity Editor setup is required for Phase 13. Editor actions are needed
+No manual Unity Editor setup is required for this verification. Editor actions are needed
 only for the optional offline item grant used by this manual workflow.
 
-## Phase 14 Mob Corpse Variants
+## Mob Corpse Verification
 
-Phase 14 reuses the existing corpse presence, view, drag, inventory refresh, and
-generic loot-crate presentation. It adds no scene object, prefab, inspector
+Mob corpses reuse the corpse presence, view, drag, inventory refresh, and
+generic `corpse.remains` presentation. It adds no scene object, prefab, inspector
 reference, or protocol version. Mob definitions own the persistence choice and
 lifetime:
 
@@ -1271,10 +1296,10 @@ Mob fixture in this phase. `MobCorpseLifecycleService` consumes an authoritative
 death event and already resolved loot seeds, but combat, damage, death detection,
 loot-table generation, and respawn remain future producers.
 
-## Phase 15 Performance And Operations Hardening
+## Item Operations Hardening Verification
 
-Phase 15 keeps the existing item, corpse, actor, capability, interaction, and
-authority graph. Checked-in GameService defaults live under `Items:Operations`:
+The operations hardening keeps the item, corpse, actor, capability,
+interaction, and authority graph. Checked-in GameService defaults live under `Items:Operations`:
 
 - `TransactionTimeoutMilliseconds`: `10000`.
 - `LockTimeoutMilliseconds`: `2000`.
@@ -1337,7 +1362,7 @@ SimulationWorker status distinguishes actor tiers and live versus durable corpse
 counts. Credentials, session tokens, and command bodies must not appear.
 
 No manual Unity Editor scene, prefab, inspector, package, input, or build-setting
-steps are required for Phase 15. Run `tools/Run-UnityTests.ps1` as regression
+steps are required for this verification. Run `tools/Run-UnityTests.ps1` as regression
 coverage and expect all EditMode and PlayMode tests to pass unchanged.
 
 ## Isolated PostgreSQL Integration Tests
@@ -1418,6 +1443,28 @@ placing active credentials in application settings or Compose YAML.
 `SIMULATION_WORKER_ADVERTISED_HOST` and
 `SIMULATION_WORKER_ADVERTISED_UDP_PORT` override the client-facing endpoint
 without changing the local bind port.
+
+### Reset The Local Development Database
+
+GameService refuses to start when a catalog change would invalidate live item
+state, and the error names the affected definition, equipment slot, tier, or
+character setting. On a local development database the alternative to an
+explicit data migration is a reset. It deletes every local account, character,
+item, corpse, and Recovery delivery.
+
+1. Stop GameService and SimulationWorker.
+2. From the main repository checkout, not a worktree, remove the PostgreSQL
+   volume and start the containers again. Compose names the volume after the
+   checkout directory, so a worktree would not reach it. Redis keeps no data.
+
+   ```powershell
+   docker compose down -v
+   docker compose up -d --wait
+   ```
+
+3. Start GameService. Expected result: it applies every migration, seeds the
+   current item catalog, and reports ready. Create a new account and character
+   in the client.
 
 ## Backend Services
 
@@ -1506,7 +1553,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 15, simulation revision,
+`27015`, runtime id, realtime protocol version 16, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
@@ -2356,7 +2403,7 @@ to the send overload. Snapshot validation therefore checks the protocol message
 type and delivery method, while reliable control messages still validate channel
 0 explicitly. After changing realtime transport code, exit Unity Play Mode and
 restart SimulationWorker so both processes use the current protocol implementation.
-Protocol version 8 also validates shard and World identity, the exact placement,
+The protocol also validates shard and World identity, the exact placement,
 the compiled movement-simulation revision, the initial carry tuple,
 server-assigned network entity ids, reliable carry-state updates, reliable item
 operation intents and results, and reliable entity lifecycle messages.
@@ -2382,7 +2429,8 @@ generations. It is not a runtime map switch. Prepare all target World content
 before changing a shard:
 
 - Add `content/worlds/<WorldId>/world.json` with the stable identity, client
-  scene, bounds, spawn, and item service points.
+  scene, bounds, and spawn. Item services such as Bank and Recovery Storage come
+  from NPC capabilities in the actor spawns.
 - Provide `content/worlds/<WorldId>/collision.json` and its compiled collision
   data below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
 - Provide `content/worlds/<WorldId>/actor-spawns.json` with at least one spawn

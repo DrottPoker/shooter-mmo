@@ -1,16 +1,15 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
 
 internal sealed class SimulationItemMutationService(
     ItemTransactionService transactionService,
-    NpcItemLifecycleOptions? configuredNpcOptions = null)
+    NpcItemLifecycleOptions npcOptions)
 {
     public const int MaximumRecoveryClaimItems = 24;
-    private readonly NpcItemLifecycleOptions npcOptions =
-        configuredNpcOptions ?? NpcItemLifecycleOptions.Default;
 
     public async Task<ServiceResult<ItemTransactionResult>> ExecuteAsync(
         string authenticatedWorkerId,
@@ -292,7 +291,7 @@ internal sealed class SimulationItemMutationService(
         CancellationToken cancellationToken)
     {
         return HasItem(request)
-            && HasNpcContext(request, "services.insurance")
+            && HasNpcContext(request)
             && request.Access!.InsuranceNpc
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<ApplyItemPolicyCommand>(
@@ -317,7 +316,7 @@ internal sealed class SimulationItemMutationService(
         CancellationToken cancellationToken)
     {
         return HasItem(request)
-            && HasNpcContext(request, "services.insurance")
+            && HasNpcContext(request)
             && request.Access!.InsuranceNpc
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<RemoveInsurancePolicyCommand>(
@@ -337,7 +336,7 @@ internal sealed class SimulationItemMutationService(
         SimulationItemOperationRequest request,
         CancellationToken cancellationToken)
     {
-        return HasNpcContext(request, "services.quest_offer")
+        return HasNpcContext(request)
             && request.Access!.QuestNpc
             && request.DestinationContainerId is not null
             && request.DestinationContainerId != Guid.Empty
@@ -364,7 +363,7 @@ internal sealed class SimulationItemMutationService(
         SimulationItemOperationRequest request,
         CancellationToken cancellationToken)
     {
-        return HasNpcContext(request, "services.quest_offer")
+        return HasNpcContext(request)
             && request.Access!.QuestNpc
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<AbandonQuestItemsCommand>(
@@ -387,9 +386,9 @@ internal sealed class SimulationItemMutationService(
             || request.AccountId == Guid.Empty
             || request.CharacterId == Guid.Empty
             || request.ExpectedCharacterRevision < 0
-            || !IsValidIdentifier(request.WorkerId)
-            || !IsValidIdentifier(request.WorkerRuntimeId)
-            || !IsValidIdentifier(request.ShardId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(request.ShardId)
             || string.IsNullOrWhiteSpace(request.SessionToken)
             || request.SessionToken.Length > 1024
             || request.Access is null
@@ -417,16 +416,13 @@ internal sealed class SimulationItemMutationService(
             && request.DestinationSlotIndex is null or >= 0;
     }
 
-    private static bool HasNpcContext(
-        SimulationItemOperationRequest request,
-        string expectedCapabilityId)
+    // The worker validated the interaction and the capability kind, which its access flags
+    // carry. The capability id is content, so only its presence is checked here.
+    private static bool HasNpcContext(SimulationItemOperationRequest request)
     {
         return request.InteractionSessionId is not null
             && request.InteractionSessionId != Guid.Empty
-            && string.Equals(
-                request.CapabilityId,
-                expectedCapabilityId,
-                StringComparison.Ordinal);
+            && !string.IsNullOrWhiteSpace(request.CapabilityId);
     }
 
     private static string CreateInsuranceGrantId(SimulationItemOperationRequest request)
@@ -435,13 +431,6 @@ internal sealed class SimulationItemMutationService(
             + ":" + request.OperationId.ToString("N");
     }
 
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     private static ServiceResult<ItemTransactionResult> Invalid(string message)
     {

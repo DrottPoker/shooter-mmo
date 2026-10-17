@@ -1,0 +1,20 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "ammunition",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Arrow",
+  "equipmentSlots": [
+    "ammunition"
+  ],
+  "id": "fixture.arrow",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 60,
+  "playerDestroyable": true,
+  "tags": [
+    "ammunition"
+  ],
+  "unitWeight": 1
+}

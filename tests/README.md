@@ -52,6 +52,17 @@ namespace.
   libraries it needs, gets an `AssemblyInfo.cs` like its siblings, joins
   `Mmorpg.slnx` in the matching folder, and commits its `packages.lock.json`.
 
+## Item Catalog Fixture
+
+Item rule tests never name game content. The GameService test kit, the shared
+item tests, and the Unity EditMode inventory tests load the test-owned catalog
+in `Fixtures/ItemCatalog`, whose `fixture.*` definitions keep fixed weights and
+stack sizes, and its development item packages. `RepositoryPaths` and
+`ItemCatalogTestData` expose both. Only content tests, which check that the
+checked-in game content compiles, round-trips, and fits its development
+packages, read the real catalog. How to change and recompile the fixture is in
+[Item Catalog Authoring](../content/items/README.md#test-fixture-catalog).
+
 ## Shared Build Settings
 
 `tests/Directory.Build.props` applies to every project below `tests`. It sets the

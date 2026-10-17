@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "potion",
+  "defaultPolicies": [ ],
+  "displayName": "Minor Healing Potion",
+  "equipmentSlots": [ ],
+  "id": "potion.minor_healing",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 10,
+  "playerDestroyable": true,
+  "tags": [
+    "potion"
+  ],
+  "unitWeight": 20
+}

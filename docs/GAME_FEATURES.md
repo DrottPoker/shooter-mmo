@@ -234,9 +234,10 @@ revision, and movement percentage.
 Active characters now have one authoritative in-world mutation path for
 relocation, equip, unequip, stack split and merge, allowed destruction, Secure
 Container access, ordinary occupied-slot swap, and complete Recovery Storage
-claims. Bank and Recovery
-Storage require proximity to their configured worker service points. Secure
-Container access has no city requirement. Only committed GameService results can
+claims. Bank and Recovery Storage require an open interaction with an NPC that
+offers them, such as Mira the Quartermaster. Walking out of range or losing line
+of sight closes the interaction and ends the access. Secure Container access has
+no city requirement. Only committed GameService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
 Local Development explicitly enables global Bank and Recovery access so item
@@ -251,7 +252,12 @@ and Recovery.
 Drag items to valid container or equipment destinations. Dropping onto an
 occupied compatible container slot merges compatible stacks and otherwise
 submits one atomic swap. Click selection is retained only for split and
-allowed-destroy actions. All mutations use the existing authoritative
+allowed-destroy actions. The ammunition slot holds one stack up to its
+slot limit. Dropping a compatible stack onto the equipped stack tops it up, and
+`Split to Target` from the equipped stack moves part of it into an empty slot.
+An item cannot be equipped into a slot that an equipped item blocks, such as
+the off hand next to a two-handed bow, or while it would block an occupied
+slot. All mutations use the existing authoritative
 SimulationWorker and GameService path. The panel renders only refreshed
 committed snapshots and never pretends that a pending mutation has completed.
 See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
@@ -290,23 +296,41 @@ operation-id, error, refresh, reconnect, and authority handling are permanent
 foundations.
 
 Nearby durable corpses use a generic replaceable capsule presentation. Click a
-corpse to walk to it and open it, or use the Corpse tab in the complete
-Development view. The contextual module shows general inventory,
-equipment, and Bag contents only after a complete authoritative snapshot has
-arrived. Drag full items into Permanent inventory, the equipped Bag, or Secure
-Container, or drag carried items back into compatible corpse slots. Enable the
+corpse to walk to it and open it. An open corpse always shows in the complete
+view, which the panel switches to; switching to `B` or `C` closes the corpse.
+The Corpse tab lists nearby corpses but cannot open them. The contextual module
+shows general inventory, equipment, and Bag contents only after a complete
+authoritative snapshot has arrived. Drag full items into Permanent inventory,
+the equipped Bag, or Secure Container, or drag carried items back into
+compatible corpse slots. Enable the
 partial-stack control before dragging to request a specific quantity in either
 direction. Items can also be dragged between empty or occupied slots in any
 corpse section. Compatible stacks with remaining capacity merge. Dropping a
 complete item that cannot merge onto an occupied slot swaps the two items only
 when both original slots accept the opposite item and the result stays within
 the hard cap. Every corpse equipment slot displays its equipment type and
-canonical id, and accepts only a compatible definition. Dropping either equipped
+canonical id, and accepts only a compatible definition up to its equipment slot
+limit. Dropping either equipped
 Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
 complete Bags satisfy the rules. Bank, Recovery Storage, and ordinary equipped
 items cannot enter corpse custody. The panel never moves either side
 optimistically. Custody-changing transfers refresh character inventory to the
 committed revision, while pure corpse rearrangement updates only corpse state.
+
+The implemented inventory presentation keeps character equipment on the left. The
+right side is split with contextual containers such as bank, corpse, Recovery
+Storage, or world loot above the character inventory. Permanent inventory,
+equipped Bag contents, and Secure Container access remain in the lower-right
+area while another container is open.
+
+Item icons and other visual metadata are client-owned presentation assets keyed
+by stable definition id. The bundled presentation catalog records the exact
+gameplay source revision and its own deterministic presentation revision. Unity
+validates and caches this catalog once per matching revision, then inventory,
+Bank, and Recovery Storage views reuse local lookups for state received from the
+server. The corpse context consumes presence, complete snapshots, targeted deltas,
+operation results, and stable closure messages. World loot has a reserved
+context but no producer yet.
 
 ## Durable Player Death Foundation
 
@@ -351,7 +375,7 @@ revision foundations.
 
 ## World Actors And Interaction
 
-Status: Phase 12 foundation implemented with temporary presentation
+Status: Implemented with temporary presentation
 
 The shared player-facing foundation for NPCs, Mobs, corpses, and future world
 interactables is implemented:
@@ -383,15 +407,15 @@ interactables is implemented:
 All city NPCs, including guards, are invulnerable in the first version. Faction
 and disposition own friendly or hostile behavior independently from NPC or Mob
 kind. The checked-in World contains one composable service NPC, one guard NPC,
-two Mob definitions, and five deterministic actor instances. Capability buttons
-whose business systems belong to later phases return an explicit deferred
-server result and never fabricate success. Vendor transactions, quest
-progression, crafting, combat AI, damage, death-event production, and Mob
-loot-table generation remain unimplemented. Phase 14 provides the downstream
-live or durable Mob corpse lifecycle once an authoritative producer supplies a
-death event and resolved loot seeds. Phase 15 changes no player-facing rule. It
-hardens the same flows with bounded work, retention cleanup, operational
-measurements, concurrency scenarios, and a real `100` bot movement baseline.
+two Mob definitions, and five deterministic actor instances. The Character Bank
+and Recovery Storage buttons open the inventory with that storage, which stays
+usable while the interaction is open, and the insurance and quest offer
+capabilities run their item lifecycle. Dialogue, vendor, crafting, trainer, and
+quest completion buttons return an explicit deferred server result and never
+fabricate success. Vendor transactions, quest progression, crafting, combat AI,
+damage, death-event production, and Mob loot-table generation remain
+unimplemented. The live and durable Mob corpse lifecycle is ready for an
+authoritative producer that supplies a death event and resolved loot seeds.
 
 ## Planned Feature Categories
 
@@ -411,45 +435,6 @@ They remain in the MVP specification until working behavior is available:
 - Zone partitioning, cross-zone handoff, and population layers.
 - Social, grouping, guild, chat, and trading systems.
 - Final UI, audio, visual effects, animation, and accessibility.
-
-The neutral item catalog, pure Phase 1 rules, Phase 2 Unity authoring, Phase 3
-PostgreSQL foundation, Phase 4 authenticated catalog and owned-character reads,
-Phase 5 internal transaction kernel, Phase 6 policy-safe offline account APIs,
-Phase 7 shared live encumbrance, Phase 8 active-character mutation, Phase 9
-Unity inventory foundation, Phase 10 durable player-death partition and corpse
-persistence, Phase 11 concurrent corpse interaction, and Phase 12 world actors
-and authoritative interaction now exist. Phase 13 insurance and quest item
-lifecycle, Phase 14 Mob corpse variants, and Phase 15 operational hardening are
-also complete.
-GameService supports owned
-item-state, bank, Secure Container, and Recovery reads plus offline relocation,
-split, merge, allowed destruction, and tier-change operations. Offline operations
-never reach the bank or Recovery Storage; those city services and Recovery claims
-work only in the world at a validated service point.
-Internal policy and quest services apply auditable lineage without adding a
-gameplay quest or insurance NPC operation. SimulationWorker now serializes
-reliable item intents, validates live service access, uses the exact-session
-service boundary, and advances encumbrance only from a committed result. These
-foundations now feed one persistent Unity view of the authoritative item
-collection and its temporary player controls.
-The planned item rules are defined in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). They are
-connected to the Phase 9 Unity inventory presentation.
-
-The implemented inventory presentation keeps character equipment on the left. The
-right side is split with contextual containers such as bank, corpse, Recovery
-Storage, or world loot above the character inventory. Permanent inventory,
-equipped Bag contents, and Secure Container access remain in the lower-right
-area while another container is open.
-
-Item icons and other visual metadata are client-owned presentation assets keyed
-by stable definition id. The bundled presentation catalog records the exact
-gameplay source revision and its own deterministic presentation revision. Unity
-validates and caches this catalog once per matching revision, then inventory,
-Bank, and Recovery Storage views reuse local lookups for state received from the
-server. The corpse context consumes protocol-v11 presence, complete snapshots,
-targeted deltas, operation results, and stable closure messages. World-loot
-keeps only its prepared adapter identity until a later authoritative phase.
 
 ## Feature Documentation Template
 

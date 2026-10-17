@@ -70,7 +70,7 @@ another module or any production assembly access to its internals.
 | Accounts | `AccountsModule`, `AccountsModuleOptions`, `SimulationWorkerCredentials`, `RedisAccelerationOptions` |
 | Characters | `CharactersModule`, `CharactersModuleOptions` |
 | Placement | `PlacementModule`, `PlacementModuleOptions`, `SimulationTopologyConfig`, `FleetBootstrapConfig`, `SimulationNodeBootstrapConfig`, `ShardBootstrapConfig`, `WorldManifestCatalog`, `DevelopmentSimulationBotOptions` |
-| Items | `ItemsModule`, `ItemsModuleOptions`, `ItemCatalogSource`, `ItemOperationsOptions`, `NpcItemLifecycleOptions`, `StackStressFixtureOptions`, `ItemsCommandLine` |
+| Items | `ItemsModule`, `ItemsModuleOptions`, `ItemCatalogSource`, `ItemOperationsOptions`, `NpcItemLifecycleOptions`, `StackStress.StackStressFixtureOptions`, `Development.DevelopmentItemPackageSource`, `ItemsCommandLine` |
 
 Platform is public except its middleware and exception handler.
 
@@ -95,7 +95,7 @@ tests. Startup runs in this order:
 5. When `Database:RunMigrationsOnStartup` is true, apply the merged migration
    history, run every `IDatabaseSeeder` (the item catalog, then the item state
    backfill), and seed the topology through `PlacementModule.SeedTopologyAsync`.
-6. Run a `--seed-phase9-items` or `--dev-items-*` command through
+6. Run a `--dev-items-*` command through
    `ItemsCommandLine` and exit, if one is given. Hosted services never start in
    that mode.
 7. Map the health routes, then each module's routes, and run.
@@ -185,6 +185,13 @@ Every durable item mutation runs through one item transaction kernel in
 | `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, and transform and Mob loot rules |
 | `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
 
+`Context/CarryStateCalculator` is the one carried-weight rule, shared with the
+startup recompute in `CharacterItemStateBootstrapper`, and
+`Context/ItemOwnershipSql` is the one definition of the character that owns an
+item. Outside the kernel, `Development/` holds the process-local Development item
+tool and its packages, and `StackStress/` holds the stack stress fixtures, which
+register only when `StackStressFixtures:Enabled` is true.
+
 Each overload routes its command with the persisted operation kind and the
 actor character id to the kernel and one handler. The facade composes the
 kernel and the handlers in its constructor; only `ItemTransactionService` is
@@ -228,6 +235,40 @@ order below; only `ItemTransactionRejection` throws a rejection; the kernel neve
 uses HTTP API error codes; and only the types named in
 [Cross-Module Statements](#cross-module-statements) use another module's
 contracts or SQL fragments.
+
+## Items Tables
+
+| Table | Responsibility |
+| --- | --- |
+| `item_catalog_revisions` | Applied deterministic catalog revisions and the current one |
+| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings |
+| `item_categories`, `item_tags`, `equipment_slots` | Catalog vocabulary with display order, slot maximum quantity, and active state |
+| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, structural fingerprint, and active state |
+| `item_definition_tags`, `item_definition_default_policies` | Many-to-many definition tags and default policies |
+| `item_definition_equipment_slots`, `item_definition_blocked_equipment_slots` | Compatible equipment slots and the slots an equipped definition blocks |
+| `item_definition_location_rules` | Secure Container and other explicit location eligibility |
+| `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Bag carry bonus and its stable general and specialized slots |
+| `secure_container_tiers`, `account_secure_container_entitlements` | Secure Container tiers and the account's selected tier |
+| `character_item_states` | Aggregate revision, carried weight, carry capacity, and the owned top-level container ids |
+| `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed containers with owner binding, slot kinds, accepted tags, revision, and lifecycle |
+| `item_instances` | Durable identity, definition, quantity, revision, and exactly one location: a container slot or an equipment slot |
+| `item_instance_policies` | Protected-on-death and one-death insurance lifecycle records |
+| `recovery_deliveries`, `recovery_delivery_items` | System deliveries with source, availability, expiry, and their items |
+| `item_operations`, `item_operation_changes`, `item_destructions` | Operation ids with canonical request hash and replayable result, the append-only audit, and destruction records |
+| `corpses`, `corpse_sections`, `corpse_snapshots`, `death_events` | Durable player and persistent Mob corpses, their three sections, non-interactive presentation snapshots, and idempotent death events |
+
+CHECK constraints enforce the location union of `item_instances`, and partial
+unique indexes allow one item per container slot and per equipment slot. A
+retired catalog row stays with `is_active = false`, so audit records and old
+corpses keep their references. Normal non-persistent Mob corpses stay
+SimulationWorker state.
+
+Every mutation carries an operation id. Replaying the same id and canonical
+payload returns the stored result; reusing it with another payload is a stable
+conflict. Player mutations also carry the expected character item-state
+revision, and targeted item, Bag, and corpse mutations carry the revisions of
+the rows they target. An unrelated change in the same container does not reject
+a targeted loot request.
 
 ## Lock Order
 
@@ -369,7 +410,7 @@ is Placement, and Itm is Items. R is read, W is write, and L is lock.
 | S36 | Inventory reads check character ownership | Chr R | `CharactersSql.ActiveCharacters` |
 | S37 | Development item tool lists characters | Chr R, Acc R, Plc R | `CharactersSql.ActiveCharacters`, `AccountsSql.UsernameOf`, `PlacementSql.HasActiveSimulationSession` |
 | S38 | Development item tool loads a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
-| S39 | Phase 9 fixture loads and validates a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
+| S39 | The Development item tool loads and validates a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
 | S40 | Baseline migrations #1 and #6 | mixed DDL | R4, frozen |
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,

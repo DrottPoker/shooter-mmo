@@ -9,7 +9,7 @@ public sealed class ItemRulesTests
     [Fact]
     public void StackCompatibilityRequiresMatchingDefinitionPolicyAndStackState()
     {
-        var definition = Definition("material.iron_ore");
+        var definition = Definition("fixture.ore");
         var first = new ItemStackState(definition.Id, 40, "policy.none", "state.default");
         var second = new ItemStackState(definition.Id, 60, "policy.none", "state.default");
         var protectedStack = new ItemStackState(
@@ -30,36 +30,36 @@ public sealed class ItemRulesTests
     [Fact]
     public void SpecializedSlotsAcceptConfiguredTagsAndRejectUnrelatedDefinitions()
     {
-        var bag = Definition("bag.field_pack").Bag;
-        var medicalSlot = bag.Slots.Single(slot => slot.AcceptedTags.Contains(ItemTagIds.Medical));
+        var bag = Definition("fixture.pack").Bag;
+        var potionSlot = bag.Slots.Single(slot => slot.AcceptedTags.Contains("potion"));
         var generalSlot = bag.Slots.Single(slot => slot.Index == 0);
-        var medical = Definition("medical.field_dressing");
-        var material = Definition("material.iron_ore");
-        var weapon = Definition("weapon.training_rifle");
+        var potion = Definition("fixture.potion");
+        var material = Definition("fixture.ore");
+        var weapon = Definition("fixture.sword");
 
-        Assert.True(ItemSlotRules.Accepts(medical, medicalSlot));
-        Assert.False(ItemSlotRules.Accepts(material, medicalSlot));
-        Assert.False(ItemSlotRules.Accepts(weapon, medicalSlot));
+        Assert.True(ItemSlotRules.Accepts(potion, potionSlot));
+        Assert.False(ItemSlotRules.Accepts(material, potionSlot));
+        Assert.False(ItemSlotRules.Accepts(weapon, potionSlot));
         Assert.True(ItemSlotRules.Accepts(weapon, generalSlot));
     }
 
     [Fact]
     public void EquipmentCompatibilityUsesOnlyExplicitEquipmentSlots()
     {
-        var weapon = Definition("weapon.training_rifle");
-        var ring = Definition("ring.starter_band");
+        var weapon = Definition("fixture.sword");
+        var ring = Definition("fixture.ring");
 
-        Assert.True(ItemEquipmentRules.IsCompatible(weapon, ItemEquipmentSlotIds.PrimaryWeapon));
-        Assert.True(ItemEquipmentRules.IsCompatible(weapon, ItemEquipmentSlotIds.SecondaryWeapon));
-        Assert.False(ItemEquipmentRules.IsCompatible(weapon, ItemEquipmentSlotIds.Tool));
-        Assert.True(ItemEquipmentRules.IsCompatible(ring, ItemEquipmentSlotIds.Ring1));
-        Assert.True(ItemEquipmentRules.IsCompatible(ring, ItemEquipmentSlotIds.Ring2));
+        Assert.True(ItemEquipmentRules.IsCompatible(weapon, "main_hand"));
+        Assert.True(ItemEquipmentRules.IsCompatible(weapon, "off_hand"));
+        Assert.False(ItemEquipmentRules.IsCompatible(weapon, "tool"));
+        Assert.True(ItemEquipmentRules.IsCompatible(ring, "ring_1"));
+        Assert.True(ItemEquipmentRules.IsCompatible(ring, "ring_2"));
     }
 
     [Fact]
     public void WeaponsAreRejectedFromSecureContainerEvenIfContentIsMalformed()
     {
-        var weapon = Definition("weapon.training_rifle");
+        var weapon = Definition("fixture.sword");
         var malformedWeapon = new ItemDefinition
         {
             Id = weapon.Id,
@@ -72,7 +72,7 @@ public sealed class ItemRulesTests
 
         Assert.False(SecureContainerRules.IsEligible(weapon));
         Assert.False(SecureContainerRules.IsEligible(malformedWeapon));
-        Assert.True(SecureContainerRules.IsEligible(Definition("medical.field_dressing")));
+        Assert.True(SecureContainerRules.IsEligible(Definition("fixture.potion")));
     }
 
     [Theory]
@@ -81,7 +81,7 @@ public sealed class ItemRulesTests
     public void ActiveProtectionPoliciesBlockTransferCapabilities(string policyKind)
     {
         var capabilities = ItemPolicyRules.Evaluate(
-            Definition("weapon.training_rifle"),
+            Definition("fixture.sword"),
             [new ItemPolicyState(policyKind, "active", "test", "source-1")]);
 
         Assert.False(capabilities.CanChangeOwningCharacter);
@@ -94,7 +94,7 @@ public sealed class ItemRulesTests
     public void RemovedInsuranceRestoresNormalCapabilities()
     {
         var capabilities = ItemPolicyRules.Evaluate(
-            Definition("weapon.training_rifle"),
+            Definition("fixture.sword"),
             [new ItemPolicyState(ItemPolicyIds.Insured, "removed", "test", "source-1")]);
 
         Assert.True(capabilities.CanChangeOwningCharacter);
@@ -108,7 +108,7 @@ public sealed class ItemRulesTests
     public void ProtectedPolicyTakesDeathPriorityAndBlocksQuestItemDestruction()
     {
         var capabilities = ItemPolicyRules.Evaluate(
-            Definition("quest_item.signal_transponder"),
+            Definition("fixture.letter"),
             [
                 new ItemPolicyState(
                     ItemPolicyIds.Insured,
@@ -129,16 +129,16 @@ public sealed class ItemRulesTests
     [Fact]
     public void InsuranceIsLimitedToNonStackableEquipmentDefinitions()
     {
-        Assert.True(ItemPolicyRules.CanApplyInsurance(Definition("weapon.training_rifle")));
-        Assert.True(ItemPolicyRules.CanApplyInsurance(Definition("bag.field_pack")));
-        Assert.False(ItemPolicyRules.CanApplyInsurance(Definition("ammunition.training_556")));
-        Assert.False(ItemPolicyRules.CanApplyInsurance(Definition("quest_item.signal_transponder")));
+        Assert.True(ItemPolicyRules.CanApplyInsurance(Definition("fixture.sword")));
+        Assert.True(ItemPolicyRules.CanApplyInsurance(Definition("fixture.pack")));
+        Assert.False(ItemPolicyRules.CanApplyInsurance(Definition("fixture.arrow")));
+        Assert.False(ItemPolicyRules.CanApplyInsurance(Definition("fixture.letter")));
     }
 
     [Fact]
     public void StackingCapabilityKeepsProtectionSeparateFromExactLineageCompatibility()
     {
-        var definition = Definition("material.iron_ore");
+        var definition = Definition("fixture.ore");
         var protectedCapabilities = ItemPolicyRules.Evaluate(
             definition,
             [
@@ -226,29 +226,60 @@ public sealed class ItemRulesTests
     {
         Assert.Equal(
             expectedBasisPoints,
-            EncumbranceRules.CalculateMovementMultiplierBasisPoints(
-                carriedWeight,
-                CarryWeightDefaults.BaseCharacterCapacity));
+            EncumbranceRules.CalculateMovementMultiplierBasisPoints(carriedWeight, 200));
         Assert.Equal(
             expectedBasisPoints,
-            PlayerEncumbranceRules.CalculateMovementMultiplierBasisPoints(
-                carriedWeight,
-                CarryWeightDefaults.BaseCharacterCapacity));
+            new PlayerCarryState(0, carriedWeight, 200).MovementMultiplierBasisPoints);
     }
 
     [Fact]
-    public void BaseCharacterCapacityUsesTheCanonicalNeutralWeightScale()
+    public void HardCapIsOneHundredFortyPercentOfCapacity()
     {
-        Assert.Equal(200, CarryWeightDefaults.BaseCharacterCapacity);
-        Assert.Equal(
-            CarryWeightDefaults.BaseCharacterCapacity,
-            PlayerEncumbranceRules.BaseCharacterCapacity);
-        Assert.True(EncumbranceRules.IsWithinHardCap(
-            280,
-            CarryWeightDefaults.BaseCharacterCapacity));
-        Assert.False(EncumbranceRules.IsWithinHardCap(
-            281,
-            CarryWeightDefaults.BaseCharacterCapacity));
+        Assert.Equal(140, EncumbranceRules.HardCapLoadPercent);
+        Assert.True(EncumbranceRules.IsWithinHardCap(280, 200));
+        Assert.False(EncumbranceRules.IsWithinHardCap(281, 200));
+        Assert.True(EncumbranceRules.IsWithinHardCap(2800, 2000));
+        Assert.False(EncumbranceRules.IsWithinHardCap(2801, 2000));
+    }
+
+    [Fact]
+    public void EquipmentSlotQuantityIsTheSmallerOfSlotAndStackLimits()
+    {
+        var catalog = ItemCatalogTestData.CompileFixture();
+        var arrow = Definition("fixture.arrow");
+        var ammunitionSlot = catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition");
+        var headSlot = catalog.EquipmentSlots.Single(slot => slot.Id == "head");
+
+        Assert.Equal(50, ItemEquipmentRules.MaximumQuantity(arrow, ammunitionSlot));
+        Assert.True(ItemEquipmentRules.CanHoldQuantity(arrow, ammunitionSlot, 50));
+        Assert.False(ItemEquipmentRules.CanHoldQuantity(arrow, ammunitionSlot, 51));
+        Assert.False(ItemEquipmentRules.CanHoldQuantity(arrow, ammunitionSlot, 0));
+        Assert.Equal(1, ItemEquipmentRules.MaximumQuantity(Definition("fixture.tunic"), headSlot));
+    }
+
+    [Fact]
+    public void TwoHandedWeaponAndOffHandItemBlockEachOther()
+    {
+        var bow = Definition("fixture.bow");
+        var shield = Definition("fixture.shield");
+        var sword = Definition("fixture.sword");
+        var withShield = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["off_hand"] = shield.BlockedEquipmentSlots
+        };
+        var withBow = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["main_hand"] = bow.BlockedEquipmentSlots
+        };
+
+        Assert.Equal("off_hand", ItemEquipmentRules.FindBlockingSlot(bow, "main_hand", withShield));
+        Assert.Equal("main_hand", ItemEquipmentRules.FindBlockingSlot(shield, "off_hand", withBow));
+        Assert.Equal("main_hand", ItemEquipmentRules.FindBlockingSlot(sword, "off_hand", withBow));
+        Assert.Null(ItemEquipmentRules.FindBlockingSlot(sword, "main_hand", withShield));
+        Assert.Null(ItemEquipmentRules.FindBlockingSlot(
+            bow,
+            "main_hand",
+            new Dictionary<string, string[]>(StringComparer.Ordinal)));
     }
 
     [Fact]
@@ -301,6 +332,6 @@ public sealed class ItemRulesTests
 
     private static ItemDefinition Definition(string id)
     {
-        return ItemCatalogTestData.Compile().Definitions.Single(definition => definition.Id == id);
+        return ItemCatalogTestData.CompileFixture().Definitions.Single(definition => definition.Id == id);
     }
 }

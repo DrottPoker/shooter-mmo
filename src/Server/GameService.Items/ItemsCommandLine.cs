@@ -1,7 +1,9 @@
+using Mmorpg.GameService.Items.Development;
+
 namespace Mmorpg.GameService.Items;
 
-// Development item commands that run instead of the web host. Both commands start
-// after the database is initialized and before any hosted service.
+// The development item tool commands run instead of the web host. They start after the
+// database is initialized and before any hosted service.
 public static class ItemsCommandLine
 {
     // Returns the process exit code of an item command, or null when the arguments do
@@ -14,30 +16,6 @@ public static class ItemsCommandLine
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(logger);
-
-        if (PhaseNineDevelopmentFixtureCommand.TryParse(
-                args,
-                out var phaseNineCharacterId,
-                out var phaseNineFixtureError))
-        {
-            if (!string.IsNullOrWhiteSpace(phaseNineFixtureError))
-            {
-                throw new InvalidOperationException(phaseNineFixtureError);
-            }
-
-            await using var scope = services.CreateAsyncScope();
-            var seeder = scope.ServiceProvider.GetRequiredService<PhaseNineDevelopmentFixtureSeeder>();
-            var result = await seeder.SeedAsync(phaseNineCharacterId, CancellationToken.None);
-            logger.LogInformation(
-                "Seeded Phase 9 fixture for character {CharacterId} at revision {ItemStateRevision} with {GrantedItemCount} items, {RecoveryDeliveryCount} Recovery delivery, and carry {CarriedWeight}/{CarryCapacity}.",
-                result.CharacterId,
-                result.ItemStateRevision,
-                result.GrantedItemCount,
-                result.RecoveryDeliveryCount,
-                result.CarriedWeight,
-                result.CarryCapacity);
-            return 0;
-        }
 
         if (DevelopmentItemToolCommandParser.TryParse(
                 args,

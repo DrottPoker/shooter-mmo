@@ -5,10 +5,9 @@ namespace Mmorpg.GameSimulation
 {
     public sealed class PlayerCarryState : IEquatable<PlayerCarryState>
     {
-        public static readonly PlayerCarryState Default = new PlayerCarryState(
-            0,
-            0,
-            PlayerEncumbranceRules.BaseCharacterCapacity);
+        // The state before GameService delivers a committed one: nothing carried, full speed.
+        // Base carry capacity is item catalog content, so the placeholder capacity is 1.
+        public static readonly PlayerCarryState Default = new PlayerCarryState(0, 0, 1);
 
         private readonly int movementMultiplierBasisPoints;
 
@@ -38,7 +37,7 @@ namespace Mmorpg.GameSimulation
             CarriedWeight = carriedWeight;
             CarryCapacity = carryCapacity;
             movementMultiplierBasisPoints =
-                PlayerEncumbranceRules.CalculateMovementMultiplierBasisPoints(
+                EncumbranceRules.CalculateMovementMultiplierBasisPoints(
                     carriedWeight,
                     carryCapacity);
         }
@@ -59,7 +58,7 @@ namespace Mmorpg.GameSimulation
             get
             {
                 return (float)(movementMultiplierBasisPoints
-                    / (float)PlayerEncumbranceRules.BaseMovementMultiplierBasisPoints);
+                    / (float)EncumbranceRules.BaseMovementMultiplierBasisPoints);
             }
         }
 
@@ -85,29 +84,6 @@ namespace Mmorpg.GameSimulation
                 hashCode = (hashCode * 397) ^ CarryCapacity.GetHashCode();
                 return hashCode;
             }
-        }
-    }
-
-    public static class PlayerEncumbranceRules
-    {
-        public const long BaseCharacterCapacity = CarryWeightDefaults.BaseCharacterCapacity;
-        public const int BaseMovementMultiplierBasisPoints =
-            EncumbranceRules.BaseMovementMultiplierBasisPoints;
-        public const int MinimumMovementMultiplierBasisPoints =
-            EncumbranceRules.MinimumMovementMultiplierBasisPoints;
-
-        public static bool IsWithinHardCap(long carriedWeight, long carryCapacity)
-        {
-            return EncumbranceRules.IsWithinHardCap(carriedWeight, carryCapacity);
-        }
-
-        public static int CalculateMovementMultiplierBasisPoints(
-            long carriedWeight,
-            long carryCapacity)
-        {
-            return EncumbranceRules.CalculateMovementMultiplierBasisPoints(
-                carriedWeight,
-                carryCapacity);
         }
     }
 }

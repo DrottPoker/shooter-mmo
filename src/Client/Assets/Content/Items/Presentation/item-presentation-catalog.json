@@ -1,27 +1,41 @@
 {
     "formatVersion": 2,
-    "sourceCatalogRevision": "8e6e263ed9597d79aef43848b70251124d951ba240921c02f2d79e2d25ce61a4",
-    "presentationRevision": "34bb67c13884d84fed23976b3d39577785eab5dc495b9a406444aee1a65462e9",
+    "sourceCatalogRevision": "112857ebd8a9af67c17d634365399ef91eaef469057f786e8a89962de87aab83",
+    "presentationRevision": "88ef8dca64d5210d602aef8a4eb893a58da425660b280b97c5a3fd411e4a713a",
     "entries": [
         {
-            "definitionId": "ammunition.training_556",
+            "definitionId": "ammunition.bronze_arrow",
             "iconAddress": "",
-            "localizationKey": "items.ammunition.training_556.name",
-            "fallbackDisplayName": "Training 5.56 Ammunition",
+            "localizationKey": "items.ammunition.bronze_arrow.name",
+            "fallbackDisplayName": "Bronze Arrow",
             "prefabPresentationKey": ""
         },
         {
-            "definitionId": "armor.starter_vest",
+            "definitionId": "armor.leather_jerkin",
             "iconAddress": "",
-            "localizationKey": "items.armor.starter_vest.name",
-            "fallbackDisplayName": "Starter Vest",
+            "localizationKey": "items.armor.leather_jerkin.name",
+            "fallbackDisplayName": "Leather Jerkin",
             "prefabPresentationKey": ""
         },
         {
-            "definitionId": "bag.field_pack",
+            "definitionId": "bag.travelers_pack",
             "iconAddress": "",
-            "localizationKey": "items.bag.field_pack.name",
-            "fallbackDisplayName": "Field Pack",
+            "localizationKey": "items.bag.travelers_pack.name",
+            "fallbackDisplayName": "Traveler's Pack",
+            "prefabPresentationKey": ""
+        },
+        {
+            "definitionId": "food.cooked_trout",
+            "iconAddress": "",
+            "localizationKey": "items.food.cooked_trout.name",
+            "fallbackDisplayName": "Cooked Trout",
+            "prefabPresentationKey": ""
+        },
+        {
+            "definitionId": "jewelry.copper_ring",
+            "iconAddress": "",
+            "localizationKey": "items.jewelry.copper_ring.name",
+            "fallbackDisplayName": "Copper Ring",
             "prefabPresentationKey": ""
         },
         {
@@ -32,24 +46,17 @@
             "prefabPresentationKey": ""
         },
         {
-            "definitionId": "medical.field_dressing",
+            "definitionId": "potion.minor_healing",
             "iconAddress": "",
-            "localizationKey": "items.medical.field_dressing.name",
-            "fallbackDisplayName": "Field Dressing",
+            "localizationKey": "items.potion.minor_healing.name",
+            "fallbackDisplayName": "Minor Healing Potion",
             "prefabPresentationKey": ""
         },
         {
-            "definitionId": "quest_item.signal_transponder",
+            "definitionId": "quest_item.sealed_letter",
             "iconAddress": "",
-            "localizationKey": "items.quest_item.signal_transponder.name",
-            "fallbackDisplayName": "Signal Transponder",
-            "prefabPresentationKey": ""
-        },
-        {
-            "definitionId": "ring.starter_band",
-            "iconAddress": "",
-            "localizationKey": "items.ring.starter_band.name",
-            "fallbackDisplayName": "Starter Band",
+            "localizationKey": "items.quest_item.sealed_letter.name",
+            "fallbackDisplayName": "Sealed Letter",
             "prefabPresentationKey": ""
         },
         {
@@ -60,10 +67,10 @@
             "prefabPresentationKey": ""
         },
         {
-            "definitionId": "weapon.training_rifle",
+            "definitionId": "weapon.training_shortbow",
             "iconAddress": "",
-            "localizationKey": "items.weapon.training_rifle.name",
-            "fallbackDisplayName": "Training Rifle",
+            "localizationKey": "items.weapon.training_shortbow.name",
+            "fallbackDisplayName": "Training Shortbow",
             "prefabPresentationKey": ""
         }
     ]

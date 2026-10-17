@@ -257,7 +257,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var bagContentsContainerId = Guid.NewGuid();
             var bag = new CorpseLootItem(new RealtimeCorpseItem(
                 Guid.NewGuid(),
-                "bag.field_pack",
+                "fixture.pack",
                 1,
                 2,
                 bagContentsContainerId,
@@ -287,7 +287,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 1,
                 ExpiresAtUnixMilliseconds,
                 "Fallen Hero",
-                "corpse.generic_loot_crate",
+                "corpse.remains",
                 new[] { equipment, emptyBagSection });
 
             Assert.That(emptyView.BagHasContents(bag), Is.False);
@@ -304,7 +304,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         "general",
                         new CorpseLootItem(new RealtimeCorpseItem(
                             Guid.NewGuid(),
-                            "material.iron_ore",
+                            "fixture.ore",
                             1,
                             1,
                             Guid.Empty,
@@ -315,7 +315,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 2,
                 ExpiresAtUnixMilliseconds,
                 "Fallen Hero",
-                "corpse.generic_loot_crate",
+                "corpse.remains",
                 new[] { equipment, occupiedBagSection });
 
             Assert.That(occupiedView.BagHasContents(bag), Is.True);
@@ -331,7 +331,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ExpiresAtUnixMilliseconds,
                 false,
                 name,
-                "corpse.generic_loot_crate");
+                "corpse.remains");
         }
 
         private static RealtimeCorpseViewStateChunk[] CreateSnapshot(
@@ -426,7 +426,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 revision,
                 ExpiresAtUnixMilliseconds,
                 "Fallen Hero",
-                "corpse.generic_loot_crate",
+                "corpse.remains",
                 chunkIndex,
                 chunkCount,
                 sectionKind,
@@ -449,7 +449,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 "general",
                 new RealtimeCorpseItem(
                     itemId,
-                    "medical.field_dressing",
+                    "fixture.potion",
                     quantity,
                     revision,
                     Guid.Empty,

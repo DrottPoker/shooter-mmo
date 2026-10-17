@@ -138,6 +138,77 @@ namespace Mmorpg.WorldData.Items
 
             return false;
         }
+
+        // The largest quantity of the definition that one equipment slot holds.
+        public static long MaximumQuantity(ItemDefinition definition, ItemEquipmentSlotEntry slot)
+        {
+            if (definition == null || slot == null)
+            {
+                return 0;
+            }
+
+            return Math.Min(definition.MaximumStackSize, slot.MaximumQuantity);
+        }
+
+        public static bool CanHoldQuantity(
+            ItemDefinition definition,
+            ItemEquipmentSlotEntry slot,
+            long quantity)
+        {
+            return quantity > 0 && quantity <= MaximumQuantity(definition, slot);
+        }
+
+        // Returns the occupied slot that blocks equipping the definition into the target slot, or
+        // null. An equipped item blocks the slots its definition lists, so a two-handed weapon in
+        // the main hand keeps the off hand empty, and an item cannot be equipped while it would
+        // block a slot that is already occupied. The map holds each occupied slot and the slots
+        // that the item in it blocks.
+        public static string FindBlockingSlot(
+            ItemDefinition definition,
+            string targetSlotId,
+            IReadOnlyDictionary<string, string[]> blockedSlotsByOccupiedSlot)
+        {
+            if (definition == null
+                || string.IsNullOrWhiteSpace(targetSlotId)
+                || blockedSlotsByOccupiedSlot == null)
+            {
+                return null;
+            }
+
+            foreach (var occupied in blockedSlotsByOccupiedSlot)
+            {
+                if (string.Equals(occupied.Key, targetSlotId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (Contains(occupied.Value, targetSlotId)
+                    || Contains(definition.BlockedEquipmentSlots, occupied.Key))
+                {
+                    return occupied.Key;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool Contains(string[] values, string expected)
+        {
+            if (values == null)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < values.Length; index++)
+            {
+                if (string.Equals(values[index], expected, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     public static class SecureContainerRules
@@ -368,22 +439,25 @@ namespace Mmorpg.WorldData.Items
         }
     }
 
-    public static class CarryWeightDefaults
-    {
-        public const long BaseCharacterCapacity = 200;
-    }
-
+    // Movement keeps full speed up to the carry capacity, slows linearly above it, and
+    // reaches the minimum at the hard cap. All comparisons use exact integer arithmetic.
     public static class EncumbranceRules
     {
         public const int BaseMovementMultiplierBasisPoints = 10000;
         public const int MinimumMovementMultiplierBasisPoints = 2000;
 
+        // The hard cap, in percent of carry capacity.
+        public const int HardCapLoadPercent = 140;
+
+        private const int OverloadPercent = HardCapLoadPercent - 100;
+
         public static bool IsWithinHardCap(long carriedWeight, long capacity)
         {
             ValidateWeights(carriedWeight, capacity);
 
-            var extraCapacity = ((capacity / 5) * 2)
-                + (((capacity % 5) * 2) / 5);
+            // floor(capacity * OverloadPercent / 100) without overflow.
+            var extraCapacity = ((capacity / 100) * OverloadPercent)
+                + (((capacity % 100) * OverloadPercent) / 100);
             if (capacity > long.MaxValue - extraCapacity)
             {
                 return true;
@@ -426,10 +500,14 @@ namespace Mmorpg.WorldData.Items
                 return MinimumMovementMultiplierBasisPoints;
             }
 
-            var numerator = (((BigInteger)capacity * 3)
-                - ((BigInteger)carriedWeight * 2))
-                * BaseMovementMultiplierBasisPoints;
-            var result = (int)(numerator / capacity);
+            // Base minus the overload share of the base-to-minimum range:
+            // base - (weight - capacity) / (capacity * overload%) * (base - minimum).
+            var overloadDenominator = (BigInteger)capacity * OverloadPercent;
+            var numerator = (BaseMovementMultiplierBasisPoints * overloadDenominator)
+                - ((BigInteger)(carriedWeight - capacity)
+                    * (BaseMovementMultiplierBasisPoints - MinimumMovementMultiplierBasisPoints)
+                    * 100);
+            var result = (int)(numerator / overloadDenominator);
             if (result < MinimumMovementMultiplierBasisPoints)
             {
                 return MinimumMovementMultiplierBasisPoints;

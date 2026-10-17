@@ -1,6 +1,6 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
-using Mmorpg.WorldData.Items;
+using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Placement;
 
@@ -9,6 +9,9 @@ internal sealed class DevelopmentSimulationBotAuthority(
     TimeProvider timeProvider)
 {
     private const string TicketPrefix = "development-bot.";
+
+    // Synthetic bots own no items, so any positive capacity keeps them at full speed.
+    private const long SyntheticBotCarryCapacity = 1;
     private static readonly TimeSpan SessionTombstoneLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan InactiveIdentityLifetime = TimeSpan.FromHours(25);
 
@@ -218,7 +221,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
                     session.ExpiresAt,
                     0,
                     0,
-                    CarryWeightDefaults.BaseCharacterCapacity,
+                    SyntheticBotCarryCapacity,
                     false)
                 {
                     IsSyntheticBot = true,
@@ -351,7 +354,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
                     release ? now : updated.ExpiresAt,
                     0,
                     0,
-                    CarryWeightDefaults.BaseCharacterCapacity,
+                    SyntheticBotCarryCapacity,
                     release)
                 {
                     LeaseDurationMilliseconds = release
@@ -386,7 +389,7 @@ internal sealed class DevelopmentSimulationBotAuthority(
                 "Development bot index must be between 1 and 1000000.");
         }
 
-        if (!IsValidIdentifier(request.ShardId))
+        if (!Identifiers.IsServiceIdentifier(request.ShardId))
         {
             return ServiceResult<DevelopmentSimulationBotTicketResponse>.BadRequest(
                 "invalid_shard_id",
@@ -433,14 +436,6 @@ internal sealed class DevelopmentSimulationBotAuthority(
         {
             identities.Remove(botInstanceId);
         }
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 
     private sealed record BotIdentity(

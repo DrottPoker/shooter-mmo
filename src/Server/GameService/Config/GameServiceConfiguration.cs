@@ -2,6 +2,8 @@ using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Development;
+using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Telemetry;
@@ -57,7 +59,10 @@ internal sealed record GameServiceConfiguration(
                 itemCatalog,
                 itemOperations,
                 npcItemLifecycle,
-                stackStressFixtures))
+                stackStressFixtures)
+            {
+                DevelopmentItemPackages = DevelopmentItemPackageSource.FromConfiguration(configuration)
+            })
         {
             Telemetry = telemetry
         };

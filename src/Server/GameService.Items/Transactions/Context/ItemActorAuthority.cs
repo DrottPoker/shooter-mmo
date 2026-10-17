@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Mmorpg.Server.Common.Identity;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
 namespace Mmorpg.GameService.Items.Transactions;
@@ -93,13 +94,6 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
-    public static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     public static bool HashesMatch(string expected, string supplied)
     {
@@ -153,9 +147,9 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
                 || simulation is null
                 || simulation.SimulationSessionId == Guid.Empty
                 || simulation.CharacterId == Guid.Empty
-                || !IsValidIdentifier(simulation.WorkerId)
-                || !IsValidIdentifier(simulation.WorkerRuntimeId)
-                || !IsValidIdentifier(simulation.ShardId)
+                || !Identifiers.IsServiceIdentifier(simulation.WorkerId)
+                || !Identifiers.IsServiceIdentifier(simulation.WorkerRuntimeId)
+                || !Identifiers.IsServiceIdentifier(simulation.ShardId)
                 || string.IsNullOrWhiteSpace(simulation.SessionTokenHash)
                 || simulation.LiveAccess is null)
             {

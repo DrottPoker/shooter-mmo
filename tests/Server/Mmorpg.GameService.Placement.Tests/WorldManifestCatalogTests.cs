@@ -35,8 +35,7 @@ public sealed class WorldManifestCatalogTests
                 minimumZ = -10f,
                 maximumZ = 10f
             },
-            spawn = new WorldSpawnDocument(),
-            servicePoints = Array.Empty<WorldServicePointDocument>()
+            spawn = new WorldSpawnDocument()
         };
     }
 }

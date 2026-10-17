@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Leather Jerkin",
+  "equipmentSlots": [
+    "body"
+  ],
+  "id": "armor.leather_jerkin",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 150
+}

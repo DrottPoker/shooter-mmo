@@ -11,7 +11,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
 {
     // The worker's default mob corpse presentation. MobCorpseLifecycleIntegrationTests
     // covers the worker constant itself end to end.
-    private const string GenericLootCratePresentationKey = "corpse.generic_loot_crate";
+    private const string RemainsPresentationKey = "corpse.remains";
 
     [PostgresIntegrationFact]
     public async Task OperationClaimLockTimeoutReturnsStableConflict()
@@ -55,7 +55,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex)),
@@ -96,7 +96,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
             new GrantItemCommand(
                 player.Character.Id,
                 snapshot.ItemStateRevision,
-                "material.iron_ore",
+                "fixture.ore",
                 1,
                 snapshot.PermanentInventory.ContainerId,
                 snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex));
@@ -130,7 +130,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     0)),
@@ -182,7 +182,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     2,
                     snapshot.PermanentInventory.ContainerId,
                     snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex)),
@@ -222,7 +222,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
             0d,
             0d,
             1d,
-            GenericLootCratePresentationKey);
+            RemainsPresentationKey);
         var death = await context.CorpseService.ProcessSystemDeathAsync(
             deathOperationId,
             deathCommand,
@@ -385,7 +385,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "material.iron_ore",
+                    "fixture.ore",
                     2,
                     snapshot.PermanentInventory.ContainerId,
                     0)),

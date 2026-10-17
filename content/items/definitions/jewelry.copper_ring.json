@@ -1,0 +1,19 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "jewelry",
+  "defaultPolicies": [ ],
+  "displayName": "Copper Ring",
+  "equipmentSlots": [
+    "ring_1",
+    "ring_2"
+  ],
+  "id": "jewelry.copper_ring",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 10
+}

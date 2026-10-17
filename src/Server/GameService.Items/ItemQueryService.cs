@@ -377,9 +377,10 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
     {
         using var grid = await connection.QueryMultipleAsync(new CommandDefinition(
             """
-            select id as "EquipmentSlotId", sort_order as "SortOrder"
+            select id as "EquipmentSlotId", display_order as "SortOrder"
             from equipment_slots
-            order by sort_order, id;
+            where is_active
+            order by display_order, id;
 
             select
                 id as "ItemInstanceId",

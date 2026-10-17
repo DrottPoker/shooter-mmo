@@ -27,7 +27,7 @@ public sealed class NpcItemLifecycleIntegrationTests
             context,
             player,
             snapshot,
-            "weapon.training_rifle",
+            "fixture.sword",
             snapshot.PermanentInventory.ContainerId,
             0);
         var item = Assert.Single(grant.ItemRevisions);
@@ -123,20 +123,20 @@ public sealed class NpcItemLifecycleIntegrationTests
             context,
             player,
             snapshot,
-            "ammunition.training_556",
+            "fixture.arrow",
             snapshot.PermanentInventory.ContainerId,
             0,
             10);
         var ammunition = Assert.Single(grant.ItemRevisions);
         snapshot = await GetSnapshotAsync(context, player);
-        var rifleGrant = await GrantAsync(
+        var swordGrant = await GrantAsync(
             context,
             player,
             snapshot,
-            "weapon.training_rifle",
+            "fixture.sword",
             snapshot.PermanentInventory.ContainerId,
             1);
-        var rifle = Assert.Single(rifleGrant.ItemRevisions);
+        var sword = Assert.Single(swordGrant.ItemRevisions);
         snapshot = await GetSnapshotAsync(context, player);
         var otherPlayer = await context.RegisterPlayerAsync(
             "npc-insurance-owner@example.com",
@@ -147,10 +147,10 @@ public sealed class NpcItemLifecycleIntegrationTests
             context,
             otherPlayer,
             otherSnapshot,
-            "weapon.training_rifle",
+            "fixture.sword",
             otherSnapshot.PermanentInventory.ContainerId,
             0);
-        var otherRifle = Assert.Single(otherGrant.ItemRevisions);
+        var otherSword = Assert.Single(otherGrant.ItemRevisions);
         var session = await JoinAsync(context, player);
         var interactionSessionId = Guid.NewGuid();
 
@@ -208,8 +208,8 @@ public sealed class NpcItemLifecycleIntegrationTests
                 interactionSessionId,
                 "services.insurance",
                 insuranceAccess: true,
-                itemInstanceId: otherRifle.ItemInstanceId,
-                itemRevision: otherRifle.Revision));
+                itemInstanceId: otherSword.ItemInstanceId,
+                itemRevision: otherSword.Revision));
         Assert.False(wrongOwner.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.ItemNotOwned, wrongOwner.Error!.Code);
 
@@ -223,8 +223,8 @@ public sealed class NpcItemLifecycleIntegrationTests
                 interactionSessionId,
                 "services.insurance",
                 insuranceAccess: true,
-                itemInstanceId: rifle.ItemInstanceId,
-                itemRevision: rifle.Revision));
+                itemInstanceId: sword.ItemInstanceId,
+                itemRevision: sword.Revision));
         Assert.False(insufficient.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.CurrencyInsufficient, insufficient.Error!.Code);
     }
@@ -487,7 +487,7 @@ public sealed class NpcItemLifecycleIntegrationTests
             new
             {
                 SourceKind = ItemPolicySourceKinds.QuestGrant,
-                SourceId = NpcItemLifecycleOptions.Default.QuestGrantId
+                SourceId = GameServiceTestComposition.FixtureNpcLifecycle.QuestGrantId
             });
     }
 }

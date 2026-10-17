@@ -79,7 +79,7 @@ internal sealed class ItemReadModelTestFixture(
     }
 
     public async Task<TestBagFixture> EquipBagAsync(
-        string definitionId = "bag.field_pack",
+        string definitionId = "fixture.pack",
         params TestItemPolicy[] policies)
     {
         await using var connection = await dataSource.OpenConnectionAsync();

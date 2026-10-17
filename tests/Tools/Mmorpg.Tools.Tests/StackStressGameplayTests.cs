@@ -53,7 +53,7 @@ public sealed class StackStressGameplayTests
             []);
 
         Assert.True(state.ApplyRelocate(intent, result));
-        var moved = state.FindItem("medical.field_dressing");
+        var moved = state.FindItem("fixture.potion");
         Assert.NotNull(moved);
         Assert.Equal(secureId, moved.ContainerId);
         Assert.Equal(2, moved.Item.Revision);
@@ -76,7 +76,7 @@ public sealed class StackStressGameplayTests
             1,
             DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
             "Stress Corpse",
-            "corpse.generic_loot_crate",
+            "corpse.remains",
             0,
             1,
             "general_inventory",
@@ -91,14 +91,14 @@ public sealed class StackStressGameplayTests
                 [],
                 new RealtimeCorpseItem(
                     itemId,
-                    "material.iron_ore",
+                    "fixture.ore",
                     50,
                     1,
                     Guid.Empty,
                     0))]);
 
         Assert.Equal(CorpseViewApplyResult.Applied, state.Apply(snapshot));
-        Assert.Equal(50, state.FindLootStack("material.iron_ore", false)!.Item.Quantity);
+        Assert.Equal(50, state.FindLootStack("fixture.ore", false)!.Item.Quantity);
 
         var delta = new RealtimeCorpseViewStateChunk(
             Guid.NewGuid(),
@@ -123,7 +123,7 @@ public sealed class StackStressGameplayTests
                 [],
                 new RealtimeCorpseItem(
                     itemId,
-                    "material.iron_ore",
+                    "fixture.ore",
                     49,
                     2,
                     Guid.Empty,
@@ -131,7 +131,7 @@ public sealed class StackStressGameplayTests
 
         Assert.Equal(CorpseViewApplyResult.Applied, state.Apply(delta));
         Assert.Equal(2, state.Revision);
-        Assert.Equal(49, state.FindLootStack("material.iron_ore", true)!.Item.Quantity);
+        Assert.Equal(49, state.FindLootStack("fixture.ore", true)!.Item.Quantity);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public sealed class StackStressGameplayTests
                         [],
                         new FullStackItemInstanceResponse(
                             itemId,
-                            "medical.field_dressing",
+                            "fixture.potion",
                             1,
                             1)),
                     new FullStackItemSlotResponse(1, "general", [], null)

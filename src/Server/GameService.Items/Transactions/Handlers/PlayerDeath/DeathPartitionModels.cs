@@ -36,7 +36,7 @@ internal sealed class DeathItemSourceRow
 
     public string? EquipmentSlotId { get; set; }
 
-    public int? EquipmentSortOrder { get; set; }
+    public int? EquipmentCorpseSlotIndex { get; set; }
 
     public Guid? BagContentsContainerId { get; set; }
 

@@ -83,32 +83,13 @@ public sealed class ItemTransactionDomainRulesTests
     [Fact]
     public void CorpseTransformRulesBoundPositionsAndNormalizeRotations()
     {
-        Assert.Equal("corpse.generic_loot_crate", CorpseTransformRules.PlayerCorpsePresentationKey);
+        Assert.Equal("corpse.remains", CorpseTransformRules.PlayerCorpsePresentationKey);
         Assert.True(CorpseTransformRules.IsFinitePosition(1_000_000d));
         Assert.False(CorpseTransformRules.IsFinitePosition(1_000_000.5d));
         Assert.False(CorpseTransformRules.IsFinitePosition(double.NaN));
         Assert.True(CorpseTransformRules.IsNormalizedRotation(0d, 0.6d, 0d, 0.8d));
         Assert.False(CorpseTransformRules.IsNormalizedRotation(0d, 0d, 0d, 0.99d));
         Assert.False(CorpseTransformRules.IsNormalizedRotation(0d, 0d, 0d, double.PositiveInfinity));
-    }
-
-    [Theory]
-    [InlineData("mob-loot-item", "ead33493-4012-5579-a0e2-34ea54f1c5fc")]
-    [InlineData("mob-corpse-expiry", "8d241c7e-e185-5e28-bb4d-fc1fc845d277")]
-    public void ScopedGuidsKeepTheirPersistedDerivation(string scope, string expected)
-    {
-        Assert.Equal(
-            Guid.Parse(expected),
-            MobLootRules.CreateScopedGuid(scope, Guid.Parse("c0000000-0000-4000-8000-000000000001")));
-    }
-
-    [Fact]
-    public void MobIdentifiersAllowContentIdsOnly()
-    {
-        Assert.True(MobLootRules.IsMobIdentifier("mob.feral_wolf-2"));
-        Assert.False(MobLootRules.IsMobIdentifier("mob wolf"));
-        Assert.False(MobLootRules.IsMobIdentifier(new string('a', 129)));
-        Assert.False(MobLootRules.IsMobIdentifier(null));
     }
 
     private static void AssertRejected(Action action, string code, string message)

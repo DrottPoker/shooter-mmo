@@ -1,19 +1,14 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-10-16
+Last updated: 2026-10-17
 
-Status: Locked design target; Phases 1 through 15 content, authoring, schema,
-character bootstrap, authoritative reads, policy lifecycle, internal durable
-transaction kernel, offline account APIs, carry-state delivery, and shared
-encumbrance, realtime item mutation, Unity inventory foundation, death
-partition, durable player-corpse custody, concurrent corpse looting, shared
-world actors, authoritative interaction, insurance NPC lifecycle, quest item
-  grant lifecycle, content-controlled Mob corpse variants, and operational
-  hardening implemented
+Status: Decided. Every rule in the sections below is decided and implemented
+unless it says planned. Planned work, proposals, and open questions are collected
+in [Planned](#planned), [Proposed](#proposed), and [Open Questions](#open-questions).
 
 ## Purpose
 
-This document is the product and domain source of truth for the planned item,
+This document is the product and domain source of truth for the item,
 slot inventory, equipment, Bag, Secure Container, carry-weight, death-loot,
 corpse, insurance, and Recovery Storage systems.
 
@@ -26,9 +21,10 @@ Global Services -> Fleet -> Node -> SimulationWorker -> SimulationAssignment -> 
 World remains shared game content. There are no Realms. Zone and Layer are future
 topology systems and are not introduced by this design.
 
-Implementation sequencing, proposed database tables, service contracts, and test
-gates are defined in
-[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The delivered phases are recorded in
+[Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md), and
+the item tables, transaction kernel, and lock order in
+[GameService Modules](GAME_SERVICE_MODULES.md).
 NPC, Mob, actor-spawn, and generic world-interaction terminology and ownership
 are defined in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
@@ -42,7 +38,7 @@ are defined in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 | Specialized slot | A Bag slot that accepts definitions with one or more configured tags |
 | Bag | A physical item that can be equipped in the character's Bag equipment slot and can provide item slots and carry-capacity bonuses |
 | Secure Container | Permanent per-character protected storage whose tier and slot capacity are selected by an account-level entitlement |
-| Recovery Storage | A per-character, system-write-only delivery queue accessible from every major city |
+| Recovery Storage | A per-character, system-write-only delivery queue reached through any NPC that offers it |
 | Corpse | A bidirectional loot container backed by durable custody for players and selected persistent Mobs |
 | Snapshot | Non-interactive corpse presentation metadata that never grants ownership or references a lootable item instance |
 
@@ -73,24 +69,30 @@ restore its live representation.
 
 ## Item Definitions, Categories, And Tags
 
-Every item definition has one primary category. Initial categories include:
+Every item definition has one primary category. The categories are catalog
+content:
 
-- `material`
-- `medical`
 - `weapon`
 - `ammunition`
 - `armor`
+- `jewelry`
 - `tool`
 - `bag`
+- `material`
+- `potion`
+- `food`
 - `quest_item`
 
 Definitions may also carry zero or more tags. Tags provide many-to-many
-compatibility without forcing an item into only one gameplay use. The first
+compatibility without forcing an item into only one gameplay use. The
 specialized Bag slot tags are:
 
-- `medical`
+- `potion`
+- `food`
 - `material`
 - `ammunition`
+
+A supplies slot accepts both `potion` and `food`.
 
 A specialized slot accepts one or more configured tags. A matching item may
 still use a general slot. A definition must explicitly be allowed in the Secure
@@ -101,7 +103,8 @@ Item definitions also own:
 
 - Unitless integer weight.
 - Maximum stack size.
-- Equipment-slot compatibility.
+- Equipment-slot compatibility and the equipment slots it blocks while
+  equipped.
 - Whether the item is a Bag.
 - Whether the item may be destroyed by the player.
 - Location restrictions such as Secure Container eligibility.
@@ -116,15 +119,16 @@ The game does not use weapon attachments in the current design.
 
 ### Catalog Authoring Workflow
 
-Phase 2 provides a custom Unity Editor window for item authoring. It operates on
-the canonical authoring JSON under `content/items`, one file per definition, and invokes the
-same deterministic catalog compiler used by command-line verification and CI.
+The Unity Item Catalog editor operates on the canonical authoring JSON under
+`content/items`, one file per definition, and invokes the same deterministic
+catalog compiler used by command-line verification and CI.
 
-The Editor is a content-authoring interface, not an item authority. Unity assets
+The editor is a content-authoring interface, not an item authority. Unity assets
 must not become a second catalog, and backend compilation must not require Unity.
-The first Editor version supports creation, duplication, editing, validation,
-and baking. It does not permit destructive removal or id reuse for definitions
-that already exist in the baked catalog.
+The editor creates, duplicates, edits, validates, and bakes definitions. A baked
+definition is never deleted or reused; it is retired by listing its id in the
+catalog's retired ids, and a retired id can never return with any meaning. The
+authoring contract is in [Item Catalog Authoring](../content/items/README.md).
 
 ### Client Presentation And Catalog Caching
 
@@ -183,8 +187,8 @@ revision, but it must preserve the same definition ids and server contract.
 
 - Every character has a permanent slot-based inventory independent of the
   equipped Bag.
-- The initial target is approximately 20 general slots. The exact number is
-  content or progression data and must not be hard-coded into transaction logic.
+- The slot count is catalog content, `character.inventorySlotCount`, which is
+  20 today. Transaction logic never hard-codes it.
 - Weapons use normal general slots when not equipped.
 - There are no dedicated weapon-storage slots.
 - Empty Bags may occupy compatible general slots as ordinary items.
@@ -192,16 +196,37 @@ revision, but it must preserve the same definition ids and server contract.
 
 ## Equipment
 
-The initial character equipment slots are:
+The character equipment slots are catalog content. They are listed in display
+order:
 
 - `head`
-- `body_armor`
-- `primary_weapon`
-- `secondary_weapon`
-- `tool`
+- `neck`
+- `body`
+- `legs`
+- `hands`
+- `feet`
+- `main_hand`
+- `off_hand`
+- `ammunition`
 - `ring_1`
 - `ring_2`
+- `tool`
 - `bag`
+
+Every slot has a maximum quantity in content. The `ammunition` slot holds one
+stack of up to `1000` units; every other slot holds one item. A definition may
+list blocked equipment slots that stay empty while it is equipped, so a
+two-handed bow in `main_hand` keeps `off_hand` free.
+
+Equipping moves a whole stack only when it fits the slot limit, which is the
+smaller of the slot maximum quantity and the definition stack size. A compatible
+stack dropped on the equipped stack tops it up to that limit, and a split from
+the equipped stack moves part of it into an empty container slot. An equipped
+stack has zero carried weight like every other equipped item. Equipping into a
+blocked slot, or equipping an item that would block an occupied slot, is
+rejected with `equipment_slot_blocked`. At death an equipped stack follows the
+normal death rules and keeps its quantity in the matching corpse equipment slot,
+which applies the same limit. Corpse loot still enters carried storage only.
 
 An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a
@@ -235,7 +260,7 @@ compatible general storage slot, including:
 - Future trade, auction, mail, vendor, or loot locations when no item policy
   forbids that action.
 
-An empty Bag cannot use the initial medical, material, or ammunition specialized
+An empty Bag cannot use the supplies, material, or ammunition specialized
 slots because it does not have those tags.
 
 The nested Bag's content storage must be empty and inactive while the Bag is held
@@ -263,11 +288,13 @@ Bag is already being moved.
 
 - The bank belongs to one character, not the account.
 - The bank is slot-based and does not contribute to carry weight.
-- The initial target is approximately 40 base slots.
+- The base slot count is catalog content, `character.bankSlotCount`, which is
+  40 today.
 - Additional bank capacity is unlocked later through explicit progression or
   entitlement state.
 - Only empty Bags may be deposited in the bank.
-- Bank access is a major-city service.
+- Bank access requires an open interaction with an NPC that offers the Bank,
+  such as a city quartermaster.
 - Bank transactions remain durable PostgreSQL item transactions.
 
 Exact base capacity, unlock increments, and unlock sources remain balance data.
@@ -315,16 +342,17 @@ If the account's Secure Container tier loses slots:
 
 ## Recovery Storage
 
-Recovery Storage is a global per-character system delivery queue. Every major
-city provides access to the same queue.
+Recovery Storage is a global per-character system delivery queue. Every NPC that
+offers Recovery Storage gives access to the same queue.
 
 - Players cannot deposit items into Recovery Storage.
 - System deliveries can always be appended. Death processing must never fail
   because Recovery Storage is full.
 - The UI may paginate or present deliveries as slots, but persistent system
   capacity is not a hard blocker.
-- Items can be withdrawn to character inventory or bank.
-- A withdrawal to carried storage validates available slots and the 140 percent
+- A delivery is claimed as a whole into character inventory or the bank, so
+  its items move together in one transaction.
+- A claim into carried storage validates available slots and the 140 percent
   carry-weight cap.
 - Recovery contents do not contribute to carry weight.
 - Every delivery stores source, source event id, creation time, optional
@@ -343,11 +371,11 @@ decimal weight values, and floating-point comparisons are not part of the
 authoritative model. The baseline balance scale is:
 
 - One ammunition unit has weight `1`.
-- A pistol has weight `10`.
-- A character has base carry capacity `200`.
+- A one-handed weapon has weight of about `100`.
+- A character has base carry capacity `2000`, set in catalog content.
 
-The development catalog uses the same scale. Its representative training rifle
-has weight `25`, and its Field Pack grants a `50` carry-capacity bonus.
+The development catalog uses the same scale. Its Training Shortbow has weight
+`80`, and its Traveler's Pack grants a `500` carry-capacity bonus.
 
 Carried weight includes:
 
@@ -367,9 +395,9 @@ Carried weight excludes:
 - Corpse contents.
 - Vendor, auction, mail, trade escrow, and other non-carried future custody.
 
-Carry capacity is primarily character-based. The base character capacity is
-`200`. An equipped Bag may add a bonus. Only the currently equipped Bag grants
-its carry-capacity bonus.
+Carry capacity is primarily character-based: the base capacity from catalog
+content plus the bonus of the currently equipped Bag. Only the equipped Bag grants
+its bonus.
 
 ### Encumbrance Curve
 
@@ -385,8 +413,8 @@ its carry-capacity bonus.
   within the hard cap, only operations that do not increase carried weight or
   worsen the exact load ratio may commit.
 
-With base capacity `200`, normal capacity ends at carried weight `200` and the
-140 percent hard cap is carried weight `280`.
+With base capacity `2000`, normal capacity ends at carried weight `2000` and the
+140 percent hard cap is carried weight `2800`.
 
 The intended linear reference points are:
 
@@ -400,8 +428,7 @@ The intended linear reference points are:
 | 140% | 0.20 |
 
 The authoritative multiplier is clamped between 0.20 and 1.00. The shared
-simulation applies it to normal base movement after action restrictions are
-resolved.
+simulation applies it to the walk speed.
 
 Every operation computes the prospective numerator and denominator. Equipping a
 different Bag removes the Bag root's own weight, activates its carried contents,
@@ -410,7 +437,7 @@ could create an over-cap state requires an explicit migration.
 
 ## Inventory UI Layout
 
-The Phase 9 Unity inventory presentation uses a stable three-area layout:
+The Unity inventory presentation uses a stable three-area layout:
 
 ```text
 +--------------------------+------------------------------------------+
@@ -438,7 +465,7 @@ The Phase 9 Unity inventory presentation uses a stable three-area layout:
 This is a presentation contract only. Server authority, revisions, slot rules,
 and transaction behavior do not depend on screen layout.
 
-The implemented Phase 9 client keeps this layout in replaceable uGUI while its
+The client keeps this layout in replaceable uGUI while its
 catalog cache, immutable snapshots, revision coherence, operation journal,
 structured errors, and refresh orchestration live in a persistent controller.
 Item transfers use typed reusable drag sources and targets. Item clicks select
@@ -446,9 +473,9 @@ only split and destruction actions, and dropping any Recovery item withdraws its
 complete delivery atomically. Bank and Recovery Storage may be inspected globally
 by the owning account, but their mutations still require SimulationWorker's live
 access evaluation. Local Development can explicitly evaluate Bank and Recovery
-as globally accessible for testing. Production continues to evaluate authored
-major-city service points, and the Development option never includes insurance
-access or bypasses GameService authority.
+as globally accessible for testing. Production requires an open interaction with an NPC
+whose Bank or Recovery Storage capability is available, and the Development
+option never includes insurance access or bypasses GameService authority.
 The corpse context adapter exposes durable corpse custody as a bidirectional
 container without changing custody optimistically. Carried items may be
 deposited into corpse slots, and corpse items may be looted into carried slots.
@@ -456,9 +483,9 @@ Bank and Recovery Storage never participate in a corpse transfer.
 
 The maintained temporary presentation has three explicit view modes. `B` opens
 only character storage, `C` opens equipment together with character storage, and
-`I` retains the complete Development view with equipment, contextual Bank or
-Recovery Storage, and character storage until those contextual services receive
-their permanent world interaction UI. Equipment, context, and character storage
+`I` opens the complete view with equipment, the Bank, Recovery Storage, or corpse
+context, and character storage. Opening the Bank or Recovery Storage capability
+of an NPC opens the complete view with that context. Equipment, context, and character storage
 are separate module roots with fixed bounds. Hiding or showing one module never
 moves or resizes either of the others.
 
@@ -484,6 +511,8 @@ cannot grant, remove, or alter a policy.
 - A non-quest protected item may be explicitly destroyed only when its
   definition permits player destruction.
 - Protected quest items cannot be destroyed directly by the player.
+- Accepting a quest from its NPC grants the protected quest items with one exact
+  quest-grant lineage, and repeating the acceptance never grants duplicates.
 - Abandoning the owning quest removes its associated quest items through an
   idempotent quest transaction.
 - Reaccepting that quest can grant the required items again according to quest
@@ -504,8 +533,10 @@ Insurance is one-death protection:
 - The snapshot is not an item, cannot be looted, and has no ownership link to the
   recovered instance.
 - An insured item cannot be traded, auctioned, or sold to a vendor.
+- The insurance NPC charges a server-owned price atomically with the policy.
 - Insurance must be removed through the same insurance NPC service that grants
-  it before normal transfer or sale rules resume.
+  it before normal transfer or sale rules resume. Removal keeps the item
+  instance.
 - Insurance initially targets non-stackable equipment.
 
 Insurance does not consume a claim when the item was already in Secure
@@ -576,8 +607,8 @@ section even though the real Bag has moved to Recovery Storage.
 - Multiple players may inspect and loot the same corpse concurrently.
 - Each player may have only one active loot interaction at a time.
 - When the assigned SimulationWorker restarts, it restores every unexpired
-  player corpse. It may present a restored corpse as a generic loot crate at the
-  recorded location while preserving the same durable corpse id and custody.
+  player corpse. It presents a restored corpse with the generic `corpse.remains` key at
+  the recorded location while preserving the same durable corpse id and custody.
 - When expiry wins the corpse lock, all remaining loot is destroyed with audit
   records and the live representation is removed.
 - An in-flight committed loot transaction wins before cleanup. A request that
@@ -600,7 +631,7 @@ use durable corpse custody and restart restoration. Persistent Mob corpse
 behavior reuses the player-corpse transaction and expiry foundation without
 changing the topology model.
 
-Phase 14 implements this boundary. Live Mob contents never enter PostgreSQL.
+Live Mob contents never enter PostgreSQL.
 The worker derives each loot entry and grant id from one authoritative death
 event and materializes a claimed whole item through the exact-session item
 transaction boundary. Selected durable Mobs use the same durable corpse record,
@@ -701,15 +732,16 @@ SimulationWorker authenticates with its logical worker id and runtime id.
 GameService validates the exact active simulation session, character, worker,
 runtime, and Shard before accepting an in-world command.
 
-Bank and Recovery Storage access additionally require a city-service validation
-from SimulationWorker. Offline account routes can never reach the bank or
-Recovery Storage, because both are city services that need a live character at
-a validated service point. Recovery is therefore claimed only in the world. Secure Container operations are allowed in the world but
+Bank and Recovery Storage access additionally require an open NPC interaction
+that SimulationWorker validates. Offline account routes can never reach the bank or
+Recovery Storage, because both are city services that need a live character in
+an open interaction with an NPC that offers them. Recovery is therefore claimed
+only in the world. Secure Container operations are allowed in the world but
 remain category, slot, policy, weight, and session validated.
 
-Phase 12 adds the generic NPC and world-interaction session that later service
-capabilities use. Insurance, bank, Recovery Storage, vendor, quest, and crafting
-handlers must reuse its authoritative target, range, line-of-sight, revision,
+The generic NPC world-interaction session is the boundary of every service
+capability. Insurance, Bank, Recovery Storage, vendor, quest, and crafting
+handlers reuse its authoritative target, range, line-of-sight, revision,
 and session checks instead of adding capability-specific target authority. The
 existing corpse view and transaction boundary remains authoritative for corpse
 contents while its client target selection and one-active-interaction lease join
@@ -725,7 +757,8 @@ The implementation must enforce all of the following:
 1. Every extant item instance has exactly one current custody assignment.
 2. One slot or equipment assignment contains at most one item instance.
 3. One item instance cannot be in a slot and equipment simultaneously.
-4. Quantity is positive and within the definition stack limit.
+4. Quantity is positive and within the definition stack limit and, in an
+   equipment slot or corpse equipment slot, within that slot's limit.
 5. Stack merges preserve total quantity and identical policy state.
 6. A Bag with child items can only occupy a valid Bag slot.
 7. An ordinary slot may contain a Bag only when its child container is empty.
@@ -742,107 +775,51 @@ The implementation must enforce all of the following:
 15. Account-tier reduction cannot lose Secure Container contents.
 16. Redis state can never override committed PostgreSQL custody.
 
-## Deferred Balance And Content Values
+## Planned
 
-The architecture does not depend on locking these values now:
+These rules are decided and wait for the combat and economy work in
+[Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md):
 
-- Exact permanent inventory slot count around the current target of 20.
-- Exact bank base capacity around the current target of 40.
-- Bag slot counts and carry bonuses.
+- Combat item data on definitions: base damage, damage type, combat style and
+  weapon family, ammunition family and its bonus, armor type and stats,
+  elemental resistances, healing multipliers, and level requirements.
+- Consume and use intents for potions, food, and other consumables, with the
+  consumable cooldowns from the combat design.
+- Per-shot ammunition consumption from the equipped ammunition stack. Every shot
+  consumes one unit, and used ammunition is never recovered.
+- The short attack lockout after an equipment change, including a future
+  two-loadout swap.
+- Producers that call the existing item boundaries: vendors, gathering, quest
+  progression, combat death, and Mob loot tables.
+- Final corpse presentation art.
+
+## Proposed
+
+- **Worker-batched consumption.** One PostgreSQL transaction per shot or
+  potion is too heavy, so SimulationWorker would count consumption against the
+  equipped stack in memory and commit it in batches through one idempotent
+  kernel command per batch: periodically, before any other item operation on the
+  same stack, and when the session ends or the character dies. The batch id makes
+  a retry safe, and a stack the worker has reserved cannot be moved until its
+  batch commits. Open points are the batch interval, what a worker crash may lose,
+  and how the client shows a pending count.
+
+## Open Questions
+
+These values are content or balance data and are not embedded in transaction
+control flow:
+
+- Bag slot counts and carry bonuses beyond the development content.
 - Secure Container upgrade prices and progression sources.
 - Bank unlock sizes and sources.
-- Recovery expiry duration.
+- Recovery Storage expiry duration and retention.
 - Which non-weapon definitions are Secure Container eligible.
-- Insurance price and NPC availability.
-- Corpse presentation art and interaction duration.
-- Mob corpse lifetime overrides.
+- Insurance price and which NPCs offer insurance.
+- Corpse interaction duration and Mob corpse lifetime overrides.
 
-These remain content or balance data and must not be embedded in transaction
-control flow.
+These rules are not decided yet:
 
-## Explicitly Not Implemented Yet
-
-This document is primarily a locked design target, not a complete feature
-claim. Phases 1 through 15 now implement the neutral catalog, structural
-fingerprints, strict validation, pure rules, Unity authoring, transactional
-PostgreSQL definition mirror, constrained custody schema, canonical equipment
-slots, account Secure Container entitlement foundation, and complete empty item
-state for every active character. GameService also exposes authenticated,
-read-only current-catalog and owned-character inventory snapshots with stable
-definition references and active policy summaries. Its internal transaction
-kernel now creates and mutates durable item instances atomically, owns canonical
-idempotency and lock order, maintains item, container, Bag, character, carry, and
-entitlement revisions, and appends relational audit changes.
-
-Phase 6 also implements pure policy capability evaluation, system-only insurance
-application and removal, exact quest-grant cleanup and reaccept, conditionally
-cached catalog responses, focused bank and Recovery reads, and offline account
-mutation APIs. Those account mutations reject active simulation ownership under
-the same character row lock used by session admission.
-
-Phase 7 carries each admission-fenced weight, capacity, and monotonic item-state
-revision into the active SimulationWorker session and Unity movement state. A
-session heartbeat applies later committed revisions monotonically. SimulationWorker
-and Unity use the same GameSimulation encumbrance rules for movement speed, while GameService remains the durable item and hard-cap
-authority.
-
-Phase 8 adds the live SimulationWorker item-mutation path over the same durable
-kernel. A versioned reliable intent is bound to the exact account, character,
-simulation session, worker runtime, assignment, and Shard. The worker validates
-its authoritative position against configured service points, while GameService
-revalidates the complete live authority inside the mutation transaction. Bank
-and Recovery Storage require their matching live access. Secure Container
-operations do not require city access. Only a committed result can advance the
-worker and Unity carry tuple.
-
-Phase 9 adds a persistent Unity catalog, complete and focused snapshots,
-monotonic revision coherence, operation-id journaling, authoritative refresh,
-reconnect restoration, structured errors, and temporary uGUI presentation. The
-client uses local definition presentation and disables obvious invalid targets,
-but it neither owns custody nor applies optimistic item changes.
-
-Phase 10 adds service-authenticated and system death-event processing over the
-same durable kernel. PostgreSQL now owns five-minute player corpse identity,
-three real item-custody sections, non-interactive snapshots, Recovery delivery
-partitioning, and idempotent expiry destruction. SimulationWorker restores only
-unexpired rows for its exact runtime and Shard, using the database-time deadline
-and generic presentation key. Empty player corpses remain through that deadline.
-
-Phase 11 adds exact-session corpse reads and bidirectional container mutations
-over that durable custody.
-SimulationWorker owns bounded presentation, one active view per player,
-three-dimensional proximity and lifetime validation, and viewer fanout. Full and
-partial transfers, internal corpse rearrangement, ordinary occupied-slot swaps,
-and atomic Bag aggregate swaps
-reuse the GameService transaction kernel with targeted revisions and stable lock
-ordering. Unity assembles protocol-v11 presence, complete snapshots, slot tags,
-and committed deltas without applying optimistic custody. The generic capsule
-and uGUI are replaceable presentation.
-
-Phase 13 adds the live insurance and quest item-lifecycle bridge on the Phase 12
-NPC interaction. Insurance pricing is server-owned and charged atomically with
-the policy. Explicit removal preserves item identity. Quest accept, abandon,
-and reaccept use one exact protected grant lineage. Safe item and Recovery
-source labels expose lifecycle meaning without exposing raw lineage ids.
-
-Phase 14 adds content-controlled live or durable Mob corpse variants. Normal
-Mob contents are worker memory and disappear on restart. Deterministic grant
-ids make a committed player claim retry-safe. Selected bosses reuse durable
-corpse custody and expiry without creating a second corpse architecture.
-
-Phase 15 bounds the existing transaction kernel with statement, lock, canonical
-command, and HTTP body limits. Identity-free metrics cover transaction latency,
-lock waits, conflicts, stale revisions, death partition, policy actions, corpse
-counts, Recovery backlog, and cleanup. System-authority maintenance expires
-Recovery deliveries transactionally, retains durable destruction evidence,
-removes only empty closed corpses after policy, and deletes only unreferenced old
-operation rows. Load tests preserve custody across concurrent claims and repeated
-Bag swaps. No new item owner, location, or authority is introduced.
-
-No vendor, gathering, quest progression, combat death producer, damage system,
-or Mob loot-table producer calls these boundaries yet. Final corpse art remains
-a later phase. Phase 13 routes insurance and quest item
-lifecycle actions through the Phase 12 world actor, shared targeting,
-one-active-interaction lease, and authoritative capability dispatch. GameService
-owns the atomic insurance charge, policy mutation, exact quest grant lineage,
-and audit. No Zone or Layer identity was introduced.
+- Whether a Recovery delivery may be claimed item by item instead of as a whole.
+- How insurance applies to stacks; today it covers non-stackable equipment only.
+- Whether items can ever be dropped on the ground. Today no ground items exist.
+- How run energy interacts with the encumbrance curve.

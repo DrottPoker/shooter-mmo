@@ -30,13 +30,13 @@ public sealed class ItemCommandValidationTests
         {
             Loot =
             [
-                new MobCorpseLootEntryRequest(grantId, "material.iron_ore", 1),
-                new MobCorpseLootEntryRequest(grantId, "material.iron_ore", 2)
+                new MobCorpseLootEntryRequest(grantId, "fixture.ore", 1),
+                new MobCorpseLootEntryRequest(grantId, "fixture.ore", 2)
             ]
         });
         AssertMobCorpseInvalid(MobCorpse() with
         {
-            Loot = [new MobCorpseLootEntryRequest(Guid.NewGuid(), "material.iron_ore", 0)]
+            Loot = [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 0)]
         });
     }
 
@@ -75,7 +75,7 @@ public sealed class ItemCommandValidationTests
             CharacterId = Guid.Parse("d0000000-0000-4000-8000-000000000002")
         };
         const string fingerprint =
-            """{"deathEventId":"d0000000-0000-4000-8000-000000000001","characterId":"d0000000-0000-4000-8000-000000000002","shardId":"shard-1","positionX":1.5,"positionY":0,"positionZ":-2.25,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.generic_loot_crate"}""";
+            """{"deathEventId":"d0000000-0000-4000-8000-000000000001","characterId":"d0000000-0000-4000-8000-000000000002","shardId":"shard-1","positionX":1.5,"positionY":0,"positionZ":-2.25,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.remains"}""";
 
         Assert.Equal(
             Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
@@ -117,7 +117,7 @@ public sealed class ItemCommandValidationTests
             0d,
             0d,
             1d,
-            "corpse.generic_loot_crate");
+            "corpse.remains");
     }
 
     private static void AssertDeathRejected(ProcessPlayerDeathCommand command, string code, string message)
@@ -144,10 +144,10 @@ public sealed class ItemCommandValidationTests
             0d,
             0d,
             1d,
-            "corpse.generic_loot_crate",
+            "corpse.remains",
             60d,
             30,
-            [new MobCorpseLootEntryRequest(Guid.NewGuid(), "material.iron_ore", 1)]);
+            [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 1)]);
     }
 
     private static void AssertMobCorpseInvalid(CreatePersistentMobCorpseCommand command)

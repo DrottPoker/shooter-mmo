@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "material",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Ore",
+  "equipmentSlots": [ ],
+  "id": "fixture.ore",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 100,
+  "playerDestroyable": true,
+  "tags": [
+    "material"
+  ],
+  "unitWeight": 6
+}

@@ -49,7 +49,7 @@ public sealed class MobCorpseLifecycleServiceTests
         var request = new CreateMobCorpseRequest(
             deathEventId,
             wolf.RuntimeActorId,
-            [new MobCorpseLootSeed("material.iron_ore", 2)]);
+            [new MobCorpseLootSeed("fixture.ore", 2)]);
 
         var first = await service.CreateAsync(request, CancellationToken.None);
         var replay = await service.CreateAsync(request, CancellationToken.None);

@@ -448,7 +448,8 @@ namespace Mmorpg.SharedTests
             r.Accepts(prefix + "bag section", CorpseViewWire(sectionKind: "bag"));
             r.Rejects(prefix + "empty container", CorpseViewWire(containerId: Guid.Empty));
             r.Rejects(prefix + "negative container revision", CorpseViewWire(containerRevision: -1));
-            r.Rejects(prefix + "capacity 0", CorpseViewWire(sectionSlotCapacity: 0, slots: new Wire[0]));
+            r.Accepts(prefix + "empty section", CorpseViewWire(sectionSlotCapacity: 0, slots: new Wire[0]));
+            r.Rejects(prefix + "slot in empty section", CorpseViewWire(sectionSlotCapacity: 0));
             r.Accepts(prefix + "capacity 512", CorpseViewWire(sectionSlotCapacity: 512));
             r.Rejects(prefix + "capacity 513", CorpseViewWire(sectionSlotCapacity: 513));
             r.Rejects(prefix + "negative slot offset", CorpseViewWire(slotOffset: -1));

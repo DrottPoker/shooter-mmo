@@ -25,7 +25,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(17, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(18, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -201,7 +201,7 @@ public sealed class AuthSimulationFlowIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "bag.field_pack",
+                    "fixture.pack",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     0)),
@@ -237,7 +237,7 @@ public sealed class AuthSimulationFlowIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     snapshot.ItemStateRevision,
-                    "ammunition.training_556",
+                    "fixture.arrow",
                     60,
                     snapshot.EquippedBag!.Contents.ContainerId,
                     6)),
@@ -270,7 +270,7 @@ public sealed class AuthSimulationFlowIntegrationTests
                 new GrantItemCommand(
                     player.Character.Id,
                     consumed.Value.ItemStateRevision,
-                    "ring.starter_band",
+                    "fixture.ring",
                     1,
                     snapshot.PermanentInventory.ContainerId,
                     0)),
@@ -566,7 +566,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(17, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(18, await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             1,
             await context.ExecuteScalarIntAsync(
@@ -576,7 +576,8 @@ public sealed class AuthSimulationFlowIntegrationTests
             await context.ExecuteScalarIntAsync("select count(*) from item_definitions;"));
         Assert.Equal(
             catalog.EquipmentSlots.Length,
-            await context.ExecuteScalarIntAsync("select count(*) from equipment_slots;"));
+            await context.ExecuteScalarIntAsync(
+                "select count(*) from equipment_slots where is_active;"));
         Assert.Equal(
             5,
             await context.ExecuteScalarIntAsync(

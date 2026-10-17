@@ -22,7 +22,7 @@ public sealed class ItemTransactionKernelEdgeTests
         var state = await world.LoadStateAsync(characterId);
         var itemId = await world.GrantAsync(
             characterId,
-            "material.iron_ore",
+            "fixture.ore",
             1,
             state.PermanentInventoryContainerId,
             0);

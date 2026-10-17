@@ -10,10 +10,12 @@ public sealed class ItemCatalogHeaderDocument
     public int FormatVersion;
     public string? CatalogId;
     public string? BaseSecureContainerTierId;
+    public ItemCharacterSettingsEntry? Character;
     public ItemCatalogIdentityEntry[]? Categories;
     public ItemCatalogIdentityEntry[]? Tags;
-    public ItemCatalogIdentityEntry[]? EquipmentSlots;
+    public ItemEquipmentSlotEntry[]? EquipmentSlots;
     public SecureContainerTierAuthoringEntry[]? SecureContainerTiers;
+    public ItemCatalogRetiredIdsEntry? Retired;
 }
 
 // Assembles the authoring document from catalog.json and one file per item definition.
@@ -32,11 +34,13 @@ public static class ItemCatalogContent
             FormatVersion = header.FormatVersion,
             CatalogId = header.CatalogId,
             BaseSecureContainerTierId = header.BaseSecureContainerTierId,
+            Character = header.Character,
             Categories = header.Categories,
             Tags = header.Tags,
             EquipmentSlots = header.EquipmentSlots,
             Definitions = definitions,
-            SecureContainerTiers = header.SecureContainerTiers
+            SecureContainerTiers = header.SecureContainerTiers,
+            Retired = header.Retired
         };
     }
 

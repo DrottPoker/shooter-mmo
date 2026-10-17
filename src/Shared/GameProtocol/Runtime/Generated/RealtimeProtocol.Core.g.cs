@@ -229,6 +229,21 @@ namespace Mmorpg.GameProtocol
         /// Waypoints in one movement path; equals MovementPath.MaximumWaypoints in GameSimulation.
         /// </summary>
         public const int MaximumMovementPathWaypoints = 32;
+
+        /// <summary>
+        /// Chunks in one corpse presence snapshot or corpse view update.
+        /// </summary>
+        public const int MaximumCorpseChunkCount = 256;
+
+        /// <summary>
+        /// Characters in a corpse presentation key.
+        /// </summary>
+        public const int MaximumCorpsePresentationKeyLength = 128;
+
+        /// <summary>
+        /// Slots in one corpse view section.
+        /// </summary>
+        public const int MaximumCorpseSectionSlotCapacity = 512;
     }
 
     // Framing, versioning, channels, and limits of the realtime protocol.
@@ -237,7 +252,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 15;
+        public const ushort Version = 16;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -292,6 +307,9 @@ namespace Mmorpg.GameProtocol
         private const int MaximumSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
         private const int MaximumDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
         private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
+        private const int MaximumCorpseChunkCount = RealtimeProtocolLimits.MaximumCorpseChunkCount;
+        private const int MaximumCorpsePresentationKeyLength = RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength;
+        private const int MaximumCorpseSectionSlotCapacity = RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity;
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
@@ -306,12 +324,9 @@ namespace Mmorpg.GameProtocol
         private const int MaximumWorldInteractionMessageLength = 512;
         private const int MaximumCorpsePresencePerChunk = 6;
         private const int MaximumCorpseViewSlotsPerChunk = 4;
-        private const int MaximumCorpseChunkCount = 256;
         private const int MaximumCorpseSourceNameLength = 128;
-        private const int MaximumCorpsePresentationKeyLength = 128;
         private const int MaximumCorpseSectionKindLength = 32;
         private const int MaximumCorpseSlotKindLength = 32;
-        private const int MaximumCorpseSectionSlotCapacity = 512;
 
         // Indexed by message type; types without a message are null.
         private static readonly RealtimeMessageDescriptor[] Descriptors =

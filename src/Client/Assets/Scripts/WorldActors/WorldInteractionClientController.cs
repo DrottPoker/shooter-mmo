@@ -133,6 +133,12 @@ namespace Mmorpg.Client.WorldActors
         private CorpseClientController corpseController;
         private InventoryClientController inventoryController;
         private bool initialized;
+        private Guid pendingCapabilityOperationId;
+        private RealtimeWorldActorCapabilityKind pendingCapabilityKind;
+
+        // Raised when the server confirms an opened Character Bank or Recovery Storage
+        // capability, whose item access lasts while the interaction stays open.
+        public event Action<RealtimeWorldActorCapabilityKind> StorageCapabilityOpened;
 
         public WorldInteractionClientState State { get; } =
             new WorldInteractionClientState();
@@ -377,6 +383,8 @@ namespace Mmorpg.Client.WorldActors
             }
 
             State.Begin(operationId);
+            pendingCapabilityOperationId = operationId;
+            pendingCapabilityKind = capability.Kind;
             return true;
         }
 
@@ -435,6 +443,18 @@ namespace Mmorpg.Client.WorldActors
             {
                 inventoryController.EnsureFullState(
                     result.ItemStateRevision);
+            }
+
+            if (result.OperationId == pendingCapabilityOperationId)
+            {
+                var kind = pendingCapabilityKind;
+                pendingCapabilityOperationId = Guid.Empty;
+                if (result.Succeeded
+                    && kind is RealtimeWorldActorCapabilityKind.Bank
+                        or RealtimeWorldActorCapabilityKind.RecoveryStorage)
+                {
+                    StorageCapabilityOpened?.Invoke(kind);
+                }
             }
         }
 

@@ -4,10 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
+using Mmorpg.Client.WorldActors;
+using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -15,7 +16,7 @@ namespace Mmorpg.Client.Ui
 {
     public enum InventoryPanelMode
     {
-        FullDevelopment,
+        Complete,
         CharacterAndEquipment,
         CharacterOnly
     }
@@ -32,6 +33,7 @@ namespace Mmorpg.Client.Ui
 
         private InventoryClientController controller;
         private CorpseClientController corpseController;
+        private WorldInteractionClientController worldInteractionController;
         private LocalPlayerInput localPlayerInput;
         private GameObject canvasObject;
         private GameObject rootObject;
@@ -47,7 +49,7 @@ namespace Mmorpg.Client.Ui
         private Font font;
         private InventoryDragCoordinator dragCoordinator;
         private bool isOpen;
-        private InventoryPanelMode mode = InventoryPanelMode.FullDevelopment;
+        private InventoryPanelMode mode = InventoryPanelMode.Complete;
         private InventoryContextKind context = InventoryContextKind.None;
         private Guid selectedItemId;
         private bool splitMode;
@@ -85,10 +87,12 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated.
         public void Initialize(
             InventoryClientController inventory,
-            CorpseClientController corpses)
+            CorpseClientController corpses,
+            WorldInteractionClientController worldInteraction)
         {
             controller = inventory;
             corpseController = corpses;
+            worldInteractionController = worldInteraction;
         }
 
         private void Start()
@@ -101,6 +105,11 @@ namespace Mmorpg.Client.Ui
             if (corpseController != null)
             {
                 corpseController.State.Changed += OnCorpseStateChanged;
+            }
+
+            if (worldInteractionController != null)
+            {
+                worldInteractionController.StorageCapabilityOpened += OnStorageCapabilityOpened;
             }
 
             FindPlayerPresentation();
@@ -127,15 +136,13 @@ namespace Mmorpg.Client.Ui
                 }
                 else if (localPlayerInput.ToggleInventoryPressedThisFrame)
                 {
-                    ToggleMode(InventoryPanelMode.FullDevelopment);
+                    ToggleMode(InventoryPanelMode.Complete);
                 }
-            }
-
-            if (isOpen
-                && Keyboard.current != null
-                && Keyboard.current.escapeKey.wasPressedThisFrame)
-            {
-                SetOpen(false);
+                else if (isOpen && localPlayerInput.CancelPressedThisFrame)
+                {
+                    // The targeting controller closes the interaction on Cancel.
+                    Hide(false);
+                }
             }
         }
 
@@ -158,56 +165,98 @@ namespace Mmorpg.Client.Ui
             {
                 corpseController.State.Changed -= OnCorpseStateChanged;
             }
+
+            if (worldInteractionController != null)
+            {
+                worldInteractionController.StorageCapabilityOpened -= OnStorageCapabilityOpened;
+            }
         }
 
         public void SetOpen(bool value)
         {
-            SetOpen(value, value ? InventoryPanelMode.FullDevelopment : mode);
+            SetOpen(value, value ? InventoryPanelMode.Complete : mode);
         }
 
         public void SetOpen(bool value, InventoryPanelMode requestedMode)
         {
-            isOpen = value;
             if (value)
             {
-                mode = requestedMode;
-                ApplyModeVisibility();
+                Show(requestedMode);
+                return;
             }
 
+            Hide(true);
+        }
+
+        private void Show(InventoryPanelMode requestedMode)
+        {
+            isOpen = true;
+            mode = requestedMode;
+            ApplyModeVisibility();
             if (rootObject != null)
             {
-                rootObject.SetActive(value);
+                rootObject.SetActive(true);
             }
 
-            if (value)
-            {
-                controller?.EnsureFullState();
-                Rebuild();
-            }
-            else
-            {
-                if (corpseController?.State.ActiveView != null
-                    && corpseController.State.PendingOperationId == Guid.Empty)
-                {
-                    corpseController.TryClose(out _);
-                }
+            controller?.EnsureFullState();
+            Rebuild();
+        }
 
-                dragCoordinator?.Cancel();
-                ClearSelection();
+        // An open corpse view belongs to the panel, so hiding the panel closes it unless
+        // the caller already closes the interaction through its own path.
+        private void Hide(bool closeCorpseView)
+        {
+            isOpen = false;
+            if (rootObject != null)
+            {
+                rootObject.SetActive(false);
             }
+
+            if (closeCorpseView
+                && corpseController?.State.ActiveView != null
+                && corpseController.State.PendingOperationId == Guid.Empty)
+            {
+                worldInteractionController?.TryCloseActive(out _);
+            }
+
+            dragCoordinator?.Cancel();
+            ClearSelection();
         }
 
         private void ToggleMode(InventoryPanelMode requestedMode)
         {
             if (isOpen && mode == requestedMode)
             {
-                SetOpen(false, requestedMode);
+                Hide(true);
                 return;
+            }
+
+            // A corpse view is presented only by the complete view's context module.
+            if (requestedMode != InventoryPanelMode.Complete
+                && corpseController?.State.ActiveView != null
+                && corpseController.State.PendingOperationId == Guid.Empty)
+            {
+                worldInteractionController?.TryCloseActive(out _);
             }
 
             dragCoordinator?.Cancel();
             ClearSelection();
-            SetOpen(true, requestedMode);
+            Show(requestedMode);
+        }
+
+        // An NPC that offers the Character Bank or Recovery Storage opens it in the complete
+        // view. Its item operations are allowed while the interaction stays open.
+        private void OnStorageCapabilityOpened(RealtimeWorldActorCapabilityKind kind)
+        {
+            var next = kind == RealtimeWorldActorCapabilityKind.Bank
+                ? InventoryContextKind.Bank
+                : InventoryContextKind.RecoveryStorage;
+            if (!isOpen || mode != InventoryPanelMode.Complete)
+            {
+                Show(InventoryPanelMode.Complete);
+            }
+
+            SetContext(next);
         }
 
         private void OnCorpseStateChanged()
@@ -215,9 +264,10 @@ namespace Mmorpg.Client.Ui
             if (corpseController?.State.ActiveView != null)
             {
                 context = InventoryContextKind.Corpse;
-                if (!isOpen)
+                // Only the complete view shows the context module that presents the corpse.
+                if (!isOpen || mode != InventoryPanelMode.Complete)
                 {
-                    SetOpen(true, InventoryPanelMode.FullDevelopment);
+                    Show(InventoryPanelMode.Complete);
                     return;
                 }
             }
@@ -296,7 +346,7 @@ namespace Mmorpg.Client.Ui
             equipmentPanel.gameObject.SetActive(
                 mode != InventoryPanelMode.CharacterOnly);
             contextPanel.gameObject.SetActive(
-                mode == InventoryPanelMode.FullDevelopment);
+                mode == InventoryPanelMode.Complete);
             characterPanel.gameObject.SetActive(true);
         }
 
@@ -396,7 +446,7 @@ namespace Mmorpg.Client.Ui
                     Color.white);
                 CreateMessage(
                     contextContent,
-                    "Nearby corpse custody is discovered through SimulationWorker. Press E beside a corpse or open the Corpse tab.",
+                    "Click a corpse in the world to walk to it and open it.",
                     new Color(0.65f, 0.72f, 0.8f, 1f));
                 return;
             }
@@ -487,7 +537,7 @@ namespace Mmorpg.Client.Ui
         {
             var item = slot.Item;
             var label = "Slot " + (slot.SlotIndex + 1);
-            if (!string.Equals(slot.SlotKind, "general", StringComparison.Ordinal))
+            if (!string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal))
             {
                 label += " [" + string.Join(", ", slot.AcceptedTags) + "]";
             }
@@ -507,7 +557,7 @@ namespace Mmorpg.Client.Ui
                 label,
                 item,
                 item != null && item.ItemInstanceId == selectedItemId,
-                !string.Equals(slot.SlotKind, "general", StringComparison.Ordinal),
+                !string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal),
                 item != null,
                 () => OnContainerSlotClicked(slot),
                 payload,
@@ -626,7 +676,7 @@ namespace Mmorpg.Client.Ui
             {
                 CreateMessage(
                     parent,
-                    "Move within 3 metres and press E, or open a nearby corpse below.",
+                    "Click a corpse in the world to walk to it and open it.",
                     Color.white);
                 if (corpseState.NearbyCorpses.Count == 0)
                 {
@@ -636,16 +686,11 @@ namespace Mmorpg.Client.Ui
 
                 foreach (var corpse in corpseState.NearbyCorpses)
                 {
-                    var row = CreateHorizontalRow(parent, 38f);
                     var label = (string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
                             ? "Corpse"
                             : corpse.SourceDisplayName)
                         + (corpse.IsEmpty ? " (empty)" : string.Empty);
-                    CreateButton(
-                        row,
-                        "Open " + label,
-                        () => ExecuteCorpseOpen(corpse.CorpseId),
-                        corpseState.PendingOperationId == Guid.Empty);
+                    CreateMessage(parent, "Nearby: " + label, Color.white);
                 }
 
                 return;
@@ -730,7 +775,7 @@ namespace Mmorpg.Client.Ui
                 inventoryItem,
                 false,
                 !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
-                    || !string.Equals(slot.SlotKind, "general", StringComparison.Ordinal),
+                    || !string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal),
                 item != null,
                 null,
                 payload,
@@ -751,9 +796,9 @@ namespace Mmorpg.Client.Ui
         {
             return sectionKind switch
             {
-                "equipment" => "Corpse Equipment",
-                "general_inventory" => "Corpse Inventory",
-                "bag" => "Corpse Bag Contents",
+                CorpseSectionKindIds.Equipment => "Corpse Equipment",
+                CorpseSectionKindIds.GeneralInventory => "Corpse Inventory",
+                CorpseSectionKindIds.Bag => "Corpse Bag Contents",
                 _ => "Corpse " + sectionKind
             };
         }
@@ -930,14 +975,9 @@ namespace Mmorpg.Client.Ui
                     out reason);
             }
 
-            if (source.Kind == InventoryItemLocationKind.Equipment)
+            // A split drag from an equipped stack unequips part of it, such as some arrows.
+            if (source.Kind == InventoryItemLocationKind.Equipment && !splitDrag)
             {
-                if (splitDrag)
-                {
-                    reason = "Equipped items cannot be split.";
-                    return false;
-                }
-
                 return InventoryTargetAdvisor.CanUnequip(
                     state,
                     item,
@@ -975,7 +1015,6 @@ namespace Mmorpg.Client.Ui
             InventoryDragPayload payload,
             out string reason)
         {
-            reason = string.Empty;
             var view = corpseController?.State.ActiveView;
             if (view == null
                 || !corpseController.State.CanMutate
@@ -990,93 +1029,14 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
-            if (!IsCarriedLootDestination(state, container))
-            {
-                reason = "Corpse loot can enter only Permanent Inventory, the equipped Bag, or the Secure Container.";
-                return false;
-            }
-
-            if (corpseItem.HasBagContents)
-            {
-                reason = "A corpse Bag aggregate must be dropped onto the occupied Bag equipment slot.";
-                return false;
-            }
-
-            var quantity = corpseItem.Quantity;
-            if (corpsePartialLoot
-                && (!int.TryParse(corpseQuantityText, out quantity)
-                    || quantity <= 0
-                    || quantity >= corpseItem.Quantity))
-            {
-                reason = "Partial loot quantity must be greater than zero and smaller than the corpse stack.";
-                return false;
-            }
-
-            var item = new InventoryItem(
-                corpseItem.ItemInstanceId,
-                corpseItem.DefinitionId,
-                quantity,
-                corpseItem.Revision,
-                Array.Empty<InventoryPolicy>());
-            var source = new InventoryItemLocation(
-                InventoryItemLocationKind.Corpse,
-                sourceSection.ContainerId,
-                "corpse_" + sourceSection.SectionKind,
-                sourceSlot.SlotIndex,
-                string.Empty,
-                Guid.Empty);
-            if (slot.Item == null)
-            {
-                return InventoryTargetAdvisor.CanPlaceInContainer(
-                    state,
-                    item,
-                    source,
-                    container,
-                    slot,
-                    quantity,
-                    out reason);
-            }
-
-            var target = new InventoryItemLocation(
-                InventoryItemLocationKind.Container,
-                container.ContainerId,
-                container.ContainerType,
-                slot.SlotIndex,
-                string.Empty,
-                Guid.Empty);
-            if (InventoryTargetAdvisor.CanMerge(
+            return CorpseTargetAdvisor.CanLoot(
                 state,
-                item,
-                source,
-                slot.Item,
-                target,
-                out reason))
-            {
-                return true;
-            }
-
-            if (corpsePartialLoot)
-            {
-                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
-                return false;
-            }
-
-            if (!CanOccupyCorpseEquipmentSlot(
-                    state.Catalog,
-                    slot.Item,
-                    sourceSlot,
-                    out reason))
-            {
-                return false;
-            }
-
-            return InventoryTargetAdvisor.CanSwapWithExternalContainer(
-                state,
-                slot.Item,
-                target,
-                item,
-                ToInventoryContainer(sourceSection),
-                ToInventorySlot(sourceSlot),
+                corpseItem,
+                sourceSection,
+                sourceSlot,
+                container,
+                slot,
+                RequestedCorpseQuantity(),
                 out reason);
         }
 
@@ -1100,12 +1060,26 @@ namespace Mmorpg.Client.Ui
 
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
-                return CanMoveCorpseItemWithinCorpse(
+                if (payload.CorpseId != view.CorpseId
+                    || !view.TryFindItem(
+                        payload.ItemInstanceId,
+                        out var sourceItem,
+                        out var sourceSection,
+                        out var sourceSlot))
+                {
+                    reason = "The corpse source item is no longer available.";
+                    return false;
+                }
+
+                return CorpseTargetAdvisor.CanMoveWithinCorpse(
                     state,
                     view,
+                    sourceItem,
+                    sourceSection,
+                    sourceSlot,
                     section,
                     slot,
-                    payload,
+                    RequestedCorpseQuantity(),
                     out reason);
             }
 
@@ -1116,265 +1090,26 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
-            if (source.Kind == InventoryItemLocationKind.Equipment)
-            {
-                if (IsReverseCorpseBagSwap(state, item, source, section, slot))
-                {
-                    return true;
-                }
-
-                reason = "Move ordinary equipped items into carried storage before depositing them.";
-                return false;
-            }
-
-            if (source.Kind != InventoryItemLocationKind.Container
-                || !IsCarriedContainerType(source.ContainerType))
-            {
-                reason = "Bank and Recovery Storage items cannot enter a corpse.";
-                return false;
-            }
-
-            if (slot.Item != null && slot.Item.HasBagContents)
-            {
-                reason = "An occupied corpse Bag aggregate must use the Bag equipment swap.";
-                return false;
-            }
-
-            var quantity = item.Quantity;
-            if (corpsePartialLoot
-                && (!int.TryParse(corpseQuantityText, out quantity)
-                    || quantity <= 0
-                    || quantity >= item.Quantity))
-            {
-                reason = "Partial deposit quantity must be greater than zero and smaller than the carried stack.";
-                return false;
-            }
-
-            if (!CanOccupyCorpseEquipmentSlot(
-                    state.Catalog,
-                    item,
-                    slot,
-                    out reason))
-            {
-                return false;
-            }
-
-            var corpseContainer = ToInventoryContainer(section);
-            var corpseSlot = ToInventorySlot(slot);
-            if (slot.Item == null)
-            {
-                return InventoryTargetAdvisor.CanPlaceInContainer(
-                    state,
-                    item,
-                    source,
-                    corpseContainer,
-                    corpseSlot,
-                    quantity,
-                    out reason);
-            }
-
-            var movedItem = quantity == item.Quantity
-                ? item
-                : new InventoryItem(
-                    item.ItemInstanceId,
-                    item.DefinitionId,
-                    quantity,
-                    item.Revision,
-                    item.Policies.ToArray());
-            var corpseItem = slot.Item.ToInventoryItem();
-            if (InventoryTargetAdvisor.CanMerge(
-                    state.Catalog,
-                    movedItem,
-                    corpseItem,
-                    out reason))
-            {
-                return true;
-            }
-
-            if (quantity != item.Quantity)
-            {
-                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
-                return false;
-            }
-
-            return InventoryTargetAdvisor.CanSwapWithExternalContainer(
+            return CorpseTargetAdvisor.CanDeposit(
                 state,
                 item,
                 source,
-                corpseItem,
-                corpseContainer,
-                corpseSlot,
+                section,
+                slot,
+                RequestedCorpseQuantity(),
                 out reason);
         }
 
-        private bool CanMoveCorpseItemWithinCorpse(
-            InventoryClientState state,
-            CorpseLootView view,
-            CorpseLootSection destinationSection,
-            CorpseLootSlot destinationSlot,
-            InventoryDragPayload payload,
-            out string reason)
+        // The partial-stack control requests an explicit quantity. An unparsable value is
+        // zero, which the corpse advisor rejects.
+        private int? RequestedCorpseQuantity()
         {
-            reason = string.Empty;
-            if (payload.CorpseId != view.CorpseId
-                || !view.TryFindItem(
-                    payload.ItemInstanceId,
-                    out var sourceItem,
-                    out var sourceSection,
-                    out var sourceSlot))
+            if (!corpsePartialLoot)
             {
-                reason = "The corpse source item is no longer available.";
-                return false;
+                return null;
             }
 
-            if (sourceSection.ContainerId == destinationSection.ContainerId
-                && sourceSlot.SlotIndex == destinationSlot.SlotIndex)
-            {
-                reason = "The corpse item is already in that slot.";
-                return false;
-            }
-
-            if (view.BagHasContents(sourceItem)
-                || view.BagHasContents(destinationSlot.Item))
-            {
-                reason = "A non-empty corpse Bag cannot use an ordinary internal slot move.";
-                return false;
-            }
-
-            var quantity = sourceItem.Quantity;
-            if (corpsePartialLoot
-                && (!int.TryParse(corpseQuantityText, out quantity)
-                    || quantity <= 0
-                    || quantity >= sourceItem.Quantity))
-            {
-                reason = "Partial move quantity must be greater than zero and smaller than the corpse stack.";
-                return false;
-            }
-
-            var sourceInventoryItem = sourceItem.ToInventoryItem();
-            var movedItem = quantity == sourceItem.Quantity
-                ? sourceInventoryItem
-                : new InventoryItem(
-                    sourceInventoryItem.ItemInstanceId,
-                    sourceInventoryItem.DefinitionId,
-                    quantity,
-                    sourceInventoryItem.Revision,
-                    sourceInventoryItem.Policies.ToArray());
-            if (!CanOccupyCorpseEquipmentSlot(
-                    state.Catalog,
-                    movedItem,
-                    destinationSlot,
-                    out reason))
-            {
-                return false;
-            }
-
-            var destinationContainer = ToInventoryContainer(destinationSection);
-            var sourceLocation = new InventoryItemLocation(
-                InventoryItemLocationKind.Corpse,
-                sourceSection.ContainerId,
-                CorpseContainerType(sourceSection.SectionKind),
-                sourceSlot.SlotIndex,
-                string.Empty,
-                Guid.Empty);
-            if (destinationSlot.Item == null)
-            {
-                return InventoryTargetAdvisor.CanPlaceInContainer(
-                    state,
-                    movedItem,
-                    sourceLocation,
-                    destinationContainer,
-                    ToInventorySlot(destinationSlot),
-                    quantity,
-                    out reason);
-            }
-
-            var targetItem = destinationSlot.Item.ToInventoryItem();
-            if (InventoryTargetAdvisor.CanMerge(
-                    state.Catalog,
-                    movedItem,
-                    targetItem,
-                    out reason))
-            {
-                return true;
-            }
-
-            if (quantity != sourceItem.Quantity)
-            {
-                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
-                return false;
-            }
-
-            if (!CanOccupyCorpseEquipmentSlot(
-                    state.Catalog,
-                    targetItem,
-                    sourceSlot,
-                    out reason))
-            {
-                return false;
-            }
-
-            var emptyDestinationSlot = ToEmptyInventorySlot(destinationSlot);
-            if (!InventoryTargetAdvisor.CanPlaceInContainer(
-                    state,
-                    sourceInventoryItem,
-                    sourceLocation,
-                    destinationContainer,
-                    emptyDestinationSlot,
-                    out reason))
-            {
-                return false;
-            }
-
-            var targetLocation = new InventoryItemLocation(
-                InventoryItemLocationKind.Corpse,
-                destinationSection.ContainerId,
-                CorpseContainerType(destinationSection.SectionKind),
-                destinationSlot.SlotIndex,
-                string.Empty,
-                Guid.Empty);
-            return InventoryTargetAdvisor.CanPlaceInContainer(
-                state,
-                targetItem,
-                targetLocation,
-                ToInventoryContainer(sourceSection),
-                ToEmptyInventorySlot(sourceSlot),
-                out reason);
-        }
-
-        private static bool CanOccupyCorpseEquipmentSlot(
-            ClientItemCatalog catalog,
-            InventoryItem item,
-            CorpseLootSlot slot,
-            out string reason)
-        {
-            reason = string.Empty;
-            if (string.IsNullOrWhiteSpace(slot.EquipmentSlotId))
-            {
-                return true;
-            }
-
-            if (!catalog.TryGetEquipmentSlot(slot.EquipmentSlotId, out _)
-                || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
-                || !ItemEquipmentRules.IsCompatible(definition, slot.EquipmentSlotId))
-            {
-                reason = "The item is not compatible with corpse equipment slot '"
-                    + slot.EquipmentSlotId + "'.";
-                return false;
-            }
-
-            return true;
-        }
-
-        private static bool IsCarriedLootDestination(
-            InventoryClientState state,
-            InventoryContainer container)
-        {
-            var snapshot = state.FullSnapshot;
-            return snapshot != null
-                && (snapshot.PermanentInventory.ContainerId == container.ContainerId
-                    || snapshot.SecureContainer.Contents.ContainerId == container.ContainerId
-                    || snapshot.EquippedBag?.Contents.ContainerId == container.ContainerId);
+            return int.TryParse(corpseQuantityText, out var quantity) ? quantity : 0;
         }
 
         private bool CanDropOnEquipment(
@@ -1406,22 +1141,12 @@ namespace Mmorpg.Client.Ui
                     return false;
                 }
 
-                if (!string.Equals(equipmentSlot.SlotId, "bag", StringComparison.Ordinal)
-                    || equipmentSlot.Item == null
-                    || state.FullSnapshot?.EquippedBag == null
-                    || equipmentSlot.Item.ItemInstanceId
-                        != state.FullSnapshot.EquippedBag.Item.ItemInstanceId
-                    || !corpseBag.HasBagContents
-                    || !string.Equals(
-                        sourceSection.SectionKind,
-                        "equipment",
-                        StringComparison.Ordinal))
-                {
-                    reason = "Atomic corpse Bag swap requires both occupied Bag equipment aggregates.";
-                    return false;
-                }
-
-                return true;
+                return CorpseTargetAdvisor.CanSwapCorpseBagIntoEquipment(
+                    state,
+                    corpseBag,
+                    sourceSection,
+                    equipmentSlot,
+                    out reason);
             }
 
             if (payload.Kind != InventoryDragPayloadKind.Item
@@ -1439,10 +1164,7 @@ namespace Mmorpg.Client.Ui
 
             if (equipmentSlot.Item != null)
             {
-                reason = equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId
-                    ? "The item is already equipped in this slot."
-                    : "The equipment slot is occupied.";
-                return false;
+                return CanTopUpEquippedStack(state, item, source, equipmentSlot, out reason);
             }
 
             if (source.Kind == InventoryItemLocationKind.Equipment)
@@ -1579,10 +1301,52 @@ namespace Mmorpg.Client.Ui
             }
 
             state.TryFindItem(payload.ItemInstanceId, out var item, out _);
+            if (equipmentSlot.Item != null)
+            {
+                Execute(
+                    controller.TryMerge(item, equipmentSlot.Item, out var mergeError),
+                    mergeError,
+                    "Merge submitted.");
+                return;
+            }
+
             Execute(
                 controller.TryEquip(item, equipmentSlot.SlotId, out var error),
                 error,
                 "Equip submitted.");
+        }
+
+        // Dropping a compatible stack onto an occupied equipment slot merges into the equipped
+        // stack, such as arrows topping up the ammunition slot.
+        private static bool CanTopUpEquippedStack(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryItemLocation source,
+            InventoryEquipmentSlot equipmentSlot,
+            out string reason)
+        {
+            if (equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId)
+            {
+                reason = "The item is already equipped in this slot.";
+                return false;
+            }
+
+            if (!string.Equals(
+                    equipmentSlot.Item.DefinitionId,
+                    item.DefinitionId,
+                    StringComparison.Ordinal))
+            {
+                reason = "The equipment slot is occupied.";
+                return false;
+            }
+
+            return InventoryTargetAdvisor.CanMerge(
+                state,
+                item,
+                source,
+                equipmentSlot.Item,
+                InventoryItemLocation.ForEquipment(equipmentSlot.SlotId),
+                out reason);
         }
 
         private void OnContainerSlotClicked(InventorySlot slot)
@@ -1664,11 +1428,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var quantity = corpseItem.Quantity;
-            if (corpsePartialLoot)
-            {
-                int.TryParse(corpseQuantityText, out quantity);
-            }
+            var quantity = RequestedCorpseQuantity() ?? corpseItem.Quantity;
 
             ExecuteCorpse(
                 corpseController.TryLoot(
@@ -1709,11 +1469,7 @@ namespace Mmorpg.Client.Ui
                     out var corpseItem,
                     out _,
                     out _);
-                var corpseQuantity = corpseItem.Quantity;
-                if (corpsePartialLoot)
-                {
-                    int.TryParse(corpseQuantityText, out corpseQuantity);
-                }
+                var corpseQuantity = RequestedCorpseQuantity() ?? corpseItem.Quantity;
 
                 ExecuteCorpse(
                     corpseController.TryMoveWithinCorpse(
@@ -1730,7 +1486,7 @@ namespace Mmorpg.Client.Ui
             }
 
             state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
-            if (IsReverseCorpseBagSwap(state, item, source, section, slot))
+            if (CorpseTargetAdvisor.IsBagSwap(state, item, source, section, slot))
             {
                 ExecuteCorpse(
                     corpseController.TrySwapBag(slot.Item, out var bagError),
@@ -1739,12 +1495,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var quantity = item.Quantity;
-            if (corpsePartialLoot)
-            {
-                int.TryParse(corpseQuantityText, out quantity);
-            }
-
+            var quantity = RequestedCorpseQuantity() ?? item.Quantity;
             ExecuteCorpse(
                 corpseController.TryDeposit(
                     item,
@@ -1756,69 +1507,6 @@ namespace Mmorpg.Client.Ui
                 quantity < item.Quantity
                     ? "Partial corpse deposit submitted."
                     : "Corpse deposit submitted.");
-        }
-
-        private static bool IsReverseCorpseBagSwap(
-            InventoryClientState state,
-            InventoryItem item,
-            InventoryItemLocation source,
-            CorpseLootSection section,
-            CorpseLootSlot slot)
-        {
-            return item != null
-                && source != null
-                && source.Kind == InventoryItemLocationKind.Equipment
-                && string.Equals(source.EquipmentSlotId, "bag", StringComparison.Ordinal)
-                && state.FullSnapshot?.EquippedBag?.Item.ItemInstanceId == item.ItemInstanceId
-                && string.Equals(section.SectionKind, "equipment", StringComparison.Ordinal)
-                && slot.Item != null
-                && slot.Item.HasBagContents;
-        }
-
-        private static InventoryContainer ToInventoryContainer(CorpseLootSection section)
-        {
-            return new InventoryContainer(
-                section.ContainerId,
-                CorpseContainerType(section.SectionKind),
-                section.ContainerRevision,
-                section.SlotCapacity,
-                section.Slots.Select(ToInventorySlot).ToArray());
-        }
-
-        private static InventorySlot ToInventorySlot(CorpseLootSlot slot)
-        {
-            return new InventorySlot(
-                slot.SlotIndex,
-                slot.SlotKind,
-                slot.AcceptedTags.ToArray(),
-                slot.Item?.ToInventoryItem());
-        }
-
-        private static InventorySlot ToEmptyInventorySlot(CorpseLootSlot slot)
-        {
-            return new InventorySlot(
-                slot.SlotIndex,
-                slot.SlotKind,
-                slot.AcceptedTags.ToArray(),
-                null);
-        }
-
-        private static string CorpseContainerType(string sectionKind)
-        {
-            return sectionKind switch
-            {
-                "general_inventory" => "corpse_inventory",
-                "equipment" => "corpse_equipment",
-                "bag" => "corpse_bag_contents",
-                _ => "corpse_inventory"
-            };
-        }
-
-        private static bool IsCarriedContainerType(string containerType)
-        {
-            return string.Equals(containerType, "permanent_inventory", StringComparison.Ordinal)
-                || string.Equals(containerType, "bag_contents", StringComparison.Ordinal)
-                || string.Equals(containerType, "secure_container", StringComparison.Ordinal);
         }
 
         private void DestroySelected(InventoryItem item)
@@ -1899,24 +1587,11 @@ namespace Mmorpg.Client.Ui
             controller.RefreshContext(context);
         }
 
-        private void ExecuteCorpseOpen(Guid corpseId)
-        {
-            var error = "Corpse interaction state is unavailable.";
-            if (corpseController == null
-                || !corpseController.TryOpen(corpseId, out error))
-            {
-                RejectDrop(error);
-                return;
-            }
-
-            localStatus = "Corpse open submitted.";
-        }
-
         private void ExecuteCorpseClose()
         {
             var error = "Corpse interaction state is unavailable.";
-            if (corpseController == null
-                || !corpseController.TryClose(out error))
+            if (worldInteractionController == null
+                || !worldInteractionController.TryCloseActive(out error))
             {
                 RejectDrop(error);
                 return;
@@ -2126,9 +1801,8 @@ namespace Mmorpg.Client.Ui
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             grid.constraintCount = Mathf.Max(1, columns);
             grid.childAlignment = TextAnchor.UpperLeft;
-            var count = 1;
             var layout = gridObject.AddComponent<LayoutElement>();
-            layout.preferredHeight = cellHeight * count;
+            layout.preferredHeight = cellHeight;
             StartCoroutine(UpdateGridHeightNextFrame(grid, layout, columns, cellHeight));
             return gridObject.GetComponent<RectTransform>();
         }

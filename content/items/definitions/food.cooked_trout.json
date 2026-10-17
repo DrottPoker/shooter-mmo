@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "food",
+  "defaultPolicies": [ ],
+  "displayName": "Cooked Trout",
+  "equipmentSlots": [ ],
+  "id": "food.cooked_trout",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 10,
+  "playerDestroyable": true,
+  "tags": [
+    "food"
+  ],
+  "unitWeight": 20
+}

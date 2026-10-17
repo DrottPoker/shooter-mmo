@@ -38,7 +38,7 @@ authoritative playable area. Unity units are meters.
 | East boundary | center `(255, 3, 0)`, size `(2, 6, 512)` | Interior face aligns with X `254` |
 | West boundary | center `(-255, 3, 0)`, size `(2, 6, 512)` | Interior face aligns with X `-254` |
 | Player spawn | `(0, 0, -16)` | Yaw `0` |
-| Central service plaza | X `-32` to `32`, Z `-8` to `32` | Service halls, four watch structures, entry pillars, and low cover leave the service points reachable |
+| Central service plaza | X `-32` to `32`, Z `-8` to `32` | Service halls, four watch structures, entry pillars, and low cover leave the service NPCs reachable |
 | North traversal course | X `-64` to `64`, Z `64` to `192` | Two raised platforms, ramps, stairs, an observation deck, towers, and mixed cover |
 | East sightline lane | X `80` to `228`, Z `-32` to `32` | Long-range lane with alternating cover, side walls, an observation post, and a backstop |
 | Southwest wilderness | X/Z `-232` to `-98` | Sparse rock perimeter keeps the wolf spawn area and patrol points open |

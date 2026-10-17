@@ -20,9 +20,9 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var workspace = LoadCheckedInWorkspace();
             var firstCatalog = ItemCatalogCompiler.Compile(
-                workspace.Authoring.ToDomainDocument());
+                workspace.Authoring.ToAuthoringDocument());
             var temporaryDirectory = CreateTemporaryDirectory();
-            ItemCatalogEditorDocument roundTripped;
+            ItemCatalogJsonDocument roundTripped;
             try
             {
                 WriteFiles(
@@ -36,7 +36,7 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             var secondCatalog = ItemCatalogCompiler.Compile(
-                roundTripped.ToDomainDocument());
+                roundTripped.ToAuthoringDocument());
 
             Assert.That(secondCatalog.Revision, Is.EqualTo(firstCatalog.Revision));
             Assert.That(
@@ -84,27 +84,27 @@ namespace Mmorpg.Client.Tests.EditMode
             definition.playerDestroyable = true;
             definition.locationEligibility.secureContainer = false;
             definition.defaultPolicies = new[] { ItemPolicyIds.Insured };
-            definition.bag = new ItemCatalogEditorBagDefinition
+            definition.bag = new ItemCatalogJsonBagDefinition
             {
                 carryCapacityBonus = 40,
                 slots = new[]
                 {
-                    new ItemCatalogEditorBagSlot
+                    new ItemCatalogJsonBagSlot
                     {
                         index = 0,
                         kind = BagSlotKindIds.General,
                         acceptedTags = Array.Empty<string>()
                     },
-                    new ItemCatalogEditorBagSlot
+                    new ItemCatalogJsonBagSlot
                     {
                         index = 1,
                         kind = BagSlotKindIds.Specialized,
-                        acceptedTags = new[] { ItemTagIds.Ammunition }
+                        acceptedTags = new[] { workspace.Authoring.tags[0].id }
                     }
                 }
             };
 
-            var catalog = ItemCatalogCompiler.Compile(workspace.Authoring.ToDomainDocument());
+            var catalog = ItemCatalogCompiler.Compile(workspace.Authoring.ToAuthoringDocument());
 
             Assert.That(catalog.Definitions.Any(candidate => string.Equals(
                 candidate.Id,
@@ -144,13 +144,19 @@ namespace Mmorpg.Client.Tests.EditMode
                 var contentRoot = Path.Combine(temporaryDirectory, "content");
                 var generatedRoot = Path.Combine(temporaryDirectory, "generated");
                 var itemsDirectory = ContentLayout.ItemsDirectory(contentRoot);
+                var fixtureItemsDirectory = ContentLayout.ItemsDirectory(Path.Combine(
+                    paths.RepositoryRoot,
+                    "tests",
+                    "Fixtures",
+                    "ItemCatalog",
+                    "content"));
                 WriteFiles(
                     itemsDirectory,
                     ItemCatalogEditorContent.CreateFiles(
-                        ItemCatalogEditorContent.Load(paths.ItemsDirectory)));
+                        ItemCatalogEditorContent.Load(fixtureItemsDirectory)));
                 var definitionPath = ContentLayout.DefinitionPath(
                     itemsDirectory,
-                    "ammunition.training_556");
+                    "fixture.arrow");
                 var source = File.ReadAllText(definitionPath);
                 const string integerWeight = "\"unitWeight\": 1";
                 Assert.That(source, Does.Contain(integerWeight));
@@ -204,13 +210,13 @@ namespace Mmorpg.Client.Tests.EditMode
         public void DisplayOnlyAndStructuralChangesAreClassifiedCorrectly()
         {
             var workspace = LoadCheckedInWorkspace();
-            var baseline = ItemCatalogCompiler.Compile(workspace.Authoring.ToDomainDocument());
+            var baseline = ItemCatalogCompiler.Compile(workspace.Authoring.ToAuthoringDocument());
             var definitionId = workspace.Authoring.definitions[0].id;
             var baselineDefinition = FindDefinition(baseline, definitionId);
 
             var displayDocument = ItemCatalogEditorJson.Clone(workspace.Authoring);
             displayDocument.definitions[0].displayName += " Updated";
-            var displayCatalog = ItemCatalogCompiler.Compile(displayDocument.ToDomainDocument());
+            var displayCatalog = ItemCatalogCompiler.Compile(displayDocument.ToAuthoringDocument());
             var displayDefinition = FindDefinition(displayCatalog, definitionId);
             var displayChanges = ItemCatalogChangeClassifier.Compare(
                 ItemCatalogEditorRuntimeDocument.FromDomain(baseline),
@@ -226,7 +232,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var structuralDocument = ItemCatalogEditorJson.Clone(workspace.Authoring);
             structuralDocument.definitions[0].unitWeight++;
             var structuralCatalog = ItemCatalogCompiler.Compile(
-                structuralDocument.ToDomainDocument());
+                structuralDocument.ToAuthoringDocument());
             var structuralDefinition = FindDefinition(structuralCatalog, definitionId);
             var structuralRuntime = ItemCatalogEditorRuntimeDocument.FromDomain(
                 structuralCatalog);
@@ -535,7 +541,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var workspace = LoadCheckedInWorkspace();
             var gameplayBefore = ItemCatalogCompiler.Compile(
-                workspace.Authoring.ToDomainDocument());
+                workspace.Authoring.ToAuthoringDocument());
             var expectedIds = gameplayBefore.Definitions
                 .Select(definition => definition.Id)
                 .ToArray();
@@ -550,7 +556,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 expectedIds,
                 changedEntries);
             var gameplayAfter = ItemCatalogCompiler.Compile(
-                workspace.Authoring.ToDomainDocument());
+                workspace.Authoring.ToAuthoringDocument());
 
             Assert.That(gameplayAfter.Revision, Is.EqualTo(gameplayBefore.Revision));
             Assert.That(
@@ -616,6 +622,35 @@ namespace Mmorpg.Client.Tests.EditMode
                 out _), Is.False);
         }
 
+        [Test]
+        public void LoadingDropsPresentationOfRemovedDefinitionFiles()
+        {
+            var paths = ItemCatalogEditorPaths.CreateDefault();
+            var presentation = ItemPresentationCatalogJson.Deserialize(
+                File.ReadAllText(paths.PresentationPath));
+            presentation.entries = presentation.entries.Concat(new[]
+            {
+                new ItemPresentationEntry
+                {
+                    definitionId = "retired.definition",
+                    iconAddress = string.Empty,
+                    localizationKey = "items.retired.definition.name",
+                    fallbackDisplayName = "Retired Definition",
+                    prefabPresentationKey = string.Empty
+                }
+            }).ToArray();
+
+            var workspace = new ItemCatalogEditorWorkspace(
+                ItemCatalogEditorContent.Load(paths.ItemsDirectory),
+                ItemCatalogEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)),
+                presentation);
+
+            Assert.That(workspace.FindPresentation("retired.definition"), Is.Null);
+            Assert.That(
+                workspace.Presentation.entries.Select(entry => entry.definitionId),
+                Is.EquivalentTo(workspace.Authoring.definitions.Select(definition => definition.id)));
+        }
+
         private static ItemCatalogEditorWorkspace LoadCheckedInWorkspace()
         {
             var paths = ItemCatalogEditorPaths.CreateDefault();
@@ -638,14 +673,14 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         private static void AssertInvalidCatalog(
-            Action<ItemCatalogEditorDocument> mutate,
+            Action<ItemCatalogJsonDocument> mutate,
             string expectedMessage)
         {
             var document = ItemCatalogEditorJson.Clone(LoadCheckedInWorkspace().Authoring);
             mutate(document);
 
             var exception = Assert.Throws<ItemCatalogValidationException>(
-                () => ItemCatalogCompiler.Compile(document.ToDomainDocument()));
+                () => ItemCatalogCompiler.Compile(document.ToAuthoringDocument()));
             Assert.That(exception.Message, Does.Contain(expectedMessage));
         }
 

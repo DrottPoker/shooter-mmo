@@ -41,8 +41,8 @@ worker. Zone and layer partitioning are not implemented.
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
 | `GET /api/characters` | Account session | List owned characters |
 | `POST /api/characters` | Account session | Create a character |
-| `GET /api/item-catalog` and `GET /api/items/catalog` | Account session | Return the neutral current catalog with revision ETag validation |
-| `GET /api/characters/{characterId}/item-state` and `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent no-store character item-state snapshot |
+| `GET /api/item-catalog` | Account session | Return the neutral current catalog with revision ETag validation |
+| `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
 | `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
 | `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
@@ -270,8 +270,7 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   grow server memory without bound. Rejected connections are counted by the
   `simulation_worker.realtime.connections.rejected` metric.
 
-Protocol version `15` carries Shard and World identity plus the initial carry
-tuple in join acceptance. Reliable ordered control messages carry later item
+Join acceptance carries Shard and World identity plus the initial carry tuple. Reliable ordered control messages carry later item
 state, corpse, world-actor presence, bounded actor state, and correlated world
 interaction contracts. Ordinary actor spawn packets contain presentation,
 identity, bounds, disposition, state, and revision data, but not the complete
@@ -349,9 +348,10 @@ instances for `development-world-1`, and seven prepared spawn instances for
   connection still has the actor in its interest set, so they stay bounded by
   current visibility.
 - One typed capability registry composes dialogue, vendor, quest, crafting,
-  insurance, trainer, bank, and Recovery Storage descriptors. Each registered
-  kind has an explicit Phase 12 deferred handler unless a later phase replaces
-  it with durable business authority.
+  insurance, trainer, bank, and Recovery Storage descriptors. Insurance, quest
+  offer, quest completion, bank, and Recovery Storage have handlers; every other
+  kind answers with an explicit deferred result until its business authority
+  exists.
 - One world-interaction authority validates the exact simulation session,
   worker runtime, assignment, Shard, target identity and revision, active
   state, closest-point bounds distance, static and dynamic line of sight,
@@ -361,7 +361,7 @@ instances for `development-world-1`, and seven prepared spawn instances for
   are revalidated at 5 Hz and close on target invalidation, range, line of
   sight, disconnect, or assignment lifecycle changes.
 - Corpse views use the same target and lease registry while retaining the
-  complete protocol-v11 corpse state and GameService transaction authority.
+  complete corpse state and GameService transaction authority.
 - Mutations for the same corpse pass through one worker-local coordinator
   before GameService, while different corpses remain parallel. Open and refresh
   state targets only the requester. Committed deltas are encoded once and reuse
@@ -444,8 +444,7 @@ implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
 
-Phases 1 through 15 of the approved item plan are implemented. Offline account
-mutations, shared live encumbrance, and the authoritative in-world mutation
+The item foundation is implemented. Offline account mutations, shared live encumbrance, and the authoritative in-world mutation
 boundary plus persistent Unity inventory state and temporary presentation are
 available together with durable player-death partition, corpse restoration,
 concurrent inspection, and authoritative looting:
@@ -460,10 +459,10 @@ concurrent inspection, and authoritative looting:
 - The compiler emits sorted deterministic runtime content under
   `src/Shared/WorldData/Generated/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
-- The checked-in development catalog has nine representative definitions, all
-  canonical equipment slots, the medical, material, and ammunition tags, one
-  Bag layout with general and specialized slots, and the four-slot base Secure
-  Container tier.
+- The checked-in catalog has ten fantasy definitions, thirteen equipment
+  slots including a stack-holding ammunition slot, the potion, food, material,
+  and ammunition tags, one Bag layout with general and specialized slots, and
+  the four-slot base Secure Container tier shown as Warded Pouch.
 - Framework-neutral pure rules cover stack compatibility, specialized slot tag
   acceptance, equipment compatibility, Secure Container eligibility, empty and
   non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
@@ -498,7 +497,7 @@ concurrent inspection, and authoritative looting:
   is constrained to database creation time plus exactly five minutes. Corpse
   transforms require a bounded position and normalized quaternion. Snapshot
   rows contain no item-instance identity.
-- A companion Phase 10 migration removes the obsolete row-level 140 percent
+- A companion migration removes the obsolete row-level 140 percent
   check from `character_item_states`. The transaction kernel remains the only
   hard-cap authority so an authoritative death can persist retained Secure
   Container weight after its equipped Bag capacity bonus is removed.
@@ -535,6 +534,13 @@ concurrent inspection, and authoritative looting:
   destruction, empty Bag storage, complete Bag aggregate swap, Recovery delivery
   add and claim, Secure Container tier change, policy application and removal,
   quest-grant abandonment cleanup, player-death partition, and corpse expiry.
+- Equip moves a whole stack only when it fits the equipment slot limit, which is
+  the smaller of the slot maximum quantity and the definition stack size. Merge
+  accepts an equipped target up to that limit and an equipped source, and split
+  accepts an equipped source, so arrows top up and partly leave the ammunition
+  slot. Equipping into a slot that an equipped item blocks, or with an item that
+  would block an occupied slot, is rejected with `equipment_slot_blocked`. A
+  corpse equipment slot keeps the same quantity limit.
 - Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
   child. A protected or insured Bag or child rejects the complete swap without
   changing custody, quantity, or revisions.
@@ -601,8 +607,8 @@ concurrent inspection, and authoritative looting:
 - `ItemPolicyRules` independently evaluates trade, auction, vendor sale, player
   destruction, death disposition, insurance eligibility, and stacking
   capability. Protected and insured items block every transfer capability.
-- `ItemPolicyService` and `QuestItemService` are system-only adapters over the
-  same transaction kernel. Insurance removal changes policy lifecycle without
+- Policy and quest commands run only through the NPC capability path or as a
+  system actor. Insurance removal changes policy lifecycle without
   replacing the item. Quest abandon removes only active protected items with the
   exact quest-grant source id, and reaccept suppresses duplicate active grants.
   Abandoning an item held in Recovery Storage also removes its slot row and any
@@ -628,13 +634,12 @@ concurrent inspection, and authoritative looting:
   calculation used by worker movement and Unity prediction. Walking keeps full
   speed through exactly 100 percent load, then the movement multiplier falls
   linearly to `0.20` at the exact 140 percent hard cap.
-- Realtime protocol version `15` retains carry state on join, later committed
+- The realtime protocol retains carry state on join, later committed
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
   destruction, complete Recovery Storage claim, and typed NPC insurance and
-  quest item-lifecycle actions. The retained version `11`
-  corpse contract carries
+  quest item-lifecycle actions. The corpse contract carries
   chunked corpse presence and view state, accepted destination slot tags, open,
   close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag
   aggregate swaps, operation result, delta, and view-closure messages.
@@ -644,11 +649,14 @@ concurrent inspection, and authoritative looting:
   channel 0, processes at most one per peer at a time, and bounds each pending
   queue to eight operations. Synthetic development bots cannot mutate durable
   items.
-- Configured `bank`, `recovery_storage`, and `insurance_npc` service points are
-  evaluated against the worker's authoritative player position. Bank and
-  Recovery Storage custody require the matching access flag. Secure Container
-  custody has no city requirement. The insurance flag is available to the
-  boundary, but no insurance purchase operation exists yet.
+- Bank and Recovery Storage custody require the matching access flag. The worker
+  sets it when the operation starts while the player has an open interaction
+  with a world actor whose `bank` or `recovery_storage` capability is available.
+  The interaction closes when the player leaves its range or loses line of
+  sight, which ends the access. Opening either capability only confirms it, so
+  the client can present the storage. Secure Container custody has no city
+  requirement. Insurance and quest lifecycle actions pass their flags only
+  through their own NPC capability.
 - The worker service-authenticated endpoint carries the exact account,
   character, simulation session token, worker id, runtime id, and Shard. The
   authenticated worker id must match the body. GameService locks and validates
@@ -724,7 +732,7 @@ concurrent inspection, and authoritative looting:
   or safe disconnect.
 - Unity keeps one persistent definition-id catalog index, presentation and icon
   cache, complete and focused snapshot state, monotonic observed revisions,
-  structured errors, and one operation journal. It correlates protocol-v11
+  structured errors, and one operation journal. It correlates operation
   results and refreshes authoritative HTTP state to at least the committed revision
   without optimistically changing item custody or quantity.
 - Unity also owns immutable corpse presence and view state, complete chunk
@@ -746,25 +754,26 @@ concurrent inspection, and authoritative looting:
   corpse. Item clicks
   select only the split and allowed-destruction controls. Bank and Recovery
   reads are globally inspectable by the owning account.
-- SimulationWorker normally derives Bank, Recovery Storage, and insurance access
-  from authored service points at the authoritative player position. Its
-  environment-specific Development configuration can explicitly grant global
-  Bank and Recovery access for local item testing. Enabling that option outside
-  Development is rejected at startup, and insurance access remains proximity
-  based. Every mutation still requires the joined worker path and GameService's
+- SimulationWorker normally derives Bank and Recovery Storage access from the
+  open NPC interaction. Its environment-specific Development configuration can
+  explicitly grant global Bank and Recovery access for local item testing.
+  Enabling that option outside Development is rejected at startup, and insurance
+  access always requires the insurance NPC capability. Every mutation still requires the joined worker path and GameService's
   exact session, runtime, assignment, transaction, item-rule, and capacity
   validation.
 - Gameplay and presentation catalogs load once and must share a source revision.
   Server snapshots must match the same bundled gameplay revision or the client
   reports `item_catalog_update_required` and refuses stale item state.
-- `--seed-phase9-items <characterId>` is a process-local Development fixture
-  command, not an HTTP route. It calls only `ItemTransactionService`, requires a
-  new empty offline character, restricts PostgreSQL to loopback and a
-  non-production-like database name, and refuses replay after the first item or
-  Recovery delivery exists.
+- `--dev-items-package <characterId> <packageId>` is a process-local Development
+  command, not an HTTP route. It applies one package from
+  `content/development/item-packages.json` through `ItemTransactionService`,
+  requires a new empty offline character, restricts PostgreSQL to loopback and a
+  non-production-like database name, refuses replay after the first item or
+  Recovery delivery exists, and rejects a package that misses its exact expected
+  load.
 - `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` is the matching
-  process-local corpse fixture. It seeds an empty source through the Phase 9
-  package when necessary, then uses the normal durable death transaction. The
+  process-local corpse fixture. It applies the corpse seed package to an empty
+  source when necessary, then uses the normal durable death transaction. The
   source must be offline and the resulting corpse keeps its database deadline
   across worker restart.
 
@@ -773,10 +782,29 @@ runtime dependency. The Editor assembly is isolated from runtime WorldData
 assemblies.
 GameService exposes authenticated owned-character reads, offline account item
 write routes, and one service-authenticated active-session item route. It exposes
-no development grant route. The one-shot Phase 9 fixture is a guarded local
-process command rather than a remotely callable service. SimulationWorker has no
+no development grant route. The development item packages are applied by a
+guarded local process command rather than a remotely callable service. SimulationWorker has no
 inventory database access and holds no item collection. Unity is not an item-rule
 authority.
+
+## Item And Interaction Error Codes
+
+Error codes are stable contracts for programs; messages are for people and may
+change. GameService returns the item codes, SimulationWorker adds the realtime
+and interaction codes, and Unity adds `item_catalog_update_required`.
+
+| Area | Codes |
+| --- | --- |
+| Authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `worker_runtime_changed`, `simulation_session_invalid` |
+| Operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large`, `item_operation_queue_full`, `item_state_diverged` |
+| Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
+| Placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
+| Stacks | `item_stack_incompatible`, `item_stack_limit_exceeded` |
+| Policy, quest, and currency | `item_policy_restricted`, `item_policy_not_found`, `item_destroy_forbidden`, `quest_grant_invalid`, `currency_insufficient` |
+| Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |
+| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `item_already_looted`, `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active` |
+| World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `npc_lifecycle_action_invalid`, `quest_turn_in_unavailable` |
+| Unity client | `item_catalog_update_required` |
 
 ## UDP Resilience And Quotas
 
@@ -958,11 +986,10 @@ environment variables and command-line options have higher precedence.
 SimulationWorker requires one valid `WorldData/Worlds/<WorldId>/world.json` in its
 output folder for its configured `WorldId`, built from
 `content/worlds/<WorldId>/world.json`. The manifest supplies the client scene, movement
-bounds, authoritative spawn, and bank, Recovery Storage, and insurance service
-points. Actor and collision data resolve below the same World directory. This
+bounds, and authoritative spawn. Actor and collision data resolve below the same World directory. This
 prevents a shard restart on another World from silently retaining coordinates
 from the previous map. Missing manifests, invalid bounds, out-of-bounds spawns,
-invalid service points, or invalid runtime content fail before UDP admission.
+or invalid runtime content fail before UDP admission.
 
 GameService seeds World definitions from those manifests but does not select a
 World for a shard. The worker proposes its desired `WorldId` in the heartbeat.
@@ -993,7 +1020,7 @@ The development World identity migration replaces the legacy
 the shard id or runtime ownership. It is an identity upgrade for the same map,
 not a live World rebind.
 
-Phase 15 adds partial indexes for completed operation retention, closed-corpse
+Partial indexes support completed operation retention, closed-corpse
 retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
 uses deterministic system-authority operations to destroy expired Recovery
 items with durable audit, removes empty closed corpses only after retention,
@@ -1056,19 +1083,20 @@ the test connection variable at development or production data.
   capacity, lower-capacity Bag rejection,
   fixed-point movement reference points, monotonic active-session propagation,
   protocol validation, and reconnect restoration.
-- Phase 8 protocol, HTTP client, worker socket, configuration, and isolated
+- In-world mutation protocol, HTTP client, worker socket, configuration, and isolated
   PostgreSQL tests for bounded intent decoding, committed results, every exact
   identity mismatch, stale assignment, duplicate intent replay, account-versus-
   worker races, bank and Recovery access, Secure Container carry changes, and
   reconnect restoration.
-- Phase 9 backend tests cover fixture command validation, one real PostgreSQL
-  transaction-service fixture flow and readback, one-shot rejection, and the
+- Development item package tests cover package file validation, one real
+  PostgreSQL package flow and readback, one-shot rejection, stale expected
+  loads, that the checked-in packages fit the compiled catalog, and the
   Recovery delivery revision
   exposed to Unity. Unity EditMode tests cover catalog cache reuse, revision
   mismatch, snapshot validation and coherence, operation correlation,
   specialized and Secure Container targets, non-empty Bag rules, split weight,
   and the hard cap. PlayMode tests cover persistent controller and uGUI creation.
-- Phase 10 tests cover migration idempotency and constraints, exact live service
+- Death partition tests cover migration idempotency and constraints, exact live service
   authentication, death-event replay, total item custody conservation, currency
   and Secure retention, protected and insurance precedence, insured equipment
   snapshots, Bag-root and child ordering, involuntary capacity-loss overflow and
@@ -1076,14 +1104,14 @@ the test connection variable at development or production data.
   empty-corpse lifetime, idempotent audited expiry, and a custody-versus-expiry
   race. Worker unit tests cover death and restoration response validation plus
   monotonic database-time expiry in the runtime store.
-- Phase 11 PostgreSQL races cover unrelated concurrent loot, same-item winners,
+- Corpse transfer PostgreSQL races cover unrelated concurrent loot, same-item winners,
   partial stack conservation, Bag-versus-child and Bag-versus-Bag locking, the
   exact 140 percent hard cap, and equal competition by the dead character.
   HTTP, worker, protocol, and Unity coverage verifies exact authority, no idle
   transaction after mutation, viewer deltas, stable close errors, dynamic MTU
   packing, monotonic corpse state, fixture creation, typed drag payloads, and
   persistent presentation bootstrap.
-- Phase 12 coverage verifies deterministic actor compilation, strict malformed
+- World actor coverage verifies deterministic actor compilation, strict malformed
   runtime rejection, identity scope separation, assignment reconstruction,
   interest presence without capability leakage, central Mob scheduling,
   composed capabilities and typed deferred dispatch, exact range and line of
@@ -1091,15 +1119,15 @@ the test connection variable at development or production data.
   exclusion with corpses, closure causes, protocol round trips and bounds, Unity
   monotonic state and targeting, and Editor import, export, preview, compile,
   and verify through the shared compiler.
-- Phase 13 coverage verifies exact-session insurance and quest lifecycle
+- NPC lifecycle coverage verifies exact-session insurance and quest lifecycle
   dispatch, atomic pricing, policy removal, protected grant lineage,
   abandonment, reacceptance, and safe source labels.
-- Phase 14 coverage verifies content-controlled normal and boss corpse settings,
+- Mob corpse coverage verifies content-controlled normal and boss corpse settings,
   worker-memory restart loss and expiry, deterministic grant replay with one
   persistent player item, durable boss restoration with unchanged custody and
   deadline, shared expiry, realtime presence integration, and Unity Actor Studio
   round trips.
-- Phase 15 coverage verifies bounded configuration, identity-free metric
+- Operations coverage verifies bounded configuration, identity-free metric
   dimensions, pre-database payload rejection, stable lock timeout mapping,
   audited Recovery expiry and retention, `4,000` centrally scheduled actors,
   `128` concurrent NPC leases, eight simultaneous corpse claims, forty repeated
@@ -1107,8 +1135,10 @@ the test connection variable at development or production data.
 
 ## Not Yet Implemented
 
-- Development or gameplay item grant routes. The guarded local fixture command
-  is intentionally not a route.
+- HTTP item grant routes. Development grants use the guarded process-local
+  command, and gameplay grants come only from NPC quest and Mob loot paths.
+- Consume and use intents, per-shot ammunition consumption, and the attack
+  lockout after an equipment change.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
   detail presentation. The current uGUI is temporary presentation only.
 - The authoritative combat death producer and final corpse visuals. The durable
@@ -1124,12 +1154,10 @@ the test connection variable at development or production data.
   deployment of the monitoring stack.
 - Durable unique actor state, complete Mob AI, capability business operations,
   or combat simulation.
-- General terrain mesh and rigid-body collision.
+- Rigid-body collision and replicated dynamic collision transforms.
 
-The locked product design and remaining implementation phases for the item
-system are documented in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
-[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+The item rules, including the planned and open ones, are documented in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 The implemented actor and interaction foundation and its deferred boundaries
 are documented in
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).

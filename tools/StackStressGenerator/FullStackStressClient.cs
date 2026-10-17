@@ -479,7 +479,9 @@ public sealed record FullStackStackStressInventoryFixtureRequest(
 
 public sealed record FullStackStackStressInventoryFixtureResponse(
     string Workload,
-    FullStackCharacterInventoryResponse Inventory);
+    FullStackCharacterInventoryResponse Inventory,
+    string InventoryDefinitionId,
+    string LootDefinitionId);
 
 public sealed record FullStackStackStressLootHotspotRequest(
     string RunId,
@@ -493,6 +495,7 @@ public sealed record FullStackStackStressLootHotspotRequest(
 
 public sealed record FullStackStackStressLootHotspotResponse(
     Guid CorpseId,
+    string LootDefinitionId,
     int LootStacks,
     int QuantityPerStack,
     DateTime ExpiresAt);

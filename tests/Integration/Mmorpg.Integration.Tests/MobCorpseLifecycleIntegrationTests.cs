@@ -35,7 +35,7 @@ public sealed class MobCorpseLifecycleIntegrationTests
             session.SimulationSessionToken,
             Guid.NewGuid(),
             "mob.feral_wolf",
-            "material.iron_ore",
+            "fixture.ore",
             3,
             snapshot.PermanentInventory.ContainerId,
             snapshot.PermanentInventory.Revision,
@@ -139,7 +139,7 @@ public sealed class MobCorpseLifecycleIntegrationTests
             session.SimulationSessionToken,
             Guid.NewGuid(),
             "mob.feral_wolf",
-            "material.iron_ore",
+            "fixture.ore",
             3,
             snapshot.PermanentInventory.ContainerId,
             snapshot.PermanentInventory.Revision,
@@ -170,7 +170,7 @@ public sealed class MobCorpseLifecycleIntegrationTests
             1d,
             MobCorpseLifecycleService.DefaultPresentationKey,
             600d,
-            [new MobCorpseLootEntryRequest(grantId, "material.iron_ore", 5)]);
+            [new MobCorpseLootEntryRequest(grantId, "fixture.ore", 5)]);
 
         var first = await context.CorpseService.CreatePersistentMobCorpseAsync(
             WorkerId,
@@ -245,7 +245,7 @@ public sealed class MobCorpseLifecycleIntegrationTests
                 select section.corpse_id
                 from item_instances item
                 join corpse_sections section on section.container_id = item.container_id
-                where item.definition_id = 'material.iron_ore';
+                where item.definition_id = 'fixture.ore';
                 """));
         Assert.Equal(
             1,

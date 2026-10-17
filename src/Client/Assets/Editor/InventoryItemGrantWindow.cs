@@ -21,11 +21,13 @@ namespace Mmorpg.Client.Editor
             "Secure Container"
         };
 
+        private const string SecureContainerArgument = "secure";
+
         private static readonly string[] DestinationArguments =
         {
             "permanent",
             "bank",
-            "secure"
+            SecureContainerArgument
         };
 
         private DevelopmentItemToolCliProcess activeProcess;
@@ -198,7 +200,8 @@ namespace Mmorpg.Client.Editor
                 "Definition",
                 definition.categoryId + ", unit weight " + definition.unitWeight
                     + ", max stack " + definition.maximumStackSize);
-            if (destinationIndex == 2 && !definition.secureContainerEligible)
+            var toSecureContainer = DestinationArguments[destinationIndex] == SecureContainerArgument;
+            if (toSecureContainer && !definition.secureContainerEligible)
             {
                 EditorGUILayout.HelpBox(
                     "The canonical catalog does not allow this definition in the Secure Container.",
@@ -207,7 +210,7 @@ namespace Mmorpg.Client.Editor
 
             var canGrant = activeProcess == null
                 && !character.isOnline
-                && (destinationIndex != 2 || definition.secureContainerEligible);
+                && (!toSecureContainer || definition.secureContainerEligible);
             EditorGUI.BeginDisabledGroup(!canGrant);
             if (GUILayout.Button("Give Item", GUILayout.Height(30f)))
             {
@@ -274,7 +277,7 @@ namespace Mmorpg.Client.Editor
         private void DrawCorpseFixture()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            GUILayout.Label("Create Phase 11 Corpse", EditorStyles.boldLabel);
+            GUILayout.Label("Create Durable Corpse", EditorStyles.boldLabel);
             var character = SelectedCharacter();
             if (character == null)
             {
@@ -289,7 +292,7 @@ namespace Mmorpg.Client.Editor
             corpsePosition = EditorGUILayout.Vector3Field("World Position", corpsePosition);
             EditorGUILayout.HelpBox(
                 "The command uses the selected offline character as the death source. "
-                    + "If it has no items or Recovery deliveries, the Phase 9 test pack is seeded first. "
+                    + "If it has no items or Recovery deliveries, the corpse seed package from content/development/item-packages.json is applied first. "
                     + "Restart SimulationWorker after creation so it restores the durable corpse.",
                 MessageType.Info);
             var emptyWithRecovery = character.itemCount == 0

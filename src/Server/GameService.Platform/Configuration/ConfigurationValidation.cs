@@ -1,3 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
+using Mmorpg.Server.Common.Identity;
+
 namespace Mmorpg.GameService.Platform.Configuration;
 
 // Shared readers for required GameService settings. Each reader records a
@@ -70,11 +73,8 @@ public static class ConfigurationValidation
         return parsed;
     }
 
-    public static bool IsValidIdentifier(string? value)
+    public static bool IsValidIdentifier([NotNullWhen(true)] string? value)
     {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+        return Identifiers.IsServiceIdentifier(value);
     }
 }

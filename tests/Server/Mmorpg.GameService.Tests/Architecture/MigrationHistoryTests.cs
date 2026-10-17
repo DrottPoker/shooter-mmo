@@ -36,7 +36,8 @@ public sealed class MigrationHistoryTests
         "202607182100_development_world_identity 20958769fb34a9836274bcbe6adb96016685607e87037d9f91c8d49621255faf",
         "202607191200_worker_selected_world_binding 20f65dda3a97d4db94ed127fd14c1f80ee72319d93783caedbd7b5a6f5b0687c",
         "202610141800_release_retryable_operation_claims 0ecee7b2a4475cac259fc125da2f72abcdb12520f9f4feb97aad9f78ba49645d",
-        "202610151000_equipped_item_lookup_index ffeb417381fc8724882fac85037dc70206a5adff3432cf9a14a6674362e70ee1"
+        "202610151000_equipped_item_lookup_index ffeb417381fc8724882fac85037dc70206a5adff3432cf9a14a6674362e70ee1",
+        "202610171200_item_catalog_alignment ada94ee92d8df429ac434a2c06a306ec37cc1243db15061d8d0721ec4f02d633"
     ];
 
     [Fact]
@@ -104,13 +105,13 @@ public sealed class MigrationHistoryTests
     public void SchemaAcceptsMigrationsAfterTheShippedHistory()
     {
         var newer = new TestModule(
-            [new DatabaseMigration("202610160000_newer_than_history", "select 1;")]);
+            [new DatabaseMigration("202610180000_newer_than_history", "select 1;")]);
 
         var schema = GameServiceSchema.Create(
             LegacyBaselineMigrations.All,
             [.. ProductionModules(), newer]);
 
-        Assert.Equal("202610160000_newer_than_history", schema.Migrations[^1].Id);
+        Assert.Equal("202610180000_newer_than_history", schema.Migrations[^1].Id);
     }
 
     private static IEnumerable<(string Id, string Sql)> Migrations()

@@ -479,8 +479,6 @@ public sealed record SimulationWorkerConfig(
 
         var itemInteraction = ItemInteractionConfig.FromConfiguration(
             section.GetSection("ItemInteraction"),
-            worldManifest,
-            movementSimulation,
             errors);
 
         if (movementSimulation is not null

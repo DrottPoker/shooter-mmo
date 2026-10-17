@@ -35,7 +35,7 @@ public sealed class ItemReadModelIntegrationTests
             catalog.Definitions.Select(definition => definition.Id).Order(),
             catalog.Definitions.Select(definition => definition.Id));
 
-        var bag = Assert.Single(catalog.Definitions, definition => definition.Id == "bag.field_pack");
+        var bag = Assert.Single(catalog.Definitions, definition => definition.Id == "fixture.pack");
         Assert.NotNull(bag.Bag);
         Assert.Equal(50, bag.Bag.CarryCapacityBonus);
         Assert.Equal(Enumerable.Range(0, 7), bag.Bag.Slots.Select(slot => slot.SlotIndex));
@@ -71,6 +71,9 @@ public sealed class ItemReadModelIntegrationTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync();
+        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
+            context.CatalogSource.RuntimeCatalogPath,
+            CancellationToken.None);
 
         var result = await context.ItemQueryService.GetCharacterInventoryAsync(
             player.Registration.AccountId,
@@ -90,7 +93,12 @@ public sealed class ItemReadModelIntegrationTests
         AssertContainerIsEmptyAndOrdered(snapshot.Bank, "bank", 40);
         AssertContainerIsEmptyAndOrdered(snapshot.SecureContainer.Contents, "secure_container", 4);
         Assert.Equal("secure_container.base", snapshot.SecureContainer.TierId);
-        Assert.Equal(Enumerable.Range(0, 8), snapshot.Equipment.Select(slot => slot.SortOrder));
+        Assert.Equal(
+            catalog.EquipmentSlots.Select(slot => slot.Id),
+            snapshot.Equipment.Select(slot => slot.EquipmentSlotId));
+        Assert.Equal(
+            Enumerable.Range(0, catalog.EquipmentSlots.Length),
+            snapshot.Equipment.Select(slot => slot.SortOrder));
         Assert.All(snapshot.Equipment, slot => Assert.Null(slot.Item));
         Assert.Null(snapshot.EquippedBag);
         Assert.Empty(snapshot.RecoveryStorage.Deliveries);
@@ -102,35 +110,35 @@ public sealed class ItemReadModelIntegrationTests
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync();
         var fixture = new ItemReadModelTestFixture(context.DataSource, player.Character.Id);
-        var insuredRifleId = await fixture.AddContainerItemAsync(
+        var insuredSwordId = await fixture.AddContainerItemAsync(
             "permanent_inventory",
             0,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             new TestItemPolicy("insured", "policy-owner-only"));
         var armorId = await fixture.EquipItemAsync(
-            "body_armor",
-            "armor.starter_vest");
+            "body",
+            "fixture.tunic");
         var bag = await fixture.EquipBagAsync();
         var bagAmmunitionId = await fixture.AddBagContentAsync(
             bag.ContainerId,
             6,
-            "ammunition.training_556",
+            "fixture.arrow",
             30);
         var bankItemId = await fixture.AddContainerItemAsync(
             "bank",
             0,
-            "material.iron_ore",
+            "fixture.ore",
             5);
         var secureItemId = await fixture.AddContainerItemAsync(
             "secure_container",
             0,
-            "medical.field_dressing",
+            "fixture.potion",
             2);
         var recovery = await fixture.AddRecoveryDeliveryAsync(
             "test_recovery",
             "internal-event-id",
-            "quest_item.signal_transponder",
+            "fixture.letter",
             1,
             new TestItemPolicy("protected_on_death", "recovery-policy-source"));
         await fixture.SetCarryStateAsync(210, 200, 7);
@@ -153,16 +161,16 @@ public sealed class ItemReadModelIntegrationTests
         Assert.Equal(10_500, snapshot.LoadRatioBasisPoints);
         Assert.Equal(9_000, snapshot.MovementMultiplierBasisPoints);
 
-        var rifle = snapshot.PermanentInventory.Slots[0].Item;
-        Assert.NotNull(rifle);
-        Assert.Equal(insuredRifleId, rifle.ItemInstanceId);
-        Assert.Equal("weapon.training_rifle", rifle.DefinitionId);
-        var policy = Assert.Single(rifle.Policies);
+        var sword = snapshot.PermanentInventory.Slots[0].Item;
+        Assert.NotNull(sword);
+        Assert.Equal(insuredSwordId, sword.ItemInstanceId);
+        Assert.Equal("fixture.sword", sword.DefinitionId);
+        var policy = Assert.Single(sword.Policies);
         Assert.Equal("insured", policy.PolicyKind);
         Assert.Equal("active", policy.Status);
         Assert.Equal(
             armorId,
-            Assert.Single(snapshot.Equipment, slot => slot.EquipmentSlotId == "body_armor")
+            Assert.Single(snapshot.Equipment, slot => slot.EquipmentSlotId == "body")
                 .Item!
                 .ItemInstanceId);
 
@@ -204,12 +212,12 @@ public sealed class ItemReadModelIntegrationTests
         await fixture.AddContainerItemAsync(
             "permanent_inventory",
             0,
-            "ammunition.training_556",
+            "fixture.arrow",
             20);
         await fixture.AddContainerItemAsync(
             "bank",
             0,
-            "ammunition.training_556",
+            "fixture.arrow",
             40);
 
         var catalogResult = await context.ItemCatalogQueryService.GetCurrentAsync(
@@ -224,13 +232,13 @@ public sealed class ItemReadModelIntegrationTests
         Assert.Equal(
             2,
             EnumerateItems(snapshot).Count(item =>
-                item.DefinitionId == "ammunition.training_556"));
+                item.DefinitionId == "fixture.arrow"));
         Assert.Single(
             catalog.Definitions,
-            definition => definition.Id == "ammunition.training_556");
+            definition => definition.Id == "fixture.arrow");
 
         var json = JsonSerializer.Serialize(snapshot, WebJsonOptions);
-        Assert.Equal(2, CountOccurrences(json, "ammunition.training_556"));
+        Assert.Equal(2, CountOccurrences(json, "fixture.arrow"));
         AssertNotContains(json, "\"definitions\"");
         AssertNotContains(json, "displayName");
         AssertNotContains(json, "unitWeight");
@@ -249,13 +257,13 @@ public sealed class ItemReadModelIntegrationTests
         await fixture.AddContainerItemAsync(
             "permanent_inventory",
             0,
-            "weapon.training_rifle",
+            "fixture.sword",
             1,
             new TestItemPolicy("insured", policySecret));
         await fixture.AddRecoveryDeliveryAsync(
             "test_recovery",
             recoveryEventSecret,
-            "medical.field_dressing");
+            "fixture.potion");
         await fixture.AddOperationSentinelAsync(operationSecret);
 
         var catalog = (await context.ItemCatalogQueryService.GetCurrentAsync(
@@ -288,7 +296,7 @@ public sealed class ItemReadModelIntegrationTests
         await fixture.AddContainerItemAsync(
             "permanent_inventory",
             0,
-            "medical.field_dressing",
+            "fixture.potion",
             2);
         var before = await LoadDurableReadChecksumAsync(context, player.Character.Id);
 

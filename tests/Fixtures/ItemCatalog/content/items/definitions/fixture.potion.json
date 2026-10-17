@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "potion",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Potion",
+  "equipmentSlots": [ ],
+  "id": "fixture.potion",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 10,
+  "playerDestroyable": true,
+  "tags": [
+    "potion"
+  ],
+  "unitWeight": 2
+}

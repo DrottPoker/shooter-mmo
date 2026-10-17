@@ -196,15 +196,6 @@ internal sealed class CorpseInternalMoveCommandHandler
                     "The corpse Bag owns the corpse Bag section and cannot leave its equipment slot.");
             }
 
-            await context.Placement.SelectDestinationSlotAsync(
-                destination,
-                definition,
-                command.DestinationSlotIndex,
-                sourceBagHasContents,
-                source.IsBag ? source.ItemInstanceId : null,
-                false,
-                cancellationToken,
-                target.ItemInstanceId);
             targetPolicies = await context.State.LoadPoliciesAsync(
                 target.ItemInstanceId,
                 cancellationToken);
@@ -216,6 +207,18 @@ internal sealed class CorpseInternalMoveCommandHandler
                 targetPolicies,
                 definition,
                 movedQuantity);
+            await context.Placement.SelectDestinationSlotAsync(
+                destination,
+                definition,
+                stackDisposition == CorpseStackDisposition.Merge
+                    ? target.Quantity + movedQuantity
+                    : movedQuantity,
+                command.DestinationSlotIndex,
+                sourceBagHasContents,
+                source.IsBag ? source.ItemInstanceId : null,
+                false,
+                cancellationToken,
+                target.ItemInstanceId);
             if (stackDisposition != CorpseStackDisposition.Merge)
             {
                 if (isPartial)
@@ -229,6 +232,7 @@ internal sealed class CorpseInternalMoveCommandHandler
                 await context.Placement.SelectDestinationSlotAsync(
                     sourceContainer,
                     targetDefinition,
+                    target.Quantity,
                     source.ContainerSlotIndex,
                     targetBagHasContents,
                     target.IsBag ? target.ItemInstanceId : null,
@@ -243,6 +247,7 @@ internal sealed class CorpseInternalMoveCommandHandler
             await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
+                movedQuantity,
                 command.DestinationSlotIndex,
                 sourceBagHasContents,
                 source.IsBag ? source.ItemInstanceId : null,

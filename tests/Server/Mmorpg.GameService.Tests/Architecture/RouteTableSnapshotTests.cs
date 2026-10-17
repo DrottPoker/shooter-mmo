@@ -24,11 +24,9 @@ public sealed class RouteTableSnapshotTests
         "GET /api/accounts/session auth=AccountSession rate=- sensitive=no",
         "GET /api/characters/ auth=AccountSession rate=- sensitive=no",
         "GET /api/characters/{characterId:guid}/bank auth=AccountSession rate=- sensitive=yes",
-        "GET /api/characters/{characterId:guid}/inventory auth=AccountSession rate=- sensitive=yes",
         "GET /api/characters/{characterId:guid}/item-state auth=AccountSession rate=- sensitive=yes",
         "GET /api/characters/{characterId:guid}/recovery auth=AccountSession rate=- sensitive=yes",
         "GET /api/item-catalog auth=AccountSession rate=- sensitive=no",
-        "GET /api/items/catalog auth=AccountSession rate=- sensitive=no",
         "GET /api/shards/ auth=- rate=- sensitive=no",
         "GET /api/simulation-workers/{workerId}/corpses auth=SimulationWorker rate=- sensitive=yes",
         "GET /health/live auth=- rate=- sensitive=no",
@@ -130,9 +128,15 @@ public sealed class RouteTableSnapshotTests
             ["ServiceAuthentication:SimulationWorkers:local-simulation-worker-1"] =
                 "test-simulation-worker-secret-at-least-32-characters",
             ["WorldData:WorldsPath"] = RepositoryPaths.Worlds,
+            ["Items:NpcLifecycle:InsurancePrice"] = "100",
+            ["Items:NpcLifecycle:QuestGrantId"] = "quest.fixture.letter",
+            ["Items:NpcLifecycle:QuestItemDefinitionId"] = "fixture.letter",
+            ["Items:NpcLifecycle:QuestItemQuantity"] = "1",
             ["DevelopmentSimulationBots:Enabled"] = "true",
             ["ACTIVE_SIMULATION_BOTS_SECRET"] = "test-active-simulation-bots-secret-at-least-32-characters",
             ["StackStressFixtures:Enabled"] = "true",
+            ["StackStressFixtures:InventoryDefinitionId"] = "fixture.potion",
+            ["StackStressFixtures:LootDefinitionId"] = "fixture.ore",
             ["STACK_STRESS_FIXTURE_SECRET"] = "test-stack-stress-fixture-secret-at-least-32-characters"
         };
     }

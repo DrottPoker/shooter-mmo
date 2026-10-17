@@ -88,9 +88,7 @@ public sealed class RealtimeSimulationServiceTests
                 carryStateStore),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),
@@ -247,9 +245,7 @@ public sealed class RealtimeSimulationServiceTests
                 carryStateStore),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),
@@ -511,9 +507,7 @@ public sealed class RealtimeSimulationServiceTests
                 [TimeSpan.Zero]),
             sessionStore,
             carryStateStore,
-            new SimulationItemInteractionService(
-                authClient,
-                new ItemInteractionAccessService(config)),
+            new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
             new CorpseViewerRegistry(),
@@ -653,7 +647,7 @@ public sealed class RealtimeSimulationServiceTests
                     DateTime.UtcNow.AddSeconds(30),
                     0,
                     0,
-                    PlayerEncumbranceRules.BaseCharacterCapacity,
+                    200,
                     false)
                 {
                     SessionLeaseDurationMilliseconds = 30_000,
@@ -673,7 +667,7 @@ public sealed class RealtimeSimulationServiceTests
                     DateTime.UtcNow,
                     0,
                     0,
-                    PlayerEncumbranceRules.BaseCharacterCapacity,
+                    200,
                     true)
                 {
                     LeaseDurationMilliseconds = 30_000
@@ -723,7 +717,7 @@ public sealed class RealtimeSimulationServiceTests
                         DateTime.UtcNow.AddSeconds(30),
                         0,
                         0,
-                        PlayerEncumbranceRules.BaseCharacterCapacity,
+                        200,
                         false)
                     {
                         SessionLeaseDurationMilliseconds = 30_000

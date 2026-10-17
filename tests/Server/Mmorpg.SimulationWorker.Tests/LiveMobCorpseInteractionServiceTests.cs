@@ -82,7 +82,7 @@ public sealed class LiveMobCorpseInteractionServiceTests
             1,
             createdAt,
             createdAt.AddMinutes(2),
-            [new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "material.iron_ore", 3, 0)]);
+            [new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 3, 0)]);
     }
 
     private static ActiveSimulationSession CreateSession(PlayerCarryState carryState)

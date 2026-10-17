@@ -18,9 +18,6 @@ public enum StressBotState
 
 public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
 {
-    private const string InventoryDefinitionId = "medical.field_dressing";
-    private const string LootDefinitionId = "material.iron_ore";
-
     private readonly StressGeneratorOptions options;
     private readonly StressBotAdmission admission;
     private readonly StressGameplayMetrics gameplayMetrics;
@@ -335,7 +332,10 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
             return;
         }
 
-        var owned = inventory.FindItem(InventoryDefinitionId);
+        var definitions = admission.FixtureDefinitions;
+        var owned = definitions is null
+            ? null
+            : inventory.FindItem(definitions.InventoryDefinitionId);
         if (owned is null)
         {
             inventoryRefreshRequested = true;
@@ -398,11 +398,17 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
             return;
         }
 
-        var ownedLoot = inventory.FindItem(LootDefinitionId);
+        var lootDefinitionId = admission.FixtureDefinitions?.LootDefinitionId;
+        if (lootDefinitionId is null)
+        {
+            return;
+        }
+
+        var ownedLoot = inventory.FindItem(lootDefinitionId);
         if (ownedLoot is not null)
         {
             var target = corpseView.FindLootStack(
-                LootDefinitionId,
+                lootDefinitionId,
                 requireAvailableCapacity: true);
             if (target is null)
             {
@@ -427,7 +433,7 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
             return;
         }
 
-        var loot = corpseView.FindLootStack(LootDefinitionId, requireAvailableCapacity: false);
+        var loot = corpseView.FindLootStack(lootDefinitionId, requireAvailableCapacity: false);
         var destinationSlot = inventory.FindEmptySlot(inventory.PermanentInventoryId);
         if (loot is null || destinationSlot is null)
         {

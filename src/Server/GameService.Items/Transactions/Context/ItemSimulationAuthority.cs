@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.Server.Common.Identity;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
 namespace Mmorpg.GameService.Items.Transactions;
@@ -135,9 +136,9 @@ internal sealed class ItemSimulationAuthority(
         CancellationToken cancellationToken)
     {
         if (transactionSession.Actor.Authority != ItemTransactionAuthority.System
-            || !ItemActorAuthority.IsValidIdentifier(workerId)
-            || !ItemActorAuthority.IsValidIdentifier(workerRuntimeId)
-            || !ItemActorAuthority.IsValidIdentifier(shardId)
+            || !Identifiers.IsServiceIdentifier(workerId)
+            || !Identifiers.IsServiceIdentifier(workerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(shardId)
             || heartbeatTimeoutSeconds <= 0)
         {
             Reject(

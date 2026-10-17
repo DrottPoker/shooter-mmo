@@ -117,7 +117,11 @@ public sealed record StressBotAdmission(
     string ShardId,
     string WorldId,
     FullStackCharacterInventoryResponse? Inventory = null,
-    Guid? LootHotspotCorpseId = null);
+    Guid? LootHotspotCorpseId = null,
+    StressFixtureDefinitions? FixtureDefinitions = null);
+
+// The item definitions that GameService granted to the stress fixtures.
+public sealed record StressFixtureDefinitions(string InventoryDefinitionId, string LootDefinitionId);
 
 public sealed record StressAdmissionResult(
     StressBotAdmission? Admission,
@@ -196,7 +200,7 @@ public sealed record StressAuthorityResult<T>(T? Value, StressProblemDetails? Pr
         return new StressAuthorityResult<T>(
             default,
             new StressProblemDetails(
-                $"https://shooter-mmo.local/problems/{code}",
+                $"https://mmorpg.local/problems/{code}",
                 title,
                 status,
                 code,

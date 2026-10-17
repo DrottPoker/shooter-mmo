@@ -66,7 +66,7 @@ public sealed class DeferredWorldActorCapabilityHandler(
         return Task.FromResult(new WorldActorCapabilityDispatchResult(
             false,
             "world_interaction_capability_deferred",
-            "This capability handler is intentionally deferred beyond Phase 13."));
+            "This capability is not available yet."));
     }
 }
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.StackStress;
 using Npgsql;
 
 namespace Mmorpg.GameService.Tests;
@@ -164,6 +165,8 @@ public sealed class GameServiceConfigurationValidationTests
         var settings = new Dictionary<string, string?>
         {
             ["StackStressFixtures:Enabled"] = "true",
+            ["StackStressFixtures:InventoryDefinitionId"] = "fixture.potion",
+            ["StackStressFixtures:LootDefinitionId"] = "fixture.ore",
             [StackStressFixtureOptions.SecretEnvironmentVariable] =
                 "test-stack-stress-fixture-secret-at-least-32-characters"
         };
@@ -177,6 +180,16 @@ public sealed class GameServiceConfigurationValidationTests
             "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test");
 
         Assert.True(options.Enabled);
+        Assert.Equal("fixture.potion", options.InventoryDefinitionId);
+        Assert.Equal("fixture.ore", options.LootDefinitionId);
+
+        settings.Remove("StackStressFixtures:LootDefinitionId");
+        var missingDefinition = Assert.Throws<InvalidOperationException>(() =>
+            StackStressFixtureOptions.FromConfiguration(
+                new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
+                isDevelopment: true,
+                "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test"));
+        Assert.Contains("LootDefinitionId", missingDefinition.Message, StringComparison.Ordinal);
 
         var production = Assert.Throws<InvalidOperationException>(() =>
             StackStressFixtureOptions.FromConfiguration(
@@ -257,7 +270,11 @@ public sealed class GameServiceConfigurationValidationTests
             ["Simulation:Topology:Shards:0:DisplayName"] = "Local Shard 1",
             ["Simulation:Topology:Shards:0:RuleSet"] = "mvp-open-risk",
             ["RateLimiting:Authentication:PermitLimit"] = "5",
-            ["RateLimiting:Authentication:WindowSeconds"] = "60"
+            ["RateLimiting:Authentication:WindowSeconds"] = "60",
+            ["Items:NpcLifecycle:InsurancePrice"] = "100",
+            ["Items:NpcLifecycle:QuestGrantId"] = "quest.fixture.letter",
+            ["Items:NpcLifecycle:QuestItemDefinitionId"] = "fixture.letter",
+            ["Items:NpcLifecycle:QuestItemQuantity"] = "1"
         };
 
         if (includeSecrets)

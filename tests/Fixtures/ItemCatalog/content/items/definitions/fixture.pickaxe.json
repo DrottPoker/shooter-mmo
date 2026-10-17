@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "tool",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Pickaxe",
+  "equipmentSlots": [
+    "tool"
+  ],
+  "id": "fixture.pickaxe",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 15
+}

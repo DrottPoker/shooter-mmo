@@ -27,6 +27,8 @@ internal sealed class CorpseOperationFinalizer(
     DurableCorpseStore corpseStore,
     LiveMobCorpseStore? liveMobCorpseStore) : IRealtimeCompletionHandler
 {
+    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+
     public void Complete(RealtimeOperationResult completion)
     {
         if (completion is CorpseOperationCompleted completed)
@@ -207,7 +209,7 @@ internal sealed class CorpseOperationFinalizer(
         ActiveSimulationSession session,
         SimulationItemTransactionResponse transaction)
     {
-        if (transaction.CharacterRevisions.Count != 1)
+        if (!CommittedCarryApplier.TryGetCommittedCarry(transaction, out var committedCarry))
         {
             teardown.TerminateForAuthorityFailure(
                 peer,
@@ -218,18 +220,8 @@ internal sealed class CorpseOperationFinalizer(
             return false;
         }
 
-        var characterRevision = transaction.CharacterRevisions[0];
-        var committedCarry = new PlayerCarryState(
-            characterRevision.Revision,
-            characterRevision.CarriedWeight,
-            characterRevision.CarryCapacity);
-        var carryResult = carryStateStore.ApplyCommitted(
-            session.CharacterId,
-            session.SimulationSessionId,
-            committedCarry,
-            out var currentCarry);
-        if (carryResult is CarryStateApplyResult.Conflict
-            or CarryStateApplyResult.SessionMismatch)
+        var carryResult = carryApplier.Apply(session, committedCarry, out _);
+        if (CommittedCarryApplier.IsDiverged(carryResult))
         {
             teardown.TerminateForAuthorityFailure(
                 peer,
@@ -240,11 +232,6 @@ internal sealed class CorpseOperationFinalizer(
             return false;
         }
 
-        sessionStore.RefreshCarryState(
-            session.CharacterId,
-            session.SimulationSessionId,
-            session.SimulationSessionToken,
-            currentCarry);
         if (entityRegistry.TryGetPlayerByCharacterId(
                 session.CharacterId,
                 out var entity))

@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
 namespace Mmorpg.GameService.Placement;
@@ -195,7 +196,7 @@ internal sealed class SimulationSessionService(
                 "Simulation session id is required.");
         }
 
-        if (!IsValidIdentifier(workerId) || !IsValidIdentifier(request.WorkerRuntimeId))
+        if (!Identifiers.IsServiceIdentifier(workerId) || !Identifiers.IsServiceIdentifier(request.WorkerRuntimeId))
         {
             return ServiceResult<SimulationSessionLeaseResponse>.BadRequest(
                 "invalid_simulation_worker_identity",
@@ -210,13 +211,6 @@ internal sealed class SimulationSessionService(
         }
 
         return null;
-    }
-
-    private static bool IsValidIdentifier(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
     }
 
     private sealed record SessionLeaseRow(

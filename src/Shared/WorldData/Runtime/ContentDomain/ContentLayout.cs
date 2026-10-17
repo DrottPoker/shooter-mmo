@@ -102,6 +102,17 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(contentRoot, "actors");
         }
 
+        // Development-only data, such as the item packages of the development item tool.
+        public static string DevelopmentDirectory(string contentRoot)
+        {
+            return Path.Combine(contentRoot, "development");
+        }
+
+        public static string DevelopmentItemPackagesPath(string contentRoot)
+        {
+            return Path.Combine(DevelopmentDirectory(contentRoot), "item-packages.json");
+        }
+
         public static string WorldsDirectory(string contentRoot)
         {
             return Path.Combine(contentRoot, "worlds");

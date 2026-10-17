@@ -35,13 +35,14 @@ public sealed class ModulePublicSurfaceTests
             ],
             ["Mmorpg.GameService.Items"] =
             [
+                "Mmorpg.GameService.Items.Development.DevelopmentItemPackageSource",
                 "Mmorpg.GameService.Items.ItemCatalogSource",
                 "Mmorpg.GameService.Items.ItemOperationsOptions",
                 "Mmorpg.GameService.Items.ItemsCommandLine",
                 "Mmorpg.GameService.Items.ItemsModule",
                 "Mmorpg.GameService.Items.ItemsModuleOptions",
                 "Mmorpg.GameService.Items.NpcItemLifecycleOptions",
-                "Mmorpg.GameService.Items.StackStressFixtureOptions"
+                "Mmorpg.GameService.Items.StackStress.StackStressFixtureOptions"
             ]
         };
 

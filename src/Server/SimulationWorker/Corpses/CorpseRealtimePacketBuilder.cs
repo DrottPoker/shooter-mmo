@@ -225,7 +225,7 @@ public static class CorpseRealtimePacketBuilder
                 currentSlots.ToArray()));
         }
 
-        if (parts.Count > 256)
+        if (parts.Count > RealtimeProtocolLimits.MaximumCorpseChunkCount)
         {
             throw new InvalidOperationException("Corpse state requires too many realtime chunks.");
         }

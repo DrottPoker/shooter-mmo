@@ -1,8 +1,8 @@
 # NPC And Mob System Design
 
-Last updated: 2026-10-16
+Last updated: 2026-10-17
 
-Status: Canonical design, Phase 12 foundation implemented
+Status: Canonical design, foundation implemented
 
 ## Purpose
 
@@ -15,16 +15,16 @@ The inventory, item-custody, death-partition, and corpse-container rules remain
 owned by
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). The
 project-wide topology and service boundaries remain owned by
-[Project Architecture](PROJECT_ARCHITECTURE.md). The dependency-ordered delivery
-gate is Phase 12 in
-[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+[Project Architecture](PROJECT_ARCHITECTURE.md). The foundation was delivered as
+Phase 12 in
+[Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
 
-Phase 12 implements a permanent content, runtime, protocol, client-state, and
-tooling foundation. Its Unity presentation is temporary. Phase 12 does not implement
+The foundation is a permanent content, runtime, protocol, client-state, and
+tooling layer. Its Unity presentation is temporary. It does not implement
 vendor economy, quest progression, crafting recipes, combat damage, complete Mob
 AI, Mob loot generation, final actor art, or final interaction UI.
 
-## Phase 12 Implementation Status
+## Implementation Status
 
 The implemented foundation includes:
 
@@ -37,13 +37,14 @@ The implemented foundation includes:
 - A shared four-definition actor catalog, a checked-in
   `development-world-1` baseline with five deterministic instances, and
   prepared `development-world-2` content with seven deterministic instances.
-- Protocol version `12`, reliable interest-based actor presence, bounded actor
-  state, and correlated interaction messages.
+- Reliable interest-based actor presence, bounded actor state, and correlated
+  interaction messages in the versioned realtime protocol.
 - A bounded worker-runtime actor store, fresh runtime and network identities,
   restart reconstruction, event-driven NPCs, and central Mob schedule buckets.
-- A typed capability-handler registry. All Phase 12 capability kinds have an
-  explicit deferred server handler until their later business phase replaces
-  it. The client never turns that deferred result into success.
+- A typed capability-handler registry. Insurance, quest offer, quest
+  completion, Character Bank, and Recovery Storage have handlers; every other
+  kind has an explicit deferred server handler until its business system exists.
+  The client never turns that deferred result into success.
 - Exact-session, exact-runtime, assignment, Shard, bounds, range, line-of-sight,
   target-revision, capability-revision, rate, and one-active-lease authority.
 - Permanent Unity actor, interaction, targeting, operation, revision, and
@@ -51,13 +52,15 @@ The implemented foundation includes:
 - Shared target selection and lease ownership with the existing authoritative
   corpse view and mutation flow.
 
-Phase 13 replaces the insurance, quest-offer, and quest-turn-in deferred slots
-with explicit handlers. Insurance and quest item lifecycle actions reuse the
-same validated interaction session and dispatch contract before crossing the
+Insurance and quest item lifecycle actions reuse the same validated interaction
+session and dispatch contract before crossing the
 service-authenticated GameService boundary. Quest progression and completion
-remain unavailable.
+remain unavailable. The Character Bank and Recovery Storage handlers only confirm
+the capability: item operations gain Bank or Recovery access while the player
+holds an open interaction with an actor that offers them, as described in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
-Phase 14 adds the Mob corpse lifecycle boundary without adding combat. Mob
+The Mob corpse lifecycle boundary exists without combat. Mob
 content selects live or durable corpse custody and an exact lifetime. The normal
 wolf uses `live` and `120` seconds. The selected alpha boss uses `durable` and
 `600` seconds. Deterministic death-event grant ids protect successful live loot
@@ -65,8 +68,8 @@ claims from duplication, while durable bosses reuse player corpse restoration
 and expiry. Damage, death detection, loot-table generation, respawn, and complete
 Mob AI remain unavailable.
 
-Phase 15 validates this foundation at operational scale without changing its
-ownership. Automated load coverage schedules `2,000` event-driven NPCs and
+Load coverage validates this foundation at operational scale without changing
+its ownership. Automated load coverage schedules `2,000` event-driven NPCs and
 `2,000` centrally scheduled active or dormant Mobs, then opens `128` concurrent
 NPC interactions through independent player leases. The existing
 `Mmorpg.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
@@ -101,7 +104,7 @@ own that decision. A city guard remains an NPC even if a future criminal system
 makes the guard hostile toward a specific player.
 
 All city NPCs, including guards, are invulnerable in the first implementation.
-Phase 12 delivers only that invulnerable NPC damage policy, so its first actor
+The foundation delivers only that invulnerable NPC damage policy, so the actor
 compiler rejects a damageable NPC definition. Later combat design may add an
 explicit non-city NPC damage policy without changing actor identity or
 capability composition.
@@ -207,7 +210,7 @@ state.
 
 The first NPC definition contract uses an invulnerable damage policy. The first
 Mob contract may reference future brain, combat, and loot profiles before those
-systems are active, but Phase 12 must distinguish an intentionally unresolved
+systems are active, but the compiler distinguishes an intentionally unresolved
 future profile from an invalid content reference.
 
 ## NPC Capability Composition
@@ -236,8 +239,8 @@ progression or access rules. A summary returned to one player must never be
 reused as authority for another player. Static capability identity may be shared
 internally, but availability and its expected revision remain session-scoped.
 
-Phase 12 proves composition and discovery. Phase 13 registers insurance and
-quest item-lifecycle handlers that bridge the already validated interaction
+The foundation proves composition and discovery. The insurance and quest
+item-lifecycle handlers that bridge the already validated interaction
 session to GameService. The worker passes exact session, worker runtime, Shard,
 interaction session, capability, operation, and revision identity. GameService
 then commits the server-owned price, policy, or grant-lineage transaction. The
@@ -311,7 +314,7 @@ SimulationWorker owns these implemented responsibilities:
 - `WorldInteractionAuthorityService` for target, range, line-of-sight, session,
   revision, capability, and assignment validation.
 - `WorldActorCapabilityRegistry` for typed capability dispatch and explicit
-  deferred Phase 12 handlers.
+  deferred handlers for capabilities without business authority.
 - `WorldActorActivityScheduler` for central bounded dormant and active Mob
   buckets.
 
@@ -330,11 +333,11 @@ active update cadence, and coarse dormant-check cadence within validated global
 limits. The larger deactivation radius provides hysteresis. Content selects a
 profile instead of embedding scheduler constants in a prefab or actor class.
 
-Phase 12 establishes the tier contract, transition rules, counters, and testable
+The foundation establishes the tier contract, transition rules, counters, and testable
 scheduler seam. Full combat behavior remains later work. The first complete Mob
 brain is expected to use an explicit state machine with `Idle`, `Patrol`,
 `Investigate`, `Chase`, `Attack`, `Return`, `Dead`, and `Respawning` states, but
-Phase 12 does not implement those behaviors.
+those behaviors are not implemented yet.
 
 The runtime must not create one `Task`, timer, thread, database session, or HTTP
 poller per actor. Work is performed by bounded stores, spatial queries, event
@@ -357,7 +360,7 @@ One reusable client target system serves:
 - Doors.
 - Future interactable world objects.
 
-Phase 12 migrates corpse target selection into this shared client foundation
+Corpse target selection runs on this shared client foundation,
 and makes the existing corpse view consume the same one-active-interaction
 lease. It does not replace the authoritative corpse view or transaction
 protocol.
@@ -381,7 +384,7 @@ close. The pointer range does not grant authority to open an interaction.
 
 The start range is the player's base interaction range. The maintain range adds
 small hysteresis so movement and reconciliation near the boundary do not flicker
-an already open panel. Phase 12 uses these shared values instead of per-prefab
+an already open panel. The client uses these shared values instead of per-prefab
 constants. Future player progression or capability-specific range changes must
 still resolve to server-owned rules.
 
@@ -424,9 +427,9 @@ players may independently hold sessions against the same NPC.
 
 ## Realtime Protocol Contract
 
-Phase 12 targets protocol version `12`, immediately after the current version
-`11`. Implementation must increment the protocol version once and update .NET,
-Unity, handshake, tests, and diagnostics together. An old or partially updated
+Actor and interaction messages are part of the versioned realtime protocol. A
+change increments the protocol version once and updates .NET, Unity, handshake,
+tests, and diagnostics together. An old or partially updated
 client receives the existing explicit protocol-mismatch path instead of
 misreading a packet.
 
@@ -482,7 +485,7 @@ the existing interest system.
 The interaction panel displays the target name and available actions such as
 Talk, Shop, Quests, Crafting, Insurance, Bank, or Recovery. The available list
 comes from the opened server response. Selecting an action sends an intent to a
-registered capability adapter. Phase 12 may present capabilities whose business
+registered capability adapter. The client may present capabilities whose business
 handler is intentionally deferred, but it must label that state clearly and
 must not fake a successful transaction.
 
@@ -494,7 +497,7 @@ never changes camera or pointer behavior.
 
 All project-specific Editor tools remain below `MMORPG > Tools`.
 
-Phase 12 adds:
+The Editor tools are:
 
 - `MMORPG > Tools > Content > Actor Studio`.
 - `MMORPG > Tools > Content > Spawn Authoring`.
@@ -553,7 +556,7 @@ Every actor references a faction. Disposition is evaluated by server rules and
 may later include reputation, crime, quests, or events. Actor kind remains
 unchanged when disposition changes.
 
-Phase 12 requires only enough faction data to preserve identity and expose a
+The foundation keeps only enough faction data to preserve identity and expose a
 server-owned friendly, neutral, or hostile disposition. It does not implement
 the complete reputation or criminal system.
 
@@ -568,8 +571,8 @@ Mobs produce Mob corpses, not NPC corpses. Normal Mob corpses are live
 SimulationWorker containers with an approximately two-minute default lifetime
 and no restart guarantee. Selected bosses may opt into the durable corpse path.
 
-Phase 12 establishes actor, spawn, runtime identity, and future Mob lifecycle
-references. Phase 14 adds `MobCorpseLifecycleService` over those identities. Its
+The foundation establishes actor, spawn, runtime identity, and Mob lifecycle
+references, and `MobCorpseLifecycleService` works over those identities. Its
 input is an authoritative death event plus already resolved loot seeds. It
 derives stable corpse, entry, grant, and create ids, then selects the live store
 or the shared durable item transaction kernel from content.
@@ -581,7 +584,7 @@ unclaimed corpses never require PostgreSQL cleanup.
 
 ## Stable Error Contract
 
-Phase 12 reserves these stable protocol error codes:
+These protocol error codes are stable:
 
 ```text
 world_actor_not_found
@@ -618,7 +621,7 @@ session, worker, and protocol errors where appropriate.
 
 ## Verification Contract
 
-Phase 12 requires automated coverage for:
+Automated coverage includes:
 
 - Deterministic actor and spawn compilation.
 - Duplicate ids, missing references, invalid bounds, invalid transforms, and
@@ -676,18 +679,18 @@ The manual acceptance gate must prove:
 10. Restart or reconnect and verify actor presence returns from authoritative
     interest state without stale interaction state.
 
-## Phase Boundary
+## Foundation Boundary
 
-Phase 12 is complete only when content creators can create new NPC and Mob
+The foundation lets content creators create new NPC and Mob
 definitions, compose existing NPC capabilities, place and verify spawns visually,
 and exercise authoritative targeted interaction without adding a new runtime
 actor class or a database row per actor.
 
-Phase 12 explicitly stops before:
+The foundation explicitly stops before:
 
 - Vendor buying or selling.
-- Insurance purchase or removal UI and pricing.
-- Quest offer, acceptance, progression, turn-in, or abandonment gameplay.
+- Final insurance and quest UI.
+- Quest progression and turn-in gameplay.
 - Crafting recipes or production.
 - Trainer or profession progression.
 - Combat, health, damage, aggro behavior, or full Mob AI.
@@ -696,6 +699,6 @@ Phase 12 explicitly stops before:
 - Final NPC, Mob, prompt, dialogue, or interaction-panel art.
 - Zone, Layer, multi-worker Shard, or world-event orchestration.
 
-These later systems must extend the Phase 12 contracts instead of bypassing
+These later systems must extend the foundation contracts instead of bypassing
 them with prefab-owned authority, endpoint-specific target checks, or parallel
 actor registries.

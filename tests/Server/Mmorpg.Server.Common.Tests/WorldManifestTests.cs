@@ -23,53 +23,52 @@ public sealed class WorldManifestTests
         Assert.Equal("DevelopmentWorld2", worldTwo.clientSceneName);
         Assert.Equal(-254f, worldTwo.bounds.minimumX);
         Assert.Equal(-16f, worldTwo.spawn.z);
-        Assert.Equal(3, worldTwo.servicePoints.Length);
     }
 
     [Fact]
-    public void ManifestRejectsUnsupportedServicePointKind()
+    public void ManifestRejectsTheRetiredFormatVersion()
     {
         var manifest = CreateManifest();
-        manifest.servicePoints =
-        [
-            new WorldServicePointDocument
-            {
-                id = "service",
-                kind = "corpse",
-                radius = 3f
-            }
-        ];
+        manifest.formatVersion = 1;
 
         var exception = Assert.Throws<WorldManifestValidationException>(
             () => WorldManifestValidator.Validate(manifest));
 
-        Assert.Contains("kind must be", exception.Message);
+        Assert.Contains("format version is unsupported", exception.Message);
     }
 
     [Fact]
-    public void ManifestRejectsDuplicateServicePointIds()
+    public void FileStoreRejectsRetiredServicePoints()
     {
-        var manifest = CreateManifest();
-        manifest.servicePoints =
-        [
-            new WorldServicePointDocument
-            {
-                id = "service",
-                kind = "bank",
-                radius = 3f
-            },
-            new WorldServicePointDocument
-            {
-                id = "service",
-                kind = "insurance_npc",
-                radius = 3f
-            }
-        ];
+        var root = Path.Combine(Path.GetTempPath(), "MmorpgWorldManifestTests", Guid.NewGuid().ToString("N"));
+        var worldDirectory = Path.Combine(root, "test-world");
+        Directory.CreateDirectory(worldDirectory);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(worldDirectory, WorldManifestFormat.FileName),
+                """
+                {
+                  "formatVersion": 2,
+                  "worldId": "test-world",
+                  "displayName": "Test World",
+                  "clientSceneName": "TestWorld",
+                  "groundHeight": 0.0,
+                  "bounds": { "minimumX": -10.0, "maximumX": 10.0, "minimumZ": -10.0, "maximumZ": 10.0 },
+                  "spawn": { "x": 0.0, "y": 0.0, "z": 0.0, "yawDegrees": 0.0 },
+                  "servicePoints": []
+                }
+                """);
 
-        var exception = Assert.Throws<WorldManifestValidationException>(
-            () => WorldManifestValidator.Validate(manifest));
+            var exception = Assert.Throws<InvalidDataException>(
+                () => WorldManifestFileStore.Load(root, "test-world"));
 
-        Assert.Contains("ids must be unique", exception.Message);
+            Assert.Contains("servicePoints", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -94,8 +93,7 @@ public sealed class WorldManifestTests
                 minimumZ = -10f,
                 maximumZ = 10f
             },
-            spawn = new WorldSpawnDocument(),
-            servicePoints = Array.Empty<WorldServicePointDocument>()
+            spawn = new WorldSpawnDocument()
         };
     }
 

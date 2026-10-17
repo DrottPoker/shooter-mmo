@@ -13,7 +13,7 @@ internal sealed class ItemScenarioWorld(PostgresIntegrationTestContext context)
     public const string WorkerId = "local-simulation-worker-1";
     public const string WorkerRuntimeId = "integration-worker-runtime";
     public const string ShardId = "local-shard-1";
-    public const string CorpsePresentationKey = "corpse.generic_loot_crate";
+    public const string CorpsePresentationKey = "corpse.remains";
 
     public PostgresIntegrationTestContext Context { get; } = context;
 

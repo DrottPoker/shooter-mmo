@@ -17,7 +17,7 @@ public sealed class ItemTransactionConstraintMappingTests
         var world = new ItemScenarioWorld(context);
         var player = await world.RegisterAsync("deferred_foreign_key");
         var state = await world.LoadStateAsync(player.Character.Id);
-        var itemId = await world.GrantAsync(player.Character.Id, "material.iron_ore", 1, state.PermanentInventoryContainerId, 0);
+        var itemId = await world.GrantAsync(player.Character.Id, "fixture.ore", 1, state.PermanentInventoryContainerId, 0);
         var kernel = CreateKernel(context);
         var request = Request();
 
@@ -53,7 +53,7 @@ public sealed class ItemTransactionConstraintMappingTests
         var world = new ItemScenarioWorld(context);
         var player = await world.RegisterAsync("duplicate_item_id");
         var state = await world.LoadStateAsync(player.Character.Id);
-        var itemId = await world.GrantAsync(player.Character.Id, "material.iron_ore", 1, state.PermanentInventoryContainerId, 0);
+        var itemId = await world.GrantAsync(player.Character.Id, "fixture.ore", 1, state.PermanentInventoryContainerId, 0);
         var kernel = CreateKernel(context);
         var request = Request();
 
@@ -66,7 +66,7 @@ public sealed class ItemTransactionConstraintMappingTests
                 await transactionContext.Connection.ExecuteAsync(new CommandDefinition(
                     """
                     insert into item_instances (id, definition_id, quantity, container_id, container_slot_index)
-                    values (@ItemId, 'material.iron_ore', 1, @ContainerId, 1);
+                    values (@ItemId, 'fixture.ore', 1, @ContainerId, 1);
                     """,
                     new { ItemId = itemId, ContainerId = state.PermanentInventoryContainerId },
                     transactionContext.Transaction));

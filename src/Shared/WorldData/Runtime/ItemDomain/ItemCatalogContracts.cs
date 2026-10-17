@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 2;
+        public const int Version = 3;
 
         // Tags and equipment slot ids travel in realtime item and corpse messages, so
         // they must fit the protocol limits that RealtimeProtocolLimits defines.
@@ -12,36 +12,29 @@ namespace Mmorpg.WorldData.Items
         public const int MaximumTagLength = 64;
         public const int MaximumEquipmentSlotIdLength = 64;
         public const int MaximumAcceptedTagsPerSlot = 16;
+
+        // An equipment slot quantity and a stack size both fit the protocol's i32 quantity.
+        public const int MaximumQuantity = 1_000_000;
+        public const int MaximumContainerSlotCapacity = 65535;
     }
 
+    // Only the ids that rules give a meaning to. Every other category, tag, and
+    // equipment slot is content.
     public static class ItemCategoryIds
     {
-        public const string Material = "material";
-        public const string Medical = "medical";
+        // Weapons are never Secure Container eligible.
         public const string Weapon = "weapon";
-        public const string Ammunition = "ammunition";
-        public const string Armor = "armor";
-        public const string Tool = "tool";
-        public const string Bag = "bag";
-        public const string QuestItem = "quest_item";
-    }
 
-    public static class ItemTagIds
-    {
-        public const string Medical = "medical";
-        public const string Material = "material";
-        public const string Ammunition = "ammunition";
+        // Bag definitions own a Bag layout.
+        public const string Bag = "bag";
+
+        // A protected quest item cannot be destroyed by the player.
+        public const string QuestItem = "quest_item";
     }
 
     public static class ItemEquipmentSlotIds
     {
-        public const string Head = "head";
-        public const string BodyArmor = "body_armor";
-        public const string PrimaryWeapon = "primary_weapon";
-        public const string SecondaryWeapon = "secondary_weapon";
-        public const string Tool = "tool";
-        public const string Ring1 = "ring_1";
-        public const string Ring2 = "ring_2";
+        // The equipped Bag activates its contents and adds its carry-capacity bonus.
         public const string Bag = "bag";
     }
 
@@ -63,11 +56,22 @@ namespace Mmorpg.WorldData.Items
         public int FormatVersion;
         public string CatalogId;
         public string BaseSecureContainerTierId;
+        public ItemCharacterSettingsEntry Character;
         public ItemCatalogIdentityEntry[] Categories;
         public ItemCatalogIdentityEntry[] Tags;
-        public ItemCatalogIdentityEntry[] EquipmentSlots;
+        public ItemEquipmentSlotEntry[] EquipmentSlots;
         public ItemDefinitionAuthoringEntry[] Definitions;
         public SecureContainerTierAuthoringEntry[] SecureContainerTiers;
+        public ItemCatalogRetiredIdsEntry Retired;
+    }
+
+    // Per-character item settings that every new character starts with.
+    [Serializable]
+    public sealed class ItemCharacterSettingsEntry
+    {
+        public long BaseCarryCapacity;
+        public int InventorySlotCount;
+        public int BankSlotCount;
     }
 
     [Serializable]
@@ -75,6 +79,28 @@ namespace Mmorpg.WorldData.Items
     {
         public string Id;
         public string DisplayName;
+    }
+
+    // Equipment slots are listed in display order. A slot holds one item instance whose
+    // quantity is at most MaximumQuantity, so a stack only fits a slot that allows it.
+    [Serializable]
+    public sealed class ItemEquipmentSlotEntry
+    {
+        public string Id;
+        public string DisplayName;
+        public int MaximumQuantity;
+    }
+
+    // Ids that were released and removed. A retired id can never return with another
+    // meaning, and GameService retires its rows once nothing references them.
+    [Serializable]
+    public sealed class ItemCatalogRetiredIdsEntry
+    {
+        public string[] Categories;
+        public string[] Tags;
+        public string[] EquipmentSlots;
+        public string[] Definitions;
+        public string[] SecureContainerTiers;
     }
 
     [Serializable]
@@ -87,6 +113,7 @@ namespace Mmorpg.WorldData.Items
         public long UnitWeight = -1;
         public int MaximumStackSize;
         public string[] EquipmentSlots;
+        public string[] BlockedEquipmentSlots;
 #pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
         public bool? PlayerDestroyable;
 #pragma warning restore UAC1001
@@ -133,11 +160,13 @@ namespace Mmorpg.WorldData.Items
         public string CatalogId;
         public string Revision;
         public string BaseSecureContainerTierId;
+        public ItemCharacterSettingsEntry Character;
         public ItemCatalogIdentityEntry[] Categories;
         public ItemCatalogIdentityEntry[] Tags;
-        public ItemCatalogIdentityEntry[] EquipmentSlots;
+        public ItemEquipmentSlotEntry[] EquipmentSlots;
         public ItemDefinition[] Definitions;
         public SecureContainerTierDefinition[] SecureContainerTiers;
+        public ItemCatalogRetiredIdsEntry Retired;
     }
 
     [Serializable]
@@ -150,6 +179,7 @@ namespace Mmorpg.WorldData.Items
         public long UnitWeight;
         public int MaximumStackSize;
         public string[] EquipmentSlots;
+        public string[] BlockedEquipmentSlots;
         public bool PlayerDestroyable;
         public ItemLocationEligibility LocationEligibility;
         public string[] DefaultPolicies;

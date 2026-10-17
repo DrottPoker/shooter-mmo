@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
@@ -16,7 +17,7 @@ internal sealed class MobLootGrantCommandHandler
             || command.GrantId == Guid.Empty
             || command.GrantId != context.OperationId
             || command.SourceCorpseId == Guid.Empty
-            || !MobLootRules.IsMobIdentifier(command.SourceActorDefinitionId)
+            || !Identifiers.IsContentIdentifier(command.SourceActorDefinitionId)
             || command.CharacterId == Guid.Empty
             || command.ExpectedCharacterRevision < 0
             || command.DestinationContainerId == Guid.Empty
@@ -55,12 +56,13 @@ internal sealed class MobLootGrantCommandHandler
         var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
+            command.Quantity,
             command.DestinationSlotIndex,
             false,
             null,
             false,
             cancellationToken);
-        var itemInstanceId = MobLootRules.CreateScopedGuid("mob-loot-item", command.GrantId);
+        var itemInstanceId = ScopedGuid.Create("mob-loot-item", command.GrantId);
         await context.Connection.ExecuteAsync(new CommandDefinition(
             """
             insert into item_instances (

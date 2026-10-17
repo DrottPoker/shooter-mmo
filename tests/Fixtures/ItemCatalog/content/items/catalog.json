@@ -1,0 +1,127 @@
+{
+  "baseSecureContainerTierId": "secure_container.base",
+  "catalogId": "core",
+  "categories": [
+    {
+      "displayName": "Weapon",
+      "id": "weapon"
+    },
+    {
+      "displayName": "Ammunition",
+      "id": "ammunition"
+    },
+    {
+      "displayName": "Armor",
+      "id": "armor"
+    },
+    {
+      "displayName": "Jewelry",
+      "id": "jewelry"
+    },
+    {
+      "displayName": "Tool",
+      "id": "tool"
+    },
+    {
+      "displayName": "Bag",
+      "id": "bag"
+    },
+    {
+      "displayName": "Material",
+      "id": "material"
+    },
+    {
+      "displayName": "Potion",
+      "id": "potion"
+    },
+    {
+      "displayName": "Quest Item",
+      "id": "quest_item"
+    }
+  ],
+  "character": {
+    "bankSlotCount": 40,
+    "baseCarryCapacity": 200,
+    "inventorySlotCount": 20
+  },
+  "equipmentSlots": [
+    {
+      "displayName": "Head",
+      "id": "head",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Body",
+      "id": "body",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Main Hand",
+      "id": "main_hand",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Off Hand",
+      "id": "off_hand",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Ammunition",
+      "id": "ammunition",
+      "maximumQuantity": 50
+    },
+    {
+      "displayName": "Tool",
+      "id": "tool",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Ring 1",
+      "id": "ring_1",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Ring 2",
+      "id": "ring_2",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Bag",
+      "id": "bag",
+      "maximumQuantity": 1
+    }
+  ],
+  "formatVersion": 3,
+  "retired": {
+    "categories": [ ],
+    "definitions": [ ],
+    "equipmentSlots": [
+      "body_armor",
+      "primary_weapon",
+      "secondary_weapon"
+    ],
+    "secureContainerTiers": [ ],
+    "tags": [ ]
+  },
+  "secureContainerTiers": [
+    {
+      "displayName": "Fixture Pouch",
+      "id": "secure_container.base",
+      "slotCapacity": 4
+    }
+  ],
+  "tags": [
+    {
+      "displayName": "Potion",
+      "id": "potion"
+    },
+    {
+      "displayName": "Material",
+      "id": "material"
+    },
+    {
+      "displayName": "Ammunition",
+      "id": "ammunition"
+    }
+  ]
+}

@@ -54,8 +54,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         AccountItemMutationService = Services.GetRequiredService<AccountItemMutationService>();
         SimulationItemMutationService = Services.GetRequiredService<SimulationItemMutationService>();
         CorpseService = Services.GetRequiredService<CorpseService>();
-        ItemPolicyService = Services.GetRequiredService<ItemPolicyService>();
-        QuestItemService = Services.GetRequiredService<QuestItemService>();
+        ItemPolicyService = new ItemPolicyService(ItemTransactionService);
+        QuestItemService = new QuestItemService(ItemTransactionService);
         DatabaseInitializer = Services.GetRequiredService<GameServiceDatabaseInitializer>();
         SessionService = Services.GetRequiredService<SessionService>();
         AccountService = Services.GetRequiredService<AccountService>();
@@ -172,11 +172,7 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
                     ["Simulation:JoinTicketLifetimeSeconds"] = "30",
                     ["Simulation:SessionLeaseLifetimeSeconds"] = "60",
                     ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30",
-                    ["Items:CatalogPath"] = Path.Combine(
-                        AppContext.BaseDirectory,
-                        "WorldData",
-                        "Items",
-                        "core.item-catalog.json")
+                    ["Items:CatalogPath"] = RepositoryPaths.ItemCatalogFixtureRuntimePath
                 })
                 .Build();
 

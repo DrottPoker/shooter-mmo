@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Tunic",
+  "equipmentSlots": [
+    "body"
+  ],
+  "id": "fixture.tunic",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "tags": [ ],
+  "unitWeight": 20
+}

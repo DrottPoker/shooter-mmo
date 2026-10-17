@@ -5,6 +5,7 @@ using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
@@ -118,7 +119,7 @@ internal sealed class PlayerDeathCommandHandler
             command.RotationW,
             command.PresentationKey,
             0,
-            TimeSpan.FromMinutes(5).TotalSeconds,
+            CorpseTransformRules.PlayerCorpseLifetime.TotalSeconds,
             expiryOperationId,
             cancellationToken);
 
@@ -130,7 +131,7 @@ internal sealed class PlayerDeathCommandHandler
                     item.container_id as "ContainerId",
                     item.container_slot_index as "ContainerSlotIndex",
                     item.equipment_slot_id as "EquipmentSlotId",
-                    equipment.sort_order as "EquipmentSortOrder",
+                    equipment.corpse_slot_index as "EquipmentCorpseSlotIndex",
                     bag_container.id as "BagContentsContainerId",
                     case
                         when item.equipped_character_id = @CharacterId then 'equipment'
@@ -161,7 +162,15 @@ internal sealed class PlayerDeathCommandHandler
                 left join item_containers bag_container
                   on bag_container.bound_bag_item_instance_id = item.id
                  and bag_container.container_type = 'bag_contents'
-                left join equipment_slots equipment on equipment.id = item.equipment_slot_id
+                -- The corpse equipment section lists the active slots in display order.
+                left join (
+                    select
+                        id,
+                        (row_number() over (order by display_order, id) - 1)::integer
+                            as corpse_slot_index
+                    from equipment_slots
+                    where is_active
+                ) equipment on equipment.id = item.equipment_slot_id
                 order by item.id;
                 """,
                 new
@@ -408,7 +417,7 @@ internal sealed class PlayerDeathCommandHandler
                 "A death event and character id are required.");
         }
 
-        if (!IsDeathIdentifier(command.ShardId))
+        if (!Identifiers.IsServiceIdentifier(command.ShardId))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.SimulationSessionInvalid,
@@ -452,13 +461,6 @@ internal sealed class PlayerDeathCommandHandler
         }
     }
 
-    private static bool IsDeathIdentifier(string value)
-    {
-        return !string.IsNullOrWhiteSpace(value)
-            && value.Length <= 128
-            && value.All(character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-    }
 
     private static bool IsPresentationKey(string value)
     {

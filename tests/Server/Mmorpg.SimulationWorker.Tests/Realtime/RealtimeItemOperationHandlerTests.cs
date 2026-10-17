@@ -21,9 +21,7 @@ public sealed class RealtimeItemOperationHandlerTests
             BaseAddress = new Uri("http://game-service.test")
         };
         var handler = fixture.CreateItemHandler(new ItemAuthorityOperations(
-            new SimulationItemInteractionService(
-                new GameServiceClient(httpClient),
-                new ItemInteractionAccessService(fixture.Config)),
+            new SimulationItemInteractionService(new GameServiceClient(httpClient)),
             fixture.Completions,
             NullLogger.Instance));
         var player = fixture.ConnectPlayer(1);

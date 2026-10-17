@@ -1,0 +1,18 @@
+{
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "quest_item",
+  "defaultPolicies": [
+    "protected_on_death"
+  ],
+  "displayName": "Sealed Letter",
+  "equipmentSlots": [ ],
+  "id": "quest_item.sealed_letter",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": false,
+  "tags": [ ],
+  "unitWeight": 10
+}

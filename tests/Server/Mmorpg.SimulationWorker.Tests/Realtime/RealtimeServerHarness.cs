@@ -139,9 +139,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 options.DetachedReleaseRetryDelays),
             SessionStore,
             CarryStateStore,
-            new SimulationItemInteractionService(
-                GameServiceClient,
-                new ItemInteractionAccessService(Config)),
+            new SimulationItemInteractionService(GameServiceClient),
             new SimulationCorpseInteractionService(GameServiceClient),
             CorpseStore,
             CorpseViewers,
@@ -816,7 +814,7 @@ internal static class RealtimeCorpseTestData
                                 ? null
                                 : new CorpseViewItemResponse(
                                     itemInstanceId.Value,
-                                    "material.iron_ore",
+                                    "fixture.ore",
                                     1,
                                     revision,
                                     null,

@@ -129,10 +129,11 @@ The repository currently supports:
 - A finite SimulationWorker benchmark and a separate long-running active bot
   population tool, both using a shared headless UDP client foundation without
   persistent bot accounts.
-- A strict item catalog compiler with nine representative definitions, stable
-  content identities, deterministic catalog and structural revisions, and pure
-  stack, slot, equipment, Secure Container, Bag, unitless integer-weight, and
-  encumbrance rules. The shared base character capacity is `200`.
+- A strict item catalog compiler with ten fantasy definitions, retired-id
+  tombstones, character settings, deterministic catalog and structural
+  revisions, and pure stack, slot, equipment, blocked-slot, Secure Container,
+  Bag, unitless integer-weight, and encumbrance rules. The base character carry
+  capacity is `2000`.
 - A Unity Editor item catalog workflow that edits the neutral gameplay source,
   delegates validation and structural fingerprints to the shared compiler,
   bakes deterministic runtime content, and maps every definition to a bundled
@@ -145,11 +146,12 @@ The repository currently supports:
 - An internal GameService item transaction kernel that owns idempotency,
   authorization context, optimistic revisions, stable row locking, slot and Bag
   validation, prospective weight, carried-state updates, and audit.
-- Offline-safe account item operations for relocation, split, merge,
-  destruction, Recovery claims, and account Secure Container tier changes.
+- Offline-safe account item operations for relocation, split, merge, and
+  destruction in carried storage and for account Secure Container tier changes.
+  The Bank and Recovery Storage are reachable only in the world.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `15`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `16`,
   movement revision `movement-simulation-v5`, and identical authoritative and
   predicted encumbrance behavior.
 - RuneScape-style click-to-move: the client plans a route around obstacles on
@@ -181,8 +183,8 @@ introduce isolated realms.
 
 ## World Actors, NPCs, Mobs, And Interaction
 
-Item-plan Phase 12 is implemented as one scalable
-WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors:
+One scalable WorldData, SimulationWorker, GameProtocol, and Unity foundation
+serves every world actor:
 
 - `NPC` means a social or service actor assembled from capabilities such as
   dialogue, vendor, quest, crafting, insurance, trainer, bank, or Recovery
@@ -201,97 +203,53 @@ WorldData, SimulationWorker, GameProtocol, and Unity foundation for world actors
 - One player may hold one active interaction, including a corpse view, while
   many players may interact with the same target.
 - Unity prefabs remain presentation-only. Visual authoring exports canonical
-  actor and spawn content back to WorldData. Phase 14 adds content-owned Mob
-  corpse lifetime and live or durable persistence over the existing corpse
-  client path. Phase 15 load coverage exercises the central actor scheduler,
-  dormant and active transitions, and independent interaction leases without
-  changing these ownership rules.
+  actor and spawn content back to WorldData. Content owns Mob corpse lifetime
+  and live or durable persistence over the existing corpse client path. Load
+  coverage exercises the central actor scheduler, dormant and active
+  transitions, and independent interaction leases.
 
 The permanent Editor workflows live at
 `MMORPG > Tools > Content > Actor Studio` and
-`MMORPG > Tools > Content > Spawn Authoring`. Phase 12 stops before vendor
-transactions, quest progression, crafting, combat AI, Mob loot, and Mob corpse
-production. See
+`MMORPG > Tools > Content > Spawn Authoring`. Vendor transactions, quest
+progression, crafting, combat AI, and Mob loot tables are not implemented yet. See
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Item Foundation Status
 
-Phases 1 through 15 of the durable item and inventory plan are implemented. The
-repository has the neutral WorldData catalog, deterministic runtime content,
-structural change detection, strict shared validation, pure rules, a custom
-Unity authoring and bake window, and a transactional GameService PostgreSQL
-mirror. The schema now represents item location, containers, slots, equipment,
-policies, recovery, operations, and audit. Every active character receives
-empty permanent inventory, bank, Secure Container, and Recovery Storage state
-with base carry capacity `200`. Account-authenticated reads expose the current
-catalog, one coherent owned-character snapshot, and focused bank and Recovery
-Storage views.
+The item, inventory, death loot, and corpse foundation is implemented. The
+delivered phases are listed in
+[Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md),
+and the rules in [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
-GameService now also has one internal transaction kernel for grants, relocation,
-equipment, stack changes, ordinary container-slot swaps, consumption,
-destruction, complete Bag swaps, Recovery
-deliveries and claims, and Secure Container tier changes. It commits item,
-container, character, carry, entitlement, idempotency, and audit state in one
-PostgreSQL transaction. Phase 6 adds policy application and removal, exact
-quest-grant cleanup, conditionally cached catalog reads, stable Problem Details,
-and account-session mutation routes. Account mutations lock the same character
-row as simulation admission and reject an active session with
-`item_offline_access_required`. Phase 7 carries the committed item-state
-revision, weight, and base plus Bag capacity through admission and heartbeat to
-SimulationWorker. The shared GameSimulation rules now apply the linear movement
-multiplier in both authoritative movement and Unity prediction. Phase 8 adds bounded reliable item intents, authoritative
-worker service-point access, exact live-session and worker-runtime fencing, and
-committed carry propagation through the existing durable kernel. Phase 9 adds
-the persistent Unity catalog and inventory controller, monotonic complete and
-focused snapshots, operation journaling, authoritative refresh, reconnect
-restoration, and the temporary three-area uGUI inventory panel.
+- **Catalog.** Neutral content compiled by one shared compiler, a Unity
+  authoring and bake window, a transactional PostgreSQL mirror with retirement
+  and compatibility fences, and a test-owned fixture catalog.
+- **Custody.** Every active character has a permanent inventory, a Bank, a
+  Secure Container, and Recovery Storage. One transaction kernel commits grants,
+  relocation, equipment with stacks and blocked slots, stack changes, swaps,
+  consumption, destruction, Bag swaps, Recovery deliveries and claims, Secure
+  Container tiers, and policies with idempotency and audit.
+- **Carry weight.** The committed weight and capacity reach SimulationWorker at
+  admission and heartbeat, and the shared GameSimulation rules slow movement in
+  both authority and Unity prediction.
+- **In-world access.** Item intents run through SimulationWorker with exact
+  session fencing. The Bank and Recovery Storage need an open interaction with an
+  NPC that offers them; insurance and quest items use their NPC capabilities.
+- **Death and corpses.** One transaction partitions a death into Recovery
+  deliveries and a durable five-minute player corpse. Corpses are looted, filled,
+  and rearranged concurrently, Bags swap atomically, and live or durable Mob
+  corpses grant loot with retry-safe ids.
+- **Unity.** A persistent catalog, inventory, and corpse state with revision
+  coherence and operation journaling sits under a temporary uGUI inventory.
+- **Operations.** Statement, lock, and payload bounds, low-cardinality metrics,
+  retention cleanup, and load scenarios cover the kernel.
 
-Phase 10 extends the same operation journal and item transaction kernel with a
-second unique death-event fence. One transaction preserves currency and Secure
-Container custody, sends protected and effective insured items to Recovery,
-partitions remaining permanent inventory, equipment, Bag roots, and Bag children
-into durable corpse sections, and creates presentation-only snapshots. Player
-corpses keep a database-timed five-minute deadline through worker restarts and
-remain until that deadline even when empty. Idempotent cleanup destroys and
-audits only the loot still in corpse custody.
+Still to come on this foundation:
 
-Phase 11 adds exact-session corpse open and mutation routes, targeted revision
-checks, concurrent viewers, proximity and lifetime validation, bidirectional
-full and partial transfers, ordinary occupied-slot swaps, and atomic Bag
-aggregate swaps. The same authority supports move, split, merge, and swap
-between corpse slots and sections. Corpse equipment slots preserve their
-canonical equipment-slot identity and reject incompatible definitions.
-SimulationWorker keeps bounded runtime presentation and viewer state,
-broadcasts committed deltas, and never holds item collections or a database
-transaction. Protocol version `11` includes corpse destination slot tags,
-equipment-slot ids, deposit intents, and corpse-internal move intents. The
-persistent Unity corpse controller assembles authoritative state for a temporary
-generic capsule and uGUI drag loop without optimistic custody. It refreshes
-character inventory only after custody-changing commits, while pure corpse
-rearrangement advances corpse state alone.
-
-Carried weight excludes every equipment-slot item, including the equipped Bag
-root. Permanent inventory, equipped Bag contents, carried empty Bags, and Secure
-Container contents still count, while the equipped Bag capacity bonus remains
-active. Startup bootstrap reconciles older denormalized carry rows and advances
-their item-state revision only when the stored tuple changes.
-
-The remaining locked direction is slot-based rather than grid-based and includes:
-
-- Final inventory visual design, drag-and-drop interaction polish, accessibility,
-  and item policy detail presentation on the implemented client foundation.
-- The authoritative combat death producer, final corpse art and interaction
-  polish, Mob loot-table generation, and respawn behavior. Content-controlled
-  Mob corpse persistence is implemented.
-- Quest progression, completion rewards, and final insurance or quest UI polish
-  above the implemented Phase 13 lifecycle handlers.
-
-The persistent schema, character custody identities, authoritative reads,
-offline account mutations, policy services, internal item mutations, and
-player-facing Unity inventory foundation exist, but no gameplay system invokes
-item grants. See
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) and
-[Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md).
+- Final inventory visual design, interaction polish, and accessibility.
+- The combat death producer, consume and use intents, per-shot ammunition,
+  Mob loot tables, final corpse art, and respawn.
+- Quest progression and rewards, vendors, and gathering.
 
 ## Intentionally Deferred
 
@@ -304,11 +262,12 @@ item grants. See
   boundary.
 - Crafting, gathering, professions, and the broader economy.
 - Durable unique actor persistence, NPC capability business behavior, Mob AI,
-  combat, and loot remain deferred beyond the implemented Phase 12 neutral
-  actor and interaction runtime. Complete quests, guilds, social systems, and
+  combat, and loot remain deferred beyond the implemented neutral actor and
+  interaction runtime. Complete quests, guilds, social systems, and
   world events also remain later work.
-- Production orchestration, metric export, dashboards, alerts, and live
-  operations.
+- Production orchestration and live operations. Metrics, logs, traces,
+  dashboards, and alerts exist for local and staged use, see
+  [Monitoring](MONITORING.md).
 
 ## Engineering Standard
 
@@ -330,8 +289,8 @@ implementation.
   population and connection churn testing.
 - [MVP Specification](MVP_SPEC.md) defines the current product scope.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) defines
-  the locked planned inventory and death-loot rules.
+  the inventory and death-loot rules.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) defines the approved
   world-actor, NPC, Mob, spawn-authoring, and interaction foundation.
-- [Items And Inventory Implementation Plan](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
-  defines how that foundation will be delivered and verified.
+- [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
+  records how that foundation was delivered.

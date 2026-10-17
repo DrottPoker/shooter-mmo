@@ -4,20 +4,19 @@ using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Items;
 
-public sealed class SimulationItemInteractionService(
-    GameServiceClient gameServiceClient,
-    ItemInteractionAccessService accessService)
+// Forwards one realtime item operation to GameService with the item service access that
+// the realtime loop evaluated when the operation started.
+public sealed class SimulationItemInteractionService(GameServiceClient gameServiceClient)
 {
     public async Task<SimulationItemInteractionResult> ExecuteAsync(
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent,
-        float positionX,
-        float positionY,
-        float positionZ,
+        ItemInteractionAccess access,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(intent);
+        ArgumentNullException.ThrowIfNull(access);
 
         if (session.IsSyntheticBot)
         {
@@ -27,7 +26,6 @@ public sealed class SimulationItemInteractionService(
                 "Synthetic development sessions cannot mutate durable item state.");
         }
 
-        var access = accessService.Evaluate(positionX, positionY, positionZ);
         var request = CreateRequest(session, intent, access);
         var result = await gameServiceClient.MutateSimulationItemsAsync(
             session.SimulationSessionId,
@@ -44,7 +42,7 @@ public sealed class SimulationItemInteractionService(
             error.Code,
             error.Message,
             RequiresInventoryRefresh(error.Code),
-            RequiresDisconnect(error.Code));
+            GameServiceOutcome.EndsItemSession(error.Code));
     }
 
     private static SimulationItemOperationRequest CreateRequest(
@@ -75,7 +73,7 @@ public sealed class SimulationItemInteractionService(
             new SimulationItemAccessRequest(
                 access.Bank,
                 access.RecoveryStorage,
-                access.InsuranceNpc),
+                false),
             operationKind,
             intent.ExpectedCharacterRevision,
             intent.ItemInstanceId == Guid.Empty ? null : intent.ItemInstanceId,
@@ -127,15 +125,6 @@ public sealed class SimulationItemInteractionService(
             or "bag_state_changed"
             or "item_not_found"
             or "item_not_owned";
-    }
-
-    private static bool RequiresDisconnect(string code)
-    {
-        return code is "wrong_simulation_worker"
-            or "worker_runtime_changed"
-            or "simulation_session_invalid"
-            or "auth_service_authentication_failed"
-            or "invalid_auth_response";
     }
 }
 

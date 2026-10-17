@@ -25,6 +25,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private int admittedBots;
     private int loggedOutBots;
     private Guid? lootHotspotCorpseId;
+    private StressFixtureDefinitions? fixtureDefinitions;
 
     public FullStackStressAdmissionProvider(StressGeneratorOptions options)
     {
@@ -149,6 +150,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                     options.FixtureSecret!,
                     cancellationToken);
                 inventory = fixture.Inventory;
+                Volatile.Write(
+                    ref fixtureDefinitions,
+                    new StressFixtureDefinitions(fixture.InventoryDefinitionId, fixture.LootDefinitionId));
                 Interlocked.Increment(ref inventoryFixtureBots);
             }
 
@@ -216,7 +220,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 join.Shard.Id,
                 join.Shard.WorldId,
                 inventory,
-                lootHotspotCorpseId));
+                lootHotspotCorpseId,
+                Volatile.Read(ref fixtureDefinitions)));
         }
         catch (FullStackApiException exception)
         {
@@ -281,6 +286,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             options.Workload,
             Volatile.Read(ref inventoryFixtureBots),
             lootHotspotCorpseId is not null,
+            Volatile.Read(ref fixtureDefinitions),
             cancellationToken);
         await postgresSampler.SampleAsync(cancellationToken);
         gameServiceProcessSampler?.Sample();
