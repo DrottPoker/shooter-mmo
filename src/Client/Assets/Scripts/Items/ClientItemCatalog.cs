@@ -110,11 +110,11 @@ namespace Mmorpg.Client.Items
             error = string.Empty;
             try
             {
-                var jsonDocument = ClientItemCatalogJson.Deserialize(json);
+                var jsonDocument = ClientItemCatalogJson.Deserialize(json, out var revision);
                 var compiled = ItemCatalogCompiler.Compile(jsonDocument.ToAuthoringDocument());
                 if (!string.Equals(
                     compiled.Revision,
-                    jsonDocument.revision,
+                    revision,
                     StringComparison.Ordinal))
                 {
                     error = "The bundled item gameplay catalog revision is stale.";
@@ -186,212 +186,17 @@ namespace Mmorpg.Client.Items
         }
     }
 
+    // Only the revision of a compiled runtime catalog; the rest uses the shared catalog
+    // JSON shape.
     [Serializable]
-    internal sealed class ClientItemCatalogJsonDocument
+    internal sealed class ClientItemCatalogRevisionJson
     {
-        public int formatVersion;
-        public string catalogId;
         public string revision;
-        public string baseSecureContainerTierId;
-        public ClientItemCharacterJson character;
-        public ClientItemCatalogIdentityJson[] categories;
-        public ClientItemCatalogIdentityJson[] tags;
-        public ClientItemEquipmentSlotJson[] equipmentSlots;
-        public ClientItemDefinitionJson[] definitions;
-        public ClientSecureContainerTierJson[] secureContainerTiers;
-        public ClientItemRetiredJson retired;
-
-        public ItemCatalogAuthoringDocument ToAuthoringDocument()
-        {
-            return new ItemCatalogAuthoringDocument
-            {
-                FormatVersion = formatVersion,
-                CatalogId = catalogId,
-                BaseSecureContainerTierId = baseSecureContainerTierId,
-                Character = character == null
-                    ? null
-                    : new ItemCharacterSettingsEntry
-                    {
-                        BaseCarryCapacity = character.baseCarryCapacity,
-                        InventorySlotCount = character.inventorySlotCount,
-                        BankSlotCount = character.bankSlotCount
-                    },
-                Categories = ConvertIdentities(categories),
-                Tags = ConvertIdentities(tags),
-                EquipmentSlots = (equipmentSlots ?? Array.Empty<ClientItemEquipmentSlotJson>())
-                    .Select(slot => new ItemEquipmentSlotEntry
-                    {
-                        Id = slot.id,
-                        DisplayName = slot.displayName,
-                        MaximumQuantity = slot.maximumQuantity
-                    })
-                    .ToArray(),
-                Definitions = (definitions ?? Array.Empty<ClientItemDefinitionJson>())
-                    .Select(definition => definition.ToAuthoringEntry())
-                    .ToArray(),
-                SecureContainerTiers = (secureContainerTiers
-                        ?? Array.Empty<ClientSecureContainerTierJson>())
-                    .Select(tier => new SecureContainerTierAuthoringEntry
-                    {
-                        Id = tier.id,
-                        DisplayName = tier.displayName,
-                        SlotCapacity = tier.slotCapacity
-                    })
-                    .ToArray(),
-                Retired = retired == null
-                    ? null
-                    : new ItemCatalogRetiredIdsEntry
-                    {
-                        Categories = retired.categories ?? Array.Empty<string>(),
-                        Tags = retired.tags ?? Array.Empty<string>(),
-                        EquipmentSlots = retired.equipmentSlots ?? Array.Empty<string>(),
-                        Definitions = retired.definitions ?? Array.Empty<string>(),
-                        SecureContainerTiers = retired.secureContainerTiers ?? Array.Empty<string>()
-                    }
-            };
-        }
-
-        private static ItemCatalogIdentityEntry[] ConvertIdentities(
-            ClientItemCatalogIdentityJson[] values)
-        {
-            return (values ?? Array.Empty<ClientItemCatalogIdentityJson>())
-                .Select(value => new ItemCatalogIdentityEntry
-                {
-                    Id = value.id,
-                    DisplayName = value.displayName
-                })
-                .ToArray();
-        }
-    }
-
-    [Serializable]
-    internal sealed class ClientItemCatalogIdentityJson
-    {
-        public string id;
-        public string displayName;
-    }
-
-    [Serializable]
-    internal sealed class ClientItemCharacterJson
-    {
-        public long baseCarryCapacity;
-        public int inventorySlotCount;
-        public int bankSlotCount;
-    }
-
-    [Serializable]
-    internal sealed class ClientItemEquipmentSlotJson
-    {
-        public string id;
-        public string displayName;
-        public int maximumQuantity;
-    }
-
-    [Serializable]
-    internal sealed class ClientItemRetiredJson
-    {
-        public string[] categories;
-        public string[] tags;
-        public string[] equipmentSlots;
-        public string[] definitions;
-        public string[] secureContainerTiers;
-    }
-
-    [Serializable]
-    internal sealed class ClientItemLocationEligibilityJson
-    {
-        public bool secureContainer;
-    }
-
-    [Serializable]
-    internal sealed class ClientBagSlotJson
-    {
-        public int index;
-        public string kind;
-        public string[] acceptedTags;
-    }
-
-    [Serializable]
-    internal sealed class ClientBagDefinitionJson
-    {
-        public long carryCapacityBonus;
-        public ClientBagSlotJson[] slots;
-    }
-
-    [Serializable]
-    internal sealed class ClientItemDefinitionJson
-    {
-        public string id;
-        public string displayName;
-        public string category;
-        public string[] tags;
-        public long unitWeight;
-        public int maximumStackSize;
-        public string[] equipmentSlots;
-        public string[] blockedEquipmentSlots;
-        public bool playerDestroyable;
-        public ClientItemLocationEligibilityJson locationEligibility;
-        public string[] defaultPolicies;
-        public ClientBagDefinitionJson bag;
-
-        public ItemDefinitionAuthoringEntry ToAuthoringEntry()
-        {
-            return new ItemDefinitionAuthoringEntry
-            {
-                Id = id,
-                DisplayName = displayName,
-                Category = category,
-                Tags = tags ?? Array.Empty<string>(),
-                UnitWeight = unitWeight,
-                MaximumStackSize = maximumStackSize,
-                EquipmentSlots = equipmentSlots ?? Array.Empty<string>(),
-                BlockedEquipmentSlots = blockedEquipmentSlots ?? Array.Empty<string>(),
-                PlayerDestroyable = playerDestroyable,
-                LocationEligibility = new ItemLocationEligibilityAuthoringEntry
-                {
-                    SecureContainer = locationEligibility != null
-                        && locationEligibility.secureContainer
-                },
-                DefaultPolicies = defaultPolicies ?? Array.Empty<string>(),
-                Bag = ToAuthoringBag()
-            };
-        }
-
-        // JsonUtility never leaves a nested object null, and a valid Bag always has slots, so
-        // a Bag without slots stands for no Bag.
-        private BagDefinitionAuthoringEntry ToAuthoringBag()
-        {
-            if (bag == null || bag.slots == null || bag.slots.Length == 0)
-            {
-                return null;
-            }
-
-            return new BagDefinitionAuthoringEntry
-            {
-                CarryCapacityBonus = bag.carryCapacityBonus,
-                Slots = bag.slots
-                    .Select(slot => new BagSlotAuthoringEntry
-                    {
-                        Index = slot.index,
-                        Kind = slot.kind,
-                        AcceptedTags = slot.acceptedTags ?? Array.Empty<string>()
-                    })
-                    .ToArray()
-            };
-        }
-    }
-
-    [Serializable]
-    internal sealed class ClientSecureContainerTierJson
-    {
-        public string id;
-        public string displayName;
-        public int slotCapacity;
     }
 
     internal static class ClientItemCatalogJson
     {
-        public static ClientItemCatalogJsonDocument Deserialize(string json)
+        public static ItemCatalogJsonDocument Deserialize(string json, out string revision)
         {
             if (string.IsNullOrWhiteSpace(json))
             {
@@ -400,9 +205,17 @@ namespace Mmorpg.Client.Items
 
             try
             {
-                return JsonUtility.FromJson<ClientItemCatalogJsonDocument>(json)
+                var document = JsonUtility.FromJson<ItemCatalogJsonDocument>(json)
                     ?? throw new InvalidDataException(
                         "Item gameplay catalog JSON has no root object.");
+                foreach (var definition in document.definitions
+                    ?? Array.Empty<ItemCatalogJsonDefinition>())
+                {
+                    definition.ClearMissingBagPlaceholder();
+                }
+
+                revision = JsonUtility.FromJson<ClientItemCatalogRevisionJson>(json).revision;
+                return document;
             }
             catch (ArgumentException exception)
             {

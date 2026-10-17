@@ -41,8 +41,8 @@ worker. Zone and layer partitioning are not implemented.
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
 | `GET /api/characters` | Account session | List owned characters |
 | `POST /api/characters` | Account session | Create a character |
-| `GET /api/item-catalog` and `GET /api/items/catalog` | Account session | Return the neutral current catalog with revision ETag validation |
-| `GET /api/characters/{characterId}/item-state` and `GET /api/characters/{characterId}/inventory` | Owning account session | Return one coherent no-store character item-state snapshot |
+| `GET /api/item-catalog` | Account session | Return the neutral current catalog with revision ETag validation |
+| `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
 | `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
 | `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |

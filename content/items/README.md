@@ -109,8 +109,10 @@ described in [Local Development](../../docs/LOCAL_DEVELOPMENT.md).
 
 ## Unity Editor Workflow
 
-Open `MMORPG > Tools > Item Catalog` in the Unity project. The Editor-only
-tool provides a searchable definition list with category, tag, and problem
+Open `MMORPG > Tools > Item Catalog` in the Unity project. The editor and the
+Unity client read catalog JSON through one JsonUtility shape, `ItemCatalogJson`
+in the WorldData runtime, so a new catalog field is added there once. The
+Editor-only tool provides a searchable definition list with category, tag, and problem
 filters and multi-selection, create, duplicate, and remove-draft actions, every
 gameplay field in this contract, Bag slot editing, and the separate client
 presentation mapping. Selected definitions are edited together, live validation

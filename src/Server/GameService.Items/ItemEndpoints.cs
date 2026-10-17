@@ -12,13 +12,8 @@ internal static class ItemEndpoints
     {
         app.MapGet("/api/item-catalog", GetCatalogAsync)
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
-        app.MapGet("/api/items/catalog", GetCatalogAsync)
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
 
         app.MapGet("/api/characters/{characterId:guid}/item-state", GetItemStateAsync)
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
-            .WithMetadata(new SensitiveResponseAttribute());
-        app.MapGet("/api/characters/{characterId:guid}/inventory", GetItemStateAsync)
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 

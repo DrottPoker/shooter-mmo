@@ -5,6 +5,10 @@ internal static class CorpseTransformRules
 {
     public const string PlayerCorpsePresentationKey = "corpse.remains";
 
+    // A player corpse keeps its full lifetime even when empty. The ck_corpses_expiry CHECK in
+    // PlayerCorpsePersistenceMigration enforces the same lifetime in the database.
+    public static readonly TimeSpan PlayerCorpseLifetime = TimeSpan.FromMinutes(5);
+
     public static bool IsFinitePosition(double value)
     {
         return double.IsFinite(value) && value is >= -1_000_000d and <= 1_000_000d;

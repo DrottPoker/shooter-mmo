@@ -119,7 +119,7 @@ internal sealed class PlayerDeathCommandHandler
             command.RotationW,
             command.PresentationKey,
             0,
-            TimeSpan.FromMinutes(5).TotalSeconds,
+            CorpseTransformRules.PlayerCorpseLifetime.TotalSeconds,
             expiryOperationId,
             cancellationToken);
 

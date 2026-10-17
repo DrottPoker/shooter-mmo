@@ -13,210 +13,6 @@ using UnityEngine;
 namespace Mmorpg.WorldData.Editor.Items
 {
     [Serializable]
-    public sealed class ItemCatalogEditorIdentity
-    {
-        public string id;
-        public string displayName;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorEquipmentSlot
-    {
-        public string id;
-        public string displayName;
-        public int maximumQuantity;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorCharacter
-    {
-        public long baseCarryCapacity;
-        public int inventorySlotCount;
-        public int bankSlotCount;
-    }
-
-    // Released ids that left the catalog. They stay locked so they are never reused.
-    [Serializable]
-    public sealed class ItemCatalogEditorRetired
-    {
-        public string[] categories;
-        public string[] tags;
-        public string[] equipmentSlots;
-        public string[] definitions;
-        public string[] secureContainerTiers;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorLocationEligibility
-    {
-        public bool secureContainer;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorBagSlot
-    {
-        public int index;
-        public string kind;
-        public string[] acceptedTags;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorBagDefinition
-    {
-        public long carryCapacityBonus;
-        public ItemCatalogEditorBagSlot[] slots;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorDefinition
-    {
-        public string id;
-        public string displayName;
-        public string category;
-        public string[] tags;
-        public long unitWeight;
-        public int maximumStackSize;
-        public string[] equipmentSlots;
-        public string[] blockedEquipmentSlots;
-        public bool playerDestroyable;
-        public ItemCatalogEditorLocationEligibility locationEligibility;
-        public string[] defaultPolicies;
-        public ItemCatalogEditorBagDefinition bag;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorDocument
-    {
-        public int formatVersion;
-        public string catalogId;
-        public string baseSecureContainerTierId;
-        public ItemCatalogEditorCharacter character;
-        public ItemCatalogEditorIdentity[] categories;
-        public ItemCatalogEditorIdentity[] tags;
-        public ItemCatalogEditorEquipmentSlot[] equipmentSlots;
-        public ItemCatalogEditorDefinition[] definitions;
-        public ItemCatalogEditorSecureContainerTier[] secureContainerTiers;
-        public ItemCatalogEditorRetired retired;
-
-        public ItemCatalogAuthoringDocument ToDomainDocument()
-        {
-            return new ItemCatalogAuthoringDocument
-            {
-                FormatVersion = formatVersion,
-                CatalogId = catalogId,
-                BaseSecureContainerTierId = baseSecureContainerTierId,
-                Character = character == null
-                    ? null
-                    : new ItemCharacterSettingsEntry
-                    {
-                        BaseCarryCapacity = character.baseCarryCapacity,
-                        InventorySlotCount = character.inventorySlotCount,
-                        BankSlotCount = character.bankSlotCount
-                    },
-                Categories = ConvertIdentities(categories),
-                Tags = ConvertIdentities(tags),
-                EquipmentSlots = (equipmentSlots ?? Array.Empty<ItemCatalogEditorEquipmentSlot>())
-                    .Select(slot => new ItemEquipmentSlotEntry
-                    {
-                        Id = slot.id,
-                        DisplayName = slot.displayName,
-                        MaximumQuantity = slot.maximumQuantity
-                    })
-                    .ToArray(),
-                Definitions = (definitions ?? Array.Empty<ItemCatalogEditorDefinition>())
-                    .Select(ConvertDefinition)
-                    .ToArray(),
-                SecureContainerTiers = (secureContainerTiers
-                        ?? Array.Empty<ItemCatalogEditorSecureContainerTier>())
-                    .Select(tier => new SecureContainerTierAuthoringEntry
-                    {
-                        Id = tier.id,
-                        DisplayName = tier.displayName,
-                        SlotCapacity = tier.slotCapacity
-                    })
-                    .ToArray(),
-                Retired = retired == null
-                    ? null
-                    : new ItemCatalogRetiredIdsEntry
-                    {
-                        Categories = retired.categories ?? Array.Empty<string>(),
-                        Tags = retired.tags ?? Array.Empty<string>(),
-                        EquipmentSlots = retired.equipmentSlots ?? Array.Empty<string>(),
-                        Definitions = retired.definitions ?? Array.Empty<string>(),
-                        SecureContainerTiers = retired.secureContainerTiers ?? Array.Empty<string>()
-                    }
-            };
-        }
-
-        private static ItemCatalogIdentityEntry[] ConvertIdentities(
-            ItemCatalogEditorIdentity[] identities)
-        {
-            return (identities ?? Array.Empty<ItemCatalogEditorIdentity>())
-                .Select(identity => new ItemCatalogIdentityEntry
-                {
-                    Id = identity.id,
-                    DisplayName = identity.displayName
-                })
-                .ToArray();
-        }
-
-        private static ItemDefinitionAuthoringEntry ConvertDefinition(
-            ItemCatalogEditorDefinition definition)
-        {
-            return new ItemDefinitionAuthoringEntry
-            {
-                Id = definition.id,
-                DisplayName = definition.displayName,
-                Category = definition.category,
-                Tags = definition.tags ?? Array.Empty<string>(),
-                UnitWeight = definition.unitWeight,
-                MaximumStackSize = definition.maximumStackSize,
-                EquipmentSlots = definition.equipmentSlots ?? Array.Empty<string>(),
-                BlockedEquipmentSlots = definition.blockedEquipmentSlots ?? Array.Empty<string>(),
-                PlayerDestroyable = definition.playerDestroyable,
-                LocationEligibility = definition.locationEligibility == null
-                    ? null
-                    : new ItemLocationEligibilityAuthoringEntry
-                    {
-                        SecureContainer = definition.locationEligibility.secureContainer
-                    },
-                DefaultPolicies = definition.defaultPolicies ?? Array.Empty<string>(),
-                Bag = ConvertBag(definition.bag)
-            };
-        }
-
-        private static BagDefinitionAuthoringEntry ConvertBag(
-            ItemCatalogEditorBagDefinition bag)
-        {
-            if (bag == null)
-            {
-                return null;
-            }
-
-            return new BagDefinitionAuthoringEntry
-            {
-                CarryCapacityBonus = bag.carryCapacityBonus,
-                Slots = (bag.slots ?? Array.Empty<ItemCatalogEditorBagSlot>())
-                    .Select(slot => new BagSlotAuthoringEntry
-                    {
-                        Index = slot.index,
-                        Kind = slot.kind,
-                        AcceptedTags = slot.acceptedTags ?? Array.Empty<string>()
-                    })
-                    .ToArray()
-            };
-        }
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogEditorSecureContainerTier
-    {
-        public string id;
-        public string displayName;
-        public int slotCapacity;
-    }
-
-    [Serializable]
     public sealed class ItemCatalogEditorRuntimeDocument
     {
         public int formatVersion;
@@ -260,12 +56,12 @@ namespace Mmorpg.WorldData.Editor.Items
         public int formatVersion;
         public string catalogId;
         public string baseSecureContainerTierId;
-        public ItemCatalogEditorCharacter character;
-        public ItemCatalogEditorIdentity[] categories;
-        public ItemCatalogEditorIdentity[] tags;
-        public ItemCatalogEditorEquipmentSlot[] equipmentSlots;
-        public ItemCatalogEditorSecureContainerTier[] secureContainerTiers;
-        public ItemCatalogEditorRetired retired;
+        public ItemCatalogJsonCharacter character;
+        public ItemCatalogJsonIdentity[] categories;
+        public ItemCatalogJsonIdentity[] tags;
+        public ItemCatalogJsonEquipmentSlot[] equipmentSlots;
+        public ItemCatalogJsonSecureContainerTier[] secureContainerTiers;
+        public ItemCatalogJsonRetired retired;
     }
 
     public static class ItemCatalogEditorJson
@@ -275,10 +71,10 @@ namespace Mmorpg.WorldData.Editor.Items
             return Deserialize<ItemCatalogEditorCatalogHeader>(json, "Item catalog");
         }
 
-        public static ItemCatalogEditorDefinition DeserializeDefinition(string json)
+        public static ItemCatalogJsonDefinition DeserializeDefinition(string json)
         {
-            var definition = Deserialize<ItemCatalogEditorDefinition>(json, "Item definition");
-            ClearMissingBagPlaceholder(definition);
+            var definition = Deserialize<ItemCatalogJsonDefinition>(json, "Item definition");
+            definition.ClearMissingBagPlaceholder();
             return definition;
         }
 
@@ -294,24 +90,24 @@ namespace Mmorpg.WorldData.Editor.Items
             return Serialize(header);
         }
 
-        public static string SerializeDefinition(ItemCatalogEditorDefinition definition)
+        public static string SerializeDefinition(ItemCatalogJsonDefinition definition)
         {
             return Serialize(definition);
         }
 
-        public static ItemCatalogEditorDocument Clone(ItemCatalogEditorDocument document)
+        public static ItemCatalogJsonDocument Clone(ItemCatalogJsonDocument document)
         {
             if (document == null)
             {
                 throw new ArgumentNullException(nameof(document));
             }
 
-            var serializer = new DataContractJsonSerializer(typeof(ItemCatalogEditorDocument));
+            var serializer = new DataContractJsonSerializer(typeof(ItemCatalogJsonDocument));
             using (var stream = new MemoryStream())
             {
                 serializer.WriteObject(stream, document);
                 stream.Position = 0;
-                return (ItemCatalogEditorDocument)serializer.ReadObject(stream);
+                return (ItemCatalogJsonDocument)serializer.ReadObject(stream);
             }
         }
 
@@ -322,23 +118,23 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         // Sorts every order-insensitive list so saved files never churn on reordering.
-        public static void Normalize(ItemCatalogEditorDocument document)
+        public static void Normalize(ItemCatalogJsonDocument document)
         {
-            document.categories = document.categories ?? Array.Empty<ItemCatalogEditorIdentity>();
-            document.tags = document.tags ?? Array.Empty<ItemCatalogEditorIdentity>();
+            document.categories = document.categories ?? Array.Empty<ItemCatalogJsonIdentity>();
+            document.tags = document.tags ?? Array.Empty<ItemCatalogJsonIdentity>();
             // Equipment slots keep their authored order: it is the display order.
             document.equipmentSlots = document.equipmentSlots
-                ?? Array.Empty<ItemCatalogEditorEquipmentSlot>();
-            document.retired = document.retired ?? new ItemCatalogEditorRetired();
+                ?? Array.Empty<ItemCatalogJsonEquipmentSlot>();
+            document.retired = document.retired ?? new ItemCatalogJsonRetired();
             document.retired.categories = SortStrings(document.retired.categories);
             document.retired.tags = SortStrings(document.retired.tags);
             document.retired.equipmentSlots = SortStrings(document.retired.equipmentSlots);
             document.retired.definitions = SortStrings(document.retired.definitions);
             document.retired.secureContainerTiers = SortStrings(document.retired.secureContainerTiers);
             document.secureContainerTiers = document.secureContainerTiers
-                ?? Array.Empty<ItemCatalogEditorSecureContainerTier>();
+                ?? Array.Empty<ItemCatalogJsonSecureContainerTier>();
             document.definitions = (document.definitions
-                    ?? Array.Empty<ItemCatalogEditorDefinition>())
+                    ?? Array.Empty<ItemCatalogJsonDefinition>())
                 .OrderBy(definition => definition.id, StringComparer.Ordinal)
                 .ToArray();
             foreach (var definition in document.definitions)
@@ -349,7 +145,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 definition.defaultPolicies = SortStrings(definition.defaultPolicies);
                 if (definition.locationEligibility == null)
                 {
-                    definition.locationEligibility = new ItemCatalogEditorLocationEligibility();
+                    definition.locationEligibility = new ItemCatalogJsonLocationEligibility();
                 }
 
                 if (definition.bag == null)
@@ -358,7 +154,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 }
 
                 definition.bag.slots = (definition.bag.slots
-                        ?? Array.Empty<ItemCatalogEditorBagSlot>())
+                        ?? Array.Empty<ItemCatalogJsonBagSlot>())
                     .OrderBy(slot => slot.index)
                     .ToArray();
                 foreach (var slot in definition.bag.slots)
@@ -414,21 +210,6 @@ namespace Mmorpg.WorldData.Editor.Items
             }
         }
 
-        private static void ClearMissingBagPlaceholder(ItemCatalogEditorDefinition definition)
-        {
-            if (definition.bag != null
-                && (definition.bag.slots == null || definition.bag.slots.Length == 0)
-                && !string.Equals(
-                    definition.category,
-                    ItemCategoryIds.Bag,
-                    StringComparison.Ordinal))
-            {
-                // JsonUtility materializes an empty nested class for a missing Bag field.
-                // Strict validation runs before canonical Editor content reaches this model.
-                definition.bag = null;
-            }
-        }
-
         private static string[] SortStrings(string[] values)
         {
             return (values ?? Array.Empty<string>())
@@ -445,7 +226,7 @@ namespace Mmorpg.WorldData.Editor.Items
     // Reads and writes content/items: catalog.json plus one file per item definition.
     public static class ItemCatalogEditorContent
     {
-        public static ItemCatalogEditorDocument Load(string itemsDirectory)
+        public static ItemCatalogJsonDocument Load(string itemsDirectory)
         {
             var catalogPath = ContentLayout.CatalogPath(itemsDirectory);
             if (!File.Exists(catalogPath))
@@ -458,7 +239,7 @@ namespace Mmorpg.WorldData.Editor.Items
             var definitions = ContentLayout.ListDefinitionFiles(itemsDirectory)
                 .Select(LoadDefinition)
                 .ToArray();
-            return new ItemCatalogEditorDocument
+            return new ItemCatalogJsonDocument
             {
                 formatVersion = header.formatVersion,
                 catalogId = header.catalogId,
@@ -474,7 +255,7 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         // File text keyed by path relative to the items directory.
-        public static Dictionary<string, string> CreateFiles(ItemCatalogEditorDocument document)
+        public static Dictionary<string, string> CreateFiles(ItemCatalogJsonDocument document)
         {
             if (document == null)
             {
@@ -516,9 +297,9 @@ namespace Mmorpg.WorldData.Editor.Items
             return files;
         }
 
-        private static ItemCatalogEditorDefinition LoadDefinition(ContentDefinitionFile file)
+        private static ItemCatalogJsonDefinition LoadDefinition(ContentDefinitionFile file)
         {
-            ItemCatalogEditorDefinition definition;
+            ItemCatalogJsonDefinition definition;
             try
             {
                 definition = ItemCatalogEditorJson.DeserializeDefinition(
@@ -629,7 +410,7 @@ namespace Mmorpg.WorldData.Editor.Items
     [Serializable]
     public sealed class ItemCatalogEditorSnapshot
     {
-        public ItemCatalogEditorDocument authoring;
+        public ItemCatalogJsonDocument authoring;
         public ItemPresentationCatalogDocument presentation;
     }
 
@@ -638,7 +419,7 @@ namespace Mmorpg.WorldData.Editor.Items
         private readonly HashSet<string> bakedDefinitionIds;
 
         public ItemCatalogEditorWorkspace(
-            ItemCatalogEditorDocument authoring,
+            ItemCatalogJsonDocument authoring,
             ItemCatalogEditorRuntimeDocument runtime,
             ItemPresentationCatalogDocument presentation)
         {
@@ -646,7 +427,7 @@ namespace Mmorpg.WorldData.Editor.Items
             CurrentRuntime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
             Authoring.definitions = Authoring.definitions
-                ?? Array.Empty<ItemCatalogEditorDefinition>();
+                ?? Array.Empty<ItemCatalogJsonDefinition>();
             Presentation.entries = Presentation.entries ?? Array.Empty<ItemPresentationEntry>();
             bakedDefinitionIds = new HashSet<string>(
                 (CurrentRuntime.definitions ?? Array.Empty<ItemCatalogEditorRuntimeDefinition>())
@@ -655,7 +436,7 @@ namespace Mmorpg.WorldData.Editor.Items
             SynchronizePresentationEntries();
         }
 
-        public ItemCatalogEditorDocument Authoring { get; }
+        public ItemCatalogJsonDocument Authoring { get; }
 
         public ItemCatalogEditorRuntimeDocument CurrentRuntime { get; }
 
@@ -682,7 +463,7 @@ namespace Mmorpg.WorldData.Editor.Items
 
         // Replaces the editable content with a snapshot taken earlier, for undo and redo.
         public void RestoreContent(
-            ItemCatalogEditorDocument authoring,
+            ItemCatalogJsonDocument authoring,
             ItemPresentationCatalogDocument presentation)
         {
             if (authoring == null)
@@ -703,7 +484,7 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.categories = authoring.categories;
             Authoring.tags = authoring.tags;
             Authoring.equipmentSlots = authoring.equipmentSlots;
-            Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogEditorDefinition>();
+            Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogJsonDefinition>();
             Authoring.secureContainerTiers = authoring.secureContainerTiers;
             Presentation.formatVersion = presentation.formatVersion;
             Presentation.sourceCatalogRevision = presentation.sourceCatalogRevision;
@@ -724,9 +505,9 @@ namespace Mmorpg.WorldData.Editor.Items
                 && Authoring.retired.definitions.Contains(definitionId, StringComparer.Ordinal);
         }
 
-        public ItemCatalogEditorDefinition CreateDefinition()
+        public ItemCatalogJsonDefinition CreateDefinition()
         {
-            var definition = new ItemCatalogEditorDefinition
+            var definition = new ItemCatalogJsonDefinition
             {
                 id = CreateUniqueId("new_item"),
                 displayName = "New Item",
@@ -739,7 +520,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 equipmentSlots = Array.Empty<string>(),
                 blockedEquipmentSlots = Array.Empty<string>(),
                 playerDestroyable = true,
-                locationEligibility = new ItemCatalogEditorLocationEligibility(),
+                locationEligibility = new ItemCatalogJsonLocationEligibility(),
                 defaultPolicies = Array.Empty<string>(),
                 bag = null
             };
@@ -748,15 +529,15 @@ namespace Mmorpg.WorldData.Editor.Items
             return definition;
         }
 
-        public ItemCatalogEditorDefinition DuplicateDefinition(
-            ItemCatalogEditorDefinition source)
+        public ItemCatalogJsonDefinition DuplicateDefinition(
+            ItemCatalogJsonDefinition source)
         {
             if (source == null)
             {
                 throw new ArgumentNullException(nameof(source));
             }
 
-            var copy = ItemCatalogEditorJson.Clone(new ItemCatalogEditorDocument
+            var copy = ItemCatalogEditorJson.Clone(new ItemCatalogJsonDocument
             {
                 definitions = new[] { source }
             }).definitions[0];
@@ -784,7 +565,7 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         public bool TryRenameDraftDefinition(
-            ItemCatalogEditorDefinition definition,
+            ItemCatalogJsonDefinition definition,
             string newId,
             out string error)
         {
@@ -826,7 +607,7 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         public bool TryRemoveDraftDefinition(
-            ItemCatalogEditorDefinition definition,
+            ItemCatalogJsonDefinition definition,
             out string error)
         {
             error = string.Empty;
@@ -881,7 +662,7 @@ namespace Mmorpg.WorldData.Editor.Items
             }
         }
 
-        private void AddPresentationEntry(ItemCatalogEditorDefinition definition)
+        private void AddPresentationEntry(ItemCatalogJsonDefinition definition)
         {
             Presentation.entries = Presentation.entries.Concat(new[]
             {

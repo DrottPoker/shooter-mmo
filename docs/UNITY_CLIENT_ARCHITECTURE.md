@@ -547,7 +547,8 @@ operation id and kind, and refreshes authoritative HTTP state before permitting
 another mutation. A duplicate completion for the last finalized operation is
 ignored safely.
 
-`ClientItemCatalog` compiles and revision-checks the bundled gameplay TextAsset,
+`ClientItemCatalog` compiles and revision-checks the bundled gameplay TextAsset
+through the shared `ItemCatalogJson` shape that the Item Catalog editor also uses,
 loads the presentation catalog once through Addressables and caches it per
 gameplay revision, and indexes definitions and equipment slots by stable id. Gameplay and presentation
 source revisions must match before item UI can render. Every HTTP snapshot must

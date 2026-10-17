@@ -140,8 +140,8 @@ documentation drift. No P0 finding was found.
 | C05 | Unity rules in UI | About 450 lines of permanent corpse target rules live in the temporary panel instead of a tested advisor. | `TemporaryInventoryPanel.cs` | Fixed |
 | C06 | Unity literals | Container types, corpse section kinds, the `bag` slot used for Bag swaps, and slot kinds are string literals; `IsCarriedContainer` exists three times, and an unknown container falls back to Secure Container rules. Destroy is offered for protected quest items. | `InventoryTargetAdvisor.cs`, `CorpseClientController.cs`, `TemporaryInventoryPanel.cs` | Fixed |
 | C07 | Unity structure | No controller tests, dead code in the operation journal, a refresh scope that treats every external location as Bank, and a 1405-line models file. | `InventoryClientController.cs`, `InventoryClientModels.cs` | Fixed |
-| C08 | Catalog shape | The definition shape is mirrored by hand in the contracts, the compiler, the GameService loader, the Unity client DTO, the editor model, and the database, so every new field needs six edits. Equipment slots share one identity type with categories and tags. | WorldData, GameService.Items, Unity | Open |
-| C09 | Small items | Dead alias routes, the player corpse lifetime in a CHECK constraint and code, implicit encumbrance literals, a pass-through encumbrance wrapper, and repeated limits. | various | Open |
+| C08 | Catalog shape | The definition shape is mirrored by hand in the contracts, the compiler, the GameService loader, the Unity client DTO, the editor model, and the database, so every new field needs six edits. Equipment slots share one identity type with categories and tags. | WorldData, GameService.Items, Unity | Fixed |
+| C09 | Small items | Dead alias routes, the player corpse lifetime in a CHECK constraint and code, implicit encumbrance literals, a pass-through encumbrance wrapper, and repeated limits. | various | Fixed |
 
 ### P2 Findings: Documentation
 

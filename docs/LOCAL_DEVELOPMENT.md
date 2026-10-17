@@ -386,10 +386,10 @@ $character = Invoke-RestMethod `
   -ContentType application/json `
   -Body (@{ name = "Phase Four $($suffix.Substring(0, 8))" } | ConvertTo-Json)
 $catalog = Invoke-RestMethod `
-  -Uri http://localhost:5000/api/items/catalog `
+  -Uri http://localhost:5000/api/item-catalog `
   -Headers $headers
 $snapshot = Invoke-RestMethod `
-  -Uri "http://localhost:5000/api/characters/$($character.id)/inventory" `
+  -Uri "http://localhost:5000/api/characters/$($character.id)/item-state" `
   -Headers $headers
 $catalog.definitions.Count
 $snapshot.permanentInventory.slots.Count

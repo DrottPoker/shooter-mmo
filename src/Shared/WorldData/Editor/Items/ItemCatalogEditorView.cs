@@ -24,7 +24,7 @@ namespace Mmorpg.WorldData.Editor.Items
         private readonly ContentUndoState undoState;
         private readonly Func<ItemCatalogEditorWorkspace> loadWorkspace;
         private readonly ContentToolLayout toolLayout;
-        private readonly ContentListPane<ItemCatalogEditorDefinition> list;
+        private readonly ContentListPane<ItemCatalogJsonDefinition> list;
         private readonly Label revisionLabel;
         private readonly Label validationInfo;
         private readonly Button removeButton;
@@ -37,7 +37,7 @@ namespace Mmorpg.WorldData.Editor.Items
 
         private readonly Dictionary<string, Sprite> iconCache = new Dictionary<string, Sprite>(StringComparer.Ordinal);
         private ContentEditSession<ItemCatalogEditorSnapshot> session;
-        private ContentForm<ItemCatalogEditorDefinition> form;
+        private ContentForm<ItemCatalogJsonDefinition> form;
         private ItemCatalogEditorWorkspace workspace;
         private ItemCatalogEditorValidationResult lastValidation;
         private IReadOnlyList<ContentIssue> issues = Array.Empty<ContentIssue>();
@@ -63,7 +63,7 @@ namespace Mmorpg.WorldData.Editor.Items
             toolLayout.Toolbar.Add(new ToolbarSpacer { flex = true });
             toolLayout.Toolbar.Add(revisionLabel);
 
-            list = new ContentListPane<ItemCatalogEditorDefinition>(
+            list = new ContentListPane<ItemCatalogJsonDefinition>(
                 "Item Definitions",
                 definition => definition.id,
                 definition => definition.displayName,
@@ -106,9 +106,9 @@ namespace Mmorpg.WorldData.Editor.Items
 
         public ItemCatalogEditorWorkspace Workspace => workspace;
 
-        public ContentListPane<ItemCatalogEditorDefinition> List => list;
+        public ContentListPane<ItemCatalogJsonDefinition> List => list;
 
-        public ContentForm<ItemCatalogEditorDefinition> Form => form;
+        public ContentForm<ItemCatalogJsonDefinition> Form => form;
 
         public IReadOnlyList<ContentIssue> Issues => issues;
 
@@ -134,7 +134,7 @@ namespace Mmorpg.WorldData.Editor.Items
                         presentation = workspace.Presentation
                     },
                     snapshot => workspace.RestoreContent(snapshot.authoring, snapshot.presentation));
-                form = new ContentForm<ItemCatalogEditorDefinition>(session, definition => definition.id);
+                form = new ContentForm<ItemCatalogJsonDefinition>(session, definition => definition.id);
                 detailShape = string.Empty;
                 session.Changed += OnContentChanged;
                 session.Load(keepPendingEdits);
@@ -155,7 +155,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 workspace = null;
                 session?.Dispose();
                 session = null;
-                list.SetItems(Array.Empty<ItemCatalogEditorDefinition>());
+                list.SetItems(Array.Empty<ItemCatalogJsonDefinition>());
                 ShowDetailHint("The item catalog could not be loaded.");
                 toolLayout.SetStatus(exception.Message, HelpBoxMessageType.Error);
             }
@@ -192,7 +192,7 @@ namespace Mmorpg.WorldData.Editor.Items
             var definitions = workspace.Authoring.definitions;
             try
             {
-                ItemCatalogCompiler.Compile(workspace.Authoring.ToDomainDocument());
+                ItemCatalogCompiler.Compile(workspace.Authoring.ToAuthoringDocument());
             }
             catch (ItemCatalogValidationException exception)
             {
@@ -296,7 +296,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 return;
             }
 
-            ItemCatalogEditorDefinition created = null;
+            ItemCatalogJsonDefinition created = null;
             session.Change("New item definition", () => created = workspace.CreateDefinition());
             list.Select(new[] { created.id });
             toolLayout.SetStatus("Created a draft definition. Its id can be edited until it is baked.", HelpBoxMessageType.Info);
@@ -399,7 +399,7 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         // The detail panel is rebuilt only when its toolLayout changes, so typing keeps focus.
-        private static string DetailShape(IReadOnlyList<ItemCatalogEditorDefinition> selection)
+        private static string DetailShape(IReadOnlyList<ItemCatalogJsonDefinition> selection)
         {
             if (selection.Count == 0)
             {
@@ -412,11 +412,11 @@ namespace Mmorpg.WorldData.Editor.Items
             }
 
             var definition = selection[0];
-            var slots = definition.bag?.slots ?? Array.Empty<ItemCatalogEditorBagSlot>();
+            var slots = definition.bag?.slots ?? Array.Empty<ItemCatalogJsonBagSlot>();
             return "one:" + definition.id + ":" + (definition.bag == null ? "no-bag" : string.Join(",", slots.Select(slot => slot.kind)));
         }
 
-        private void BuildDetail(IReadOnlyList<ItemCatalogEditorDefinition> selection)
+        private void BuildDetail(IReadOnlyList<ItemCatalogJsonDefinition> selection)
         {
             form.Clear();
             toolLayout.Detail.Clear();
@@ -480,7 +480,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 definition => definition.locationEligibility != null && definition.locationEligibility.secureContainer,
                 (definition, value) =>
                 {
-                    definition.locationEligibility = definition.locationEligibility ?? new ItemCatalogEditorLocationEligibility();
+                    definition.locationEligibility = definition.locationEligibility ?? new ItemCatalogJsonLocationEligibility();
                     definition.locationEligibility.secureContainer = value;
                 }));
             rules.Add(form.Flags(
@@ -506,7 +506,7 @@ namespace Mmorpg.WorldData.Editor.Items
             form.SetTargets(selection);
         }
 
-        private void AddIdentityFields(VisualElement section, ItemCatalogEditorDefinition definition)
+        private void AddIdentityFields(VisualElement section, ItemCatalogJsonDefinition definition)
         {
             var locked = workspace.IsDefinitionIdLocked(definition.id);
             var idField = new TextField("Definition Id") { isDelayed = true };
@@ -529,7 +529,7 @@ namespace Mmorpg.WorldData.Editor.Items
             section.Add(form.Text("Display Name", "displayName", definition => definition.displayName, SetDisplayName));
         }
 
-        private VisualElement BuildBagSection(ItemCatalogEditorDefinition definition)
+        private VisualElement BuildBagSection(ItemCatalogJsonDefinition definition)
         {
             var section = ContentToolStyles.CreateSection("Bag");
             section.Add(form.Toggle(
@@ -537,10 +537,10 @@ namespace Mmorpg.WorldData.Editor.Items
                 "bag",
                 entry => entry.bag != null,
                 (entry, value) => entry.bag = value
-                    ? entry.bag ?? new ItemCatalogEditorBagDefinition
+                    ? entry.bag ?? new ItemCatalogJsonBagDefinition
                     {
                         carryCapacityBonus = 0,
-                        slots = Array.Empty<ItemCatalogEditorBagSlot>()
+                        slots = Array.Empty<ItemCatalogJsonBagSlot>()
                     }
                     : null));
             if (definition.bag == null)
@@ -559,7 +559,7 @@ namespace Mmorpg.WorldData.Editor.Items
                         entry.bag.carryCapacityBonus = value;
                     }
                 }));
-            var slots = definition.bag.slots ?? Array.Empty<ItemCatalogEditorBagSlot>();
+            var slots = definition.bag.slots ?? Array.Empty<ItemCatalogJsonBagSlot>();
             for (var position = 0; position < slots.Length; position++)
             {
                 section.Add(BuildBagSlot(slots[position], position));
@@ -569,7 +569,7 @@ namespace Mmorpg.WorldData.Editor.Items
             return section;
         }
 
-        private VisualElement BuildBagSlot(ItemCatalogEditorBagSlot slot, int position)
+        private VisualElement BuildBagSlot(ItemCatalogJsonBagSlot slot, int position)
         {
             var box = new VisualElement();
             box.AddToClassList(ContentToolStyles.Section);
@@ -689,7 +689,7 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         // The fallback display name follows the display name until it is edited on its own.
-        private void SetDisplayName(ItemCatalogEditorDefinition definition, string value)
+        private void SetDisplayName(ItemCatalogJsonDefinition definition, string value)
         {
             var previous = definition.displayName;
             definition.displayName = value;
@@ -712,8 +712,8 @@ namespace Mmorpg.WorldData.Editor.Items
 
             session.Change("Bag slot added", () =>
             {
-                var slots = (definition.bag.slots ?? Array.Empty<ItemCatalogEditorBagSlot>()).ToList();
-                slots.Add(new ItemCatalogEditorBagSlot
+                var slots = (definition.bag.slots ?? Array.Empty<ItemCatalogJsonBagSlot>()).ToList();
+                slots.Add(new ItemCatalogJsonBagSlot
                 {
                     index = slots.Count,
                     kind = BagSlotKindIds.General,
@@ -767,7 +767,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 SetPresentation(definition, presentation => presentation.iconAddress = iconAddress));
         }
 
-        private void SetPresentation(ItemCatalogEditorDefinition definition, Action<ItemPresentationEntry> edit)
+        private void SetPresentation(ItemCatalogJsonDefinition definition, Action<ItemPresentationEntry> edit)
         {
             var presentation = PresentationOf(definition);
             if (presentation != null)
@@ -776,12 +776,12 @@ namespace Mmorpg.WorldData.Editor.Items
             }
         }
 
-        private ItemPresentationEntry PresentationOf(ItemCatalogEditorDefinition definition)
+        private ItemPresentationEntry PresentationOf(ItemCatalogJsonDefinition definition)
         {
             return definition == null ? null : workspace.FindPresentation(definition.id);
         }
 
-        private static ItemCatalogEditorBagSlot SlotAt(ItemCatalogEditorDefinition definition, int position)
+        private static ItemCatalogJsonBagSlot SlotAt(ItemCatalogJsonDefinition definition, int position)
         {
             var slots = definition.bag?.slots;
             return slots != null && position < slots.Length ? slots[position] : null;
@@ -809,7 +809,7 @@ namespace Mmorpg.WorldData.Editor.Items
             toolLayout.Detail.Add(ContentToolStyles.CreateHint(text));
         }
 
-        private ContentIssueSeverity? IssueState(ItemCatalogEditorDefinition definition)
+        private ContentIssueSeverity? IssueState(ItemCatalogJsonDefinition definition)
         {
             var related = issues.Where(issue => string.Equals(issue.EntityKey, definition.id, StringComparison.Ordinal)).ToArray();
             if (related.Length == 0)
@@ -835,7 +835,7 @@ namespace Mmorpg.WorldData.Editor.Items
             return name + ": " + issue.Message;
         }
 
-        private string Subtitle(ItemCatalogEditorDefinition definition)
+        private string Subtitle(ItemCatalogJsonDefinition definition)
         {
             var category = workspace?.Authoring.categories?.FirstOrDefault(entry =>
                 string.Equals(entry.id, definition.category, StringComparison.Ordinal));
@@ -861,7 +861,7 @@ namespace Mmorpg.WorldData.Editor.Items
 
         private IEnumerable<(string Value, string Label)> EquipmentSlotNames()
         {
-            return (workspace?.Authoring.equipmentSlots ?? Array.Empty<ItemCatalogEditorEquipmentSlot>())
+            return (workspace?.Authoring.equipmentSlots ?? Array.Empty<ItemCatalogJsonEquipmentSlot>())
                 .Select(slot => (slot.id, slot.displayName));
         }
 
@@ -874,15 +874,15 @@ namespace Mmorpg.WorldData.Editor.Items
             };
         }
 
-        private static IEnumerable<(string Value, string Label)> IdentityOptions(ItemCatalogEditorIdentity[] identities)
+        private static IEnumerable<(string Value, string Label)> IdentityOptions(ItemCatalogJsonIdentity[] identities)
         {
-            return (identities ?? Array.Empty<ItemCatalogEditorIdentity>())
+            return (identities ?? Array.Empty<ItemCatalogJsonIdentity>())
                 .Select(identity => (identity.id, identity.displayName + " (" + identity.id + ")"));
         }
 
-        private static IEnumerable<(string Value, string Label)> IdentityNames(ItemCatalogEditorIdentity[] identities)
+        private static IEnumerable<(string Value, string Label)> IdentityNames(ItemCatalogJsonIdentity[] identities)
         {
-            return (identities ?? Array.Empty<ItemCatalogEditorIdentity>())
+            return (identities ?? Array.Empty<ItemCatalogJsonIdentity>())
                 .Select(identity => (identity.id, identity.displayName));
         }
 

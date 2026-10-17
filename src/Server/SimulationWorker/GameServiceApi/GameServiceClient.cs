@@ -18,6 +18,12 @@ public sealed class GameServiceClient(HttpClient httpClient)
     private const int MaximumForwardedErrorCodeLength = 64;
     private const int MaximumForwardedErrorMessageLength = 256;
 
+    // One player item or corpse operation touches only a few containers and items, so these
+    // bounds only reject malformed responses.
+    private const int MaximumOperationContainerRevisions = 8;
+    private const int MaximumOperationItemRevisions = 32;
+    private const int MaximumOperationRecoveryDeliveries = 8;
+
     public async Task<DependencyHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
         try
@@ -512,9 +518,9 @@ public sealed class GameServiceClient(HttpClient httpClient)
             || response.ItemRevisions is null
             || response.RecoveryDeliveryIds is null
             || response.CharacterRevisions.Count > 1
-            || response.ContainerRevisions.Count > 8
-            || response.ItemRevisions.Count > 32
-            || response.RecoveryDeliveryIds.Count > 8
+            || response.ContainerRevisions.Count > MaximumOperationContainerRevisions
+            || response.ItemRevisions.Count > MaximumOperationItemRevisions
+            || response.RecoveryDeliveryIds.Count > MaximumOperationRecoveryDeliveries
             || response.SecureContainerEntitlementRevision is not null)
         {
             return false;
@@ -553,9 +559,9 @@ public sealed class GameServiceClient(HttpClient httpClient)
             || (!isInternalMove
                 && response.Transaction.CharacterRevisions[0].CharacterId != request.CharacterId)
             || response.Transaction.ContainerRevisions is null
-            || response.Transaction.ContainerRevisions.Count > 8
+            || response.Transaction.ContainerRevisions.Count > MaximumOperationContainerRevisions
             || response.Transaction.ItemRevisions is null
-            || response.Transaction.ItemRevisions.Count > 32
+            || response.Transaction.ItemRevisions.Count > MaximumOperationItemRevisions
             || response.Transaction.RecoveryDeliveryIds is null
             || response.Transaction.RecoveryDeliveryIds.Count != 0
             || response.Transaction.SecureContainerEntitlementRevision is not null)

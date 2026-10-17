@@ -156,7 +156,7 @@
     {
       "name": "MaximumCorpseChunkCount",
       "value": 256,
-      "visibility": "private",
+      "visibility": "public",
       "description": "Chunks in one corpse presence snapshot or corpse view update."
     },
     {
