@@ -73,24 +73,30 @@ restore its live representation.
 
 ## Item Definitions, Categories, And Tags
 
-Every item definition has one primary category. Initial categories include:
+Every item definition has one primary category. The categories are catalog
+content:
 
-- `material`
-- `medical`
 - `weapon`
 - `ammunition`
 - `armor`
+- `jewelry`
 - `tool`
 - `bag`
+- `material`
+- `potion`
+- `food`
 - `quest_item`
 
 Definitions may also carry zero or more tags. Tags provide many-to-many
-compatibility without forcing an item into only one gameplay use. The first
+compatibility without forcing an item into only one gameplay use. The
 specialized Bag slot tags are:
 
-- `medical`
+- `potion`
+- `food`
 - `material`
 - `ammunition`
+
+A supplies slot accepts both `potion` and `food`.
 
 A specialized slot accepts one or more configured tags. A matching item may
 still use a general slot. A definition must explicitly be allowed in the Secure
@@ -192,16 +198,27 @@ revision, but it must preserve the same definition ids and server contract.
 
 ## Equipment
 
-The initial character equipment slots are:
+The character equipment slots are catalog content. They are listed in display
+order:
 
 - `head`
-- `body_armor`
-- `primary_weapon`
-- `secondary_weapon`
-- `tool`
+- `neck`
+- `body`
+- `legs`
+- `hands`
+- `feet`
+- `main_hand`
+- `off_hand`
+- `ammunition`
 - `ring_1`
 - `ring_2`
+- `tool`
 - `bag`
+
+Every slot has a maximum quantity in content. The `ammunition` slot holds one
+stack of up to `1000` units; every other slot holds one item. A definition may
+list blocked equipment slots that stay empty while it is equipped, so a
+two-handed bow in `main_hand` keeps `off_hand` free.
 
 An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a
@@ -235,7 +252,7 @@ compatible general storage slot, including:
 - Future trade, auction, mail, vendor, or loot locations when no item policy
   forbids that action.
 
-An empty Bag cannot use the initial medical, material, or ammunition specialized
+An empty Bag cannot use the supplies, material, or ammunition specialized
 slots because it does not have those tags.
 
 The nested Bag's content storage must be empty and inactive while the Bag is held
@@ -343,11 +360,11 @@ decimal weight values, and floating-point comparisons are not part of the
 authoritative model. The baseline balance scale is:
 
 - One ammunition unit has weight `1`.
-- A pistol has weight `10`.
-- A character has base carry capacity `200`.
+- A one-handed weapon has weight of about `100`.
+- A character has base carry capacity `2000`, set in catalog content.
 
-The development catalog uses the same scale. Its representative training rifle
-has weight `25`, and its Field Pack grants a `50` carry-capacity bonus.
+The development catalog uses the same scale. Its Training Shortbow has weight
+`80`, and its Traveler's Pack grants a `500` carry-capacity bonus.
 
 Carried weight includes:
 

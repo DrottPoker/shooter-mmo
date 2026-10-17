@@ -2,8 +2,14 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
+// The definitions the stress fixtures grant come from configuration, so the fixture never
+// names game content.
 public sealed record StackStressFixtureOptions(bool Enabled, string AuthoritySecret)
 {
+    public string InventoryDefinitionId { get; init; } = string.Empty;
+
+    public string LootDefinitionId { get; init; } = string.Empty;
+
     public const string SectionName = "StackStressFixtures";
     public const string SecretEnvironmentVariable = "STACK_STRESS_FIXTURE_SECRET";
     public const string AuthorityHeaderName = "X-Stack-Stress-Fixture-Key";
@@ -17,6 +23,10 @@ public sealed record StackStressFixtureOptions(bool Enabled, string AuthoritySec
 
         var enabled = configuration.GetValue($"{SectionName}:Enabled", false);
         var secret = configuration[SecretEnvironmentVariable]?.Trim() ?? string.Empty;
+        var inventoryDefinitionId =
+            configuration[$"{SectionName}:InventoryDefinitionId"]?.Trim() ?? string.Empty;
+        var lootDefinitionId =
+            configuration[$"{SectionName}:LootDefinitionId"]?.Trim() ?? string.Empty;
         var errors = new List<string>();
         if (enabled && !isDevelopment)
         {
@@ -34,6 +44,11 @@ public sealed record StackStressFixtureOptions(bool Enabled, string AuthoritySec
         if (enabled)
         {
             ValidateDisposableDatabase(postgresConnectionString, errors);
+            if (inventoryDefinitionId.Length == 0 || lootDefinitionId.Length == 0)
+            {
+                errors.Add(
+                    $"{SectionName}:InventoryDefinitionId and {SectionName}:LootDefinitionId must name item definitions when stack stress fixtures are enabled.");
+            }
         }
 
         if (errors.Count > 0)
@@ -44,7 +59,11 @@ public sealed record StackStressFixtureOptions(bool Enabled, string AuthoritySec
                 + string.Join(Environment.NewLine, errors.Select(error => $"- {error}")));
         }
 
-        return new StackStressFixtureOptions(enabled, secret);
+        return new StackStressFixtureOptions(enabled, secret)
+        {
+            InventoryDefinitionId = inventoryDefinitionId,
+            LootDefinitionId = lootDefinitionId
+        };
     }
 
     private static void ValidateDisposableDatabase(

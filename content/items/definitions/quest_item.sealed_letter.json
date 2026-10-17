@@ -5,14 +5,14 @@
   "defaultPolicies": [
     "protected_on_death"
   ],
-  "displayName": "Signal Transponder",
+  "displayName": "Sealed Letter",
   "equipmentSlots": [ ],
-  "id": "quest_item.signal_transponder",
+  "id": "quest_item.sealed_letter",
   "locationEligibility": {
     "secureContainer": true
   },
   "maximumStackSize": 1,
   "playerDestroyable": false,
   "tags": [ ],
-  "unitWeight": 1
+  "unitWeight": 10
 }

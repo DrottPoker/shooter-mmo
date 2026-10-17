@@ -622,6 +622,35 @@ namespace Mmorpg.Client.Tests.EditMode
                 out _), Is.False);
         }
 
+        [Test]
+        public void LoadingDropsPresentationOfRemovedDefinitionFiles()
+        {
+            var paths = ItemCatalogEditorPaths.CreateDefault();
+            var presentation = ItemPresentationCatalogJson.Deserialize(
+                File.ReadAllText(paths.PresentationPath));
+            presentation.entries = presentation.entries.Concat(new[]
+            {
+                new ItemPresentationEntry
+                {
+                    definitionId = "retired.definition",
+                    iconAddress = string.Empty,
+                    localizationKey = "items.retired.definition.name",
+                    fallbackDisplayName = "Retired Definition",
+                    prefabPresentationKey = string.Empty
+                }
+            }).ToArray();
+
+            var workspace = new ItemCatalogEditorWorkspace(
+                ItemCatalogEditorContent.Load(paths.ItemsDirectory),
+                ItemCatalogEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)),
+                presentation);
+
+            Assert.That(workspace.FindPresentation("retired.definition"), Is.Null);
+            Assert.That(
+                workspace.Presentation.entries.Select(entry => entry.definitionId),
+                Is.EquivalentTo(workspace.Authoring.definitions.Select(definition => definition.id)));
+        }
+
         private static ItemCatalogEditorWorkspace LoadCheckedInWorkspace()
         {
             var paths = ItemCatalogEditorPaths.CreateDefault();

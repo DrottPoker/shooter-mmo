@@ -862,8 +862,16 @@ namespace Mmorpg.WorldData.Editor.Items
                 StringComparison.Ordinal));
         }
 
+        // Adds entries for new definitions and drops entries of definitions whose files were
+        // removed, such as a retired definition.
         private void SynchronizePresentationEntries()
         {
+            var definitionIds = new HashSet<string>(
+                Authoring.definitions.Select(definition => definition.id),
+                StringComparer.Ordinal);
+            Presentation.entries = Presentation.entries
+                .Where(entry => definitionIds.Contains(entry.definitionId))
+                .ToArray();
             foreach (var definition in Authoring.definitions)
             {
                 if (FindPresentation(definition.id) == null)

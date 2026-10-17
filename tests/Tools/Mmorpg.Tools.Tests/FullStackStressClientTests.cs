@@ -121,6 +121,7 @@ public sealed class FullStackStressClientTests
             {
                 Content = JsonContent.Create(new FullStackStackStressLootHotspotResponse(
                     corpseId,
+                    "fixture.ore",
                     24,
                     50,
                     DateTime.UtcNow.AddMinutes(5)))

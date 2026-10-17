@@ -186,10 +186,10 @@ category, tag, equipment-slot, and Secure Container tier content, and
 location eligibility, and policy defaults. The generated runtime catalog is
 `src/Shared/WorldData/Generated/Items/core.item-catalog.json`.
 
-Catalog format version 2 uses unitless non-negative integer `unitWeight` and
-`carryCapacityBonus` fields. Do not add physical-unit or decimal weight fields.
-The baseline scale is ammunition `1`, pistol `10`, and base character capacity
-`200`.
+Catalog format version 3 uses unitless non-negative integer `unitWeight`,
+`carryCapacityBonus`, and `baseCarryCapacity` fields. Do not add physical-unit or
+decimal weight fields. The baseline scale is ammunition `1`, a one-handed weapon
+about `100`, and base character capacity `2000`.
 
 The canonical content workflow is available in Unity at
 `MMORPG > Tools > Item Catalog`:
@@ -736,8 +736,8 @@ routed through the worker that currently owns the character.
    - Recovery Delivery Pack
 
    Expected result: an empty offline character receives the selected
-   deterministic state. The Full Inventory Test Pack reports weight `122 / 250`. The
-   encumbrance packs report `200 / 200` and `280 / 200`. Package controls become
+   deterministic state. The Full Inventory Test Pack reports weight `1040 / 2500`. The
+   encumbrance packs report `2000 / 2000` and `2800 / 2000`. Package controls become
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
    rejected by GameService without a partial item transaction.
@@ -793,7 +793,7 @@ names the package.
 
 ### Manual Player Loop
 
-1. Press `B` and verify only Permanent inventory, the equipped Field Pack
+1. Press `B` and verify only Permanent inventory, the equipped Traveler's Pack
    contents, and Secure Container are shown. Press `C` and verify equipment plus
    character storage are shown. Press `I` and verify the complete Development
    view adds the upper-right Bank and Recovery context. Pressing the active key
@@ -801,20 +801,21 @@ names the package.
    `Escape` closes any view; the cursor stays free. Verify that
    hidden modules leave no background or header behind and that Character
    Inventory keeps the same position and size in all three views.
-2. Drag the rifle, vest, pickaxe, or ring from Permanent inventory onto a
+2. Drag the shortbow, jerkin, pickaxe, or ring from Permanent inventory onto a
    compatible empty equipment slot. Drag the equipped item onto an empty
    Permanent slot to unequip it. Valid targets highlight green, invalid targets
    highlight red, and the UI waits for the committed refresh before showing the
    new location. The header drops by the equipped item's own weight and restores
    it when the item is unequipped into carried storage. Clicking a destination
    without dragging does not move an item.
-3. Drag the empty Field Pack from Permanent inventory into one of the equipped
-   Bag's general slots and back. Open Bank and drag the second empty Field Pack
-   between Bank and Permanent inventory. Click the equipped non-empty Field Pack
+3. Drag the empty Traveler's Pack from Permanent inventory into one of the
+   equipped Bag's general slots and back. Open Bank and drag the second empty
+   Traveler's Pack between Bank and Permanent inventory. Click the equipped
+   non-empty Traveler's Pack
    only to inspect its actions, then drag it and confirm ordinary Permanent, Bag,
    and Bank destinations reject it.
-4. Drag the field dressing, iron ore, and ammunition out of and back into the
-   medical, material, and ammunition specialized slots. Drag the rifle across a
+4. Drag the healing potion, iron ore, and arrows out of and back into the
+   supplies, material, and ammunition specialized slots. Drag the shortbow across a
    specialized slot and Secure Container target and confirm both reject it.
 5. In Bank, click an iron-ore stack, enter the split quantity, enable
    `Split to Target`, then drag that selected stack onto an empty Bank slot. Drag
@@ -826,15 +827,15 @@ names the package.
 6. In Recovery, drag either item in the prepared delivery onto a Permanent or
    Bank slot. The complete delivery disappears and both original item instances
    appear in the chosen container only after the committed full refresh.
-7. Starting from fixture weight `122 / 250`, move Bank iron ore quantity `20` to
-   Permanent inventory. Weight becomes `242 / 250`. Move Bank iron ore quantity
-   `16` to reach `338 / 250`, where the movement multiplier begins its linear
-   decline. Move the single field dressing to reach
-   `340 / 250`, followed by the empty Bank Field Pack to reach exactly
-   `350 / 250`, load `140%`, and movement `20%`.
-8. Attempt to move the single Bank ammunition item into carried storage. The
-   local target is disabled. Any equivalent authoritative request is rejected by
-   the server, and the committed weight remains exactly `350 / 250`.
+7. Starting from fixture weight `1040 / 2500`, move Bank iron ore quantity `20`
+   to Permanent inventory. Weight becomes `2240 / 2500`. Move Bank iron ore
+   quantity `19` to reach `3380 / 2500`, above 100 percent, where the movement
+   multiplier declines linearly. Move the single healing potion to reach
+   `3400 / 2500`, followed by the empty Bank Traveler's Pack to reach exactly
+   `3500 / 2500`, load `140%`, and movement `20%`.
+8. Attempt to move the Bank arrow stack into carried storage. The local target
+   is disabled. Any equivalent authoritative request is rejected by the server,
+   and the committed weight remains exactly `3500 / 2500`.
 9. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
    quantity, carry value, and revision is restored without loss or duplication.
 10. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
@@ -967,7 +968,7 @@ at the same time:
    commits as corpse-only movement, both clients receive the result, and the
    character weight and item-state revision do not change. Verify that each
    Corpse Equipment button shows a type such as `Head [head]` or
-   `Body Armour [body_armor]`. A compatible item is accepted and an incompatible
+   `Body [body]`. A compatible item is accepted and an incompatible
    item is rejected without moving either item.
 10. In one client, drag a corpse Bag child. At the same time in the other client,
    drag the corpse Bag root onto the occupied player Bag equipment slot.
@@ -1164,13 +1165,13 @@ in [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md).
 Phase 13 uses Mira the Quartermaster and the existing Phase 12 world interaction
 session. No scene object, inspector assignment, or new Unity asset is required.
 The default GameService lifecycle profile charges `100` currency for one-death
-insurance and grants one `quest_item.signal_transponder` with lineage
-`quest.local.signal_transponder`.
+insurance and grants one `quest_item.sealed_letter` with lineage
+`quest.local.sealed_letter`.
 
 Prepare a local character while it is offline:
 
 1. Open `MMORPG > Tools > Inventory Item Grants` and grant
-   `weapon.training_rifle` into a free Permanent Inventory slot.
+   `weapon.training_shortbow` into a free Permanent Inventory slot.
 2. Give the character local development currency. With the default Compose
    database values, replace the character name and run:
 
@@ -1193,7 +1194,7 @@ Expected result:
   NPC`. The server charges the configured price atomically and rejects a second
   active policy.
 - Explicit removal keeps the item instance and removes the insured label.
-- Accepting the quest creates one protected Signal Transponder with source
+- Accepting the quest creates one protected Sealed Letter with source
   `Quest grant`. Repeated acceptance does not create a duplicate.
 - Generic destroy rejects the protected quest item. NPC abandonment removes only
   that grant lineage, and reacceptance creates exactly one new required item.

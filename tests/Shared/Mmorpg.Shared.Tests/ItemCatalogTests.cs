@@ -8,15 +8,16 @@ public sealed class ItemCatalogTests
 {
     private static readonly string[] RepresentativeDefinitionIds =
     [
-        "ammunition.training_556",
-        "armor.starter_vest",
-        "bag.field_pack",
+        "ammunition.bronze_arrow",
+        "armor.leather_jerkin",
+        "bag.travelers_pack",
+        "food.cooked_trout",
+        "jewelry.copper_ring",
         "material.iron_ore",
-        "medical.field_dressing",
-        "quest_item.signal_transponder",
-        "ring.starter_band",
+        "potion.minor_healing",
+        "quest_item.sealed_letter",
         "tool.starter_pickaxe",
-        "weapon.training_rifle"
+        "weapon.training_shortbow"
     ];
 
     [Fact]
@@ -30,9 +31,11 @@ public sealed class ItemCatalogTests
         Assert.Equal(
             RepresentativeDefinitionIds,
             catalog.Definitions.Select(definition => definition.Id));
-        Assert.Equal(1, Definition(catalog, "ammunition.training_556").UnitWeight);
-        Assert.Equal(25, Definition(catalog, "weapon.training_rifle").UnitWeight);
-        Assert.Equal(50, Definition(catalog, "bag.field_pack").Bag.CarryCapacityBonus);
+        Assert.Equal(1, Definition(catalog, "ammunition.bronze_arrow").UnitWeight);
+        Assert.Equal(80, Definition(catalog, "weapon.training_shortbow").UnitWeight);
+        Assert.Equal(500, Definition(catalog, "bag.travelers_pack").Bag.CarryCapacityBonus);
+        Assert.Equal(2000, catalog.Character.BaseCarryCapacity);
+        Assert.Equal(1000, catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition").MaximumQuantity);
         Assert.Equal(4, catalog.SecureContainerTiers.Single().SlotCapacity);
         Assert.All(catalog.Definitions, definition =>
             Assert.Equal(64, definition.StructuralFingerprint.Length));
@@ -223,7 +226,7 @@ public sealed class ItemCatalogTests
     [Fact]
     public void DecimalWeightFailsJsonValidation()
     {
-        var malformed = ItemCatalogTestData.DefinitionJson("ammunition.training_556").Replace(
+        var malformed = ItemCatalogTestData.DefinitionJson("ammunition.bronze_arrow").Replace(
             "\"unitWeight\": 1",
             "\"unitWeight\": 1.5",
             StringComparison.Ordinal);
@@ -235,7 +238,7 @@ public sealed class ItemCatalogTests
     [Fact]
     public void MissingRequiredBooleanFailsValidation()
     {
-        const string definitionId = "ammunition.training_556";
+        const string definitionId = "ammunition.bronze_arrow";
         var malformed = ItemCatalogTestData.DefinitionJson(definitionId).Replace(
             "  \"playerDestroyable\": true,\n",
             string.Empty,

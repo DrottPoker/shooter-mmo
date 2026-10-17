@@ -1,18 +1,18 @@
 {
   "bag": null,
   "blockedEquipmentSlots": [ ],
-  "category": "medical",
+  "category": "potion",
   "defaultPolicies": [ ],
-  "displayName": "Field Dressing",
+  "displayName": "Minor Healing Potion",
   "equipmentSlots": [ ],
-  "id": "medical.field_dressing",
+  "id": "potion.minor_healing",
   "locationEligibility": {
     "secureContainer": true
   },
   "maximumStackSize": 10,
   "playerDestroyable": true,
   "tags": [
-    "medical"
+    "potion"
   ],
-  "unitWeight": 2
+  "unitWeight": 20
 }

@@ -5,9 +5,12 @@ namespace Mmorpg.GameService.Items;
 
 internal sealed record StackStressInventoryFixtureRequest(string Workload, string RunId);
 
+// The response names the fixture definitions, so stress clients never name game content.
 internal sealed record StackStressInventoryFixtureResponse(
     string Workload,
-    CharacterInventorySnapshotResponse Inventory);
+    CharacterInventorySnapshotResponse Inventory,
+    string InventoryDefinitionId,
+    string LootDefinitionId);
 
 internal sealed record StackStressLootHotspotRequest(
     string RunId,
@@ -21,6 +24,7 @@ internal sealed record StackStressLootHotspotRequest(
 
 internal sealed record StackStressLootHotspotResponse(
     Guid CorpseId,
+    string LootDefinitionId,
     int LootStacks,
     int QuantityPerStack,
     DateTime ExpiresAt);
@@ -28,10 +32,10 @@ internal sealed record StackStressLootHotspotResponse(
 internal sealed class StackStressFixtureService(
     ItemQueryService itemQueryService,
     ItemTransactionService transactionService,
-    SimulationWorkerLeasePolicy workerLeasePolicy)
+    SimulationWorkerLeasePolicy workerLeasePolicy,
+    StackStressFixtureOptions options)
 {
-    private const string InventoryDefinitionId = "medical.field_dressing";
-    private const string LootDefinitionId = "material.iron_ore";
+    private const string MobDefinitionId = "mob.stack_stress_fixture";
     private const int HotspotLootStacks = 24;
     private const int HotspotQuantityPerStack = 50;
 
@@ -70,12 +74,12 @@ internal sealed class StackStressFixtureService(
 
         var grants = request.Workload switch
         {
-            "inventory" => new[] { new FixtureGrant(InventoryDefinitionId, 1, 0) },
-            "loot-hotspot" => new[] { new FixtureGrant(LootDefinitionId, 1, 0) },
+            "inventory" => new[] { new FixtureGrant(options.InventoryDefinitionId, 1, 0) },
+            "loot-hotspot" => new[] { new FixtureGrant(options.LootDefinitionId, 1, 0) },
             _ => new[]
             {
-                new FixtureGrant(LootDefinitionId, 1, 0),
-                new FixtureGrant(InventoryDefinitionId, 1, 1)
+                new FixtureGrant(options.LootDefinitionId, 1, 0),
+                new FixtureGrant(options.InventoryDefinitionId, 1, 1)
             }
         };
 
@@ -115,7 +119,11 @@ internal sealed class StackStressFixtureService(
         }
 
         return ServiceResult<StackStressInventoryFixtureResponse>.Ok(
-            new StackStressInventoryFixtureResponse(request.Workload, finalSnapshot.Value!));
+            new StackStressInventoryFixtureResponse(
+                request.Workload,
+                finalSnapshot.Value!,
+                options.InventoryDefinitionId,
+                options.LootDefinitionId));
     }
 
     public async Task<ServiceResult<StackStressLootHotspotResponse>>
@@ -142,7 +150,7 @@ internal sealed class StackStressFixtureService(
         var loot = Enumerable.Range(0, HotspotLootStacks)
             .Select(_ => new MobCorpseLootEntryRequest(
                 Guid.NewGuid(),
-                LootDefinitionId,
+                options.LootDefinitionId,
                 HotspotQuantityPerStack))
             .ToArray();
         var result = await transactionService.ExecuteAsync(
@@ -154,7 +162,7 @@ internal sealed class StackStressFixtureService(
                     request.WorkerId,
                     request.WorkerRuntimeId,
                     request.ShardId,
-                    "mob.stack_stress_fixture",
+                    MobDefinitionId,
                     $"Stack Stress {request.RunId}",
                     request.PositionX,
                     request.PositionY,
@@ -179,6 +187,7 @@ internal sealed class StackStressFixtureService(
         return ServiceResult<StackStressLootHotspotResponse>.Ok(
             new StackStressLootHotspotResponse(
                 corpseId,
+                options.LootDefinitionId,
                 HotspotLootStacks,
                 HotspotQuantityPerStack,
                 now.AddSeconds(request.LifetimeSeconds)));

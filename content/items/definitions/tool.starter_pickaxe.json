@@ -14,5 +14,5 @@
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "tags": [ ],
-  "unitWeight": 15
+  "unitWeight": 150
 }

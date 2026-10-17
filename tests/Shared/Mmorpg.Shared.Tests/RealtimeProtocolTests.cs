@@ -131,7 +131,7 @@ public sealed class RealtimeProtocolTests
                 10,
                 itemId,
                 20,
-                "primary_weapon"),
+                "main_hand"),
             RealtimeItemOperationIntent.CreateUnequip(
                 operationId,
                 10,

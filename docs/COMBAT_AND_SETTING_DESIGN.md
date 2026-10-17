@@ -729,8 +729,9 @@ Expected additions:
   multipliers, taunt, and a target switch margin.
 - Mob combat data for health, defense, elemental weaknesses, and movement
   impairment resistance.
-- Review of existing item content with modern naming, such as Training Rifle
-  and Training 5.56 Ammunition, against the fantasy setting.
+- Item content with fantasy definitions, categories, and equipment slots.
+  Implemented: see
+  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
 ## Superseded Direction
 

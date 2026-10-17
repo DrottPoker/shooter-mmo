@@ -1,18 +1,20 @@
 {
   "bag": null,
   "blockedEquipmentSlots": [ ],
-  "category": "armor",
+  "category": "ammunition",
   "defaultPolicies": [ ],
-  "displayName": "Starter Vest",
+  "displayName": "Bronze Arrow",
   "equipmentSlots": [
-    "body_armor"
+    "ammunition"
   ],
-  "id": "armor.starter_vest",
+  "id": "ammunition.bronze_arrow",
   "locationEligibility": {
     "secureContainer": true
   },
-  "maximumStackSize": 1,
+  "maximumStackSize": 1000,
   "playerDestroyable": true,
-  "tags": [ ],
-  "unitWeight": 20
+  "tags": [
+    "ammunition"
+  ],
+  "unitWeight": 1
 }

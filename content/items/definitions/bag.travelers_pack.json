@@ -1,6 +1,6 @@
 {
   "bag": {
-    "carryCapacityBonus": 50,
+    "carryCapacityBonus": 500,
     "slots": [
       {
         "acceptedTags": [ ],
@@ -24,7 +24,8 @@
       },
       {
         "acceptedTags": [
-          "medical"
+          "food",
+          "potion"
         ],
         "index": 4,
         "kind": "specialized"
@@ -48,16 +49,16 @@
   "blockedEquipmentSlots": [ ],
   "category": "bag",
   "defaultPolicies": [ ],
-  "displayName": "Field Pack",
+  "displayName": "Traveler's Pack",
   "equipmentSlots": [
     "bag"
   ],
-  "id": "bag.field_pack",
+  "id": "bag.travelers_pack",
   "locationEligibility": {
     "secureContainer": false
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "tags": [ ],
-  "unitWeight": 10
+  "unitWeight": 100
 }

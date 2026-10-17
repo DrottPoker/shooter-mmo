@@ -151,7 +151,7 @@ disconnect to avoid danger.
 - Item definitions provide one primary category, zero or more tags, unitless
   integer weight, stack rules, equipment compatibility, location eligibility,
   and optional default policy behavior.
-- The first specialized Bag slot tags are medical, material, and ammunition.
+- The specialized Bag slot tags are potion, food, material, and ammunition.
 - Matching items may use specialized or general Bag slots.
 - Every item instance has exactly one current custody assignment.
 - Item quantity, policy, ownership, slot assignment, and weight are always
@@ -245,7 +245,8 @@ equipped Bag's contents still count and its capacity bonus still applies. Bank,
 Recovery Storage, corpse, and future non-carried economy custody do not count.
 
 Weight is a unitless non-negative integer gameplay value. The baseline scale is
-ammunition `1`, pistol `10`, and base character carry capacity `200`. The
+ammunition `1`, a one-handed weapon about `100`, and base character carry
+capacity `2000`. The
 equipped Bag may add a capacity bonus.
 
 - At or below 100 percent, movement uses base speed. Running with run energy

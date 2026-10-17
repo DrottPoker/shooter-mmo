@@ -221,14 +221,14 @@ public sealed class RealtimeCorpseProtocolTests
                 new RealtimeCorpseSlot(
                     0,
                     "general",
-                    ["medical"],
+                    ["potion"],
                     "head",
                     null!),
                 new RealtimeCorpseSlot(
                     1,
                     "general",
                     Array.Empty<string>(),
-                    "body_armor",
+                    "body",
                     new RealtimeCorpseItem(
                         Guid.NewGuid(),
                         "material.iron_ore",
@@ -249,9 +249,9 @@ public sealed class RealtimeCorpseProtocolTests
         Assert.Equal(expected.UpdateId, actual.UpdateId);
         Assert.Equal(expected.BaseRevision, actual.BaseRevision);
         Assert.Null(actual.Slots[0].Item);
-        Assert.Equal(["medical"], actual.Slots[0].AcceptedTags);
+        Assert.Equal(["potion"], actual.Slots[0].AcceptedTags);
         Assert.Equal("head", actual.Slots[0].EquipmentSlotId);
-        Assert.Equal("body_armor", actual.Slots[1].EquipmentSlotId);
+        Assert.Equal("body", actual.Slots[1].EquipmentSlotId);
         Assert.Equal("material.iron_ore", actual.Slots[1].Item.DefinitionId);
     }
 

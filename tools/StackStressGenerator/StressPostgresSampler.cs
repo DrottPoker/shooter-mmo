@@ -29,17 +29,17 @@ public sealed record StressPostgresSummary(
     StressItemInvariantSummary? ItemInvariants);
 
 public sealed record StressItemInvariantSummary(
-    long ExpectedIronOreQuantity,
-    long ActualIronOreQuantity,
-    long ExpectedFieldDressingQuantity,
-    long ActualFieldDressingQuantity,
+    long ExpectedLootQuantity,
+    long ActualLootQuantity,
+    long ExpectedInventoryItemQuantity,
+    long ActualInventoryItemQuantity,
     int DuplicateContainerSlots,
     int InvalidItemCustodyRows,
     int PendingItemOperations)
 {
     public int Violations =>
-        (ExpectedIronOreQuantity == ActualIronOreQuantity ? 0 : 1)
-        + (ExpectedFieldDressingQuantity == ActualFieldDressingQuantity ? 0 : 1)
+        (ExpectedLootQuantity == ActualLootQuantity ? 0 : 1)
+        + (ExpectedInventoryItemQuantity == ActualInventoryItemQuantity ? 0 : 1)
         + DuplicateContainerSlots
         + InvalidItemCustodyRows
         + PendingItemOperations;
@@ -270,14 +270,15 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         StressWorkloadProfile workload,
         int inventoryFixtureBots,
         bool hasLootHotspot,
+        StressFixtureDefinitions? fixtureDefinitions,
         CancellationToken cancellationToken)
     {
         const string sql = """
             select
                 coalesce(sum(item.quantity) filter (
-                    where item.definition_id = 'material.iron_ore'), 0)::bigint,
+                    where item.definition_id = @LootDefinitionId), 0)::bigint,
                 coalesce(sum(item.quantity) filter (
-                    where item.definition_id = 'medical.field_dressing'), 0)::bigint,
+                    where item.definition_id = @InventoryDefinitionId), 0)::bigint,
                 (select count(*)::integer
                  from (
                      select duplicate.container_id, duplicate.container_slot_index
@@ -306,6 +307,12 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
+        command.Parameters.AddWithValue(
+            "LootDefinitionId",
+            fixtureDefinitions?.LootDefinitionId ?? string.Empty);
+        command.Parameters.AddWithValue(
+            "InventoryDefinitionId",
+            fixtureDefinitions?.InventoryDefinitionId ?? string.Empty);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
@@ -313,18 +320,18 @@ public sealed class StressPostgresSampler : IAsyncDisposable
                 "PostgreSQL did not return stack stress item invariants.");
         }
 
-        var expectedIron = workload is StressWorkloadProfile.LootHotspot
+        var expectedLoot = workload is StressWorkloadProfile.LootHotspot
             or StressWorkloadProfile.MixedGameplay
                 ? inventoryFixtureBots + (hasLootHotspot ? 24L * 50L : 0L)
                 : 0L;
-        var expectedDressing = workload is StressWorkloadProfile.Inventory
+        var expectedInventoryItem = workload is StressWorkloadProfile.Inventory
             or StressWorkloadProfile.MixedGameplay
                 ? inventoryFixtureBots
                 : 0L;
         itemInvariants = new StressItemInvariantSummary(
-            expectedIron,
+            expectedLoot,
             reader.GetInt64(0),
-            expectedDressing,
+            expectedInventoryItem,
             reader.GetInt64(1),
             reader.GetInt32(2),
             reader.GetInt32(3),

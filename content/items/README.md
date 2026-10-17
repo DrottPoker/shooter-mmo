@@ -46,7 +46,9 @@ tag, and slot is content.
 
 Unit weight, carry capacity, and the Bag carry-capacity bonus use unitless,
 non-negative integer values. Physical measurement units and decimal weight
-values are not part of the contract. A stackable definition may only be
+values are not part of the contract. The balance scale is one ammunition unit
+`1`, a one-handed weapon about `100`, and base character carry capacity `2000`,
+so 1000 spare arrows use half of the base capacity. A stackable definition may only be
 compatible with equipment slots that hold more than one unit, and one equipment
 slot holds at most the smaller of its own maximum quantity and the definition's
 stack size.

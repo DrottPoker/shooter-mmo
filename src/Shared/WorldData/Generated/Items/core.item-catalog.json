@@ -1,10 +1,10 @@
 {
   "formatVersion": 3,
   "catalogId": "core",
-  "revision": "c424a6d54b740cf11d9529264d7b3eecc85a2bb0d5e1264b297e668440bf63e8",
+  "revision": "112857ebd8a9af67c17d634365399ef91eaef469057f786e8a89962de87aab83",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
-    "baseCarryCapacity": 200,
+    "baseCarryCapacity": 2000,
     "inventorySlotCount": 20,
     "bankSlotCount": 40
   },
@@ -22,12 +22,20 @@
       "displayName": "Bag"
     },
     {
+      "id": "food",
+      "displayName": "Food"
+    },
+    {
+      "id": "jewelry",
+      "displayName": "Jewelry"
+    },
+    {
       "id": "material",
       "displayName": "Material"
     },
     {
-      "id": "medical",
-      "displayName": "Medical"
+      "id": "potion",
+      "displayName": "Potion"
     },
     {
       "id": "quest_item",
@@ -48,12 +56,16 @@
       "displayName": "Ammunition"
     },
     {
+      "id": "food",
+      "displayName": "Food"
+    },
+    {
       "id": "material",
       "displayName": "Material"
     },
     {
-      "id": "medical",
-      "displayName": "Medical"
+      "id": "potion",
+      "displayName": "Potion"
     }
   ],
   "equipmentSlots": [
@@ -63,24 +75,44 @@
       "maximumQuantity": 1
     },
     {
-      "id": "body_armor",
-      "displayName": "Body Armor",
+      "id": "neck",
+      "displayName": "Neck",
       "maximumQuantity": 1
     },
     {
-      "id": "primary_weapon",
-      "displayName": "Primary Weapon",
+      "id": "body",
+      "displayName": "Body",
       "maximumQuantity": 1
     },
     {
-      "id": "secondary_weapon",
-      "displayName": "Secondary Weapon",
+      "id": "legs",
+      "displayName": "Legs",
       "maximumQuantity": 1
     },
     {
-      "id": "tool",
-      "displayName": "Tool",
+      "id": "hands",
+      "displayName": "Hands",
       "maximumQuantity": 1
+    },
+    {
+      "id": "feet",
+      "displayName": "Feet",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "main_hand",
+      "displayName": "Main Hand",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "off_hand",
+      "displayName": "Off Hand",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "ammunition",
+      "displayName": "Ammunition",
+      "maximumQuantity": 1000
     },
     {
       "id": "ring_1",
@@ -93,6 +125,11 @@
       "maximumQuantity": 1
     },
     {
+      "id": "tool",
+      "displayName": "Tool",
+      "maximumQuantity": 1
+    },
+    {
       "id": "bag",
       "displayName": "Bag",
       "maximumQuantity": 1
@@ -100,32 +137,16 @@
   ],
   "definitions": [
     {
-      "id": "ammunition.training_556",
-      "displayName": "Training 5.56 Ammunition",
+      "id": "ammunition.bronze_arrow",
+      "displayName": "Bronze Arrow",
       "category": "ammunition",
       "tags": [
         "ammunition"
       ],
       "unitWeight": 1,
-      "maximumStackSize": 60,
-      "equipmentSlots": [],
-      "blockedEquipmentSlots": [],
-      "playerDestroyable": true,
-      "locationEligibility": {
-        "secureContainer": true
-      },
-      "defaultPolicies": [],
-      "structuralFingerprint": "5bc759c512f683d496e0128377c39e9c56ba0aef2eb096a165b80018456521b6"
-    },
-    {
-      "id": "armor.starter_vest",
-      "displayName": "Starter Vest",
-      "category": "armor",
-      "tags": [],
-      "unitWeight": 20,
-      "maximumStackSize": 1,
+      "maximumStackSize": 1000,
       "equipmentSlots": [
-        "body_armor"
+        "ammunition"
       ],
       "blockedEquipmentSlots": [],
       "playerDestroyable": true,
@@ -133,14 +154,32 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "8c08c18b0769072942a81f052e5c974fcdab9273d0fc0f9115d88c3b0e328b62"
+      "structuralFingerprint": "fa06e0a7bc54db1272427fc42b47209a84690c5c7c919fe41c759f9e3cf7ca5e"
     },
     {
-      "id": "bag.field_pack",
-      "displayName": "Field Pack",
+      "id": "armor.leather_jerkin",
+      "displayName": "Leather Jerkin",
+      "category": "armor",
+      "tags": [],
+      "unitWeight": 150,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "c9d11b020651869e3ae8bf1bb79d171548904dae1780f5ea0c862f8a53ad389f"
+    },
+    {
+      "id": "bag.travelers_pack",
+      "displayName": "Traveler\u0027s Pack",
       "category": "bag",
       "tags": [],
-      "unitWeight": 10,
+      "unitWeight": 100,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "bag"
@@ -152,7 +191,7 @@
       },
       "defaultPolicies": [],
       "bag": {
-        "carryCapacityBonus": 50,
+        "carryCapacityBonus": 500,
         "slots": [
           {
             "index": 0,
@@ -178,7 +217,8 @@
             "index": 4,
             "kind": "specialized",
             "acceptedTags": [
-              "medical"
+              "food",
+              "potion"
             ]
           },
           {
@@ -197,34 +237,16 @@
           }
         ]
       },
-      "structuralFingerprint": "64ca706b3ef3162b6423dd24c253a4d011f19281c19886fba48389d7870e54bd"
+      "structuralFingerprint": "c1278a32aa3887b0018bb55984230b9ee3e6dea83030f75ee9d5dfe97acd5680"
     },
     {
-      "id": "material.iron_ore",
-      "displayName": "Iron Ore",
-      "category": "material",
+      "id": "food.cooked_trout",
+      "displayName": "Cooked Trout",
+      "category": "food",
       "tags": [
-        "material"
+        "food"
       ],
-      "unitWeight": 6,
-      "maximumStackSize": 100,
-      "equipmentSlots": [],
-      "blockedEquipmentSlots": [],
-      "playerDestroyable": true,
-      "locationEligibility": {
-        "secureContainer": true
-      },
-      "defaultPolicies": [],
-      "structuralFingerprint": "e5f7ba1cae90d219f6e7a867923ee099977abe163056e3f74fc42cb9fa94ffce"
-    },
-    {
-      "id": "medical.field_dressing",
-      "displayName": "Field Dressing",
-      "category": "medical",
-      "tags": [
-        "medical"
-      ],
-      "unitWeight": 2,
+      "unitWeight": 20,
       "maximumStackSize": 10,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -233,32 +255,14 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "f209834dd94a837f21862b06ad0425ed5ba9946e763a6f10b6c282bbd8253d27"
+      "structuralFingerprint": "0a14fa2f9dca4eebec1565fa0f185ff89ae5600e770a361e12a705ee5fb77499"
     },
     {
-      "id": "quest_item.signal_transponder",
-      "displayName": "Signal Transponder",
-      "category": "quest_item",
+      "id": "jewelry.copper_ring",
+      "displayName": "Copper Ring",
+      "category": "jewelry",
       "tags": [],
-      "unitWeight": 1,
-      "maximumStackSize": 1,
-      "equipmentSlots": [],
-      "blockedEquipmentSlots": [],
-      "playerDestroyable": false,
-      "locationEligibility": {
-        "secureContainer": true
-      },
-      "defaultPolicies": [
-        "protected_on_death"
-      ],
-      "structuralFingerprint": "b9facfc520fd062f20419026a3589375bb15d61091c73018e03d473b3a42d15c"
-    },
-    {
-      "id": "ring.starter_band",
-      "displayName": "Starter Band",
-      "category": "armor",
-      "tags": [],
-      "unitWeight": 1,
+      "unitWeight": 10,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "ring_1",
@@ -270,14 +274,68 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "c9b0b45142b7daaea11d7bfadf176e23c97cebd5072ac9e64edb326561370efd"
+      "structuralFingerprint": "f110fde13edbe2470eab2af9ad7897a8f948ea8814ccb1ac12edb1229c18cfdb"
+    },
+    {
+      "id": "material.iron_ore",
+      "displayName": "Iron Ore",
+      "category": "material",
+      "tags": [
+        "material"
+      ],
+      "unitWeight": 60,
+      "maximumStackSize": 100,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "929a4e984b8982ab049ee54fe011d09a8e8d2f2f8f931242e5813f5f00de4df6"
+    },
+    {
+      "id": "potion.minor_healing",
+      "displayName": "Minor Healing Potion",
+      "category": "potion",
+      "tags": [
+        "potion"
+      ],
+      "unitWeight": 20,
+      "maximumStackSize": 10,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "structuralFingerprint": "6ba213d79c76a2284c1fe912a2129bee6b97c4b3e4f5c37abbe1b6e68eed95dc"
+    },
+    {
+      "id": "quest_item.sealed_letter",
+      "displayName": "Sealed Letter",
+      "category": "quest_item",
+      "tags": [],
+      "unitWeight": 10,
+      "maximumStackSize": 1,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": false,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [
+        "protected_on_death"
+      ],
+      "structuralFingerprint": "3caed9e50ded159ed28151e4b60e18f69cedb0021c7ef9c7cd83d33e59fdc508"
     },
     {
       "id": "tool.starter_pickaxe",
       "displayName": "Starter Pickaxe",
       "category": "tool",
       "tags": [],
-      "unitWeight": 15,
+      "unitWeight": 150,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "tool"
@@ -288,41 +346,58 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "0747890c9ba801ace017e1acfa1cbbfaec3d70e96a5617b2fd335fecf7304b61"
+      "structuralFingerprint": "f5e00ea2809b4aeabf79ae97c1c0b09d9d360f6dca98579bb05a85392eadefef"
     },
     {
-      "id": "weapon.training_rifle",
-      "displayName": "Training Rifle",
+      "id": "weapon.training_shortbow",
+      "displayName": "Training Shortbow",
       "category": "weapon",
       "tags": [],
-      "unitWeight": 25,
+      "unitWeight": 80,
       "maximumStackSize": 1,
       "equipmentSlots": [
-        "primary_weapon",
-        "secondary_weapon"
+        "main_hand"
       ],
-      "blockedEquipmentSlots": [],
+      "blockedEquipmentSlots": [
+        "off_hand"
+      ],
       "playerDestroyable": true,
       "locationEligibility": {
         "secureContainer": false
       },
       "defaultPolicies": [],
-      "structuralFingerprint": "13689ab9d2dfd0095e5825759afc922d0ec28842d41ad07ca5b71b7ac32ba329"
+      "structuralFingerprint": "f062a6af3f7a41e821539b89a50408d07abd5a6577548fe54e7167c749542732"
     }
   ],
   "secureContainerTiers": [
     {
       "id": "secure_container.base",
-      "displayName": "Secure Container",
+      "displayName": "Warded Pouch",
       "slotCapacity": 4,
       "structuralFingerprint": "9462228681fa92f812285851c4bc7b06ed9b5c436dc8a86c05011756a79d5dca"
     }
   ],
   "retired": {
-    "categories": [],
-    "tags": [],
-    "equipmentSlots": [],
-    "definitions": [],
+    "categories": [
+      "medical"
+    ],
+    "tags": [
+      "medical"
+    ],
+    "equipmentSlots": [
+      "body_armor",
+      "primary_weapon",
+      "secondary_weapon"
+    ],
+    "definitions": [
+      "ammunition.training_556",
+      "armor.starter_vest",
+      "bag.field_pack",
+      "medical.field_dressing",
+      "quest_item.signal_transponder",
+      "ring.starter_band",
+      "weapon.training_rifle"
+    ],
     "secureContainerTiers": []
   }
 }

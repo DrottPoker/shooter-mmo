@@ -137,6 +137,8 @@ public sealed class RouteTableSnapshotTests
             ["DevelopmentSimulationBots:Enabled"] = "true",
             ["ACTIVE_SIMULATION_BOTS_SECRET"] = "test-active-simulation-bots-secret-at-least-32-characters",
             ["StackStressFixtures:Enabled"] = "true",
+            ["StackStressFixtures:InventoryDefinitionId"] = "fixture.potion",
+            ["StackStressFixtures:LootDefinitionId"] = "fixture.ore",
             ["STACK_STRESS_FIXTURE_SECRET"] = "test-stack-stress-fixture-secret-at-least-32-characters"
         };
     }

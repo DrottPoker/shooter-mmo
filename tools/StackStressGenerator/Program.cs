@@ -156,7 +156,7 @@ public static class Program
         if (report.Postgres?.ItemInvariants is { } invariants)
         {
             Console.WriteLine(
-                $"Item invariants: iron {invariants.ActualIronOreQuantity}/{invariants.ExpectedIronOreQuantity}, field dressing {invariants.ActualFieldDressingQuantity}/{invariants.ExpectedFieldDressingQuantity}, duplicate slots {invariants.DuplicateContainerSlots}, invalid custody {invariants.InvalidItemCustodyRows}, pending operations {invariants.PendingItemOperations}.");
+                $"Item invariants: loot {invariants.ActualLootQuantity}/{invariants.ExpectedLootQuantity}, inventory item {invariants.ActualInventoryItemQuantity}/{invariants.ExpectedInventoryItemQuantity}, duplicate slots {invariants.DuplicateContainerSlots}, invalid custody {invariants.InvalidItemCustodyRows}, pending operations {invariants.PendingItemOperations}.");
         }
 
         Console.WriteLine($"JSON report: {outputPath}");

@@ -138,6 +138,12 @@ creation only when all of these conditions hold:
   `stress` or `test`.
 - The request is authenticated as a real account, originates from loopback, and
   supplies the configured fixture secret.
+- `StackStressFixtures:InventoryDefinitionId` and
+  `StackStressFixtures:LootDefinitionId` name the stackable definitions that the
+  fixtures grant to bots and place on loot corpses. The checked-in Development
+  settings use `potion.minor_healing` and `material.iron_ore`. The fixture
+  responses carry both ids, so the generator and its invariant sampler never
+  name game content.
 
 Fixture creation uses `ItemTransactionService` and the durable corpse service.
 It does not write inventory rows directly. The generator validates final item

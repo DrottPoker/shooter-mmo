@@ -1,18 +1,18 @@
 {
   "bag": null,
   "blockedEquipmentSlots": [ ],
-  "category": "ammunition",
+  "category": "food",
   "defaultPolicies": [ ],
-  "displayName": "Training 5.56 Ammunition",
+  "displayName": "Cooked Trout",
   "equipmentSlots": [ ],
-  "id": "ammunition.training_556",
+  "id": "food.cooked_trout",
   "locationEligibility": {
     "secureContainer": true
   },
-  "maximumStackSize": 60,
+  "maximumStackSize": 10,
   "playerDestroyable": true,
   "tags": [
-    "ammunition"
+    "food"
   ],
-  "unitWeight": 1
+  "unitWeight": 20
 }

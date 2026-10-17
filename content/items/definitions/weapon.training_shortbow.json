@@ -1,19 +1,20 @@
 {
   "bag": null,
-  "blockedEquipmentSlots": [ ],
+  "blockedEquipmentSlots": [
+    "off_hand"
+  ],
   "category": "weapon",
   "defaultPolicies": [ ],
-  "displayName": "Training Rifle",
+  "displayName": "Training Shortbow",
   "equipmentSlots": [
-    "primary_weapon",
-    "secondary_weapon"
+    "main_hand"
   ],
-  "id": "weapon.training_rifle",
+  "id": "weapon.training_shortbow",
   "locationEligibility": {
     "secureContainer": false
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "tags": [ ],
-  "unitWeight": 25
+  "unitWeight": 80
 }

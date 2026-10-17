@@ -460,10 +460,10 @@ concurrent inspection, and authoritative looting:
 - The compiler emits sorted deterministic runtime content under
   `src/Shared/WorldData/Generated/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
-- The checked-in development catalog has nine representative definitions, all
-  canonical equipment slots, the medical, material, and ammunition tags, one
-  Bag layout with general and specialized slots, and the four-slot base Secure
-  Container tier.
+- The checked-in catalog has ten fantasy definitions, thirteen equipment
+  slots including a stack-holding ammunition slot, the potion, food, material,
+  and ammunition tags, one Bag layout with general and specialized slots, and
+  the four-slot base Secure Container tier shown as Warded Pouch.
 - Framework-neutral pure rules cover stack compatibility, specialized slot tag
   acceptance, equipment compatibility, Secure Container eligibility, empty and
   non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
