@@ -241,9 +241,8 @@ no city requirement. Only committed GameService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
 Local Development explicitly enables global Bank and Recovery access so item
-flows can be tested anywhere on the map. Production keeps the configured
-service-point requirement, and insurance access is never included in the
-Development override.
+flows can be tested anywhere on the map. Production keeps the NPC interaction
+requirement, and insurance access is never included in the Development override.
 
 Unity now exposes the first player-facing inventory loop. Press `B` in
 an active World scene for character storage only, `C` for equipment together

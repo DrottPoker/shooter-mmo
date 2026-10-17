@@ -659,7 +659,7 @@ rejects that option in every other environment. The override does not include
 insurance and does not move authority into Unity or SimulationWorker: the worker
 still supplies its evaluated access state, and GameService still validates the
 exact live identity and commits the durable transaction. Production therefore
-retains authored service-point proximity without a separate code path or protocol
+keeps the NPC interaction requirement without a separate code path or protocol
 contract.
 
 Player corpses use durable PostgreSQL custody with a database-timed absolute
