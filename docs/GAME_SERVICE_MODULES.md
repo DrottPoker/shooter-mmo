@@ -185,6 +185,13 @@ Every durable item mutation runs through one item transaction kernel in
 | `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, and transform and Mob loot rules |
 | `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
 
+`Context/CarryStateCalculator` is the one carried-weight rule, shared with the
+startup recompute in `CharacterItemStateBootstrapper`, and
+`Context/ItemOwnershipSql` is the one definition of the character that owns an
+item. Outside the kernel, `Development/` holds the process-local Development item
+tool and its packages, and `StackStress/` holds the stack stress fixtures, which
+register only when `StackStressFixtures:Enabled` is true.
+
 Each overload routes its command with the persisted operation kind and the
 actor character id to the kernel and one handler. The facade composes the
 kernel and the handlers in its constructor; only `ItemTransactionService` is
