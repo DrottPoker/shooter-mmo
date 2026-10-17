@@ -147,6 +147,7 @@ namespace Mmorpg.GameSimulation
         private readonly List<RoutePoint> route = new List<RoutePoint>();
         private readonly List<RoutePoint> pulled = new List<RoutePoint>();
         private readonly int[] neighborNodes = new int[8];
+        private ClosestCandidate closest;
 
         public MovementPathPlanner(
             ICollisionWorld collisionWorld,
@@ -250,8 +251,8 @@ namespace Mmorpg.GameSimulation
             nodes[startIndex] = startNode;
             Push(startIndex, 0f, Heuristic(startNode, goalCellX, goalCellZ));
 
-            var bestIndex = startIndex;
-            var bestScore = DistanceSquared(startPoint.Position, destination);
+            closest = new ClosestCandidate(-1, float.PositiveInfinity, -1, float.PositiveInfinity);
+            ConsiderClosest(startIndex, destination);
             var goalIndex = -1;
             var expanded = 0;
             while (open.Count > 0 && expanded < settings.MaximumExpandedNodes)
@@ -275,7 +276,7 @@ namespace Mmorpg.GameSimulation
                     break;
                 }
 
-                ExpandNeighbors(entry.Node, startPoint.Position, destination, goalCellX, goalCellZ, ref bestIndex, ref bestScore);
+                ExpandNeighbors(entry.Node, startPoint.Position, destination, goalCellX, goalCellZ);
             }
 
             if (goalIndex >= 0)
@@ -290,6 +291,8 @@ namespace Mmorpg.GameSimulation
                 return Finish(MovementPathPlanStatus.Closest, expanded);
             }
 
+            // A point under cover stands in only when no open point was found at all.
+            var bestIndex = closest.OpenIndex >= 0 ? closest.OpenIndex : closest.CoveredIndex;
             if (bestIndex == startIndex)
             {
                 return new MovementPathPlan(MovementPathPlanStatus.NoPath, null, false, expanded);
@@ -299,14 +302,59 @@ namespace Mmorpg.GameSimulation
             return Finish(MovementPathPlanStatus.Closest, expanded);
         }
 
+        // Tracks the node closest to an unreachable destination, separately for open nodes
+        // and for nodes that lie beneath it.
+        private void ConsiderClosest(int index, SimulationVector3 destination)
+        {
+            var point = nodes[index].Point.Position;
+            var score = DistanceSquared(point, destination);
+            if (score >= closest.OpenScore && score >= closest.CoveredScore)
+            {
+                return;
+            }
+
+            if (IsBeneath(point, destination))
+            {
+                if (score < closest.CoveredScore)
+                {
+                    closest = new ClosestCandidate(closest.OpenIndex, closest.OpenScore, index, score);
+                }
+            }
+            else if (score < closest.OpenScore)
+            {
+                closest = new ClosestCandidate(index, score, closest.CoveredIndex, closest.CoveredScore);
+            }
+        }
+
+        // A point with collision above it, lower than the destination, lies on a level below
+        // the destination, such as a tunnel under a clicked mountainside or the ground under
+        // a clicked bridge. Walking there would not bring the player toward the click.
+        private bool IsBeneath(SimulationVector3 point, SimulationVector3 destination)
+        {
+            var rise = (float)(destination.Y - point.Y);
+            if (rise <= collision.Height)
+            {
+                return false;
+            }
+
+            // The capsule is clear up to its height, so the ray starts inside free space.
+            var lift = (float)(collision.Height * 0.5f);
+            return CollisionRaycast.TryRaycast(
+                collisionWorld,
+                new SimulationVector3(point.X, (float)(point.Y + lift), point.Z),
+                SimulationVector3.UnitY,
+                (float)(rise - lift),
+                CollisionLayers.CharacterMovement,
+                queryBuffer,
+                out _);
+        }
+
         private void ExpandNeighbors(
             int currentIndex,
             SimulationVector3 start,
             SimulationVector3 destination,
             int goalCellX,
-            int goalCellZ,
-            ref int bestIndex,
-            ref float bestScore)
+            int goalCellZ)
         {
             var current = nodes[currentIndex];
             for (var neighbor = 0; neighbor < NeighborX.Length; neighbor++)
@@ -373,13 +421,7 @@ namespace Mmorpg.GameSimulation
                 next.Parent = currentIndex;
                 nodes[index] = next;
                 Push(index, tentative, (float)(tentative + Heuristic(next, goalCellX, goalCellZ)));
-
-                var score = DistanceSquared(next.Point.Position, destination);
-                if (score < bestScore)
-                {
-                    bestScore = score;
-                    bestIndex = index;
-                }
+                ConsiderClosest(index, destination);
             }
         }
 
@@ -854,6 +896,25 @@ namespace Mmorpg.GameSimulation
             public SimulationVector3 Position { get; }
 
             public float NormalY { get; }
+        }
+
+        private readonly struct ClosestCandidate
+        {
+            public ClosestCandidate(int openIndex, float openScore, int coveredIndex, float coveredScore)
+            {
+                OpenIndex = openIndex;
+                OpenScore = openScore;
+                CoveredIndex = coveredIndex;
+                CoveredScore = coveredScore;
+            }
+
+            public int OpenIndex { get; }
+
+            public float OpenScore { get; }
+
+            public int CoveredIndex { get; }
+
+            public float CoveredScore { get; }
         }
 
         private readonly struct Probe

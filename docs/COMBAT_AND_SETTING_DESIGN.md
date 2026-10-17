@@ -202,7 +202,8 @@ direction with these decisions:
   obstacles with a shared A* planner on a fine internal grid sampled from the
   baked collision, with several walkable levels per cell. The player never sees
   the grid. A destination that cannot be reached leads to the closest reachable
-  point.
+  point on open ground, not to a point under something below the destination,
+  such as a tunnel under a clicked mountainside.
 - The client owns the route and SimulationWorker owns the movement. The route
   travels to the worker as waypoints, the worker checks its bounds and length
   and follows the same waypoints with authoritative collision, and prediction
