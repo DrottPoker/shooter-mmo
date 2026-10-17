@@ -205,7 +205,10 @@ public sealed class DevelopmentItemToolIntegrationTests
         return new DevelopmentItemToolService(
             context.DataSource,
             context.ItemTransactionService,
-            new DevelopmentItemPackageApplier(context.DataSource, context.ItemTransactionService),
+            new DevelopmentItemPackageApplier(
+                context.DataSource,
+                context.ItemTransactionService,
+                context.CatalogSource),
             context.Services.GetRequiredService<DevelopmentItemPackageSource>(),
             context.CorpseService,
             new DevelopmentHostEnvironment());

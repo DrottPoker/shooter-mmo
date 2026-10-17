@@ -19,7 +19,8 @@ internal sealed record DevelopmentItemPackageResult(
 // transaction service, so every package state obeys the same rules as gameplay.
 internal sealed class DevelopmentItemPackageApplier(
     NpgsqlDataSource dataSource,
-    ItemTransactionService transactionService)
+    ItemTransactionService transactionService,
+    ItemCatalogSource catalogSource)
 {
     public const string RecoverySourceKind = "development_item_package";
 
@@ -40,6 +41,18 @@ internal sealed class DevelopmentItemPackageApplier(
             throw new InvalidOperationException(
                 "Development item packages require a character with no items or Recovery deliveries. "
                 + "Use the individual item grant for an existing offline character.");
+        }
+
+        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
+            catalogSource.RuntimeCatalogPath,
+            cancellationToken);
+        var problems = DevelopmentItemPackagePlanner.FindProblems(package, catalog, target.CarryCapacity);
+        if (problems.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Package '{package.Id}' does not fit the current item catalog: "
+                + string.Join("; ", problems)
+                + ". Nothing was granted. Update the package for the current item catalog.");
         }
 
         Guid? bagContainerId = null;
@@ -104,6 +117,8 @@ internal sealed class DevelopmentItemPackageApplier(
                 $"create the Recovery delivery of package '{package.Id}'");
         }
 
+        // The planner already checked the load; this guards against the planner and the
+        // kernel computing carry state differently.
         var state = await LoadStateAsync(target.CharacterId, cancellationToken);
         if (package.ExpectedLoadPercent is int expectedLoadPercent
             && state.CarriedWeight * 100 != state.CarryCapacity * expectedLoadPercent)
@@ -196,6 +211,7 @@ internal sealed class DevelopmentItemPackageApplier(
                     state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                     state.bank_container_id as "BankContainerId",
                     state.secure_container_id as "SecureContainerId",
+                    state.carry_capacity as "CarryCapacity",
                     {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
                     {DevelopmentItemSql.OwnedItemCount("character.id")} as "ItemCount",
                     (
@@ -254,6 +270,9 @@ internal sealed class DevelopmentItemPackageApplier(
         public Guid BankContainerId { get; set; }
 
         public Guid SecureContainerId { get; set; }
+
+        // With no items the capacity is the character's base carry capacity.
+        public long CarryCapacity { get; set; }
 
         public bool IsOnline { get; set; }
 
