@@ -93,8 +93,10 @@ Status: Server-authoritative click-to-move implemented
   buildings, and cover on a fine internal grid that the player never sees, and
   the character starts walking on the next simulation tick.
 - A click on a spot that cannot be reached, such as a wall face or a roof, walks
-  to the closest reachable point. A click more than 64 meters away walks toward
-  it as far as the search reaches.
+  to the closest reachable point on open ground. A point under a roof, bridge,
+  or mountain that is lower than the click, such as a tunnel floor right below a
+  clicked mountainside, is used only when no open point is reachable. A click
+  more than 64 meters away walks toward it as far as the search reaches.
 - A new click replaces the current route at once.
 - Route planning runs on a background thread, so a long search never stalls a
   frame. The previous route continues until the new one is ready.

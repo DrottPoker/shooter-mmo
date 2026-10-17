@@ -84,6 +84,25 @@ public sealed class MovementPathPlannerTests
     }
 
     [Fact]
+    public void UnreachableTowerEndsOnOpenGroundInsteadOfUnderACloserRoof()
+    {
+        // A roof slab at 3 m reaches under the side of an 8 m tower. The ground below the
+        // slab is closest to the tower top, but it lies under the slab, below the click.
+        var world = CompileWorld(
+            Ground(),
+            Box("Tower", 5f, 4f, 0f, 1f, 4f, 1f),
+            Box("Roof", 2f, 3.25f, 0f, 2f, 0.25f, 1f));
+        var start = new SimulationVector3(-6f, 0f, 0f);
+
+        var plan = Plan(world, start, new SimulationVector3(5f, 8f, 0f));
+
+        Assert.Equal(MovementPathPlanStatus.Closest, plan.Status);
+        var final = AssertFollowsToTheEnd(world, Settings, start, plan);
+        Assert.True(IsOpenAbove(world, final, 8f), $"Ended under cover at ({final.PositionX}, {final.PositionZ}).");
+        Assert.InRange(DistanceXz(final, 5f, 0f), 1f, 2.5f);
+    }
+
+    [Fact]
     public void StandingAtTheDestinationOrInTheAirGivesNoPath()
     {
         var world = CompileWorld(Ground());
@@ -227,6 +246,26 @@ public sealed class MovementPathPlannerTests
         Assert.Equal(0f, final.PositionY, 3);
     }
 
+    // A click on the peak above the tunnel from south of the peak is unreachable within the
+    // search budget. The tunnel floor right below the click is the closest point, but the
+    // walk ends on open ground at the foot of the peak, next to the click.
+    [Fact]
+    public void DevelopmentWorld2ClickAboveTheTunnelEndsAtTheFootOfThePeakInsteadOfInTheTunnel()
+    {
+        var world = DevelopmentWorld2.Value;
+        var settings = DevelopmentWorld2Settings();
+        var start = new SimulationVector3(146f, 0f, 164f);
+
+        var plan = new MovementPathPlanner(world, settings, MovementPathPlannerSettings.Default)
+            .Plan(start, new SimulationVector3(147f, 15.82f, 188f));
+
+        Assert.Equal(MovementPathPlanStatus.Closest, plan.Status);
+        var final = AssertFollowsToTheEnd(world, settings, start, plan);
+        Assert.True(IsOpenAbove(world, final, 15.82f), $"Ended under cover at ({final.PositionX}, {final.PositionZ}).");
+        Assert.True(final.PositionY < 0.5f, $"Ended above the ground at {final.PositionY}.");
+        Assert.InRange(DistanceXz(final, 147f, 188f), 10f, 17f);
+    }
+
     [Fact]
     public void PlannerSettingsRejectInvalidValues()
     {
@@ -349,6 +388,25 @@ public sealed class MovementPathPlannerTests
             (deltaX * deltaX) + (deltaZ * deltaZ) < 0.0004f,
             $"Ended at ({state.PositionX}, {state.PositionY}, {state.PositionZ}).");
         return state;
+    }
+
+    private static bool IsOpenAbove(ICollisionWorld world, PlayerMovementState state, float height)
+    {
+        return !CollisionRaycast.TryRaycast(
+            world,
+            new SimulationVector3(state.PositionX, state.PositionY + 1f, state.PositionZ),
+            new SimulationVector3(0f, 1f, 0f),
+            height - state.PositionY - 1f,
+            CollisionLayers.CharacterMovement,
+            new CollisionQueryBuffer(),
+            out _);
+    }
+
+    private static float DistanceXz(PlayerMovementState state, float x, float z)
+    {
+        var deltaX = state.PositionX - x;
+        var deltaZ = state.PositionZ - z;
+        return MathF.Sqrt((deltaX * deltaX) + (deltaZ * deltaZ));
     }
 
     private static MovementSimulationSettings DevelopmentWorld2Settings()
