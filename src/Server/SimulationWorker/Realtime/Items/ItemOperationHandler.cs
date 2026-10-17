@@ -22,6 +22,8 @@ internal sealed class ItemOperationHandler(
     ItemInteractionAccessService accessService,
     ItemAuthorityOperations authority) : IRealtimeCompletionHandler
 {
+    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+
     public void HandleIntent(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -151,8 +153,9 @@ internal sealed class ItemOperationHandler(
         {
             // Matches the corpse path: an unexpected revision set ends the session instead
             // of failing the completion with internal_error.
-            var characterRevisions = completed.Result.Transaction!.CharacterRevisions;
-            if (characterRevisions.Count != 1)
+            if (!CommittedCarryApplier.TryGetCommittedCarry(
+                    completed.Result.Transaction!,
+                    out var committedCarry))
             {
                 teardown.TerminateForAuthorityFailure(
                     peer,
@@ -163,18 +166,8 @@ internal sealed class ItemOperationHandler(
                 return;
             }
 
-            var characterRevision = characterRevisions[0];
-            var committedCarry = new PlayerCarryState(
-                characterRevision.Revision,
-                characterRevision.CarriedWeight,
-                characterRevision.CarryCapacity);
-            var carryResult = carryStateStore.ApplyCommitted(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                committedCarry,
-                out var currentCarry);
-            if (carryResult is CarryStateApplyResult.Conflict
-                or CarryStateApplyResult.SessionMismatch)
+            var carryResult = carryApplier.Apply(completed.Session, committedCarry, out _);
+            if (CommittedCarryApplier.IsDiverged(carryResult))
             {
                 teardown.TerminateForAuthorityFailure(
                     peer,
@@ -186,11 +179,6 @@ internal sealed class ItemOperationHandler(
             }
 
             requiresRefresh |= carryResult == CarryStateApplyResult.Stale;
-            sessionStore.RefreshCarryState(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                completed.Session.SimulationSessionToken,
-                currentCarry);
             if (entityRegistry.TryGetPlayerByCharacterId(
                     completed.Session.CharacterId,
                     out var entity))

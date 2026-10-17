@@ -180,9 +180,6 @@ public sealed class LiveMobCorpseInteractionService(
             requiresCorpseRefresh: requiresRefresh,
             requiresInventoryRefresh: true,
             shouldCloseView: error.Code is "corpse_not_found" or "wrong_simulation_worker",
-            shouldDisconnect: error.Code is "worker_runtime_changed"
-                or "simulation_session_invalid"
-                or "auth_service_authentication_failed"
-                or "invalid_auth_response");
+            shouldDisconnect: GameServiceOutcome.EndsSession(error.Code));
     }
 }

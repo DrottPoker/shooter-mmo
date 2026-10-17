@@ -42,7 +42,7 @@ public sealed class SimulationItemInteractionService(GameServiceClient gameServi
             error.Code,
             error.Message,
             RequiresInventoryRefresh(error.Code),
-            RequiresDisconnect(error.Code));
+            GameServiceOutcome.EndsItemSession(error.Code));
     }
 
     private static SimulationItemOperationRequest CreateRequest(
@@ -125,15 +125,6 @@ public sealed class SimulationItemInteractionService(GameServiceClient gameServi
             or "bag_state_changed"
             or "item_not_found"
             or "item_not_owned";
-    }
-
-    private static bool RequiresDisconnect(string code)
-    {
-        return code is "wrong_simulation_worker"
-            or "worker_runtime_changed"
-            or "simulation_session_invalid"
-            or "auth_service_authentication_failed"
-            or "invalid_auth_response";
     }
 }
 

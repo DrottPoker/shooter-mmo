@@ -138,7 +138,7 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
             RequiresCorpseRefresh(error.Code),
             RequiresInventoryRefresh(intent.OperationKind, error.Code),
             ShouldCloseView(error.Code),
-            ShouldDisconnect(error.Code));
+            GameServiceOutcome.EndsSession(error.Code));
     }
 
     private static bool RequiresCorpseRefresh(string code)
@@ -174,14 +174,6 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
             or "corpse_invalidated"
             or "corpse_not_found"
             or "wrong_simulation_worker";
-    }
-
-    private static bool ShouldDisconnect(string code)
-    {
-        return code is "worker_runtime_changed"
-            or "simulation_session_invalid"
-            or "auth_service_authentication_failed"
-            or "invalid_auth_response";
     }
 }
 

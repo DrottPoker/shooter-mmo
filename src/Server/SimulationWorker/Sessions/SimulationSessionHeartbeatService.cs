@@ -18,6 +18,8 @@ public sealed class SimulationSessionHeartbeatService(
     SimulationWorkerConfig config,
     ILogger<SimulationSessionHeartbeatService> logger) : BackgroundService
 {
+    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(config.SimulationSessionHeartbeatInterval);
@@ -112,11 +114,7 @@ public sealed class SimulationSessionHeartbeatService(
                     result.Value.ItemStateRevision,
                     result.Value.CarriedWeight,
                     result.Value.CarryCapacity);
-                var carryResult = carryStateStore.ApplyCommitted(
-                    session.CharacterId,
-                    session.SimulationSessionId,
-                    carryState,
-                    out var currentCarryState);
+                var carryResult = carryApplier.Apply(session, carryState, out _);
                 if (carryResult == CarryStateApplyResult.Conflict)
                 {
                     var invalidated = sessionStore.Invalidate(
@@ -136,18 +134,6 @@ public sealed class SimulationSessionHeartbeatService(
                         "Invalidated simulation session {SimulationSessionId} because GameService returned conflicting carry state revision {ItemStateRevision}.",
                         session.SimulationSessionId,
                         carryState.ItemStateRevision);
-                    return;
-                }
-
-                if (carryResult is CarryStateApplyResult.Applied
-                    or CarryStateApplyResult.Unchanged
-                    or CarryStateApplyResult.Stale)
-                {
-                    sessionStore.RefreshCarryState(
-                        session.CharacterId,
-                        session.SimulationSessionId,
-                        session.SimulationSessionToken,
-                        currentCarryState);
                 }
 
                 return;

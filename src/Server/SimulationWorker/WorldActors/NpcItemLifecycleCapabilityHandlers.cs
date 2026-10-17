@@ -57,6 +57,8 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
     CarryStateStore carryStateStore,
     ActiveSimulationSessionStore sessionStore)
 {
+    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+
     public async Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
         WorldActorCapabilityOperationContext context,
         CancellationToken cancellationToken)
@@ -139,7 +141,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 result.Error!.Code,
                 result.Error.Message,
                 0,
-                RequiresDisconnect(result.Error.Code));
+                GameServiceOutcome.EndsItemSession(result.Error.Code));
         }
 
         var itemStateRevision = ApplyCommittedCarry(session, result.Value!);
@@ -164,8 +166,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         ActiveSimulationSession session,
         SimulationItemTransactionResponse transaction)
     {
-        var revision = transaction.CharacterRevisions.SingleOrDefault();
-        if (revision is null)
+        if (transaction.CharacterRevisions.Count == 0)
         {
             return carryStateStore.TryGet(
                 session.CharacterId,
@@ -175,26 +176,13 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                     : -1;
         }
 
-        var committed = new PlayerCarryState(
-            revision.Revision,
-            revision.CarriedWeight,
-            revision.CarryCapacity);
-        var applied = carryStateStore.ApplyCommitted(
-            session.CharacterId,
-            session.SimulationSessionId,
-            committed,
-            out var currentCarry);
-        if (applied is CarryStateApplyResult.Conflict
-            or CarryStateApplyResult.SessionMismatch)
+        if (!CommittedCarryApplier.TryGetCommittedCarry(transaction, out var committed)
+            || CommittedCarryApplier.IsDiverged(
+                carryApplier.Apply(session, committed, out var currentCarry)))
         {
             return -1;
         }
 
-        sessionStore.RefreshCarryState(
-            session.CharacterId,
-            session.SimulationSessionId,
-            session.SimulationSessionToken,
-            currentCarry);
         return currentCarry.ItemStateRevision;
     }
 
@@ -233,12 +221,4 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         return new WorldActorCapabilityDispatchResult(false, code, message);
     }
 
-    private static bool RequiresDisconnect(string code)
-    {
-        return code is "wrong_simulation_worker"
-            or "worker_runtime_changed"
-            or "simulation_session_invalid"
-            or "auth_service_authentication_failed"
-            or "invalid_auth_response";
-    }
 }
