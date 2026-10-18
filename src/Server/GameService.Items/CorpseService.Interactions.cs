@@ -142,7 +142,10 @@ internal sealed partial class CorpseService
             request.ShardId,
             cancellationToken);
         return ServiceResult<CorpseMutationResponse>.Ok(
-            new CorpseMutationResponse(transactionResult, snapshot));
+            new CorpseMutationResponse(
+                transactionResult,
+                snapshot,
+                await characterStates.ReadAsync(request.CharacterId, cancellationToken)));
     }
 
     private Task<ItemTransactionResult>? CreateCorpseMutation(

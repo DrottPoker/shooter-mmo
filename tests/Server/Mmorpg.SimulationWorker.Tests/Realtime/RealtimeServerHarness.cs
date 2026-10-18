@@ -585,7 +585,12 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             [],
             [],
             [],
-            null));
+            null,
+            CharacterStateTestData.Create(
+                request.CharacterId,
+                revision,
+                carriedWeight,
+                carryCapacity)));
     }
 
     public static HttpResponseMessage Json<T>(T value)

@@ -17,14 +17,26 @@ internal sealed record SimulationPlayerDeathRequest(
     double RotationY,
     double RotationZ,
     double RotationW,
-    string PresentationKey);
+    string PresentationKey,
+    SimulationDeathAmmunitionRequest? AmmunitionConsumption = null,
+    SimulationDeathKillerRequest? Killer = null);
+
+// The shots the worker had not committed yet when the character died.
+internal sealed record SimulationDeathAmmunitionRequest(
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity);
+
+// The killer kind is mob or character, and the id is its actor definition or character id.
+internal sealed record SimulationDeathKillerRequest(string Kind, string Id);
 
 internal sealed record PlayerDeathPartitionResponse(
     Guid OperationId,
     Guid DeathEventId,
     DurableCorpseResponse Corpse,
     ItemTransactionCharacterRevision CharacterRevision,
-    IReadOnlyList<Guid> RecoveryDeliveryIds);
+    IReadOnlyList<Guid> RecoveryDeliveryIds,
+    SimulationCharacterStateResponse? CharacterState = null);
 
 internal sealed record MobCorpseLootEntryRequest(
     Guid GrantId,
@@ -143,7 +155,8 @@ internal sealed record SimulationCorpseMutationRequest(
 
 internal sealed record CorpseMutationResponse(
     ItemTransactionResult Transaction,
-    CorpseViewSnapshotResponse? Corpse);
+    CorpseViewSnapshotResponse? Corpse,
+    SimulationCharacterStateResponse? CharacterState = null);
 
 internal sealed record CorpseViewSnapshotResponse(
     Guid CorpseId,

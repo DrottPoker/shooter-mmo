@@ -235,7 +235,10 @@ internal sealed class SimulationSessionService(
                 carryState.ItemStateRevision,
                 carryState.CarriedWeight,
                 carryState.CarryCapacity,
-                released);
+                released)
+            {
+                Equipment = carryState.Equipment
+            };
         }
     }
 }

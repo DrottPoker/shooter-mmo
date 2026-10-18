@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(28, overloads.Length);
-        Assert.Equal(28, requestTypes.Distinct().Count());
-        Assert.Equal(28, Routes.Count);
+        Assert.Equal(29, overloads.Length);
+        Assert.Equal(29, requestTypes.Distinct().Count());
+        Assert.Equal(29, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -126,6 +126,11 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new ConsumeItemQuantityCommand(Id, 1, Id, 1, 1),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.ConsumeEquippedAmmunition] = (service, actor) => Run(
+                service,
+                actor,
+                new ConsumeEquippedAmmunitionCommand(Id, 1, Id, 1, 1),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.Destroy] = (service, actor) => Run(
                 service,

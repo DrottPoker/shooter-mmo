@@ -323,54 +323,13 @@ internal sealed class ItemStackCommandHandler
                 "Recovery Storage items must be claimed before use.");
         }
 
-        if (command.Quantity <= 0 || command.Quantity > item.Quantity)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemQuantityChanged,
-                "The consume quantity exceeds the current item quantity.");
-        }
-
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            item.ItemInstanceId,
+        await ItemQuantityConsumption.ApplyAsync(
+            context,
+            item,
+            command.Quantity,
+            "item_consumed",
+            "item_quantity_consumed",
             cancellationToken);
-        if (command.Quantity == item.Quantity)
-        {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                "delete from item_instances where id = @ItemInstanceId;",
-                new { item.ItemInstanceId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-            context.Journal.AddItemAudit(
-                "item_consumed",
-                item.ItemInstanceId,
-                beforeState,
-                null);
-        }
-        else
-        {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                update item_instances
-                set quantity = quantity - @Quantity,
-                    revision = revision + 1,
-                    updated_at = now()
-                where id = @ItemInstanceId;
-                """,
-                new { command.Quantity, item.ItemInstanceId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-            var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                item.ItemInstanceId,
-                cancellationToken);
-            context.Journal.AddItemAudit(
-                "item_quantity_consumed",
-                item.ItemInstanceId,
-                beforeState,
-                afterState);
-            context.Journal.IncludeResultItem(item.ItemInstanceId);
-        }
-
-        context.Journal.TouchContainer(item.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
     }
 

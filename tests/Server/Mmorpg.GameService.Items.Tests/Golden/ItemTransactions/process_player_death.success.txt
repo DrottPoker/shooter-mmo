@@ -72,7 +72,7 @@ trace:
   c1 sql select id as "PolicyId", policy_kind as "PolicyKind", status as "Status", source_kind as "SourceKind", source_id as "SourceId", revision as "Revision" from item_instance_policies where item_instance_id = $1 order by policy_kind, source_kind, source_id, id
   c1 batch 2
     > update corpses set revision = revision + 1 where id = $1
-    > insert into death_events ( id, character_id, corpse_id, operation_id, request_hash, result_payload) values ( $1, $2, $3, $4, $5, cast($6 as jsonb))
+    > insert into death_events ( id, character_id, corpse_id, operation_id, request_hash, result_payload, killer_kind, killer_id) values ( $1, $2, $3, $4, $5, cast($6 as jsonb), $7, $8)
   c1 sql update item_containers set revision = revision + 1, updated_at = now() where id = any($1)
   c1 sql select id as "ContainerId", revision as "Revision" from item_containers where id = any($1) order by id
   c1 batch 2

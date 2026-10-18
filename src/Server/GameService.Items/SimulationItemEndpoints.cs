@@ -26,6 +26,23 @@ internal static class SimulationItemEndpoints
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
+        app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/ammunition-consumptions", async (
+            Guid simulationSessionId,
+            SimulationAmmunitionConsumptionRequest request,
+            ClaimsPrincipal principal,
+            SimulationItemMutationService mutationService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await mutationService.ConsumeAmmunitionAsync(
+                principal.GetSimulationWorkerId(),
+                simulationSessionId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
         return app;
     }
 }

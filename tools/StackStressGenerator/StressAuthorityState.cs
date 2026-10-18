@@ -69,7 +69,8 @@ public sealed class StressAuthorityState
             || request.ActiveConnections > request.MaxConnections
             || request.ProtocolVersion != RealtimeProtocol.Version
             || string.IsNullOrWhiteSpace(request.SimulationRevision)
-            || string.IsNullOrWhiteSpace(request.CollisionRevision))
+            || string.IsNullOrWhiteSpace(request.CollisionRevision)
+            || string.IsNullOrWhiteSpace(request.ItemCatalogRevision))
         {
             return StressAuthorityResult<StressWorkerHeartbeatResponse>.Failure(
                 400,
@@ -94,7 +95,8 @@ public sealed class StressAuthorityState
             request.CollisionRevision,
             request.StartedAt,
             now,
-            now.Add(WorkerLeaseDuration));
+            now.Add(WorkerLeaseDuration),
+            request.ItemCatalogRevision);
 
         lock (gate)
         {
@@ -384,6 +386,7 @@ public sealed class StressAuthorityState
             registration.ProtocolVersion,
             registration.SimulationRevision,
             registration.CollisionRevision,
+            registration.ItemCatalogRevision!,
             registration.LastHeartbeatAt,
             registration.OnlineUntil);
     }

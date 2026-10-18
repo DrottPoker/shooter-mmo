@@ -357,7 +357,7 @@ public sealed class NpcItemLifecycleIntegrationTests
             CapabilityId: capabilityId);
     }
 
-    private static Task<Mmorpg.GameService.Platform.Http.ServiceResult<ItemTransactionResult>> ExecuteAsync(
+    private static Task<Mmorpg.GameService.Platform.Http.ServiceResult<SimulationItemOperationResponse>> ExecuteAsync(
         PostgresIntegrationTestContext context,
         ConsumedSimulationJoinTicketResponse session,
         SimulationItemOperationRequest request)
