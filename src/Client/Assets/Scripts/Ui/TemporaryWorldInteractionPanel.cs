@@ -17,8 +17,7 @@ namespace Mmorpg.Client.Ui
     [DisallowMultipleComponent]
     public sealed class TemporaryWorldInteractionPanel : MonoBehaviour
     {
-        private static readonly Color PanelColor =
-            new Color(0.055f, 0.065f, 0.08f, 0.96f);
+        private const float PanelWidth = 460f;
         private static readonly Vector2 PromptPointerOffset = new Vector2(18f, 12f);
         private WorldInteractionClientController interactionController;
         private WorldInteractionTargetingController targetingController;
@@ -27,7 +26,6 @@ namespace Mmorpg.Client.Ui
         private RectTransform promptRect;
         private Text prompt;
         private Guid requestedInventorySessionId;
-        private Font font;
         private InventoryClientController inventoryController;
 
         // Called by the composition root before the component is activated.
@@ -135,7 +133,6 @@ namespace Mmorpg.Client.Ui
         private void BuildUi()
         {
             EnsureEventSystem();
-            font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var canvasObject = new GameObject(
                 "TemporaryWorldInteractionCanvas",
                 typeof(RectTransform),
@@ -150,29 +147,42 @@ namespace Mmorpg.Client.Ui
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
 
-            var promptObject = CreateUiObject("InteractionPrompt", canvasObject.transform);
+            var promptObject = TemporaryUiKit.CreateUiObject("InteractionPrompt", canvasObject.transform);
             promptRect = promptObject.GetComponent<RectTransform>();
             promptRect.anchorMin = new Vector2(0.5f, 0.5f);
             promptRect.anchorMax = new Vector2(0.5f, 0.5f);
             promptRect.pivot = new Vector2(0f, 0f);
             promptRect.sizeDelta = new Vector2(600f, 32f);
-            prompt = promptObject.AddComponent<Text>();
-            ConfigureText(prompt, 20, TextAnchor.MiddleCenter);
+            prompt = TemporaryUiKit.AddText(
+                promptObject,
+                string.Empty,
+                19,
+                FontStyle.Bold,
+                TextAnchor.MiddleLeft,
+                TemporaryUiKit.TextPrimary);
+            var promptShadow = promptObject.AddComponent<Shadow>();
+            promptShadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
+            promptShadow.effectDistance = new Vector2(1.5f, -1.5f);
 
-            var panelObject = CreateUiObject("InteractionPanel", canvasObject.transform);
+            var panelObject = TemporaryUiKit.CreateUiObject("InteractionPanel", canvasObject.transform);
             panel = panelObject.GetComponent<RectTransform>();
             panel.anchorMin = new Vector2(0.5f, 0f);
             panel.anchorMax = new Vector2(0.5f, 0f);
             panel.pivot = new Vector2(0.5f, 0f);
             panel.anchoredPosition = new Vector2(0f, 28f);
-            panel.sizeDelta = new Vector2(520f, 360f);
-            panelObject.AddComponent<Image>().color = PanelColor;
+            panel.sizeDelta = new Vector2(PanelWidth, 0f);
+            var background = panelObject.AddComponent<Image>();
+            background.color = TemporaryUiKit.PanelColor;
+            TemporaryUiKit.AddOutline(background, TemporaryUiKit.PanelBorderColor);
             var layout = panelObject.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(16, 16, 16, 16);
-            layout.spacing = 8f;
+            layout.padding = new RectOffset(16, 16, 14, 14);
+            layout.spacing = 6f;
             layout.childControlHeight = true;
             layout.childControlWidth = true;
             layout.childForceExpandHeight = false;
+            // The panel grows upward with its content.
+            panelObject.AddComponent<ContentSizeFitter>().verticalFit =
+                ContentSizeFitter.FitMode.PreferredSize;
             content = panel;
         }
 
@@ -192,9 +202,12 @@ namespace Mmorpg.Client.Ui
                     : string.Empty;
             prompt.gameObject.SetActive(!string.IsNullOrWhiteSpace(prompt.text));
 
+            // Hidden children leave the fitted layout at once; destruction waits for frame end.
             for (var index = content.childCount - 1; index >= 0; index--)
             {
-                Destroy(content.GetChild(index).gameObject);
+                var child = content.GetChild(index).gameObject;
+                child.SetActive(false);
+                Destroy(child);
             }
 
             var state = interactionController.State;
@@ -210,12 +223,12 @@ namespace Mmorpg.Client.Ui
 
             if (active != null)
             {
-                AddText(active.DisplayName, 24, TextAnchor.MiddleLeft);
+                AddText(active.DisplayName, 22, FontStyle.Bold, TemporaryUiKit.TextPrimary);
                 AddText(
-                    "Authoritative capabilities, revision "
-                    + active.CapabilitySummaryRevision,
-                    15,
-                    TextAnchor.MiddleLeft);
+                    "Capabilities revision " + active.CapabilitySummaryRevision,
+                    13,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextMuted);
                 for (var index = 0; index < active.Capabilities.Length; index++)
                 {
                     var capability = active.Capabilities[index];
@@ -231,7 +244,12 @@ namespace Mmorpg.Client.Ui
                         continue;
                     }
 
-                    var label = capability.DisplayName
+                    // Storage capabilities open the complete inventory view.
+                    var opensStorage = capability.Kind
+                        is RealtimeWorldActorCapabilityKind.Bank
+                        or RealtimeWorldActorCapabilityKind.RecoveryStorage;
+                    var label = (opensStorage ? "Open " : string.Empty)
+                        + capability.DisplayName
                         + (capability.IsAvailable ? string.Empty : " (Unavailable)");
                     AddButton(
                         label,
@@ -242,26 +260,33 @@ namespace Mmorpg.Client.Ui
                 AddButton(
                     "Close",
                     state.PendingOperationId == Guid.Empty,
-                    SubmitClose);
+                    SubmitClose,
+                    TemporaryButtonTone.Quiet);
             }
             else if (state.PendingOperationId != Guid.Empty)
             {
-                AddText("Opening interaction...", 20, TextAnchor.MiddleCenter);
+                AddText("Opening interaction...", 18, FontStyle.Normal, TemporaryUiKit.TextSecondary);
             }
 
             if (!string.IsNullOrWhiteSpace(state.LastMessage))
             {
-                AddText(state.LastMessage, 15, TextAnchor.MiddleLeft);
+                AddText(
+                    state.LastMessage,
+                    14,
+                    FontStyle.Normal,
+                    string.IsNullOrEmpty(state.LastErrorCode)
+                        ? TemporaryUiKit.TextSecondary
+                        : TemporaryUiKit.DangerColor);
                 if (active == null && state.PendingOperationId == Guid.Empty)
                 {
-                    AddButton("Dismiss", true, state.ClearMessage);
+                    AddButton("Dismiss", true, state.ClearMessage, TemporaryButtonTone.Quiet);
                 }
             }
         }
 
         private void DrawInsuranceCapability(RealtimeWorldActorCapability capability)
         {
-            AddText("Insurance", 19, TextAnchor.MiddleLeft);
+            AddSectionTitle("Insurance");
             var state = inventoryController?.State;
             if (!capability.IsAvailable || state?.FullSnapshot == null || state.Catalog == null)
             {
@@ -270,7 +295,8 @@ namespace Mmorpg.Client.Ui
                         ? "Authoritative inventory state is loading."
                         : "Insurance is currently unavailable.",
                     14,
-                    TextAnchor.MiddleLeft);
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextSecondary);
                 return;
             }
 
@@ -282,7 +308,11 @@ namespace Mmorpg.Client.Ui
                 .ToArray();
             if (eligible.Length == 0)
             {
-                AddText("No insurance-eligible owned items.", 14, TextAnchor.MiddleLeft);
+                AddText(
+                    "No insurance-eligible owned items.",
+                    14,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextSecondary);
                 return;
             }
 
@@ -312,7 +342,7 @@ namespace Mmorpg.Client.Ui
 
         private void DrawQuestCapability(RealtimeWorldActorCapability capability)
         {
-            AddText("Quest item lifecycle", 19, TextAnchor.MiddleLeft);
+            AddSectionTitle("Quest item lifecycle");
             var state = inventoryController?.State;
             if (!capability.IsAvailable || state?.FullSnapshot == null)
             {
@@ -321,7 +351,8 @@ namespace Mmorpg.Client.Ui
                         ? "Authoritative inventory state is loading."
                         : "Quest lifecycle is currently unavailable.",
                     14,
-                    TextAnchor.MiddleLeft);
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextSecondary);
                 return;
             }
 
@@ -436,47 +467,31 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void AddText(string value, int size, TextAnchor alignment)
+        private void AddText(string value, int size, FontStyle style, Color color)
         {
-            var text = CreateUiObject("Text", content).AddComponent<Text>();
-            ConfigureText(text, size, alignment);
-            text.text = value;
-            text.gameObject.AddComponent<LayoutElement>().preferredHeight = size + 12f;
+            TemporaryUiKit.CreateLabel(content, value, size, style, color, size + 10f);
         }
 
-        private void AddButton(string label, bool interactable, Action action)
+        private void AddSectionTitle(string value)
         {
-            var buttonObject = CreateUiObject("CapabilityButton", content);
-            buttonObject.AddComponent<Image>().color = new Color(0.12f, 0.14f, 0.17f, 1f);
-            var button = buttonObject.AddComponent<Button>();
-            button.interactable = interactable;
-            button.onClick.AddListener(() => action());
-            buttonObject.AddComponent<LayoutElement>().preferredHeight = 38f;
-            var text = CreateUiObject("Label", buttonObject.transform).AddComponent<Text>();
-            ConfigureText(text, 16, TextAnchor.MiddleCenter);
-            text.text = label;
-            var rect = text.rectTransform;
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            var title = TemporaryUiKit.CreateLabel(
+                content,
+                value,
+                16,
+                FontStyle.Bold,
+                TemporaryUiKit.TextPrimary,
+                28f);
+            title.alignment = TextAnchor.LowerLeft;
         }
 
-        private void ConfigureText(Text text, int size, TextAnchor alignment)
+        private void AddButton(
+            string label,
+            bool interactable,
+            Action action,
+            TemporaryButtonTone tone = TemporaryButtonTone.Normal)
         {
-            text.font = font;
-            text.fontSize = size;
-            text.color = Color.white;
-            text.alignment = alignment;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
-        }
-
-        private static GameObject CreateUiObject(string name, Transform parent)
-        {
-            var value = new GameObject(name, typeof(RectTransform));
-            value.transform.SetParent(parent, false);
-            return value;
+            var button = TemporaryUiKit.CreateButton(content, label, action, interactable, tone);
+            button.GetComponent<LayoutElement>().preferredHeight = 36f;
         }
 
         private static void EnsureEventSystem()
@@ -492,6 +507,5 @@ namespace Mmorpg.Client.Ui
                 typeof(InputSystemUIInputModule));
             DontDestroyOnLoad(eventSystem);
         }
-
     }
 }

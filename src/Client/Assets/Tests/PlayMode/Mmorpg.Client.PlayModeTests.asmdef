@@ -11,6 +11,7 @@
     "Mmorpg.Client.Ui",
     "Mmorpg.Client.App",
     "Mmorpg.Client.Worlds",
+    "Mmorpg.WorldData",
     "Unity.ResourceManager"
   ],
   "includePlatforms": [],

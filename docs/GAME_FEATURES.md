@@ -253,7 +253,7 @@ occupied compatible container slot merges compatible stacks and otherwise
 submits one atomic swap. Click selection is retained only for split and
 allowed-destroy actions. The ammunition slot holds one stack up to its
 slot limit. Dropping a compatible stack onto the equipped stack tops it up, and
-`Split to Target` from the equipped stack moves part of it into an empty slot.
+`Split` from the equipped stack moves part of it into an empty slot.
 An item cannot be equipped into a slot that an equipped item blocks, such as
 the off hand next to a two-handed bow, or while it would block an occupied
 slot. All mutations use the existing authoritative
@@ -265,17 +265,23 @@ See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md)
 
 Status: Functional MVP foundation with temporary presentation
 
-The inventory panel keeps equipment on the left. Bank or Recovery Storage uses
-the upper-right context area, while Permanent inventory, equipped Bag contents,
-and Secure Container stay visible in the lower-right. Bank and Recovery may be
+The inventory panel has three columns. Equipment is a paper doll on the left.
+Bank, Recovery Storage, or a corpse uses the middle context column, while
+Permanent inventory, equipped Bag contents, and the Secure Container, shown as
+Warded Pouch, stay visible in the right column. Bank and Recovery may be
 inspected globally for the owning character. Mutations still require a joined
 simulation session. Production validates live city-service access, while the
 explicit Development configuration permits Bank and Recovery mutations from any
 authoritative player position.
 
-The header shows authoritative weight, capacity, load percentage, movement
-multiplier, and item-state revision. General and specialized
-Bag slots are visibly distinct. Local definition lookups disable obvious invalid
+A carry meter shows authoritative weight, capacity, load percentage, and
+movement speed, from green through amber when slowed to red at the 140 percent
+hard cap. The character header shows the item-state revision. Every slot has
+the same size. Occupied slots show the item name, a category color, the stack
+quantity, and a protection or insurance badge, and empty slots are darker.
+Specialized Bag slots show the item types they accept, and an equipment slot
+that an equipped two-handed item blocks is marked Blocked. Hovering a slot
+shows a tooltip with the item details. Local definition lookups disable obvious invalid
 equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
 targets, but the server remains final authority.
 
@@ -289,7 +295,7 @@ update is required and does not render stale item state.
 `I` toggles the complete Development view. Pressing a different inventory key
 switches the open view, and `Escape` closes it. Clicks on the panel never move
 the character. Each window is a separate fixed module root,
-so opening Equipment or Context never moves Character Inventory. The uGUI
+so opening Equipment or Context never moves the character column. The uGUI
 visuals are deliberately temporary, but catalog, snapshot, revision,
 operation-id, error, refresh, reconnect, and authority handling are permanent
 foundations.
@@ -308,19 +314,18 @@ corpse section. Compatible stacks with remaining capacity merge. Dropping a
 complete item that cannot merge onto an occupied slot swaps the two items only
 when both original slots accept the opposite item and the result stays within
 the hard cap. Every corpse equipment slot displays its equipment type and
-canonical id, and accepts only a compatible definition up to its equipment slot
-limit. Dropping either equipped
+accepts only a compatible definition up to its equipment slot limit. Dropping either equipped
 Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
 complete Bags satisfy the rules. Bank, Recovery Storage, and ordinary equipped
 items cannot enter corpse custody. The panel never moves either side
 optimistically. Custody-changing transfers refresh character inventory to the
 committed revision, while pure corpse rearrangement updates only corpse state.
 
-The implemented inventory presentation keeps character equipment on the left. The
-right side is split with contextual containers such as bank, corpse, Recovery
-Storage, or world loot above the character inventory. Permanent inventory,
-equipped Bag contents, and Secure Container access remain in the lower-right
-area while another container is open.
+The implemented inventory presentation keeps character equipment on the left,
+contextual containers such as bank, corpse, Recovery Storage, or world loot in
+the middle, and the character inventory on the right. Permanent inventory,
+equipped Bag contents, and Secure Container access remain in the right column
+while another container is open.
 
 Item icons and other visual metadata are client-owned presentation assets keyed
 by stable definition id. The bundled presentation catalog records the exact
