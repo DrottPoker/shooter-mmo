@@ -65,7 +65,7 @@ public sealed class RealtimeSimulationServiceTests
         };
         var authClient = new GameServiceClient(httpClient);
         var sessionStore = new ActiveSimulationSessionStore();
-        var carryStateStore = new CarryStateStore();
+        var itemStateStore = new CharacterItemStateStore();
         var config = CreateConfig(port);
         var identity = new SimulationWorkerIdentity(
             "test-runtime",
@@ -79,15 +79,15 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationJoinService(
                 authClient,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 config,
                 identity),
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                carryStateStore),
+                itemStateStore),
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
@@ -223,7 +223,7 @@ public sealed class RealtimeSimulationServiceTests
         };
         var authClient = new GameServiceClient(httpClient);
         var sessionStore = new ActiveSimulationSessionStore();
-        var carryStateStore = new CarryStateStore();
+        var itemStateStore = new CharacterItemStateStore();
         var config = CreateConfig(port);
         var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
         var staticCollisionWorld = CollisionTestWorldFactory.Create();
@@ -236,15 +236,15 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationJoinService(
                 authClient,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 config,
                 identity),
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                carryStateStore),
+                itemStateStore),
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
@@ -303,11 +303,11 @@ public sealed class RealtimeSimulationServiceTests
                     Assert.Equal(0, population.UnauthenticatedPeers);
                     joinAccepted.TrySetResult(session);
                     Assert.Equal(
-                        CarryStateApplyResult.Applied,
-                        carryStateStore.ApplyCommitted(
+                        ItemStateApplyResult.Applied,
+                        itemStateStore.ApplyCommitted(
                             authHandler.CharacterId,
                             authHandler.SimulationSessionId,
-                            new PlayerCarryState(1, 210, 200),
+                            CharacterStateTestData.ItemState(new PlayerCarryState(1, 210, 200)),
                             out _));
                     peer.Send(
                         RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
@@ -483,7 +483,7 @@ public sealed class RealtimeSimulationServiceTests
         };
         var authClient = new GameServiceClient(httpClient);
         var sessionStore = new ActiveSimulationSessionStore();
-        var carryStateStore = new CarryStateStore();
+        var itemStateStore = new CharacterItemStateStore();
         var config = CreateConfig(port);
         var identity = new SimulationWorkerIdentity(
             "test-runtime",
@@ -497,16 +497,16 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationJoinService(
                 authClient,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 config,
                 identity),
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 [TimeSpan.Zero]),
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),
@@ -560,7 +560,7 @@ public sealed class RealtimeSimulationServiceTests
 
             // The release failed twice, yet the heartbeat no longer sees a lease to renew.
             Assert.Empty(sessionStore.ListActiveSessions());
-            Assert.False(carryStateStore.TryGet(
+            Assert.False(itemStateStore.TryGet(
                 authHandler.CharacterId,
                 authHandler.SimulationSessionId,
                 out _));

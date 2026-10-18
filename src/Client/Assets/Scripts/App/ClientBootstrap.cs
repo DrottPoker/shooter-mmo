@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Combat;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
@@ -64,6 +65,9 @@ namespace Mmorpg.Client.App
                 worldActorController,
                 corpseController,
                 inventoryController);
+
+            // Mirrors the worker's combat state across scenes for later combat presentation.
+            GetOrAddComponent<CombatClientController>().Initialize(simulationClient);
 
             simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;

@@ -25,12 +25,14 @@ internal sealed class RealtimeServer(
     SimulationTickLoop tickLoop,
     RealtimePeerSupervisor supervisor,
     WorldActorRuntimeDriver worldActors,
+    CombatSystem combat,
+    PlayerCombatAuthority combatAuthority,
     RealtimeTransportReadiness transportReadiness,
     RealtimePeerRegistry peers,
     EntityPresenceReplicator presence,
     ConnectionEntityBindingRegistry connectionBindings,
     SimulationEntityRegistry entityRegistry,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     CorpseViewerRegistry corpseViewers,
     WorldInteractionLeaseRegistry? worldInteractionLeases,
     WorldActorStore? worldActorStore,
@@ -125,11 +127,13 @@ internal sealed class RealtimeServer(
     {
         transport.Stop();
         await operationTracker.WaitForAllAsync();
+        await combatAuthority.FlushOnShutdownAsync();
+        combat.Clear();
         peers.Clear();
         presence.Clear();
         connectionBindings.Clear();
         entityRegistry.Clear();
-        carryStateStore.Clear();
+        itemStateStore.Clear();
         corpseViewers.Clear();
         worldInteractionLeases?.Clear();
         worldActorStore?.Clear();

@@ -1,0 +1,17 @@
+{
+  "name": "Mmorpg.Client.Combat",
+  "rootNamespace": "Mmorpg.Client.Combat",
+  "references": [
+    "Mmorpg.Client.Networking",
+    "Mmorpg.GameProtocol"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

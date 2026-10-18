@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -9,6 +10,8 @@ using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -18,7 +21,7 @@ internal sealed record RealtimeServerDependencies(
     SimulationJoinService JoinService,
     SimulationSessionReleaseService ReleaseService,
     ActiveSimulationSessionStore SessionStore,
-    CarryStateStore CarryStateStore,
+    CharacterItemStateStore CharacterItemStateStore,
     SimulationItemInteractionService ItemInteractionService,
     SimulationCorpseInteractionService CorpseInteractionService,
     DurableCorpseStore CorpseStore,
@@ -44,7 +47,20 @@ internal sealed record RealtimeServerDependencies(
     CorpseRuntimeMetrics? CorpseRuntimeMetrics,
     DevelopmentItemInteractionOptions? DevelopmentItemInteractions,
     IWorldActorCapabilityAvailabilityPolicy? CapabilityAvailability,
-    SimulationGatheringService? GatheringService = null);
+    SimulationGatheringService? GatheringService = null,
+    CombatDependencies? Combat = null);
+
+// What combat needs beyond the realtime services. Without it the worker runs combat with
+// the default rules, an empty item catalog, and Mobs that leave no corpse.
+internal sealed record CombatDependencies(
+    CombatRules Rules,
+    ItemCatalogRuntimeDocument ItemCatalog,
+    WorldActorRuntimeDocument? WorldActors,
+    SimulationShardRules ShardRules,
+    GameServiceClient? GameServiceClient,
+    MobCorpseLifecycleService? MobCorpses,
+    CombatMetrics? Metrics,
+    ICombatRandom? Random = null);
 
 // The only place realtime components are created. Components are not registered in
 // dependency injection, which keeps loop-confined state out of reach of other services.
@@ -53,7 +69,7 @@ internal static class RealtimeServerComposition
     public static RealtimeServer Create(RealtimeServerDependencies dependencies, ILogger logger)
     {
         var config = dependencies.Config;
-        var carryStateStore = dependencies.CarryStateStore;
+        var itemStateStore = dependencies.CharacterItemStateStore;
         var sessionStore = dependencies.SessionStore;
         var corpseStore = dependencies.CorpseStore;
         var corpseViewers = dependencies.CorpseViewers;
@@ -99,7 +115,7 @@ internal static class RealtimeServerComposition
             networkMetrics,
             clock);
         var carrySync = new CarryStateSynchronizer(
-            carryStateStore,
+            itemStateStore,
             connectionBindings,
             peers,
             sender);
@@ -114,18 +130,47 @@ internal static class RealtimeServerComposition
             sender,
             presence,
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             corpseViewers,
             worldInteractionLeases,
             connectionBindings,
             entityRegistry,
             networkMetrics);
         var authorityScheduler = new AuthorityOperationScheduler(peers);
+        var combatDependencies = dependencies.Combat ?? new CombatDependencies(
+            CombatRules.Default,
+            new ItemCatalogRuntimeDocument(),
+            null,
+            new SimulationShardRules(),
+            null,
+            null,
+            null);
+        var combatAuthority = new PlayerCombatAuthority(
+            config,
+            combatDependencies.Rules,
+            clock,
+            peers,
+            sender,
+            itemStateStore,
+            sessionStore,
+            entityRegistry,
+            carrySync,
+            corpseStore,
+            authorityScheduler,
+            teardown,
+            sessionOperations,
+            operationTracker,
+            new PlayerCombatAuthorityOperations(
+                combatDependencies.GameServiceClient,
+                completions,
+                logger),
+            combatDependencies.Metrics,
+            logger);
         var itemOperations = new ItemOperationHandler(
             peers,
             sender,
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             entityRegistry,
             carrySync,
             teardown,
@@ -140,7 +185,8 @@ internal static class RealtimeServerComposition
             new ItemAuthorityOperations(
                 dependencies.ItemInteractionService,
                 completions,
-                logger));
+                logger),
+            combatAuthority);
         var corpseViews = new CorpseViewDistributor(
             corpseViewers,
             worldInteractionLeases,
@@ -165,7 +211,7 @@ internal static class RealtimeServerComposition
             peers,
             sender,
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             entityRegistry,
             carrySync,
             teardown,
@@ -174,12 +220,13 @@ internal static class RealtimeServerComposition
             worldInteractionLeases,
             corpseViews,
             corpseStore,
-            liveMobCorpseStore);
+            liveMobCorpseStore,
+            combatAuthority);
         var corpseInteractions = new CorpseInteractionHandler(
             config,
             peers,
             sender,
-            carryStateStore,
+            itemStateStore,
             corpseStore,
             liveMobCorpseStore,
             corpseViewers,
@@ -188,7 +235,8 @@ internal static class RealtimeServerComposition
             operationTracker,
             completions,
             corpseAuthority,
-            corpseFinalizer);
+            corpseFinalizer,
+            combatAuthority);
         var worldActorTimers = new WorldActorTimerQueue();
         var gathering = new GatheringHandler(
             config,
@@ -199,7 +247,7 @@ internal static class RealtimeServerComposition
             worldActorTimers,
             presence,
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             entityRegistry,
             carrySync,
             teardown,
@@ -223,13 +271,15 @@ internal static class RealtimeServerComposition
                 worldInteractionAuthority,
                 completions,
                 logger),
-            gathering);
+            gathering,
+            worldInteractionLeases,
+            combatAuthority);
         var sessions = new RealtimeSessionHandler(
             config,
             peers,
             sender,
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             entityRegistry,
             connectionBindings,
             dependencies.StaticCollisionWorld,
@@ -242,7 +292,63 @@ internal static class RealtimeServerComposition
             dependencies.RegistrationLease,
             networkMetrics,
             performanceMetrics,
+            logger,
+            combatDependencies.ShardRules,
+            combatAuthority);
+        combatAuthority.StartLeave = sessions.StartLeave;
+        var combatants = new CombatantRegistry();
+        var combatRandom = combatDependencies.Random
+            ?? new SeededCombatRandom(dependencies.WorkerIdentity?.RuntimeId.GetHashCode() ?? Environment.TickCount);
+        var combatReplicator = new CombatReplicator(
+            peers,
+            sender,
+            connectionBindings,
+            presence,
+            combatants);
+        var mobDeaths = new MobDeathProcessor(
+            config,
+            clock,
+            worldActorStore,
+            worldActorTimers,
+            combatDependencies.WorldActors?.LootProfiles ?? Array.Empty<WorldActorLootProfileDefinition>(),
+            combatDependencies.WorldActors?.RespawnProfiles ?? Array.Empty<WorldActorRespawnProfileDefinition>(),
+            combatants,
+            presence,
+            combatDependencies.MobCorpses,
+            completions,
+            operationTracker,
+            combatRandom,
             logger);
+        var combat = new CombatSystem(
+            config,
+            combatDependencies.Rules,
+            clock,
+            peers,
+            sender,
+            itemStateStore,
+            entityRegistry,
+            connectionBindings,
+            presence,
+            worldActorStore,
+            combatDependencies.WorldActors?.CombatProfiles ?? Array.Empty<WorldActorCombatProfileDefinition>(),
+            combatants,
+            combatReplicator,
+            combatAuthority,
+            mobDeaths,
+            new CombatItemCatalog(combatDependencies.ItemCatalog, config.MovementSimulation.TickRateHz),
+            new CombatLineOfSight(dependencies.CollisionWorld),
+            combatRandom,
+            combatDependencies.ShardRules,
+            corpseViewers,
+            corpseViews,
+            dependencies.CollisionWorld,
+            combatDependencies.Metrics)
+        {
+            CloseWorldInteraction = worldInteractions.CloseForPeer
+        };
+        presence.SpawnObserver = combatReplicator;
+        teardown.RemovalObserver = combat;
+        sessions.PlayerJoined = combat.OnPlayerJoined;
         var snapshots = new SnapshotReplicator(
             config,
             entityRegistry,
@@ -262,7 +368,11 @@ internal static class RealtimeServerComposition
             presence,
             networkMetrics,
             worldActorTimers,
-            logger);
+            logger)
+        {
+            Activated = combat.RegisterWorldActors,
+            RespawnMob = mobDeaths.Respawn
+        };
         var tickLoop = new SimulationTickLoop(
             config,
             clock,
@@ -271,6 +381,7 @@ internal static class RealtimeServerComposition
             worldActors,
             worldInteractions,
             gathering,
+            combat,
             snapshots,
             corpsePresence,
             dependencies.CollisionStreamingStore,
@@ -297,7 +408,8 @@ internal static class RealtimeServerComposition
             teardown,
             sessionOperations,
             networkMetrics,
-            logger);
+            logger,
+            combatAuthority);
         var dispatcher = new RealtimeMessageDispatcher(
             peers,
             sender,
@@ -305,11 +417,12 @@ internal static class RealtimeServerComposition
             logger,
             RealtimeMessageRoutes.CreateUnauthenticated(sessions.HandleJoinRequest),
             RealtimeMessageRoutes.CreateAuthenticated(
-                new MovementInputHandler(peers, sender).HandleInput,
+                new MovementInputHandler(peers, sender, combat.IsMovementBlocked).HandleInput,
                 itemOperations.HandleIntent,
                 corpseInteractions.HandleIntent,
                 worldInteractions.HandleIntent,
-                sessions.HandleLeaveRequest));
+                sessions.HandleLeaveRequest,
+                combat.HandleIntent));
         var completionProcessor = new RealtimeCompletionProcessor(
             completions,
             peers,
@@ -327,12 +440,14 @@ internal static class RealtimeServerComposition
             tickLoop,
             supervisor,
             worldActors,
+            combat,
+            combatAuthority,
             dependencies.TransportReadiness,
             peers,
             presence,
             connectionBindings,
             entityRegistry,
-            carryStateStore,
+            itemStateStore,
             corpseViewers,
             worldInteractionLeases,
             worldActorStore,

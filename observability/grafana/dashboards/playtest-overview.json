@@ -1664,6 +1664,168 @@
       }
     },
     {
+      "type": "timeseries",
+      "title": "Combat",
+      "description": "Characters and Mobs that can fight, attacks and deaths per minute by combatant kind, and hits per minute by the kind of the target.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(simulation_worker_combat_active_combatants{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "legendFormat": "combatants",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (kind) (increase(simulation_worker_combat_attacks_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "{{kind}} attacks per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (kind) (increase(simulation_worker_combat_hits_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "{{kind}} hits per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (kind) (increase(simulation_worker_combat_deaths_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "{{kind}} deaths per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "id": 34,
+      "gridPos": {
+        "x": 8,
+        "y": 52,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Arrows and deaths",
+      "description": "Shots that GameService has not committed yet, arrow batches and player death partitions per minute by outcome, and dropped shots per minute.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(simulation_worker_combat_pending_shots{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "legendFormat": "pending shots",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (outcome) (increase(simulation_worker_combat_ammunition_batches_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "batches {{outcome}} per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (outcome) (increase(simulation_worker_combat_death_partitions_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "deaths {{outcome}} per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "D",
+          "expr": "sum(increase(simulation_worker_combat_dropped_shots_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "dropped shots per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "id": 35,
+      "gridPos": {
+        "x": 16,
+        "y": 52,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
       "type": "row",
       "id": 26,
       "title": "Worker process",

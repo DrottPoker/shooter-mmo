@@ -366,6 +366,7 @@ public sealed class GameServiceClientTests
             nodeId = requestBody.NodeId,
             shardId = requestBody.ShardId,
             worldId = "development-world-1",
+            ruleSet = "mvp-open-risk",
             host = requestBody.Host,
             udpPort = requestBody.UdpPort,
             maxConnections = requestBody.MaxConnections,

@@ -241,10 +241,10 @@ public sealed class RealtimeSessionLifecycleTests
         Assert.Equal(
             ActiveSimulationSessionRegistration.Joined,
             harness.SessionStore.Register(session));
-        harness.CarryStateStore.Register(
+        harness.CharacterItemStateStore.Register(
             session.CharacterId,
             session.SimulationSessionId,
-            session.CarryState,
+            CharacterStateTestData.ItemState(session.CarryState),
             out _);
         await harness.StartAsync();
 
@@ -253,7 +253,7 @@ public sealed class RealtimeSessionLifecycleTests
                 && harness.SessionStore.ListActiveSessions().Count == 0,
             "the orphan sweep to release the session");
 
-        Assert.False(harness.CarryStateStore.TryGet(
+        Assert.False(harness.CharacterItemStateStore.TryGet(
             session.CharacterId,
             session.SimulationSessionId,
             out _));
@@ -300,7 +300,7 @@ public sealed class RealtimeSessionLifecycleTests
         Assert.Equal(0, metrics.ActiveRealPlayers);
         // In-flight operations finish before the stores are cleared, so a late join cannot
         // leave carry state behind.
-        Assert.False(harness.CarryStateStore.TryGet(
+        Assert.False(harness.CharacterItemStateStore.TryGet(
             character.CharacterId,
             character.SimulationSessionId,
             out _));

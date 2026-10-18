@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -10,6 +11,8 @@ using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -20,7 +23,7 @@ public sealed class RealtimeSimulationService(
     SimulationJoinService joinService,
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationItemInteractionService itemInteractionService,
     SimulationCorpseInteractionService corpseInteractionService,
     DurableCorpseStore corpseStore,
@@ -47,7 +50,14 @@ public sealed class RealtimeSimulationService(
     CorpseRuntimeMetrics? providedCorpseRuntimeMetrics = null,
     DevelopmentItemInteractionOptions? developmentItemInteractions = null,
     IWorldActorCapabilityAvailabilityPolicy? capabilityAvailability = null,
-    SimulationGatheringService? gatheringService = null)
+    SimulationGatheringService? gatheringService = null,
+    ItemCatalogRuntimeDocument? itemCatalog = null,
+    CombatRules? combatRules = null,
+    SimulationShardRules? shardRules = null,
+    WorldActorRuntimeDocument? worldActorRuntime = null,
+    GameServiceClient? gameServiceClient = null,
+    MobCorpseLifecycleService? mobCorpses = null,
+    CombatMetrics? combatMetrics = null)
     : BackgroundService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
@@ -56,7 +66,7 @@ public sealed class RealtimeSimulationService(
             joinService,
             releaseService,
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             itemInteractionService,
             corpseInteractionService,
             corpseStore,
@@ -82,7 +92,15 @@ public sealed class RealtimeSimulationService(
             providedCorpseRuntimeMetrics,
             developmentItemInteractions,
             capabilityAvailability,
-            gatheringService),
+            gatheringService,
+            new CombatDependencies(
+                combatRules ?? CombatRules.Default,
+                itemCatalog ?? new ItemCatalogRuntimeDocument(),
+                worldActorRuntime,
+                shardRules ?? new SimulationShardRules(),
+                gameServiceClient,
+                mobCorpses,
+                combatMetrics)),
         logger);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

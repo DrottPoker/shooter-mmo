@@ -1,4 +1,6 @@
+using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Items;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
@@ -18,5 +20,11 @@ internal static class CharacterStateTestData
             carriedWeight,
             carryCapacity,
             equipment ?? []);
+    }
+
+    // The worker-side item state for a carry state and the given equipment.
+    public static CharacterItemState ItemState(PlayerCarryState carry, params SimulationEquippedItem[] equipment)
+    {
+        return CharacterItemState.Create(carry, equipment);
     }
 }

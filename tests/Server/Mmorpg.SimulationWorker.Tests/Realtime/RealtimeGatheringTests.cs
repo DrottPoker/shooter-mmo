@@ -50,7 +50,7 @@ public sealed class RealtimeGatheringTests
         Assert.Equal("material.iron_ore", yielded.YieldDefinitionId);
         Assert.Equal(1, yielded.YieldQuantity);
         Assert.Equal(1, yielded.ItemStateRevision);
-        Assert.True(fixture.CarryStateStore.TryGet(
+        Assert.True(fixture.CharacterItemStateStore.TryGet(
             player.Session.CharacterId,
             player.Session.SimulationSessionId,
             out var carry));
@@ -387,7 +387,8 @@ public sealed class RealtimeGatheringTests
                     [],
                     [],
                     [],
-                    null),
+                    null,
+                    CharacterStateTestData.Create(player.Session.CharacterId, revision, 10)),
                 null)
         };
     }

@@ -142,7 +142,7 @@ public sealed class VendorAndGatheringCapabilityTests
     {
         return new NpcItemLifecycleCapabilityExecutor(
             new GameServiceClient(new HttpClient(http) { BaseAddress = new Uri("http://game-service.test") }),
-            new CarryStateStore(),
+            new CharacterItemStateStore(),
             new ActiveSimulationSessionStore());
     }
 

@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "player": {
+    "maximumHealth": 100,
+    "respawnDelaySeconds": 5,
+    "combatTimeoutSeconds": 10,
+    "regenerationPercentPerSecond": 2,
+    "equipmentLockoutSeconds": 1
+  },
+  "ammunition": {
+    "batchIntervalSeconds": 5
+  },
+  "ruleSets": [
+    {
+      "id": "mvp-open-risk",
+      "playerVersusPlayer": true
+    }
+  ]
+}

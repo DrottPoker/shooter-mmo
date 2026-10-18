@@ -39,7 +39,8 @@ public sealed class RealtimeProtocolTests
             true,
             new RealtimeCarryState(12, 210, 200),
             CreateMovementSettings(),
-            CreatePlayerState(1f));
+            CreatePlayerState(1f),
+            new RealtimeShardRules(true));
 
         var decoded = RealtimeProtocol.TryDecodeJoinAccepted(
             RealtimeProtocol.EncodeJoinAccepted(expected),

@@ -202,6 +202,10 @@ target shard and applies these rules:
 - A stale process cannot mark a newer runtime offline.
 - Active assignment indexes prevent two worker or shard owners.
 
+Every heartbeat response also names the rule set of the Shard. SimulationWorker
+applies the rule set with that id from its combat rules and stops with
+`shard_rule_set_unknown` when its rules do not define it.
+
 SimulationWorker stores the database-issued lease duration locally, measured
 from the moment the heartbeat request was sent. It rejects
 new UDP joins without a valid registration lease. A one-second monitor stops the
@@ -496,6 +500,87 @@ corpse view.
   times with the same operation id, so a lost answer never grants twice, and a
   rejection that ends the item session disconnects the player.
 - Synthetic development bots cannot gather.
+
+## Target-Based Combat
+
+SimulationWorker loads the combat rules from `SimulationWorker:CombatRulesPath`
+before binding UDP. The default is `WorldData/Combat/combat-rules.json` in the
+worker output, which the build copies from `content/combat/combat-rules.json`.
+The loader rejects unknown and duplicate properties, another format version,
+values out of range, and rule set ids that are not sorted, lowercase, and
+unique. The rules hold the player maximum health of 100, the respawn delay of 5
+seconds, the combat timeout of 10 seconds, regeneration of 2 percent of the
+maximum health per second, the equipment lockout of 1 second, the arrow batch
+interval of 5 seconds, and the Shard rule sets. Weapon values come from the item
+catalog and Mob values from the actor catalog.
+
+- The Shard rule set `mvp-open-risk` allows attacks on other characters.
+  `JoinAccepted` carries the rule as `ShardRules`.
+- A `CombatIntent` `AttackTarget` selects a target that the peer sees, that is a
+  combatant, alive, and not the attacker itself, and that is a character only
+  when the rule set allows it. `ClearTarget` clears the target. The target stays
+  selected until it dies or leaves, or the rule set no longer allows it.
+- On every tick, a character with a target attacks on its weapon's cooldown when
+  it stands still, the target's bounds are within the weapon range, the line of
+  sight from eye height reaches the target's center, a weapon is equipped in
+  `main_hand`, and the equipped arrows belong to the weapon's ammunition family.
+  Otherwise the owner sees the attack status that holds the attack. Line of sight
+  costs a raycast, so it is checked when an attack is due and five times per
+  second otherwise.
+- An attack rolls damage between the weapon's minimum and maximum and adds the
+  arrow's bonus percent, rounded half up. The Training Shortbow deals 10 to 18
+  every 2.4 seconds at up to 10 m, and a Bronze Arrow adds 5 percent. The arrow
+  flies at the weapon family's projectile speed of 30 m/s and hits at its impact
+  tick when the target is still alive. It is spent either way.
+- A different item in any equipment slot holds attacks for the lockout, and an
+  item or corpse operation that may change equipment holds them while it runs.
+  A changed arrow count keeps the same item and does not count.
+- A shot counts against the committed arrow stack at once, so the owner sees the
+  live count in `OwnerCombatState`. The spent arrows commit as one batch through
+  `ammunition-consumptions` 5 seconds after the first uncommitted shot, before
+  any other item or corpse operation of the character, before a leave, and
+  before a disconnected session is released, all through the character's
+  authority lane. A committed batch sends the owner `OwnerItemQuantityChanged`.
+  An uncertain batch retries with the same operation id up to 8 attempts, with a
+  backoff from 0.5 seconds that doubles up to 10 seconds; after that its arrows
+  stay with the player. A rejected batch loses its shots, and a rejection that
+  ends the item session disconnects the player. An item intent whose expected
+  revision only arrow batches advanced is sent with the newest revision instead.
+  Corpse operations carry no expected revision, and NPC and vendor actions are
+  not rebased, so a stale one returns its usual conflict and the client
+  refreshes.
+- A hit that brings health to 0 kills. The killed character stops moving, its
+  world interaction and corpse view close with `combat_character_dead`, its
+  waiting operations are rejected with that code, and so are its new item,
+  corpse, world, and combat intents. The death commits through `player-deaths`
+  with a death event id that the worker creates once and retries with backoff
+  until it commits, together with the shots that are not committed yet and the
+  killer. After the respawn delay, and once the death committed, the character
+  respawns at the World spawn with full health, and every viewer receives its
+  respawn.
+- A combatant is in combat until 10 seconds after its last attack or hit. A
+  living character out of combat regains 2 percent of its maximum health, at
+  least 1 point, every second.
+- Every damageable Mob with a combat profile is a combatant. In this step Mobs
+  stand still and do not attack. A dead Mob rolls its loot profile, where each
+  entry drops with its chance in basis points and a quantity between its bounds.
+  A non-empty roll becomes the Mob's corpse: a live corpse in worker memory, or
+  for a boss a durable corpse in GameService that retries with the same death
+  event id until it commits. The Mob then leaves every view, and its spawn
+  instance returns after its respawn profile's delay, 30 seconds for the Feral
+  Wolf and 300 seconds for the Feral Alpha, with a new runtime and entity id. An
+  empty roll leaves no corpse.
+- A disconnect does not cancel combat work. The session stays until the death
+  and the last arrow batch committed and is released afterwards, and a leave
+  waits for the same work. A worker that stops commits the uncommitted shots it
+  can still name exactly, as a best effort.
+- `CombatantState` follows every spawn of a combatant, and every changed
+  combatant reaches its viewers once at the end of the tick. Combat events reach
+  every peer that sees the source or the target, and `OwnerCombatState` reaches
+  the owner.
+- Synthetic development bots are no combatants, because they have no durable
+  character that could die. An attack on one returns
+  `combat_target_not_attackable`.
 
 ## Server-Authoritative Movement
 
@@ -1034,6 +1119,13 @@ interaction latency, depleted resource nodes, active gatherers, and gathering
 cycles by the `outcome` `yielded`, `rejected`, or `retried`. It does not label
 actor, spawn, player, character, session, or entity identities.
 
+The meter `Mmorpg.SimulationWorker.Combat` exposes attacks, hits, and deaths by
+the `kind` `player` or `mob`, arrow batches by the `outcome` `committed`,
+`retried`, `rejected`, or `session_ended`, dropped shots, player death
+partitions by the `outcome` `committed`, `retried`, `rejected`, or
+`session_ended`, the combat phase duration, active combatants, and shots that
+are not committed yet.
+
 The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
 latency and outcome, lock wait, conflict, stale revision, timeout, death
 partition, policy action, cleanup, corpse count, and Recovery backlog
@@ -1321,6 +1413,15 @@ the test connection variable at development or production data.
   depletion, respawn, movement and closed-interaction stops, uncertain retries,
   and one full-stack flow that buys a pickaxe, mines ore, sells it, and buys a
   potion.
+- Combat coverage verifies the combat rules loader, damage rounding, tick
+  conversion, loadout resolution, target bounds, loot rolls, the Shard rule set
+  from the heartbeat, a wolf that dies, leaves a corpse, and respawns, the attack
+  statuses for range and line of sight, the Shard rule for attacks on
+  characters, arrow batches and the owner's arrow count, a player death that
+  commits once and respawns at the spawn, shots that commit before a leave and
+  after a disconnect, the equipment lockout, a dead character's rejected
+  operations, revision rebasing after arrow batches, the last arrow, and bots
+  that are no targets.
 
 ## Not Yet Implemented
 
@@ -1330,23 +1431,19 @@ the test connection variable at development or production data.
 - Profession experience and levels, gathering success chances, other
   professions, durable resource node state, limited vendor stock, dynamic
   prices, buyback, and player trading.
-- Consume and use intents, per-shot ammunition consumption, and the attack
-  lockout after an equipment change.
+- Consume and use intents.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
   detail presentation. The current uGUI is temporary presentation only.
-- The authoritative combat death producer and final corpse visuals. The durable
-  authenticated death boundary and generic active corpse representation are
-  ready, but combat is not fabricated by the current movement-only gameplay.
-- Mob combat, damage, death-event production, loot-table generation, and
-  respawn. The downstream content-controlled corpse and idempotent claim paths
-  are implemented.
+- Combat presentation in Unity, final corpse visuals, Mob attacks, and Mob AI.
+  Mobs are stationary targets until the Mob AI step of the
+  [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.
 - Alert notifications to a chat or paging service, and a shared or staging
   deployment of the monitoring stack.
-- Durable unique actor state, complete Mob AI, the dialogue, crafting, and
-  trainer capability business operations, or combat simulation.
+- Durable unique actor state, the dialogue, crafting, and trainer capability
+  business operations.
 - Rigid-body collision and replicated dynamic collision transforms.
 
 The item rules, including the planned and open ones, are documented in

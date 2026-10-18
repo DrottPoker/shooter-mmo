@@ -245,6 +245,7 @@ public sealed record SimulationWorkerHeartbeatResponse(
     string NodeId,
     string ShardId,
     string WorldId,
+    string RuleSet,
     string Host,
     int UdpPort,
     int MaxConnections,

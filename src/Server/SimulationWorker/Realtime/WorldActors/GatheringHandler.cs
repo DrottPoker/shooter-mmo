@@ -23,7 +23,7 @@ internal sealed class GatheringHandler(
     WorldActorTimerQueue timers,
     EntityPresenceReplicator presence,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
@@ -38,7 +38,7 @@ internal sealed class GatheringHandler(
     // An uncertain GameService outcome retries with the same operation id this often.
     private const int MaximumUncertainRetries = 3;
 
-    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+    private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
     private readonly Dictionary<int, GatheringActivity> activities = [];
     private readonly List<GatheringActivity> activityBuffer = [];
 
@@ -256,7 +256,7 @@ internal sealed class GatheringHandler(
             return;
         }
 
-        if (!CommittedCarryApplier.TryGetCommittedCarry(completed.Result.Transaction!, out var committed)
+        if (!CommittedCarryApplier.TryGetCommittedState(completed.Result.Transaction!, out var committed)
             || CommittedCarryApplier.IsDiverged(carryApplier.Apply(completed.Session, committed, out var carry)))
         {
             teardown.TerminateForAuthorityFailure(
@@ -464,6 +464,12 @@ internal sealed class GatheringHandler(
             PlayerMovementState state)
         {
             Owner.StartCycle(context, Activity);
+        }
+
+        // A cycle that never started gives its reserved charge back.
+        public void Cancel(RealtimePeerContext context, string code, string message)
+        {
+            Owner.Remove(Activity);
         }
     }
 }

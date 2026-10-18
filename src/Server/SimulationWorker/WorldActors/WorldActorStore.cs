@@ -320,6 +320,36 @@ public sealed class WorldActorStore
         }
     }
 
+    // A new actor for the spawn instance of a despawned one, such as a dead Mob, with a
+    // fresh runtime id and network entity id, as a worker restart would create it.
+    public WorldActorRuntimeState Respawn(WorldActorRuntimeState previous)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        var runtimeActorId = runtimeIdFactory();
+        lock (syncRoot)
+        {
+            if (runtimeActorId == Guid.Empty || actorsByRuntimeId.ContainsKey(runtimeActorId))
+            {
+                throw new InvalidOperationException(
+                    "World actor runtime id allocation returned an invalid or reused id.");
+            }
+
+            var actor = new WorldActorRuntimeState(
+                entityRegistry.AllocateNetworkEntityId(),
+                runtimeActorId,
+                previous.WorldId,
+                previous.ShardId,
+                previous.WorkerRuntimeId,
+                previous.Definition,
+                previous.Spawn,
+                previous.ResourceProfile);
+            actorsByEntityId.Add(actor.NetworkEntityId, actor);
+            actorsByRuntimeId.Add(actor.RuntimeActorId, actor);
+            Interlocked.Increment(ref populationRevision);
+            return actor;
+        }
+    }
+
     // A tombstone exists only so the interest exit can name the despawned actor. Once
     // no connection still sees the entity, every exit has been sent and it is dropped.
     public int PruneDespawned(Func<ulong, bool> isStillVisible)

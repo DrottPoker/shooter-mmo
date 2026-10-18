@@ -79,10 +79,10 @@ public sealed class QuestTurnInWorldActorCapabilityHandler : IWorldActorCapabili
 
 public sealed class NpcItemLifecycleCapabilityExecutor(
     GameServiceClient gameServiceClient,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     ActiveSimulationSessionStore sessionStore)
 {
-    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+    private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
 
     public async Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
         WorldActorCapabilityOperationContext context,
@@ -204,17 +204,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         ActiveSimulationSession session,
         SimulationItemTransactionResponse transaction)
     {
-        if (transaction.CharacterRevisions.Count == 0)
-        {
-            return carryStateStore.TryGet(
-                session.CharacterId,
-                session.SimulationSessionId,
-                out var current)
-                    ? current!.ItemStateRevision
-                    : -1;
-        }
-
-        if (!CommittedCarryApplier.TryGetCommittedCarry(transaction, out var committed)
+        if (!CommittedCarryApplier.TryGetCommittedState(transaction, out var committed)
             || CommittedCarryApplier.IsDiverged(
                 carryApplier.Apply(session, committed, out var currentCarry)))
         {

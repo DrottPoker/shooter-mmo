@@ -21,6 +21,12 @@ internal sealed class WorldActorRuntimeDriver(
 {
     private readonly List<WorldActorTimer> dueTimers = [];
 
+    // Respawns a dead Mob when its respawn timer is due; set by the composition.
+    public Action<WorldActorTimer>? RespawnMob { get; set; }
+
+    // Hears the actors of an activated assignment, such as combat registering its Mobs.
+    public Action<IReadOnlyList<WorldActorRuntimeState>>? Activated { get; set; }
+
     public void Activate()
     {
         timers.Clear();
@@ -37,6 +43,7 @@ internal sealed class WorldActorRuntimeDriver(
                 config.ShardId,
                 workerIdentity.RuntimeId);
             worldActorMetrics?.ObservePopulation(actors);
+            Activated?.Invoke(actors);
             presence.RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
             networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
             logger.LogInformation(
@@ -79,6 +86,12 @@ internal sealed class WorldActorRuntimeDriver(
         timers.DrainDue(serverTick, dueTimers);
         foreach (var timer in dueTimers)
         {
+            if (timer.Kind == WorldActorTimerKind.MobRespawn)
+            {
+                RespawnMob?.Invoke(timer);
+                continue;
+            }
+
             if (worldActorStore.TryGetByRuntimeId(timer.RuntimeActorId, out var actor)
                 && actor!.ReplenishResource(timer.Generation))
             {

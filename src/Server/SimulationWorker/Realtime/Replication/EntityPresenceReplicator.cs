@@ -4,6 +4,13 @@ using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
+// Hears every spawn this replicator sends, so state that must follow a spawn, such as a
+// combatant's health, reaches the same peer right after it.
+internal interface IEntitySpawnObserver
+{
+    void OnSpawnSent(IRealtimePeerConnection peer, ulong entityId);
+}
+
 // Owns the interest manager and replicates entity presence: baselines, spawns,
 // despawns and world actor state. Loop-confined, like the interest manager.
 internal sealed class EntityPresenceReplicator(
@@ -21,6 +28,67 @@ internal sealed class EntityPresenceReplicator(
     private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
 
     public int ActiveEntityCount => entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
+
+    public IEntitySpawnObserver? SpawnObserver { get; set; }
+
+    public bool IsVisibleTo(int connectionId, ulong entityId)
+    {
+        return interestManager.GetVisible(connectionId).Contains(entityId);
+    }
+
+    // A world actor that appeared after activation, such as a respawned Mob, enters the
+    // interest index and spawns for every connection that now sees it.
+    public void TrackSpawnedWorldActor(WorldActorRuntimeState actor)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        foreach (var connectionId in interestManager.AddEntity(new SimulationInterestEntity(
+                     actor.NetworkEntityId,
+                     actor.PositionX,
+                     actor.PositionZ)))
+        {
+            if (peers.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
+            {
+                SendWorldActorSpawn(peer, actor);
+            }
+        }
+
+        networkMetrics.SetActiveEntities(ActiveEntityCount);
+    }
+
+    // A teleported player, such as one that respawned, is despawned and spawned again for
+    // every connection that sees it, so clients snap instead of interpolating the jump.
+    public void RespawnEntityForViewers(PlayerSimulationEntity entity, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        foreach (var context in peers.Contexts)
+        {
+            if (context.Session is null
+                || !interestManager.GetVisible(context.PeerId).Contains(entity.NetworkEntityId)
+                || !peers.TryGetCurrentPeer(context, out var peer))
+            {
+                continue;
+            }
+
+            SendDespawn(peer, entity.NetworkEntityId, reason);
+            SendSpawn(peer, entity);
+        }
+    }
+
+    // A despawned world actor leaves every connection that saw it at once.
+    public void BroadcastWorldActorDespawn(WorldActorRuntimeState actor, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        foreach (var connectionId in interestManager.ForgetEntity(actor.NetworkEntityId))
+        {
+            if (peers.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
+            {
+                SendWorldActorDespawn(peer, actor, reason);
+            }
+        }
+
+        PruneDespawned();
+        networkMetrics.SetActiveEntities(ActiveEntityCount);
+    }
 
     // Adds a newly registered entity to the interest index, or moves a reused one, and
     // returns the connections that now see a new entity.
@@ -228,6 +296,7 @@ internal sealed class EntityPresenceReplicator(
     {
         sender.SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
         networkMetrics.RecordSpawnPacket();
+        SpawnObserver?.OnSpawnSent(peer, entity.NetworkEntityId);
     }
 
     private void SendWorldActorSpawn(
@@ -239,6 +308,7 @@ internal sealed class EntityPresenceReplicator(
             RealtimeProtocol.EncodeWorldActorSpawn(
                 WorldActorProtocolMapper.ToSpawn(actor)));
         networkMetrics.RecordSpawnPacket();
+        SpawnObserver?.OnSpawnSent(peer, actor.NetworkEntityId);
     }
 
     private void SendWorldActorDespawn(

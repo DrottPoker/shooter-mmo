@@ -16,7 +16,7 @@ internal sealed class CorpseOperationFinalizer(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
@@ -25,9 +25,10 @@ internal sealed class CorpseOperationFinalizer(
     WorldInteractionLeaseRegistry? worldInteractionLeases,
     CorpseViewDistributor corpseViews,
     DurableCorpseStore corpseStore,
-    LiveMobCorpseStore? liveMobCorpseStore) : IRealtimeCompletionHandler
+    LiveMobCorpseStore? liveMobCorpseStore,
+    ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
-    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+    private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
 
     public void Complete(RealtimeOperationResult completion)
     {
@@ -40,6 +41,7 @@ internal sealed class CorpseOperationFinalizer(
     private void FinalizeOperation(CorpseOperationCompleted completed)
     {
         completed.Context.AuthorityOperationInFlight = false;
+        combatGate?.ClientOperationFinished(completed.Context);
         if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
@@ -65,7 +67,7 @@ internal sealed class CorpseOperationFinalizer(
             return;
         }
 
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 completed.Session.CharacterId,
                 completed.Session.SimulationSessionId,
                 out _))
@@ -153,7 +155,7 @@ internal sealed class CorpseOperationFinalizer(
                 peer,
                 completed.Context,
                 completed.Session,
-                completed.Result.Mutation.Transaction))
+                completed.Result.Mutation))
         {
             return;
         }
@@ -207,20 +209,25 @@ internal sealed class CorpseOperationFinalizer(
         IRealtimePeerConnection peer,
         RealtimePeerContext context,
         ActiveSimulationSession session,
-        SimulationItemTransactionResponse transaction)
+        CorpseMutationResponse mutation)
     {
-        if (!CommittedCarryApplier.TryGetCommittedCarry(transaction, out var committedCarry))
+        // A durable corpse operation answers with the state next to the transaction; a live
+        // Mob corpse grant carries it inside its transaction.
+        var characterState = mutation.CharacterState ?? mutation.Transaction.CharacterState;
+        if (!CommittedCarryApplier.TryGetCommittedState(
+                mutation.Transaction with { CharacterState = characterState },
+                out var committedState))
         {
             teardown.TerminateForAuthorityFailure(
                 peer,
                 context,
                 session,
                 "item_state_diverged",
-                "The corpse transaction returned an invalid character revision set.");
+                "The corpse transaction returned no committed character state.");
             return false;
         }
 
-        var carryResult = carryApplier.Apply(session, committedCarry, out _);
+        var carryResult = carryApplier.Apply(session, committedState, out _);
         if (CommittedCarryApplier.IsDiverged(carryResult))
         {
             teardown.TerminateForAuthorityFailure(
@@ -247,7 +254,7 @@ internal sealed class CorpseOperationFinalizer(
         ActiveSimulationSession session,
         SimulationCorpseInteractionResult result)
     {
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 session.CharacterId,
                 session.SimulationSessionId,
                 out var carryState))

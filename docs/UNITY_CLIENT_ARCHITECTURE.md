@@ -16,7 +16,7 @@ runtime claim.
 ## Project Boundary
 
 The Unity project lives in `src/Client` and targets Unity
-6000.5.4f1. Runtime code is compiled into nine area assemblies, described in
+6000.5.4f1. Runtime code is compiled into ten area assemblies, described in
 [Assemblies](#assemblies). All runtime content loads through Addressables, as
 described in [Content Loading With Addressables](#content-loading-with-addressables).
 EditMode and PlayMode tests use separate assemblies.
@@ -47,14 +47,17 @@ layers from the bottom up:
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, prediction, interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
-| `Mmorpg.Client.Ui` | Every panel, drag and drop, `ClientOperationState` | Every row above it |
+| `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror | Networking |
+| `Mmorpg.Client.Ui` | Every panel, drag and drop, `ClientOperationState` | Every row above it except Combat |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | Every row above it |
 
 Ui is the top feature area; only the App composition root, which creates the
-panels, sits above it. Each namespace equals its assembly name. Areas that read
-`ClientSession` reference Api as well, because the session caches Api
-contracts. The Editor-only `Mmorpg.Client.Editor` assembly references Core and
-Worlds plus the shared WorldData editor and the Addressables editor assemblies.
+panels, sits above it. Ui and App may reference Combat; today only App does,
+and combat presentation adds the Ui reference when it arrives. Each namespace
+equals its assembly name. Areas that read `ClientSession` reference Api as
+well, because the session caches Api contracts. The Editor-only
+`Mmorpg.Client.Editor` assembly references Core and Worlds plus the shared
+WorldData editor and the Addressables editor assemblies.
 
 `ClientAssemblyArchitectureTests` pins the exact declared references of every
 client assembly, including shared and package assemblies, the layer order, and
@@ -73,6 +76,8 @@ ClientBootstrap (Mmorpg.Client.App composition root)
       +-- ClientItemCatalog
       +-- InventoryClientState
       +-- InventoryOperationJournal
+  +-- CombatClientController
+      +-- CombatClientState
   +-- ClientConfig
   +-- scene lifecycle recovery
 
@@ -128,9 +133,10 @@ World pointer input
 ## Persistent Client Bootstrap
 
 `ClientBootstrap` creates the persistent runtime root and survives scene
-changes. It initializes configuration, owns one `RealtimeSimulationClient` and
-one `InventoryClientController`, observes scene transitions, and performs
-fallback leave when an active World scene is left outside the normal panel flow.
+changes. It initializes configuration, owns one `RealtimeSimulationClient`, one
+`InventoryClientController`, and the corpse, world actor, world interaction, and
+combat controllers, observes scene transitions, and performs fallback leave when
+an active World scene is left outside the normal panel flow.
 
 `ClientBootstrap` is the only composition root, and no runtime assembly
 references it. It creates the persistent services and passes them explicitly
@@ -243,11 +249,16 @@ into `ClientSession`.
 Unexpected disconnect clears the active shard view and returns an authenticated
 player to CharacterSelect. `RealtimeSimulationClient` also raises `SessionEnded`
 once whenever a joined session ends for any reason, including a graceful leave,
-`Abort`, or a failure while leaving. The inventory, corpse, world actor, and world
-interaction controllers reset their session-scoped state on that event, so a
-pending operation, open view, or corpse presence sequence never blocks the next
-join. Join rejection stays in CharacterSelect and displays
-the structured server code. Protocol decoding rejects wrong versions, invalid
+`Abort`, or a failure while leaving. The inventory, corpse, world actor, world
+interaction, and combat controllers reset their session-scoped state on that
+event, so a pending operation, open view, or corpse presence sequence never
+blocks the next join. `SessionJoined` is raised when the worker accepts a join,
+before any later message of that session is handled; the combat controller
+clears its state there as well, because combat revisions start again in every
+session. The accepted join also carries the Shard rules, which the client
+exposes as `ShardRules` while the session is joined, such as whether player
+versus player attacks are allowed. Join rejection stays in CharacterSelect and
+displays the structured server code. Protocol decoding rejects wrong versions, invalid
 types, oversized values, and trailing data.
 
 If another client logs into the same account, SimulationWorker can send
@@ -260,8 +271,8 @@ The realtime protocol uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
 
 - Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
-  lifecycle, carry-state updates, and item-operation intent and result control
-  messages.
+  lifecycle, carry-state updates, item-operation intent and result, combat, and
+  the other control messages.
 - Channel 1 uses sequenced delivery for redundant movement input batches. A
   batch also carries the path of its newest input until an owner snapshot
   confirms that path, so a path can never arrive after the inputs that name it.
@@ -281,9 +292,10 @@ snapshot delivery:
   state. They are not protocol failures because LiteNetLib delivery methods do
   not provide ordering relative to each other.
 - While a leave is pending, SimulationWorker keeps sending reliable presence,
-  world actor, interaction, corpse, and item-operation messages until it has
-  released the session. The client ignores these in-flight messages in the
-  `Leaving` state, so a graceful leave never turns into a protocol disconnect.
+  world actor, interaction, corpse, gathering, combat, and item-operation
+  messages until it has released the session. The client ignores these
+  in-flight messages in the `Leaving` state, so a graceful leave never turns
+  into a protocol disconnect.
 - After the session ended in one poll, later packets in the same poll are
   ignored, so the first failure reason is the one shown to the player.
 
@@ -584,6 +596,23 @@ advance its slice, but any newer focused revision marks the complete snapshot
 incoherent and disables mutation until a full refresh reaches the newest known
 revision. Same-revision content disagreement is an error. Older responses are
 ignored. Initial join and reconnect trigger a complete refresh automatically.
+
+Spent arrows commit in worker batches that no client intent caused. The worker
+reports each committed batch with `OwnerItemQuantityChanged`: the item-state
+revision it applies to, the new carry state, the equipped stack, its new
+quantity, and its new revision, where quantity `0` means the stack was used up.
+`RealtimeSimulationClient` first advances `NetworkMovementSession` with the
+carry state, raising `CarryStateChanged` when it changed, and then raises
+`OwnerItemQuantityChanged`. `InventoryClientController` patches the stack in the
+`ammunition` equipment slot in place, or empties the slot at quantity `0`, and
+takes the new carry values and revision, but only when the complete snapshot is
+coherent at exactly the revision the change applies to and the change is the
+single transaction after it, because every item transaction advances the
+item-state revision by one. The patch keeps the inventory status, so a pending
+operation stays busy. In every other case, such as a missed earlier change, an
+incoherent snapshot, or a stack the client does not know as equipped
+ammunition, it calls `EnsureFullState` with the new revision, which refreshes
+unless a coherent snapshot already reached it.
 
 `InventoryOperationJournal` permits one pending mutation, retains its generated
 operation id and rejection refresh scope, and never changes custody locally.
@@ -1063,6 +1092,56 @@ the capability button, such as `Mine`, starts again. The worker owns every
 cycle and every stop: moving, closing the interaction, a depleted node, or a
 rejected yield, such as a missing tool or a full inventory.
 
+## Combat Client
+
+Status: Protocol handling and the combat state mirror implemented; combat
+targeting and presentation follow in their own step of the
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md#unity-client).
+
+Combat is server-authoritative and never predicted. `RealtimeSimulationClient`
+decodes the four server messages of the Combat family and the Items-family
+quantity change in the joined state and raises a typed event for each:
+`CombatIntentCompleted`, `CombatantStateReceived`, `CombatEventBatchReceived`,
+`OwnerCombatStateReceived`, and `OwnerItemQuantityChanged`. A decode failure
+fails the protocol like every other control message, and so does a
+`CombatantState` for an entity without reliable presence, because the worker
+sends it right after every spawn of a combatant. `TrySendCombatIntent` sends a
+typed `CombatIntent`, built with `RealtimeCombatIntent.CreateAttackTarget` or
+`CreateClearTarget`, on the reliable ordered control channel.
+
+`CombatClientController` is a persistent bootstrap-owned adapter that the
+bootstrap initializes with the realtime client. Its `CombatClientState` keeps:
+
+- One combatant state per visible player or Mob entity. A newer state revision
+  replaces it, an older one is ignored, and an equal revision with different
+  values is a conflict that disconnects with `combat_state_conflict`. The state
+  of an entity or world actor is removed when it despawns, and a combatant that
+  spawns again starts from the state that follows its spawn.
+- The owner's combat state from `OwnerCombatState` with the same revision rules,
+  where only the server tick of a repeated revision may differ.
+- The combat intents that wait for a result, keyed by operation id, at most
+  eight. `TryAttackTarget` and `TryClearTarget` check only what must fail, such
+  as no joined session, the character itself, or a dead character, and the
+  worker validates every rule. A result completes its own intent in any order;
+  a result without a pending intent of its kind disconnects with
+  `combat_intent_result_mismatch`. The latest result stays readable as
+  `LastIntentResult`.
+
+Combat event batches are forwarded through `EventsReceived` in simulation order
+for presentation; health always comes from the combatant and owner states. The
+state clears on `SessionJoined` and `SessionEnded`, so reconnect cleanup never
+compares revisions across sessions.
+
+`Respawned` fires when an owner state's life sequence advances and the life
+state is alive again, also when the dead state itself was never received. The
+worker then has moved the character to the World spawn with full health. The
+owner's movement prediction needs no extra reset for that: the teleport arrives
+as the next owner snapshot, the worker ignores movement inputs while the
+character is dead and halts its path, and a reconciliation of 3 metres or more
+is a hard correction that snaps the presentation to the reconciled state
+instead of blending. A respawn within 3 metres of the death position blends
+like any small correction.
+
 ## Test Architecture
 
 EditMode tests cover client session cleanup, operation serialization, structured
@@ -1087,6 +1166,16 @@ coverage pins the paper doll positions and the extra rows for unknown slots, the
 carry meter fill, marker, and load levels including a death overflow, blocked
 equipment slots, catalog display names for tags, slots, and the Secure Container
 tier, quantity and policy badges, and the item tooltip text.
+
+Combat coverage in `CombatClientTests` verifies monotonic combatant and owner
+revisions and their conflicts, despawn removal, intent completion by operation
+id and kind, the pending intent bound, reconnect cleanup, the respawn signal,
+event forwarding, and that every combat message, and every other reliable
+worker message outside the session lifecycle, is ignored while leaving.
+`InventoryQuantityChangeTests` cover the in-place arrow patch, a used-up stack,
+a pending operation that stays busy, and the refresh fallback for a missed or
+skipped revision, an unknown or wrongly placed stack, a growing quantity, and an
+incoherent snapshot.
 
 World actor coverage verifies monotonic actor presence and state,
 reconnect cleanup, operation correlation, authoritative capability summaries,
@@ -1120,8 +1209,8 @@ and every registry prefab, loads content through `ClientAssets`, and fails on an
 `Resources` folder or call in the client and shared packages.
 
 PlayMode tests verify that loading LoginMenu creates the persistent client
-bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and
-presentation controllers plus the runtime login panel. World-scene coverage
+bootstrap, realtime, inventory, corpse, actor, interaction, combat, targeting,
+and presentation controllers plus the runtime login panel. World-scene coverage
 loads `DevelopmentWorld1` through Addressables, opens and closes the runtime uGUI
 inventory root, and finds the runtime corpse and actor presentation controllers.
 An inventory panel test applies a committed snapshot without a GameService and
@@ -1170,6 +1259,8 @@ Manual flows and expected results are documented in
   item and corpse state in their bootstrap-owned controllers, not scene panels.
 - Keep planned actor and world-interaction state in bootstrap-owned controllers,
   not actor prefabs or the temporary interaction panel.
+- Keep combat state in `CombatClientController`. Presentation reads its state
+  and never decides range, damage, or death.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
 - Give every type that holds static state a

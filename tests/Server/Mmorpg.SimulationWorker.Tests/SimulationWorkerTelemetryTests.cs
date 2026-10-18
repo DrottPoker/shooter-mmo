@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Mmorpg.Server.Telemetry;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.GameServiceApi;
@@ -63,6 +64,7 @@ public sealed class SimulationWorkerTelemetryTests
         using var performance = new RealtimePerformanceMetrics();
         using var worldActors = new WorldActorMetrics();
         using var corpses = new CorpseRuntimeMetrics();
+        using var combat = new CombatMetrics();
 
         var referenced = ObservabilityAssets.ReferencedMetricNames("simulation_worker_");
 

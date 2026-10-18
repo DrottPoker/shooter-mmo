@@ -247,6 +247,34 @@ before committing equipment changes. An item whose `requiredCharacterLevel` is
 above the character's level is rejected with `equipment_level_requirement_not_met`,
 also when a corpse Bag swap would equip it.
 
+### Ammunition Consumption And Equipment Lockout
+
+Every shot consumes one unit of the equipped ammunition stack, and used
+ammunition is never recovered, also when the arrow misses because its target
+died in flight. One PostgreSQL transaction per shot would be too heavy, so
+SimulationWorker counts shots against the committed stack in memory and commits
+them in batches through one idempotent kernel command per batch:
+
+- A batch starts 5 seconds after the first uncommitted shot, the
+  `batchIntervalSeconds` of the combat rules, before any other item or corpse
+  operation of the character, before a leave, and before a disconnected session
+  is released. A death carries the shots that are still uncommitted, and the
+  death transaction consumes them before it partitions the remaining stack.
+- The batch id is a random version 4 operation id, so a retry replays the
+  stored result. An uncertain batch retries up to 8 times; after that, and
+  after a rejection, its shots are lost and the arrows stay with the player.
+- A worker crash loses the uncommitted shots of at most one interval, which
+  then stay with the player. A worker that stops cleanly commits the shots it
+  can still name exactly.
+- The owner sees the live count, the committed stack minus the uncommitted
+  shots, and a committed batch sends the new stack quantity and item-state
+  revision.
+
+A different item in any equipment slot holds attacks for the equipment lockout
+of 1 second, and so does an item or corpse operation that may change equipment
+while it runs. A changed arrow count keeps the same item and does not start the
+lockout.
+
 ## Bag Rules
 
 A Bag is a physical item. A Bag definition may provide:
@@ -672,8 +700,8 @@ retained Secure Container contents then place the character above 140 percent,
 the death transaction still commits because rejecting death would violate the
 authoritative event and custody partition. The item transaction kernel accepts
 only non-worsening remediation from that state and rejects any added weight or
-worse load ratio. Live combat activation must resolve the dead character's
-respawn and carry-state transition before returning it to movement simulation.
+worse load ratio. SimulationWorker respawns a dead character only after its
+death committed and the committed carry state was applied.
 
 The corpse exposes separate sections for:
 
@@ -732,8 +760,9 @@ The worker derives each loot entry and grant id from one authoritative death
 event and materializes a claimed whole item through the exact-session item
 transaction boundary. Selected durable Mobs use the same durable corpse record,
 three-section custody, restoration, interaction, and expiry paths as players.
-The lifecycle input contains already resolved loot seeds. Combat, damage, death
-detection, loot-table generation, and respawn remain separate producers.
+The lifecycle input contains already resolved loot seeds. SimulationWorker
+rolls them from the Mob's loot profile when combat kills it, and an empty roll
+creates no corpse.
 
 ## Corpse Container Transfers And Bag Swaps
 
@@ -891,24 +920,15 @@ These rules are decided and wait for later work, mostly the combat work in
   the level requirement on every equip.
 - Consume and use intents for potions, food, and other consumables, with the
   consumable cooldowns from the combat design.
-- Per-shot ammunition consumption from the equipped ammunition stack. Every shot
-  consumes one unit, and used ammunition is never recovered.
-- The short attack lockout after an equipment change, including a future
-  two-loadout swap.
-- Producers that call the existing item boundaries: quest progression, combat
-  death, and Mob loot tables. Vendors and gathering are implemented.
+- The equipment lockout for a future two-loadout swap.
+- Quest progression as a producer that calls the existing item boundaries.
+  Vendors, gathering, combat death, and Mob loot tables are implemented.
 - Final corpse presentation art.
 
 ## Proposed
 
-- **Worker-batched consumption.** One PostgreSQL transaction per shot or
-  potion is too heavy, so SimulationWorker would count consumption against the
-  equipped stack in memory and commit it in batches through one idempotent
-  kernel command per batch: periodically, before any other item operation on the
-  same stack, and when the session ends or the character dies. The batch id makes
-  a retry safe, and a stack the worker has reserved cannot be moved until its
-  batch commits. Open points are the batch interval, what a worker crash may lose,
-  and how the client shows a pending count.
+- **Batched potion and food consumption.** Consumables could use the same
+  worker-batched consumption as arrows once consume and use intents exist.
 
 ## Open Questions
 

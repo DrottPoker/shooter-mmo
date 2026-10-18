@@ -15,6 +15,7 @@ namespace Mmorpg.SharedTests
             const RealtimeMessageType result = RealtimeMessageType.ItemOperationResult;
 
             r.Vector("Items/CarryStateChanged/overflow", carry, () => RealtimeProtocol.EncodeCarryStateChanged(CarryStateModel()));
+            RegisterOwnerItemQuantityChanged(r);
             r.Vector(
                 "Items/CarryStateChanged/empty",
                 carry,
@@ -392,6 +393,74 @@ namespace Mmorpg.SharedTests
             r.RejectsOversize(
                 "Items/ItemOperationResult/failure message above the packet limit",
                 () => RealtimeProtocol.EncodeItemOperationResult(ItemFailureModel(message: Repeat("✓", 512))));
+        }
+
+        private static void RegisterOwnerItemQuantityChanged(Registry r)
+        {
+            const RealtimeMessageType change = RealtimeMessageType.OwnerItemQuantityChanged;
+            r.Vector(
+                "Items/OwnerItemQuantityChanged/arrows spent",
+                change,
+                () => RealtimeProtocol.EncodeOwnerItemQuantityChanged(OwnerItemQuantityChangedModel()));
+            r.Vector(
+                "Items/OwnerItemQuantityChanged/last arrows spent",
+                change,
+                () => RealtimeProtocol.EncodeOwnerItemQuantityChanged(OwnerItemQuantityChangedModel(quantity: 0, itemRevision: 0)));
+
+            r.Accepts("Items/OwnerItemQuantityChanged/baseline", OwnerItemQuantityChangedWire());
+            r.Accepts(
+                "Items/OwnerItemQuantityChanged/used up",
+                OwnerItemQuantityChangedWire(quantity: 0, itemRevision: 0));
+            r.Rejects("Items/OwnerItemQuantityChanged/reason 0", OwnerItemQuantityChangedWire(reason: 0));
+            r.Rejects("Items/OwnerItemQuantityChanged/reason 2", OwnerItemQuantityChangedWire(reason: 2));
+            r.Rejects(
+                "Items/OwnerItemQuantityChanged/negative previous revision",
+                OwnerItemQuantityChangedWire(previousRevision: -1));
+            r.Rejects(
+                "Items/OwnerItemQuantityChanged/revision did not advance",
+                OwnerItemQuantityChangedWire(previousRevision: 12));
+            r.Rejects("Items/OwnerItemQuantityChanged/empty item", OwnerItemQuantityChangedWire(itemInstanceId: Guid.Empty));
+            r.Rejects("Items/OwnerItemQuantityChanged/negative quantity", OwnerItemQuantityChangedWire(quantity: -1));
+            r.Rejects(
+                "Items/OwnerItemQuantityChanged/used up with a revision",
+                OwnerItemQuantityChangedWire(quantity: 0));
+            r.Rejects(
+                "Items/OwnerItemQuantityChanged/invalid carry state",
+                OwnerItemQuantityChangedWire(carry: CarryStateWire(carryCapacity: 0)));
+            r.RejectsEncode(
+                "Items/OwnerItemQuantityChanged/revision did not advance",
+                () => RealtimeProtocol.EncodeOwnerItemQuantityChanged(OwnerItemQuantityChangedModel(previousRevision: 12)));
+        }
+
+        private static RealtimeOwnerItemQuantityChanged OwnerItemQuantityChangedModel(
+            long previousRevision = 11,
+            int quantity = 995,
+            long itemRevision = 41)
+        {
+            return new RealtimeOwnerItemQuantityChanged(
+                RealtimeItemQuantityChangeReason.AmmunitionConsumed,
+                previousRevision,
+                CarryStateModel(),
+                G(5),
+                quantity,
+                itemRevision);
+        }
+
+        private static Wire OwnerItemQuantityChangedWire(
+            byte reason = 1,
+            long previousRevision = 11,
+            Wire carry = null,
+            Guid? itemInstanceId = null,
+            int quantity = 995,
+            long itemRevision = 41)
+        {
+            return Wire.Message(RealtimeMessageType.OwnerItemQuantityChanged)
+                .U8(reason)
+                .I64(previousRevision)
+                .Append(carry ?? CarryStateWire())
+                .Guid(itemInstanceId ?? G(5))
+                .I32(quantity)
+                .I64(itemRevision);
         }
 
         private static RealtimeCarryState CarryStateModel()

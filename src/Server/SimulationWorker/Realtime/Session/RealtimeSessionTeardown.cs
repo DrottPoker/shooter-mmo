@@ -15,13 +15,15 @@ internal sealed class RealtimeSessionTeardown(
     RealtimePeerSender sender,
     EntityPresenceReplicator presence,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     CorpseViewerRegistry corpseViewers,
     WorldInteractionLeaseRegistry? worldInteractionLeases,
     ConnectionEntityBindingRegistry connectionBindings,
     SimulationEntityRegistry entityRegistry,
     RealtimeNetworkMetrics networkMetrics)
 {
+    public IPlayerEntityRemovalObserver? RemovalObserver { get; set; }
+
     public void RemoveBoundEntity(
         RealtimePeerContext context,
         ActiveSimulationSession session,
@@ -39,11 +41,12 @@ internal sealed class RealtimeSessionTeardown(
             return;
         }
 
-        carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+        itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
         connectionBindings.UnbindConnection(context.PeerId, out _);
         presence.ForgetConnection(context.PeerId);
         presence.BroadcastEntityDespawn(entityId, reason, context.PeerId);
         networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
+        RemovalObserver?.OnPlayerEntityRemoved(context, session, entityId);
     }
 
     public void DetachSupersededPeer(RealtimePeerContext context)
@@ -85,7 +88,7 @@ internal sealed class RealtimeSessionTeardown(
 
     public void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
     {
-        carryStateStore.Remove(
+        itemStateStore.Remove(
             replacedEntity.Session.CharacterId,
             replacedEntity.Session.SimulationSessionId);
         int? replacedConnectionId = null;
@@ -101,6 +104,10 @@ internal sealed class RealtimeSessionTeardown(
             replacedEntity.NetworkEntityId,
             "entity_replaced",
             replacedConnectionId);
+        RemovalObserver?.OnPlayerEntityRemoved(
+            RealtimePeerContext.System,
+            replacedEntity.Session,
+            replacedEntity.NetworkEntityId);
     }
 
     // Ends a session whose authoritative state can no longer be trusted.
@@ -119,7 +126,7 @@ internal sealed class RealtimeSessionTeardown(
             code,
             message);
         RemoveBoundEntity(context, session, code);
-        carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+        itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
         context.AuthorityOperationQueue.Clear();
         corpseViewers.RemovePeer(context.PeerId);
         worldInteractionLeases?.RemovePeer(context.PeerId);

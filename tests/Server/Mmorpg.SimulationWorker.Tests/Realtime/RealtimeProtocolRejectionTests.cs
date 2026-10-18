@@ -216,7 +216,7 @@ public sealed class RealtimeProtocolRejectionTests
                     DeliveryMethod.ReliableUnordered);
                 break;
             case "item_without_carry_state":
-                Assert.True(harness.CarryStateStore.Remove(
+                Assert.True(harness.CharacterItemStateStore.Remove(
                     character.CharacterId,
                     character.SimulationSessionId));
                 client.SendItemIntent(CreateItemIntent());
@@ -231,7 +231,7 @@ public sealed class RealtimeProtocolRejectionTests
                     DeliveryMethod.ReliableUnordered);
                 break;
             case "corpse_without_carry_state":
-                Assert.True(harness.CarryStateStore.Remove(
+                Assert.True(harness.CharacterItemStateStore.Remove(
                     character.CharacterId,
                     character.SimulationSessionId));
                 client.SendCorpseIntent(CreateCorpseIntent());

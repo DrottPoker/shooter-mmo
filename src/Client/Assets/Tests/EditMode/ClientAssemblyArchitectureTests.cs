@@ -29,6 +29,7 @@ namespace Mmorpg.Client.Tests.EditMode
             "Mmorpg.Client.Items",
             "Mmorpg.Client.Gameplay",
             "Mmorpg.Client.WorldActors",
+            "Mmorpg.Client.Combat",
             "Mmorpg.Client.Ui",
             "Mmorpg.Client.App"
         };
@@ -92,6 +93,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Unity.Addressables",
                     "Unity.ResourceManager"
                 },
+                ["Mmorpg.Client.Combat"] = new[]
+                {
+                    "Mmorpg.Client.Networking",
+                    "Mmorpg.GameProtocol"
+                },
                 ["Mmorpg.Client.Ui"] = new[]
                 {
                     "Mmorpg.Client.Api",
@@ -117,6 +123,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Items",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.Client.WorldActors",
+                    "Mmorpg.Client.Combat",
                     "Mmorpg.Client.Ui",
                     "Unity.ResourceManager"
                 },

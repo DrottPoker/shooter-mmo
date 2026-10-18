@@ -5,7 +5,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Hands decoded movement inputs to the peer's authoritative movement. Loop-confined.
 internal sealed class MovementInputHandler(
     RealtimePeerRegistry peers,
-    RealtimePeerSender sender)
+    RealtimePeerSender sender,
+    Func<Entities.PlayerSimulationEntity, bool>? isMovementBlocked = null)
 {
     public void HandleInput(in RealtimeInboundMessage message)
     {
@@ -29,6 +30,12 @@ internal sealed class MovementInputHandler(
                 context,
                 "invalid_movement_input",
                 movementError);
+            return;
+        }
+
+        // A dead character does not move; its inputs are dropped until it respawns.
+        if (isMovementBlocked?.Invoke(playerEntity) == true)
+        {
             return;
         }
 

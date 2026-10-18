@@ -53,6 +53,12 @@ namespace Mmorpg.WorldData.Items
 
         // Gathering requires a tool of the right kind equipped in this slot.
         public const string Tool = "tool";
+
+        // The weapon in this slot attacks.
+        public const string MainHand = "main_hand";
+
+        // A Ranged weapon fires the stack in this slot.
+        public const string Ammunition = "ammunition";
     }
 
     public static class ItemPolicyIds

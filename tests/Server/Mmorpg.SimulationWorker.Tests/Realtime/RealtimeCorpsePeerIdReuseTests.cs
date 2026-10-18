@@ -86,7 +86,7 @@ public sealed class RealtimeCorpsePeerIdReuseTests
             var bindings = new ConnectionEntityBindingRegistry();
             var entities = new SimulationEntityRegistry();
             var sessionStore = new ActiveSimulationSessionStore();
-            var carryStateStore = new CarryStateStore();
+            var itemStateStore = new CharacterItemStateStore();
             var corpseStore = new DurableCorpseStore(TimeProvider.System);
             Registry = new RealtimePeerRegistry(directory, bindings, entities, Metrics);
             var sender = new RealtimePeerSender(Metrics, NullLogger.Instance);
@@ -99,13 +99,13 @@ public sealed class RealtimeCorpsePeerIdReuseTests
                 new SimulationInterestManager(InterestManagementConfig.Default),
                 Metrics,
                 new RealtimeSimulationClock());
-            var carrySync = new CarryStateSynchronizer(carryStateStore, bindings, Registry, sender);
+            var carrySync = new CarryStateSynchronizer(itemStateStore, bindings, Registry, sender);
             var teardown = new RealtimeSessionTeardown(
                 Registry,
                 sender,
                 presence,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 CorpseViewers,
                 Leases,
                 bindings,
@@ -115,7 +115,7 @@ public sealed class RealtimeCorpsePeerIdReuseTests
                 Registry,
                 sender,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 entities,
                 carrySync,
                 teardown,

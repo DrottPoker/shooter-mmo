@@ -55,6 +55,13 @@ After a catalog change, rebuild and restart both services.
 `SimulationWorker__ItemCatalogPath` can point a deployment at another copy of
 the same catalog.
 
+SimulationWorker loads its combat rules from `WorldData/Combat/combat-rules.json`
+in its output folder, which the build copies from
+`content/combat/combat-rules.json`. After a change to that file, rebuild and
+restart SimulationWorker. The worker stops with `shard_rule_set_unknown` when
+the rule set that GameService names for its Shard is not in the file.
+`SimulationWorker__CombatRulesPath` can point a deployment at another copy.
+
 GameService reads `Items:CatalogPath` from its configuration. The checked-in
 default points to `src/Shared/WorldData/Items/core.item-catalog.json`, which the GameService
 project copies from the deterministic WorldData runtime catalog into build and
@@ -998,7 +1005,9 @@ loot, partial stacks, and atomic equipped-Bag swaps use the separate flow in
 
 ## Player Death And Durable Corpse Verification
 
-No combat produces a death yet, and Unity has no death flow. Verify the complete
+Combat produces deaths in SimulationWorker, but Unity cannot attack or show a
+death before the combat presentation step of the
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md). Verify the complete
 durable boundary against the isolated PostgreSQL database:
 
 ```powershell
@@ -1028,7 +1037,7 @@ No manual Unity Editor steps are required for this verification. Do not change a
 scene, prefab, Inspector property, input action, package, or build setting. The
 corpse interaction verification below
 uses the prepared exact-session death boundary for its Development corpse
-fixture without fabricating the future combat producer.
+fixture, so it needs no combat kill.
 
 ## Concurrent Corpse Interaction Verification
 
@@ -1120,9 +1129,9 @@ at the same time:
    `(0, 0, -1)` with the original absolute expiry. It disappears and closes any
    open view at expiry rather than receiving a new five-minute lifetime.
 
-The future combat system is not required for this test. The fixture enters the
-same durable death, restore, interaction, transaction, and expiry boundaries
-that combat must call later.
+Combat is not required for this test. The fixture enters the same durable
+death, restore, interaction, transaction, and expiry boundaries that combat
+calls.
 
 ## World Actor And Interaction Verification
 
@@ -1345,9 +1354,9 @@ Expected result:
   through the shared interaction authority path.
 
 Recovery Storage headings label `death_recovered_insured` as consumed insurance
-and `death_recovered_protected` as protected-on-death. No Mob combat or other death
-producer exists yet. Use the existing backend death
-fixture to verify first-death consumption and replay idempotency.
+and `death_recovered_protected` as protected-on-death. Unity cannot attack yet,
+so use the existing backend death fixture to verify first-death consumption and
+replay idempotency.
 
 No manual Unity Editor setup is required for this verification. Editor actions are needed
 only for the optional offline item grant used by this manual workflow.
@@ -1442,8 +1451,8 @@ migration backfills an `opening_balance` ledger row for every nonzero balance.
    button. Expected result: the vendor panel reports `Sold.`, the stack shrinks
    by the sold quantity, and the balance rises by 4 Gold per ore, rounded down
    on the total.
-9. Currency stays with the character on death. No combat death producer exists
-   yet, so use the development death fixture: leave the shard, open
+9. Currency stays with the character on death. Unity cannot attack yet, so use
+   the development death fixture: leave the shard, open
    `MMORPG > Tools > Inventory Item Grants`, select the character, note
    `Balance` under `Give Currency`, and click `Create Durable Corpse` as
    described in
@@ -1546,10 +1555,49 @@ Expected result: all three integration tests pass. Retrying one live Mob loot gr
 creates one persistent player item. A durable alpha corpse restores into a new
 worker store with the same database deadline, three-section custody, and loot.
 
-No manual Unity gameplay setup is required. There is intentionally no killable
-Mob fixture in this phase. `MobCorpseLifecycleService` consumes an authoritative
-death event and already resolved loot seeds, but combat, damage, death detection,
-loot-table generation, and respawn remain future producers.
+No manual Unity gameplay setup is required. Combat kills Mobs and rolls their
+loot in SimulationWorker, which [Combat Verification](#combat-verification)
+covers, and Unity can attack Mobs from the combat presentation step on.
+
+## Combat Verification
+
+Protocol 18 adds target-based combat to SimulationWorker: attack targets,
+attack timing, arrows and their batches, damage, player and Mob death, Mob loot
+and respawn, player respawn, regeneration, and the Shard rule. Unity receives
+every combat message, but it cannot attack before the combat presentation step
+of the [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md), so the combat
+flow is verified with the worker's socket-level tests:
+
+```powershell
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
+  --configuration Release `
+  --filter "FullyQualifiedName~RealtimeCombatTests|FullyQualifiedName~CombatRulesTests|FullyQualifiedName~CombatMathTests|FullyQualifiedName~CombatLoadoutTests|FullyQualifiedName~CombatGeometryTests|FullyQualifiedName~MobLootRollerTests"
+```
+
+Expected result: every selected test passes. Over real UDP against the scripted
+GameService, an archer kills a wolf that leaves a corpse and respawns, attacks
+wait for range and report why, attacks on characters follow the Shard rule,
+spent arrows commit in batches while the owner sees the live count, a killed
+character commits its death once and respawns at the spawn, shots commit before
+a leave and after a disconnect, an equipment change holds attacks for the
+lockout, and a synthetic bot is no target.
+
+Check the join on the local stack:
+
+1. Start the local stack as described in [Backend Services](#backend-services).
+   Expected result: SimulationWorker registers its Shard and does not stop with
+   `shard_rule_set_unknown`.
+2. Enter Play Mode in Unity, log in, and join `local-shard-1`. Expected result:
+   the client stays connected, and the Console shows `[CLIENT]
+   Server-authoritative movement is active at 30 ticks per second with ...
+   snapshots per second. Player versus player is allowed on this Shard.`
+3. With the [Monitoring Stack](#monitoring-stack) running, open the MMORPG
+   Playtest dashboard. Expected result: the `Combat` panel shows the combatants
+   of the World, and the count rises by one while the character is joined.
+
+No manual Unity Editor steps are required. The combat client adds no scene,
+prefab, Inspector reference, or asset; `ClientBootstrap` creates
+`CombatClientController` at runtime.
 
 ## Item Operations Hardening Verification
 

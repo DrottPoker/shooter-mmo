@@ -97,6 +97,24 @@ namespace Mmorpg.SharedTests
                 [RealtimeMessageType.OwnerSimulationSnapshot] = Typed<RealtimeOwnerSimulationSnapshot>(
                     RealtimeProtocol.TryDecodeOwnerSimulationSnapshot,
                     RealtimeProtocol.EncodeOwnerSimulationSnapshot),
+                [RealtimeMessageType.CombatIntent] = Typed<RealtimeCombatIntent>(
+                    RealtimeProtocol.TryDecodeCombatIntent,
+                    RealtimeProtocol.EncodeCombatIntent),
+                [RealtimeMessageType.CombatIntentResult] = Typed<RealtimeCombatIntentResult>(
+                    RealtimeProtocol.TryDecodeCombatIntentResult,
+                    RealtimeProtocol.EncodeCombatIntentResult),
+                [RealtimeMessageType.CombatantState] = Typed<RealtimeCombatantState>(
+                    RealtimeProtocol.TryDecodeCombatantState,
+                    RealtimeProtocol.EncodeCombatantState),
+                [RealtimeMessageType.CombatEventBatch] = Typed<RealtimeCombatEventBatch>(
+                    RealtimeProtocol.TryDecodeCombatEventBatch,
+                    RealtimeProtocol.EncodeCombatEventBatch),
+                [RealtimeMessageType.OwnerCombatState] = Typed<RealtimeOwnerCombatState>(
+                    RealtimeProtocol.TryDecodeOwnerCombatState,
+                    RealtimeProtocol.EncodeOwnerCombatState),
+                [RealtimeMessageType.OwnerItemQuantityChanged] = Typed<RealtimeOwnerItemQuantityChanged>(
+                    RealtimeProtocol.TryDecodeOwnerItemQuantityChanged,
+                    RealtimeProtocol.EncodeOwnerItemQuantityChanged),
                 [RealtimeMessageType.GatheringState] = Typed<RealtimeGatheringState>(
                     RealtimeProtocol.TryDecodeGatheringState,
                     RealtimeProtocol.EncodeGatheringState)

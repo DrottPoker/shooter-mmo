@@ -32,7 +32,7 @@ public sealed class RealtimeEntityLifecycleTests
             BaseAddress = new Uri("http://game-service.test")
         };
         var sessionStore = new ActiveSimulationSessionStore();
-        var carryStateStore = new CarryStateStore();
+        var itemStateStore = new CharacterItemStateStore();
         var config = CreateConfig(port);
         var authClient = new GameServiceClient(httpClient);
         var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
@@ -42,15 +42,15 @@ public sealed class RealtimeEntityLifecycleTests
             new SimulationJoinService(
                 authClient,
                 sessionStore,
-                carryStateStore,
+                itemStateStore,
                 config,
                 identity),
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                carryStateStore),
+                itemStateStore),
             sessionStore,
-            carryStateStore,
+            itemStateStore,
             new SimulationItemInteractionService(authClient),
             new SimulationCorpseInteractionService(authClient),
             new DurableCorpseStore(TimeProvider.System),

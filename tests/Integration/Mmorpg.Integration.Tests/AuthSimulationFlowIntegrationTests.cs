@@ -315,6 +315,30 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(heartbeat.Value.Equipment, reconnect.Value.Equipment);
     }
 
+    // The worker enforces the rule set of the Shard row, so a changed row reaches it.
+    [PostgresIntegrationFact]
+    public async Task WorkerHeartbeatReturnsTheShardRuleSet()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var seeded = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest(),
+            CancellationToken.None);
+        Assert.True(seeded.Succeeded, seeded.Error?.Message);
+        Assert.Equal("mvp-open-risk", seeded.Value!.RuleSet);
+
+        await context.ExecuteAsync(
+            "update shards set rule_set = 'closed-test' where id = 'local-shard-1';");
+        var changed = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest(),
+            CancellationToken.None);
+
+        Assert.True(changed.Succeeded, changed.Error?.Message);
+        Assert.Equal("closed-test", changed.Value!.RuleSet);
+    }
+
     [PostgresIntegrationFact]
     public async Task JoinRequiresTheWorkerToRunTheMirroredItemCatalog()
     {

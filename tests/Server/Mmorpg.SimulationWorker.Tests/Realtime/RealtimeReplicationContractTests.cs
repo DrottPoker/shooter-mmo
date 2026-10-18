@@ -29,8 +29,16 @@ public sealed class RealtimeReplicationContractTests
                 RealtimeProtocol.TryDecodeEntitySpawn)
             .Single(value => value.Value.EntityId == entityId);
         // Reliable and unreliable packets may overtake each other on the wire, so only the
-        // reliable order is asserted: JoinAccepted first, then the baseline spawn.
+        // reliable order is asserted: JoinAccepted first, then the baseline spawn, which its
+        // combatant state follows, and the owner combat state after the baseline.
         Assert.Equal(selfSpawn.Packet.Index, client.ReliablePackets[1].Index);
+        Assert.Equal(RealtimeMessageType.CombatantState, client.ReliablePackets[2].Type);
+        await harness.PollUntilAsync(
+            () => client.Has(RealtimeMessageType.OwnerCombatState),
+            "the owner combat state");
+        Assert.True(
+            client.ReliablePackets.First(packet => packet.Type == RealtimeMessageType.OwnerCombatState).Index
+                > client.ReliablePackets[2].Index);
         Assert.All(
             packets.Where(packet => packet.Type is RealtimeMessageType.OwnerSimulationSnapshot
                 or RealtimeMessageType.SimulationSnapshot),

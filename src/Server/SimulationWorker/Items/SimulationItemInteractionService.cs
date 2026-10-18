@@ -12,7 +12,8 @@ public sealed class SimulationItemInteractionService(GameServiceClient gameServi
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent,
         ItemInteractionAccess access,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? expectedCharacterRevision = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(intent);
@@ -26,7 +27,12 @@ public sealed class SimulationItemInteractionService(GameServiceClient gameServi
                 "Synthetic development sessions cannot mutate durable item state.");
         }
 
-        var request = CreateRequest(session, intent, access);
+        // The realtime loop forwards an intent whose revision only the worker's own arrow
+        // batches advanced with the newest revision.
+        var request = CreateRequest(session, intent, access) with
+        {
+            ExpectedCharacterRevision = expectedCharacterRevision ?? intent.ExpectedCharacterRevision
+        };
         var result = await gameServiceClient.MutateSimulationItemsAsync(
             session.SimulationSessionId,
             request,

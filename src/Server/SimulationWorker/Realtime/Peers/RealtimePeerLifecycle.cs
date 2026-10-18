@@ -21,7 +21,8 @@ internal sealed class RealtimePeerLifecycle(
     RealtimeSessionTeardown teardown,
     SessionAuthorityOperations sessionOperations,
     RealtimeNetworkMetrics networkMetrics,
-    ILogger logger)
+    ILogger logger,
+    PlayerCombatAuthority? combatAuthority = null)
 {
     public void OnPeerConnected(int peerId, IPAddress address)
     {
@@ -57,8 +58,15 @@ internal sealed class RealtimePeerLifecycle(
             }
             else
             {
-                teardown.RemoveBoundEntity(context, context.Session, "connection_closed");
-                sessionOperations.ReleaseDetachedInBackground(context.Session);
+                // Spent arrows and a death that did not commit yet keep the session until
+                // they committed; combat then releases it.
+                var session = context.Session;
+                var deferred = combatAuthority?.TryDeferRelease(context, session) == true;
+                teardown.RemoveBoundEntity(context, session, "connection_closed");
+                if (!deferred)
+                {
+                    sessionOperations.ReleaseDetachedInBackground(session);
+                }
             }
         }
 

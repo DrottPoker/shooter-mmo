@@ -9,7 +9,7 @@ namespace Mmorpg.SimulationWorker.GameServiceApi;
 public sealed class SimulationJoinService(
     GameServiceClient gameServiceClient,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity)
 {
@@ -87,12 +87,12 @@ public sealed class SimulationJoinService(
                 "Character already has a different active simulation session.");
         }
 
-        var carryRegistration = carryStateStore.Register(
+        var carryRegistration = itemStateStore.Register(
             session.CharacterId,
             session.SimulationSessionId,
-            session.CarryState,
-            out var currentCarryState);
-        if (carryRegistration == CarryStateApplyResult.Conflict)
+            CharacterItemState.Create(session.CarryState, consumedTicket.Value.Equipment),
+            out var currentItemState);
+        if (carryRegistration == ItemStateApplyResult.Conflict)
         {
             var invalidated = sessionStore.Invalidate(
                 session.CharacterId,
@@ -102,7 +102,7 @@ public sealed class SimulationJoinService(
                 "GameService returned conflicting carry state for one item-state revision.");
             if (invalidated)
             {
-                carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+                itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
             }
 
             await gameServiceClient.ReleaseSimulationSessionAsync(
@@ -120,7 +120,7 @@ public sealed class SimulationJoinService(
             session.CharacterId,
             session.SimulationSessionId,
             session.SimulationSessionToken,
-            currentCarryState);
+            currentItemState.Carry);
 
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 

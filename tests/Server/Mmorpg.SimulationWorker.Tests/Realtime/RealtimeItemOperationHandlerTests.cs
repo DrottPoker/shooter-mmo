@@ -9,11 +9,10 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 public sealed class RealtimeItemOperationHandlerTests
 {
-    [Theory]
-    [InlineData(0)]
-    [InlineData(2)]
-    public void CommittedItemWithoutExactlyOneCharacterRevisionDivergesTheSession(
-        int characterRevisionCount)
+    // The GameService client never accepts such a response; the handler still ends the
+    // session instead of trusting it.
+    [Fact]
+    public void CommittedItemWithoutCharacterStateDivergesTheSession()
     {
         using var fixture = new RealtimeLoopFixture();
         using var httpClient = new HttpClient(new ScriptedGameServiceHandler())
@@ -27,13 +26,7 @@ public sealed class RealtimeItemOperationHandlerTests
         var player = fixture.ConnectPlayer(1);
         player.Context.AuthorityOperationInFlight = true;
         var intent = RealtimeItemOperationIntent.CreateDestroy(Guid.NewGuid(), 0, Guid.NewGuid(), 0);
-        var revisions = Enumerable.Range(1, characterRevisionCount)
-            .Select(revision => new SimulationItemCharacterRevision(
-                player.Session.CharacterId,
-                revision,
-                0,
-                200))
-            .ToArray();
+        var revisions = new[] { new SimulationItemCharacterRevision(player.Session.CharacterId, 1, 0, 200) };
 
         handler.Complete(new ItemOperationCompleted(
             player.Context,
@@ -56,12 +49,12 @@ public sealed class RealtimeItemOperationHandlerTests
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(sent.Data, out var reason, out _));
         Assert.Equal("item_state_diverged", reason.Code);
         Assert.Equal(
-            "The item transaction returned an invalid character revision set.",
+            "The item transaction returned no committed character state.",
             reason.Message);
         Assert.Null(player.Context.Session);
         Assert.NotNull(player.Context.DisconnectAfterUtc);
         Assert.Empty(fixture.SessionStore.ListActiveSessions());
-        Assert.False(fixture.CarryStateStore.TryGet(
+        Assert.False(fixture.CharacterItemStateStore.TryGet(
             player.Session.CharacterId,
             player.Session.SimulationSessionId,
             out _));

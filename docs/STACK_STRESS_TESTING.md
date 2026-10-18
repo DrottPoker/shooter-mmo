@@ -1,6 +1,6 @@
 # Stack Stress Testing
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -222,7 +222,8 @@ Expected result:
 - The steady interval starts after every bot has joined or failed.
 - Joined bots send movement at the worker-provided simulation rate.
 - Bots validate reliable player, actor, corpse-presence, and carry-state
-  packets plus unreliable snapshots.
+  packets plus unreliable snapshots, and decode the gathering, combat, and owner
+  item quantity messages a real client receives.
 - Every joined bot requests a graceful leave after the steady interval.
 - The command exits zero only when every requested bot joined and left cleanly.
 - A JSON report is written under `artifacts/stress`.

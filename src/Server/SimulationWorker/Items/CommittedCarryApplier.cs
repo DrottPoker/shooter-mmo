@@ -1,65 +1,62 @@
-using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Items;
 
-// The one path that applies a carry state GameService committed: item, corpse, and NPC
-// lifecycle results and session heartbeats. Each caller decides what a conflict means.
+// The one path that applies an item state GameService committed: item, corpse, NPC
+// lifecycle, gathering, ammunition, and death results and session heartbeats. Each caller
+// decides what a conflict means.
 public sealed class CommittedCarryApplier(
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     ActiveSimulationSessionStore sessionStore)
 {
-    // Applies the committed carry state and mirrors the resulting current state into the
-    // active session, unless the carry store rejected it as conflicting or foreign.
-    public CarryStateApplyResult Apply(
+    // Applies the committed item state and mirrors the resulting carry state into the
+    // active session, unless the store rejected it as conflicting or foreign.
+    public ItemStateApplyResult Apply(
         ActiveSimulationSession session,
-        PlayerCarryState committed,
-        out PlayerCarryState current)
+        CharacterItemState committed,
+        out CharacterItemState current)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(committed);
-        var result = carryStateStore.ApplyCommitted(
+        var result = itemStateStore.ApplyCommitted(
             session.CharacterId,
             session.SimulationSessionId,
             committed,
             out current);
-        if (result is CarryStateApplyResult.Applied
-            or CarryStateApplyResult.Unchanged
-            or CarryStateApplyResult.Stale)
+        if (result is ItemStateApplyResult.Applied
+            or ItemStateApplyResult.Unchanged
+            or ItemStateApplyResult.Stale)
         {
             sessionStore.RefreshCarryState(
                 session.CharacterId,
                 session.SimulationSessionId,
                 session.SimulationSessionToken,
-                current);
+                current.Carry);
         }
 
         return result;
     }
 
-    // An item transaction for one character commits exactly one character revision.
-    public static bool TryGetCommittedCarry(
+    // A committed transaction answers with the acting character's state after the commit,
+    // which the GameService client already validated against the committed revision.
+    public static bool TryGetCommittedState(
         SimulationItemTransactionResponse transaction,
-        out PlayerCarryState committed)
+        out CharacterItemState committed)
     {
         ArgumentNullException.ThrowIfNull(transaction);
-        if (transaction.CharacterRevisions.Count != 1)
+        if (transaction.CharacterState is null)
         {
-            committed = PlayerCarryState.Default;
+            committed = null!;
             return false;
         }
 
-        var revision = transaction.CharacterRevisions[0];
-        committed = new PlayerCarryState(
-            revision.Revision,
-            revision.CarriedWeight,
-            revision.CarryCapacity);
+        committed = CharacterItemState.From(transaction.CharacterState);
         return true;
     }
 
-    public static bool IsDiverged(CarryStateApplyResult result)
+    public static bool IsDiverged(ItemStateApplyResult result)
     {
-        return result is CarryStateApplyResult.Conflict or CarryStateApplyResult.SessionMismatch;
+        return result is ItemStateApplyResult.Conflict or ItemStateApplyResult.SessionMismatch;
     }
 }

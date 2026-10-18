@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
@@ -240,6 +241,94 @@ namespace Mmorpg.Client.Items
                 || BankObservedRevision != KnownItemStateRevision;
             SetReady();
             return InventorySnapshotApplyResult.Applied;
+        }
+
+        // Patches a committed quantity change that no client intent caused, such as spent
+        // arrows, into the equipped ammunition stack. It applies only to the coherent
+        // snapshot the change was computed from and only when the change is the single
+        // transaction after it, because every item transaction advances the item-state
+        // revision by one. In every other case the caller refreshes the inventory.
+        public bool TryApplyEquippedQuantityChange(RealtimeOwnerItemQuantityChanged change)
+        {
+            if (change == null
+                || change.CarryState == null
+                || change.CarryState.CarriedWeight < 0
+                || change.CarryState.CarryCapacity <= 0
+                || !HasCoherentFullSnapshot
+                || CharacterObservedRevision != change.PreviousItemStateRevision
+                || change.CarryState.ItemStateRevision != change.PreviousItemStateRevision + 1)
+            {
+                return false;
+            }
+
+            var equipment = FullSnapshot.Equipment;
+            var patchedEquipment = new InventoryEquipmentSlot[equipment.Count];
+            var patched = false;
+            for (var index = 0; index < equipment.Count; index++)
+            {
+                var slot = equipment[index];
+                var item = slot.Item;
+                if (item == null || item.ItemInstanceId != change.ItemInstanceId)
+                {
+                    patchedEquipment[index] = slot;
+                    continue;
+                }
+
+                // Consumption only ever shrinks the equipped ammunition stack.
+                if (!string.Equals(
+                        slot.SlotId,
+                        ItemEquipmentSlotIds.Ammunition,
+                        StringComparison.Ordinal)
+                    || change.Quantity >= item.Quantity
+                    || (change.Quantity > 0 && change.ItemRevision <= item.Revision))
+                {
+                    return false;
+                }
+
+                patchedEquipment[index] = new InventoryEquipmentSlot(
+                    slot.SlotId,
+                    slot.SortOrder,
+                    change.Quantity == 0
+                        ? null
+                        : new InventoryItem(
+                            item.ItemInstanceId,
+                            item.DefinitionId,
+                            change.Quantity,
+                            change.ItemRevision,
+                            item.Policies.ToArray()));
+                patched = true;
+            }
+
+            if (!patched)
+            {
+                return false;
+            }
+
+            var carry = change.CarryState;
+            FullSnapshot = new CharacterInventorySnapshot(
+                FullSnapshot.CharacterId,
+                FullSnapshot.CatalogRevision,
+                carry.ItemStateRevision,
+                FullSnapshot.PermanentInventory,
+                patchedEquipment,
+                FullSnapshot.EquippedBag,
+                FullSnapshot.Bank,
+                FullSnapshot.SecureContainer,
+                FullSnapshot.RecoveryStorage,
+                carry.CarriedWeight,
+                carry.CarryCapacity,
+                InventorySnapshotMapper.CalculateLoadRatioBasisPoints(
+                    carry.CarriedWeight,
+                    carry.CarryCapacity),
+                EncumbranceRules.CalculateMovementMultiplierBasisPoints(
+                    carry.CarriedWeight,
+                    carry.CarryCapacity),
+                FullSnapshot.Currency);
+            CharacterObservedRevision = carry.ItemStateRevision;
+            BankObservedRevision = carry.ItemStateRevision;
+            RecoveryObservedRevision = carry.ItemStateRevision;
+            NotifyChanged();
+            return true;
         }
 
         public void SetError(InventoryClientError error, bool requireFullRefresh)

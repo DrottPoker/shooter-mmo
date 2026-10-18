@@ -31,6 +31,23 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// The gameplay rules of the Shard that hosts the session.
+    /// </summary>
+    public sealed partial class RealtimeShardRules
+    {
+        public RealtimeShardRules(
+            bool playerVersusPlayer)
+        {
+            PlayerVersusPlayer = playerVersusPlayer;
+        }
+
+        /// <summary>
+        /// Whether characters may attack other characters.
+        /// </summary>
+        public bool PlayerVersusPlayer { get; }
+    }
+
+    /// <summary>
     /// Accepts a join and carries the session, movement settings, and initial state.
     /// </summary>
     public sealed partial class RealtimeJoinAccepted
@@ -50,7 +67,8 @@ namespace Mmorpg.GameProtocol
             bool isReconnect,
             RealtimeCarryState carryState,
             RealtimeMovementSettings movementSettings,
-            RealtimePlayerState initialPlayerState)
+            RealtimePlayerState initialPlayerState,
+            RealtimeShardRules shardRules)
         {
             SimulationSessionId = simulationSessionId;
             AccountId = accountId;
@@ -67,6 +85,7 @@ namespace Mmorpg.GameProtocol
             CarryState = carryState;
             MovementSettings = movementSettings;
             InitialPlayerState = initialPlayerState;
+            ShardRules = shardRules;
         }
 
         /// <summary>
@@ -143,6 +162,11 @@ namespace Mmorpg.GameProtocol
         /// The authoritative state of the controlled entity at join.
         /// </summary>
         public RealtimePlayerState InitialPlayerState { get; }
+
+        /// <summary>
+        /// The gameplay rules of the Shard.
+        /// </summary>
+        public RealtimeShardRules ShardRules { get; }
     }
 
     // Encoding, decoding, and validation of the Session family.
@@ -271,11 +295,12 @@ namespace Mmorpg.GameProtocol
             WriteCarryState(ref writer, value.CarryState);
             WriteMovementSettings(ref writer, value.MovementSettings);
             WritePlayerState(ref writer, value.InitialPlayerState);
+            WriteShardRules(ref writer, value.ShardRules);
         }
 
         private static int SizeOfJoinAccepted(RealtimeJoinAccepted value)
         {
-            var size = 131;
+            var size = 132;
             size += StringSize(value.SimulationSessionId);
             size += StringSize(value.AccountId);
             size += StringSize(value.CharacterId);
@@ -367,7 +392,12 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeJoinAccepted(simulationSessionId, accountId, characterId, characterName, shardId, worldId, controlledEntityId, simulationRevision, collisionRevision, joinedAt, sessionExpiresAt, isReconnect, carryState, movementSettings, initialPlayerState);
+            if (!TryReadShardRules(ref reader, out var shardRules, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeJoinAccepted(simulationSessionId, accountId, characterId, characterName, shardId, worldId, controlledEntityId, simulationRevision, collisionRevision, joinedAt, sessionExpiresAt, isReconnect, carryState, movementSettings, initialPlayerState, shardRules);
             return true;
         }
 
@@ -407,7 +437,8 @@ namespace Mmorpg.GameProtocol
                 || value.SessionExpiresAt.Length > MaximumTimestampLength
                 || !IsValidCarryState(value.CarryState)
                 || !IsValidMovementSettings(value.MovementSettings)
-                || !IsValidPlayerState(value.InitialPlayerState))
+                || !IsValidPlayerState(value.InitialPlayerState)
+                || !IsValidShardRules(value.ShardRules))
             {
                 return false;
             }
@@ -751,6 +782,33 @@ namespace Mmorpg.GameProtocol
                 || value.Message == null
                 || (!acceptBlankText && string.IsNullOrWhiteSpace(value.Message))
                 || value.Message.Length > MaximumErrorMessageLength)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteShardRules(ref PacketWriter writer, RealtimeShardRules value)
+        {
+            writer.WriteBoolean(value.PlayerVersusPlayer);
+        }
+
+        private static bool TryReadShardRules(ref PacketReader reader, out RealtimeShardRules value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadBoolean(out var playerVersusPlayer, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeShardRules(playerVersusPlayer);
+            return true;
+        }
+
+        private static bool IsValidShardRules(RealtimeShardRules value)
+        {
+            if (value == null)
             {
                 return false;
             }

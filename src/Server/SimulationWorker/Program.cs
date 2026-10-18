@@ -7,6 +7,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Telemetry;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -61,6 +62,7 @@ var worldActorRuntime = WorldActorLoader.Load(config);
 WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var itemCatalog = ItemCatalogFileLoader.Load(config.ItemCatalogPath);
 WorldActorItemReferences.Validate(worldActorRuntime, itemCatalog);
+var combatRules = CombatRulesLoader.Load(config.CombatRulesPath);
 var developmentItemInteractionOptions =
     DevelopmentItemInteractionOptions.FromConfiguration(
         builder.Configuration,
@@ -86,6 +88,9 @@ var collisionWorld = new CompositeCollisionWorld(
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(worldActorRuntime);
 builder.Services.AddSingleton(itemCatalog);
+builder.Services.AddSingleton(combatRules);
+builder.Services.AddSingleton<SimulationShardRules>();
+builder.Services.AddSingleton<CombatMetrics>();
 builder.Services.AddSingleton(developmentItemInteractionOptions);
 builder.Services.AddSingleton(collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);
@@ -93,7 +98,7 @@ builder.Services.AddSingleton(dynamicCollisionWorld);
 builder.Services.AddSingleton(collisionWorld);
 builder.Services.AddSingleton<ICollisionWorld>(collisionWorld);
 builder.Services.AddSingleton<ActiveSimulationSessionStore>();
-builder.Services.AddSingleton<CarryStateStore>();
+builder.Services.AddSingleton<CharacterItemStateStore>();
 builder.Services.AddSingleton<DurableCorpseStore>();
 builder.Services.AddSingleton<LiveMobCorpseStore>();
 builder.Services.AddSingleton<CorpseRuntimeMetrics>();

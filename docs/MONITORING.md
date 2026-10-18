@@ -77,6 +77,7 @@ counters, and `_bucket`, `_sum`, and `_count` for histograms, so
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
+| `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat phase duration, active combatants, and shots that are not committed yet. |
 
 The resource node and gathering instruments of `Mmorpg.SimulationWorker.WorldActors`:
 
@@ -88,6 +89,22 @@ The resource node and gathering instruments of `Mmorpg.SimulationWorker.WorldAct
 | `simulation_worker.gathering.cycles` | counter | Finished gathering cycles, labeled `outcome`: `yielded` when GameService committed the yield, `retried` when its outcome was uncertain and the cycle repeats with the same operation id, and `rejected` otherwise. |
 
 `RealtimeMetricNamesTests` pins every instrument name of the world actor meter.
+
+The instruments of `Mmorpg.SimulationWorker.Combat`:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.combat.attacks` | counter | Released attacks, labeled `kind`: `player` or `mob`. |
+| `simulation_worker.combat.hits` | counter | Hits that dealt damage, labeled `kind` of the target. |
+| `simulation_worker.combat.deaths` | counter | Combatants that died, labeled `kind`. |
+| `simulation_worker.combat.ammunition_batches` | counter | Finished arrow batches, labeled `outcome`: `committed`, `retried` when the outcome was uncertain and the batch repeats with the same operation id, `rejected`, or `session_ended` when the rejection ended the item session. |
+| `simulation_worker.combat.dropped_shots` | counter | Shots that never committed because their batch was rejected, the session ended, or the arrow stack changed under a death. |
+| `simulation_worker.combat.death_partitions` | counter | Finished player death partition attempts, labeled `outcome` like the arrow batches. |
+| `simulation_worker.combat.phase.duration` | histogram, ms | Duration of the combat phase of one tick. |
+| `simulation_worker.combat.active_combatants` | gauge | Characters and Mobs that can fight. |
+| `simulation_worker.combat.pending_shots` | gauge | Shots counted against arrow stacks that GameService has not committed yet. |
+
+`RealtimeMetricNamesTests` pins every combat instrument name.
 
 ### GameService
 
@@ -198,8 +215,11 @@ to reload the files.
   resynchronizations, backlogs, population, bandwidth including snapshot bytes,
   packets, drops and rejections, joins, worker calls to GameService, world
   actors, interactions, corpses, gathering (active gatherers, depleted nodes,
-  and gathering cycles per minute by outcome), worker CPU, memory, allocation
-  rate, GC, and recent warnings and errors of both services.
+  and gathering cycles per minute by outcome), combat (combatants, and attacks,
+  hits, and deaths per minute by kind), arrows and deaths (pending shots, arrow
+  batches and player death partitions per minute by outcome, and dropped shots),
+  worker CPU, memory, allocation rate, GC, and recent warnings and errors of
+  both services.
 - **MMORPG GameService** (`/d/mmorpg-game-service`): Shards online, players,
   request rate, 5xx share, request and database p95 at the top. Below them:
   players and capacity per Shard, requests, p95 latency and errors by route,

@@ -17,7 +17,7 @@ internal sealed class CorpseInteractionHandler(
     SimulationWorkerConfig config,
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     DurableCorpseStore corpseStore,
     LiveMobCorpseStore? liveMobCorpseStore,
     CorpseViewerRegistry corpseViewers,
@@ -26,7 +26,8 @@ internal sealed class CorpseInteractionHandler(
     RealtimeOperationTracker operationTracker,
     RealtimeCompletionQueue completions,
     CorpseAuthorityOperations authority,
-    CorpseOperationFinalizer finalizer)
+    CorpseOperationFinalizer finalizer,
+    ICombatOperationGate? combatGate = null)
 {
     public void HandleIntent(in RealtimeInboundMessage message)
     {
@@ -43,7 +44,7 @@ internal sealed class CorpseInteractionHandler(
             return;
         }
 
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 playerEntity.Session.CharacterId,
                 playerEntity.Session.SimulationSessionId,
                 out _))
@@ -69,6 +70,19 @@ internal sealed class CorpseInteractionHandler(
             return;
         }
 
+        if (combatGate is not null
+            && intent.OperationKind != RealtimeCorpseInteractionKind.Close
+            && combatGate.IsCharacterDead(context))
+        {
+            finalizer.SendCorpseOperationRejection(
+                peer,
+                playerEntity.Session,
+                intent,
+                RealtimeCombatErrorCodes.CharacterDead,
+                "The character is dead.");
+            return;
+        }
+
         if (context.AuthorityOperationQueue.Count
             >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
         {
@@ -81,7 +95,34 @@ internal sealed class CorpseInteractionHandler(
             return;
         }
 
+        combatGate?.BeforeClientOperation(context);
         authorityScheduler.Enqueue(context, new QueuedCorpseOperation(this, intent));
+    }
+
+    // Depositing an equipped item or swapping Bags changes an equipment slot.
+    private bool MayChangeEquipment(ActiveSimulationSession session, RealtimeCorpseInteractionIntent intent)
+    {
+        if (intent.OperationKind == RealtimeCorpseInteractionKind.SwapBag)
+        {
+            return true;
+        }
+
+        return intent.OperationKind is RealtimeCorpseInteractionKind.DepositItem
+                or RealtimeCorpseInteractionKind.DepositPartialStack
+            && itemStateStore.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var state)
+            && state!.Equipment.Any(item => item.ItemInstanceId == intent.ItemInstanceId);
+    }
+
+    private void Cancel(
+        RealtimePeerContext context,
+        RealtimeCorpseInteractionIntent intent,
+        string code,
+        string message)
+    {
+        if (context.Session is not null && peers.TryGetCurrentPeer(context, out var peer))
+        {
+            finalizer.SendCorpseOperationRejection(peer, context.Session, intent, code, message);
+        }
     }
 
     private void StartOperation(
@@ -92,6 +133,7 @@ internal sealed class CorpseInteractionHandler(
         float positionY,
         float positionZ)
     {
+        combatGate?.ClientOperationStarting(context, MayChangeEquipment(session, intent));
         if (intent.OperationKind == RealtimeCorpseInteractionKind.Close)
         {
             completions.Post(finalizer, new CorpseOperationCompleted(
@@ -249,6 +291,11 @@ internal sealed class CorpseInteractionHandler(
                 state.PositionX,
                 state.PositionY,
                 state.PositionZ);
+        }
+
+        public void Cancel(RealtimePeerContext context, string code, string message)
+        {
+            Owner.Cancel(context, Intent, code, message);
         }
     }
 }

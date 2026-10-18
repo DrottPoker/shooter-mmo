@@ -22,6 +22,7 @@ public sealed record StressWorkerHeartbeatResponse(
     string NodeId,
     string ShardId,
     string WorldId,
+    string RuleSet,
     string Host,
     int UdpPort,
     int MaxConnections,

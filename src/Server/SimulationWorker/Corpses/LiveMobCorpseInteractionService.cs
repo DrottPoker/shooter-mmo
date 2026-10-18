@@ -8,7 +8,7 @@ namespace Mmorpg.SimulationWorker.Corpses;
 public sealed class LiveMobCorpseInteractionService(
     LiveMobCorpseStore corpseStore,
     GameServiceClient gameServiceClient,
-    CarryStateStore carryStateStore)
+    CharacterItemStateStore itemStateStore)
 {
     public Task<SimulationCorpseInteractionResult> OpenAsync(
         ActiveSimulationSession session,
@@ -119,7 +119,7 @@ public sealed class LiveMobCorpseInteractionService(
 
         // The session object is the join-time snapshot; carry changes after the join
         // are only in the carry store, and GameService rejects any stale revision.
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 session.CharacterId,
                 session.SimulationSessionId,
                 out var currentCarryState))

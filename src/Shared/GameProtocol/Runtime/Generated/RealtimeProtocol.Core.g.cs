@@ -148,7 +148,37 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// A change of the character's gathering at a resource node.
         /// </summary>
-        GatheringState = 28
+        GatheringState = 28,
+
+        /// <summary>
+        /// Selects or clears the character's attack target.
+        /// </summary>
+        CombatIntent = 29,
+
+        /// <summary>
+        /// The outcome of a combat intent.
+        /// </summary>
+        CombatIntentResult = 30,
+
+        /// <summary>
+        /// A newer health and life state of a visible combatant. It follows every spawn of a combatant.
+        /// </summary>
+        CombatantState = 31,
+
+        /// <summary>
+        /// Combat events of one server tick that involve a combatant the recipient sees.
+        /// </summary>
+        CombatEventBatch = 32,
+
+        /// <summary>
+        /// The owner's combat state: life, target, attack status and timing, and equipped ammunition.
+        /// </summary>
+        OwnerCombatState = 33,
+
+        /// <summary>
+        /// A committed quantity change of one of the owner's items that no client intent caused, such as spent arrows.
+        /// </summary>
+        OwnerItemQuantityChanged = 34
     }
 
     /// <summary>
@@ -249,6 +279,11 @@ namespace Mmorpg.GameProtocol
         /// Slots in one corpse view section.
         /// </summary>
         public const int MaximumCorpseSectionSlotCapacity = 512;
+
+        /// <summary>
+        /// Combat events in one event batch; more events split into several batches.
+        /// </summary>
+        public const int MaximumCombatEventsPerBatch = 32;
     }
 
     // Framing, versioning, channels, and limits of the realtime protocol.
@@ -257,7 +292,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 17;
+        public const ushort Version = 18;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -315,6 +350,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumCorpseChunkCount = RealtimeProtocolLimits.MaximumCorpseChunkCount;
         private const int MaximumCorpsePresentationKeyLength = RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength;
         private const int MaximumCorpseSectionSlotCapacity = RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity;
+        private const int MaximumCombatEventsPerBatch = RealtimeProtocolLimits.MaximumCombatEventsPerBatch;
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
@@ -364,7 +400,13 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionClosed, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.OwnerSimulationSnapshot, RealtimeMessageDirection.ServerToClient, UnreliableReceiveChannel, RealtimeDelivery.Unreliable),
-            new RealtimeMessageDescriptor(RealtimeMessageType.GatheringState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.GatheringState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatantState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatEventBatch, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerCombatState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemQuantityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

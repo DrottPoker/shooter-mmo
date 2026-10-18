@@ -92,7 +92,7 @@ public sealed class RealtimeItemOperationTests
         Assert.Equal(RealtimeMessageType.ItemOperationResult, reliable[^2].Type);
         Assert.Empty(harness.SessionStore.ListActiveSessions());
         Assert.Equal(0, harness.EntityRegistry.PlayerCount);
-        Assert.False(harness.CarryStateStore.TryGet(
+        Assert.False(harness.CharacterItemStateStore.TryGet(
             character.CharacterId,
             character.SimulationSessionId,
             out _));
@@ -194,7 +194,7 @@ public sealed class RealtimeItemOperationTests
             client.SendItemIntent(RealtimeProtocolRejectionTests.CreateItemIntent());
             await harness.PollUntilAsync(() => gate.HasEntered, "the item operation to start");
 
-            Assert.True(harness.CarryStateStore.Remove(
+            Assert.True(harness.CharacterItemStateStore.Remove(
                 character.CharacterId,
                 character.SimulationSessionId));
             gate.Release();
