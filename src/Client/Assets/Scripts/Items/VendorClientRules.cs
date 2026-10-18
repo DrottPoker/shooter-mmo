@@ -201,6 +201,12 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
+            if (price == 0)
+            {
+                reason = "The vendor pays nothing for this quantity. Sell more at once.";
+                return false;
+            }
+
             if (price > VendorPricing.MaximumCurrencyBalance - snapshot.Currency)
             {
                 reason = "Your balance cannot hold more " + CurrencyName(catalog) + ".";

@@ -1,6 +1,6 @@
 # NPC And Mob System Design
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 Status: Canonical design, foundation implemented
 
@@ -21,8 +21,10 @@ Phase 12 in
 
 The foundation is a permanent content, runtime, protocol, client-state, and
 tooling layer. Its Unity presentation is temporary. It does not implement
-vendor economy, quest progression, crafting recipes, combat damage, complete Mob
-AI, Mob loot generation, final actor art, or final interaction UI.
+quest progression, crafting recipes, combat damage, complete Mob AI, Mob loot
+generation, final actor art, or final interaction UI. The vendor and gathering
+slice in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) builds the
+vendor capability and resource nodes on it.
 
 ## Implementation Status
 
@@ -34,22 +36,33 @@ The implemented foundation includes:
   `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
-- A shared four-definition actor catalog, a checked-in
-  `development-world-1` baseline with five deterministic instances, and
-  prepared `development-world-2` content with eight deterministic instances,
-  including one Feral Alpha.
+- A shared five-definition actor catalog, a checked-in
+  `development-world-1` baseline with six deterministic instances, including
+  one Iron Vein, and prepared `development-world-2` content with twelve
+  deterministic instances, including one Feral Alpha and four Iron Veins.
 - Mob combat, brain, locomotion, and loot profiles in actor format 2, validated
   by the compiler and, for loot, against the compiled item catalog. The
   combat slice in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md)
   consumes them in SimulationWorker.
+- The `resource_node` actor kind, the `gathering` capability kind, the
+  capability `profileId`, and resource profiles in actor format 3, and the
+  neutral `world` faction for resource nodes. The compiler validates vendor
+  profile ids, resource profile tool kinds, and yields against the compiled item
+  catalog.
 - Reliable interest-based actor presence, bounded actor state, and correlated
   interaction messages in the versioned realtime protocol.
 - A bounded worker-runtime actor store, fresh runtime and network identities,
-  restart reconstruction, event-driven NPCs, and central Mob schedule buckets.
+  restart reconstruction, event-driven NPCs and resource nodes, central Mob
+  schedule buckets, and the central `WorldActorTimerQueue` for delayed actor
+  work such as resource node respawn.
 - A typed capability-handler registry. Insurance, quest offer, quest
-  completion, Character Bank, and Recovery Storage have handlers; every other
-  kind has an explicit deferred server handler until its business system exists.
-  The client never turns that deferred result into success.
+  completion, Character Bank, Recovery Storage, vendor, and gathering have
+  handlers; every other kind has an explicit deferred server handler until its
+  business system exists. The client never turns that deferred result into
+  success.
+- Live shared resource node charges with depletion and respawn, and a central
+  gathering loop, described in
+  [Resource Nodes And Gathering](#resource-nodes-and-gathering).
 - Exact-session, exact-runtime, assignment, Shard, bounds, range, line-of-sight,
   target-revision, capability-revision, rate, and one-active-lease authority.
 - Permanent Unity actor, interaction, targeting, operation, revision, and
@@ -57,10 +70,13 @@ The implemented foundation includes:
 - Shared target selection and lease ownership with the existing authoritative
   corpse view and mutation flow.
 
-Insurance and quest item lifecycle actions reuse the same validated interaction
-session and dispatch contract before crossing the
-service-authenticated GameService boundary. Quest progression and completion
-remain unavailable. The Character Bank and Recovery Storage handlers only confirm
+Insurance, quest item lifecycle, and vendor purchase and sale actions reuse the
+same validated interaction session and dispatch contract before crossing the
+service-authenticated GameService boundary. A vendor trade carries the vendor
+profile of the validated capability as its vendor access, never a client value.
+Quest progression and completion remain unavailable. Opening the vendor only
+confirms it, so the client can show the offers from its bundled item catalog.
+The Character Bank and Recovery Storage handlers only confirm
 the capability: item operations gain Bank or Recovery access while the player
 holds an open interaction with an actor that offers them, as described in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
@@ -78,8 +94,9 @@ its ownership. Automated load coverage schedules `2,000` event-driven NPCs and
 `2,000` centrally scheduled active or dormant Mobs, then opens `128` concurrent
 NPC interactions through independent player leases. The existing
 `Mmorpg.SimulationWorker.WorldActors` meter reports identity-free NPC, Mob,
-event-driven, dormant, active, and interaction measurements. No actor receives
-an independent background task or durable row.
+resource node, event-driven, dormant, active, interaction, depleted node, and
+gathering measurements. No actor receives an independent background task or
+durable row.
 
 ## Canonical Terminology
 
@@ -88,8 +105,10 @@ an independent background task or durable row.
 | World actor | A server-owned runtime entity created from shared World content and represented to interested clients |
 | NPC | A social or service-oriented world actor whose behavior is assembled from capabilities such as dialogue, vendor, quest, crafting, insurance, trainer, bank, or Recovery Storage access |
 | Mob | A combat-oriented world actor with combat, aggro, AI, death, loot, and respawn contracts |
-| Capability | A composable interaction role attached to an NPC definition without requiring a new actor class |
-| Actor definition id | A globally stable content id for one NPC or Mob archetype |
+| Resource node | An invulnerable interactable world object, such as an Iron Vein, with exactly one gathering capability and live shared charges |
+| Capability | A composable interaction role attached to an NPC or resource node definition without requiring a new actor class |
+| Resource profile | Actor catalog content that a gathering capability names: required tool kind, yield, cycle time, charges, and respawn delay |
+| Actor definition id | A globally stable content id for one NPC, Mob, or resource node archetype |
 | Spawn definition id | A globally stable content id for one spawn point, spawn group, spawn area, or patrol assignment |
 | Runtime actor id | A worker-runtime-scoped identity for one live actor instance |
 | Network entity id | The current realtime identity used for interest management and protocol messages |
@@ -102,7 +121,9 @@ an independent background task or durable row.
 `NPC` and `Mob` are not interchangeable. An NPC is not a generic name for every
 non-player character. A Mob is the canonical name for a combat enemy such as a
 Feral Wolf. A vendor, quest giver, crafter, trainer, banker, or city guard is an
-NPC.
+NPC. A resource node is neither: it is a world object that players gather from,
+and it reuses the actor content, spawn, identity, interest, interaction, and
+lease foundation unchanged.
 
 Actor kind does not encode friendly or hostile state. Faction and disposition
 own that decision. A city guard remains an NPC even if a future criminal system
@@ -126,18 +147,21 @@ capability composition.
 5. SimulationWorker owns live actor state, interaction authority, interest, and
    runtime identity for its assigned Shard.
 6. GameService remains the authority for global durable mutations invoked by a
-   future capability, including items, currency, quests, policies, and durable
+   capability, including items, currency, quests, policies, and durable
    progression.
 7. Unity sends advisory target and action intents. It never proves range, line
    of sight, capability, faction, actor state, or authorization.
 8. A player may have only one active world interaction session, including an
    existing corpse view. Many players may interact with the same target
    concurrently.
-9. Normal NPCs and Mobs do not receive one PostgreSQL row per runtime instance.
+9. Normal NPCs, Mobs, and resource nodes do not receive one PostgreSQL row per
+   runtime instance.
 10. Normal actor state is reconstructed from compiled WorldData after a worker
     restart. Durable unique actors remain an explicit future opt-in.
-11. NPCs are event-driven. Mobs use centrally scheduled active and dormant
-    simulation tiers. No actor owns an asynchronous loop, thread, or timer.
+11. NPCs and resource nodes are event-driven. Mobs use centrally scheduled
+    active and dormant simulation tiers. No actor owns an asynchronous loop,
+    thread, or timer; delayed actor work goes through the central
+    `WorldActorTimerQueue`.
 12. Stable content and spawn ids never double as worker-runtime or network ids.
 13. Actor replication reuses the existing entity registry and spatial interest
     management instead of creating a parallel visibility system.
@@ -153,7 +177,7 @@ Neutral actor authoring and its compiled form live here:
 ```text
 content/
   actors/
-    catalog.json                  factions, presentation, activity and respawn profiles
+    catalog.json                  factions, presentation, and every actor profile
     definitions/<actor-id>.json   one actor definition per file
   worlds/<WorldId>/
     actor-spawns.json             spawn points, groups, areas, and patrol paths
@@ -198,12 +222,13 @@ errors.
 Every actor definition contains at least:
 
 - Stable actor definition id.
-- Actor kind: `npc` or `mob`.
+- Actor kind: `npc`, `mob`, or `resource_node`.
 - Display name or localization key.
 - Presentation archetype id.
 - Faction id.
 - Interaction bounds and targeting anchor.
-- Capability descriptors for an NPC.
+- Capability descriptors for an NPC or resource node. Mobs have no
+  capabilities.
 - Mob activity, respawn, combat, brain, locomotion, and loot-profile
   references for a Mob. NPCs leave every Mob profile reference empty.
 - Explicit lifecycle and respawn profile references.
@@ -227,6 +252,26 @@ and may reference a loot profile:
 A Mob without a loot profile drops nothing. Loot rolls follow the authored entry
 order, which also orders the corpse slots.
 
+A resource node is invulnerable, uses the neutral `world` faction, and has no
+activity, respawn, corpse, or Mob profile references. It has exactly one
+capability, of kind `gathering`, whose `profileId` names a resource profile in
+`content/actors/catalog.json`:
+
+| Field | Rule |
+| --- | --- |
+| `requiredToolKind` | An item catalog tool kind that at least one definition provides |
+| `yieldDefinitionId`, `yieldQuantity` | An existing item definition that is not a quest item or a Bag and has no default policies, with a quantity that fits one stack |
+| `cycleSeconds` | Seconds per gathering cycle, `0.5` to `60` |
+| `charges` | Yields before the node depletes, `1` to `1000` |
+| `respawnSeconds` | Seconds a depleted node stays depleted, `1` to `86400` |
+
+`WorldActorItemReferences.Validate` checks these references, Mob loot, and
+vendor capability profile ids against the compiled item catalog, so
+`tools/WorldActorCompiler` runs after the item catalog compiler. The shipped
+`resource.iron_vein` profile requires a `pickaxe`, yields one
+`material.iron_ore` every 3 seconds, has 5 charges, and respawns after 30
+seconds.
+
 ## NPC Capability Composition
 
 Capabilities are typed content descriptors resolved through a server-side
@@ -241,11 +286,18 @@ registry. Initial capability kinds are reserved for:
 - Trainer.
 - Bank.
 - Recovery Storage.
+- Gathering, which only a resource node may have.
 
-An NPC may contain any valid combination. Capability ordering in the compiled
-definition is deterministic and may provide presentation order without changing
-authority. Each capability has a stable capability id, kind, optional referenced
-profile id, availability metadata, and revisioned server state when required.
+An NPC may contain any valid combination of the NPC kinds. Capability ordering in
+the compiled definition is deterministic and may provide presentation order
+without changing authority. Each capability has a stable capability id, kind,
+`profileId`, availability metadata, and revisioned server state when required.
+A `vendor` capability's `profileId` names a vendor profile of the item catalog,
+such as `vendor.city_general_store` on Mira the Quartermaster's Trade
+capability, a `gathering` capability's names a resource profile, and every other
+kind leaves it empty. The opened capability summary carries it, so the client
+renders the vendor's offers from its bundled item catalog without a listing
+message.
 
 The opened capability summary is player-specific. SimulationWorker filters it
 through current disposition, actor state, capability state, and future
@@ -253,13 +305,14 @@ progression or access rules. A summary returned to one player must never be
 reused as authority for another player. Static capability identity may be shared
 internally, but availability and its expected revision remain session-scoped.
 
-The foundation proves composition and discovery. The insurance and quest
-item-lifecycle handlers that bridge the already validated interaction
+The foundation proves composition and discovery. The insurance, quest, and
+vendor item-lifecycle handlers bridge the already validated interaction
 session to GameService. The worker passes exact session, worker runtime, Shard,
-interaction session, capability, operation, and revision identity. GameService
-then commits the server-owned price, policy, or grant-lineage transaction. The
-handler does not repeat target, range, line-of-sight, or capability discovery
-logic.
+interaction session, capability, operation, and revision identity, and for a
+vendor trade the capability's vendor profile, offer, quantity, and the price the
+client showed. GameService then commits the server-owned price, policy,
+grant-lineage, or trade transaction. The handler does not repeat target, range,
+line-of-sight, or capability discovery logic.
 
 There must not be authoritative `VendorMonoBehaviour`,
 `QuestGiverMonoBehaviour`, or equivalent prefab scripts. Presentation helpers
@@ -270,8 +323,9 @@ SimulationWorker validation own the live meaning.
 
 World content supports these authoring concepts:
 
-- Actor spawn point for one NPC or Mob instance.
-- Spawn group for a bounded set of Mob instances.
+- Actor spawn point for one NPC, Mob, or resource node instance.
+- Spawn group for a bounded set of instances, such as guards or a cluster of
+  resource nodes.
 - Spawn area for randomized positions inside an authored boundary.
 - Patrol path with ordered points and optional waits.
 - Respawn profile with content-owned timing and population limits.
@@ -288,8 +342,9 @@ A reconnecting client rebuilds its view from reliable interest messages. It does
 not assume a runtime id survived a worker restart.
 
 Normal restarts may reset ephemeral NPC interaction sessions, Mob health, aggro,
-patrol progress, and respawn timers until a later design explicitly makes one of
-those states durable. A selected unique boss may later opt into durable state,
+patrol progress, resource node charges, and respawn timers until a later design
+explicitly makes one of those states durable. A restart restores every resource
+node with full charges. A selected unique boss may later opt into durable state,
 but this exception must not turn ordinary actor population into database rows.
 
 ## Runtime Revisions And Session Fencing
@@ -331,11 +386,15 @@ SimulationWorker owns these implemented responsibilities:
   deferred handlers for capabilities without business authority.
 - `WorldActorActivityScheduler` for central bounded dormant and active Mob
   buckets.
+- `WorldActorTimerQueue`, one min-heap of actor timers ordered by due tick,
+  which `WorldActorRuntimeDriver` drains every tick. Resource node respawn uses
+  it, and Mob respawn can reuse it.
+- `GatheringHandler`, the central gathering pass of the realtime loop.
 
-NPCs do not tick merely because they exist. They react to interaction requests,
-content changes, or centrally scheduled events. Stationary NPCs should impose
-no per-frame behavior work beyond existing interest queries and replication
-when state changes.
+NPCs and resource nodes do not tick merely because they exist. They react to
+interaction requests, content changes, or centrally scheduled events.
+Stationary NPCs should impose no per-frame behavior work beyond existing
+interest queries and replication when state changes.
 
 Mobs use two initial scheduling tiers:
 
@@ -356,6 +415,46 @@ those behaviors are not implemented yet.
 The runtime must not create one `Task`, timer, thread, database session, or HTTP
 poller per actor. Work is performed by bounded stores, spatial queries, event
 queues, and central fixed-step or coarse-schedule batches.
+
+## Resource Nodes And Gathering
+
+SimulationWorker owns resource node state and gathering timing. GameService
+owns the tool check and the item grant, because only GameService knows the
+character's equipment, and it checks both in one transaction.
+
+- **Node state.** Charges are live Shard state in `WorldActorStore`, shared by
+  every player. Each node keeps its remaining charges, the charges reserved by
+  cycles whose grant is in flight, and a generation that advances on every
+  depletion, so a stale completion or respawn never touches a newer cycle. A
+  worker restart restores every node with full charges.
+- **Start.** The client opens the node and sends `CapabilityAction`
+  `StartGathering`. The usual interaction authority validates the lease, range,
+  line of sight, and capability revision, and the gathering capability handler
+  rejects a depleted node with `resource_node_depleted`. The realtime loop then
+  registers one gathering activity per player and sends `GatheringState`
+  `Started` with the cycle time.
+- **Cycle.** The gathering pass runs every tick after the lease revalidation. A
+  due cycle reserves one charge and queues a `gather_resource` request to
+  GameService behind the player's other authority work, with the yield and
+  required tool kind of the node's resource profile. When every remaining
+  charge is reserved by other gatherers, the cycle waits for the next tick.
+- **Yield.** A committed grant consumes the charge, applies the committed carry
+  state, and sends `GatheringState` `Yielded` with the yield and the committed
+  item-state revision. The next cycle starts one cycle time later.
+- **Depletion and respawn.** The last charge makes the node inactive, which
+  advances its revisions, so its interaction leases close at their next
+  revalidation, and replicates `IsActive = false` to every viewer. Everyone
+  gathering there stops with `resource_node_depleted`. The respawn is scheduled
+  in `WorldActorTimerQueue`
+  and restores the charges and the active state; no node owns a task or timer.
+- **Stop.** Moving more than 0.1 m from where gathering started stops it with
+  `gathering_interrupted`, and a closed interaction with
+  `world_interaction_closed`. A rejected grant releases the charge and stops
+  with the rejection code, such as `gathering_tool_required` or
+  `inventory_full`. An uncertain GameService outcome is retried up to three
+  times with the same operation id, so a lost answer never grants twice. A
+  rejection that ends the item session disconnects the player.
+- **Bots.** Synthetic development sessions cannot gather.
 
 ## Interaction Targeting And Input
 
@@ -447,14 +546,20 @@ tests, and diagnostics together. An old or partially updated
 client receives the existing explicit protocol-mismatch path instead of
 misreading a packet.
 
-The planned protocol separates actor visibility from interaction state:
+The protocol separates actor visibility from interaction state:
 
 - Reliable actor spawn and despawn identity.
-- Bounded actor state updates only when replicated state changes.
-- World interaction open, close, and capability-action intents.
-- Opened state with interaction session identity and capability summary.
+- Bounded actor state updates only when replicated state changes. A resource
+  node's available or depleted state reuses `IsActive`.
+- World interaction open, close, and capability-action intents. The
+  capability actions include `VendorPurchase` and `VendorSale` with offer,
+  quantity, and expected price, and `StartGathering`.
+- Opened state with interaction session identity and capability summary,
+  including each capability's `profileId`.
 - Operation result correlated by operation id.
 - Stable server-initiated interaction closure.
+- `GatheringState`, a reliable server message with kind `Started`, `Yielded`,
+  or `Stopped` for the player's own gathering.
 
 An open intent contains at least:
 
@@ -484,8 +589,10 @@ The Unity foundation separates permanent state from replaceable presentation:
 - `WorldInteractionTargetingController` performs advisory pointer targeting
   against registered presentation targets and approaches a clicked target.
 - `WorldActorView` is the presentation base for actor identity and target bounds.
-- `NpcView` and `MobView` provide kind-specific presentation hooks without
-  owning authority.
+- `NpcView`, `MobView`, and `ResourceNodeView` provide kind-specific
+  presentation hooks without owning authority. `ResourceNodeView` keeps a
+  depleted node visible with its depleted model, and the node cannot be targeted
+  until it respawns.
 - A presentation registry resolves `presentationArchetypeId` to an authored
   prefab.
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI surface over the
@@ -497,7 +604,7 @@ Runtime prefabs are instantiated only from authoritative actor presence inside
 the existing interest system.
 
 The interaction panel displays the target name and available actions such as
-Talk, Shop, Quests, Crafting, Insurance, Bank, or Recovery. The available list
+Talk, Trade, Quests, Crafting, Insurance, Bank, Recovery, or Mine. The available list
 comes from the opened server response. Selecting an action sends an intent to a
 registered capability adapter. The client may present capabilities whose business
 handler is intentionally deferred, but it must label that state clearly and
@@ -519,7 +626,7 @@ The Editor tools are:
 Actor Studio supports:
 
 - Search and filtering by actor kind, faction, capability, tag, and problems.
-- Creation from NPC or Mob templates.
+- Creation from NPC, Mob, or resource node templates.
 - Safe duplication with a new stable id.
 - Multi-selection: kind, faction, disposition, presentation, tags, Mob
   lifecycle settings, and interaction bounds edit every selected actor at once.
@@ -530,7 +637,10 @@ Actor Studio supports:
   concerns.
 - Renaming an actor updates the spawns of the edited World. Actors that other
   Worlds place keep their id, and placed actors cannot be deleted.
-- Dropdown selection for referenced profiles and presentation archetypes.
+- Dropdown selection for referenced profiles and presentation archetypes,
+  including the capability profile: vendor profiles of the compiled item
+  catalog for `vendor` and resource profiles for `gathering`. Resource profiles
+  themselves are edited in `content/actors/catalog.json`.
 - Interaction-bounds preview.
 - Deterministic save, compile, verify, and change preview.
 - Clear distinction between authored source, compiled output, and Unity
@@ -576,7 +686,8 @@ the complete reputation or criminal system.
 
 NPC damage policy is `invulnerable` in the first version. Unity may show feedback
 for an invalid attack, but SimulationWorker owns the rejection. Guards use the
-same NPC invulnerability rule. Mobs reserve damageable combat state for the later
+same NPC invulnerability rule. Resource nodes are invulnerable too and use the
+neutral `world` faction. Mobs reserve damageable combat state for the later
 combat phase.
 
 ## Mob Loot And Corpse Boundary
@@ -610,6 +721,16 @@ world_interaction_line_of_sight_blocked
 world_interaction_target_changed
 world_interaction_capability_unavailable
 world_interaction_session_invalid
+```
+
+`GatheringState` `Stopped` carries one of these stable codes, or the rejection
+code of the GameService grant:
+
+```text
+resource_node_depleted
+gathering_interrupted
+world_interaction_closed
+gathering_failed
 ```
 
 Codes and status semantics are contracts. Display messages may be localized.
@@ -667,6 +788,12 @@ Automated coverage includes:
 - No normal NPC or Mob instance persistence row requirement.
 - A `4,000` actor mixed-tier load and a `128` player NPC interaction hotspot
   without per-actor loops, shared-player lease leakage, or identity metric labels.
+- Resource node compilation and item references, the vendor capability profile
+  in the opened summary, vendor actions at the vendor only, resource node
+  charges, reservation and release, gathering start, cycles, yields,
+  rejections, uncertain retries, depletion that stops every gatherer, respawn
+  through the timer queue, stops after movement or a closed interaction, full
+  charges on assignment activation, and the depleted Unity presentation.
 
 Implementation must also pass locked dependency restore, dependency policy,
 formatter verification, the existing item-catalog and collision verification,
@@ -700,15 +827,17 @@ definitions, compose existing NPC capabilities, place and verify spawns visually
 and exercise authoritative targeted interaction without adding a new runtime
 actor class or a database row per actor.
 
-The foundation explicitly stops before:
+The foundation explicitly stops before the following. The vendor and gathering
+slice has since added vendor buying and selling, resource nodes, gathering, and
+resource node respawn on these contracts.
 
-- Vendor buying or selling.
-- Final insurance and quest UI.
+- Final insurance, quest, and vendor UI.
 - Quest progression and turn-in gameplay.
 - Crafting recipes or production.
-- Trainer or profession progression.
+- Trainer or profession progression, including Mining experience.
 - Combat, health, damage, aggro behavior, or full Mob AI.
-- Combat-driven death events, Mob loot-table generation, or respawn execution.
+- Combat-driven death events, Mob loot-table generation, or Mob respawn
+  execution.
 - Durable unique boss state.
 - Final NPC, Mob, prompt, dialogue, or interaction-panel art.
 - Zone, Layer, multi-worker Shard, or world-event orchestration.

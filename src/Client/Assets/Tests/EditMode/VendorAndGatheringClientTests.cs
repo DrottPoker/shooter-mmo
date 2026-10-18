@@ -80,6 +80,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 reason);
             Assert.That(price, Is.EqualTo(1));
+            Assert.That(
+                Sell(arrowSnapshot, arrows, InventoryLocation(arrowSnapshot), 2, out _, out reason),
+                Is.False);
+            Assert.That(reason, Does.Contain("pays nothing"));
         }
 
         [Test]

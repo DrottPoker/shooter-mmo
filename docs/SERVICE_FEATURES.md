@@ -42,7 +42,7 @@ worker. Zone and layer partitioning are not implemented.
 | `GET /api/characters` | Account session | List owned characters |
 | `POST /api/characters` | Account session | Create a character |
 | `GET /api/item-catalog` | Account session | Return the neutral current catalog with revision ETag validation |
-| `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot |
+| `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot, including the currency balance |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
 | `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
 | `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
@@ -57,7 +57,7 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
-| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation through the durable kernel |
+| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation, vendor trade, or gathering yield through the durable kernel |
 | `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
@@ -119,6 +119,34 @@ taken from the matched endpoint, so a different path casing such as
 PostgreSQL permits only one active simulation session per character and one per
 account. A copied account token therefore cannot run two different characters
 at the same time.
+
+## Character Currency
+
+- `characters.currency` is the one balance of a character, owned by the
+  Characters module. It is not an item, has no weight, and is global across
+  every Shard. A database check keeps it between `0` and `1,000,000,000,000`.
+- Every change goes through `ICharacterWallet.DebitAsync` or `CreditAsync` in the
+  caller's transaction and appends one append-only `character_currency_ledger`
+  row with source kind, source id, item operation id when there is one, signed
+  delta, and balance after. The source kinds are `starting_balance`,
+  `vendor_purchase`, `vendor_sale`, `insurance`, and `development`, and the
+  ledger migration opened each existing nonzero balance with one
+  `opening_balance` row, so a character's ledger deltas always sum to its
+  balance.
+- A debit that the balance does not cover is rejected with
+  `currency_insufficient`, and a credit above the maximum balance with
+  `currency_limit_exceeded`. Neither changes the balance.
+- New characters receive the catalog's starting balance, `100`, with a
+  `starting_balance` ledger row in the character creation transaction. Existing
+  characters keep their balance.
+- The item-state snapshot carries the balance from the same repeatable-read
+  snapshot as the items, and every in-world currency change runs inside an item
+  transaction, so it advances the item-state revision that clients refresh on.
+- A player death never reads or writes currency.
+- `--dev-items-currency <characterId> <positiveAmount>` is a process-local
+  Development command that credits an offline character through the wallet with
+  a `development` ledger row, and `--dev-items-list` reports each character's
+  balance. The Unity window `MMORPG > Tools > Inventory Item Grants` uses both.
 
 ## Topology Bootstrap
 
@@ -279,9 +307,10 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   `simulation_worker.realtime.connections.rejected` metric.
 
 Join acceptance carries Shard and World identity plus the initial carry tuple. Reliable ordered control messages carry later item
-state, corpse, world-actor presence, bounded actor state, and correlated world
-interaction contracts. Ordinary actor spawn packets contain presentation,
-identity, bounds, disposition, state, and revision data, but not the complete
+state, corpse, world-actor presence, bounded actor state, correlated world
+interaction contracts, and gathering state. Ordinary actor spawn packets contain
+presentation, identity, bounds, disposition, state, and revision data, but not
+the complete
 player-specific capability summary. A standalone client must be rebuilt when
 the protocol version changes, and mismatched clients retain the explicit
 protocol rejection path.
@@ -339,9 +368,10 @@ worker output, which the build copies from the WorldData runtime catalog.
 SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
 rejects malformed runtime content, revision drift, wrong World identity,
 unsupported values, invalid references, or unsafe collection bounds. The
-checked-in development content contains four shared definitions, five spawn
-instances for `development-world-1`, and seven prepared spawn instances for
-`development-world-2`.
+checked-in development content contains five shared definitions, six spawn
+instances for `development-world-1`, and twelve prepared spawn instances for
+`development-world-2`, among them one Iron Vein resource node in the first and
+four in the second.
 
 - Neutral actor JSON in `content/actors`, one file per actor, and each World's
   `content/worlds/<WorldId>/actor-spawns.json` are compiled deterministically by
@@ -350,11 +380,15 @@ instances for `development-world-1`, and seven prepared spawn instances for
   actor ids or shared nonzero network entity ids.
 - Assignment activation reconstructs ordinary actors from compiled WorldData.
   They do not receive one PostgreSQL row per live instance.
-- NPC and Mob are distinct actor kinds. Faction and disposition remain
-  independent, and every current NPC is authoritatively invulnerable.
-- NPCs are event-driven. Mobs occupy bounded central dormant or active schedule
-  buckets selected by their shared activity profile. No actor owns a task,
-  timer, thread, database session, or HTTP poller.
+- NPC, Mob, and resource node are distinct actor kinds. Faction and disposition
+  remain independent, and every current NPC and resource node is
+  authoritatively invulnerable.
+- NPCs and resource nodes are event-driven. Mobs occupy bounded central dormant
+  or active schedule buckets selected by their shared activity profile. No actor
+  owns a task, timer, thread, database session, or HTTP poller. Delayed actor
+  work, today the respawn of a depleted resource node, is scheduled in the
+  central `WorldActorTimerQueue`, a min-heap by due tick that
+  `WorldActorRuntimeDriver` drains every tick.
 - Actor presence reuses reliable interest enter and exit messages, while actor
   state changes use bounded reliable updates. Assignment-local despawn
   tombstones retain runtime identity until every interest exit can encode the
@@ -362,10 +396,13 @@ instances for `development-world-1`, and seven prepared spawn instances for
   connection still has the actor in its interest set, so they stay bounded by
   current visibility.
 - One typed capability registry composes dialogue, vendor, quest, crafting,
-  insurance, trainer, bank, and Recovery Storage descriptors. Insurance, quest
-  offer, quest completion, bank, and Recovery Storage have handlers; every other
-  kind answers with an explicit deferred result until its business authority
-  exists.
+  insurance, trainer, bank, Recovery Storage, and gathering descriptors.
+  Insurance, quest offer, quest completion, bank, Recovery Storage, vendor, and
+  gathering have handlers; every other kind answers with an explicit deferred
+  result until its business authority exists.
+- A capability carries a `profileId`: the item catalog vendor profile for
+  `vendor`, the resource profile for `gathering`, and empty for every other
+  kind. The opened capability summary carries it to the client.
 - One world-interaction authority validates the exact simulation session,
   worker runtime, assignment, Shard, target identity and revision, active
   state, closest-point bounds distance, static and dynamic line of sight,
@@ -385,6 +422,80 @@ Capability summaries are returned only after a successful interaction open and
 are independently revisioned for each player. Multiple players may interact
 with the same actor, but one player cannot overlap an actor interaction and a
 corpse view.
+
+## Vendor Trades
+
+- Item values and vendor profiles are item catalog content. The shipped vendor
+  `vendor.city_general_store` ("General Store") is the profile of the `vendor`
+  capability of Mira the Quartermaster (`npc.city_services`). It sells Bronze
+  Arrow, Minor Healing Potion, Cooked Trout, and Starter Pickaxe at 100 percent
+  of value and buys every category except quest items at 40 percent. Stock is
+  unlimited and there is no buyback.
+- Opening the vendor capability only confirms it, so the client can show the
+  offers from its bundled catalog. A `CapabilityAction` `VendorPurchase` or
+  `VendorSale` goes through the same lease, range, line of sight, and capability
+  revision checks as every capability, then through the NPC item lifecycle path
+  to GameService. The worker sends the capability's vendor profile as the
+  vendor access of the operation, never a client value, and answers
+  "Purchased." or "Sold." on success.
+- GameService resolves the vendor and its offers from the active mirrored
+  catalog and prices them with the shared `VendorPricing` rule: the purchase
+  total is rounded up and the sale total down. The request carries the total
+  the client showed, and any difference is rejected with
+  `vendor_price_changed`, so a player is never charged a price they did not
+  see.
+- A purchase checks the expected character revision, the offer, and a quantity
+  within one stack, debits the wallet, and places the items through carried
+  acquisition, all in one item transaction.
+- A sale takes all or part of one stack from the permanent inventory, the
+  equipped Bag, or the Secure Container. Equipped, banked, and Recovery Storage
+  items, protected and insured items, quest items, items without value,
+  non-empty Bags, and categories the vendor does not buy are refused. A sold
+  whole stack is destroyed with an `item_destructions` row with reason
+  `vendor_sale`; a partial sale reduces the stack. The wallet is credited in the
+  same transaction.
+- Carried acquisition places items that no client slot names: it tops up
+  existing policy-free stacks in the permanent inventory and then the equipped
+  Bag, then fills empty matching specialized Bag slots, permanent inventory
+  slots, and general Bag slots, never the Secure Container. When the quantity
+  does not fit, the transaction rejects with `inventory_full` and changes
+  nothing. The 140 percent hard cap still applies.
+- Purchases and sales are idempotent by operation id like every other item
+  mutation, so a retry never charges or pays twice. Synthetic development bots
+  cannot trade.
+
+## Resource Nodes And Gathering
+
+- A resource node is a world actor of kind `resource_node` with exactly one
+  `gathering` capability whose `profileId` names a resource profile in the
+  actor catalog: required tool kind, yield definition and quantity, cycle time,
+  charges, and respawn delay. The Iron Vein yields one Iron Ore every 3 seconds
+  with a pickaxe, has 5 charges, and returns 30 seconds after it depletes.
+- Charges are live Shard state in `WorldActorStore`, shared by every gatherer.
+  Each node keeps remaining and reserved charges and a generation that advances
+  on every depletion, so a stale completion or respawn never touches a newer
+  cycle. A worker restart restores every node with full charges.
+- A `CapabilityAction` `StartGathering` passes the usual interaction checks, and
+  the gathering handler rejects a depleted node with `resource_node_depleted`.
+  The realtime loop then registers one gathering activity per player and sends
+  `GatheringState` `Started` with the cycle time.
+- The gathering pass runs every tick after the lease revalidation. A due cycle
+  reserves one charge and queues a `gather_resource` call to GameService behind
+  the player's other authority work. GameService checks that an item of the
+  required tool kind is equipped in the `tool` slot, otherwise
+  `gathering_tool_required`, and places the yield through carried acquisition.
+- A committed yield consumes the charge, applies the committed carry state, and
+  sends `GatheringState` `Yielded` with the item-state revision. The last charge
+  makes the node inactive for every viewer, stops everyone gathering there with
+  `resource_node_depleted`, and schedules its respawn in `WorldActorTimerQueue`.
+  The respawn restores the charges and makes the node active again.
+- Moving more than 0.1 m from where gathering started stops it with
+  `gathering_interrupted`, and a closed interaction with
+  `world_interaction_closed`. A rejected yield releases the charge and stops
+  with the rejection code. An uncertain GameService outcome retries up to three
+  times with the same operation id, so a lost answer never grants twice, and a
+  rejection that ends the item session disconnects the player.
+- Synthetic development bots cannot gather.
 
 ## Server-Authoritative Movement
 
@@ -464,8 +575,9 @@ available together with durable player-death partition, corpse restoration,
 concurrent inspection, and authoritative looting:
 
 - `content/items` is the strict neutral authoring source: `catalog.json` for the
-  catalog vocabulary and one `definitions/<definition-id>.json` file per item,
-  named after its id.
+  catalog vocabulary, tool kinds, and economy settings, one
+  `definitions/<definition-id>.json` file per item, named after its id, and one
+  `vendors/<vendor-id>.json` file per vendor profile.
 - `tools/ItemCatalogCompiler` rejects unknown or duplicate JSON properties,
   missing values, invalid identifiers and references, duplicate ids and Bag
   slots, negative or decimal weights, invalid stack limits, and impossible Bag,
@@ -473,10 +585,20 @@ concurrent inspection, and authoritative looting:
 - The compiler emits sorted deterministic runtime content under
   `src/Shared/WorldData/Generated/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
-- The checked-in catalog has ten fantasy definitions, thirteen equipment
+- The checked-in catalog has eleven fantasy definitions, thirteen equipment
   slots including a stack-holding ammunition slot, the potion, food, material,
-  and ammunition tags, one Bag layout with general and specialized slots, and
-  the four-slot base Secure Container tier shown as Warded Pouch.
+  and ammunition tags, the `pickaxe` tool kind, one Bag layout with general and
+  specialized slots, the four-slot base Secure Container tier shown as Warded
+  Pouch, one vendor profile, and the economy settings: the currency display name
+  Gold and a starting balance of 100.
+- Every definition has a `value` in whole currency units, where 0 means no
+  vendor trades it, and optional tool kinds, which only items for the `tool`
+  equipment slot may have. A vendor profile lists at most 32 ordered offers, its
+  purchase and sale prices in basis points of value, and the categories it buys.
+  The compiler rejects offers without value, with default policies, or of quest
+  items, and rejects vendor content whose sale rate is not below every purchase
+  rate, so buying and selling back never creates currency. Values, tool kinds,
+  and vendors are not structural, so changing them needs no item migration.
 - Framework-neutral pure rules cover stack compatibility, specialized slot tag
   acceptance, equipment compatibility, Secure Container eligibility, empty and
   non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
@@ -488,7 +610,8 @@ concurrent inspection, and authoritative looting:
   changes, locks baked ids, and writes authoring plus deterministic bake output
   transactionally.
 - `MMORPG > Tools > Inventory Item Grants` lists initialized local
-  characters and active definitions, grants individual stacks, and applies
+  characters with their balance and active definitions, grants individual
+  stacks, gives currency through the character wallet, and applies
   deterministic inventory, equipment, stack, encumbrance, Secure Container, and
   Recovery packages. It can also seed an empty offline character and submit the
   normal system-death adapter to create a durable five-minute corpse at a chosen
@@ -536,8 +659,8 @@ concurrent inspection, and authoritative looting:
   is revalidated by clients, and returns `304 Not Modified` when unchanged.
 - `ItemQueryService` first verifies exact account and active-character
   ownership, then reads permanent inventory, equipment, equipped Bag contents,
-  bank, Secure Container, Recovery deliveries, revisions, and encumbrance state
-  from one repeatable-read snapshot.
+  bank, Secure Container, Recovery deliveries, revisions, encumbrance state, and
+  the currency balance from one repeatable-read snapshot.
 - Item instance DTOs contain only instance id, stable definition id, quantity,
   revision, and active policy kind and status. Policy sources, recovery source
   event ids, operation payloads, structural fingerprints, credentials, icons,
@@ -549,7 +672,8 @@ concurrent inspection, and authoritative looting:
   merge, atomic ordinary container-slot swap, quantity consumption, allowed
   destruction, empty Bag storage, complete Bag aggregate swap, Recovery delivery
   add and claim, Secure Container tier change, policy application and removal,
-  quest-grant abandonment cleanup, player-death partition, and corpse expiry.
+  quest-grant abandonment cleanup, player-death partition, corpse expiry, vendor
+  purchase and sale, and gathering yields.
 - Equip moves a whole stack only when it fits the equipment slot limit, which is
   the smaller of the slot maximum quantity and the definition stack size. Merge
   accepts an equipped target up to that limit and an equipped source, and split
@@ -658,8 +782,10 @@ concurrent inspection, and authoritative looting:
   carry updates, and bounded item-operation intents and results on the reliable
   ordered control path. Supported operations are relocate, equip, unequip,
   split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, complete Recovery Storage claim, and typed NPC insurance and
-  quest item-lifecycle actions. The corpse contract carries
+  destruction, complete Recovery Storage claim, typed NPC insurance and quest
+  item-lifecycle actions, and vendor purchase and sale with offer, quantity, and
+  expected price. `GatheringState` reports gathering start, each yield, and the
+  stop reason. The corpse contract carries
   chunked corpse presence and view state, accepted destination slot tags, open,
   close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag
   aggregate swaps, operation result, delta, and view-closure messages.
@@ -676,7 +802,10 @@ concurrent inspection, and authoritative looting:
   sight, which ends the access. Opening either capability only confirms it, so
   the client can present the storage. Secure Container custody has no city
   requirement. Insurance and quest lifecycle actions pass their flags only
-  through their own NPC capability.
+  through their own NPC capability, and vendor trades pass the vendor profile
+  of the validated `vendor` capability, which must name an active vendor of the
+  mirrored catalog. A vendor command without that live vendor access is
+  rejected with `vendor_access_required`.
 - The worker service-authenticated endpoint carries the exact account,
   character, simulation session token, worker id, runtime id, and Shard. The
   authenticated worker id must match the body. GameService locks and validates
@@ -695,8 +824,8 @@ concurrent inspection, and authoritative looting:
   retention period. Every death request carries the expected character
   revision and the partition always advances it, so a replay that outlives the
   event row is rejected as a revision conflict instead of partitioning twice.
-- One death transaction leaves currency, bank, existing Recovery Storage, and
-  Secure Container contents unchanged. Protected items and otherwise-lootable
+- One death transaction leaves currency and its ledger, bank, existing Recovery
+  Storage, and Secure Container contents unchanged. Protected items and otherwise-lootable
   active insured items move to source-correlated Recovery deliveries. Insurance
   is consumed only in the latter case, so protected priority preserves an active
   insurance policy.
@@ -817,6 +946,9 @@ concurrent inspection, and authoritative looting:
   source when necessary, then uses the normal durable death transaction. The
   source must be offline and the resulting corpse keeps its database deadline
   across worker restart.
+- `--dev-items-currency <characterId> <positiveAmount>` is the matching
+  process-local currency grant described in
+  [Character Currency](#character-currency).
 
 The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
 runtime dependency. The Editor assembly is isolated from runtime WorldData
@@ -841,7 +973,9 @@ and interaction codes, and Unity adds `item_catalog_update_required`.
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
 | Placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
 | Stacks | `item_stack_incompatible`, `item_stack_limit_exceeded` |
-| Policy, quest, and currency | `item_policy_restricted`, `item_policy_not_found`, `item_destroy_forbidden`, `quest_grant_invalid`, `currency_insufficient` |
+| Policy, quest, and currency | `item_policy_restricted`, `item_policy_not_found`, `item_destroy_forbidden`, `quest_grant_invalid`, `currency_insufficient`, `currency_limit_exceeded` |
+| Vendors and acquisition | `vendor_access_required`, `vendor_unavailable`, `vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`, `inventory_full` |
+| Gathering | `gathering_tool_required`, `gathering_yield_invalid`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_interrupted`, `gathering_failed`, `resource_node_depleted`, `world_interaction_closed` |
 | Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |
 | Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `item_already_looted`, `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active` |
 | World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `npc_lifecycle_action_invalid`, `quest_turn_in_unavailable` |
@@ -893,11 +1027,12 @@ The meter `Mmorpg.SimulationWorker.Realtime` exposes:
 - Spawn and despawn packet counts.
 - Snapshot entity record counts.
 
-The meter `Mmorpg.SimulationWorker.WorldActors` exposes low-cardinality NPC
-and Mob population, event-driven, dormant, and active tier population, active
-interaction count, accepted and rejected interaction totals, and interaction
-latency. It does not label actor, spawn, player, character, session, or entity
-identities.
+The meter `Mmorpg.SimulationWorker.WorldActors` exposes low-cardinality NPC,
+Mob, and resource node population, event-driven, dormant, and active tier
+population, active interaction count, accepted and rejected interaction totals,
+interaction latency, depleted resource nodes, active gatherers, and gathering
+cycles by the `outcome` `yielded`, `rejected`, or `retried`. It does not label
+actor, spawn, player, character, session, or entity identities.
 
 The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
 latency and outcome, lock wait, conflict, stale revision, timeout, death
@@ -905,10 +1040,12 @@ partition, policy action, cleanup, corpse count, and Recovery backlog
 measurements under `game_service.items.*`. The transaction counter and duration
 carry the outcome `committed`, `rejected`, `failed` for a transaction that threw,
 or `cancelled` when the caller cancelled it; the periodic totals count only
-committed and rejected transactions. The meter `Mmorpg.GameService.Redis`
-exposes session cache, Redis failure, and distributed rate-limit counters under
-`game_service.redis.*`. The meter `Mmorpg.GameService.Placement` reports, per
-Shard and labeled only by `shard.id`, whether the Shard is online and its active
+committed and rejected transactions. Their operation kind label includes
+`vendor_purchase`, `vendor_sale`, and `gather_resource`. The meter
+`Mmorpg.GameService.Redis` exposes session cache, Redis failure, and distributed
+rate-limit counters under `game_service.redis.*`. The meter
+`Mmorpg.GameService.Placement` reports, per Shard and labeled only by
+`shard.id`, whether the Shard is online and its active
 players and capacity, refreshed every `Simulation:MetricsIntervalSeconds` from
 the same query as the public shard list. A failed refresh drops the values
 instead of keeping stale ones. The meter `Mmorpg.SimulationWorker.Corpses`
@@ -1173,11 +1310,26 @@ the test connection variable at development or production data.
   audited Recovery expiry and retention, `4,000` centrally scheduled actors,
   `128` concurrent NPC leases, eight simultaneous corpse claims, forty repeated
   Bag swaps, and a clean `100` bot Release network baseline.
+- Vendor and gathering coverage verifies the catalog values, vendor profiles,
+  and the arbitrage rule, pricing rounding and overflow, resource profiles and
+  their item references, wallet credits and debits with ledger conservation,
+  the starting balance, purchases, partial and whole stack sales, every
+  rejection, concurrent sales of one stack, carried acquisition order and
+  `inventory_full`, gathering with and without the tool and at the hard cap,
+  the Development currency command, golden traces of purchase, sale, partial
+  sale, and gathering, the worker's resource node charges, gathering cycles,
+  depletion, respawn, movement and closed-interaction stops, uncertain retries,
+  and one full-stack flow that buys a pickaxe, mines ore, sells it, and buys a
+  potion.
 
 ## Not Yet Implemented
 
 - HTTP item grant routes. Development grants use the guarded process-local
-  command, and gameplay grants come only from NPC quest and Mob loot paths.
+  command, and gameplay grants come only from NPC quest, Mob loot, vendor
+  purchase, and gathering paths.
+- Profession experience and levels, gathering success chances, other
+  professions, durable resource node state, limited vendor stock, dynamic
+  prices, buyback, and player trading.
 - Consume and use intents, per-shot ammunition consumption, and the attack
   lockout after an equipment change.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
@@ -1193,8 +1345,8 @@ the test connection variable at development or production data.
 - Production scheduler or fleet autoscaler.
 - Alert notifications to a chat or paging service, and a shared or staging
   deployment of the monitoring stack.
-- Durable unique actor state, complete Mob AI, capability business operations,
-  or combat simulation.
+- Durable unique actor state, complete Mob AI, the dialogue, crafting, and
+  trainer capability business operations, or combat simulation.
 - Rigid-body collision and replicated dynamic collision transforms.
 
 The item rules, including the planned and open ones, are documented in

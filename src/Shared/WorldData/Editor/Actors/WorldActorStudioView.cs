@@ -966,7 +966,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                 id = CreateUniqueActorId("resource.new_node_" + index),
                 displayName = "New Resource Node",
                 kind = WorldActorKindIds.ResourceNode,
-                factionId = workspace.Catalog.factions?.FirstOrDefault()?.id ?? string.Empty,
+                factionId = (workspace.Catalog.factions?.FirstOrDefault(faction =>
+                        faction?.defaultDisposition == WorldActorDispositionIds.Neutral)
+                    ?? workspace.Catalog.factions?.FirstOrDefault())?.id ?? string.Empty,
                 disposition = WorldActorDispositionIds.Neutral,
                 presentationArchetypeId = workspace.Catalog.presentationArchetypes?
                     .FirstOrDefault(value => value.actorKind == WorldActorKindIds.ResourceNode)?.id ?? string.Empty,

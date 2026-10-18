@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 Status: Decided. Every rule in the sections below is decided and implemented
 unless it says planned. Planned work, proposals, and open questions are collected
@@ -10,7 +10,8 @@ in [Planned](#planned), [Proposed](#proposed), and [Open Questions](#open-questi
 
 This document is the product and domain source of truth for the item,
 slot inventory, equipment, Bag, Secure Container, carry-weight, death-loot,
-corpse, insurance, and Recovery Storage systems.
+corpse, insurance, and Recovery Storage systems, and for how character currency,
+vendor trades, and gathering interact with them.
 
 The system must extend the existing canonical runtime hierarchy:
 
@@ -50,8 +51,8 @@ backpack, satchel, case, or another visual form without changing the domain.
 
 - GameService owns persistent item definitions mirrored from shared content,
   item instances, slot assignments, equipment assignments, policies, bank,
-  Secure Container, Recovery Storage, durable corpse custody, and all durable
-  item transactions.
+  Secure Container, Recovery Storage, durable corpse custody, all durable
+  item transactions, and character currency with its ledger.
 - PostgreSQL is the source of truth for persistent item ownership and custody.
 - SimulationWorker owns live interaction validation, proximity, active corpse
   presentation, one-active-loot-interaction enforcement, combat state, and
@@ -111,11 +112,17 @@ Item definitions also own:
 - Whether the item may be destroyed by the player.
 - Location restrictions such as Secure Container eligibility.
 - Optional default server policies.
+- A value in whole currency units, from which vendors derive their prices. A
+  value of `0` means no vendor buys or sells the item.
+- Optional tool kinds, such as `pickaxe`, which only items for the `tool`
+  equipment slot may have. A resource node requires a tool kind, so a better
+  tool later needs content only.
 
 Structural changes to weight, stack limits, Bag layouts, location eligibility,
 or equipment compatibility require an explicit data migration when existing
 instances could become invalid. Content reload must never silently create an
-invalid character state.
+invalid character state. Value and tool kinds are not structural, so changing
+them needs no data migration.
 
 The game does not use weapon attachments in the current design.
 
@@ -261,8 +268,10 @@ compatible general storage slot, including:
 - Another active Bag's general slot.
 - Character bank.
 - Recovery Storage when delivered by the system.
-- Future trade, auction, mail, vendor, or loot locations when no item policy
-  forbids that action.
+- Future trade, auction, mail, or loot locations when no item policy forbids
+  that action.
+
+An empty Bag with a value may also be sold to a vendor from carried storage.
 
 An empty Bag cannot use the supplies, material, or ammunition specialized
 slots because it does not have those tags.
@@ -281,7 +290,8 @@ A Bag with contents is locked as an aggregate. It may move only:
   therefore makes the real Bag empty before another custody assignment.
 
 A non-empty Bag cannot be placed in permanent inventory, another Bag, bank,
-trade, auction, mail, vendor storage, or an ordinary Recovery Storage slot.
+trade, auction, mail, or an ordinary Recovery Storage slot, and it cannot be
+sold to a vendor.
 
 Every operation that touches a Bag or one of its child items participates in the
 same Bag-level transaction lock. A Bag swap is rejected while another transaction
@@ -397,7 +407,10 @@ Carried weight excludes:
 - Character bank.
 - Recovery Storage.
 - Corpse contents.
-- Vendor, auction, mail, trade escrow, and other non-carried future custody.
+- Auction, mail, trade escrow, and other non-carried future custody.
+
+Vendors hold no custody: a sold item is destroyed, and a purchased item is
+created in carried storage.
 
 Carry capacity is primarily character-based: the base capacity from catalog
 content plus the bonus of the currently equipped Bag. Only the equipped Bag grants
@@ -459,7 +472,7 @@ The Unity inventory presentation uses a stable three-column layout:
 - Character-owned inventory remains in the right column and keeps its place
   and size in every view.
 - The middle column presents the currently relevant external or contextual
-  container, including bank, corpse, Recovery Storage, and world loot
+  container, including bank, corpse, Recovery Storage, vendor, and world loot
   containers.
 - The character column remains visible while another container is open so
   authoritative transfers have a clear source and destination.
@@ -558,6 +571,84 @@ Recovery Storage, and insured child items move to Recovery Storage with their
 insurance consumed. The protected or insured real Bag is moved only after its
 child items have been partitioned, so the recovered Bag is empty.
 
+## Character Currency
+
+Currency is a balance on the character, not an item:
+
+- It has no weight, never enters a corpse, cannot be looted, and is global
+  across every Shard.
+- The balance is a whole number between `0` and `1,000,000,000,000`. A debit
+  the balance does not cover fails with `currency_insufficient`, and a credit
+  above the maximum fails with `currency_limit_exceeded`, without changing the
+  balance.
+- Every change writes one append-only ledger row with its source kind, source
+  id, the item operation that committed it when there is one, the signed
+  delta, and the balance after, in the same transaction as the change. The
+  source kinds are the starting balance, vendor purchases and sales, insurance,
+  and Development grants; balances that existed before the ledger opened it
+  with one opening row. Each character's ledger deltas therefore sum to its
+  balance.
+- The currency display name and the starting balance are catalog content,
+  today Gold and 100. A new character receives the starting balance when it is
+  created. Existing characters keep their balance.
+- Every in-world currency change runs inside an item transaction, so it
+  advances the character's item-state revision, and the item-state snapshot
+  shows the balance from the same snapshot as the items.
+- Local development adds currency through the Development item tool, which
+  writes a Development ledger row, never through direct SQL.
+
+## Vendor Trades
+
+A vendor is an NPC capability whose vendor profile is item catalog content: an
+ordered list of offers, a purchase price and a sale price in basis points of
+item value, and the categories the vendor buys. Prices are named from the
+player's side. The purchase total is rounded up and the sale total down, by one
+shared rule that the client and GameService both use. The catalog compiler
+rejects vendor content whose sale rate is not below every purchase rate, so
+buying and selling back never creates currency.
+
+- A trade requires an open interaction with the vendor NPC. SimulationWorker
+  passes the vendor profile of the capability it validated; the client never
+  names the vendor.
+- Every trade carries the total price the client showed. A different current
+  price rejects the trade with `vendor_price_changed`, so a player is never
+  charged a price they did not see.
+- A purchase buys up to one stack of an offered item. The currency is debited
+  and the items are created through carried acquisition in one transaction.
+- A sale takes all or part of one stack from carried storage: the permanent
+  inventory, the equipped Bag, or the Secure Container. Equipped, banked, and
+  Recovery Storage items must move into carried storage first. Protected,
+  insured, and quest items, items without value, non-empty Bags, and
+  categories the vendor does not buy are refused.
+- A sold item is destroyed with a destruction record with reason `vendor_sale`,
+  and selling part of a stack reduces its quantity. The currency is credited
+  in the same transaction. There is no buyback.
+- Stock is unlimited and prices are fixed.
+- Every trade is idempotent by operation id, so a retry never charges or pays
+  twice, and an item and its currency always move together.
+
+## Carried Acquisition
+
+Vendor purchases and gathering create items without a client-chosen slot. One
+deterministic, all-or-nothing rule places them in carried storage:
+
+1. Top up existing stacks of the same definition without an item policy: the
+   permanent inventory slots in order, then the equipped Bag slots in order.
+2. Put the rest into empty compatible slots: equipped Bag specialized slots
+   that accept the item first, then the permanent inventory, then equipped Bag
+   general slots.
+3. The Secure Container is never filled automatically.
+
+If the whole quantity does not fit, the transaction rejects with
+`inventory_full` and changes nothing. The 140 percent hard cap still applies.
+Definitions with default policies are never acquired this way.
+
+Gathering grants its yield through the same rule. The yield is granted only
+while an item with the resource node's required tool kind is equipped in the
+`tool` slot, otherwise the grant is rejected with `gathering_tool_required`, and
+a Bag or quest item is never a gathering yield. Resource nodes themselves are
+described in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
+
 ## Player Death Partition
 
 Player death uses one idempotent PostgreSQL transaction identified by a unique
@@ -566,7 +657,8 @@ replays while its corpse is retained, and the revision, which every partition
 advances, fences replays after that. The transaction partitions every relevant
 item exactly once:
 
-1. Currency remains on the character.
+1. Currency remains on the character. Death never reads or writes the balance
+   or its ledger, so the balance is unchanged after respawn.
 2. Secure Container contents remain in place.
 3. Protected-on-death items move to Recovery Storage.
 4. Insured items move to Recovery Storage and consume insurance.
@@ -743,10 +835,15 @@ an open interaction with an NPC that offers them. Recovery is therefore claimed
 only in the world. Secure Container operations are allowed in the world but
 remain category, slot, policy, weight, and session validated.
 
-The generic NPC world-interaction session is the boundary of every service
-capability. Insurance, Bank, Recovery Storage, vendor, quest, and crafting
-handlers reuse its authoritative target, range, line-of-sight, revision,
-and session checks instead of adding capability-specific target authority. The
+Vendor trades additionally require an open interaction with an NPC whose vendor
+capability is available, and the trade uses that capability's vendor profile.
+Gathering requires an open interaction with a resource node.
+
+The generic world-interaction session is the boundary of every service
+capability. Insurance, Bank, Recovery Storage, vendor, quest, and gathering
+handlers, and later crafting handlers, reuse its authoritative target, range,
+line-of-sight, revision, and session checks instead of adding
+capability-specific target authority. The
 existing corpse view and transaction boundary remains authoritative for corpse
 contents while its client target selection and one-active-interaction lease join
 the shared interaction UX.
@@ -778,10 +875,13 @@ The implementation must enforce all of the following:
     presentation snapshots, and typed corpse equipment-slot compatibility.
 15. Account-tier reduction cannot lose Secure Container contents.
 16. Redis state can never override committed PostgreSQL custody.
+17. Every currency change writes exactly one ledger row in the same
+    transaction, and the balance never leaves its range.
+18. A vendor trade moves its items and its currency together or not at all.
 
 ## Planned
 
-These rules are decided and wait for the combat and economy work in
+These rules are decided and wait for later work, mostly the combat work in
 [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md):
 
 - Combat item data on definitions: armor type and stats, elemental
@@ -795,8 +895,8 @@ These rules are decided and wait for the combat and economy work in
   consumes one unit, and used ammunition is never recovered.
 - The short attack lockout after an equipment change, including a future
   two-loadout swap.
-- Producers that call the existing item boundaries: vendors, gathering, quest
-  progression, combat death, and Mob loot tables.
+- Producers that call the existing item boundaries: quest progression, combat
+  death, and Mob loot tables. Vendors and gathering are implemented.
 - Final corpse presentation art.
 
 ## Proposed
@@ -821,6 +921,8 @@ control flow:
 - Recovery Storage expiry duration and retention.
 - Which non-weapon definitions are Secure Container eligible.
 - Insurance price and which NPCs offer insurance.
+- Item values, vendor price rates, and the starting balance beyond the
+  development content.
 - Corpse interaction duration and Mob corpse lifetime overrides.
 
 These rules are not decided yet:

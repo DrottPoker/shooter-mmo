@@ -2,8 +2,10 @@
 
 Last updated: 2026-10-18
 
-Status: Decided. The product owner accepted every recommendation, V1 to V10, on
-2026-10-18. Implementation is in progress on one branch.
+Status: Implemented. The product owner accepted every recommendation, V1 to V10,
+on 2026-10-18, and the slice was implemented on one branch the same day. The
+design below is kept as the record of the decisions; [Implementation
+Notes](#implementation-notes) lists where the implementation differs from it.
 
 ## Purpose
 
@@ -125,7 +127,7 @@ and the death design already require.
 
 Prices are content, and GameService owns them.
 
-- **Item value.** Catalog format 4 adds a required integer `value` (zero or
+- **Item value.** Catalog format 5 adds a required integer `value` (zero or
   more) to every item definition. Zero means no vendor buys the item. Value is
   not structural: it changes the catalog revision but not a definition's
   structural fingerprint, so a price change never needs an item migration.
@@ -249,7 +251,7 @@ unchanged.
   ```json
   {
     "id": "resource.iron_vein",
-    "requiredToolTag": "pickaxe",
+    "requiredToolKind": "pickaxe",
     "yieldDefinitionId": "material.iron_ore",
     "yieldQuantity": 1,
     "cycleSeconds": 3.0,
@@ -260,10 +262,11 @@ unchanged.
 
   `tools/WorldActorCompiler` validates it against the compiled item catalog: the
   yield is an active, non-quest definition without default policies, the yield
-  quantity fits its stack, and at least one `tool` slot definition carries the
-  tag.
-- **Tool tag.** The item catalog gains the tag `pickaxe`, and
-  `tool.starter_pickaxe` carries it, so better pickaxes later need content only.
+  quantity fits its stack, and at least one definition provides the tool kind.
+- **Tool kind.** The item catalog gains the `toolKinds` vocabulary with
+  `pickaxe`, and `tool.starter_pickaxe` lists it in its own `toolKinds`, so
+  better pickaxes later need content only. Only definitions that fit the `tool`
+  slot may have tool kinds, and tool kinds are not structural.
 - **Content.** A new `resource.iron_vein` actor, presentation archetype, and
   spawns. Development World 1 gets one vein near the spawn. Development World 2
   gets a cluster of four on the southeast expansion pad, away from the service
@@ -361,7 +364,9 @@ inventory and interaction foundation.
 ### Monitoring
 
 New low-cardinality instruments, pinned by `MeterInstrumentNamesTests` and shown
-on the existing dashboards:
+on the existing dashboards. Only the SimulationWorker instruments and the item
+operation kinds are implemented; see [Implementation
+Notes](#implementation-notes).
 
 - `game_service.economy.currency_changed`: currency created and destroyed, by
   source kind and direction, to watch inflation.
@@ -423,7 +428,7 @@ branch from the latest `development`.
 | Step | Work | Depends on |
 | --- | --- | --- |
 | 0 | Coordinate: rebase on the latest `development`, confirm protocol version 17 with the combat session, and wait for the inventory placeholder UI PR and PR #29 before the Unity parts that touch their files. | Decisions |
-| 1 | Shared content model and compilers: item catalog format 4 with `value`, the `economy` block, vendor profiles, the `pickaxe` tag, and `VendorPricing`; actor catalog format 2 with `resource_node`, `gathering`, capability `profileId`, resource profiles, the `world` faction, and cross-validation against the compiled item catalog; regenerated data; compiler, pricing, and content tests. | 0 |
+| 1 | Shared content model and compilers: item catalog format 5 with `value`, the `economy` block, vendor profiles, the `pickaxe` tool kind, and `VendorPricing`; actor catalog format 3 with `resource_node`, `gathering`, capability `profileId`, resource profiles, the `world` faction, and cross-validation against the compiled item catalog; regenerated data; compiler, pricing, and content tests. | 0 |
 | 2 | Unity content tools: `value` and vendor profiles in the Item Catalog window, resource nodes and profiles in Actor Studio, resource node placement in Spawn Authoring, with EditMode tests. | 1 |
 | 3 | Characters: `CreditAsync`, `CurrencyChangeSource`, `character_currency_ledger`, the balance checks, and the first Characters migration; append the missing `202610171200_item_catalog_alignment` and the new id to `FrozenHistory` and the migration table. | 0 |
 | 4 | Items: the item value in the catalog mirror if a query needs it, the starting balance at character creation, `CarriedAcquisition`, the purchase, sale, and gather commands and handlers, currency in the item-state snapshot, the Development currency grant, golden traces, routing and boundary tests, and metrics. | 1, 3 |
@@ -466,6 +471,40 @@ Once implemented, with the local stack running and a Unity client joined:
 5. Click the ground while mining and see mining stop.
 6. Return to Mira and sell the ore. The balance rises by 4 gold per ore.
 7. Die with gold and see the balance unchanged after respawn.
+
+## Implementation Notes
+
+Every step above is implemented. Where the implementation differs from the
+design:
+
+- **Formats and migrations.** The combat slice merged first, with item catalog
+  format 4, actor catalog format 2, and migrations `202610181200` to
+  `202610181230`. This slice therefore uses item catalog format 5, actor catalog
+  and spawn format 3, and the migrations `202610181240_character_currency_ledger`
+  (Characters) and `202610181250_item_economy` (Items). Characters now lists its
+  migrations in `CharactersSchemaMigrations`. Protocol version 17 stayed with
+  this slice; combat takes 18.
+- **Tool kinds instead of a tag.** A tool requirement is a separate `toolKinds`
+  vocabulary rather than an item tag, so tags stay about storage compatibility
+  and a tool kind never changes a structural fingerprint.
+- **Item references.** One `WorldActorItemReferences.Validate` check, shared with
+  combat, validates Mob loot, vendor capability profile ids, and resource
+  profiles against the compiled item catalog in the generated root.
+- **Wolf pelt.** Combat added `material.wolf_pelt`, which this slice priced at 15.
+- **Monitoring.** The SimulationWorker reports
+  `simulation_worker.world_actors.resource_node`,
+  `simulation_worker.resource_nodes.depleted`,
+  `simulation_worker.gathering.active`, and `simulation_worker.gathering.cycles`
+  by outcome, and the item operation metrics count `vendor_purchase`,
+  `vendor_sale`, and `gather_resource` like every other operation kind. The
+  playtest dashboard shows the gathering instruments in a Gathering panel of
+  its World row. The GameService economy instruments are a follow-up.
+- **Client advisory checks.** Opening a resource node starts gathering only when
+  an item with a tool kind is equipped in the Tool slot; GameService still checks
+  the required kind on every yield.
+- **Development currency.** `--dev-items-list` also reports each character's
+  balance, and the Inventory Item Grants window shows it beside the Give
+  Currency section.
 
 ## Coordination
 

@@ -1,6 +1,6 @@
 # Monitoring
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 This document describes how GameService and SimulationWorker report what they do,
 the local monitoring stack that collects it, the starting dashboards and alerts,
@@ -75,8 +75,19 @@ counters, and `_bucket`, `_sum`, and `_count` for histograms, so
 | --- | --- |
 | `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of each tick phase and of network polling and completion processing, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, and snapshot visibility groups, encoded and sent packets, and deferred entity updates. |
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
-| `Mmorpg.SimulationWorker.WorldActors` | NPC and Mob population by activity tier, open interaction leases, accepted and rejected interactions, and interaction latency. |
+| `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
+
+The resource node and gathering instruments of `Mmorpg.SimulationWorker.WorldActors`:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.world_actors.resource_node` | gauge | Resource nodes in the worker's World, available or depleted. |
+| `simulation_worker.resource_nodes.depleted` | gauge | Resource nodes that are depleted and wait for their respawn. |
+| `simulation_worker.gathering.active` | gauge | Players with a running gathering activity. |
+| `simulation_worker.gathering.cycles` | counter | Finished gathering cycles, labeled `outcome`: `yielded` when GameService committed the yield, `retried` when its outcome was uncertain and the cycle repeats with the same operation id, and `rejected` otherwise. |
+
+`RealtimeMetricNamesTests` pins every instrument name of the world actor meter.
 
 ### GameService
 
@@ -85,6 +96,12 @@ counters, and `_bucket`, `_sum`, and `_count` for histograms, so
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, retention cleanup, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
+
+The operation kind label of the item transaction instruments includes the
+vendor and gathering kinds `vendor_purchase`, `vendor_sale`, and
+`gather_resource`, so trades and gathering yields show by kind and outcome like
+every other item operation. GameService has no separate currency or economy
+instrument yet.
 
 ### Built-in .NET Metrics
 
@@ -180,8 +197,9 @@ to reload the files.
   percentiles with the 33.3 ms budget line, tick phases, tick lag, overruns and
   resynchronizations, backlogs, population, bandwidth including snapshot bytes,
   packets, drops and rejections, joins, worker calls to GameService, world
-  actors, interactions, corpses, worker CPU, memory, allocation rate, GC, and
-  recent warnings and errors of both services.
+  actors, interactions, corpses, gathering (active gatherers, depleted nodes,
+  and gathering cycles per minute by outcome), worker CPU, memory, allocation
+  rate, GC, and recent warnings and errors of both services.
 - **MMORPG GameService** (`/d/mmorpg-game-service`): Shards online, players,
   request rate, 5xx share, request and database p95 at the top. Below them:
   players and capacity per Shard, requests, p95 latency and errors by route,

@@ -193,6 +193,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var equippedRingId = await world.GrantAsync(characterId, Ring, 1, state.PermanentInventoryContainerId, 2);
         await world.EquipAsync(characterId, equippedRingId, "ring_1");
         var bankedOreId = await world.GrantAsync(characterId, Ore, 2, state.BankContainerId, 0);
+        var arrowsId = await world.GrantAsync(characterId, Arrow, 2, state.PermanentInventoryContainerId, 3);
         var session = await world.JoinAsync(player);
 
         var partial = await SellAsync(context, world, session, characterId, oreId, 3, 12);
@@ -215,6 +216,12 @@ public sealed class VendorAndGatheringIntegrationTests
         AssertRejected(
             await SellAsync(context, world, session, characterId, bankedOreId, 1, 4),
             ItemTransactionErrorCodes.BankAccessRequired);
+        // Two arrows of value 1 round down to nothing, so the vendor refuses instead of
+        // taking them for free.
+        AssertRejected(
+            await SellAsync(context, world, session, characterId, arrowsId, 2, 0),
+            ItemTransactionErrorCodes.VendorWillNotBuy);
+        Assert.Equal(2, (await world.LoadItemAsync(arrowsId)).Quantity);
         Assert.Equal(20, await CurrencyAsync(context, characterId));
         await AssertLedgerMatchesBalanceAsync(context, characterId);
     }

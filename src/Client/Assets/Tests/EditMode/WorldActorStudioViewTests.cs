@@ -189,6 +189,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.That(node.kind, Is.EqualTo(WorldActorKindIds.ResourceNode));
                 Assert.That(node.damagePolicy, Is.EqualTo(WorldActorDamagePolicyIds.Invulnerable));
+                Assert.That(node.factionId, Is.EqualTo("world"));
                 Assert.That(node.presentationArchetypeId, Is.EqualTo("resource.iron_vein"));
                 var capability = node.capabilities.Single();
                 Assert.That(capability.kind, Is.EqualTo(WorldActorCapabilityKindIds.Gathering));

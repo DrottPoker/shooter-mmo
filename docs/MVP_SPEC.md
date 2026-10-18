@@ -70,10 +70,10 @@ The MVP should avoid becoming a large feature collection before this loop works.
   `SimulationAssignment` determines which Shard it simulates.
 - The current safe scale unit is one active SimulationWorker per Shard and one
   active Shard per SimulationWorker.
-- Accounts, characters, persistent items, inventory, progression, and the
-  future economy are global across every Fleet and Shard.
-- Shard-specific live state includes movement, combat, NPCs, Mobs, interactions,
-  and live corpse presentation.
+- Accounts, characters, persistent items, inventory, currency, progression, and
+  the future economy are global across every Fleet and Shard.
+- Shard-specific live state includes movement, combat, NPCs, Mobs, resource node
+  charges, interactions, and live corpse presentation.
 - Durable player corpse custody remains global PostgreSQL data with a Shard
   reference used for restoration by the assigned SimulationWorker.
 - There are no Realms. Topological Zones and Layers are future scaling systems
@@ -208,9 +208,13 @@ The implemented world-actor foundation provides:
 - The one-active-interaction rule includes the existing corpse view, while many
   players may still interact with one target.
 
-The foundation does not implement vendor transactions, quest progression,
-crafting, combat, complete Mob AI, or Mob loot tables. Live and durable Mob
-corpses are implemented and wait for a combat death producer.
+A third actor kind, the resource node, carries exactly one gathering capability,
+and the vendor capability trades through GameService. Both are described in
+[Economy MVP](#economy-mvp) and [Gathering MVP](#gathering-mvp).
+
+The foundation does not implement quest progression, crafting, combat, complete
+Mob AI, or Mob loot tables. Live and durable Mob corpses are implemented and wait
+for a combat death producer.
 
 ## Mob MVP
 
@@ -232,12 +236,26 @@ lifetime and persistence. Bosses may use the durable corpse path.
 
 ## Economy MVP
 
-The first economy should be simple and NPC-driven:
+The first economy is simple and NPC-driven. It is implemented with the
+decisions V1 to V10 in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md):
 
-- One NPC vendor.
-- Player can sell basic loot or gathered resources.
-- Player can buy basic supplies.
-- Currency is stored persistently and remains with the character on death.
+- One NPC vendor, the `Trade` capability of Mira the Quartermaster.
+- One integer currency called Gold. The name is catalog content, so a rename is
+  content only.
+- New characters start with `100` Gold, set as content. Existing characters keep
+  their balance.
+- Currency is stored persistently in the Characters module, not as an item, with
+  a ledger row for every change, and remains with the character on death.
+- Every item has a base value. The vendor sells at 100 percent of the value and
+  buys at 40 percent, rounded down on the total.
+- Mira sells Bronze Arrow (`1`), Minor Healing Potion (`25`), Cooked Trout
+  (`10`), and Starter Pickaxe (`50`). The other values are Iron Ore `10`, Wolf
+  Pelt `15`, Training Shortbow `100`, Leather Jerkin `80`, Copper Ring `40`,
+  Traveler's Pack `200`, and Sealed Letter `0`.
+- Mira buys every item with a value from carried storage, including part of a
+  stack. Protected, insured, quest, equipped, banked, and non-empty Bag items
+  are refused. Stock is unlimited, prices are fixed, and there is no buyback;
+  sold items are destroyed with an audit record.
 - One insurance NPC grants and explicitly removes one-death insurance through
   the implemented authoritative interaction lifecycle.
 
@@ -246,14 +264,27 @@ should wait until core item and economy transactions are stable.
 
 ## Gathering MVP
 
-Recommended first gathering loop:
+The first gathering loop is implemented with the decisions in
+[Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md):
 
-- Equip a tool in the tool slot.
-- Interact with a resource node in the Open Risk Rule Area.
-- SimulationWorker validates the required tool and live interaction.
-- GameService grants a resource item transactionally into a compatible slot when
-  capacity and weight allow it.
+- Equip a tool in the tool slot. The Starter Pickaxe provides the `pickaxe` tool
+  kind that the Iron Vein requires.
+- Interact with a resource node. One Iron Vein type is placed in both
+  development Worlds; the Open Risk Rule Area does not exist yet.
+- One click mines continuously: one guaranteed Iron Ore every 3 seconds until
+  the vein depletes, carried storage is full, the weight cap is reached, the
+  tool is unequipped, or the player moves or closes the interaction.
+- Nodes are shared. An Iron Vein gives 5 ore, then stays depleted for 30
+  seconds, and everyone mining it stops when it depletes.
+- Resource node state is live Shard state in SimulationWorker, which owns the
+  charges, cycle timing, depletion, and respawn. A worker restart restores every
+  node to full. A durable opt-in can come later, as for boss corpses.
+- GameService checks the required tool kind in the tool slot and grants the
+  resource item transactionally into carried storage when capacity and weight
+  allow it.
 - Resource can be sold to the NPC vendor.
+- There is no Mining experience or level in this slice. Profession progression
+  becomes its own slice.
 
 ## Backend And Service Scope
 
@@ -270,14 +301,15 @@ The intended architecture remains:
 
 Item service split:
 
-- GameService owns item definitions mirrored from shared content, item
-  instances, policies, slot and equipment assignments, bank, Secure Container,
-  Recovery Storage, durable player corpse custody, audit, and all durable item
-  transactions.
-- SimulationWorker owns live world actors, spawn lifecycle, inventory and corpse
-  interaction validation, proximity, combat, death-event production, active
-  corpse presentation, one-active-interaction enforcement, and authoritative
-  encumbrance. Combat and death-event production are planned.
+- GameService owns item definitions and vendor profiles mirrored from shared
+  content, item instances, policies, slot and equipment assignments, bank,
+  Secure Container, Recovery Storage, durable player corpse custody, audit, all
+  durable item transactions, and the character currency wallet and ledger.
+- SimulationWorker owns live world actors, spawn lifecycle, inventory, vendor,
+  and corpse interaction validation, resource node charges and gathering cycles,
+  proximity, combat, death-event production, active corpse presentation,
+  one-active-interaction enforcement, and authoritative encumbrance. Combat and
+  death-event production are planned.
 - While a character is active, SimulationWorker requests durable mutations over
   a service-authenticated GameService boundary fenced to exact session, worker,
   runtime, character, and Shard.
@@ -314,7 +346,7 @@ collide with the delivered item phases in
 | Unity connection and movement | Complete | Unity API and UDP flow, entity lifecycle, spatial interest, click-to-move with client-planned paths, prediction, reconciliation, interpolation, and checksummed collision |
 | SimulationWorker performance baseline | Complete | Headless stress clients, active bots, visibility and packet reuse, bounded backpressure, and repeatable baselines |
 | Items, inventory, equipment, and carry weight | Complete | Everything in [Items And Inventory](#items-and-inventory), with the temporary Unity inventory UI |
-| Vendor and gathering | Planned in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) | One NPC vendor capability, one resource node type with the starter pickaxe, gathering through the item transaction service, and selling to the vendor |
+| Vendor and gathering | Complete | One NPC vendor capability, persistent Gold, one shared resource node type with the starter pickaxe, gathering through the item transaction service, and buying from and selling to the vendor, as decided in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) |
 | Target-based combat and simple Mob | Planned in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) | One Ranged weapon with consumed ammunition, target selection and auto attack, health and damage, authoritative death events, and one simple Mob with live loot |
 | Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas without Zones or Layers, instant logout in the Safe City, a five-minute body after disconnect in the Open Risk area, and reconnect to the same body |
 | Death, Recovery, and corpse looting | Foundation complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, and insurance are done. The combat death producer and final corpse presentation remain |
@@ -338,8 +370,6 @@ These should not block the first playable MVP:
 
 - Should character deletion be available in the MVP?
 - Should Shard switching have a cooldown after logout?
-- Should resource nodes be per-Shard live state only, or persisted with respawn
-  timestamps?
 - The item balance questions, such as Secure Container eligibility, Bank
   unlocks, and Recovery Storage expiry, are in the
   [open questions of the inventory design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#open-questions).

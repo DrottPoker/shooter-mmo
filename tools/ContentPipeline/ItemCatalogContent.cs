@@ -23,8 +23,8 @@ public sealed class ItemCatalogHeaderDocument
 }
 
 // Assembles the authoring document from catalog.json, one file per item definition, and
-// one file per vendor profile. The item catalog compiler and the world actor compiler,
-// which validates actor references to items and vendors, load item content the same way.
+// one file per vendor profile. The world actor compiler checks actor references to items
+// and vendors against the compiled catalog instead, so it never reads item authoring.
 public static class ItemCatalogContent
 {
     public static ItemCatalogAuthoringDocument Load(string itemsDirectory)

@@ -167,6 +167,14 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
                 "The vendor cannot price this sale.");
         }
 
+        // A sale that rounds down to nothing would destroy the item for no payment.
+        if (price == 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.VendorWillNotBuy,
+                "The vendor pays nothing for this quantity. Sell more at once.");
+        }
+
         if (price != command.ExpectedPrice)
         {
             ItemTransactionContext.Reject(

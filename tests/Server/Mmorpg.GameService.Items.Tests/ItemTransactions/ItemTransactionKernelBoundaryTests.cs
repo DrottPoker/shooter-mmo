@@ -168,7 +168,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         "GameService.Items/Transactions/Context/CharacterItemStateLocks.cs",
         // S30: insurance charges the character wallet.
         "GameService.Items/Transactions/Handlers/ItemPolicyCommandHandler.cs",
-        // S41 and S42: vendor purchases debit and sales credit the character wallet.
+        // S45 and S46: vendor purchases debit and sales credit the character wallet.
         "GameService.Items/Transactions/Handlers/VendorCommandHandler.cs",
         // S31: the account's active characters for a tier change.
         "GameService.Items/Transactions/Handlers/SecureContainerTierCommandHandler.cs",

@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## What MMORPG Is
 
@@ -23,7 +23,9 @@ The current playable flow is intentionally small:
 5. Unity resolves the accepted World through its scene catalog, connects through
    LiteNetLib, presents the ticket, and enters that authored World scene.
 6. Unity predicts local movement while SimulationWorker remains authoritative.
-7. Leaving the shard releases the exact simulation session before returning to
+7. In the World, the player can buy a pickaxe from the NPC vendor with Gold,
+   mine Iron Ore from shared Iron Veins, and sell the ore back to the vendor.
+8. Leaving the shard releases the exact simulation session before returning to
    character selection.
 
 ## Shared World And Global Player Data
@@ -63,15 +65,15 @@ scaling. They are not implemented and are not faked in the current runtime.
 - **GameService** owns accounts, account sessions, characters, topology,
   SimulationWorker registration, shard discovery, placement, join tickets, and
   global character simulation-session leases. It also owns the PostgreSQL item
-  schema, catalog mirror, character item-state bootstrap, and authenticated
-  read models.
+  schema, catalog mirror, character item-state bootstrap, authenticated read
+  models, and the character currency wallet with its ledger.
 - **SimulationWorker** is a headless .NET console process that owns the realtime
   UDP transport, active players and world actors, interest management,
-  authoritative movement, actor activity tiers, and interaction sessions for
-  its assigned shard.
+  authoritative movement, actor activity tiers, interaction sessions, and live
+  resource node charges, gathering cycles, and respawn for its assigned shard.
 - **PostgreSQL** is the durable authority for identity, topology, assignments,
-  tickets, session leases, mirrored item definitions, and the item custody
-  foundation.
+  tickets, session leases, mirrored item definitions and vendor profiles, the
+  item custody foundation, and character currency with its ledger.
 - **Redis** accelerates account-session validation, coordinates authentication
   rate limits across GameService replicas, and remains an operational readiness
   dependency. PostgreSQL remains the durable authority and Redis owns no
@@ -129,11 +131,12 @@ The repository currently supports:
 - A finite SimulationWorker benchmark and a separate long-running active bot
   population tool, both using a shared headless UDP client foundation without
   persistent bot accounts.
-- A strict item catalog compiler with ten fantasy definitions, retired-id
-  tombstones, character settings, deterministic catalog and structural
+- A strict item catalog compiler with eleven fantasy definitions, retired-id
+  tombstones, character settings, item values, tool kinds, vendor profiles, the
+  currency name and starting balance, deterministic catalog and structural
   revisions, and pure stack, slot, equipment, blocked-slot, Secure Container,
-  Bag, unitless integer-weight, and encumbrance rules. The base character carry
-  capacity is `2000`.
+  Bag, unitless integer-weight, encumbrance, and vendor pricing rules. The base
+  character carry capacity is `2000`.
 - A Unity Editor item catalog workflow that edits the neutral gameplay source,
   delegates validation and structural fingerprints to the shared compiler,
   bakes deterministic runtime content, and maps every definition to a bundled
@@ -151,17 +154,26 @@ The repository currently supports:
   The Bank and Recovery Storage are reachable only in the world.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `16`,
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `17`,
   movement revision `movement-simulation-v5`, and identical authoritative and
   predicted encumbrance behavior.
+- A persistent Gold balance per character with a starting balance of `100`, a
+  wallet that writes one ledger row per change, and currency that stays with the
+  character on death.
+- One NPC vendor, Mira's General Store, that sells basic supplies and buys
+  carried items at fixed prices through idempotent GameService transactions.
+- Shared Iron Vein resource nodes with live Shard charges, continuous mining
+  with a pickaxe in the `Tool` slot, depletion for every player, and respawn
+  through a central timer queue.
 - RuneScape-style click-to-move: the client plans a route around obstacles on
   a fine internal grid in the background, predicts it at once, and
   SimulationWorker follows the same waypoints with authoritative collision. An
   orbit camera turns with the middle mouse button or arrow keys and zooms from 3
   to 30 meters.
-- Deterministic NPC and Mob definitions, factions, presentation references,
-  activity and respawn profiles, spawn points, groups, areas, and patrol paths
-  with one shared command-line and Unity Editor compiler path.
+- Deterministic NPC, Mob, and resource node definitions, factions, presentation
+  references, activity, respawn, and resource profiles, spawn points, groups,
+  areas, and patrol paths with one shared command-line and Unity Editor compiler
+  path.
 - Bounded worker-runtime actors with fresh runtime and network identities,
   reliable interest presence, event-driven NPCs, and centrally bucketed Mob
   dormant or active scheduling.
@@ -191,8 +203,12 @@ serves every world actor:
   Storage.
 - `Mob` means a combat actor with future AI, aggro, combat, loot, corpse, and
   respawn behavior.
+- A resource node, such as the Iron Vein, is a gatherable actor with exactly one
+  gathering capability and a resource profile. Its charges, depletion, and
+  respawn are live Shard state in SimulationWorker.
 - Faction and disposition own friendly or hostile state. Actor kind does not.
-- City NPCs, including guards, are invulnerable in the first version.
+- City NPCs, including guards, and resource nodes are invulnerable in the first
+  version.
 - Normal actors are reconstructed from compiled WorldData after worker restart
   instead of receiving one PostgreSQL row per instance.
 - NPCs are event-driven. Mobs use centrally scheduled dormant and active tiers
@@ -210,8 +226,10 @@ serves every world actor:
 
 The permanent Editor workflows live at
 `MMORPG > Tools > Content > Actor Studio` and
-`MMORPG > Tools > Content > Spawn Authoring`. Vendor transactions, quest
-progression, crafting, combat AI, and Mob loot tables are not implemented yet. See
+`MMORPG > Tools > Content > Spawn Authoring`. The vendor capability trades
+through GameService, as decided in
+[Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md). Quest progression,
+crafting, combat AI, and Mob loot tables are not implemented yet. See
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Item Foundation Status
@@ -234,7 +252,13 @@ and the rules in [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESI
   both authority and Unity prediction.
 - **In-world access.** Item intents run through SimulationWorker with exact
   session fencing. The Bank and Recovery Storage need an open interaction with an
-  NPC that offers them; insurance and quest items use their NPC capabilities.
+  NPC that offers them; insurance, quest items, and vendor trade use their NPC
+  capabilities.
+- **Economy and gathering.** Vendor purchases, vendor sales, and gathered
+  resources commit through the same transaction kernel. Purchases and gathered
+  ore share one carried acquisition rule that tops up stacks before it fills
+  free carried slots, and the wallet debits or credits currency in the same
+  transaction.
 - **Death and corpses.** One transaction partitions a death into Recovery
   deliveries and a durable five-minute player corpse. Corpses are looted, filled,
   and rearranged concurrently, Bags swap atomically, and live or durable Mob
@@ -249,20 +273,21 @@ Still to come on this foundation:
 - Final inventory visual design, interaction polish, and accessibility.
 - The combat death producer, consume and use intents, per-shot ammunition,
   Mob loot tables, final corpse art, and respawn.
-- Quest progression and rewards, vendors, and gathering.
+- Quest progression and rewards, further vendors and resource types, and
+  gathering progression.
 
 ## Intentionally Deferred
 
 - Zone ownership, cross-zone handoff, and layer orchestration.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat, weapons, abilities, damage, death, and respawning.
-- Gameplay-created item instances, authoritative combat death production, and
-  final corpse presentation. Durable player corpse identity, generic active
-  representation, and loot transactions already exist behind the service
-  boundary.
-- Crafting, gathering, professions, and the broader economy.
-- Durable unique actor persistence, NPC capability business behavior, Mob AI,
-  combat, and loot remain deferred beyond the implemented neutral actor and
+- Authoritative combat death production and final corpse presentation. Durable
+  player corpse identity, generic active representation, and loot transactions
+  already exist behind the service boundary.
+- Crafting, professions, gathering progression, and the broader economy beyond
+  the first NPC vendor.
+- Durable unique actor persistence, the remaining NPC capability behavior, Mob
+  AI, combat, and loot remain deferred beyond the implemented neutral actor and
   interaction runtime. Complete quests, guilds, social systems, and
   world events also remain later work.
 - Production orchestration and live operations. Metrics, logs, traces,
@@ -290,6 +315,8 @@ implementation.
 - [MVP Specification](MVP_SPEC.md) defines the current product scope.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) defines
   the inventory and death-loot rules.
+- [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) records the vendor,
+  currency, and gathering decisions and how the slice was implemented.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) defines the approved
   world-actor, NPC, Mob, spawn-authoring, and interaction foundation.
 - [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
