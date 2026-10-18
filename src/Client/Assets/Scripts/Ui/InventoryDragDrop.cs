@@ -92,6 +92,10 @@ namespace Mmorpg.Client.Ui
     [DisallowMultipleComponent]
     public sealed class InventoryDragCoordinator : MonoBehaviour
     {
+        // The ghost trails below and right of the pointer so the hovered slot's green or
+        // red highlight stays visible.
+        private static readonly Vector2 GhostPointerOffset = new Vector2(16f, -16f);
+
         private RectTransform visualRoot;
         private Font font;
         private RectTransform dragGhost;
@@ -141,7 +145,7 @@ namespace Mmorpg.Client.Ui
                     eventCamera,
                     out var localPoint))
             {
-                dragGhost.anchoredPosition = localPoint;
+                dragGhost.anchoredPosition = localPoint + GhostPointerOffset;
             }
         }
 
@@ -185,10 +189,10 @@ namespace Mmorpg.Client.Ui
             dragGhost.SetParent(visualRoot, false);
             dragGhost.anchorMin = new Vector2(0.5f, 0.5f);
             dragGhost.anchorMax = new Vector2(0.5f, 0.5f);
-            dragGhost.pivot = new Vector2(0.5f, 0.5f);
-            dragGhost.sizeDelta = new Vector2(230f, 62f);
+            dragGhost.pivot = new Vector2(0f, 1f);
+            dragGhost.sizeDelta = new Vector2(200f, 40f);
             ghostObject.GetComponent<CanvasGroup>().blocksRaycasts = false;
-            ghostObject.GetComponent<CanvasGroup>().alpha = 0.92f;
+            ghostObject.GetComponent<CanvasGroup>().alpha = 0.9f;
             ghostObject.GetComponent<Image>().color = new Color(0.16f, 0.32f, 0.48f, 0.98f);
             ghostObject.transform.SetAsLastSibling();
 
@@ -204,13 +208,13 @@ namespace Mmorpg.Client.Ui
                 iconRect.anchorMin = new Vector2(0f, 0.5f);
                 iconRect.anchorMax = new Vector2(0f, 0.5f);
                 iconRect.pivot = new Vector2(0f, 0.5f);
-                iconRect.anchoredPosition = new Vector2(7f, 0f);
-                iconRect.sizeDelta = new Vector2(48f, 48f);
+                iconRect.anchoredPosition = new Vector2(5f, 0f);
+                iconRect.sizeDelta = new Vector2(32f, 32f);
                 var iconImage = iconObject.GetComponent<Image>();
                 iconImage.sprite = icon;
                 iconImage.preserveAspect = true;
                 iconImage.raycastTarget = false;
-                textOffset = 60f;
+                textOffset = 42f;
             }
 
             var textObject = new GameObject(
@@ -226,7 +230,8 @@ namespace Mmorpg.Client.Ui
             var text = textObject.GetComponent<Text>();
             text.font = font;
             text.text = label ?? string.Empty;
-            text.fontSize = 13;
+            text.fontSize = 14;
+            text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.white;
             text.raycastTarget = false;
