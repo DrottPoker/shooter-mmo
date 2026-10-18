@@ -481,7 +481,8 @@ change.
 
 `Assets/Editor` contains project-local orchestration tools below the shared
 `MMORPG > Tools` menu root. `Inventory Item Grants` invokes guarded,
-machine-readable GameService Development commands and renders their response. It
+machine-readable GameService Development commands, each after an incremental
+Release build of GameService, and renders their response. It
 never references PostgreSQL or item persistence directly. GameService routes
 every requested grant through `ItemTransactionService`, so catalog, slot,
 policy, revision, weight, and hard-cap authority remain in the backend.

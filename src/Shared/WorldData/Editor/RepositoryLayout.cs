@@ -42,5 +42,10 @@ namespace Mmorpg.WorldData.Editor
         {
             return Path.Combine(repositoryRoot, "src", "Server", "GameService");
         }
+
+        public static string GameServiceProjectPath(string repositoryRoot)
+        {
+            return Path.Combine(GameServiceDirectory(repositoryRoot), "Mmorpg.GameService.csproj");
+        }
     }
 }
