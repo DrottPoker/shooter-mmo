@@ -21,7 +21,11 @@
     },
     "capabilities": [],
     "activityProfileId": "mob.standard",
-    "respawnProfileId": "mob.normal",
+    "respawnProfileId": "mob.boss",
     "corpsePersistenceMode": "durable",
-    "corpseLifetimeSeconds": 600.0
+    "corpseLifetimeSeconds": 600.0,
+    "combatProfileId": "mob.feral_alpha",
+    "brainProfileId": "mob.aggressive_boss",
+    "locomotionProfileId": "mob.large_quadruped",
+    "lootProfileId": "mob.feral_alpha"
 }

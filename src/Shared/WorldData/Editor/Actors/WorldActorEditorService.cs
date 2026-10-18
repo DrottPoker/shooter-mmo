@@ -285,6 +285,12 @@ namespace Mmorpg.WorldData.Editor.Actors
                     }
                 }
 
+                // Loot is checked against the compiled item catalog, which the item compiler
+                // writes before the actor compiler runs.
+                var itemCatalogPath = ContentLayout.GeneratedItemCatalogPath(generatedRoot);
+                Directory.CreateDirectory(Path.GetDirectoryName(itemCatalogPath));
+                File.Copy(ContentLayout.GeneratedItemCatalogPath(paths.GeneratedRoot), itemCatalogPath);
+
                 var compilerResult = compilerRunner.Compile(contentRoot, generatedRoot);
                 if (!compilerResult.Success)
                 {

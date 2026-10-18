@@ -297,6 +297,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     ContentLayout.GeneratedWorldActorsPath(target.GeneratedRoot, worldId)));
             }
 
+            // Mob loot is checked against the compiled item catalog.
+            files.Add(new KeyValuePair<string, string>(
+                ContentLayout.GeneratedItemCatalogPath(source.GeneratedRoot),
+                ContentLayout.GeneratedItemCatalogPath(target.GeneratedRoot)));
+
             foreach (var file in files)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file.Value));

@@ -17,6 +17,10 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorPresentation[] presentationArchetypes;
         public WorldActorEditorActivityProfile[] activityProfiles;
         public WorldActorEditorRespawnProfile[] respawnProfiles;
+        public WorldActorEditorCombatProfile[] combatProfiles;
+        public WorldActorEditorBrainProfile[] brainProfiles;
+        public WorldActorEditorLocomotionProfile[] locomotionProfiles;
+        public WorldActorEditorLootProfile[] lootProfiles;
         public WorldActorEditorDefinition[] actors;
 
         public WorldActorCatalogAuthoringDocument ToDomain()
@@ -35,6 +39,18 @@ namespace Mmorpg.WorldData.Editor.Actors
                     .Select(value => value.ToDomain()).ToArray(),
                 RespawnProfiles = (respawnProfiles
                         ?? Array.Empty<WorldActorEditorRespawnProfile>())
+                    .Select(value => value.ToDomain()).ToArray(),
+                CombatProfiles = (combatProfiles
+                        ?? Array.Empty<WorldActorEditorCombatProfile>())
+                    .Select(value => value.ToDomain()).ToArray(),
+                BrainProfiles = (brainProfiles
+                        ?? Array.Empty<WorldActorEditorBrainProfile>())
+                    .Select(value => value.ToDomain()).ToArray(),
+                LocomotionProfiles = (locomotionProfiles
+                        ?? Array.Empty<WorldActorEditorLocomotionProfile>())
+                    .Select(value => value.ToDomain()).ToArray(),
+                LootProfiles = (lootProfiles
+                        ?? Array.Empty<WorldActorEditorLootProfile>())
                     .Select(value => value.ToDomain()).ToArray(),
                 Actors = (actors ?? Array.Empty<WorldActorEditorDefinition>())
                     .Select(value => value.ToDomain()).ToArray()
@@ -119,6 +135,113 @@ namespace Mmorpg.WorldData.Editor.Actors
     }
 
     [Serializable]
+    public sealed class WorldActorEditorCombatProfile
+    {
+        public string id;
+        public int maximumHealth;
+        public string attackStyle;
+        public string attackDamageType;
+        public int minimumDamage;
+        public int maximumDamage;
+        public float attackIntervalSeconds;
+        public float attackRange;
+
+        public WorldActorCombatProfileAuthoringEntry ToDomain()
+        {
+            return new WorldActorCombatProfileAuthoringEntry
+            {
+                Id = id,
+                MaximumHealth = maximumHealth,
+                AttackStyle = attackStyle,
+                AttackDamageType = attackDamageType,
+                MinimumDamage = minimumDamage,
+                MaximumDamage = maximumDamage,
+                AttackIntervalSeconds = attackIntervalSeconds,
+                AttackRange = attackRange
+            };
+        }
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorBrainProfile
+    {
+        public string id;
+        public string aggression;
+        public float detectionRange;
+        public float leashRange;
+        public float giveUpSeconds;
+
+        public WorldActorBrainProfileAuthoringEntry ToDomain()
+        {
+            return new WorldActorBrainProfileAuthoringEntry
+            {
+                Id = id,
+                Aggression = aggression,
+                DetectionRange = detectionRange,
+                LeashRange = leashRange,
+                GiveUpSeconds = giveUpSeconds
+            };
+        }
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorLocomotionProfile
+    {
+        public string id;
+        public float walkSpeed;
+        public float collisionRadius;
+        public float collisionHeight;
+
+        public WorldActorLocomotionProfileAuthoringEntry ToDomain()
+        {
+            return new WorldActorLocomotionProfileAuthoringEntry
+            {
+                Id = id,
+                WalkSpeed = walkSpeed,
+                CollisionRadius = collisionRadius,
+                CollisionHeight = collisionHeight
+            };
+        }
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorLootProfile
+    {
+        public string id;
+        public WorldActorEditorLootEntry[] entries;
+
+        public WorldActorLootProfileAuthoringEntry ToDomain()
+        {
+            return new WorldActorLootProfileAuthoringEntry
+            {
+                Id = id,
+                Entries = (entries ?? Array.Empty<WorldActorEditorLootEntry>())
+                    .Select(value => value.ToDomain()).ToArray()
+            };
+        }
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorLootEntry
+    {
+        public string definitionId;
+        public int minimumQuantity;
+        public int maximumQuantity;
+        public int chanceBasisPoints;
+
+        public WorldActorLootEntryAuthoringEntry ToDomain()
+        {
+            return new WorldActorLootEntryAuthoringEntry
+            {
+                DefinitionId = definitionId,
+                MinimumQuantity = minimumQuantity,
+                MaximumQuantity = maximumQuantity,
+                ChanceBasisPoints = chanceBasisPoints
+            };
+        }
+    }
+
+    [Serializable]
     public sealed class WorldActorEditorDefinition
     {
         public string id;
@@ -135,6 +258,10 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string respawnProfileId;
         public string corpsePersistenceMode;
         public float corpseLifetimeSeconds;
+        public string combatProfileId;
+        public string brainProfileId;
+        public string locomotionProfileId;
+        public string lootProfileId;
 
         public WorldActorAuthoringEntry ToDomain()
         {
@@ -155,7 +282,11 @@ namespace Mmorpg.WorldData.Editor.Actors
                 ActivityProfileId = activityProfileId,
                 RespawnProfileId = respawnProfileId,
                 CorpsePersistenceMode = corpsePersistenceMode,
-                CorpseLifetimeSeconds = corpseLifetimeSeconds
+                CorpseLifetimeSeconds = corpseLifetimeSeconds,
+                CombatProfileId = combatProfileId,
+                BrainProfileId = brainProfileId,
+                LocomotionProfileId = locomotionProfileId,
+                LootProfileId = lootProfileId
             };
         }
     }
@@ -423,6 +554,10 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorPresentation[] presentationArchetypes;
         public WorldActorEditorActivityProfile[] activityProfiles;
         public WorldActorEditorRespawnProfile[] respawnProfiles;
+        public WorldActorEditorCombatProfile[] combatProfiles;
+        public WorldActorEditorBrainProfile[] brainProfiles;
+        public WorldActorEditorLocomotionProfile[] locomotionProfiles;
+        public WorldActorEditorLootProfile[] lootProfiles;
     }
 
     // The canonical file format is pretty-printed JsonUtility output with shortest float
@@ -528,6 +663,10 @@ namespace Mmorpg.WorldData.Editor.Actors
                 presentationArchetypes = header.presentationArchetypes,
                 activityProfiles = header.activityProfiles,
                 respawnProfiles = header.respawnProfiles,
+                combatProfiles = header.combatProfiles,
+                brainProfiles = header.brainProfiles,
+                locomotionProfiles = header.locomotionProfiles,
+                lootProfiles = header.lootProfiles,
                 actors = ContentLayout.ListDefinitionFiles(actorsDirectory)
                     .Select(LoadDefinition)
                     .ToArray()
@@ -555,7 +694,15 @@ namespace Mmorpg.WorldData.Editor.Actors
                         activityProfiles = catalog.activityProfiles
                             ?? Array.Empty<WorldActorEditorActivityProfile>(),
                         respawnProfiles = catalog.respawnProfiles
-                            ?? Array.Empty<WorldActorEditorRespawnProfile>()
+                            ?? Array.Empty<WorldActorEditorRespawnProfile>(),
+                        combatProfiles = catalog.combatProfiles
+                            ?? Array.Empty<WorldActorEditorCombatProfile>(),
+                        brainProfiles = catalog.brainProfiles
+                            ?? Array.Empty<WorldActorEditorBrainProfile>(),
+                        locomotionProfiles = catalog.locomotionProfiles
+                            ?? Array.Empty<WorldActorEditorLocomotionProfile>(),
+                        lootProfiles = catalog.lootProfiles
+                            ?? Array.Empty<WorldActorEditorLootProfile>()
                     })
             };
             foreach (var actor in catalog.actors ?? Array.Empty<WorldActorEditorDefinition>())
