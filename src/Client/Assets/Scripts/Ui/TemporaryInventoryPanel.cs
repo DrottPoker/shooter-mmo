@@ -1,6 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
@@ -22,14 +22,21 @@ namespace Mmorpg.Client.Ui
     }
 
     [DisallowMultipleComponent]
-    public sealed class TemporaryInventoryPanel : MonoBehaviour
+    public sealed partial class TemporaryInventoryPanel : MonoBehaviour
     {
-        private static readonly Color PanelColor = new Color(0.055f, 0.065f, 0.08f, 0.96f);
-        private static readonly Color SlotColor = new Color(0.12f, 0.14f, 0.17f, 1f);
-        private static readonly Color SpecializedSlotColor =
-            new Color(0.12f, 0.20f, 0.22f, 1f);
-        private static readonly Color SelectedColor = new Color(0.28f, 0.48f, 0.72f, 1f);
-        private static readonly Color ErrorColor = new Color(1f, 0.45f, 0.35f, 1f);
+        public const string EquipmentModuleName = "EquipmentPanel";
+        public const string ContextModuleName = "ContextPanel";
+        public const string CharacterModuleName = "Character InventoryPanel";
+
+        private const int StorageColumns = 5;
+        private const float SlotHeight = 64f;
+        private const float MinimumSlotWidth = 72f;
+        private const float MaximumSlotWidth = 120f;
+        private const float SlotSpacing = 6f;
+        private const float PaperDollSpacing = 10f;
+        private const float ContentPadding = 4f;
+        private const float HeaderHeight = 46f;
+        private const float FooterMargin = 10f;
 
         private InventoryClientController controller;
         private CorpseClientController corpseController;
@@ -43,11 +50,17 @@ namespace Mmorpg.Client.Ui
         private RectTransform equipmentContent;
         private RectTransform contextContent;
         private RectTransform characterContent;
+        private RectTransform characterFooter;
+        private RectTransform characterScroll;
         private Text equipmentHeader;
         private Text contextHeader;
         private Text characterHeader;
-        private Font font;
+        private Text equipmentHeaderDetail;
+        private Text contextHeaderDetail;
+        private Text characterHeaderDetail;
         private InventoryDragCoordinator dragCoordinator;
+        private InventoryTooltipView tooltip;
+        private Vector2 slotSize = new Vector2(MaximumSlotWidth, SlotHeight);
         private bool isOpen;
         private InventoryPanelMode mode = InventoryPanelMode.Complete;
         private InventoryContextKind context = InventoryContextKind.None;
@@ -286,7 +299,6 @@ namespace Mmorpg.Client.Ui
         private void BuildUi()
         {
             EnsureEventSystem();
-            font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             canvasObject = new GameObject(
                 "TemporaryInventoryCanvas",
                 typeof(RectTransform),
@@ -304,35 +316,48 @@ namespace Mmorpg.Client.Ui
             dragCoordinator = canvasObject.AddComponent<InventoryDragCoordinator>();
             dragCoordinator.Configure(
                 canvasObject.GetComponent<RectTransform>(),
-                font);
+                TemporaryUiKit.Font);
 
             rootObject = CreateUiObject("InventoryRoot", canvasObject.transform);
             var rootRect = rootObject.GetComponent<RectTransform>();
             Stretch(rootRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            // Keeps world clicks from passing through while the inventory is open.
             var blocker = rootObject.AddComponent<Image>();
-            blocker.color = new Color(0f, 0f, 0f, 0.35f);
+            blocker.color = new Color(0f, 0f, 0f, 0.22f);
 
-            equipmentContent = CreateSection(
-                rootObject.transform,
-                "Equipment",
-                new Vector2(0.02f, 0.06f),
-                new Vector2(0.31f, 0.95f),
+            // The character module keeps its place in every mode, so B, C, and I only add
+            // columns around it.
+            equipmentContent = CreateModule(
+                EquipmentModuleName,
+                new Vector2(0.012f, 0.47f),
+                new Vector2(0.292f, 0.96f),
+                false,
                 out equipmentPanel,
-                out equipmentHeader);
-            contextContent = CreateSection(
-                rootObject.transform,
-                "Context",
-                new Vector2(0.33f, 0.53f),
-                new Vector2(0.98f, 0.95f),
+                out equipmentHeader,
+                out equipmentHeaderDetail,
+                out _,
+                out _);
+            contextContent = CreateModule(
+                ContextModuleName,
+                new Vector2(0.302f, 0.04f),
+                new Vector2(0.648f, 0.96f),
+                false,
                 out contextPanel,
-                out contextHeader);
-            characterContent = CreateSection(
-                rootObject.transform,
-                "Character Inventory",
-                new Vector2(0.33f, 0.06f),
-                new Vector2(0.98f, 0.51f),
+                out contextHeader,
+                out contextHeaderDetail,
+                out _,
+                out _);
+            characterContent = CreateModule(
+                CharacterModuleName,
+                new Vector2(0.658f, 0.04f),
+                new Vector2(0.988f, 0.96f),
+                true,
                 out characterPanel,
-                out characterHeader);
+                out characterHeader,
+                out characterHeaderDetail,
+                out characterFooter,
+                out characterScroll);
+            tooltip = InventoryTooltipView.Create(rootRect, dragCoordinator);
             ApplyModeVisibility();
         }
 
@@ -360,17 +385,27 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            if (tooltip != null)
+            {
+                tooltip.Hide(null);
+            }
+
             ClearChildren(equipmentContent);
             ClearChildren(contextContent);
             ClearChildren(characterContent);
+            ClearChildren(characterFooter);
+            equipmentHeader.text = "Equipment";
+            equipmentHeaderDetail.text = string.Empty;
+            contextHeader.text = ContextTitle(context);
+            contextHeaderDetail.text = string.Empty;
+            characterHeader.text = "Inventory";
+            characterHeaderDetail.text = string.Empty;
             if (controller == null || controller.State.Catalog == null)
             {
-                equipmentHeader.text = "Equipment";
-                contextHeader.text = "Context";
-                characterHeader.text = "Character Inventory";
                 var message = controller?.State.Error?.ToDisplayMessage()
                     ?? "Inventory catalog is unavailable.";
-                CreateMessage(characterContent, message, ErrorColor);
+                CreateMessage(characterContent, message, TemporaryUiKit.DangerColor);
+                FitCharacterFooter();
                 return;
             }
 
@@ -382,9 +417,16 @@ namespace Mmorpg.Client.Ui
                 ClearSelection();
             }
 
-            equipmentHeader.text = "Equipment";
-            contextHeader.text = ContextTitle(context);
-            characterHeader.text = BuildCharacterHeader(state);
+            slotSize = ResolveSlotSize();
+            if (state.FullSnapshot != null)
+            {
+                characterHeaderDetail.text = "Revision "
+                    + state.FullSnapshot.ItemStateRevision.ToString(CultureInfo.InvariantCulture);
+                equipmentHeaderDetail.text = state.FullSnapshot.Equipment.Count(slot => slot.Item != null)
+                    + " / " + state.FullSnapshot.Equipment.Count + " equipped";
+            }
+
+            contextHeaderDetail.text = ContextDetail(state);
 
             if (equipmentPanel.gameObject.activeSelf)
             {
@@ -397,57 +439,83 @@ namespace Mmorpg.Client.Ui
             }
 
             DrawCharacterInventory(state);
+            DrawSelectionFooter(state);
+            FitCharacterFooter();
         }
 
         private void DrawEquipment(InventoryClientState state)
         {
             if (state.FullSnapshot == null)
             {
-                CreateMessage(equipmentContent, StatusText(state), Color.white);
+                CreateMessage(equipmentContent, StatusText(state), TemporaryUiKit.TextPrimary);
                 return;
             }
 
             DrawStatus(equipmentContent, state);
-            var grid = CreateGrid(equipmentContent, 1, 310f, 64f);
-            foreach (var equipmentSlot in state.FullSnapshot.Equipment)
+            var equipment = state.FullSnapshot.Equipment;
+            var slotsById = new Dictionary<string, InventoryEquipmentSlot>(StringComparer.Ordinal);
+            foreach (var equipmentSlot in equipment)
             {
-                DrawEquipmentSlot(grid, state, equipmentSlot);
+                if (equipmentSlot != null && !slotsById.ContainsKey(equipmentSlot.SlotId))
+                {
+                    slotsById.Add(equipmentSlot.SlotId, equipmentSlot);
+                }
             }
 
-            CreateActionBar(equipmentContent, state);
+            var cells = EquipmentPaperDollLayout.Arrange(slotsById.Keys, out var rows);
+            var cellsByIndex = cells.ToDictionary(cell =>
+                cell.Row * EquipmentPaperDollLayout.ColumnCount + cell.Column);
+            var blocked = InventorySlotPresentation.FindBlockedEquipmentSlots(
+                state.Catalog,
+                equipment);
+            var grid = CreateGrid(
+                equipmentContent,
+                EquipmentPaperDollLayout.ColumnCount,
+                rows * EquipmentPaperDollLayout.ColumnCount,
+                PaperDollSpacing,
+                TextAnchor.UpperCenter);
+            for (var index = 0; index < rows * EquipmentPaperDollLayout.ColumnCount; index++)
+            {
+                if (cellsByIndex.TryGetValue(index, out var cell))
+                {
+                    DrawEquipmentSlot(grid, state, slotsById[cell.SlotId], blocked);
+                }
+                else
+                {
+                    CreateUiObject("Spacer", grid);
+                }
+            }
+
             CreateMessage(
                 equipmentContent,
-                "Non-empty Bag swaps are atomic. Drag a corpse Bag onto the occupied Bag equipment slot.",
-                new Color(0.65f, 0.72f, 0.8f, 1f));
+                "Drag an item onto a green slot to equip it. Drag a corpse Bag onto the Bag slot to swap Bags together with their contents.",
+                TemporaryUiKit.TextMuted);
         }
 
         private void DrawContext(InventoryClientState state)
         {
-            var tabs = CreateHorizontalRow(contextContent, 40f);
-            CreateButton(tabs, "None", () => SetContext(InventoryContextKind.None), true);
-            CreateButton(tabs, "Bank", () => SetContext(InventoryContextKind.Bank), true);
-            CreateButton(
+            var tabs = TemporaryUiKit.CreateRow(contextContent, 36f, 6f);
+            CreateTab(tabs, "Bank", InventoryContextKind.Bank);
+            CreateTab(tabs, "Recovery", InventoryContextKind.RecoveryStorage);
+            CreateTab(tabs, "Corpse", InventoryContextKind.Corpse);
+            TemporaryUiKit.CreateButton(
                 tabs,
-                "Recovery",
-                () => SetContext(InventoryContextKind.RecoveryStorage),
-                true);
-            CreateButton(
-                tabs,
-                "Corpse",
-                () => SetContext(InventoryContextKind.Corpse),
-                true);
-            CreateButton(tabs, "Refresh", RefreshCurrentContext, true);
+                "Refresh",
+                RefreshCurrentContext,
+                true,
+                TemporaryButtonTone.Quiet,
+                96f);
 
             if (context == InventoryContextKind.None)
             {
                 CreateMessage(
                     contextContent,
-                    "Open Bank or Recovery Storage. Reads are account-owned; mutations use the active SimulationWorker access policy.",
-                    Color.white);
+                    "Choose Bank or Recovery above, or talk to an NPC who offers them. Click a corpse in the world to walk to it and open it.",
+                    TemporaryUiKit.TextSecondary);
                 CreateMessage(
                     contextContent,
-                    "Click a corpse in the world to walk to it and open it.",
-                    new Color(0.65f, 0.72f, 0.8f, 1f));
+                    "Reads are account-owned; mutations use the active SimulationWorker access policy.",
+                    TemporaryUiKit.TextMuted);
                 return;
             }
 
@@ -460,7 +528,7 @@ namespace Mmorpg.Client.Ui
             DrawStatus(contextContent, state);
             if (context == InventoryContextKind.Bank)
             {
-                DrawContainer(contextContent, state, state.Bank, "Character Bank", 4);
+                DrawContainer(contextContent, state, state.Bank, null, "bank");
                 return;
             }
 
@@ -470,42 +538,59 @@ namespace Mmorpg.Client.Ui
             }
         }
 
+        private void CreateTab(Transform parent, string label, InventoryContextKind tabContext)
+        {
+            TemporaryUiKit.CreateButton(
+                parent,
+                label,
+                () => SetContext(tabContext),
+                true,
+                context == tabContext ? TemporaryButtonTone.Active : TemporaryButtonTone.Normal);
+        }
+
         private void DrawCharacterInventory(InventoryClientState state)
         {
             DrawStatus(characterContent, state);
             if (state.FullSnapshot == null)
             {
-                CreateMessage(characterContent, StatusText(state), Color.white);
+                CreateMessage(characterContent, StatusText(state), TemporaryUiKit.TextPrimary);
                 return;
             }
 
+            var snapshot = state.FullSnapshot;
+            DrawCarryMeter(characterContent, CarryLoadPresentation.From(snapshot));
             DrawContainer(
                 characterContent,
                 state,
-                state.FullSnapshot.PermanentInventory,
+                snapshot.PermanentInventory,
                 "Permanent Inventory",
-                5);
-            if (state.FullSnapshot.EquippedBag == null)
+                "inventory");
+            if (snapshot.EquippedBag == null)
             {
-                CreateMessage(characterContent, "No Bag equipped.", new Color(0.75f, 0.75f, 0.75f));
+                CreateSubheader(characterContent, "Bag", "none equipped");
+                CreateMessage(
+                    characterContent,
+                    "Equip a Bag in the Bag slot for more slots and carry capacity.",
+                    TemporaryUiKit.TextMuted);
             }
             else
             {
                 DrawContainer(
                     characterContent,
                     state,
-                    state.FullSnapshot.EquippedBag.Contents,
-                    "Equipped Bag: " + state.Catalog.GetDisplayName(
-                        state.FullSnapshot.EquippedBag.Item.DefinitionId),
-                    4);
+                    snapshot.EquippedBag.Contents,
+                    state.Catalog.GetDisplayName(snapshot.EquippedBag.Item.DefinitionId),
+                    "bag");
             }
 
             DrawContainer(
                 characterContent,
                 state,
-                state.FullSnapshot.SecureContainer.Contents,
-                state.FullSnapshot.SecureContainer.TierId,
-                4);
+                snapshot.SecureContainer.Contents,
+                InventorySlotPresentation.SecureContainerTitle(
+                    state.Catalog,
+                    snapshot.SecureContainer.TierId),
+                "secure");
         }
 
         private void DrawContainer(
@@ -513,19 +598,33 @@ namespace Mmorpg.Client.Ui
             InventoryClientState state,
             InventoryContainer container,
             string title,
-            int columns)
+            string keyPrefix)
         {
-            CreateSubheader(parent, title);
             if (container == null)
             {
-                CreateMessage(parent, "Container state is unavailable.", ErrorColor);
+                if (title != null)
+                {
+                    CreateSubheader(parent, title, string.Empty);
+                }
+
+                CreateMessage(parent, "Container state is unavailable.", TemporaryUiKit.DangerColor);
                 return;
             }
 
-            var grid = CreateGrid(parent, columns, 150f, 72f);
+            if (title != null)
+            {
+                CreateSubheader(parent, title, UsedSlotsText(container));
+            }
+
+            var grid = CreateGrid(
+                parent,
+                StorageColumns,
+                container.Slots.Count,
+                SlotSpacing,
+                TextAnchor.UpperLeft);
             foreach (var slot in container.Slots)
             {
-                DrawContainerSlot(grid, state, container, slot);
+                DrawContainerSlot(grid, state, container, slot, keyPrefix);
             }
         }
 
@@ -533,77 +632,99 @@ namespace Mmorpg.Client.Ui
             Transform parent,
             InventoryClientState state,
             InventoryContainer container,
-            InventorySlot slot)
+            InventorySlot slot,
+            string keyPrefix)
         {
             var item = slot.Item;
-            var label = "Slot " + (slot.SlotIndex + 1);
-            if (!string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal))
+            var specialized = !string.Equals(
+                slot.SlotKind,
+                BagSlotKindIds.General,
+                StringComparison.Ordinal);
+            var tagLabel = specialized
+                ? InventorySlotPresentation.AcceptedTagsLabel(state.Catalog, slot.AcceptedTags)
+                : string.Empty;
+            var description = ContainerName(state, container.ContainerType)
+                + " slot " + (slot.SlotIndex + 1)
+                + (specialized ? ", accepts " + tagLabel : string.Empty);
+            CreateSlot(parent, new SlotSpec
             {
-                label += " [" + string.Join(", ", slot.AcceptedTags) + "]";
-            }
-
-            if (item != null)
-            {
-                label += "\n" + state.Catalog.GetDisplayName(item.DefinitionId)
-                    + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty)
-                    + PolicyLabel(item);
-            }
-
-            var payload = item == null
-                ? null
-                : InventoryDragPayload.ForItem(item.ItemInstanceId);
-            CreateSlotButton(
-                parent,
-                label,
-                item,
-                item != null && item.ItemInstanceId == selectedItemId,
-                !string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal),
-                item != null,
-                () => OnContainerSlotClicked(slot),
-                payload,
-                state.CanMutate,
-                (InventoryDragPayload candidate, out string reason) =>
+                Key = keyPrefix + ":" + slot.SlotIndex,
+                Item = item,
+                CornerLabel = tagLabel,
+                EmptyLabel = tagLabel,
+                Selected = item != null && item.ItemInstanceId == selectedItemId,
+                Interactable = item != null,
+                OnClick = () => OnContainerSlotClicked(slot),
+                DragPayload = item == null
+                    ? null
+                    : InventoryDragPayload.ForItem(item.ItemInstanceId),
+                CanDrag = state.CanMutate,
+                DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnContainer(state, container, slot, candidate, out reason),
-                candidate => OnContainerDrop(container, slot, candidate),
-                RejectDrop);
+                OnDrop = candidate => OnContainerDrop(container, slot, candidate),
+                Tooltip = item != null
+                    ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, item, description)
+                    : specialized ? "<b>Empty</b>\n" + description : string.Empty
+            });
         }
 
         private void DrawEquipmentSlot(
             Transform parent,
             InventoryClientState state,
-            InventoryEquipmentSlot equipmentSlot)
+            InventoryEquipmentSlot equipmentSlot,
+            IReadOnlyDictionary<string, InventoryEquipmentSlot> blocked)
         {
-            var displayName = state.Catalog.TryGetEquipmentSlot(
-                equipmentSlot.SlotId,
-                out var definition)
-                    ? definition.DisplayName
-                    : equipmentSlot.SlotId;
-            var label = displayName;
-            if (equipmentSlot.Item != null)
+            var item = equipmentSlot.Item;
+            var slotName = InventorySlotPresentation.EquipmentSlotName(
+                state.Catalog,
+                equipmentSlot.SlotId);
+            var isBlocked = item == null
+                && blocked.TryGetValue(equipmentSlot.SlotId, out _);
+            var tooltipText = item != null
+                ? InventorySlotPresentation.BuildItemTooltip(
+                    state.Catalog,
+                    item,
+                    "Equipped in " + slotName)
+                : "<b>" + slotName + "</b>\n" + (isBlocked
+                    ? BlockedSlotText(state, blocked[equipmentSlot.SlotId])
+                    : EmptyEquipmentSlotText(state, equipmentSlot.SlotId));
+            CreateSlot(parent, new SlotSpec
             {
-                label += "\n" + state.Catalog.GetDisplayName(
-                    equipmentSlot.Item.DefinitionId)
-                    + PolicyLabel(equipmentSlot.Item);
-            }
-
-            var payload = equipmentSlot.Item == null
-                ? null
-                : InventoryDragPayload.ForItem(equipmentSlot.Item.ItemInstanceId);
-            CreateSlotButton(
-                parent,
-                label,
-                equipmentSlot.Item,
-                equipmentSlot.Item != null
-                    && equipmentSlot.Item.ItemInstanceId == selectedItemId,
-                false,
-                equipmentSlot.Item != null,
-                () => OnEquipmentSlotClicked(equipmentSlot),
-                payload,
-                state.CanMutate,
-                (InventoryDragPayload candidate, out string reason) =>
+                Key = "equipment:" + equipmentSlot.SlotId,
+                Item = item,
+                CornerLabel = slotName,
+                EmptyLabel = slotName,
+                Blocked = isBlocked,
+                Selected = item != null && item.ItemInstanceId == selectedItemId,
+                Interactable = item != null,
+                OnClick = () => OnEquipmentSlotClicked(equipmentSlot),
+                DragPayload = item == null
+                    ? null
+                    : InventoryDragPayload.ForItem(item.ItemInstanceId),
+                CanDrag = state.CanMutate,
+                DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnEquipment(state, equipmentSlot, candidate, out reason),
-                candidate => OnEquipmentDrop(equipmentSlot, candidate),
-                RejectDrop);
+                OnDrop = candidate => OnEquipmentDrop(equipmentSlot, candidate),
+                Tooltip = tooltipText
+            });
+        }
+
+        private static string BlockedSlotText(
+            InventoryClientState state,
+            InventoryEquipmentSlot blocker)
+        {
+            return "Blocked by " + state.Catalog.GetDisplayName(blocker.Item.DefinitionId)
+                + " in " + InventorySlotPresentation.EquipmentSlotName(state.Catalog, blocker.SlotId)
+                + ". Unequip it to use this slot.";
+        }
+
+        private static string EmptyEquipmentSlotText(InventoryClientState state, string slotId)
+        {
+            return state.Catalog.TryGetEquipmentSlot(slotId, out var definition)
+                && definition.MaximumQuantity > 1
+                    ? "Empty. Holds a stack of up to "
+                        + definition.MaximumQuantity.ToString(CultureInfo.InvariantCulture) + "."
+                    : "Empty";
         }
 
         private void DrawRecovery(Transform parent, InventoryClientState state)
@@ -611,13 +732,13 @@ namespace Mmorpg.Client.Ui
             var recovery = state.RecoveryStorage;
             if (recovery == null)
             {
-                CreateMessage(parent, "Recovery Storage is unavailable.", Color.white);
+                CreateMessage(parent, "Recovery Storage is unavailable.", TemporaryUiKit.TextPrimary);
                 return;
             }
 
             if (recovery.Deliveries.Count == 0)
             {
-                CreateMessage(parent, "Recovery Storage has no deliveries.", Color.white);
+                CreateMessage(parent, "Recovery Storage has no deliveries.", TemporaryUiKit.TextSecondary);
                 return;
             }
 
@@ -625,51 +746,51 @@ namespace Mmorpg.Client.Ui
             {
                 CreateSubheader(
                     parent,
-                    RecoverySourceLabel(delivery.SourceKind)
-                        + "  revision " + delivery.Revision);
-                var grid = CreateGrid(parent, 4, 150f, 72f);
+                    RecoverySourceLabel(delivery.SourceKind),
+                    "Revision " + delivery.Revision.ToString(CultureInfo.InvariantCulture));
+                var grid = CreateGrid(
+                    parent,
+                    StorageColumns,
+                    delivery.Items.Count,
+                    SlotSpacing,
+                    TextAnchor.UpperLeft);
                 foreach (var deliveryItem in delivery.Items)
                 {
                     var item = deliveryItem.Item;
-                    var payload = InventoryDragPayload.ForRecoveryDelivery(
-                        delivery.DeliveryId);
-                    CreateSlotButton(
-                        grid,
-                        state.Catalog.GetDisplayName(item.DefinitionId)
-                            + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty)
-                            + PolicyLabel(item),
-                        item,
-                        false,
-                        false,
-                        true,
-                        null,
-                        payload,
-                        state.CanMutate,
-                        RejectRecoveryDestination,
-                        null,
-                        RejectDrop);
+                    CreateSlot(grid, new SlotSpec
+                    {
+                        Key = "recovery:" + delivery.DeliveryId + ":" + deliveryItem.ItemOrder,
+                        Item = item,
+                        Interactable = true,
+                        DragPayload = InventoryDragPayload.ForRecoveryDelivery(delivery.DeliveryId),
+                        CanDrag = state.CanMutate,
+                        DropValidator = RejectRecoveryDestination,
+                        Tooltip = InventorySlotPresentation.BuildItemTooltip(
+                            state.Catalog,
+                            item,
+                            "Recovery delivery, claimed as a whole")
+                    });
                 }
-
-                CreateMessage(
-                    parent,
-                    "Drag any item in this delivery to Permanent Inventory or Bank. "
-                        + "The complete Recovery delivery is claimed atomically.",
-                    new Color(0.65f, 0.82f, 0.9f, 1f));
             }
+
+            CreateMessage(
+                parent,
+                "Drag any item of a delivery to Permanent Inventory or Bank. The whole delivery is claimed at once.",
+                TemporaryUiKit.TextMuted);
         }
 
         private void DrawCorpse(Transform parent, InventoryClientState inventoryState)
         {
             if (corpseController == null)
             {
-                CreateMessage(parent, "Corpse interaction state is unavailable.", ErrorColor);
+                CreateMessage(parent, "Corpse interaction state is unavailable.", TemporaryUiKit.DangerColor);
                 return;
             }
 
             var corpseState = corpseController.State;
             if (corpseState.Error != null)
             {
-                CreateMessage(parent, corpseState.Error.ToDisplayMessage(), ErrorColor);
+                CreateMessage(parent, corpseState.Error.ToDisplayMessage(), TemporaryUiKit.DangerColor);
             }
 
             if (corpseState.ActiveView == null)
@@ -677,20 +798,21 @@ namespace Mmorpg.Client.Ui
                 CreateMessage(
                     parent,
                     "Click a corpse in the world to walk to it and open it.",
-                    Color.white);
+                    TemporaryUiKit.TextSecondary);
                 if (corpseState.NearbyCorpses.Count == 0)
                 {
-                    CreateMessage(parent, "No durable corpses are nearby.", Color.white);
+                    CreateMessage(parent, "No durable corpses are nearby.", TemporaryUiKit.TextMuted);
                     return;
                 }
 
+                CreateSubheader(parent, "Nearby", corpseState.NearbyCorpses.Count.ToString(CultureInfo.InvariantCulture));
                 foreach (var corpse in corpseState.NearbyCorpses)
                 {
                     var label = (string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
                             ? "Corpse"
                             : corpse.SourceDisplayName)
                         + (corpse.IsEmpty ? " (empty)" : string.Empty);
-                    CreateMessage(parent, "Nearby: " + label, Color.white);
+                    CreateMessage(parent, label, TemporaryUiKit.TextPrimary);
                 }
 
                 return;
@@ -699,45 +821,56 @@ namespace Mmorpg.Client.Ui
             var view = corpseState.ActiveView;
             CreateMessage(
                 parent,
-                view.SourceDisplayName + "  |  Revision " + view.Revision
-                    + "  |  Expires "
+                "<b>" + view.SourceDisplayName + "</b>"
+                    + "    <color=" + TemporaryUiKit.ColorTag(TemporaryUiKit.TextMuted) + ">Expires "
                     + DateTimeOffset.FromUnixTimeMilliseconds(
-                        view.ExpiresAtUnixMilliseconds).ToLocalTime().ToString("HH:mm:ss"),
-                Color.white);
-            var actions = CreateHorizontalRow(parent, 38f);
-            CreateButton(
+                        view.ExpiresAtUnixMilliseconds).ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+                    + "    Revision " + view.Revision.ToString(CultureInfo.InvariantCulture) + "</color>",
+                TemporaryUiKit.TextPrimary);
+            var idle = corpseState.PendingOperationId == Guid.Empty;
+            var actions = TemporaryUiKit.CreateRow(parent, 34f, 6f);
+            TemporaryUiKit.CreateButton(
                 actions,
                 "Close",
                 () => ExecuteCorpseClose(),
-                corpseState.PendingOperationId == Guid.Empty);
-            CreateButton(
+                idle,
+                TemporaryButtonTone.Normal);
+            TemporaryUiKit.CreateButton(
                 actions,
                 "Refresh",
                 () => ExecuteCorpseRefresh(),
-                corpseState.PendingOperationId == Guid.Empty);
-            CreateButton(
+                idle,
+                TemporaryButtonTone.Normal);
+            TemporaryUiKit.CreateButton(
                 actions,
-                corpsePartialLoot ? "Full Stack" : "Partial Stack",
+                corpsePartialLoot ? "Partial stack: on" : "Partial stack: off",
                 () =>
                 {
                     corpsePartialLoot = !corpsePartialLoot;
                     Rebuild();
                 },
-                corpseState.PendingOperationId == Guid.Empty);
-            var quantityInput = CreateInputField(actions, corpseQuantityText);
+                idle,
+                corpsePartialLoot ? TemporaryButtonTone.Active : TemporaryButtonTone.Normal);
+            var quantityInput = TemporaryUiKit.CreateIntegerField(actions, corpseQuantityText, 80f);
             quantityInput.onValueChanged.AddListener(value => corpseQuantityText = value);
             if (corpseState.Status == CorpseClientStatus.Busy)
             {
-                CreateMessage(parent, "Waiting for authoritative corpse state.", SelectedColor);
+                CreateMessage(parent, "Waiting for authoritative corpse state.", TemporaryUiKit.WarningColor);
             }
 
             foreach (var section in view.Sections)
             {
                 CreateSubheader(
                     parent,
-                    CorpseSectionTitle(section.SectionKind)
-                        + "  revision " + section.ContainerRevision);
-                var grid = CreateGrid(parent, 4, 150f, 72f);
+                    CorpseSectionTitle(section.SectionKind),
+                    section.Slots.Count(slot => slot.Item != null) + " / " + section.Slots.Count
+                        + "    Revision " + section.ContainerRevision.ToString(CultureInfo.InvariantCulture));
+                var grid = CreateGrid(
+                    parent,
+                    StorageColumns,
+                    section.Slots.Count,
+                    SlotSpacing,
+                    TextAnchor.UpperLeft);
                 foreach (var slot in section.Slots)
                 {
                     DrawCorpseSlot(grid, inventoryState, view, section, slot);
@@ -746,8 +879,8 @@ namespace Mmorpg.Client.Ui
 
             CreateMessage(
                 parent,
-                "Drag items between corpse slots or between corpse and carried storage. Typed equipment slots enforce their shown type, compatible stacks merge, complete items that cannot merge swap, and occupied Bag equipment uses an atomic aggregate swap.",
-                new Color(0.65f, 0.82f, 0.9f, 1f));
+                "Drag items between the corpse and your carried storage, or within the corpse. Typed slots accept only their shown type, stacks merge, other items swap, and an occupied Bag slot swaps the whole Bag.",
+                TemporaryUiKit.TextMuted);
         }
 
         private void DrawCorpseSlot(
@@ -760,27 +893,23 @@ namespace Mmorpg.Client.Ui
             var item = slot.Item;
             var inventoryItem = item?.ToInventoryItem();
             var label = CorpseSlotLabel(inventoryState.Catalog, slot);
-            if (item != null)
+            var description = CorpseSectionTitle(section.SectionKind)
+                + (!string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                    ? ", " + label
+                    : " slot " + (slot.SlotIndex + 1)
+                        + (label.Length > 0 ? ", accepts " + label : string.Empty));
+            CreateSlot(parent, new SlotSpec
             {
-                label += "\n" + inventoryState.Catalog.GetDisplayName(item.DefinitionId)
-                    + (item.Quantity > 1 ? " x" + item.Quantity : string.Empty);
-            }
-
-            var payload = item == null
-                ? null
-                : InventoryDragPayload.ForCorpseItem(view.CorpseId, item.ItemInstanceId);
-            CreateSlotButton(
-                parent,
-                label,
-                inventoryItem,
-                false,
-                !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
-                    || !string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal),
-                item != null,
-                null,
-                payload,
-                corpseController.State.CanMutate,
-                (InventoryDragPayload candidate, out string reason) =>
+                Key = "corpse:" + section.SectionKind + ":" + slot.SlotIndex,
+                Item = inventoryItem,
+                CornerLabel = label,
+                EmptyLabel = label,
+                Interactable = item != null,
+                DragPayload = item == null
+                    ? null
+                    : InventoryDragPayload.ForCorpseItem(view.CorpseId, item.ItemInstanceId),
+                CanDrag = corpseController.State.CanMutate,
+                DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnCorpse(
                         inventoryState,
                         view,
@@ -788,8 +917,14 @@ namespace Mmorpg.Client.Ui
                         slot,
                         candidate,
                         out reason),
-                candidate => OnCorpseDrop(view, section, slot, candidate),
-                RejectDrop);
+                OnDrop = candidate => OnCorpseDrop(view, section, slot, candidate),
+                Tooltip = inventoryItem != null
+                    ? InventorySlotPresentation.BuildItemTooltip(
+                        inventoryState.Catalog,
+                        inventoryItem,
+                        description)
+                    : label.Length > 0 ? "<b>Empty</b>\n" + description : string.Empty
+            });
         }
 
         private static string CorpseSectionTitle(string sectionKind)
@@ -803,50 +938,58 @@ namespace Mmorpg.Client.Ui
             };
         }
 
+        // The equipment slot name or the accepted item types; empty for general slots.
         private static string CorpseSlotLabel(
             ClientItemCatalog catalog,
             CorpseLootSlot slot)
         {
             if (!string.IsNullOrWhiteSpace(slot.EquipmentSlotId))
             {
-                var displayName = catalog.TryGetEquipmentSlot(
-                    slot.EquipmentSlotId,
-                    out var equipmentSlot)
-                    ? equipmentSlot.DisplayName
-                    : slot.EquipmentSlotId;
-                return "Equipment: " + displayName + " [" + slot.EquipmentSlotId + "]";
+                return InventorySlotPresentation.EquipmentSlotName(catalog, slot.EquipmentSlotId);
             }
 
-            return "Slot " + (slot.SlotIndex + 1) + " [" + slot.SlotKind + "]";
+            return string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal)
+                ? string.Empty
+                : InventorySlotPresentation.AcceptedTagsLabel(catalog, slot.AcceptedTags);
         }
 
-        private void CreateActionBar(Transform parent, InventoryClientState state)
+        // Selected-item actions and the status line sit below the character module, so they
+        // stay reachable in every mode.
+        private void DrawSelectionFooter(InventoryClientState state)
         {
-            CreateSubheader(parent, "Selected Item Actions");
             if (selectedItemId == Guid.Empty
                 || !state.TryFindItem(selectedItemId, out var item, out var location))
             {
-                CreateMessage(parent, "No item selected.", Color.white);
-                CreateMessage(
-                    parent,
-                    localStatus,
-                    new Color(0.8f, 0.85f, 0.92f, 1f));
+                TemporaryUiKit.CreateLabel(
+                    characterFooter,
+                    "Click an item to select it. Drag an item onto a slot to move it.",
+                    13,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextMuted,
+                    20f);
+                CreateStatusLine();
                 return;
             }
 
-            CreateMessage(
-                parent,
-                state.Catalog.GetDisplayName(item.DefinitionId)
-                    + "  quantity " + item.Quantity
-                    + "  revision " + item.Revision
-                    + "  source " + LocationLabel(location),
-                SelectedColor);
-            var splitRow = CreateHorizontalRow(parent, 38f);
-            var input = CreateInputField(splitRow, splitQuantityText);
+            TemporaryUiKit.CreateLabel(
+                characterFooter,
+                "<b>" + state.Catalog.GetDisplayName(item.DefinitionId) + "</b>"
+                    + (item.Quantity > 1
+                        ? "  x" + item.Quantity.ToString(CultureInfo.InvariantCulture)
+                        : string.Empty)
+                    + "    <color=" + TemporaryUiKit.ColorTag(TemporaryUiKit.TextMuted) + ">"
+                    + LocationLabel(state, location)
+                    + "    Revision " + item.Revision.ToString(CultureInfo.InvariantCulture) + "</color>",
+                15,
+                FontStyle.Normal,
+                TemporaryUiKit.TextPrimary,
+                22f);
+            var row = TemporaryUiKit.CreateRow(characterFooter, 34f, 6f);
+            var input = TemporaryUiKit.CreateIntegerField(row, splitQuantityText, 76f);
             input.onValueChanged.AddListener(value => splitQuantityText = value);
-            CreateButton(
-                splitRow,
-                splitMode ? "Cancel Split" : "Split to Target",
+            TemporaryUiKit.CreateButton(
+                row,
+                splitMode ? "Cancel split" : "Split",
                 () =>
                 {
                     splitMode = !splitMode;
@@ -856,33 +999,52 @@ namespace Mmorpg.Client.Ui
                         : "Split cancelled.";
                     Rebuild();
                 },
-                item.Quantity > 1 && state.CanMutate);
-            CreateButton(
-                splitRow,
-                "Clear Selection",
+                item.Quantity > 1 && state.CanMutate,
+                splitMode ? TemporaryButtonTone.Active : TemporaryButtonTone.Normal);
+            var canDestroy = InventoryTargetAdvisor.CanDestroy(
+                state.Catalog,
+                item,
+                out var destroyReason);
+            TemporaryUiKit.CreateButton(
+                row,
+                destroyConfirmation ? "Confirm destroy" : "Destroy",
+                () => DestroySelected(item),
+                canDestroy && state.CanMutate,
+                destroyConfirmation ? TemporaryButtonTone.Danger : TemporaryButtonTone.Normal);
+            TemporaryUiKit.CreateButton(
+                row,
+                "Clear",
                 () =>
                 {
                     ClearSelection();
                     Rebuild();
                 },
-                true);
-
-            var destroyRow = CreateHorizontalRow(parent, 38f);
-            var canDestroy = InventoryTargetAdvisor.CanDestroy(
-                state.Catalog,
-                item,
-                out var destroyReason);
-            CreateButton(
-                destroyRow,
-                destroyConfirmation ? "Confirm Destroy" : "Destroy",
-                () => DestroySelected(item),
-                canDestroy && state.CanMutate);
+                true,
+                TemporaryButtonTone.Quiet,
+                80f);
             if (!canDestroy)
             {
-                CreateMessage(parent, destroyReason, ErrorColor);
+                TemporaryUiKit.CreateLabel(
+                    characterFooter,
+                    destroyReason,
+                    13,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextMuted,
+                    18f);
             }
 
-            CreateMessage(parent, localStatus, new Color(0.8f, 0.85f, 0.92f, 1f));
+            CreateStatusLine();
+        }
+
+        private void CreateStatusLine()
+        {
+            TemporaryUiKit.CreateLabel(
+                characterFooter,
+                localStatus,
+                14,
+                FontStyle.Normal,
+                TemporaryUiKit.TextSecondary,
+                22f);
         }
 
         private bool CanDropOnContainer(
@@ -1617,40 +1779,65 @@ namespace Mmorpg.Client.Ui
         {
             if (state.Error != null)
             {
-                CreateMessage(parent, state.Error.ToDisplayMessage(), ErrorColor);
+                CreateMessage(parent, state.Error.ToDisplayMessage(), TemporaryUiKit.DangerColor);
             }
 
             if (state.Status is InventoryClientStatus.Loading or InventoryClientStatus.Busy)
             {
-                CreateMessage(parent, StatusText(state), new Color(1f, 0.8f, 0.3f, 1f));
+                CreateMessage(parent, StatusText(state), TemporaryUiKit.WarningColor);
             }
         }
 
-        private string BuildCharacterHeader(InventoryClientState state)
+        private string ContextDetail(InventoryClientState state)
         {
-            var snapshot = state.FullSnapshot;
-            if (snapshot == null)
+            var parts = new List<string>();
+            var access = StorageAccessLabel();
+            if (!string.IsNullOrEmpty(access))
             {
-                return "Character Inventory  |  " + StatusText(state);
+                parts.Add(access);
             }
 
-            return "Character Inventory  |  Weight " + snapshot.CarriedWeight
-                + " / " + snapshot.CarryCapacity
-                + "  |  Load " + (snapshot.LoadRatioBasisPoints / 100f).ToString("0.##")
-                + "%  |  Movement "
-                + (snapshot.MovementMultiplierBasisPoints / 100f).ToString("0.##")
-                + "  |  Revision " + snapshot.ItemStateRevision;
+            if (context == InventoryContextKind.Bank && state.Bank != null)
+            {
+                parts.Add(UsedSlotsText(state.Bank) + " used");
+            }
+
+            return string.Join("    ", parts);
+        }
+
+        // Names the NPC whose open interaction offers the shown storage.
+        private string StorageAccessLabel()
+        {
+            var active = worldInteractionController?.State.ActiveInteraction;
+            if (active == null
+                || context is not (InventoryContextKind.Bank or InventoryContextKind.RecoveryStorage))
+            {
+                return string.Empty;
+            }
+
+            var kind = context == InventoryContextKind.Bank
+                ? RealtimeWorldActorCapabilityKind.Bank
+                : RealtimeWorldActorCapabilityKind.RecoveryStorage;
+            return active.Capabilities.Any(capability => capability.Kind == kind)
+                ? "via " + active.DisplayName
+                : string.Empty;
+        }
+
+        private static string UsedSlotsText(InventoryContainer container)
+        {
+            return container.Slots.Count(slot => slot.Item != null).ToString(CultureInfo.InvariantCulture)
+                + " / " + container.Slots.Count.ToString(CultureInfo.InvariantCulture);
         }
 
         private static string ContextTitle(InventoryContextKind value)
         {
             return value switch
             {
-                InventoryContextKind.Bank => "Context: Character Bank",
-                InventoryContextKind.RecoveryStorage => "Context: Recovery Storage",
-                InventoryContextKind.Corpse => "Context: Corpse",
-                InventoryContextKind.WorldLootPrepared => "Context: World Loot (Prepared)",
-                _ => "Context Container"
+                InventoryContextKind.Bank => "Character Bank",
+                InventoryContextKind.RecoveryStorage => "Recovery Storage",
+                InventoryContextKind.Corpse => "Corpse",
+                InventoryContextKind.WorldLootPrepared => "World Loot (Prepared)",
+                _ => "Storage"
             };
         }
 
@@ -1667,51 +1854,30 @@ namespace Mmorpg.Client.Ui
             };
         }
 
-        private static string LocationLabel(InventoryItemLocation location)
+        private static string LocationLabel(InventoryClientState state, InventoryItemLocation location)
         {
             return location.Kind switch
             {
-                InventoryItemLocationKind.Equipment => "equipment/" + location.EquipmentSlotId,
-                InventoryItemLocationKind.RecoveryStorage => "recovery/" + location.RecoveryDeliveryId,
-                _ => location.ContainerType + "/" + location.SlotIndex
+                InventoryItemLocationKind.Equipment => "Equipped in "
+                    + InventorySlotPresentation.EquipmentSlotName(state.Catalog, location.EquipmentSlotId),
+                InventoryItemLocationKind.RecoveryStorage => "Recovery Storage",
+                _ => ContainerName(state, location.ContainerType) + " slot " + (location.SlotIndex + 1)
             };
         }
 
-        private static string PolicyLabel(InventoryItem item)
+        private static string ContainerName(InventoryClientState state, string containerType)
         {
-            if (item == null)
+            return containerType switch
             {
-                return string.Empty;
-            }
-
-            var labels = item.Policies
-                .Where(policy => string.Equals(
-                    policy.Status,
-                    ItemPolicyRules.ActiveStatus,
-                    StringComparison.Ordinal))
-                .Select(policy => policy.Kind switch
-                {
-                    ItemPolicyIds.Insured => "Insured | source: "
-                        + ProtectionSourceLabel(policy.ProtectionSource),
-                    ItemPolicyIds.ProtectedOnDeath => "Protected | source: "
-                        + ProtectionSourceLabel(policy.ProtectionSource),
-                    _ => policy.Kind + " | source: "
-                        + ProtectionSourceLabel(policy.ProtectionSource)
-                })
-                .ToArray();
-            return labels.Length == 0
-                ? string.Empty
-                : "\n[" + string.Join("] [", labels) + "]";
-        }
-
-        private static string ProtectionSourceLabel(string source)
-        {
-            return source switch
-            {
-                "insurance_npc" => "Insurance NPC",
-                "quest_grant" => "Quest grant",
-                "catalog_default" => "Catalog rule",
-                _ => "System"
+                ItemContainerTypeIds.PermanentInventory => "Permanent Inventory",
+                ItemContainerTypeIds.BagContents => state.FullSnapshot?.EquippedBag != null
+                    ? state.Catalog.GetDisplayName(state.FullSnapshot.EquippedBag.Item.DefinitionId)
+                    : "Bag",
+                ItemContainerTypeIds.SecureContainer => InventorySlotPresentation.SecureContainerTitle(
+                    state.Catalog,
+                    state.FullSnapshot?.SecureContainer?.TierId),
+                ItemContainerTypeIds.Bank => "Bank",
+                _ => containerType
             };
         }
 
@@ -1719,316 +1885,10 @@ namespace Mmorpg.Client.Ui
         {
             return source switch
             {
-                "death_recovered_insured" => "Recovery source: consumed insurance",
-                "death_recovered_protected" => "Recovery source: protected-on-death",
-                _ => "Recovery source: " + source
+                "death_recovered_insured" => "Recovered: consumed insurance",
+                "death_recovered_protected" => "Recovered: protected on death",
+                _ => "Recovered: " + source
             };
-        }
-
-        private RectTransform CreateSection(
-            Transform parent,
-            string title,
-            Vector2 anchorMin,
-            Vector2 anchorMax,
-            out RectTransform panelRect,
-            out Text header)
-        {
-            var panel = CreateUiObject(title + "Panel", parent);
-            panelRect = panel.GetComponent<RectTransform>();
-            Stretch(panelRect, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
-            var background = panel.AddComponent<Image>();
-            background.color = PanelColor;
-
-            var headerObject = CreateUiObject("Header", panel.transform);
-            var headerRect = headerObject.GetComponent<RectTransform>();
-            Stretch(
-                headerRect,
-                new Vector2(0f, 1f),
-                Vector2.one,
-                new Vector2(12f, -42f),
-                new Vector2(-12f, -6f));
-            header = headerObject.AddComponent<Text>();
-            ConfigureText(header, title, 18, TextAnchor.MiddleLeft, FontStyle.Bold);
-
-            var scrollObject = CreateUiObject("Scroll", panel.transform);
-            var scrollRectTransform = scrollObject.GetComponent<RectTransform>();
-            Stretch(
-                scrollRectTransform,
-                Vector2.zero,
-                Vector2.one,
-                new Vector2(8f, 8f),
-                new Vector2(-8f, -48f));
-            var scrollRect = scrollObject.AddComponent<ScrollRect>();
-            scrollRect.horizontal = false;
-
-            var viewport = CreateUiObject("Viewport", scrollObject.transform);
-            var viewportRect = viewport.GetComponent<RectTransform>();
-            Stretch(viewportRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            var viewportImage = viewport.AddComponent<Image>();
-            viewportImage.color = new Color(0f, 0f, 0f, 0.01f);
-            viewport.AddComponent<Mask>().showMaskGraphic = false;
-            scrollRect.viewport = viewportRect;
-
-            var content = CreateUiObject("Content", viewport.transform).GetComponent<RectTransform>();
-            content.anchorMin = new Vector2(0f, 1f);
-            content.anchorMax = new Vector2(1f, 1f);
-            content.pivot = new Vector2(0.5f, 1f);
-            content.offsetMin = Vector2.zero;
-            content.offsetMax = Vector2.zero;
-            var layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(4, 4, 4, 4);
-            layout.spacing = 6f;
-            layout.childControlHeight = true;
-            layout.childControlWidth = true;
-            layout.childForceExpandHeight = false;
-            layout.childForceExpandWidth = true;
-            var fitter = content.gameObject.AddComponent<ContentSizeFitter>();
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            scrollRect.content = content;
-            return content;
-        }
-
-        private RectTransform CreateGrid(
-            Transform parent,
-            int columns,
-            float cellWidth,
-            float cellHeight)
-        {
-            var gridObject = CreateUiObject("SlotGrid", parent);
-            var grid = gridObject.AddComponent<GridLayoutGroup>();
-            grid.cellSize = new Vector2(cellWidth, cellHeight);
-            grid.spacing = new Vector2(6f, 6f);
-            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = Mathf.Max(1, columns);
-            grid.childAlignment = TextAnchor.UpperLeft;
-            var layout = gridObject.AddComponent<LayoutElement>();
-            layout.preferredHeight = cellHeight;
-            StartCoroutine(UpdateGridHeightNextFrame(grid, layout, columns, cellHeight));
-            return gridObject.GetComponent<RectTransform>();
-        }
-
-        private static IEnumerator UpdateGridHeightNextFrame(
-            GridLayoutGroup grid,
-            LayoutElement layout,
-            int columns,
-            float cellHeight)
-        {
-            yield return null;
-            if (grid == null || layout == null)
-            {
-                yield break;
-            }
-
-            var rows = Mathf.Max(1, Mathf.CeilToInt(grid.transform.childCount / (float)columns));
-            layout.preferredHeight = rows * cellHeight + Mathf.Max(0, rows - 1) * grid.spacing.y;
-        }
-
-        private GameObject CreateSlotButton(
-            Transform parent,
-            string label,
-            InventoryItem item,
-            bool selected,
-            bool specialized,
-            bool interactable,
-            Action onClick,
-            InventoryDragPayload dragPayload = null,
-            bool canDrag = false,
-            InventoryDropValidator dropValidator = null,
-            Action<InventoryDragPayload> onDrop = null,
-            Action<string> onRejected = null)
-        {
-            var buttonObject = CreateUiObject("Slot", parent);
-            var image = buttonObject.AddComponent<Image>();
-            var baseColor = selected
-                ? SelectedColor
-                : specialized ? SpecializedSlotColor : SlotColor;
-            image.color = baseColor;
-            var button = buttonObject.AddComponent<Button>();
-            button.targetGraphic = image;
-            button.transition = Selectable.Transition.None;
-            button.interactable = interactable;
-            if (onClick != null)
-            {
-                button.onClick.AddListener(() => onClick());
-            }
-
-            Sprite icon = null;
-            if (item != null && controller?.State.Catalog != null)
-            {
-                icon = controller.State.Catalog.LoadIcon(item.DefinitionId);
-                if (icon != null)
-                {
-                    var iconObject = CreateUiObject("Icon", buttonObject.transform);
-                    var iconRect = iconObject.GetComponent<RectTransform>();
-                    iconRect.anchorMin = new Vector2(0f, 0.5f);
-                    iconRect.anchorMax = new Vector2(0f, 0.5f);
-                    iconRect.pivot = new Vector2(0f, 0.5f);
-                    iconRect.anchoredPosition = new Vector2(6f, 0f);
-                    iconRect.sizeDelta = new Vector2(42f, 42f);
-                    var iconImage = iconObject.AddComponent<Image>();
-                    iconImage.sprite = icon;
-                    iconImage.preserveAspect = true;
-                    iconImage.raycastTarget = false;
-                }
-            }
-
-            var textObject = CreateUiObject("Label", buttonObject.transform);
-            var textRect = textObject.GetComponent<RectTransform>();
-            Stretch(textRect, Vector2.zero, Vector2.one, new Vector2(8f, 4f), new Vector2(-6f, -4f));
-            var text = textObject.AddComponent<Text>();
-            ConfigureText(text, label, 12, TextAnchor.MiddleCenter, FontStyle.Normal);
-            text.raycastTarget = false;
-            if (dragPayload != null)
-            {
-                var source = buttonObject.AddComponent<InventoryDragSource>();
-                source.Configure(
-                    dragCoordinator,
-                    dragPayload,
-                    label,
-                    icon,
-                    canDrag);
-            }
-
-            if (dropValidator != null)
-            {
-                var target = buttonObject.AddComponent<InventoryDropTarget>();
-                target.Configure(
-                    dragCoordinator,
-                    image,
-                    baseColor,
-                    dropValidator,
-                    onDrop,
-                    onRejected);
-            }
-
-            return buttonObject;
-        }
-
-        private RectTransform CreateHorizontalRow(Transform parent, float height)
-        {
-            var row = CreateUiObject("ActionRow", parent);
-            var layout = row.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 6f;
-            layout.childControlWidth = true;
-            layout.childControlHeight = true;
-            layout.childForceExpandWidth = true;
-            layout.childForceExpandHeight = true;
-            var element = row.AddComponent<LayoutElement>();
-            element.preferredHeight = height;
-            return row.GetComponent<RectTransform>();
-        }
-
-        private void CreateButton(
-            Transform parent,
-            string label,
-            Action onClick,
-            bool interactable)
-        {
-            var buttonObject = CreateUiObject(label + "Button", parent);
-            var image = buttonObject.AddComponent<Image>();
-            image.color = SlotColor;
-            var button = buttonObject.AddComponent<Button>();
-            button.targetGraphic = image;
-            button.interactable = interactable;
-            if (onClick != null)
-            {
-                button.onClick.AddListener(() => onClick());
-            }
-
-            var text = CreateUiObject("Label", buttonObject.transform).AddComponent<Text>();
-            Stretch(
-                text.rectTransform,
-                Vector2.zero,
-                Vector2.one,
-                new Vector2(4f, 2f),
-                new Vector2(-4f, -2f));
-            ConfigureText(text, label, 13, TextAnchor.MiddleCenter, FontStyle.Bold);
-            text.raycastTarget = false;
-        }
-
-        private InputField CreateInputField(Transform parent, string value)
-        {
-            var inputObject = CreateUiObject("SplitQuantity", parent);
-            var image = inputObject.AddComponent<Image>();
-            image.color = Color.white;
-            var input = inputObject.AddComponent<InputField>();
-            input.contentType = InputField.ContentType.IntegerNumber;
-            input.lineType = InputField.LineType.SingleLine;
-            var text = CreateUiObject("Text", inputObject.transform).AddComponent<Text>();
-            Stretch(
-                text.rectTransform,
-                Vector2.zero,
-                Vector2.one,
-                new Vector2(8f, 2f),
-                new Vector2(-8f, -2f));
-            ConfigureText(text, value, 14, TextAnchor.MiddleLeft, FontStyle.Normal);
-            text.color = Color.black;
-            input.textComponent = text;
-            input.text = value;
-            var layout = inputObject.AddComponent<LayoutElement>();
-            layout.preferredWidth = 80f;
-            layout.flexibleWidth = 0f;
-            return input;
-        }
-
-        private void CreateSubheader(Transform parent, string text)
-        {
-            var label = CreateUiObject("Subheader", parent).AddComponent<Text>();
-            ConfigureText(label, text, 15, TextAnchor.MiddleLeft, FontStyle.Bold);
-            label.gameObject.AddComponent<LayoutElement>().preferredHeight = 26f;
-        }
-
-        private void CreateMessage(Transform parent, string text, Color color)
-        {
-            var label = CreateUiObject("Message", parent).AddComponent<Text>();
-            ConfigureText(label, text, 13, TextAnchor.MiddleLeft, FontStyle.Normal);
-            label.color = color;
-            label.horizontalOverflow = HorizontalWrapMode.Wrap;
-            label.verticalOverflow = VerticalWrapMode.Overflow;
-            label.gameObject.AddComponent<LayoutElement>().minHeight = 28f;
-        }
-
-        private void ConfigureText(
-            Text text,
-            string value,
-            int fontSize,
-            TextAnchor alignment,
-            FontStyle style)
-        {
-            text.font = font;
-            text.text = value;
-            text.fontSize = fontSize;
-            text.fontStyle = style;
-            text.alignment = alignment;
-            text.color = Color.white;
-        }
-
-        private static GameObject CreateUiObject(string name, Transform parent)
-        {
-            var value = new GameObject(name, typeof(RectTransform));
-            value.transform.SetParent(parent, false);
-            return value;
-        }
-
-        private static void Stretch(
-            RectTransform rect,
-            Vector2 anchorMin,
-            Vector2 anchorMax,
-            Vector2 offsetMin,
-            Vector2 offsetMax)
-        {
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = offsetMin;
-            rect.offsetMax = offsetMax;
-        }
-
-        private static void ClearChildren(Transform parent)
-        {
-            for (var index = parent.childCount - 1; index >= 0; index--)
-            {
-                Destroy(parent.GetChild(index).gameObject);
-            }
         }
 
         private static void EnsureEventSystem()

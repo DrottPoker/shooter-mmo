@@ -83,6 +83,9 @@ Scene panel
 
 TemporaryInventoryPanel
   +-- replaceable runtime uGUI presentation
+  +-- TemporaryInventoryPanel.Widgets (modules, slot grids, slots, carry meter)
+  +-- InventoryPresentation (pure layout, label, and tooltip helpers)
+  +-- InventoryTooltipView and InventorySlotView
   +-- persistent InventoryClientController state
   +-- no item custody or optimistic mutation
 
@@ -595,12 +598,42 @@ Context, and Character Inventory each own a separate panel root at fixed anchors
 Mode changes affect root visibility only and never rewrite another module's
 layout.
 
-The stable layout has equipment on the left, a contextual container in the
-upper-right, and character storage in the lower-right. Permanent inventory,
-equipped Bag contents, and Secure Container remain visible while Bank or
-Recovery Storage is selected. Bank and Recovery may be inspected through global
-owning-account reads. Every mutation still travels through the joined
-SimulationWorker and is committed through GameService authority.
+The stable layout has three columns. Character storage is the right column and
+keeps its place in every mode, so `B` shows only that column, `C` adds the
+equipment column on the left, and `I` adds the contextual storage column in the
+middle. Permanent inventory, equipped Bag contents, and the Secure Container,
+shown with its catalog tier name such as Warded Pouch, remain visible while
+Bank, Recovery Storage, or a corpse is selected. Bank and Recovery may be
+inspected through global owning-account reads, and the context header names the
+NPC whose open interaction offers the shown storage. Every mutation still
+travels through the joined SimulationWorker and is committed through GameService
+authority.
+
+The equipment column lays the catalog equipment slots out like a paper doll in
+three columns: tool, head, and Bag on top, ammunition, neck, and hands below
+them, main hand, body, and off hand in the middle, the two rings beside legs,
+and feet at the bottom. `EquipmentPaperDollLayout` owns these positions and
+appends any slot it does not know, such as one added to the catalog later, in
+extra rows. Every slot in every module shares one size, fitted to five columns
+in the character column. An occupied slot shows the item name, a category color
+strip in place of item art, the stack quantity in its lower-right corner, a `P`
+or `I` badge for protection on death or insurance, and the equipment slot or
+accepted item types in its upper-left corner. An empty slot is darker and shows
+only its equipment slot name or accepted types. An empty equipment slot that an
+equipped item blocks, such as off hand next to the two-handed Training
+Shortbow, is red and marked Blocked. Hovering a slot shows a tooltip with the
+item name, category, quantity and stack limit, weight, equipment slots and
+blocked slots, active policies with their source, destruction and Secure
+Container restrictions, and the slot location. Tooltips never show during a
+drag.
+
+The character column starts with a carry meter that spans zero to the 140
+percent hard cap with a marker at full capacity. It is green up to full
+capacity, amber while movement is slowed, and red at the hard cap, and its
+caption shows authoritative weight, capacity, load, and movement speed. The
+selected item, its split quantity, Split, Destroy, and Clear controls, and the
+status line sit in a footer below the character column, so they work in every
+mode. The character header shows the item-state revision.
 
 `InventoryDragCoordinator`, `InventoryDragSource`, typed
 `InventoryDragPayload`, and `InventoryDropTarget` form the reusable uGUI
@@ -609,7 +642,8 @@ container-slot swap, and complete Recovery claims start only from a drop. A drop
 onto an occupied slot merges compatible stacks first and otherwise swaps only
 when both items pass the opposite slot rules. Valid and invalid targets provide
 green or red feedback, then revalidate the current state before sending an
-operation.
+operation. The drag ghost trails below and to the right of the pointer, so it
+never hides the highlighted target.
 Item clicks only select action controls for split or allowed destruction. A
 Recovery item represents its complete delivery during a drag because the durable
 claim remains atomic.
@@ -658,8 +692,8 @@ all three sections and reuses `InventoryDragPayload` for corpse sources. Droppin
 a full or selected partial stack into Permanent inventory, the equipped Bag, or
 Secure Container submits a typed corpse intent. Dropping a corpse item onto
 another corpse slot submits an authoritative internal move, split, merge, or
-complete swap. Equipment destinations show the catalog display name and stable
-equipment-slot id, and local feedback rejects obvious type mismatches. Dropping
+complete swap. Equipment destinations show the catalog display name, and local
+feedback rejects obvious type mismatches. Dropping
 a corpse Bag onto the occupied player Bag slot submits one atomic aggregate
 swap. `CorpseTargetAdvisor` in `Mmorpg.Client.Items` holds these corpse target
 rules next to `InventoryTargetAdvisor`, and EditMode tests cover both. Green and
@@ -828,7 +862,10 @@ The client keeps permanent state below replaceable presentation:
   with one warning per archetype, and a missing registry logs one warning
   instead. An EditMode test fails when an authored archetype has no prefab.
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
-  permanent controller and capability contracts.
+  permanent controller and capability contracts. It grows with its content,
+  labels Character Bank and Recovery Storage capabilities as `Open ...` because
+  they open the inventory, and shares its colors and buttons with the inventory
+  panel through `TemporaryUiKit`.
 
 The persistent realtime client decodes the actor and interaction messages
 through the shared GameProtocol source and keeps the explicit mismatch path for
@@ -872,10 +909,11 @@ grant, removal, currency charge, or item deletion. A committed result triggers a
 full inventory refresh at the returned item-state revision.
 
 Inventory policy summaries carry a safe presentation source, not a raw grant or
-insurance lineage id. Temporary item labels distinguish `Insured` from
-`Protected` and render `Insurance NPC`, `Quest grant`, or `Catalog rule` as the
-source. Recovery headings translate the durable source kind into consumed
-insurance or protected-on-death delivery labels.
+insurance lineage id. Temporary slots show an `I` badge for insurance and a `P`
+badge for protection on death, and the item tooltip names the policy and renders
+`Insurance NPC`, `Quest grant`, or `Catalog rule` as the source. Recovery
+headings translate the durable source kind into consumed insurance or
+protected-on-death delivery labels.
 
 Current corpse presentation registers with the shared target controller and
 its open view consumes the shared one-active-interaction lease while retaining
@@ -923,7 +961,11 @@ correlates operation ids, and checks specialized slots, Secure Container rules,
 non-empty Bags, split quantities, the exact hard cap, external corpse swaps, and
 committed-revision refresh eligibility. Corpse coverage verifies presence assembly, duplicate and stale chunks, complete canonical
 three-section views, targeted delta consistency, monotonic revisions, every
-typed corpse intent, and corpse drag payload identity.
+typed corpse intent, and corpse drag payload identity. Inventory presentation
+coverage pins the paper doll positions and the extra rows for unknown slots, the
+carry meter fill, marker, and load levels including a death overflow, blocked
+equipment slots, catalog display names for tags, slots, and the Secure Container
+tier, quantity and policy badges, and the item tooltip text.
 
 World actor coverage verifies monotonic actor presence and state,
 reconnect cleanup, operation correlation, authoritative capability summaries,
@@ -951,6 +993,11 @@ bootstrap, realtime, inventory, corpse, actor, interaction, targeting, and
 presentation controllers plus the runtime login panel. World-scene coverage
 loads `DevelopmentWorld1` through Addressables, opens and closes the runtime uGUI
 inventory root, and finds the runtime corpse and actor presentation controllers.
+An inventory panel test applies a committed snapshot without a GameService and
+checks that the complete view draws one slot per catalog equipment slot, the
+blocked slot of a two-handed item, one shared slot size in every module, the
+carry meter fill, a hover tooltip, and a character column that keeps its place
+in the character-only view.
 Further PlayMode tests verify that returning to a built-in scene releases the
 World scene's Addressables handle and that an unknown or built-in scene is not
 an available World scene. The PlayMode tests also pass with the "Use Existing
