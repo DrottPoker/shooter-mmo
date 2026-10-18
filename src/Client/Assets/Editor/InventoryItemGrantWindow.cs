@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Mmorpg.WorldData.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -31,6 +31,8 @@ namespace Mmorpg.Client.Editor
         };
 
         private DevelopmentItemToolCliProcess activeProcess;
+        private string activeCommandStatus = string.Empty;
+        private bool activeProcessBuilding;
         private DevelopmentItemToolResponse response;
         private Vector2 scroll;
         private int characterIndex;
@@ -84,7 +86,8 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.HelpBox(
                 "This Development-only tool sends grants through GameService and "
                     + "ItemTransactionService. It never writes directly to PostgreSQL. "
-                    + "Item grants and corpse fixture sources must be offline.",
+                    + "Each command first builds GameService in Release, so it never runs an "
+                    + "older build. Item grants and corpse fixture sources must be offline.",
                 MessageType.Info);
 
             if (response == null || response.data == null)
@@ -118,7 +121,11 @@ namespace Mmorpg.Client.Editor
             EditorGUI.EndDisabledGroup();
             GUILayout.FlexibleSpace();
             GUILayout.Label(
-                activeProcess == null ? "Local Development" : "GameService command running...",
+                activeProcess == null
+                    ? "Local Development"
+                    : activeProcess.IsBuilding
+                        ? "Building GameService..."
+                        : "GameService command running...",
                 EditorStyles.miniLabel);
             EditorGUILayout.EndHorizontal();
         }
@@ -374,28 +381,50 @@ namespace Mmorpg.Client.Editor
                 activeProcess = DevelopmentItemToolCliProcess.Start(
                     repositoryRoot,
                     commandArguments);
-                SetStatus(status + "...", MessageType.Info);
+                activeCommandStatus = status;
+                activeProcessBuilding = true;
+                SetStatus(
+                    "Building GameService (" + DevelopmentItemToolCli.BuildConfiguration
+                        + ") before the command...",
+                    MessageType.Info);
             }
             catch (Exception exception)
             {
                 SetStatus(
-                    "Could not start GameService: " + exception.Message,
+                    "Could not start the GameService build: " + exception.Message,
                     MessageType.Error);
             }
         }
 
         private void PollActiveProcess()
         {
-            if (activeProcess == null
-                || !activeProcess.TryComplete(out var completedResponse, out var error))
+            if (activeProcess == null)
             {
                 return;
             }
 
+            if (!activeProcess.TryComplete(out var completedResponse, out var error))
+            {
+                if (activeProcessBuilding && !activeProcess.IsBuilding)
+                {
+                    activeProcessBuilding = false;
+                    SetStatus(activeCommandStatus + "...", MessageType.Info);
+                }
+
+                return;
+            }
+
+            var failureOutput = activeProcess.FailureOutput;
             activeProcess.Dispose();
             activeProcess = null;
             if (completedResponse == null)
             {
+                if (!string.IsNullOrWhiteSpace(failureOutput))
+                {
+                    Debug.LogError("Inventory Item Grants: " + error + "\n\n" + failureOutput);
+                    error += "\nThe full output is in the Unity Console.";
+                }
+
                 SetStatus(error, MessageType.Error);
                 return;
             }
@@ -473,6 +502,135 @@ namespace Mmorpg.Client.Editor
     public static class DevelopmentItemToolCli
     {
         public const string ResponsePrefix = "MMORPG_DEV_ITEMS_JSON:";
+        internal const string BuildConfiguration = "Release";
+
+        private const string UnhandledExceptionPrefix = "Unhandled exception.";
+        private const int MaximumReportedBuildLines = 8;
+
+        // Incremental build of GameService and its project references. It writes the built
+        // assembly path to targetPathFile, so the command runs exactly that assembly.
+        internal static DevelopmentToolProcessStartInfo CreateBuildStartInfo(
+            string repositoryRoot,
+            string targetPathFile)
+        {
+            return new DevelopmentToolProcessStartInfo(
+                "dotnet",
+                new[]
+                {
+                    "build",
+                    RepositoryLayout.GameServiceProjectPath(repositoryRoot),
+                    "--configuration",
+                    BuildConfiguration,
+                    // No build servers and one in-process node, so no process outlives
+                    // the build and a cancel ends all of it.
+                    "--disable-build-servers",
+                    "-m:1",
+                    // -getProperty alone only evaluates the project. The explicit target
+                    // makes MSBuild build before it reports TargetPath.
+                    "-t:Build",
+                    "-getProperty:TargetPath",
+                    "-getResultOutputFile:" + targetPathFile,
+                    "-nologo",
+                    "-tl:off",
+                    "-v:q"
+                },
+                repositoryRoot,
+                new Dictionary<string, string>
+                {
+                    ["DOTNET_NOLOGO"] = "1",
+                    ["DOTNET_CLI_UI_LANGUAGE"] = "en"
+                });
+        }
+
+        internal static DevelopmentToolProcessStartInfo CreateCommandStartInfo(
+            string repositoryRoot,
+            string assemblyPath,
+            IReadOnlyList<string> commandArguments)
+        {
+            // The built assembly runs inside this one dotnet process. 'dotnet run' would
+            // start GameService as a child that survives a cancel or timeout.
+            var arguments = new List<string> { assemblyPath };
+            arguments.AddRange(commandArguments);
+            return new DevelopmentToolProcessStartInfo(
+                "dotnet",
+                arguments,
+                repositoryRoot,
+                new Dictionary<string, string>
+                {
+                    ["ASPNETCORE_ENVIRONMENT"] = "Development",
+                    ["DOTNET_NOLOGO"] = "1"
+                });
+        }
+
+        internal static string DescribeBuildFailure(int exitCode, string buildOutput)
+        {
+            var lines = ReadLines(buildOutput).ToList();
+            var errors = lines
+                .Where(line => line.IndexOf(": error ", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Select(RemoveProjectSuffix)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var reported = errors.Count > 0
+                ? errors
+                : lines.Where(line => !line.StartsWith("Time Elapsed", StringComparison.Ordinal))
+                    .ToList();
+            var builder = new StringBuilder(
+                "GameService could not be built, so the tool did not run an older build. "
+                    + "dotnet build exited with code "
+                    + exitCode.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+            foreach (var line in reported.Take(MaximumReportedBuildLines))
+            {
+                builder.Append('\n').Append(line);
+            }
+
+            if (reported.Count > MaximumReportedBuildLines)
+            {
+                builder.Append('\n')
+                    .Append("... and ")
+                    .Append((reported.Count - MaximumReportedBuildLines).ToString(CultureInfo.InvariantCulture))
+                    .Append(errors.Count > 0 ? " more errors." : " more lines.");
+            }
+
+            return builder.ToString();
+        }
+
+        internal static string DescribeStartupFailure(
+            int exitCode,
+            string standardOutput,
+            string standardError)
+        {
+            var exceptionLine = FindUnhandledException(standardError)
+                ?? FindUnhandledException(standardOutput)
+                ?? ReadLines(standardError).FirstOrDefault(line => !IsStackTraceLine(line));
+            var builder = new StringBuilder(
+                "GameService failed before it returned a development item response");
+            builder.Append(exceptionLine == null ? "." : ": " + exceptionLine);
+            builder.Append('\n')
+                .Append("GameService exited with code ")
+                .Append(exitCode.ToString(CultureInfo.InvariantCulture))
+                .Append('.');
+            return builder.ToString();
+        }
+
+        // Reads the response of a finished GameService command. Without a response line,
+        // the error describes why GameService stopped first.
+        internal static bool TryReadCommandResult(
+            int exitCode,
+            string standardOutput,
+            string standardError,
+            out DevelopmentItemToolResponse response,
+            out string error)
+        {
+            if (FindResponseLine(standardOutput) != null)
+            {
+                return TryParseResponse(standardOutput, out response, out error);
+            }
+
+            response = null;
+            error = DescribeStartupFailure(exitCode, standardOutput, standardError);
+            return false;
+        }
 
         public static bool TryParseResponse(
             string output,
@@ -481,14 +639,10 @@ namespace Mmorpg.Client.Editor
         {
             response = null;
             error = string.Empty;
-            var responseLine = (output ?? string.Empty)
-                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
-                .LastOrDefault(line => line.StartsWith(ResponsePrefix, StringComparison.Ordinal));
+            var responseLine = FindResponseLine(output);
             if (string.IsNullOrWhiteSpace(responseLine))
             {
-                error = "GameService did not return a development item response. "
-                    + "Build the Release solution once with 'dotnet build Mmorpg.slnx "
-                    + "--configuration Release', then retry.";
+                error = "GameService did not return a development item response.";
                 return false;
             }
 
@@ -512,81 +666,121 @@ namespace Mmorpg.Client.Editor
                 return false;
             }
         }
+
+        private static string FindResponseLine(string output)
+        {
+            return (output ?? string.Empty)
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .LastOrDefault(line => line.StartsWith(ResponsePrefix, StringComparison.Ordinal));
+        }
+
+        // .NET reports an unhandled exception as one 'Unhandled exception. <type>: <message>'
+        // line before the stack trace.
+        private static string FindUnhandledException(string output)
+        {
+            var line = ReadLines(output).FirstOrDefault(candidate =>
+                candidate.StartsWith(UnhandledExceptionPrefix, StringComparison.Ordinal));
+            if (line == null)
+            {
+                return null;
+            }
+
+            var exception = line.Substring(UnhandledExceptionPrefix.Length).Trim();
+            return exception.Length == 0 ? line : exception;
+        }
+
+        private static bool IsStackTraceLine(string line)
+        {
+            return line.StartsWith("at ", StringComparison.Ordinal)
+                || line.StartsWith("---", StringComparison.Ordinal);
+        }
+
+        // MSBuild ends each message with the project path in brackets.
+        private static string RemoveProjectSuffix(string line)
+        {
+            var suffixStart = line.LastIndexOf(" [", StringComparison.Ordinal);
+            return suffixStart > 0
+                && line.EndsWith("proj]", StringComparison.OrdinalIgnoreCase)
+                    ? line.Substring(0, suffixStart)
+                    : line;
+        }
+
+        // Non-empty trimmed lines.
+        private static IEnumerable<string> ReadLines(string output)
+        {
+            return (output ?? string.Empty)
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0);
+        }
     }
 
+    // Builds GameService, then runs one development item command with exactly the
+    // assembly that build produced. A failed build never falls back to an older one.
     internal sealed class DevelopmentItemToolCliProcess : IDisposable
     {
-        private const double TimeoutSeconds = 60d;
+        internal static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(5);
+        internal static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(60);
 
-        private readonly object outputLock = new object();
-        private readonly List<string> standardOutput = new List<string>();
-        private readonly List<string> standardError = new List<string>();
-        private readonly Process process;
-        private readonly double startedAt;
+        private readonly string repositoryRoot;
+        private readonly string[] commandArguments;
+        private readonly Func<DevelopmentToolProcessStartInfo, TimeSpan, IDevelopmentToolProcess> startProcess;
+        private readonly string targetPathFile;
+        private IDevelopmentToolProcess activeProcess;
         private bool completed;
 
-        private DevelopmentItemToolCliProcess(Process process)
+        private DevelopmentItemToolCliProcess(
+            string repositoryRoot,
+            IReadOnlyList<string> commandArguments,
+            Func<DevelopmentToolProcessStartInfo, TimeSpan, IDevelopmentToolProcess> startProcess)
         {
-            this.process = process;
-            startedAt = EditorApplication.timeSinceStartup;
-            process.OutputDataReceived += CaptureStandardOutput;
-            process.ErrorDataReceived += CaptureStandardError;
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            this.repositoryRoot = repositoryRoot
+                ?? throw new ArgumentNullException(nameof(repositoryRoot));
+            this.commandArguments = (commandArguments
+                ?? throw new ArgumentNullException(nameof(commandArguments))).ToArray();
+            this.startProcess = startProcess ?? throw new ArgumentNullException(nameof(startProcess));
+            targetPathFile = Path.Combine(
+                Path.GetTempPath(),
+                "mmorpg-dev-items-target-" + Guid.NewGuid().ToString("N") + ".txt");
         }
+
+        public bool IsBuilding { get; private set; }
+
+        // Complete output of the step that failed, for the Unity Console.
+        public string FailureOutput { get; private set; } = string.Empty;
 
         public static DevelopmentItemToolCliProcess Start(
             string repositoryRoot,
             IReadOnlyList<string> commandArguments)
         {
-            // The built assembly runs inside this one dotnet process. 'dotnet run' would
-            // start GameService as a child that survives a cancel or timeout.
-            var arguments = new List<string> { FindGameServiceAssembly(repositoryRoot) };
-            arguments.AddRange(commandArguments);
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = string.Join(" ", arguments.Select(QuoteArgument)),
-                WorkingDirectory = repositoryRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            startInfo.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = "Development";
-            startInfo.EnvironmentVariables["DOTNET_NOLOGO"] = "1";
-            var process = new Process { StartInfo = startInfo };
-            if (!process.Start())
-            {
-                process.Dispose();
-                throw new InvalidOperationException("The dotnet process did not start.");
-            }
-
-            return new DevelopmentItemToolCliProcess(process);
+            return Start(repositoryRoot, commandArguments, DevelopmentToolProcess.Start);
         }
 
-        internal static string FindGameServiceAssembly(string repositoryRoot)
+        internal static DevelopmentItemToolCliProcess Start(
+            string repositoryRoot,
+            IReadOnlyList<string> commandArguments,
+            Func<DevelopmentToolProcessStartInfo, TimeSpan, IDevelopmentToolProcess> startProcess)
         {
-            var releaseDirectory = Path.Combine(
-                RepositoryLayout.GameServiceDirectory(repositoryRoot),
-                "bin",
-                "Release");
-            var assemblyPath = Directory.Exists(releaseDirectory)
-                ? Directory.GetDirectories(releaseDirectory)
-                    .Select(directory => Path.Combine(directory, "Mmorpg.GameService.dll"))
-                    .Where(File.Exists)
-                    .OrderByDescending(File.GetLastWriteTimeUtc)
-                    .FirstOrDefault()
-                : null;
-            if (assemblyPath == null)
+            var operation = new DevelopmentItemToolCliProcess(
+                repositoryRoot,
+                commandArguments,
+                startProcess);
+            try
             {
-                throw new FileNotFoundException(
-                    "GameService has no Release build. Build the Release solution once with "
-                        + "'dotnet build Mmorpg.slnx --configuration Release', then retry.",
-                    releaseDirectory);
+                operation.activeProcess = startProcess(
+                    DevelopmentItemToolCli.CreateBuildStartInfo(
+                        operation.repositoryRoot,
+                        operation.targetPathFile),
+                    BuildTimeout);
+            }
+            catch
+            {
+                operation.Dispose();
+                throw;
             }
 
-            return assemblyPath;
+            operation.IsBuilding = true;
+            return operation;
         }
 
         public bool TryComplete(
@@ -601,39 +795,43 @@ namespace Mmorpg.Client.Editor
                 return true;
             }
 
-            if (!process.HasExited
-                && EditorApplication.timeSinceStartup - startedAt <= TimeoutSeconds)
+            if (!activeProcess.TryGetResult(out var result))
             {
                 return false;
             }
 
-            if (!process.HasExited)
+            activeProcess.Dispose();
+            activeProcess = null;
+            if (IsBuilding)
             {
-                process.Kill();
+                IsBuilding = false;
+                if (TryStartCommand(result, out error))
+                {
+                    return false;
+                }
+
                 completed = true;
-                error = "The GameService development item command timed out after 60 seconds.";
                 return true;
             }
 
-            process.WaitForExit();
             completed = true;
-            string output;
-            string stderr;
-            lock (outputLock)
+            if (result.TimedOut)
             {
-                output = string.Join(Environment.NewLine, standardOutput);
-                stderr = string.Join(Environment.NewLine, standardError);
-            }
-
-            if (DevelopmentItemToolCli.TryParseResponse(output, out response, out error))
-            {
+                error = "The GameService development item command timed out after "
+                    + CommandTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture)
+                    + " seconds.";
+                FailureOutput = CombineOutput(result);
                 return true;
             }
 
-            var diagnostic = string.IsNullOrWhiteSpace(stderr) ? output : stderr;
-            if (!string.IsNullOrWhiteSpace(diagnostic))
+            if (!DevelopmentItemToolCli.TryReadCommandResult(
+                    result.ExitCode,
+                    result.StandardOutput,
+                    result.StandardError,
+                    out response,
+                    out error))
             {
-                error += Environment.NewLine + Environment.NewLine + diagnostic.Trim();
+                FailureOutput = CombineOutput(result);
             }
 
             return true;
@@ -641,55 +839,105 @@ namespace Mmorpg.Client.Editor
 
         public void Dispose()
         {
-            if (!process.HasExited)
-            {
-                process.Kill();
-            }
-
-            process.OutputDataReceived -= CaptureStandardOutput;
-            process.ErrorDataReceived -= CaptureStandardError;
-            process.Dispose();
+            activeProcess?.Dispose();
+            activeProcess = null;
+            DeleteTargetPathFile();
         }
 
-        private void CaptureStandardOutput(object sender, DataReceivedEventArgs eventArgs)
+        private bool TryStartCommand(DevelopmentToolProcessResult build, out string error)
         {
-            if (eventArgs.Data == null)
+            if (build.TimedOut || build.ExitCode != 0)
             {
-                return;
+                error = build.TimedOut
+                    ? "The GameService build timed out after "
+                        + BuildTimeout.TotalMinutes.ToString(CultureInfo.InvariantCulture)
+                        + " minutes, so the tool did not run an older build."
+                    : DevelopmentItemToolCli.DescribeBuildFailure(
+                        build.ExitCode,
+                        CombineOutput(build));
+                FailureOutput = CombineOutput(build);
+                return false;
             }
 
-            lock (outputLock)
+            var assemblyPath = ReadTargetPath();
+            if (assemblyPath == null)
             {
-                standardOutput.Add(eventArgs.Data);
+                error = "The GameService build succeeded but did not report its assembly path.";
+                FailureOutput = CombineOutput(build);
+                return false;
+            }
+
+            if (!File.Exists(assemblyPath))
+            {
+                error = "The GameService build reported '" + assemblyPath
+                    + "', but that file does not exist.";
+                return false;
+            }
+
+            try
+            {
+                activeProcess = startProcess(
+                    DevelopmentItemToolCli.CreateCommandStartInfo(
+                        repositoryRoot,
+                        assemblyPath,
+                        commandArguments),
+                    CommandTimeout);
+            }
+            catch (Exception exception)
+            {
+                error = "Could not start GameService: " + exception.Message;
+                return false;
+            }
+
+            error = string.Empty;
+            return true;
+        }
+
+        private string ReadTargetPath()
+        {
+            try
+            {
+                if (!File.Exists(targetPathFile))
+                {
+                    return null;
+                }
+
+                return File.ReadAllLines(targetPathFile)
+                    .Select(line => line.Trim())
+                    .FirstOrDefault(line => line.Length > 0);
+            }
+            finally
+            {
+                DeleteTargetPathFile();
             }
         }
 
-        private void CaptureStandardError(object sender, DataReceivedEventArgs eventArgs)
+        private void DeleteTargetPathFile()
         {
-            if (eventArgs.Data == null)
+            try
             {
-                return;
+                File.Delete(targetPathFile);
             }
-
-            lock (outputLock)
+            catch (IOException)
             {
-                standardError.Add(eventArgs.Data);
+                // A leftover file in the temporary directory is harmless.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // A leftover file in the temporary directory is harmless.
             }
         }
 
-        private static string QuoteArgument(string value)
+        private static string CombineOutput(DevelopmentToolProcessResult result)
         {
-            if (string.IsNullOrEmpty(value))
+            var output = result.StandardOutput.Trim();
+            var error = result.StandardError.Trim();
+            if (output.Length == 0)
             {
-                return "\"\"";
+                return error;
             }
 
-            if (value.All(character => !char.IsWhiteSpace(character) && character != '"'))
-            {
-                return value;
-            }
-
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
+            return error.Length == 0 ? output : error + "\n\n" + output;
         }
     }
 

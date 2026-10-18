@@ -676,6 +676,17 @@ The Editor owns only process orchestration and presentation. It does not connect
 to PostgreSQL, reproduce catalog rules, mutate runtime client state, or add a
 gameplay endpoint.
 
+`DevelopmentItemToolCliProcess` runs every command in two steps. It first builds
+GameService incrementally in Release through MSBuild, which stays the only
+authority on whether the output is current, and then runs exactly the assembly
+path that build reports in one `dotnet` process. A failed or timed out build
+runs nothing, so the window never uses an older build against a newer database.
+`DevelopmentToolProcess` owns each external process: it captures output, and a
+timeout, a closed window, or a script reload ends the process together with
+every descendant (through `taskkill /T` on Windows). When GameService stops
+without a response, the window shows the unhandled exception message first and
+logs the complete output to the Unity Console.
+
 The command boundary is available only in the Development environment against a
 loopback, non-production-like PostgreSQL database. Every target character must
 be offline. This guard is required because the Editor command mutates durable
