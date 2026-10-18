@@ -683,7 +683,9 @@ path that build reports in one `dotnet` process. A failed or timed out build
 runs nothing, so the window never uses an older build against a newer database.
 `DevelopmentToolProcess` owns each external process: it captures output, and a
 timeout, a closed window, or a script reload ends the process together with
-every descendant (through `taskkill /T` on Windows). When GameService stops
+every descendant. Windows uses `taskkill /T`; macOS and Linux stop every
+descendant that `ps` reports and then kill them, so no process in the tree can
+start another child meanwhile. When GameService stops
 without a response, the window shows the unhandled exception message first and
 logs the complete output to the Unity Console.
 

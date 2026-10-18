@@ -71,7 +71,8 @@ namespace Mmorpg.Client.Editor
         // A descendant that inherited the output pipes can hold them open after the root
         // exited. The result is then read without waiting longer for the pipes.
         private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(2);
-        private const int TaskKillTimeoutMilliseconds = 10000;
+        private const int ToolTimeoutMilliseconds = 10000;
+        private const int MaximumProcessTreePasses = 8;
 
         private readonly object outputLock = new object();
         private readonly List<string> standardOutput = new List<string>();
@@ -239,6 +240,51 @@ namespace Mmorpg.Client.Editor
             }
         }
 
+        // Parses 'ps -A -o pid= -o ppid=' output into process and parent ids.
+        internal static IReadOnlyList<(int Id, int ParentId)> ParseProcessTable(string output)
+        {
+            var table = new List<(int Id, int ParentId)>();
+            foreach (var line in (output ?? string.Empty).Split('\n'))
+            {
+                var fields = line.Split(new[] { ' ', '\t', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                if (fields.Length == 2
+                    && int.TryParse(fields[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+                    && int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out var parentId))
+                {
+                    table.Add((id, parentId));
+                }
+            }
+
+            return table;
+        }
+
+        // Every process below rootId, without rootId itself.
+        internal static IReadOnlyList<int> FindDescendants(
+            int rootId,
+            IEnumerable<(int Id, int ParentId)> table)
+        {
+            var children = table
+                .Where(entry => entry.Id != entry.ParentId)
+                .ToLookup(entry => entry.ParentId, entry => entry.Id);
+            var descendants = new List<int>();
+            var visited = new HashSet<int> { rootId };
+            var pending = new Queue<int>();
+            pending.Enqueue(rootId);
+            while (pending.Count > 0)
+            {
+                foreach (var child in children[pending.Dequeue()])
+                {
+                    if (visited.Add(child))
+                    {
+                        descendants.Add(child);
+                        pending.Enqueue(child);
+                    }
+                }
+            }
+
+            return descendants;
+        }
+
         private void EndProcessTree()
         {
             if (HasExited())
@@ -246,11 +292,17 @@ namespace Mmorpg.Client.Editor
                 return;
             }
 
-            // Process.Kill in this runtime ends only the root, so Windows uses taskkill to
-            // end every descendant too. Other platforms end the root only.
+            // Process.Kill in this runtime ends only the root, so the descendants are
+            // ended explicitly first.
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                RunTaskKill(process.Id);
+                RunTool(
+                    Path.Combine(System.Environment.SystemDirectory, "taskkill.exe"),
+                    "/T /F /PID " + process.Id.ToString(CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                EndPosixProcessTree(process.Id);
             }
 
             if (HasExited())
@@ -272,12 +324,45 @@ namespace Mmorpg.Client.Editor
             }
         }
 
-        private static void RunTaskKill(int processId)
+        // Stops the root and every descendant before killing them, so no process in the
+        // tree can start another child or be moved to init while the tree is collected.
+        private static void EndPosixProcessTree(int rootId)
         {
+            var tree = new HashSet<int> { rootId };
+            SendPosixSignal("STOP", tree);
+            for (var pass = 0; pass < MaximumProcessTreePasses; pass++)
+            {
+                var table = ParseProcessTable(RunTool("ps", "-A -o pid= -o ppid="));
+                var added = FindDescendants(rootId, table).Where(tree.Add).ToList();
+                if (added.Count == 0)
+                {
+                    break;
+                }
+
+                SendPosixSignal("STOP", added);
+            }
+
+            SendPosixSignal("KILL", tree);
+        }
+
+        private static void SendPosixSignal(string signal, IEnumerable<int> processIds)
+        {
+            RunTool(
+                "kill",
+                "-" + signal + " " + string.Join(
+                    " ",
+                    processIds.Select(id => id.ToString(CultureInfo.InvariantCulture))));
+        }
+
+        // Runs a short system tool and returns its standard output, or an empty string
+        // when it could not run. The caller then falls back to ending the root process.
+        private static string RunTool(string fileName, string arguments)
+        {
+            var output = new StringBuilder();
             var startInfo = new ProcessStartInfo
             {
-                FileName = Path.Combine(System.Environment.SystemDirectory, "taskkill.exe"),
-                Arguments = "/T /F /PID " + processId.ToString(CultureInfo.InvariantCulture),
+                FileName = fileName,
+                Arguments = arguments,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -285,20 +370,41 @@ namespace Mmorpg.Client.Editor
             };
             try
             {
-                using (var taskKill = new Process { StartInfo = startInfo })
+                using (var tool = new Process { StartInfo = startInfo })
                 {
-                    taskKill.OutputDataReceived += IgnoreOutput;
-                    taskKill.ErrorDataReceived += IgnoreOutput;
-                    taskKill.Start();
-                    taskKill.BeginOutputReadLine();
-                    taskKill.BeginErrorReadLine();
-                    taskKill.WaitForExit(TaskKillTimeoutMilliseconds);
+                    tool.OutputDataReceived += (sender, eventArgs) =>
+                    {
+                        if (eventArgs.Data != null)
+                        {
+                            lock (output)
+                            {
+                                output.Append(eventArgs.Data).Append('\n');
+                            }
+                        }
+                    };
+                    tool.ErrorDataReceived += IgnoreOutput;
+                    tool.Start();
+                    tool.BeginOutputReadLine();
+                    tool.BeginErrorReadLine();
+                    if (!tool.WaitForExit(ToolTimeoutMilliseconds))
+                    {
+                        tool.Kill();
+                        return string.Empty;
+                    }
+
+                    // Waits for the redirected output after the exit.
+                    tool.WaitForExit();
                 }
             }
             catch (Exception exception) when (
                 exception is Win32Exception || exception is InvalidOperationException)
             {
-                // The caller falls back to ending the root process.
+                return string.Empty;
+            }
+
+            lock (output)
+            {
+                return output.ToString();
             }
         }
 

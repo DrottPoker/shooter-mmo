@@ -10,7 +10,6 @@ using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Editor.Items;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -329,15 +328,27 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        [UnityPlatform(RuntimePlatform.WindowsEditor)]
+        public void ToolProcessFindsEveryDescendantInTheProcessTable()
+        {
+            var table = DevelopmentToolProcess.ParseProcessTable(
+                "    0     0\n    1     0\n  100     1\n  101   100\r\n  102   101\n"
+                    + "  200     1\n  103   100\nnot a process line\n");
+
+            Assert.That(table.Count, Is.EqualTo(7));
+            Assert.That(
+                DevelopmentToolProcess.FindDescendants(100, table),
+                Is.EquivalentTo(new[] { 101, 102, 103 }));
+            Assert.That(DevelopmentToolProcess.FindDescendants(200, table), Is.Empty);
+            Assert.That(
+                DevelopmentToolProcess.FindDescendants(0, table),
+                Is.EquivalentTo(new[] { 1, 100, 101, 102, 103, 200 }));
+        }
+
+        [Test]
         public void ToolProcessReturnsOutputAndExitCode()
         {
             using (var process = DevelopmentToolProcess.Start(
-                new DevelopmentToolProcessStartInfo(
-                    "cmd.exe",
-                    new[] { "/d", "/c", "echo", "tool-output&&", "exit", "3" },
-                    Path.GetTempPath(),
-                    null),
+                ShellCommand("echo tool-output&& exit 3", "echo tool-output; exit 3"),
                 TimeSpan.FromSeconds(30)))
             {
                 var result = WaitForResult(process);
@@ -349,17 +360,12 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        [UnityPlatform(RuntimePlatform.WindowsEditor)]
         public void ToolProcessTimeoutEndsTheWholeProcessTree()
         {
-            // cmd.exe starts ping.exe as a child that inherits the output pipes, so the
-            // pipes only close once the child ended too.
+            // The shell starts a child that inherits the output pipes, so the pipes only
+            // close once the child ended too.
             using (var process = DevelopmentToolProcess.Start(
-                new DevelopmentToolProcessStartInfo(
-                    "cmd.exe",
-                    new[] { "/d", "/c", "ping", "-n", "30", "127.0.0.1" },
-                    Path.GetTempPath(),
-                    null),
+                ShellCommand("ping -n 30 127.0.0.1", "sleep 30; echo done"),
                 TimeSpan.FromSeconds(1)))
             {
                 var result = WaitForResult(process);
@@ -385,6 +391,18 @@ namespace Mmorpg.Client.Tests.EditMode
             return build.StartInfo.Arguments
                 .Single(argument => argument.StartsWith(ResultOutputFileSwitch, StringComparison.Ordinal))
                 .Substring(ResultOutputFileSwitch.Length);
+        }
+
+        private static DevelopmentToolProcessStartInfo ShellCommand(
+            string windowsCommand,
+            string posixCommand)
+        {
+            var windows = Application.platform == RuntimePlatform.WindowsEditor;
+            return new DevelopmentToolProcessStartInfo(
+                windows ? "cmd.exe" : "/bin/sh",
+                windows ? new[] { "/d", "/c", windowsCommand } : new[] { "-c", posixCommand },
+                Path.GetTempPath(),
+                null);
         }
 
         private static DevelopmentToolProcessResult WaitForResult(DevelopmentToolProcess process)
