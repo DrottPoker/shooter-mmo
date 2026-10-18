@@ -4,8 +4,9 @@ Last updated: 2026-10-18
 
 Status: Decided and in progress. The product owner accepted every
 recommendation on 2026-10-18, including C1. Implementation follows the
-[Implementation Plan](#implementation-plan): step 1, the combat content, is
-implemented; steps 2 to 6 are not.
+[Implementation Plan](#implementation-plan): step 1, the combat content, and
+step 2, the GameService combat boundaries, are implemented; steps 3 to 6 are
+not.
 
 ## Purpose
 
@@ -159,8 +160,10 @@ The Unity Item Catalog editor and Actor Studio edit and preserve every new
 field, with live validation from the shared compilers.
 
 The worker loads the generated item catalog. Its heartbeat reports the catalog
-revision, and GameService rejects a worker whose revision differs from the
-active catalog, the same lockstep rule that the protocol version follows.
+revision, and GameService places characters only on a worker whose revision
+equals the mirrored catalog, so a join or reconnect to any other worker returns
+`simulation_worker_item_catalog_mismatch`. This is the same lockstep idea as the
+protocol version, enforced at placement because GameService owns placement.
 
 ### Character Equipment Summary
 
@@ -171,8 +174,11 @@ entry per occupied equipment slot with item instance id, definition id,
 quantity, and item revision. Every worker-facing response that already carries
 the character's revision also carries this summary: ticket consume at join, the
 session heartbeat, simulation item and corpse operations, the death partition,
-and consumption batches. The worker keeps the highest revision, exactly as
-`CarryStateStore` does today, which it replaces.
+and consumption batches. Mutation responses carry it as `characterState`, read
+right after the commit, so stored operation results and their replays stay
+unchanged; the state can be newer than the operation's own revision but never
+older. The worker keeps the highest revision, exactly as `CarryStateStore` does
+today, which it replaces.
 
 ### Combat State In The Worker
 

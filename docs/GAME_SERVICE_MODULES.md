@@ -1,6 +1,6 @@
 # GameService Modules
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Status
 
@@ -159,7 +159,8 @@ caller keeps its own check order, error codes, and messages.
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
 | `ISimulationPresence` | Placement | Items | Find a character that is in the world |
 | `PlacementSql` | Placement | Items | Shard existence and active simulation session fragments |
-| `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state for its simulation session |
+| `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session |
+| `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items | Read the mirrored item catalog revision that a placed worker must run |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IDatabaseSeeder` | Platform | implemented by Items | Seed the item catalog and back-fill character item state after migrations |
 
@@ -330,6 +331,8 @@ migration's SQL.
 | 18 | `202610171200_item_catalog_alignment` | Items |
 | 19 | `202610181200_character_level` | Characters |
 | 20 | `202610181210_item_level_requirement` | Items |
+| 21 | `202610181220_death_event_killer` | Items |
+| 22 | `202610181230_worker_item_catalog_revision` | Placement |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -338,7 +341,7 @@ Each module lists its own migrations in `IGameServiceModule.Migrations`.
 ordinal id, which reproduces the original application order exactly. Startup
 fails when an id repeats or when the merged list does not start with the shipped
 history, so every new migration must sort after
-`202610181210_item_level_requirement`. A new migration also appends its id
+`202610181230_worker_item_catalog_revision`. A new migration also appends its id
 to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
 `MigrationHistoryTests`.
 
@@ -419,6 +422,8 @@ is Items. R is read, W is write, and L is lock.
 | S40 | Baseline migrations #1 and #6 | mixed DDL | R4, frozen |
 | S41 | Equipment checks the level requirement against the character level | Chr R | `CharactersSql.LevelOf` in `ItemSlotPlacement` |
 | S42 | The Development item tool sets a character's level | Chr L, W | `ICharacterProgression.SetLevelAsync` in `DevelopmentItemToolService` |
+| S43 | Join and reconnect compare the worker's item catalog revision with the mirrored one | Itm R | `IItemCatalogRevisionProvider.GetCurrentRevisionAsync` in `ShardService` |
+| S44 | Ticket consume, session heartbeat, and session release read the equipment with the carry state | Itm R | the same `ISimulationCharacterStateProvider` statement as S11, S12, and S14 |
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
 and `update` on owned tables and fails on any foreign table outside the frozen

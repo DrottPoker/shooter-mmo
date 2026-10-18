@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Requirements
 
@@ -44,6 +44,16 @@ validates identity, bounds, spawn, actor revisions, references,
 ordering, collision checksums, and content semantics before UDP admission
 begins. `SimulationWorker__WorldDataPath` can point a deployment at a different
 canonical Worlds root.
+
+SimulationWorker also loads the compiled item catalog from
+`WorldData/Items/core.item-catalog.json` in its output folder, which the build
+copies from `src/Shared/WorldData/Generated/Items`. It reads combat data and Mob
+loot from that catalog and reports its revision in every heartbeat. GameService
+places characters only on a worker whose revision equals the catalog it
+mirrors, otherwise a join returns `simulation_worker_item_catalog_mismatch`.
+After a catalog change, rebuild and restart both services.
+`SimulationWorker__ItemCatalogPath` can point a deployment at another copy of
+the same catalog.
 
 GameService reads `Items:CatalogPath` from its configuration. The checked-in
 default points to `src/Shared/WorldData/Items/core.item-catalog.json`, which the GameService
@@ -557,7 +567,7 @@ $env:MMORPG_TEST_POSTGRES = `
   "Password=$($values['TEST_POSTGRES_PASSWORD'])"
 dotnet test Mmorpg.slnx `
   --configuration Release `
-  --filter "FullyQualifiedName~PlayerMovementSimulationTests|FullyQualifiedName~CarryStateStoreTests|FullyQualifiedName~SimulationSessionReleaseServiceTests|FullyQualifiedName~AuthoritativePlayerMovementTests|FullyQualifiedName~RealtimeProtocolTests|FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~CarryStateIsFencedIntoJoinHeartbeatAndReconnect|FullyQualifiedName~CarryStateCountsEveryCarriedCustodyExactlyOnceAndExcludesExternalCustody|FullyQualifiedName~SwappingToLowerCapacityBagRejectsTheCompleteAggregateAboveHardCap"
+  --filter "FullyQualifiedName~PlayerMovementSimulationTests|FullyQualifiedName~CarryStateStoreTests|FullyQualifiedName~SimulationSessionReleaseServiceTests|FullyQualifiedName~AuthoritativePlayerMovementTests|FullyQualifiedName~RealtimeProtocolTests|FullyQualifiedName~RealtimeSimulationServiceTests|FullyQualifiedName~CarryStateAndEquipmentAreFencedIntoJoinHeartbeatAndReconnect|FullyQualifiedName~CarryStateCountsEveryCarriedCustodyExactlyOnceAndExcludesExternalCustody|FullyQualifiedName~SwappingToLowerCapacityBagRejectsTheCompleteAggregateAboveHardCap"
 Remove-Item Env:MMORPG_TEST_POSTGRES
 docker compose -f docker-compose.test.yml down
 ```
