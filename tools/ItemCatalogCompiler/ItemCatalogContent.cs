@@ -11,9 +11,12 @@ public sealed class ItemCatalogHeaderDocument
     public string? CatalogId;
     public string? BaseSecureContainerTierId;
     public ItemCharacterSettingsEntry? Character;
+    public ItemProgressionSettingsEntry? Progression;
     public ItemCatalogIdentityEntry[]? Categories;
     public ItemCatalogIdentityEntry[]? Tags;
     public ItemEquipmentSlotEntry[]? EquipmentSlots;
+    public ItemWeaponFamilyEntry[]? WeaponFamilies;
+    public ItemCatalogIdentityEntry[]? AmmunitionFamilies;
     public SecureContainerTierAuthoringEntry[]? SecureContainerTiers;
     public ItemCatalogRetiredIdsEntry? Retired;
 }
@@ -35,9 +38,12 @@ public static class ItemCatalogContent
             CatalogId = header.CatalogId,
             BaseSecureContainerTierId = header.BaseSecureContainerTierId,
             Character = header.Character,
+            Progression = header.Progression,
             Categories = header.Categories,
             Tags = header.Tags,
             EquipmentSlots = header.EquipmentSlots,
+            WeaponFamilies = header.WeaponFamilies,
+            AmmunitionFamilies = header.AmmunitionFamilies,
             Definitions = definitions,
             SecureContainerTiers = header.SecureContainerTiers,
             Retired = header.Retired

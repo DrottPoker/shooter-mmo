@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [
     "off_hand"
@@ -15,6 +16,15 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
-  "unitWeight": 80
+  "unitWeight": 80,
+  "weapon": {
+    "attackIntervalSeconds": 2.4,
+    "damageType": "normal",
+    "maximumDamage": 18,
+    "minimumDamage": 10,
+    "range": 10,
+    "weaponFamily": "bow"
+  }
 }

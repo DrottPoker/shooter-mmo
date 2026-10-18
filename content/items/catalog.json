@@ -1,4 +1,10 @@
 {
+  "ammunitionFamilies": [
+    {
+      "displayName": "Arrow",
+      "id": "arrow"
+    }
+  ],
   "baseSecureContainerTierId": "secure_container.base",
   "catalogId": "core",
   "categories": [
@@ -115,7 +121,10 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 3,
+  "formatVersion": 4,
+  "progression": {
+    "maximumCharacterLevel": 200
+  },
   "retired": {
     "categories": [
       "medical"
@@ -162,6 +171,15 @@
     {
       "displayName": "Ammunition",
       "id": "ammunition"
+    }
+  ],
+  "weaponFamilies": [
+    {
+      "ammunitionFamily": "arrow",
+      "combatStyle": "ranged",
+      "displayName": "Bow",
+      "id": "bow",
+      "projectileSpeed": 30
     }
   ]
 }

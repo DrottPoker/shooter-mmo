@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "armor",
@@ -13,6 +14,8 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
-  "unitWeight": 150
+  "unitWeight": 150,
+  "weapon": null
 }

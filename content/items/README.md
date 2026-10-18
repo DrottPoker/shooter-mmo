@@ -2,9 +2,9 @@
 
 This directory is the neutral source of truth for the shared item catalog:
 
-- `catalog.json` holds the catalog id, the character item settings, categories,
-  tags, equipment slots, Secure Container tiers, the base tier id, and the
-  retired ids.
+- `catalog.json` holds the catalog id, the character item settings, the
+  progression limits, categories, tags, equipment slots, weapon and ammunition
+  families, Secure Container tiers, the base tier id, and the retired ids.
 - `definitions/<definition-id>.json` holds exactly one item definition. The file
   name must equal the `id` inside the file.
 
@@ -14,11 +14,13 @@ content rules are in [../README.md](../README.md).
 
 ## Authoring Contract
 
-Catalog format version 3 contains these separate concepts:
+Catalog format version 4 contains these separate concepts:
 
 - **Character settings** in `character` set the base carry capacity and the
   slot counts of the permanent inventory and the bank that every new character
   starts with. They are content, not code.
+- **Progression** in `progression` sets `maximumCharacterLevel`, the temporary
+  level cap of 200. Every level requirement must fit it.
 - **Categories** define one primary classification per item.
 - **Tags** provide many-to-many Bag slot compatibility.
 - **Equipment slots** have stable ids and are listed in display order. Each slot
@@ -35,14 +37,36 @@ Catalog format version 3 contains these separate concepts:
   category and tags.
 - **Bag layouts** contain contiguous stable slot indices. General slots
   configure no tags. Specialized slots configure one or more accepted tag ids.
+- **Weapon families** in `weaponFamilies` name a combat style (`melee`,
+  `ranged`, or `magic`), the ammunition family a `ranged` family fires, and the
+  `projectileSpeed` of its attacks in metres per second. A `ranged` family needs
+  an ammunition family and a positive speed. A `melee` family has neither and
+  hits at once.
+- **Ammunition families** in `ammunitionFamilies` group ammunition. Any
+  ammunition of a weapon family's ammunition family works with every weapon of
+  that family.
+- **Weapon data** in a definition's `weapon` block names its weapon family and
+  damage type (`normal`, `fire`, `cold`, `nature`, or `shadow`), the integer base
+  damage roll from `minimumDamage` to `maximumDamage`, the
+  `attackIntervalSeconds` between attacks, and the attack `range` in metres.
+  Every `weapon` definition has exactly this block, and no other definition has
+  it.
+- **Ammunition data** in a definition's `ammunition` block names its ammunition
+  family and its `damageBonusPercent` of the weapon roll. Every `ammunition`
+  definition has exactly this block, and no other definition has it.
+- **Level requirements** in `requiredCharacterLevel` are at least 1 on every
+  definition. GameService refuses to equip an item into any equipment slot while
+  the character's level is lower.
 - **Secure Container tiers** have stable ids and integer slot capacities.
 - **Retired ids** in `retired` list every category, tag, equipment slot,
   definition, and tier id that was released and later removed. A retired id can
   never return with any meaning.
 
-Code requires only the ids that rules give a meaning to: the `weapon`, `bag`,
-and `quest_item` categories and the `bag` equipment slot. Every other category,
-tag, and slot is content.
+Code requires only the ids that rules give a meaning to: the `weapon`,
+`ammunition`, `bag`, and `quest_item` categories and the `bag` equipment slot.
+The combat styles and damage types are a closed set in code, because the combat
+triangle and the damage colors give each of them a meaning. Every other
+category, tag, slot, and family is content.
 
 Unit weight, carry capacity, and the Bag carry-capacity bonus use unitless,
 non-negative integer values. Physical measurement units and decimal weight
@@ -75,16 +99,24 @@ not affect the result, except for equipment slots, whose order is their display
 order.
 
 - The complete runtime catalog has one deterministic `revision`. It covers the
-  character settings, every identity, the slot quantities and order, every
-  definition fingerprint, and the retired ids.
+  character settings, the progression limits, every identity, the slot
+  quantities and order, the weapon and ammunition families, every definition
+  fingerprint, every definition's combat data and level requirement, and the
+  retired ids.
 - Every item definition has a deterministic `structuralFingerprint` covering
   rule-affecting fields such as category, tags, weight, stack limit, equipment
   compatibility, blocked equipment slots, location eligibility, default
   policies, and Bag layout.
 - Every Secure Container tier has a structural fingerprint covering its stable
   id and slot capacity.
-- Display-only changes and equipment slot reordering alter the catalog revision
-  but do not alter an item's structural fingerprint.
+- Display-only changes, combat data, level requirements, and equipment slot
+  reordering alter the catalog revision but do not alter an item's structural
+  fingerprint, because none of them changes custody.
+- Structural fingerprints hash their own version,
+  `ItemCatalogFormat.StructuralFingerprintVersion`, instead of the catalog format
+  version. A new format that only adds non-structural fields therefore keeps
+  every persisted definition compatible. Change that version only when the
+  meaning of a structural field changes.
 
 GameService mirrors the catalog into PostgreSQL at startup and refuses to start
 when the change would invalidate live state:
