@@ -104,6 +104,17 @@ namespace Mmorpg.Client.Tests.EditMode
             var overflow = CarryLoadPresentation.From(4_000, 2_500, 16_000, 2_000);
             Assert.That(overflow.Level, Is.EqualTo(CarryLoadLevel.AtHardCap));
             Assert.That(overflow.FillFraction, Is.EqualTo(1f));
+
+            // The floored ratio of an exact hard cap can stay below 140 percent.
+            var flooredCap = CarryLoadPresentation.From(2_801, 2_001, 13_998, 2_000);
+            Assert.That(flooredCap.Level, Is.EqualTo(CarryLoadLevel.AtHardCap));
+            Assert.That(flooredCap.FillFraction, Is.EqualTo(1f));
+            Assert.That(
+                CarryLoadPresentation.From(2_800, 2_001, 13_993, 2_010).Level,
+                Is.EqualTo(CarryLoadLevel.Slowed));
+            Assert.That(
+                CarryLoadPresentation.From(0, 0, 14_000, 2_000).Level,
+                Is.EqualTo(CarryLoadLevel.AtHardCap));
             Assert.That(
                 CarryLoadPresentation.From(10, 2_000, 50, 10_000).LoadPercentText,
                 Is.EqualTo("0.5%"));

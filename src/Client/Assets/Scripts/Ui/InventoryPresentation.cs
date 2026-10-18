@@ -124,7 +124,22 @@ namespace Mmorpg.Client.Ui
 
         public float FillFraction
         {
-            get { return Math.Min(1f, LoadRatioBasisPoints / (float)HardCapBasisPoints); }
+            get
+            {
+                if (Level == CarryLoadLevel.AtHardCap)
+                {
+                    return 1f;
+                }
+
+                if (!HasExactWeights)
+                {
+                    return Math.Min(1f, LoadRatioBasisPoints / (float)HardCapBasisPoints);
+                }
+
+                return (float)Math.Min(
+                    1d,
+                    CarriedWeight * 100d / (CarryCapacity * (double)EncumbranceRules.HardCapLoadPercent));
+            }
         }
 
         public float FullCapacityMarkerFraction
@@ -132,19 +147,41 @@ namespace Mmorpg.Client.Ui
             get { return FullCapacityBasisPoints / (float)HardCapBasisPoints; }
         }
 
+        // The snapshot load ratio is floored, so a character at the exact hard cap can
+        // report slightly less than 140 percent. The level uses the exact weights and the
+        // shared hard-cap rule instead.
         public CarryLoadLevel Level
         {
             get
             {
-                if (LoadRatioBasisPoints >= HardCapBasisPoints)
+                if (!HasExactWeights)
                 {
-                    return CarryLoadLevel.AtHardCap;
+                    if (LoadRatioBasisPoints >= HardCapBasisPoints)
+                    {
+                        return CarryLoadLevel.AtHardCap;
+                    }
+
+                    return LoadRatioBasisPoints > FullCapacityBasisPoints
+                        ? CarryLoadLevel.Slowed
+                        : CarryLoadLevel.Normal;
                 }
 
-                return LoadRatioBasisPoints > FullCapacityBasisPoints
-                    ? CarryLoadLevel.Slowed
-                    : CarryLoadLevel.Normal;
+                if (CarriedWeight <= CarryCapacity)
+                {
+                    return CarryLoadLevel.Normal;
+                }
+
+                // At the hard cap no further weight unit is allowed.
+                return CarriedWeight == long.MaxValue
+                    || !EncumbranceRules.IsWithinHardCap(CarriedWeight + 1, CarryCapacity)
+                        ? CarryLoadLevel.AtHardCap
+                        : CarryLoadLevel.Slowed;
             }
+        }
+
+        private bool HasExactWeights
+        {
+            get { return CarryCapacity > 0 && CarriedWeight >= 0; }
         }
 
         public string LoadPercentText
