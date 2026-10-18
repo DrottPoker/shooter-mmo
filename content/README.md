@@ -14,7 +14,8 @@ content/
   development/
     item-packages.json              item states for the development item tool
   actors/
-    catalog.json                    factions, presentation, activity and respawn profiles
+    catalog.json                    factions, presentation, and activity, respawn, combat,
+                                    brain, locomotion, and loot profiles
     definitions/<actor-id>.json     one NPC or mob definition per file
   worlds/<world-id>/
     world.json                      World manifest read by both services
@@ -67,7 +68,7 @@ at `src/Shared/WorldData/Generated/`:
 | Generated file | Source | Compiler |
 | --- | --- | --- |
 | `Items/core.item-catalog.json` | `items/` | `tools/ItemCatalogCompiler` |
-| `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json` | `tools/WorldActorCompiler` |
+| `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json`, with loot checked against `Items/core.item-catalog.json` | `tools/WorldActorCompiler` |
 | `WorldCollision/<world-id>/` | the World's `collision.json` | `tools/WorldCollisionCompiler` |
 
 Generated data is committed, so the services and the client run without a
@@ -83,7 +84,9 @@ change recompiles every World. The Unity Actor Studio does this on save.
 
 ## Compile And Verify
 
-Each compiler works on every World at once. From the repository root:
+Each compiler works on every World at once. Run the item catalog compiler
+before the actor compiler, because Mob loot is checked against the compiled item
+catalog. From the repository root:
 
 ```powershell
 dotnet run --project tools/ItemCatalogCompiler

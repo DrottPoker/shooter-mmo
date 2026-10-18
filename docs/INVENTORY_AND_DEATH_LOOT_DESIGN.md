@@ -105,6 +105,8 @@ Item definitions also own:
 - Maximum stack size.
 - Equipment-slot compatibility and the equipment slots it blocks while
   equipped.
+- The character level required to equip it.
+- Weapon combat data for weapons and ammunition combat data for ammunition.
 - Whether the item is a Bag.
 - Whether the item may be destroyed by the player.
 - Location restrictions such as Secure Container eligibility.
@@ -232,9 +234,11 @@ An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a
 parallel non-item system.
 
-The server validates definition compatibility, policy restrictions, prospective
-carry weight, and all dependent Bag-capacity rules before committing equipment
-changes.
+The server validates definition compatibility, the level requirement, policy
+restrictions, prospective carry weight, and all dependent Bag-capacity rules
+before committing equipment changes. An item whose `requiredCharacterLevel` is
+above the character's level is rejected with `equipment_level_requirement_not_met`,
+also when a corpse Bag swap would equip it.
 
 ## Bag Rules
 
@@ -780,9 +784,11 @@ The implementation must enforce all of the following:
 These rules are decided and wait for the combat and economy work in
 [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md):
 
-- Combat item data on definitions: base damage, damage type, combat style and
-  weapon family, ammunition family and its bonus, armor type and stats,
-  elemental resistances, healing multipliers, and level requirements.
+- Combat item data on definitions: armor type and stats, elemental
+  resistances, and healing multipliers. Weapon and ammunition combat data and
+  the level requirement are catalog content since format 4, as described in
+  [Item Catalog Authoring](../content/items/README.md), and GameService enforces
+  the level requirement on every equip.
 - Consume and use intents for potions, food, and other consumables, with the
   consumable cooldowns from the combat design.
 - Per-shot ammunition consumption from the equipped ammunition stack. Every shot
