@@ -319,6 +319,9 @@ internal sealed class ItemOperationsMetrics : IDisposable
         ItemOperationKinds.DepositCorpsePartialStack,
         ItemOperationKinds.MoveCorpseItem,
         ItemOperationKinds.MoveCorpsePartialStack,
-        ItemOperationKinds.SwapCorpseBag
+        ItemOperationKinds.SwapCorpseBag,
+        ItemOperationKinds.VendorPurchase,
+        ItemOperationKinds.VendorSale,
+        ItemOperationKinds.GatherResource
     };
 }

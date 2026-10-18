@@ -13,7 +13,7 @@ public sealed class VendorContentTests
         var catalog = ItemCatalogTestData.CompileFixture();
 
         Assert.Equal("Fixture Coins", catalog.Economy.CurrencyDisplayName);
-        Assert.Equal(100, catalog.Economy.StartingBalance);
+        Assert.Equal(0, catalog.Economy.StartingBalance);
         Assert.Equal(["pickaxe"], catalog.ToolKinds.Select(kind => kind.Id));
         Assert.Equal(["pickaxe"], Definition(catalog, "fixture.pickaxe").ToolKinds);
         Assert.Equal(10, Definition(catalog, "fixture.ore").Value);

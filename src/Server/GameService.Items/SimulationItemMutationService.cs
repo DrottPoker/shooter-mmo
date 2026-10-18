@@ -45,7 +45,10 @@ internal sealed class SimulationItemMutationService(
                 request.Access!.Bank,
                 request.Access.RecoveryStorage,
                 request.Access.InsuranceNpc,
-                request.Access.QuestNpc));
+                request.Access.QuestNpc,
+                string.IsNullOrWhiteSpace(request.Access.VendorProfileId)
+                    ? null
+                    : request.Access.VendorProfileId.Trim()));
 
         var operationKind = request.OperationKind!.Trim();
         var operation = operationKind switch
@@ -95,6 +98,18 @@ internal sealed class SimulationItemMutationService(
                 request,
                 cancellationToken),
             ItemOperationKinds.AbandonQuestItems => ExecuteQuestAbandonAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.VendorPurchase => ExecuteVendorPurchaseAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.VendorSale => ExecuteVendorSaleAsync(
+                actor,
+                request,
+                cancellationToken),
+            ItemOperationKinds.GatherResource => ExecuteGatherAsync(
                 actor,
                 request,
                 cancellationToken),
@@ -377,6 +392,86 @@ internal sealed class SimulationItemMutationService(
             : null;
     }
 
+    // The vendor is the profile of the capability the worker validated, never a client value.
+    private Task<ItemTransactionResult>? ExecuteVendorPurchaseAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasNpcContext(request)
+            && Identifiers.IsContentIdentifier(request.Access!.VendorProfileId)
+            && Identifiers.IsContentIdentifier(request.DefinitionId)
+            && request.Quantity > 0
+            && request.ExpectedPrice >= 0
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<PurchaseFromVendorCommand>(
+                    request.OperationId,
+                    actor,
+                    new PurchaseFromVendorCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        request.Access.VendorProfileId!.Trim(),
+                        request.DefinitionId!.Trim(),
+                        request.Quantity!.Value,
+                        request.ExpectedPrice!.Value)),
+                cancellationToken)
+            : null;
+    }
+
+    private Task<ItemTransactionResult>? ExecuteVendorSaleAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasItem(request)
+            && HasNpcContext(request)
+            && Identifiers.IsContentIdentifier(request.Access!.VendorProfileId)
+            && request.Quantity > 0
+            && request.ExpectedPrice >= 0
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<SellToVendorCommand>(
+                    request.OperationId,
+                    actor,
+                    new SellToVendorCommand(
+                        request.CharacterId,
+                        request.ExpectedCharacterRevision,
+                        request.Access.VendorProfileId!.Trim(),
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.Quantity!.Value,
+                        request.ExpectedPrice!.Value)),
+                cancellationToken)
+            : null;
+    }
+
+    // The worker resolved the yield and the tool kind from the node's resource profile;
+    // the handler checks the equipped tool and the item rules.
+    private Task<ItemTransactionResult>? ExecuteGatherAsync(
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken)
+    {
+        return HasNpcContext(request)
+            && Identifiers.IsContentIdentifier(request.ResourceProfileId)
+            && !string.IsNullOrWhiteSpace(request.ResourceNodeId)
+            && Identifiers.IsContentIdentifier(request.RequiredToolKind)
+            && Identifiers.IsContentIdentifier(request.DefinitionId)
+            && request.Quantity > 0
+            ? transactionService.ExecuteAsync(
+                new ItemTransactionRequest<GatherResourceCommand>(
+                    request.OperationId,
+                    actor,
+                    new GatherResourceCommand(
+                        request.CharacterId,
+                        request.ResourceProfileId!.Trim(),
+                        request.ResourceNodeId!.Trim(),
+                        request.RequiredToolKind!.Trim(),
+                        request.DefinitionId!.Trim(),
+                        request.Quantity!.Value)),
+                cancellationToken)
+            : null;
+    }
+
     private static ServiceResult<ItemTransactionResult>? ValidateCommon(
         Guid simulationSessionId,
         SimulationItemOperationRequest request)
@@ -455,7 +550,8 @@ internal sealed class SimulationItemMutationService(
             ItemTransactionErrorCodes.AuthorityRequired or
             ItemTransactionErrorCodes.WrongSimulationWorker or
             ItemTransactionErrorCodes.BankAccessRequired or
-            ItemTransactionErrorCodes.RecoveryAccessRequired =>
+            ItemTransactionErrorCodes.RecoveryAccessRequired or
+            ItemTransactionErrorCodes.VendorAccessRequired =>
                 ServiceResult<ItemTransactionResult>.Forbidden(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemNotFound or
             ItemTransactionErrorCodes.ItemNotOwned or
@@ -469,7 +565,9 @@ internal sealed class SimulationItemMutationService(
             ItemTransactionErrorCodes.EquipmentSlotOccupied or
             ItemTransactionErrorCodes.ItemQuantityChanged or
             ItemTransactionErrorCodes.BagStateChanged or
-            ItemTransactionErrorCodes.WorkerRuntimeChanged =>
+            ItemTransactionErrorCodes.WorkerRuntimeChanged or
+            ItemTransactionErrorCodes.VendorPriceChanged or
+            ItemTransactionErrorCodes.InventoryFull =>
                 ServiceResult<ItemTransactionResult>.Conflict(error.Code, error.Message),
             _ => ServiceResult<ItemTransactionResult>.UnprocessableEntity(
                 error.Code,

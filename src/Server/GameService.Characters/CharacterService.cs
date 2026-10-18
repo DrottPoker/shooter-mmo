@@ -104,6 +104,16 @@ internal sealed class CharacterService(
                 new CharacterCreated(characterId, accountId),
                 cancellationToken);
 
+            // The lifecycle handler may grant the starting balance.
+            character = character with
+            {
+                Currency = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                    "select currency from characters where id = @Id;",
+                    new { Id = characterId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            };
+
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<CharacterResponse>.Ok(character);
         }

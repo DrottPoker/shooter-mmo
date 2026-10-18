@@ -27,7 +27,10 @@ public sealed class GameServiceSchema
         "202607182100_development_world_identity",
         "202607191200_worker_selected_world_binding",
         "202610141800_release_retryable_operation_claims",
-        "202610151000_equipped_item_lookup_index"
+        "202610151000_equipped_item_lookup_index",
+        "202610171200_item_catalog_alignment",
+        "202610181200_character_currency_ledger",
+        "202610181210_item_economy"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

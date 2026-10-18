@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Testing;
@@ -211,6 +212,7 @@ public sealed class DevelopmentItemToolIntegrationTests
                 context.CatalogSource),
             context.Services.GetRequiredService<DevelopmentItemPackageSource>(),
             context.CorpseService,
+            context.Services.GetRequiredService<ICharacterWallet>(),
             new DevelopmentHostEnvironment());
     }
 

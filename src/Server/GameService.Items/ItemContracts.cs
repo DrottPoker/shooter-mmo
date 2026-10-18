@@ -13,7 +13,8 @@ internal sealed record CharacterInventorySnapshotResponse(
     long CarriedWeight,
     long CarryCapacity,
     int LoadRatioBasisPoints,
-    int MovementMultiplierBasisPoints);
+    int MovementMultiplierBasisPoints,
+    long Currency);
 
 internal sealed record ItemContainerSnapshotResponse(
     Guid ContainerId,

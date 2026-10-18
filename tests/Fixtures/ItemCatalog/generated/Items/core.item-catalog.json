@@ -1,7 +1,7 @@
 {
   "formatVersion": 4,
   "catalogId": "core",
-  "revision": "0716ce95968b2281e405d59af018715667741829942c2a003beab34021d13fb6",
+  "revision": "435b769fb8e2d2c88646b79610ec56661c064414dc9a7cf2e154f422bfaba93d",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 200,
@@ -10,7 +10,7 @@
   },
   "economy": {
     "currencyDisplayName": "Fixture Coins",
-    "startingBalance": 100
+    "startingBalance": 0
   },
   "categories": [
     {

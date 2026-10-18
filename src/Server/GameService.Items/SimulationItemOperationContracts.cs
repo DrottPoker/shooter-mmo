@@ -1,10 +1,13 @@
 namespace Mmorpg.GameService.Items;
 
+// VendorProfileId is the vendor profile of the NPC whose vendor capability the worker
+// validated for this operation.
 internal sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
-    bool QuestNpc = false);
+    bool QuestNpc = false,
+    string? VendorProfileId = null);
 
 internal sealed record SimulationItemOperationRequest(
     Guid OperationId,
@@ -29,4 +32,9 @@ internal sealed record SimulationItemOperationRequest(
     long? ExpectedRecoveryDeliveryRevision = null,
     IReadOnlyList<ItemRevisionExpectation>? Items = null,
     Guid? InteractionSessionId = null,
-    string? CapabilityId = null);
+    string? CapabilityId = null,
+    string? DefinitionId = null,
+    long? ExpectedPrice = null,
+    string? ResourceProfileId = null,
+    string? ResourceNodeId = null,
+    string? RequiredToolKind = null);

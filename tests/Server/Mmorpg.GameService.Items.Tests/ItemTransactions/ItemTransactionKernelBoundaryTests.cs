@@ -54,7 +54,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
                 .Select(field => $"{type.Name}.{field.Name}"))
             .ToArray();
 
-        Assert.Equal(19, handlerTypes.Length);
+        Assert.Equal(21, handlerTypes.Length);
         Assert.True(
             mutableFields.Length == 0,
             "Item command handlers are shared across concurrent transactions and may hold only readonly injected fields:"
@@ -168,6 +168,8 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         "GameService.Items/Transactions/Context/CharacterItemStateLocks.cs",
         // S30: insurance charges the character wallet.
         "GameService.Items/Transactions/Handlers/ItemPolicyCommandHandler.cs",
+        // S41 and S42: vendor purchases debit and sales credit the character wallet.
+        "GameService.Items/Transactions/Handlers/VendorCommandHandler.cs",
         // S31: the account's active characters for a tier change.
         "GameService.Items/Transactions/Handlers/SecureContainerTierCommandHandler.cs",
         // S33: the dead character's name and Shard.

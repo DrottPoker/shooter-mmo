@@ -103,3 +103,9 @@ internal sealed class LockedItemPolicy
 internal sealed record ResolvedItemDefinition(
     ItemDefinition RuntimeDefinition,
     bool IsBag);
+
+// An empty carried slot that accepts a new item, for kernel placement.
+internal sealed record CarriedSlot(
+    Guid ContainerId,
+    int SlotIndex,
+    string SlotKind);

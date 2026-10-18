@@ -95,40 +95,12 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 
         bool IsCompatible(DestinationSlot slot)
         {
-            if (string.Equals(
-                    container.ContainerType,
-                    ItemContainerTypeIds.CorpseEquipment,
-                    StringComparison.Ordinal)
-                && (string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
-                    || !ItemEquipmentRules.IsCompatible(
-                        definition.RuntimeDefinition,
-                        slot.EquipmentSlotId)))
-            {
-                return false;
-            }
-
-            if (definition.IsBag)
-            {
-                var wouldCreateCycle = movingBagItemId is not null
-                    && container.BoundBagItemInstanceId == movingBagItemId;
-                return BagDestinationRules.TryResolve(
-                        container.ContainerType,
-                        slot.SlotKind,
-                        out var destinationKind)
-                    && BagLocationRules.CanPlace(
-                        bagHasContents,
-                        destinationKind,
-                        wouldCreateCycle);
-            }
-
-            return ItemSlotRules.Accepts(
-                definition.RuntimeDefinition,
-                new BagSlotDefinition
-                {
-                    Index = slot.SlotIndex,
-                    Kind = slot.SlotKind,
-                    AcceptedTags = slot.AcceptedTags
-                });
+            return IsCompatibleSlot(
+                container,
+                slot,
+                definition,
+                bagHasContents,
+                movingBagItemId);
         }
 
         // A corpse equipment slot holds at most its equipment slot's quantity, so an
@@ -193,6 +165,95 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
         }
 
         return selected.SlotIndex;
+    }
+
+    // Lists the empty slots of an ordinary carried container that accept a new item of the
+    // definition, in slot order, for kernel placement that chooses its own destination.
+    public async Task<IReadOnlyList<CarriedSlot>> ListAcceptingSlotsAsync(
+        LockedContainer container,
+        ResolvedItemDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        var rows = (await Connection.QueryAsync<ContainerSlotQueryRow>(new CommandDefinition(
+            """
+            select
+                slot.slot_index as "SlotIndex",
+                slot.slot_kind as "SlotKind",
+                null::text as "EquipmentSlotId",
+                null::integer as "EquipmentSlotMaximumQuantity",
+                tag.tag_id as "TagId",
+                occupant.id as "OccupantItemInstanceId"
+            from item_container_slots slot
+            left join item_container_slot_tags tag
+              on tag.container_id = slot.container_id
+             and tag.slot_index = slot.slot_index
+            left join item_instances occupant
+              on occupant.container_id = slot.container_id
+             and occupant.container_slot_index = slot.slot_index
+            where slot.container_id = @ContainerId
+            order by slot.slot_index, tag.tag_id;
+            """,
+            new { container.ContainerId },
+            Transaction,
+            cancellationToken: cancellationToken))).ToArray();
+
+        return rows
+            .GroupBy(row => new { row.SlotIndex, row.SlotKind, row.OccupantItemInstanceId })
+            .Select(group => new DestinationSlot(
+                group.Key.SlotIndex,
+                group.Key.SlotKind,
+                group.Where(row => row.TagId is not null).Select(row => row.TagId!).ToArray(),
+                null,
+                null,
+                group.Key.OccupantItemInstanceId))
+            .Where(slot => slot.OccupantItemInstanceId is null
+                && IsCompatibleSlot(container, slot, definition, false, null))
+            .OrderBy(slot => slot.SlotIndex)
+            .Select(slot => new CarriedSlot(container.ContainerId, slot.SlotIndex, slot.SlotKind))
+            .ToArray();
+    }
+
+    private static bool IsCompatibleSlot(
+        LockedContainer container,
+        DestinationSlot slot,
+        ResolvedItemDefinition definition,
+        bool bagHasContents,
+        Guid? movingBagItemId)
+    {
+        if (string.Equals(
+                container.ContainerType,
+                ItemContainerTypeIds.CorpseEquipment,
+                StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                || !ItemEquipmentRules.IsCompatible(
+                    definition.RuntimeDefinition,
+                    slot.EquipmentSlotId)))
+        {
+            return false;
+        }
+
+        if (definition.IsBag)
+        {
+            var wouldCreateCycle = movingBagItemId is not null
+                && container.BoundBagItemInstanceId == movingBagItemId;
+            return BagDestinationRules.TryResolve(
+                    container.ContainerType,
+                    slot.SlotKind,
+                    out var destinationKind)
+                && BagLocationRules.CanPlace(
+                    bagHasContents,
+                    destinationKind,
+                    wouldCreateCycle);
+        }
+
+        return ItemSlotRules.Accepts(
+            definition.RuntimeDefinition,
+            new BagSlotDefinition
+            {
+                Index = slot.SlotIndex,
+                Kind = slot.SlotKind,
+                AcceptedTags = slot.AcceptedTags
+            });
     }
 
     // Checks that the item can enter the empty equipment slot with its whole quantity and that

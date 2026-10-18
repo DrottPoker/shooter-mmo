@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Characters.Persistence;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
@@ -9,7 +10,7 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
 {
     public string Name => "Characters";
 
-    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+    public IReadOnlyList<DatabaseMigration> Migrations => CharactersSchemaMigrations.All;
 
     public IReadOnlyList<string> MeterNames { get; } = [];
 

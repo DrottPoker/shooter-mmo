@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Development;
@@ -12,6 +13,7 @@ internal sealed class DevelopmentItemToolService(
     DevelopmentItemPackageApplier packageApplier,
     DevelopmentItemPackageSource packageSource,
     CorpseService corpseService,
+    ICharacterWallet characterWallet,
     IHostEnvironment environment)
 {
     private const string ToolName = "development item tool";
@@ -34,6 +36,10 @@ internal sealed class DevelopmentItemToolService(
                 packages,
                 cancellationToken),
             DevelopmentItemToolCommandKind.Corpse => await CreateCorpseAsync(
+                command,
+                packages,
+                cancellationToken),
+            DevelopmentItemToolCommandKind.Currency => await GrantCurrencyAsync(
                 command,
                 packages,
                 cancellationToken),
@@ -91,6 +97,37 @@ internal sealed class DevelopmentItemToolService(
             $"Created corpse {result.Value!.Corpse.CorpseId} for {target.CharacterName} "
                 + $"on {command.ShardId} at ({command.PositionX}, {command.PositionY}, {command.PositionZ}). "
                 + "Restart SimulationWorker so it restores the durable corpse.",
+            await LoadDataAsync(packages, cancellationToken));
+    }
+
+    // Credits currency through the wallet, so the development grant gets its ledger row
+    // like every other balance change.
+    private async Task<DevelopmentItemToolResponse> GrantCurrencyAsync(
+        DevelopmentItemToolCommand command,
+        DevelopmentItemPackageDocument packages,
+        CancellationToken cancellationToken)
+    {
+        var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
+        EnsureOffline(target);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var credit = await characterWallet.CreditAsync(
+            new PostgresTransactionScope(connection, transaction),
+            target.CharacterId,
+            command.Amount,
+            new CurrencyChangeSource(CurrencySourceKinds.Development, ToolName.Replace(' ', '_'), null),
+            cancellationToken);
+        if (!credit.Succeeded)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new InvalidOperationException(
+                "The currency grant would exceed the maximum currency balance.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return new DevelopmentItemToolResponse(
+            true,
+            $"Granted {command.Amount} currency to {target.CharacterName}, who now has {credit.After}.",
             await LoadDataAsync(packages, cancellationToken));
     }
 

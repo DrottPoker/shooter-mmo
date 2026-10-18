@@ -11,6 +11,16 @@ public static class CharactersSql
     public const string ActiveCharacters =
         "(select id, account_id, name from characters where deleted_at is null)";
 
+    // The currency balance of a character.
+    public static string CurrencyOf(string characterIdExpression)
+    {
+        return $"""
+            (select characters_sql_currency.currency
+             from characters characters_sql_currency
+             where characters_sql_currency.id = {characterIdExpression})
+            """;
+    }
+
     // The character id when the character exists, deleted or not, otherwise null.
     public static string ExistingIdOrNull(string characterIdExpression)
     {

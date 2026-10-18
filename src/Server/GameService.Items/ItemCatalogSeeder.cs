@@ -53,8 +53,10 @@ internal sealed class ItemCatalogSeeder(
             await mirror.WriteVocabularyAsync(existing);
             await mirror.WriteDefinitionsAsync();
             await mirror.WriteSecureContainerTiersAsync();
+            await mirror.WriteVendorsAsync();
             await mirror.RetireAsync(existing);
             await mirror.WriteCharacterSettingsAsync();
+            await mirror.WriteEconomySettingsAsync();
             await mirror.MakeRevisionCurrentAsync();
 
             await transaction.CommitAsync(cancellationToken);
@@ -409,6 +411,42 @@ internal sealed class ItemCatalogSeeder(
                     new { tag.Id, canonical.CatalogId, canonical.Revision, tag.DisplayName }));
             }
 
+            foreach (var toolKind in canonical.ToolKinds)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into item_tool_kinds (
+                        id,
+                        catalog_id,
+                        catalog_revision,
+                        display_name,
+                        is_active)
+                    values (@Id, @CatalogId, @Revision, @DisplayName, true)
+                    on conflict (id) do update
+                    set catalog_id = excluded.catalog_id,
+                        catalog_revision = excluded.catalog_revision,
+                        display_name = excluded.display_name,
+                        is_active = true,
+                        updated_at = now()
+                    where item_tool_kinds.catalog_id is distinct from excluded.catalog_id
+                       or item_tool_kinds.catalog_revision is distinct from excluded.catalog_revision
+                       or item_tool_kinds.display_name is distinct from excluded.display_name
+                       or not item_tool_kinds.is_active;
+                    """,
+                    new { toolKind.Id, canonical.CatalogId, canonical.Revision, toolKind.DisplayName }));
+            }
+
+            // Tool kinds carry no live state, so a kind that left the catalog only turns inactive.
+            await connection.ExecuteAsync(Command(
+                """
+                update item_tool_kinds
+                set is_active = false,
+                    updated_at = now()
+                where is_active
+                  and id <> all(@ToolKindIds);
+                """,
+                new { ToolKindIds = canonical.ToolKinds.Select(kind => kind.Id).ToArray() }));
+
             // The catalog lists slots in display order.
             for (var index = 0; index < canonical.EquipmentSlots.Length; index++)
             {
@@ -471,6 +509,7 @@ internal sealed class ItemCatalogSeeder(
                         display_name,
                         category_id,
                         unit_weight,
+                        value,
                         maximum_stack_size,
                         player_destroyable,
                         structural_fingerprint,
@@ -482,6 +521,7 @@ internal sealed class ItemCatalogSeeder(
                         @DisplayName,
                         @Category,
                         @UnitWeight,
+                        @Value,
                         @MaximumStackSize,
                         @PlayerDestroyable,
                         @StructuralFingerprint,
@@ -492,6 +532,7 @@ internal sealed class ItemCatalogSeeder(
                         display_name = excluded.display_name,
                         category_id = excluded.category_id,
                         unit_weight = excluded.unit_weight,
+                        value = excluded.value,
                         maximum_stack_size = excluded.maximum_stack_size,
                         player_destroyable = excluded.player_destroyable,
                         structural_fingerprint = excluded.structural_fingerprint,
@@ -502,6 +543,7 @@ internal sealed class ItemCatalogSeeder(
                        or item_definitions.display_name is distinct from excluded.display_name
                        or item_definitions.category_id is distinct from excluded.category_id
                        or item_definitions.unit_weight is distinct from excluded.unit_weight
+                       or item_definitions.value is distinct from excluded.value
                        or item_definitions.maximum_stack_size is distinct from excluded.maximum_stack_size
                        or item_definitions.player_destroyable is distinct from excluded.player_destroyable
                        or item_definitions.structural_fingerprint is distinct from excluded.structural_fingerprint
@@ -515,6 +557,7 @@ internal sealed class ItemCatalogSeeder(
                         definition.DisplayName,
                         definition.Category,
                         definition.UnitWeight,
+                        definition.Value,
                         definition.MaximumStackSize,
                         definition.PlayerDestroyable,
                         definition.StructuralFingerprint
@@ -571,6 +614,97 @@ internal sealed class ItemCatalogSeeder(
                         tier.StructuralFingerprint
                     }));
             }
+        }
+
+        // Vendor offers and sale categories are rewritten with each vendor. A vendor that left
+        // the catalog turns inactive, so no purchase or sale can use it again.
+        public async Task WriteVendorsAsync()
+        {
+            foreach (var vendor in canonical.Vendors)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into vendor_profiles (
+                        id,
+                        catalog_id,
+                        catalog_revision,
+                        display_name,
+                        purchase_price_basis_points,
+                        sale_price_basis_points,
+                        is_active)
+                    values (
+                        @Id,
+                        @CatalogId,
+                        @Revision,
+                        @DisplayName,
+                        @PurchasePriceBasisPoints,
+                        @SalePriceBasisPoints,
+                        true)
+                    on conflict (id) do update
+                    set catalog_id = excluded.catalog_id,
+                        catalog_revision = excluded.catalog_revision,
+                        display_name = excluded.display_name,
+                        purchase_price_basis_points = excluded.purchase_price_basis_points,
+                        sale_price_basis_points = excluded.sale_price_basis_points,
+                        is_active = true,
+                        updated_at = now()
+                    where vendor_profiles.catalog_id is distinct from excluded.catalog_id
+                       or vendor_profiles.catalog_revision is distinct from excluded.catalog_revision
+                       or vendor_profiles.display_name is distinct from excluded.display_name
+                       or vendor_profiles.purchase_price_basis_points
+                           is distinct from excluded.purchase_price_basis_points
+                       or vendor_profiles.sale_price_basis_points
+                           is distinct from excluded.sale_price_basis_points
+                       or not vendor_profiles.is_active;
+
+                    delete from vendor_offers where vendor_id = @Id;
+                    delete from vendor_sale_categories where vendor_id = @Id;
+                    """,
+                    new
+                    {
+                        vendor.Id,
+                        canonical.CatalogId,
+                        canonical.Revision,
+                        vendor.DisplayName,
+                        vendor.PurchasePriceBasisPoints,
+                        vendor.SalePriceBasisPoints
+                    }));
+
+                for (var index = 0; index < vendor.Offers.Length; index++)
+                {
+                    await connection.ExecuteAsync(Command(
+                        """
+                        insert into vendor_offers (vendor_id, offer_index, definition_id)
+                        values (@VendorId, @OfferIndex, @DefinitionId);
+                        """,
+                        new
+                        {
+                            VendorId = vendor.Id,
+                            OfferIndex = index,
+                            vendor.Offers[index].DefinitionId
+                        }));
+                }
+
+                foreach (var category in vendor.SaleCategories)
+                {
+                    await connection.ExecuteAsync(Command(
+                        """
+                        insert into vendor_sale_categories (vendor_id, category_id)
+                        values (@VendorId, @CategoryId);
+                        """,
+                        new { VendorId = vendor.Id, CategoryId = category }));
+                }
+            }
+
+            await connection.ExecuteAsync(Command(
+                """
+                update vendor_profiles
+                set is_active = false,
+                    updated_at = now()
+                where is_active
+                  and id <> all(@VendorIds);
+                """,
+                new { VendorIds = canonical.Vendors.Select(vendor => vendor.Id).ToArray() }));
         }
 
         // Definitions first: active definitions only reference active vocabulary, so once
@@ -670,6 +804,27 @@ internal sealed class ItemCatalogSeeder(
                 }));
         }
 
+        // The currency settings only affect characters created later, so they may change at
+        // any time, unlike the character item settings.
+        public async Task WriteEconomySettingsAsync()
+        {
+            await connection.ExecuteAsync(Command(
+                """
+                update item_system_settings
+                set currency_display_name = @CurrencyDisplayName,
+                    starting_currency_balance = @StartingBalance
+                where id = @CharacterSettingsId
+                  and (currency_display_name is distinct from @CurrencyDisplayName
+                       or starting_currency_balance is distinct from @StartingBalance);
+                """,
+                new
+                {
+                    CharacterSettingsId,
+                    canonical.Economy.CurrencyDisplayName,
+                    canonical.Economy.StartingBalance
+                }));
+        }
+
         public async Task MakeRevisionCurrentAsync()
         {
             await connection.ExecuteAsync(Command(
@@ -693,6 +848,7 @@ internal sealed class ItemCatalogSeeder(
             await connection.ExecuteAsync(Command(
                 """
                 delete from item_definition_tags where definition_id = @DefinitionId;
+                delete from item_definition_tool_kinds where definition_id = @DefinitionId;
                 delete from item_definition_equipment_slots where definition_id = @DefinitionId;
                 delete from item_definition_blocked_equipment_slots where definition_id = @DefinitionId;
                 delete from item_definition_location_rules where definition_id = @DefinitionId;
@@ -709,6 +865,16 @@ internal sealed class ItemCatalogSeeder(
                     values (@DefinitionId, @TagId);
                     """,
                     new { DefinitionId = definition.Id, TagId = tag }));
+            }
+
+            foreach (var toolKind in definition.ToolKinds)
+            {
+                await connection.ExecuteAsync(Command(
+                    """
+                    insert into item_definition_tool_kinds (definition_id, tool_kind_id)
+                    values (@DefinitionId, @ToolKindId);
+                    """,
+                    new { DefinitionId = definition.Id, ToolKindId = toolKind }));
             }
 
             foreach (var equipmentSlot in definition.EquipmentSlots)

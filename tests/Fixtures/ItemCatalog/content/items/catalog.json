@@ -46,7 +46,7 @@
   },
   "economy": {
     "currencyDisplayName": "Fixture Coins",
-    "startingBalance": 100
+    "startingBalance": 0
   },
   "equipmentSlots": [
     {

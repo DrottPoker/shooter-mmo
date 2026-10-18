@@ -110,6 +110,10 @@ internal sealed class ItemPolicyCommandHandler(ICharacterWallet characterWallet)
                 context.Scope,
                 command.CharacterId,
                 command.Price,
+                new CurrencyChangeSource(
+                    CurrencySourceKinds.Insurance,
+                    command.ItemInstanceId.ToString("D"),
+                    context.OperationId),
                 cancellationToken);
             if (!debit.Succeeded)
             {

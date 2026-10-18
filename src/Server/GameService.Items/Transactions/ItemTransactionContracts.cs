@@ -66,11 +66,14 @@ internal sealed record SimulationItemTransactionAuthority(
     [property: JsonIgnore] string SessionTokenHash,
     [property: JsonIgnore] ItemTransactionLiveAccess LiveAccess);
 
+// VendorProfileId names the vendor profile of the NPC whose vendor capability the worker
+// validated for this operation, or is null without vendor access.
 internal sealed record ItemTransactionLiveAccess(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
-    bool QuestNpc = false)
+    bool QuestNpc = false,
+    string? VendorProfileId = null)
 {
     public static ItemTransactionLiveAccess None { get; } = new(false, false, false, false);
 }
@@ -347,6 +350,40 @@ internal sealed record SwapCorpseBagCommand(
     Guid PlayerBagContentsContainerId,
     long ExpectedPlayerBagContentsRevision);
 
+// Buys a quantity of one vendor offer into carried storage. ExpectedPrice is the total the
+// client showed, so the player is never charged a price they did not see.
+internal sealed record PurchaseFromVendorCommand(
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    string VendorId,
+    string DefinitionId,
+    int Quantity,
+    long ExpectedPrice);
+
+// Sells a quantity of one carried item to a vendor. ExpectedPrice is the total the client
+// showed.
+internal sealed record SellToVendorCommand(
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    string VendorId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity,
+    long ExpectedPrice);
+
+// Grants one gathering yield into carried storage. ResourceNodeId is the node's spawn instance
+// id. SimulationWorker resolves the yield and the required tool kind from the resource
+// profile and validates the live interaction;
+// GameService checks the equipped tool in the same transaction. No expected character
+// revision applies, because gathering must not fail when the player moves an item meanwhile.
+internal sealed record GatherResourceCommand(
+    Guid CharacterId,
+    string ResourceProfileId,
+    string ResourceNodeId,
+    string RequiredToolKind,
+    string YieldDefinitionId,
+    int YieldQuantity);
+
 internal sealed record ItemTransactionResult(
     Guid OperationId,
     string OperationKind,
@@ -406,6 +443,9 @@ internal static class ItemOperationKinds
     public const string MoveCorpseItem = "move_corpse_item";
     public const string MoveCorpsePartialStack = "move_corpse_partial_stack";
     public const string SwapCorpseBag = "swap_corpse_bag";
+    public const string VendorPurchase = "vendor_purchase";
+    public const string VendorSale = "vendor_sale";
+    public const string GatherResource = "gather_resource";
 
     // System operations use derived or server-held ids and are retried until they
     // commit, so a rejection is returned without being stored for replay.

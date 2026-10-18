@@ -33,6 +33,8 @@ internal sealed class ItemTransactionService
     private readonly MobCorpseCommandHandler mobCorpse;
     private readonly MobLootGrantCommandHandler mobLootGrant = new();
     private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
+    private readonly VendorCommandHandler vendor;
+    private readonly GatherResourceCommandHandler gatherResource = new();
     private readonly ItemTransactionKernel kernel;
 
     public ItemTransactionService(
@@ -52,6 +54,7 @@ internal sealed class ItemTransactionService
             simulationSessionAuthority,
             simulationWorkerAuthority);
         itemPolicy = new ItemPolicyCommandHandler(characterWallet);
+        vendor = new VendorCommandHandler(characterWallet);
         mobCorpse = new MobCorpseCommandHandler(simulationAuthority);
         kernel = new ItemTransactionKernel(
             dataSource,
@@ -396,6 +399,42 @@ internal sealed class ItemTransactionService
             ItemOperationKinds.ExpireRecoveryDelivery,
             null,
             recoveryExpiry,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<PurchaseFromVendorCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.VendorPurchase,
+            request.Command.CharacterId,
+            vendor,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<SellToVendorCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.VendorSale,
+            request.Command.CharacterId,
+            vendor,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<GatherResourceCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.GatherResource,
+            request.Command.CharacterId,
+            gatherResource,
             cancellationToken);
     }
 
