@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Configuration;
+using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Telemetry;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
@@ -18,6 +19,7 @@ using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.Telemetry;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
+using Mmorpg.WorldData.Actors;
 
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
@@ -57,6 +59,8 @@ builder.AddServerTelemetry(
     [SimulationWorkerTelemetry.ActivitySourceName]);
 var worldActorRuntime = WorldActorLoader.Load(config);
 WorldActorProtocolCompatibility.Validate(worldActorRuntime);
+var itemCatalog = ItemCatalogFileLoader.Load(config.ItemCatalogPath);
+WorldActorItemReferences.Validate(worldActorRuntime, itemCatalog);
 var developmentItemInteractionOptions =
     DevelopmentItemInteractionOptions.FromConfiguration(
         builder.Configuration,
@@ -81,6 +85,7 @@ var collisionWorld = new CompositeCollisionWorld(
 
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(worldActorRuntime);
+builder.Services.AddSingleton(itemCatalog);
 builder.Services.AddSingleton(developmentItemInteractionOptions);
 builder.Services.AddSingleton(collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);

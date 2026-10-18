@@ -35,10 +35,12 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<ICharacterLifecycleHandler, CharacterItemStateLifecycleHandler>();
         services.AddSingleton<ISimulationCharacterStateProvider, SimulationCharacterStateProvider>();
         services.AddSingleton<IShardWorldLocalStateProbe, OpenCorpseShardStateProbe>();
+        services.AddSingleton<IItemCatalogRevisionProvider, ItemCatalogRevisionProvider>();
         services.AddScoped<ItemCatalogQueryService>();
         services.AddScoped<ItemQueryService>();
         services.AddScoped<ItemTransactionService>();
         services.AddScoped<AccountItemMutationService>();
+        services.AddSingleton<SimulationCharacterStates>();
         services.AddScoped<SimulationItemMutationService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();

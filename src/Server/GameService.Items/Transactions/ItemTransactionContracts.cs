@@ -154,6 +154,14 @@ internal sealed record ConsumeItemQuantityCommand(
     long ExpectedItemRevision,
     int Quantity);
 
+// One batch of shots that the SimulationWorker counted against the equipped ammunition.
+internal sealed record ConsumeEquippedAmmunitionCommand(
+    Guid CharacterId,
+    long? ExpectedCharacterRevision,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity);
+
 internal sealed record DestroyItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
@@ -229,7 +237,26 @@ internal sealed record ProcessPlayerDeathCommand(
     double RotationY,
     double RotationZ,
     double RotationW,
-    string PresentationKey);
+    string PresentationKey,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    DeathAmmunitionConsumption? AmmunitionConsumption = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    DeathKiller? Killer = null);
+
+// The shots the worker had not committed yet, consumed inside the death transaction.
+internal sealed record DeathAmmunitionConsumption(
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity);
+
+// Who dealt the lethal hit: a Mob by its actor definition id, or a character by its id.
+internal sealed record DeathKiller(string Kind, string Id);
+
+internal static class DeathKillerKinds
+{
+    public const string Mob = "mob";
+    public const string Character = "character";
+}
 
 internal sealed record CreatePersistentMobCorpseCommand(
     Guid CorpseId,
@@ -386,6 +413,7 @@ internal static class ItemOperationKinds
     public const string MergeStacks = "merge_stacks";
     public const string SwapContainerItems = "swap_container_items";
     public const string ConsumeQuantity = "consume_quantity";
+    public const string ConsumeEquippedAmmunition = "consume_equipped_ammunition";
     public const string Destroy = "destroy";
     public const string SwapBagAggregates = "swap_bag_aggregates";
     public const string AddRecoveryDelivery = "add_recovery_delivery";

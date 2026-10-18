@@ -141,7 +141,8 @@ public sealed class GameServiceClientTests
             containerRevisions = new[] { new { containerId, revision = 4 } },
             itemRevisions = new[] { new { itemInstanceId = itemId, revision = 4 } },
             recoveryDeliveryIds = Array.Empty<Guid>(),
-            secureContainerEntitlementRevision = (long?)null
+            secureContainerEntitlementRevision = (long?)null,
+            characterState = CharacterStateTestData.Create(characterId, 13, 25)
         }));
         var client = CreateClient(handler);
 
@@ -189,7 +190,9 @@ public sealed class GameServiceClientTests
             0d,
             0d,
             1d,
-            "corpse.remains");
+            "corpse.remains",
+            new SimulationDeathAmmunitionRequest(Guid.NewGuid(), 3, 2),
+            new SimulationDeathKillerRequest("mob", "mob.wolf"));
         var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
         {
             operationId,
@@ -221,7 +224,8 @@ public sealed class GameServiceClientTests
                 carriedWeight = 0,
                 carryCapacity = 200
             },
-            recoveryDeliveryIds = Array.Empty<Guid>()
+            recoveryDeliveryIds = Array.Empty<Guid>(),
+            characterState = CharacterStateTestData.Create(characterId, 13)
         }));
         var client = CreateClient(handler);
 
@@ -242,6 +246,112 @@ public sealed class GameServiceClientTests
         Assert.Equal(
             "simulation-session-token",
             body.RootElement.GetProperty("sessionToken").GetString());
+        var ammunition = body.RootElement.GetProperty("ammunitionConsumption");
+        Assert.Equal(
+            requestBody.AmmunitionConsumption!.ItemInstanceId,
+            ammunition.GetProperty("itemInstanceId").GetGuid());
+        Assert.Equal(3, ammunition.GetProperty("expectedItemRevision").GetInt64());
+        Assert.Equal(2, ammunition.GetProperty("quantity").GetInt32());
+        var killer = body.RootElement.GetProperty("killer");
+        Assert.Equal("mob", killer.GetProperty("kind").GetString());
+        Assert.Equal("mob.wolf", killer.GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task AmmunitionConsumptionSendsTheBatchAndValidatesTheCommittedState()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var request = CreateAmmunitionRequest();
+        var equipped = new SimulationEquippedItem(
+            "ammunition",
+            request.ItemInstanceId,
+            "ammunition.bronze_arrow",
+            45,
+            4);
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(
+            CreateAmmunitionResponse(
+                request,
+                CharacterStateTestData.Create(request.CharacterId, 13, equipment: [equipped]))));
+
+        var result = await CreateClient(handler).ConsumeAmmunitionAsync(
+            simulationSessionId,
+            request,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(equipped, Assert.Single(result.Value!.CharacterState!.Equipment));
+        var sent = Assert.Single(handler.Requests);
+        Assert.Equal(
+            $"/api/simulation-sessions/{simulationSessionId}/ammunition-consumptions",
+            sent.Path);
+        using var body = JsonDocument.Parse(sent.Body);
+        Assert.Equal(request.OperationId, body.RootElement.GetProperty("operationId").GetGuid());
+        Assert.Equal(12, body.RootElement.GetProperty("expectedCharacterRevision").GetInt64());
+        Assert.Equal(
+            request.ItemInstanceId,
+            body.RootElement.GetProperty("itemInstanceId").GetGuid());
+        Assert.Equal(3, body.RootElement.GetProperty("expectedItemRevision").GetInt64());
+        Assert.Equal(5, body.RootElement.GetProperty("quantity").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("missing_state")]
+    [InlineData("older_state")]
+    [InlineData("other_character")]
+    [InlineData("duplicate_slot")]
+    [InlineData("invalid_definition")]
+    [InlineData("unchanged_item")]
+    [InlineData("other_operation_kind")]
+    public async Task AmmunitionConsumptionRejectsAnInconsistentCommittedState(string variant)
+    {
+        var request = CreateAmmunitionRequest();
+        var equipped = new SimulationEquippedItem(
+            "ammunition",
+            request.ItemInstanceId,
+            "ammunition.bronze_arrow",
+            45,
+            4);
+        var state = CharacterStateTestData.Create(request.CharacterId, 13, equipment: [equipped]);
+        var valid = CreateAmmunitionResponse(request, state);
+        var response = variant switch
+        {
+            "missing_state" => valid with { CharacterState = null },
+            "older_state" => valid with { CharacterState = state with { ItemStateRevision = 12 } },
+            "other_character" => valid with
+            {
+                CharacterState = state with { CharacterId = Guid.NewGuid() }
+            },
+            "duplicate_slot" => valid with
+            {
+                CharacterState = state with
+                {
+                    Equipment = [equipped, equipped with { ItemInstanceId = Guid.NewGuid() }]
+                }
+            },
+            "invalid_definition" => valid with
+            {
+                CharacterState = state with
+                {
+                    Equipment = [equipped with { DefinitionId = "Bronze Arrow" }]
+                }
+            },
+            "unchanged_item" => valid with
+            {
+                ItemRevisions = [new SimulationItemInstanceRevision(request.ItemInstanceId, 3)]
+            },
+            "other_operation_kind" => valid with { OperationKind = "consume_quantity" },
+            _ => throw new ArgumentOutOfRangeException(nameof(variant), variant, null)
+        };
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(response));
+
+        var result = await CreateClient(handler).ConsumeAmmunitionAsync(
+            Guid.NewGuid(),
+            request,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
     }
 
     [Fact]
@@ -263,6 +373,7 @@ public sealed class GameServiceClientTests
             protocolVersion = requestBody.ProtocolVersion,
             simulationRevision = requestBody.SimulationRevision,
             collisionRevision = requestBody.CollisionRevision,
+            itemCatalogRevision = requestBody.ItemCatalogRevision,
             lastHeartbeatAt = DateTime.UtcNow,
             onlineUntil = DateTime.UtcNow.AddSeconds(30)
         }));
@@ -286,6 +397,9 @@ public sealed class GameServiceClientTests
         Assert.Equal(
             RealtimeProtocol.Version,
             body.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(
+            "item-catalog-revision-1",
+            body.RootElement.GetProperty("itemCatalogRevision").GetString());
     }
 
     [Fact]
@@ -495,6 +609,7 @@ public sealed class GameServiceClientTests
                 recoveryDeliveryIds = Array.Empty<Guid>(),
                 secureContainerEntitlementRevision = (long?)null
             },
+            characterState = CharacterStateTestData.Create(characterId, 13, 30),
             corpse = CreateCorpseViewPayload(
                 corpseId,
                 characterId,
@@ -575,6 +690,7 @@ public sealed class GameServiceClientTests
                 recoveryDeliveryIds = Array.Empty<Guid>(),
                 secureContainerEntitlementRevision = (long?)null
             },
+            characterState = CharacterStateTestData.Create(characterId, 13, 20),
             corpse = CreateCorpseViewPayload(
                 corpseId,
                 characterId,
@@ -639,6 +755,7 @@ public sealed class GameServiceClientTests
                 recoveryDeliveryIds = Array.Empty<Guid>(),
                 secureContainerEntitlementRevision = (long?)null
             },
+            characterState = CharacterStateTestData.Create(characterId, 7),
             corpse = CreateCorpseViewPayload(
                 corpseId,
                 characterId,
@@ -721,6 +838,7 @@ public sealed class GameServiceClientTests
                 recoveryDeliveryIds = Array.Empty<Guid>(),
                 secureContainerEntitlementRevision = (long?)null
             },
+            characterState = CharacterStateTestData.Create(characterId, 2),
             corpse = CreateCorpseViewPayload(corpseId, characterId, "local-shard-1", 2)
         }));
 
@@ -907,7 +1025,8 @@ public sealed class GameServiceClientTests
             4,
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
-            "collision-revision-1");
+            "collision-revision-1",
+            "item-catalog-revision-1");
     }
 
     private static object[] CreateCorpseSections()
@@ -994,6 +1113,39 @@ public sealed class GameServiceClientTests
                 }
             }
         };
+    }
+
+    private static SimulationAmmunitionConsumptionRequest CreateAmmunitionRequest()
+    {
+        return new SimulationAmmunitionConsumptionRequest(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            12,
+            Guid.NewGuid(),
+            3,
+            5);
+    }
+
+    private static SimulationItemTransactionResponse CreateAmmunitionResponse(
+        SimulationAmmunitionConsumptionRequest request,
+        SimulationCharacterState state)
+    {
+        return new SimulationItemTransactionResponse(
+            request.OperationId,
+            "consume_equipped_ammunition",
+            true,
+            null,
+            [new SimulationItemCharacterRevision(request.CharacterId, 13, 0, 200)],
+            [],
+            [new SimulationItemInstanceRevision(request.ItemInstanceId, 4)],
+            [],
+            null,
+            state);
     }
 
     private static GameServiceClient CreateClient(HttpMessageHandler handler)

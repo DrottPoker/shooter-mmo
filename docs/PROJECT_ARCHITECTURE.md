@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -824,7 +824,7 @@ live corpses and central actor scheduling.
 | `fleets` | Regional or operational compute groups |
 | `simulation_nodes` | Machines or hosts assigned to fleets |
 | `shards` | Player-selectable simulations tied to a World and Fleet |
-| `simulation_workers` | Logical workers and current runtime metadata |
+| `simulation_workers` | Logical workers and current runtime metadata, including the protocol, simulation, collision, and item catalog revisions |
 | `simulation_assignments` | Historical and active worker-to-shard mappings |
 | `simulation_join_tickets` | Short-lived exact-runtime admission credentials |
 | `character_simulation_sessions` | Global active simulation leases |
@@ -846,7 +846,7 @@ live corpses and central actor scheduling.
 | `corpses` | Durable source snapshot, Shard transform, presentation key, revision, absolute expiry, and close lifecycle |
 | `corpse_sections` | General inventory, equipment, and Bag-section bindings to real item containers |
 | `corpse_snapshots` | Non-interactive Secure tier, insured equipment, and protected or insured Bag presentation metadata |
-| `death_events` | Unique authoritative death event, original operation, canonical request hash, corpse, and immutable result correlation |
+| `death_events` | Unique authoritative death event, original operation, canonical request hash, corpse, immutable result correlation, and the optional killer kind and id |
 
 Every table belongs to exactly one GameService module: `accounts` and
 `account_sessions` to Accounts, `characters` to Characters, the World, Fleet,

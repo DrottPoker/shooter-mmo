@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Placement.Contracts;
+
 namespace Mmorpg.GameService.Placement;
 
 internal sealed record ShardResponse(
@@ -34,7 +36,8 @@ internal sealed record SimulationWorkerHeartbeatRequest(
     int ActiveConnections,
     int ProtocolVersion,
     string? SimulationRevision,
-    string? CollisionRevision);
+    string? CollisionRevision,
+    string? ItemCatalogRevision);
 
 internal sealed record SimulationWorkerHeartbeatResponse(
     string WorkerId,
@@ -50,6 +53,7 @@ internal sealed record SimulationWorkerHeartbeatResponse(
     int ProtocolVersion,
     string SimulationRevision,
     string CollisionRevision,
+    string ItemCatalogRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 
@@ -97,6 +101,9 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
     // The lease duration lets the worker set a deadline on its own clock, so clock
     // differences between the worker and the database never move the deadline.
     public long SessionLeaseDurationMilliseconds { get; init; }
+
+    // What the character has equipped at ItemStateRevision.
+    public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 }
 
 internal sealed record SimulationSessionCredentialRequest(
@@ -118,4 +125,7 @@ internal sealed record SimulationSessionLeaseResponse(
     // The lease duration lets the worker set a deadline on its own clock, so clock
     // differences between the worker and the database never move the deadline.
     public long LeaseDurationMilliseconds { get; init; }
+
+    // What the character has equipped at ItemStateRevision.
+    public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 }

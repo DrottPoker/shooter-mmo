@@ -7,11 +7,65 @@ namespace Mmorpg.GameService.Items;
 
 internal sealed class SimulationItemMutationService(
     ItemTransactionService transactionService,
+    SimulationCharacterStates characterStates,
     NpcItemLifecycleOptions npcOptions)
 {
     public const int MaximumRecoveryClaimItems = 24;
 
-    public async Task<ServiceResult<ItemTransactionResult>> ExecuteAsync(
+    public async Task<ServiceResult<SimulationItemOperationResponse>> ConsumeAmmunitionAsync(
+        string authenticatedWorkerId,
+        Guid simulationSessionId,
+        SimulationAmmunitionConsumptionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(authenticatedWorkerId, request.WorkerId, StringComparison.Ordinal))
+        {
+            return ServiceResult<SimulationItemOperationResponse>.Forbidden(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The authenticated simulation worker cannot consume another worker's ammunition.");
+        }
+
+        if (simulationSessionId == Guid.Empty
+            || request.OperationId == Guid.Empty
+            || request.AccountId == Guid.Empty
+            || request.CharacterId == Guid.Empty
+            || request.ExpectedCharacterRevision < 0
+            || request.ItemInstanceId == Guid.Empty
+            || request.ExpectedItemRevision < 0
+            || request.Quantity is < 1 or > ItemCatalogFormat.MaximumQuantity
+            || !Identifiers.IsServiceIdentifier(request.WorkerId)
+            || !Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(request.ShardId)
+            || string.IsNullOrWhiteSpace(request.SessionToken)
+            || request.SessionToken.Length > 1024)
+        {
+            return Invalid("The ammunition consumption request is incomplete or invalid.");
+        }
+
+        var actor = ItemTransactionActor.ForSimulationWorker(
+            request.AccountId,
+            request.CharacterId,
+            simulationSessionId,
+            request.WorkerId!.Trim(),
+            request.WorkerRuntimeId!.Trim(),
+            request.ShardId!.Trim(),
+            TokenGenerator.HashToken(request.SessionToken!.Trim()),
+            ItemTransactionLiveAccess.None);
+        var result = await transactionService.ExecuteAsync(
+            new ItemTransactionRequest<ConsumeEquippedAmmunitionCommand>(
+                request.OperationId,
+                actor,
+                new ConsumeEquippedAmmunitionCommand(
+                    request.CharacterId,
+                    request.ExpectedCharacterRevision,
+                    request.ItemInstanceId,
+                    request.ExpectedItemRevision,
+                    request.Quantity)),
+            cancellationToken);
+        return await MapResultAsync(result, request.CharacterId, cancellationToken);
+    }
+
+    public async Task<ServiceResult<SimulationItemOperationResponse>> ExecuteAsync(
         string authenticatedWorkerId,
         Guid simulationSessionId,
         SimulationItemOperationRequest request,
@@ -22,7 +76,7 @@ internal sealed class SimulationItemMutationService(
                 request.WorkerId,
                 StringComparison.Ordinal))
         {
-            return ServiceResult<ItemTransactionResult>.Forbidden(
+            return ServiceResult<SimulationItemOperationResponse>.Forbidden(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
                 "The authenticated simulation worker cannot submit another worker's item operation.");
         }
@@ -103,7 +157,7 @@ internal sealed class SimulationItemMutationService(
 
         return operation is null
             ? Invalid("The requested in-world item operation is not supported.")
-            : MapResult(await operation);
+            : await MapResultAsync(await operation, request.CharacterId, cancellationToken);
     }
 
     private Task<ItemTransactionResult>? ExecuteRelocateAsync(
@@ -377,7 +431,7 @@ internal sealed class SimulationItemMutationService(
             : null;
     }
 
-    private static ServiceResult<ItemTransactionResult>? ValidateCommon(
+    private static ServiceResult<SimulationItemOperationResponse>? ValidateCommon(
         Guid simulationSessionId,
         SimulationItemOperationRequest request)
     {
@@ -432,36 +486,45 @@ internal sealed class SimulationItemMutationService(
     }
 
 
-    private static ServiceResult<ItemTransactionResult> Invalid(string message)
+    private static ServiceResult<SimulationItemOperationResponse> Invalid(string message)
     {
-        return ServiceResult<ItemTransactionResult>.BadRequest(
+        return ServiceResult<SimulationItemOperationResponse>.BadRequest(
             ItemApiErrorCodes.SimulationOperationInvalid,
             message);
     }
 
-    private static ServiceResult<ItemTransactionResult> MapResult(ItemTransactionResult result)
+    private async Task<ServiceResult<SimulationItemOperationResponse>> MapResultAsync(
+        ItemTransactionResult result,
+        Guid characterId,
+        CancellationToken cancellationToken)
     {
-        if (result.Succeeded)
-        {
-            return ServiceResult<ItemTransactionResult>.Ok(result);
-        }
+        return result.Succeeded
+            ? ServiceResult<SimulationItemOperationResponse>.Ok(
+                SimulationItemOperationResponse.From(
+                    result,
+                    await characterStates.ReadAsync(characterId, cancellationToken)))
+            : MapRejection(result);
+    }
 
+    private static ServiceResult<SimulationItemOperationResponse> MapRejection(
+        ItemTransactionResult result)
+    {
         var error = result.Error
             ?? throw new InvalidOperationException("A rejected item operation has no error.");
         return error.Code switch
         {
             ItemTransactionErrorCodes.SimulationSessionInvalid =>
-                ServiceResult<ItemTransactionResult>.Unauthorized(error.Code, error.Message),
+                ServiceResult<SimulationItemOperationResponse>.Unauthorized(error.Code, error.Message),
             ItemTransactionErrorCodes.AuthorityRequired or
             ItemTransactionErrorCodes.WrongSimulationWorker or
             ItemTransactionErrorCodes.BankAccessRequired or
             ItemTransactionErrorCodes.RecoveryAccessRequired =>
-                ServiceResult<ItemTransactionResult>.Forbidden(error.Code, error.Message),
+                ServiceResult<SimulationItemOperationResponse>.Forbidden(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemNotFound or
             ItemTransactionErrorCodes.ItemNotOwned or
             ItemTransactionErrorCodes.RecoveryDeliveryNotFound or
             ItemTransactionErrorCodes.ItemPolicyNotFound =>
-                ServiceResult<ItemTransactionResult>.NotFound(error.Code, error.Message),
+                ServiceResult<SimulationItemOperationResponse>.NotFound(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemStateConflict or
             ItemTransactionErrorCodes.ItemOperationConflict or
             ItemTransactionErrorCodes.ItemTransactionTimeout or
@@ -470,8 +533,8 @@ internal sealed class SimulationItemMutationService(
             ItemTransactionErrorCodes.ItemQuantityChanged or
             ItemTransactionErrorCodes.BagStateChanged or
             ItemTransactionErrorCodes.WorkerRuntimeChanged =>
-                ServiceResult<ItemTransactionResult>.Conflict(error.Code, error.Message),
-            _ => ServiceResult<ItemTransactionResult>.UnprocessableEntity(
+                ServiceResult<SimulationItemOperationResponse>.Conflict(error.Code, error.Message),
+            _ => ServiceResult<SimulationItemOperationResponse>.UnprocessableEntity(
                 error.Code,
                 error.Message)
         };

@@ -29,6 +29,10 @@
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Items\core.item-catalog.json"
+             Link="WorldData\Items\core.item-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\Shared\WorldData\Generated\Worlds\**\world-actors.json"
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"

@@ -30,7 +30,9 @@ public sealed class GameServiceSchema
         "202610151000_equipped_item_lookup_index",
         "202610171200_item_catalog_alignment",
         "202610181200_character_level",
-        "202610181210_item_level_requirement"
+        "202610181210_item_level_requirement",
+        "202610181220_death_event_killer",
+        "202610181230_worker_item_catalog_revision"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

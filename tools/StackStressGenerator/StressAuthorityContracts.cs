@@ -12,7 +12,8 @@ public sealed record StressWorkerHeartbeatRequest(
     int ActiveConnections,
     int ProtocolVersion,
     string SimulationRevision,
-    string CollisionRevision);
+    string CollisionRevision,
+    string ItemCatalogRevision);
 
 public sealed record StressWorkerHeartbeatResponse(
     string WorkerId,
@@ -28,6 +29,7 @@ public sealed record StressWorkerHeartbeatResponse(
     int ProtocolVersion,
     string SimulationRevision,
     string CollisionRevision,
+    string ItemCatalogRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 
@@ -64,6 +66,9 @@ public sealed record StressConsumedTicketResponse(
 
     // Matches GameService: the worker sets its lease deadline on its own clock.
     public long SessionLeaseDurationMilliseconds { get; init; }
+
+    // Matches GameService: stress bots join without equipment.
+    public IReadOnlyList<object> Equipment { get; init; } = [];
 }
 
 public sealed record StressSessionCredentialRequest(
@@ -84,6 +89,9 @@ public sealed record StressSessionLeaseResponse(
 {
     // Matches GameService: zero after a release, the lease lifetime otherwise.
     public long LeaseDurationMilliseconds { get; init; }
+
+    // Matches GameService: stress bots never equip items.
+    public IReadOnlyList<object> Equipment { get; init; } = [];
 }
 
 public sealed record StressCorpseRestoreResponse(
@@ -163,7 +171,9 @@ public sealed record StressWorkerRegistration(
     string CollisionRevision,
     DateTime StartedAt,
     DateTime LastHeartbeatAt,
-    DateTime OnlineUntil);
+    DateTime OnlineUntil,
+    // Null in full-stack runs: GameService gates placement on it and does not expose it.
+    string? ItemCatalogRevision = null);
 
 public sealed record StressAuthorityCounters(
     long WorkerHeartbeats,

@@ -15,6 +15,7 @@ internal sealed partial class CorpseService(
     SimulationWorkerLeasePolicy workerLeasePolicy,
     ISimulationWorkerAuthority workerAuthority,
     ISimulationSessionAuthority sessionAuthority,
+    SimulationCharacterStates characterStates,
     ILogger<CorpseService> logger)
 {
     private NpgsqlDataSource DataSource => dataSource;
@@ -70,7 +71,14 @@ internal sealed partial class CorpseService(
                 request.RotationY,
                 request.RotationZ,
                 request.RotationW,
-                request.PresentationKey.Trim()),
+                request.PresentationKey.Trim(),
+                request.AmmunitionConsumption is { } consumption
+                    ? new DeathAmmunitionConsumption(
+                        consumption.ItemInstanceId,
+                        consumption.ExpectedItemRevision,
+                        consumption.Quantity)
+                    : null,
+                request.Killer is { } killer ? CanonicalKiller(killer) : null),
             cancellationToken);
     }
 
@@ -148,7 +156,7 @@ internal sealed partial class CorpseService(
             new PersistentMobCorpseResponse(request.OperationId, corpse));
     }
 
-    public async Task<ServiceResult<ItemTransactionResult>> GrantLiveMobLootAsync(
+    public async Task<ServiceResult<SimulationItemOperationResponse>> GrantLiveMobLootAsync(
         string authenticatedWorkerId,
         Guid simulationSessionId,
         SimulationMobLootGrantRequest request,
@@ -159,14 +167,14 @@ internal sealed partial class CorpseService(
                 request.WorkerId,
                 StringComparison.Ordinal))
         {
-            return ServiceResult<ItemTransactionResult>.Forbidden(
+            return ServiceResult<SimulationItemOperationResponse>.Forbidden(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
                 "The authenticated simulation worker cannot submit another worker's Mob loot grant.");
         }
 
         if (!IsValidSimulationMobLootGrantRequest(simulationSessionId, request))
         {
-            return ServiceResult<ItemTransactionResult>.BadRequest(
+            return ServiceResult<SimulationItemOperationResponse>.BadRequest(
                 ItemApiErrorCodes.SimulationOperationInvalid,
                 "The live Mob loot grant request is incomplete or invalid.");
         }
@@ -196,7 +204,13 @@ internal sealed partial class CorpseService(
                     request.ExpectedDestinationContainerRevision,
                     request.DestinationSlotIndex)),
             cancellationToken);
-        return MapTransactionResult<ItemTransactionResult>(result, result);
+        return MapTransactionResult(
+            result,
+            result.Succeeded
+                ? SimulationItemOperationResponse.From(
+                    result,
+                    await characterStates.ReadAsync(request.CharacterId, cancellationToken))
+                : null);
     }
 
     public async Task<ServiceResult<CorpseRestoreResponse>> ListForWorkerAsync(
@@ -371,7 +385,8 @@ internal sealed partial class CorpseService(
                 partition.DeathEventId,
                 partition.Corpse,
                 partition.CharacterRevision,
-                partition.RecoveryDeliveryIds));
+                partition.RecoveryDeliveryIds,
+                await characterStates.ReadAsync(command.CharacterId, cancellationToken)));
     }
 
     private async Task<CorpsePartitionRecord?> LoadPartitionRecordAsync(
@@ -718,7 +733,34 @@ internal sealed partial class CorpseService(
             && string.Equals(
                 request.PresentationKey,
                 ItemTransactionService.DefaultPlayerCorpsePresentationKey,
-                StringComparison.Ordinal);
+                StringComparison.Ordinal)
+            && (request.AmmunitionConsumption is null
+                || (request.AmmunitionConsumption.ItemInstanceId != Guid.Empty
+                    && request.AmmunitionConsumption.ExpectedItemRevision >= 0
+                    && request.AmmunitionConsumption.Quantity is >= 1
+                        and <= Mmorpg.WorldData.Items.ItemCatalogFormat.MaximumQuantity))
+            && (request.Killer is null || IsValidKiller(request.Killer));
+    }
+
+    // A character killer is stored as the canonical Guid text, so audit queries match it.
+    private static DeathKiller CanonicalKiller(SimulationDeathKillerRequest killer)
+    {
+        var kind = killer.Kind.Trim();
+        return new DeathKiller(
+            kind,
+            string.Equals(kind, DeathKillerKinds.Character, StringComparison.Ordinal)
+                ? Guid.Parse(killer.Id).ToString("D")
+                : killer.Id.Trim());
+    }
+
+    private static bool IsValidKiller(SimulationDeathKillerRequest killer)
+    {
+        return killer.Kind?.Trim() switch
+        {
+            DeathKillerKinds.Mob => Identifiers.IsContentIdentifier(killer.Id?.Trim()),
+            DeathKillerKinds.Character => Guid.TryParse(killer.Id, out var id) && id != Guid.Empty,
+            _ => false
+        };
     }
 
     private static bool IsValidPersistentMobCorpseRequest(
