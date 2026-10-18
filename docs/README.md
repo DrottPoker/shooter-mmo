@@ -74,6 +74,10 @@ operations, and future design do not drift into duplicate descriptions.
   product and domain source of truth for items, equipment, slot inventory, Bags,
   the Secure Container, carry weight, death loot, corpses, insurance, and
   Recovery Storage, split into decided, proposed, and open rules.
+- [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) plans the MVP slice
+  for target-based combat and the first Mob: its product decisions, the
+  architecture of combat state, attack timing, ammunition batching, death events,
+  Mob AI, protocol, and client presentation, and the implementation order.
 - [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   records the delivered phases of the item and world-actor foundation. The
   current implementation status is in [Project Overview](PROJECT_OVERVIEW.md).

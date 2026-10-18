@@ -315,7 +315,7 @@ collide with the delivered item phases in
 | SimulationWorker performance baseline | Complete | Headless stress clients, active bots, visibility and packet reuse, bounded backpressure, and repeatable baselines |
 | Items, inventory, equipment, and carry weight | Complete | Everything in [Items And Inventory](#items-and-inventory), with the temporary Unity inventory UI |
 | Vendor and gathering | Planned in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) | One NPC vendor capability, one resource node type with the starter pickaxe, gathering through the item transaction service, and selling to the vendor |
-| Target-based combat and simple Mob | Not started | One Ranged weapon with consumed ammunition, target selection and auto attack, health and damage, authoritative death events, and one simple Mob with live loot |
+| Target-based combat and simple Mob | Planned in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) | One Ranged weapon with consumed ammunition, target selection and auto attack, health and damage, authoritative death events, and one simple Mob with live loot |
 | Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas without Zones or Layers, instant logout in the Safe City, a five-minute body after disconnect in the Open Risk area, and reconnect to the same body |
 | Death, Recovery, and corpse looting | Foundation complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, and insurance are done. The combat death producer and final corpse presentation remain |
 
@@ -340,7 +340,6 @@ These should not block the first playable MVP:
 - Should Shard switching have a cooldown after logout?
 - Should resource nodes be per-Shard live state only, or persisted with respawn
   timestamps?
-- Should the first Mob be hostile by default or only aggressive when attacked?
 - The item balance questions, such as Secure Container eligibility, Bank
   unlocks, and Recovery Storage expiry, are in the
   [open questions of the inventory design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#open-questions).

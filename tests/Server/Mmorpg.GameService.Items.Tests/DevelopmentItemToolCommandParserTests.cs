@@ -133,6 +133,41 @@ public sealed class DevelopmentItemToolCommandParserTests
     }
 
     [Fact]
+    public void LevelCommandParsesTheCharacterAndLevel()
+    {
+        var characterId = Guid.NewGuid();
+
+        var activated = DevelopmentItemToolCommandParser.TryParse(
+            ["--dev-items-level", characterId.ToString(), "12"],
+            out var command,
+            out var error);
+
+        Assert.True(activated);
+        Assert.NotNull(command);
+        Assert.Equal(DevelopmentItemToolCommandKind.Level, command.Kind);
+        Assert.Equal(characterId, command.CharacterId);
+        Assert.Equal(12, command.Level);
+        Assert.Empty(error);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("+3")]
+    [InlineData("level")]
+    public void LevelCommandRejectsANonPositiveLevel(string level)
+    {
+        var activated = DevelopmentItemToolCommandParser.TryParse(
+            ["--dev-items-level", Guid.NewGuid().ToString(), level],
+            out var command,
+            out var error);
+
+        Assert.True(activated);
+        Assert.Null(command);
+        Assert.Equal("--dev-items-level requires <characterGuid> <positiveLevel>.", error);
+    }
+
+    [Fact]
     public void MultipleDevelopmentCommandsAreRejected()
     {
         var activated = DevelopmentItemToolCommandParser.TryParse(

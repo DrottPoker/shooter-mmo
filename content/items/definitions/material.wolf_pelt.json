@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "material",
+  "defaultPolicies": [ ],
+  "displayName": "Wolf Pelt",
+  "equipmentSlots": [ ],
+  "id": "material.wolf_pelt",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 50,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [
+    "material"
+  ],
+  "toolKinds": [ ],
+  "unitWeight": 20,
+  "value": 15,
+  "weapon": null
+}

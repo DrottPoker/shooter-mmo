@@ -256,7 +256,9 @@ slot limit. Dropping a compatible stack onto the equipped stack tops it up, and
 `Split` from the equipped stack moves part of it into an empty slot.
 An item cannot be equipped into a slot that an equipped item blocks, such as
 the off hand next to a two-handed bow, or while it would block an occupied
-slot. All mutations use the existing authoritative
+slot. An item whose level requirement is above the character's level cannot be
+equipped either; every character is level 1 and every shipped item requires
+level 1 until experience exists. All mutations use the existing authoritative
 SimulationWorker and GameService path. The panel renders only refreshed
 committed snapshots and never pretends that a pending mutation has completed.
 See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).

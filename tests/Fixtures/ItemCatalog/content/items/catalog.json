@@ -1,4 +1,10 @@
 {
+  "ammunitionFamilies": [
+    {
+      "displayName": "Arrow",
+      "id": "arrow"
+    }
+  ],
   "baseSecureContainerTierId": "secure_container.base",
   "catalogId": "core",
   "categories": [
@@ -95,7 +101,10 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 4,
+  "formatVersion": 5,
+  "progression": {
+    "maximumCharacterLevel": 200
+  },
   "retired": {
     "categories": [ ],
     "definitions": [ ],
@@ -132,6 +141,22 @@
     {
       "displayName": "Pickaxe",
       "id": "pickaxe"
+    }
+  ],
+  "weaponFamilies": [
+    {
+      "ammunitionFamily": "",
+      "combatStyle": "melee",
+      "displayName": "Blade",
+      "id": "blade",
+      "projectileSpeed": 0
+    },
+    {
+      "ammunitionFamily": "arrow",
+      "combatStyle": "ranged",
+      "displayName": "Bow",
+      "id": "bow",
+      "projectileSpeed": 30
     }
   ]
 }

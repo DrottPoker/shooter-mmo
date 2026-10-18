@@ -35,5 +35,9 @@
     "activityProfileId": "",
     "respawnProfileId": "",
     "corpsePersistenceMode": "",
-    "corpseLifetimeSeconds": 0.0
+    "corpseLifetimeSeconds": 0.0,
+    "combatProfileId": "",
+    "brainProfileId": "",
+    "locomotionProfileId": "",
+    "lootProfileId": ""
 }

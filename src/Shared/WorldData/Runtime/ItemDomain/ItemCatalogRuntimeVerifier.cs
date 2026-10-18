@@ -72,8 +72,9 @@ namespace Mmorpg.WorldData.Items
             return canonical;
         }
 
-        // Unity's JsonUtility never yields a null nested object, so a Bag without slots, which
-        // a valid catalog cannot contain, stands for no Bag.
+        // Unity's JsonUtility never yields a null nested object, so a Bag without slots, a
+        // weapon without a family, and ammunition without a family, which a valid catalog
+        // cannot contain, stand for none.
         public static ItemCatalogAuthoringDocument ToAuthoring(ItemCatalogRuntimeDocument runtime)
         {
             if (runtime == null)
@@ -101,6 +102,12 @@ namespace Mmorpg.WorldData.Items
                         CurrencyDisplayName = runtime.Economy.CurrencyDisplayName,
                         StartingBalance = runtime.Economy.StartingBalance
                     },
+                Progression = runtime.Progression == null
+                    ? null
+                    : new ItemProgressionSettingsEntry
+                    {
+                        MaximumCharacterLevel = runtime.Progression.MaximumCharacterLevel
+                    },
                 Categories = runtime.Categories?.Select(CloneIdentity).ToArray(),
                 Tags = runtime.Tags?.Select(CloneIdentity).ToArray(),
                 ToolKinds = runtime.ToolKinds?.Select(CloneIdentity).ToArray(),
@@ -114,6 +121,19 @@ namespace Mmorpg.WorldData.Items
                             MaximumQuantity = slot.MaximumQuantity
                         })
                     .ToArray(),
+                WeaponFamilies = runtime.WeaponFamilies?
+                    .Select(family => family == null
+                        ? null
+                        : new ItemWeaponFamilyEntry
+                        {
+                            Id = family.Id,
+                            DisplayName = family.DisplayName,
+                            CombatStyle = family.CombatStyle,
+                            AmmunitionFamily = family.AmmunitionFamily,
+                            ProjectileSpeed = family.ProjectileSpeed
+                        })
+                    .ToArray(),
+                AmmunitionFamilies = runtime.AmmunitionFamilies?.Select(CloneIdentity).ToArray(),
                 Definitions = runtime.Definitions?.Select(ToAuthoringDefinition).ToArray(),
                 SecureContainerTiers = runtime.SecureContainerTiers?
                     .Select(tier => tier == null
@@ -172,6 +192,10 @@ namespace Mmorpg.WorldData.Items
             var hasBag = definition.Bag != null
                 && definition.Bag.Slots != null
                 && definition.Bag.Slots.Length > 0;
+            var hasWeapon = definition.Weapon != null
+                && !string.IsNullOrEmpty(definition.Weapon.WeaponFamily);
+            var hasAmmunition = definition.Ammunition != null
+                && !string.IsNullOrEmpty(definition.Ammunition.AmmunitionFamily);
             return new ItemDefinitionAuthoringEntry
             {
                 Id = definition.Id,
@@ -207,6 +231,25 @@ namespace Mmorpg.WorldData.Items
                                     AcceptedTags = slot.AcceptedTags
                                 })
                             .ToArray()
+                    },
+                RequiredCharacterLevel = definition.RequiredCharacterLevel,
+                Weapon = !hasWeapon
+                    ? null
+                    : new ItemWeaponEntry
+                    {
+                        WeaponFamily = definition.Weapon.WeaponFamily,
+                        DamageType = definition.Weapon.DamageType,
+                        MinimumDamage = definition.Weapon.MinimumDamage,
+                        MaximumDamage = definition.Weapon.MaximumDamage,
+                        AttackIntervalSeconds = definition.Weapon.AttackIntervalSeconds,
+                        Range = definition.Weapon.Range
+                    },
+                Ammunition = !hasAmmunition
+                    ? null
+                    : new ItemAmmunitionEntry
+                    {
+                        AmmunitionFamily = definition.Ammunition.AmmunitionFamily,
+                        DamageBonusPercent = definition.Ammunition.DamageBonusPercent
                     }
             };
         }

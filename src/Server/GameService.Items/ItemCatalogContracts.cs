@@ -28,6 +28,7 @@ internal sealed record ItemCatalogDefinitionResponse(
     long UnitWeight,
     int MaximumStackSize,
     bool PlayerDestroyable,
+    int RequiredCharacterLevel,
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> EquipmentSlots,
     IReadOnlyList<string> BlockedEquipmentSlots,

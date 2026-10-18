@@ -51,6 +51,25 @@ namespace Mmorpg.WorldData.Actors
                 runtime.ResourceProfiles.Select(value => value.Id).ToArray(),
                 "runtime.resourceProfiles",
                 errors);
+            var mobProfiles = new MobProfileIds(
+                activityIds,
+                respawnIds,
+                ValidateOrderedRuntimeIds(
+                    runtime.CombatProfiles.Select(value => value.Id).ToArray(),
+                    "runtime.combatProfiles",
+                    errors),
+                ValidateOrderedRuntimeIds(
+                    runtime.BrainProfiles.Select(value => value.Id).ToArray(),
+                    "runtime.brainProfiles",
+                    errors),
+                ValidateOrderedRuntimeIds(
+                    runtime.LocomotionProfiles.Select(value => value.Id).ToArray(),
+                    "runtime.locomotionProfiles",
+                    errors),
+                ValidateOrderedRuntimeIds(
+                    runtime.LootProfiles.Select(value => value.Id).ToArray(),
+                    "runtime.lootProfiles",
+                    errors));
             var actorIds = ValidateOrderedRuntimeIds(
                 runtime.Actors.Select(value => value.Id).ToArray(),
                 "runtime.actors",
@@ -82,12 +101,12 @@ namespace Mmorpg.WorldData.Actors
             ValidateRuntimeActivityProfiles(runtime.ActivityProfiles, errors);
             ValidateRuntimeRespawnProfiles(runtime.RespawnProfiles, errors);
             ValidateRuntimeResourceProfiles(runtime.ResourceProfiles, errors);
+            ValidateRuntimeMobProfiles(runtime, errors);
             ValidateRuntimeActors(
                 runtime.Actors,
                 factionIds,
                 presentationKinds,
-                activityIds,
-                respawnIds,
+                mobProfiles,
                 resourceIds,
                 errors);
             ValidateRuntimePatrols(runtime.PatrolPaths, errors);
@@ -145,6 +164,26 @@ namespace Mmorpg.WorldData.Actors
                 "runtime.resourceProfiles",
                 errors,
                 false);
+            valid &= RequireRuntimeCollection(
+                runtime.CombatProfiles,
+                "runtime.combatProfiles",
+                errors,
+                false);
+            valid &= RequireRuntimeCollection(
+                runtime.BrainProfiles,
+                "runtime.brainProfiles",
+                errors,
+                false);
+            valid &= RequireRuntimeCollection(
+                runtime.LocomotionProfiles,
+                "runtime.locomotionProfiles",
+                errors,
+                false);
+            valid &= RequireRuntimeCollection(
+                runtime.LootProfiles,
+                "runtime.lootProfiles",
+                errors,
+                false);
             valid &= RequireRuntimeCollection(runtime.Actors, "runtime.actors", errors, true);
             valid &= RequireRuntimeCollection(
                 runtime.SpawnSources,
@@ -171,6 +210,14 @@ namespace Mmorpg.WorldData.Actors
                 && runtime.RespawnProfiles.Length > MaximumDefinitionsPerCollection
                 || runtime.ResourceProfiles != null
                 && runtime.ResourceProfiles.Length > MaximumDefinitionsPerCollection
+                || runtime.CombatProfiles != null
+                && runtime.CombatProfiles.Length > MaximumDefinitionsPerCollection
+                || runtime.BrainProfiles != null
+                && runtime.BrainProfiles.Length > MaximumDefinitionsPerCollection
+                || runtime.LocomotionProfiles != null
+                && runtime.LocomotionProfiles.Length > MaximumDefinitionsPerCollection
+                || runtime.LootProfiles != null
+                && runtime.LootProfiles.Length > MaximumDefinitionsPerCollection
                 || runtime.Actors != null
                 && runtime.Actors.Length > MaximumDefinitionsPerCollection)
             {
@@ -415,12 +462,115 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
+        private static void ValidateRuntimeMobProfiles(
+            WorldActorRuntimeDocument runtime,
+            ICollection<string> errors)
+        {
+            foreach (var value in runtime.CombatProfiles)
+            {
+                var path = "runtime combat profile " + value.Id;
+                AddRuntimeProblem(
+                    CombatProfileProblem(
+                        value.MaximumHealth,
+                        value.AttackStyle,
+                        value.AttackDamageType,
+                        value.MinimumDamage,
+                        value.MaximumDamage,
+                        value.AttackIntervalSeconds,
+                        value.AttackRange),
+                    path,
+                    errors);
+                CheckRuntimeFingerprint(
+                    value.StructuralFingerprint,
+                    CombatProfileFingerprint(value),
+                    path,
+                    errors);
+            }
+
+            foreach (var value in runtime.BrainProfiles)
+            {
+                var path = "runtime brain profile " + value.Id;
+                AddRuntimeProblem(
+                    BrainProfileProblem(
+                        value.Aggression,
+                        value.DetectionRange,
+                        value.LeashRange,
+                        value.GiveUpSeconds),
+                    path,
+                    errors);
+                CheckRuntimeFingerprint(
+                    value.StructuralFingerprint,
+                    BrainProfileFingerprint(value),
+                    path,
+                    errors);
+            }
+
+            foreach (var value in runtime.LocomotionProfiles)
+            {
+                var path = "runtime locomotion profile " + value.Id;
+                AddRuntimeProblem(
+                    LocomotionProfileProblem(
+                        value.WalkSpeed,
+                        value.CollisionRadius,
+                        value.CollisionHeight),
+                    path,
+                    errors);
+                CheckRuntimeFingerprint(
+                    value.StructuralFingerprint,
+                    LocomotionProfileFingerprint(value),
+                    path,
+                    errors);
+            }
+
+            foreach (var value in runtime.LootProfiles)
+            {
+                var path = "runtime loot profile " + value.Id;
+                if (value.Entries == null
+                    || value.Entries.Length == 0
+                    || value.Entries.Length > WorldActorCorpseRules.MaximumLootEntries
+                    || value.Entries.Any(entry => entry == null))
+                {
+                    errors.Add(path + " has an invalid entry list.");
+                    continue;
+                }
+
+                var definitionIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var entry in value.Entries)
+                {
+                    AddIdentifier(definitionIds, entry.DefinitionId, path + " definitionId", errors);
+                    AddRuntimeProblem(
+                        LootEntryProblem(
+                            entry.MinimumQuantity,
+                            entry.MaximumQuantity,
+                            entry.ChanceBasisPoints),
+                        path,
+                        errors);
+                }
+
+                CheckRuntimeFingerprint(
+                    value.StructuralFingerprint,
+                    LootProfileFingerprint(value),
+                    path,
+                    errors);
+            }
+        }
+
+        private static void AddRuntimeProblem(
+            string problem,
+            string path,
+            ICollection<string> errors)
+        {
+            if (problem != null)
+            {
+                errors.Add(path + " is invalid: " + problem);
+            }
+        }
+
         private static void ValidateRuntimeActors(
             WorldActorDefinition[] values,
             ISet<string> factionIds,
             IReadOnlyDictionary<string, string> presentationKinds,
-            ISet<string> activityIds,
-            ISet<string> respawnIds,
+            MobProfileIds mobProfiles,
             ISet<string> resourceIds,
             ICollection<string> errors)
         {
@@ -462,14 +612,37 @@ namespace Mmorpg.WorldData.Actors
                 {
                     ValidateReference(
                         value.ActivityProfileId,
-                        activityIds,
+                        mobProfiles.Activity,
                         "runtime actor activityProfileId",
                         errors);
                     ValidateReference(
                         value.RespawnProfileId,
-                        respawnIds,
+                        mobProfiles.Respawn,
                         "runtime actor respawnProfileId",
                         errors);
+                    ValidateReference(
+                        value.CombatProfileId,
+                        mobProfiles.Combat,
+                        "runtime actor combatProfileId",
+                        errors);
+                    ValidateReference(
+                        value.BrainProfileId,
+                        mobProfiles.Brain,
+                        "runtime actor brainProfileId",
+                        errors);
+                    ValidateReference(
+                        value.LocomotionProfileId,
+                        mobProfiles.Locomotion,
+                        "runtime actor locomotionProfileId",
+                        errors);
+                    if (!string.IsNullOrEmpty(value.LootProfileId))
+                    {
+                        ValidateReference(
+                            value.LootProfileId,
+                            mobProfiles.Loot,
+                            "runtime actor lootProfileId",
+                            errors);
+                    }
                     ValidateSupported(
                         value.CorpsePersistenceMode,
                         SupportedCorpsePersistenceModes,
@@ -498,6 +671,22 @@ namespace Mmorpg.WorldData.Actors
                     ValidateOptionalEmpty(
                         value.CorpsePersistenceMode,
                         "runtime actor corpsePersistenceMode",
+                        errors);
+                    ValidateOptionalEmpty(
+                        value.CombatProfileId,
+                        "runtime actor combatProfileId",
+                        errors);
+                    ValidateOptionalEmpty(
+                        value.BrainProfileId,
+                        "runtime actor brainProfileId",
+                        errors);
+                    ValidateOptionalEmpty(
+                        value.LocomotionProfileId,
+                        "runtime actor locomotionProfileId",
+                        errors);
+                    ValidateOptionalEmpty(
+                        value.LootProfileId,
+                        "runtime actor lootProfileId",
                         errors);
                     if (value.CorpseLifetimeSeconds != 0f)
                     {
@@ -609,30 +798,9 @@ namespace Mmorpg.WorldData.Actors
                     capabilityFingerprints.Add(expected);
                 }
 
-                var bounds = value.InteractionBounds;
-                var actorFingerprint = Fingerprint(
-                    value.Id,
-                    value.DisplayName,
-                    value.Kind,
-                    value.FactionId,
-                    value.Disposition,
-                    value.PresentationArchetypeId,
-                    value.DamagePolicy,
-                    string.Join(",", value.Tags),
-                    Float(bounds.CenterX),
-                    Float(bounds.CenterY),
-                    Float(bounds.CenterZ),
-                    Float(bounds.SizeX),
-                    Float(bounds.SizeY),
-                    Float(bounds.SizeZ),
-                    value.ActivityProfileId,
-                    value.RespawnProfileId,
-                    value.CorpsePersistenceMode,
-                    Float(value.CorpseLifetimeSeconds),
-                    string.Join(",", capabilityFingerprints));
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    actorFingerprint,
+                    ActorFingerprint(value, capabilityFingerprints),
                     "runtime actor " + value.Id,
                     errors);
             }

@@ -1,8 +1,8 @@
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "5191e892c5d08409a18c1226ae65553a84106ae8874609d93d9c64f100bb97e2",
+  "revision": "b4f23ceb32b37365530f7ef2526caa83b12a4e262dd443b54cd9b0bc64fdbec4",
   "factions": [
     {
       "id": "city",
@@ -67,6 +67,12 @@
   ],
   "respawnProfiles": [
     {
+      "id": "mob.boss",
+      "delaySeconds": 300,
+      "populationLimit": 4,
+      "structuralFingerprint": "14b50445c5f4ed8f04a8ff2fafa2c1a91f92c731d470876e01751505b461c0b1"
+    },
+    {
       "id": "mob.normal",
       "delaySeconds": 30,
       "populationLimit": 32,
@@ -83,6 +89,102 @@
       "charges": 5,
       "respawnSeconds": 30,
       "structuralFingerprint": "7735e56d519d4dafd8039027e6b72405be46ab31f195972f5901b4ae05ef17ea"
+    }
+  ],
+  "combatProfiles": [
+    {
+      "id": "mob.feral_alpha",
+      "maximumHealth": 240,
+      "attackStyle": "melee",
+      "attackDamageType": "normal",
+      "minimumDamage": 7,
+      "maximumDamage": 12,
+      "attackIntervalSeconds": 2.4,
+      "attackRange": 2,
+      "structuralFingerprint": "1c3360e7daefa6af5c8249fe599c030bd887846c13a39701efd55eed1ee3910c"
+    },
+    {
+      "id": "mob.feral_wolf",
+      "maximumHealth": 50,
+      "attackStyle": "melee",
+      "attackDamageType": "normal",
+      "minimumDamage": 4,
+      "maximumDamage": 9,
+      "attackIntervalSeconds": 1.8,
+      "attackRange": 1.5,
+      "structuralFingerprint": "9c253dc08afc5fd8b2ce2dcc17486ccbf17d90946c2c7cf1b9759c814c4d4fc5"
+    }
+  ],
+  "brainProfiles": [
+    {
+      "id": "mob.aggressive",
+      "aggression": "aggressive",
+      "detectionRange": 8,
+      "leashRange": 30,
+      "giveUpSeconds": 10,
+      "structuralFingerprint": "2752c82bcb7587d5f40a4717b50360b89af7de657ea679a26f0f5f056470677c"
+    },
+    {
+      "id": "mob.aggressive_boss",
+      "aggression": "aggressive",
+      "detectionRange": 10,
+      "leashRange": 30,
+      "giveUpSeconds": 10,
+      "structuralFingerprint": "5b8562ac7bcb47dc8688167020fa1114709282f10ac058b1d87316134eb0463a"
+    }
+  ],
+  "locomotionProfiles": [
+    {
+      "id": "mob.large_quadruped",
+      "walkSpeed": 4.5,
+      "collisionRadius": 0.6,
+      "collisionHeight": 1.6,
+      "structuralFingerprint": "73a343a32420fc4436d2474eefa7f6c6f02281c408a642e5a8ebe82bd2dcab31"
+    },
+    {
+      "id": "mob.quadruped",
+      "walkSpeed": 4.5,
+      "collisionRadius": 0.4,
+      "collisionHeight": 1.1,
+      "structuralFingerprint": "178d689415f584e66d07a58ff948c4c280e2f9986022418b097243d8f82f226b"
+    }
+  ],
+  "lootProfiles": [
+    {
+      "id": "mob.feral_alpha",
+      "entries": [
+        {
+          "definitionId": "material.wolf_pelt",
+          "minimumQuantity": 3,
+          "maximumQuantity": 3,
+          "chanceBasisPoints": 10000
+        },
+        {
+          "definitionId": "jewelry.copper_ring",
+          "minimumQuantity": 1,
+          "maximumQuantity": 1,
+          "chanceBasisPoints": 2500
+        }
+      ],
+      "structuralFingerprint": "71cf84bb5d4f29943d3359a3ed9fe89b1e64c7f2a501763f4508d1f25a5d1596"
+    },
+    {
+      "id": "mob.feral_wolf",
+      "entries": [
+        {
+          "definitionId": "material.wolf_pelt",
+          "minimumQuantity": 1,
+          "maximumQuantity": 1,
+          "chanceBasisPoints": 10000
+        },
+        {
+          "definitionId": "ammunition.bronze_arrow",
+          "minimumQuantity": 3,
+          "maximumQuantity": 8,
+          "chanceBasisPoints": 4000
+        }
+      ],
+      "structuralFingerprint": "af31927978040016cd152382a7311ade6b90979055cb4ddd0821e522cb004621"
     }
   ],
   "actors": [
@@ -109,10 +211,14 @@
       },
       "capabilities": [],
       "activityProfileId": "mob.standard",
-      "respawnProfileId": "mob.normal",
+      "respawnProfileId": "mob.boss",
       "corpsePersistenceMode": "durable",
       "corpseLifetimeSeconds": 600,
-      "structuralFingerprint": "b22a8d003e04283d4b74f9d8b9f76e8f887e55abe006759fde588570e7dcfbee"
+      "combatProfileId": "mob.feral_alpha",
+      "brainProfileId": "mob.aggressive_boss",
+      "locomotionProfileId": "mob.large_quadruped",
+      "lootProfileId": "mob.feral_alpha",
+      "structuralFingerprint": "d7a25ea683c3386c4bd4ad6baec637eada5f152dd72f85d9692fbb924759464a"
     },
     {
       "id": "mob.feral_wolf",
@@ -139,7 +245,11 @@
       "respawnProfileId": "mob.normal",
       "corpsePersistenceMode": "live",
       "corpseLifetimeSeconds": 120,
-      "structuralFingerprint": "01b3798e9e821580b51d08262479611766f42df54b17c9e5fddb804b4d674514"
+      "combatProfileId": "mob.feral_wolf",
+      "brainProfileId": "mob.aggressive",
+      "locomotionProfileId": "mob.quadruped",
+      "lootProfileId": "mob.feral_wolf",
+      "structuralFingerprint": "418239ea0c4404cbc91bec4319ee53854471efca092cc03c4eed4a851c8e3e78"
     },
     {
       "id": "npc.city_guard",
@@ -181,7 +291,11 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
-      "structuralFingerprint": "f7b9cdf7d920624caff04a986528abadfab6a0df767a082b4169613e2bcae029"
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "structuralFingerprint": "1b1bb146918e40963a27f867f2791ce706718cf1e7b5cc7385561d61d19611da"
     },
     {
       "id": "npc.city_services",
@@ -265,7 +379,11 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
-      "structuralFingerprint": "1412275ed045d5e57924b9d4a584f300bb5a0103bb9dd7b188b4c2a0c1d2ab4e"
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "structuralFingerprint": "5eefe9694d51a4016721bffc54f7d68933d2a3829d51e229f15d8b2d5279c0f4"
     },
     {
       "id": "resource.iron_vein",
@@ -300,7 +418,11 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
-      "structuralFingerprint": "1d0881f87e30a0e6333f6919ea9635d722855318cb179cc2990b83b8e2a6412c"
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "structuralFingerprint": "f86074ac239ac07badbb48747f343882f009f3360f373b6c295fa0a622a5e639"
     }
   ],
   "spawnSources": [
@@ -343,6 +465,26 @@
       "spacing": 0,
       "seed": 0,
       "structuralFingerprint": "1d0a13ff9ac20960173a0cc7909f3938501a1a1d79afbb63ef35a55b8dbb4120"
+    },
+    {
+      "id": "development_world_2.feral_alpha",
+      "kind": "point",
+      "actorId": "mob.feral_alpha",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": -120,
+      "originY": 0,
+      "originZ": -195,
+      "minimumX": -120,
+      "minimumZ": -195,
+      "maximumX": -120,
+      "maximumZ": -195,
+      "yawDegrees": 315,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "104a0dce13c90c2fb7b13415629da6d05cca1b8fd74c4f28ca7164cfc21a9eb5"
     },
     {
       "id": "development_world_2.feral_wolves",
@@ -418,6 +560,17 @@
       "yawDegrees": 270,
       "patrolPathId": "",
       "structuralFingerprint": "56ee0bc094bacf45ac5a9d422dfe82daf704faf39ada3632f969db8792b59f3a"
+    },
+    {
+      "id": "development_world_2.feral_alpha:0000",
+      "spawnDefinitionId": "development_world_2.feral_alpha",
+      "actorId": "mob.feral_alpha",
+      "x": -120,
+      "y": 0,
+      "z": -195,
+      "yawDegrees": 315,
+      "patrolPathId": "",
+      "structuralFingerprint": "766dbf3ffcd3403bd929e1af1d76d3ab923c7e64291321bb7349fe527c112d93"
     },
     {
       "id": "development_world_2.feral_wolves:0000",

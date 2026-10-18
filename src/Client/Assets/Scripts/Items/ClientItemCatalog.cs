@@ -211,7 +211,7 @@ namespace Mmorpg.Client.Items
                 foreach (var definition in document.definitions
                     ?? Array.Empty<ItemCatalogJsonDefinition>())
                 {
-                    definition.ClearMissingBagPlaceholder();
+                    definition.ClearMissingPlaceholders();
                 }
 
                 revision = JsonUtility.FromJson<ClientItemCatalogRevisionJson>(json).revision;

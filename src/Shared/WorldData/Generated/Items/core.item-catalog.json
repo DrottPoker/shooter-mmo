@@ -1,7 +1,7 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "catalogId": "core",
-  "revision": "c66dda424e37f011a8b891b2c7da05fea7cf3e96d4698a6482e1c223f71380cb",
+  "revision": "76c8cd8ae93a6fcd945d8be4ed992fff78df63d6ae0c72215ab86849c1babe16",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
@@ -11,6 +11,9 @@
   "economy": {
     "currencyDisplayName": "Gold",
     "startingBalance": 100
+  },
+  "progression": {
+    "maximumCharacterLevel": 200
   },
   "categories": [
     {
@@ -145,6 +148,21 @@
       "maximumQuantity": 1
     }
   ],
+  "weaponFamilies": [
+    {
+      "id": "bow",
+      "displayName": "Bow",
+      "combatStyle": "ranged",
+      "ammunitionFamily": "arrow",
+      "projectileSpeed": 30
+    }
+  ],
+  "ammunitionFamilies": [
+    {
+      "id": "arrow",
+      "displayName": "Arrow"
+    }
+  ],
   "definitions": [
     {
       "id": "ammunition.bronze_arrow",
@@ -166,6 +184,11 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "ammunition": {
+        "ammunitionFamily": "arrow",
+        "damageBonusPercent": 5
+      },
       "structuralFingerprint": "fa06e0a7bc54db1272427fc42b47209a84690c5c7c919fe41c759f9e3cf7ca5e"
     },
     {
@@ -186,6 +209,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "c9d11b020651869e3ae8bf1bb79d171548904dae1780f5ea0c862f8a53ad389f"
     },
     {
@@ -253,6 +277,7 @@
           }
         ]
       },
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "c1278a32aa3887b0018bb55984230b9ee3e6dea83030f75ee9d5dfe97acd5680"
     },
     {
@@ -273,6 +298,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "0a14fa2f9dca4eebec1565fa0f185ff89ae5600e770a361e12a705ee5fb77499"
     },
     {
@@ -294,6 +320,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "f110fde13edbe2470eab2af9ad7897a8f948ea8814ccb1ac12edb1229c18cfdb"
     },
     {
@@ -314,7 +341,29 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "929a4e984b8982ab049ee54fe011d09a8e8d2f2f8f931242e5813f5f00de4df6"
+    },
+    {
+      "id": "material.wolf_pelt",
+      "displayName": "Wolf Pelt",
+      "category": "material",
+      "tags": [
+        "material"
+      ],
+      "toolKinds": [],
+      "unitWeight": 20,
+      "value": 15,
+      "maximumStackSize": 50,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "3494fe310c70df42374200eec525f293206dcb074f0f051b7e604fd0d7752617"
     },
     {
       "id": "potion.minor_healing",
@@ -334,6 +383,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "6ba213d79c76a2284c1fe912a2129bee6b97c4b3e4f5c37abbe1b6e68eed95dc"
     },
     {
@@ -354,6 +404,7 @@
       "defaultPolicies": [
         "protected_on_death"
       ],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "3caed9e50ded159ed28151e4b60e18f69cedb0021c7ef9c7cd83d33e59fdc508"
     },
     {
@@ -376,6 +427,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "f5e00ea2809b4aeabf79ae97c1c0b09d9d360f6dca98579bb05a85392eadefef"
     },
     {
@@ -398,6 +450,15 @@
         "secureContainer": false
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "weapon": {
+        "weaponFamily": "bow",
+        "damageType": "normal",
+        "minimumDamage": 10,
+        "maximumDamage": 18,
+        "attackIntervalSeconds": 2.4,
+        "range": 10
+      },
       "structuralFingerprint": "f062a6af3f7a41e821539b89a50408d07abd5a6577548fe54e7167c749542732"
     }
   ],

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Mmorpg.WorldData.Combat;
 
 namespace Mmorpg.WorldData.Actors
 {
@@ -87,6 +88,13 @@ namespace Mmorpg.WorldData.Actors
                 WorldActorCapabilityKindIds.Gathering
             };
 
+        private static readonly HashSet<string> SupportedAggressions =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                WorldActorAggressionIds.Aggressive,
+                WorldActorAggressionIds.Defensive
+            };
+
         private static readonly HashSet<string> SupportedSpawnKinds =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -135,6 +143,22 @@ namespace Mmorpg.WorldData.Actors
                     .ToArray(),
                 ResourceProfiles = actorAuthoring.ResourceProfiles
                     .Select(CompileResourceProfile)
+                    .OrderBy(value => value.Id, StringComparer.Ordinal)
+                    .ToArray(),
+                CombatProfiles = actorAuthoring.CombatProfiles
+                    .Select(CompileCombatProfile)
+                    .OrderBy(value => value.Id, StringComparer.Ordinal)
+                    .ToArray(),
+                BrainProfiles = actorAuthoring.BrainProfiles
+                    .Select(CompileBrainProfile)
+                    .OrderBy(value => value.Id, StringComparer.Ordinal)
+                    .ToArray(),
+                LocomotionProfiles = actorAuthoring.LocomotionProfiles
+                    .Select(CompileLocomotionProfile)
+                    .OrderBy(value => value.Id, StringComparer.Ordinal)
+                    .ToArray(),
+                LootProfiles = actorAuthoring.LootProfiles
+                    .Select(CompileLootProfile)
                     .OrderBy(value => value.Id, StringComparer.Ordinal)
                     .ToArray(),
                 Actors = actorAuthoring.Actors
@@ -241,6 +265,26 @@ namespace Mmorpg.WorldData.Actors
                 "resourceProfiles",
                 errors);
             ValidateCollectionLimit(
+                actors.CombatProfiles,
+                MaximumDefinitionsPerCollection,
+                "combatProfiles",
+                errors);
+            ValidateCollectionLimit(
+                actors.BrainProfiles,
+                MaximumDefinitionsPerCollection,
+                "brainProfiles",
+                errors);
+            ValidateCollectionLimit(
+                actors.LocomotionProfiles,
+                MaximumDefinitionsPerCollection,
+                "locomotionProfiles",
+                errors);
+            ValidateCollectionLimit(
+                actors.LootProfiles,
+                MaximumDefinitionsPerCollection,
+                "lootProfiles",
+                errors);
+            ValidateCollectionLimit(
                 actors.Actors,
                 MaximumDefinitionsPerCollection,
                 "actors",
@@ -264,12 +308,18 @@ namespace Mmorpg.WorldData.Actors
             var resourceProfileIds = ValidateResourceProfiles(
                 actors.ResourceProfiles,
                 errors);
+            var mobProfiles = new MobProfileIds(
+                activityProfileIds,
+                respawnProfileIds,
+                ValidateCombatProfiles(actors.CombatProfiles, errors),
+                ValidateBrainProfiles(actors.BrainProfiles, errors),
+                ValidateLocomotionProfiles(actors.LocomotionProfiles, errors),
+                ValidateLootProfiles(actors.LootProfiles, errors));
             var actorKinds = ValidateActors(
                 actors.Actors,
                 factionIds,
                 presentationIds,
-                activityProfileIds,
-                respawnProfileIds,
+                mobProfiles,
                 resourceProfileIds,
                 errors);
             var patrolPathIds = ValidatePatrolPaths(spawns.PatrolPaths, errors);
@@ -563,7 +613,7 @@ namespace Mmorpg.WorldData.Actors
                 }
                 else if (string.Equals(kind, WorldActorCapabilityKindIds.Vendor, StringComparison.Ordinal))
                 {
-                    // The item catalog owns vendor profiles, so ValidateItemReferences checks them.
+                    // The item catalog owns vendor profiles, so WorldActorItemReferences checks them.
                     ValidateIdentifier(profileId, profilePath, errors);
                 }
                 else
@@ -573,12 +623,288 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
+        private static HashSet<string> ValidateCombatProfiles(
+            WorldActorCombatProfileAuthoringEntry[] values,
+            ICollection<string> errors)
+        {
+            var ids = RequireProfileCollection(values, "combatProfiles", errors);
+            for (var index = 0; values != null && index < values.Length; index++)
+            {
+                var value = values[index];
+                var path = "combatProfiles[" + index + "]";
+                if (value == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                AddIdentifier(ids, value.Id, path + ".id", errors);
+                AddProblem(
+                    CombatProfileProblem(
+                        value.MaximumHealth,
+                        value.AttackStyle,
+                        value.AttackDamageType,
+                        value.MinimumDamage,
+                        value.MaximumDamage,
+                        value.AttackIntervalSeconds,
+                        value.AttackRange),
+                    path,
+                    errors);
+            }
+
+            return ids;
+        }
+
+        private static HashSet<string> ValidateBrainProfiles(
+            WorldActorBrainProfileAuthoringEntry[] values,
+            ICollection<string> errors)
+        {
+            var ids = RequireProfileCollection(values, "brainProfiles", errors);
+            for (var index = 0; values != null && index < values.Length; index++)
+            {
+                var value = values[index];
+                var path = "brainProfiles[" + index + "]";
+                if (value == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                AddIdentifier(ids, value.Id, path + ".id", errors);
+                AddProblem(
+                    BrainProfileProblem(
+                        value.Aggression,
+                        value.DetectionRange,
+                        value.LeashRange,
+                        value.GiveUpSeconds),
+                    path,
+                    errors);
+            }
+
+            return ids;
+        }
+
+        private static HashSet<string> ValidateLocomotionProfiles(
+            WorldActorLocomotionProfileAuthoringEntry[] values,
+            ICollection<string> errors)
+        {
+            var ids = RequireProfileCollection(values, "locomotionProfiles", errors);
+            for (var index = 0; values != null && index < values.Length; index++)
+            {
+                var value = values[index];
+                var path = "locomotionProfiles[" + index + "]";
+                if (value == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                AddIdentifier(ids, value.Id, path + ".id", errors);
+                AddProblem(
+                    LocomotionProfileProblem(
+                        value.WalkSpeed,
+                        value.CollisionRadius,
+                        value.CollisionHeight),
+                    path,
+                    errors);
+            }
+
+            return ids;
+        }
+
+        private static HashSet<string> ValidateLootProfiles(
+            WorldActorLootProfileAuthoringEntry[] values,
+            ICollection<string> errors)
+        {
+            var ids = RequireProfileCollection(values, "lootProfiles", errors);
+            for (var index = 0; values != null && index < values.Length; index++)
+            {
+                var value = values[index];
+                var path = "lootProfiles[" + index + "]";
+                if (value == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                AddIdentifier(ids, value.Id, path + ".id", errors);
+                if (value.Entries == null
+                    || value.Entries.Length == 0
+                    || value.Entries.Length > WorldActorCorpseRules.MaximumLootEntries)
+                {
+                    errors.Add(path + ".entries must contain between 1 and "
+                        + WorldActorCorpseRules.MaximumLootEntries + " entries.");
+                    continue;
+                }
+
+                var definitionIds = new HashSet<string>(StringComparer.Ordinal);
+                for (var entryIndex = 0; entryIndex < value.Entries.Length; entryIndex++)
+                {
+                    var entry = value.Entries[entryIndex];
+                    var entryPath = path + ".entries[" + entryIndex + "]";
+                    if (entry == null)
+                    {
+                        errors.Add(entryPath + " must not be null.");
+                        continue;
+                    }
+
+                    AddIdentifier(definitionIds, entry.DefinitionId, entryPath + ".definitionId", errors);
+                    AddProblem(
+                        LootEntryProblem(
+                            entry.MinimumQuantity,
+                            entry.MaximumQuantity,
+                            entry.ChanceBasisPoints),
+                        entryPath,
+                        errors);
+                }
+            }
+
+            return ids;
+        }
+
+        // The rules shared by compilation and runtime validation. Each returns the field and
+        // reason of the first problem, or null when the profile is valid.
+        private static string CombatProfileProblem(
+            int maximumHealth,
+            string attackStyle,
+            string attackDamageType,
+            int minimumDamage,
+            int maximumDamage,
+            float attackIntervalSeconds,
+            float attackRange)
+        {
+            if (maximumHealth < 1 || maximumHealth > CombatContentRules.MaximumHealth)
+            {
+                return "maximumHealth must be between 1 and "
+                    + CombatContentRules.MaximumHealth.ToString(CultureInfo.InvariantCulture) + ".";
+            }
+
+            if (!CombatStyleIds.IsKnown(attackStyle))
+            {
+                return "attackStyle must be melee, ranged, or magic.";
+            }
+
+            if (!DamageTypeIds.IsKnown(attackDamageType))
+            {
+                return "attackDamageType must be normal, fire, cold, nature, or shadow.";
+            }
+
+            if (!CombatContentRules.IsValidDamageRange(minimumDamage, maximumDamage)
+                || maximumDamage < 1)
+            {
+                return "minimumDamage and maximumDamage must satisfy 0 <= minimum <= maximum, "
+                    + "with a maximum between 1 and "
+                    + CombatContentRules.MaximumDamage.ToString(CultureInfo.InvariantCulture) + ".";
+            }
+
+            if (!CombatContentRules.IsValidAttackInterval(attackIntervalSeconds))
+            {
+                return "attackIntervalSeconds must be between "
+                    + Float(CombatContentRules.MinimumAttackIntervalSeconds) + " and "
+                    + Float(CombatContentRules.MaximumAttackIntervalSeconds) + ".";
+            }
+
+            return CombatContentRules.IsValidAttackRange(attackRange)
+                ? null
+                : "attackRange must be above 0 and at most "
+                    + Float(CombatContentRules.MaximumAttackRangeMetres) + ".";
+        }
+
+        private static string BrainProfileProblem(
+            string aggression,
+            float detectionRange,
+            float leashRange,
+            float giveUpSeconds)
+        {
+            if (aggression == null || !SupportedAggressions.Contains(aggression))
+            {
+                return "aggression must be aggressive or defensive.";
+            }
+
+            if (!IsFinite(detectionRange)
+                || detectionRange < 0f
+                || detectionRange > WorldActorCombatRules.MaximumDetectionRange
+                || (aggression == WorldActorAggressionIds.Aggressive && detectionRange <= 0f))
+            {
+                return "detectionRange must be at most "
+                    + Float(WorldActorCombatRules.MaximumDetectionRange)
+                    + ", and above 0 for an aggressive brain.";
+            }
+
+            if (!IsFinite(leashRange)
+                || leashRange <= detectionRange
+                || leashRange > WorldActorCombatRules.MaximumLeashRange)
+            {
+                return "leashRange must exceed detectionRange and be at most "
+                    + Float(WorldActorCombatRules.MaximumLeashRange) + ".";
+            }
+
+            return IsFinite(giveUpSeconds)
+                && giveUpSeconds >= WorldActorCombatRules.MinimumGiveUpSeconds
+                && giveUpSeconds <= WorldActorCombatRules.MaximumGiveUpSeconds
+                ? null
+                : "giveUpSeconds must be between "
+                    + Float(WorldActorCombatRules.MinimumGiveUpSeconds) + " and "
+                    + Float(WorldActorCombatRules.MaximumGiveUpSeconds) + ".";
+        }
+
+        private static string LocomotionProfileProblem(
+            float walkSpeed,
+            float collisionRadius,
+            float collisionHeight)
+        {
+            if (!IsFinite(walkSpeed)
+                || walkSpeed <= 0f
+                || walkSpeed > WorldActorCombatRules.MaximumWalkSpeed)
+            {
+                return "walkSpeed must be above 0 and at most "
+                    + Float(WorldActorCombatRules.MaximumWalkSpeed) + ".";
+            }
+
+            if (!IsFinite(collisionRadius)
+                || collisionRadius <= 0f
+                || collisionRadius > WorldActorCombatRules.MaximumCollisionRadius)
+            {
+                return "collisionRadius must be above 0 and at most "
+                    + Float(WorldActorCombatRules.MaximumCollisionRadius) + ".";
+            }
+
+            return IsFinite(collisionHeight)
+                && collisionHeight > collisionRadius * 2f
+                && collisionHeight <= WorldActorCombatRules.MaximumCollisionHeight
+                ? null
+                : "collisionHeight must exceed twice the collisionRadius and be at most "
+                    + Float(WorldActorCombatRules.MaximumCollisionHeight) + ".";
+        }
+
+        private static string LootEntryProblem(
+            int minimumQuantity,
+            int maximumQuantity,
+            int chanceBasisPoints)
+        {
+            if (minimumQuantity < 1
+                || maximumQuantity < minimumQuantity
+                || maximumQuantity > WorldActorCombatRules.MaximumLootQuantity)
+            {
+                return "minimumQuantity and maximumQuantity must satisfy 1 <= minimum <= maximum <= "
+                    + WorldActorCombatRules.MaximumLootQuantity.ToString(CultureInfo.InvariantCulture)
+                    + ".";
+            }
+
+            return chanceBasisPoints >= 1
+                && chanceBasisPoints <= WorldActorCombatRules.MaximumLootChanceBasisPoints
+                ? null
+                : "chanceBasisPoints must be between 1 and "
+                    + WorldActorCombatRules.MaximumLootChanceBasisPoints.ToString(
+                        CultureInfo.InvariantCulture)
+                    + ".";
+        }
+
         private static Dictionary<string, string> ValidateActors(
             WorldActorAuthoringEntry[] values,
             ISet<string> factionIds,
             IReadOnlyDictionary<string, string> presentationKinds,
-            ISet<string> activityProfileIds,
-            ISet<string> respawnProfileIds,
+            MobProfileIds mobProfiles,
             ISet<string> resourceProfileIds,
             ICollection<string> errors)
         {
@@ -647,14 +973,37 @@ namespace Mmorpg.WorldData.Actors
                 {
                     ValidateReference(
                         actor.ActivityProfileId,
-                        activityProfileIds,
+                        mobProfiles.Activity,
                         path + ".activityProfileId",
                         errors);
                     ValidateReference(
                         actor.RespawnProfileId,
-                        respawnProfileIds,
+                        mobProfiles.Respawn,
                         path + ".respawnProfileId",
                         errors);
+                    ValidateReference(
+                        actor.CombatProfileId,
+                        mobProfiles.Combat,
+                        path + ".combatProfileId",
+                        errors);
+                    ValidateReference(
+                        actor.BrainProfileId,
+                        mobProfiles.Brain,
+                        path + ".brainProfileId",
+                        errors);
+                    ValidateReference(
+                        actor.LocomotionProfileId,
+                        mobProfiles.Locomotion,
+                        path + ".locomotionProfileId",
+                        errors);
+                    if (!string.IsNullOrEmpty(actor.LootProfileId))
+                    {
+                        ValidateReference(
+                            actor.LootProfileId,
+                            mobProfiles.Loot,
+                            path + ".lootProfileId",
+                            errors);
+                    }
                     ValidateSupported(
                         actor.CorpsePersistenceMode,
                         SupportedCorpsePersistenceModes,
@@ -677,6 +1026,13 @@ namespace Mmorpg.WorldData.Actors
                 {
                     ValidateOptionalEmpty(actor.ActivityProfileId, path + ".activityProfileId", errors);
                     ValidateOptionalEmpty(actor.RespawnProfileId, path + ".respawnProfileId", errors);
+                    ValidateOptionalEmpty(actor.CombatProfileId, path + ".combatProfileId", errors);
+                    ValidateOptionalEmpty(actor.BrainProfileId, path + ".brainProfileId", errors);
+                    ValidateOptionalEmpty(
+                        actor.LocomotionProfileId,
+                        path + ".locomotionProfileId",
+                        errors);
+                    ValidateOptionalEmpty(actor.LootProfileId, path + ".lootProfileId", errors);
                     ValidateOptionalEmpty(
                         actor.CorpsePersistenceMode,
                         path + ".corpsePersistenceMode",
@@ -1122,6 +1478,120 @@ namespace Mmorpg.WorldData.Actors
             return Fingerprint(value.Id, value.Kind, value.DisplayName, value.ProfileId);
         }
 
+        private static WorldActorCombatProfileDefinition CompileCombatProfile(
+            WorldActorCombatProfileAuthoringEntry value)
+        {
+            var compiled = new WorldActorCombatProfileDefinition
+            {
+                Id = value.Id,
+                MaximumHealth = value.MaximumHealth,
+                AttackStyle = value.AttackStyle,
+                AttackDamageType = value.AttackDamageType,
+                MinimumDamage = value.MinimumDamage,
+                MaximumDamage = value.MaximumDamage,
+                AttackIntervalSeconds = value.AttackIntervalSeconds,
+                AttackRange = value.AttackRange
+            };
+            compiled.StructuralFingerprint = CombatProfileFingerprint(compiled);
+            return compiled;
+        }
+
+        private static WorldActorBrainProfileDefinition CompileBrainProfile(
+            WorldActorBrainProfileAuthoringEntry value)
+        {
+            var compiled = new WorldActorBrainProfileDefinition
+            {
+                Id = value.Id,
+                Aggression = value.Aggression,
+                DetectionRange = value.DetectionRange,
+                LeashRange = value.LeashRange,
+                GiveUpSeconds = value.GiveUpSeconds
+            };
+            compiled.StructuralFingerprint = BrainProfileFingerprint(compiled);
+            return compiled;
+        }
+
+        private static WorldActorLocomotionProfileDefinition CompileLocomotionProfile(
+            WorldActorLocomotionProfileAuthoringEntry value)
+        {
+            var compiled = new WorldActorLocomotionProfileDefinition
+            {
+                Id = value.Id,
+                WalkSpeed = value.WalkSpeed,
+                CollisionRadius = value.CollisionRadius,
+                CollisionHeight = value.CollisionHeight
+            };
+            compiled.StructuralFingerprint = LocomotionProfileFingerprint(compiled);
+            return compiled;
+        }
+
+        // Loot entries keep their authored order: it decides the order of the rolls and
+        // therefore the corpse slots.
+        private static WorldActorLootProfileDefinition CompileLootProfile(
+            WorldActorLootProfileAuthoringEntry value)
+        {
+            var compiled = new WorldActorLootProfileDefinition
+            {
+                Id = value.Id,
+                Entries = value.Entries
+                    .Select(entry => new WorldActorLootEntryDefinition
+                    {
+                        DefinitionId = entry.DefinitionId,
+                        MinimumQuantity = entry.MinimumQuantity,
+                        MaximumQuantity = entry.MaximumQuantity,
+                        ChanceBasisPoints = entry.ChanceBasisPoints
+                    })
+                    .ToArray()
+            };
+            compiled.StructuralFingerprint = LootProfileFingerprint(compiled);
+            return compiled;
+        }
+
+        private static string CombatProfileFingerprint(WorldActorCombatProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                value.MaximumHealth.ToString(CultureInfo.InvariantCulture),
+                value.AttackStyle,
+                value.AttackDamageType,
+                value.MinimumDamage.ToString(CultureInfo.InvariantCulture),
+                value.MaximumDamage.ToString(CultureInfo.InvariantCulture),
+                Float(value.AttackIntervalSeconds),
+                Float(value.AttackRange));
+        }
+
+        private static string BrainProfileFingerprint(WorldActorBrainProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                value.Aggression,
+                Float(value.DetectionRange),
+                Float(value.LeashRange),
+                Float(value.GiveUpSeconds));
+        }
+
+        private static string LocomotionProfileFingerprint(
+            WorldActorLocomotionProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                Float(value.WalkSpeed),
+                Float(value.CollisionRadius),
+                Float(value.CollisionHeight));
+        }
+
+        private static string LootProfileFingerprint(WorldActorLootProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                string.Join(",", value.Entries.Select(entry => string.Join(
+                    ":",
+                    entry.DefinitionId,
+                    entry.MinimumQuantity.ToString(CultureInfo.InvariantCulture),
+                    entry.MaximumQuantity.ToString(CultureInfo.InvariantCulture),
+                    entry.ChanceBasisPoints.ToString(CultureInfo.InvariantCulture)))));
+        }
+
         private static WorldActorDefinition CompileActor(WorldActorAuthoringEntry value)
         {
             var capabilities = value.Capabilities
@@ -1163,29 +1633,47 @@ namespace Mmorpg.WorldData.Actors
                 ActivityProfileId = value.ActivityProfileId ?? string.Empty,
                 RespawnProfileId = value.RespawnProfileId ?? string.Empty,
                 CorpsePersistenceMode = value.CorpsePersistenceMode ?? string.Empty,
-                CorpseLifetimeSeconds = value.CorpseLifetimeSeconds
+                CorpseLifetimeSeconds = value.CorpseLifetimeSeconds,
+                CombatProfileId = value.CombatProfileId ?? string.Empty,
+                BrainProfileId = value.BrainProfileId ?? string.Empty,
+                LocomotionProfileId = value.LocomotionProfileId ?? string.Empty,
+                LootProfileId = value.LootProfileId ?? string.Empty
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                compiled.DisplayName,
-                compiled.Kind,
-                compiled.FactionId,
-                compiled.Disposition,
-                compiled.PresentationArchetypeId,
-                compiled.DamagePolicy,
-                string.Join(",", compiled.Tags),
+            compiled.StructuralFingerprint = ActorFingerprint(
+                compiled,
+                capabilities.Select(capability => capability.StructuralFingerprint));
+            return compiled;
+        }
+
+        private static string ActorFingerprint(
+            WorldActorDefinition value,
+            IEnumerable<string> capabilityFingerprints)
+        {
+            var bounds = value.InteractionBounds;
+            return Fingerprint(
+                value.Id,
+                value.DisplayName,
+                value.Kind,
+                value.FactionId,
+                value.Disposition,
+                value.PresentationArchetypeId,
+                value.DamagePolicy,
+                string.Join(",", value.Tags),
                 Float(bounds.CenterX),
                 Float(bounds.CenterY),
                 Float(bounds.CenterZ),
                 Float(bounds.SizeX),
                 Float(bounds.SizeY),
                 Float(bounds.SizeZ),
-                compiled.ActivityProfileId,
-                compiled.RespawnProfileId,
-                compiled.CorpsePersistenceMode,
-                Float(compiled.CorpseLifetimeSeconds),
-                string.Join(",", capabilities.Select(capability => capability.StructuralFingerprint)));
-            return compiled;
+                value.ActivityProfileId,
+                value.RespawnProfileId,
+                value.CorpsePersistenceMode,
+                Float(value.CorpseLifetimeSeconds),
+                string.Join(",", capabilityFingerprints),
+                value.CombatProfileId,
+                value.BrainProfileId,
+                value.LocomotionProfileId,
+                value.LootProfileId);
         }
 
         private static WorldActorPatrolPathDefinition CompilePatrolPath(
@@ -1438,6 +1926,10 @@ namespace Mmorpg.WorldData.Actors
                 Join(runtime.ActivityProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.RespawnProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.ResourceProfiles.Select(value => value.StructuralFingerprint)),
+                Join(runtime.CombatProfiles.Select(value => value.StructuralFingerprint)),
+                Join(runtime.BrainProfiles.Select(value => value.StructuralFingerprint)),
+                Join(runtime.LocomotionProfiles.Select(value => value.StructuralFingerprint)),
+                Join(runtime.LootProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.Actors.Select(value => value.StructuralFingerprint)),
                 Join(runtime.SpawnSources.Select(value => value.StructuralFingerprint)),
                 Join(runtime.SpawnInstances.Select(value => value.StructuralFingerprint)),
@@ -1485,6 +1977,59 @@ namespace Mmorpg.WorldData.Actors
             }
 
             return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        private static void AddProblem(string problem, string path, ICollection<string> errors)
+        {
+            if (problem != null)
+            {
+                errors.Add(path + "." + problem);
+            }
+        }
+
+        // Mob profiles may be empty collections, because a catalog without Mobs needs none.
+        private static HashSet<string> RequireProfileCollection<T>(
+            T[] values,
+            string name,
+            ICollection<string> errors)
+        {
+            if (values == null)
+            {
+                errors.Add(name + " is required.");
+            }
+
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        private readonly struct MobProfileIds
+        {
+            public MobProfileIds(
+                ISet<string> activity,
+                ISet<string> respawn,
+                ISet<string> combat,
+                ISet<string> brain,
+                ISet<string> locomotion,
+                ISet<string> loot)
+            {
+                Activity = activity;
+                Respawn = respawn;
+                Combat = combat;
+                Brain = brain;
+                Locomotion = locomotion;
+                Loot = loot;
+            }
+
+            public ISet<string> Activity { get; }
+
+            public ISet<string> Respawn { get; }
+
+            public ISet<string> Combat { get; }
+
+            public ISet<string> Brain { get; }
+
+            public ISet<string> Locomotion { get; }
+
+            public ISet<string> Loot { get; }
         }
 
         private static void AddIdentifier(

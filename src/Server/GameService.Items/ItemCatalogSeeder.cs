@@ -512,6 +512,7 @@ internal sealed class ItemCatalogSeeder(
                         value,
                         maximum_stack_size,
                         player_destroyable,
+                        required_character_level,
                         structural_fingerprint,
                         is_active)
                     values (
@@ -524,6 +525,7 @@ internal sealed class ItemCatalogSeeder(
                         @Value,
                         @MaximumStackSize,
                         @PlayerDestroyable,
+                        @RequiredCharacterLevel,
                         @StructuralFingerprint,
                         true)
                     on conflict (id) do update
@@ -535,6 +537,7 @@ internal sealed class ItemCatalogSeeder(
                         value = excluded.value,
                         maximum_stack_size = excluded.maximum_stack_size,
                         player_destroyable = excluded.player_destroyable,
+                        required_character_level = excluded.required_character_level,
                         structural_fingerprint = excluded.structural_fingerprint,
                         is_active = true,
                         updated_at = now()
@@ -546,6 +549,7 @@ internal sealed class ItemCatalogSeeder(
                        or item_definitions.value is distinct from excluded.value
                        or item_definitions.maximum_stack_size is distinct from excluded.maximum_stack_size
                        or item_definitions.player_destroyable is distinct from excluded.player_destroyable
+                       or item_definitions.required_character_level is distinct from excluded.required_character_level
                        or item_definitions.structural_fingerprint is distinct from excluded.structural_fingerprint
                        or not item_definitions.is_active;
                     """,
@@ -560,6 +564,7 @@ internal sealed class ItemCatalogSeeder(
                         definition.Value,
                         definition.MaximumStackSize,
                         definition.PlayerDestroyable,
+                        definition.RequiredCharacterLevel,
                         definition.StructuralFingerprint
                     }));
 

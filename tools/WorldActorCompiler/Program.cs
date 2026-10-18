@@ -15,11 +15,7 @@ try
 {
     var contentRoot = options!.ContentRoot;
     var catalog = WorldActorContent.LoadCatalog(ContentLayout.ActorsDirectory(contentRoot));
-
-    // Actors refer to vendor profiles, tool kinds, and item definitions, so the item content
-    // of the same content root is compiled first and every World is checked against it.
-    var items = ItemCatalogCompiler.Compile(
-        ItemCatalogContent.Load(ContentLayout.ItemsDirectory(contentRoot)));
+    var itemCatalog = LoadItemCatalog(options.GeneratedRoot);
     var worldIds = WorldActorContent.ListWorldIds(contentRoot);
     if (worldIds.Length == 0)
     {
@@ -29,7 +25,7 @@ try
 
     foreach (var worldId in worldIds)
     {
-        var runtime = CompileWorld(catalog, items, contentRoot, worldId);
+        var runtime = CompileWorld(catalog, itemCatalog, contentRoot, worldId);
         GeneratedOutput.WriteOrVerifyText(
             ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
             WorldActorJson.SerializeRuntime(runtime),
@@ -58,7 +54,7 @@ catch (Exception exception)
 
 static WorldActorRuntimeDocument CompileWorld(
     WorldActorCatalogAuthoringDocument catalog,
-    ItemCatalogRuntimeDocument items,
+    ItemCatalogRuntimeDocument itemCatalog,
     string contentRoot,
     string worldId)
 {
@@ -67,13 +63,24 @@ static WorldActorRuntimeDocument CompileWorld(
         var runtime = WorldActorCompiler.Compile(
             catalog,
             WorldActorContent.LoadSpawns(contentRoot, worldId));
-        WorldActorCompiler.ValidateItemReferences(runtime, items);
+        WorldActorItemReferences.Validate(runtime, itemCatalog);
         return runtime;
     }
     catch (WorldActorValidationException exception)
     {
         throw new InvalidDataException($"World '{worldId}': {exception.Message}", exception);
     }
+}
+
+// Loot, vendor capabilities, and resource profiles reference item content, so the compiled
+// item catalog must exist first, as the content compilers run in that order.
+static ItemCatalogRuntimeDocument LoadItemCatalog(string generatedRoot)
+{
+    var path = ContentLayout.GeneratedItemCatalogPath(generatedRoot);
+    var runtime = StrictContentJson.DeserializeFile<ItemCatalogRuntimeDocument>(
+        path,
+        "Compiled item catalog");
+    return ItemCatalogRuntimeVerifier.VerifyAndCanonicalize(runtime);
 }
 
 static string[] FindStaleRuntimeFiles(string generatedRoot, string[] worldIds)

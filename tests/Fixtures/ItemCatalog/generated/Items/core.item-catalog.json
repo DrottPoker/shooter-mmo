@@ -1,7 +1,7 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "catalogId": "core",
-  "revision": "435b769fb8e2d2c88646b79610ec56661c064414dc9a7cf2e154f422bfaba93d",
+  "revision": "5952f7d692a1949ac73cbefd2cd35428c52db0fe298884de867c92e3f83f9ea8",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 200,
@@ -11,6 +11,9 @@
   "economy": {
     "currencyDisplayName": "Fixture Coins",
     "startingBalance": 0
+  },
+  "progression": {
+    "maximumCharacterLevel": 200
   },
   "categories": [
     {
@@ -117,6 +120,28 @@
       "maximumQuantity": 1
     }
   ],
+  "weaponFamilies": [
+    {
+      "id": "blade",
+      "displayName": "Blade",
+      "combatStyle": "melee",
+      "ammunitionFamily": "",
+      "projectileSpeed": 0
+    },
+    {
+      "id": "bow",
+      "displayName": "Bow",
+      "combatStyle": "ranged",
+      "ammunitionFamily": "arrow",
+      "projectileSpeed": 30
+    }
+  ],
+  "ammunitionFamilies": [
+    {
+      "id": "arrow",
+      "displayName": "Arrow"
+    }
+  ],
   "definitions": [
     {
       "id": "fixture.arrow",
@@ -138,6 +163,11 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "ammunition": {
+        "ammunitionFamily": "arrow",
+        "damageBonusPercent": 5
+      },
       "structuralFingerprint": "7fb6d75b6d56f0718ebec3a26e0ba4ab20bc0b2aff49bffe1c49e153cf797f96"
     },
     {
@@ -160,7 +190,37 @@
         "secureContainer": false
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "weapon": {
+        "weaponFamily": "bow",
+        "damageType": "normal",
+        "minimumDamage": 10,
+        "maximumDamage": 18,
+        "attackIntervalSeconds": 2.4,
+        "range": 10
+      },
       "structuralFingerprint": "beccc98b883fc9dede55f3f265dfe54397dcba68257d063088fda8fb900b7a1d"
+    },
+    {
+      "id": "fixture.helm",
+      "displayName": "Fixture Helm",
+      "category": "armor",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 15,
+      "value": 30,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "head"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 3,
+      "structuralFingerprint": "bf15c22476c071843e4141d799768e343275d463c4ebe01c52ca746a38decdff"
     },
     {
       "id": "fixture.letter",
@@ -180,6 +240,7 @@
       "defaultPolicies": [
         "protected_on_death"
       ],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "9efd26d2e05687ae549dc17784fe592ac190d4aa56b46197aeb2926ded0c9ef1"
     },
     {
@@ -200,6 +261,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "8b2c2cf795764d86f065788eec2457290e90f3ce1e9eb6e72f126f71e51f0a13"
     },
     {
@@ -266,6 +328,7 @@
           }
         ]
       },
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "f14410448540c19e36f9efe69dd477428ef8e9971564eaab1b2a797f6bcdbc88"
     },
     {
@@ -288,6 +351,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "5c4c07b621e6fadf564b60b3d7d689952fcf475cc9791272908f73b3e4b7234a"
     },
     {
@@ -308,6 +372,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "d17cde103b76a4ceca040688b9e15b4853cbc19297ee778664d75c62417956f7"
     },
     {
@@ -329,6 +394,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "d68675b36018cdc072453c639de9492ab929201fef0c528b10d82cb5c0876069"
     },
     {
@@ -349,6 +415,7 @@
         "secureContainer": false
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "728bfa69c8c562741b08f737e857e7b9eac2f06f30abd35e41b2463664a2deff"
     },
     {
@@ -370,6 +437,15 @@
         "secureContainer": false
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "weapon": {
+        "weaponFamily": "blade",
+        "damageType": "normal",
+        "minimumDamage": 6,
+        "maximumDamage": 12,
+        "attackIntervalSeconds": 1.8,
+        "range": 1.5
+      },
       "structuralFingerprint": "6560a1a692f26aa54ccb92eba469b28e30ffae3efe983fbe92e53dec60ce2d36"
     },
     {
@@ -390,6 +466,7 @@
         "secureContainer": true
       },
       "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
       "structuralFingerprint": "68513dd62870e93d07e50802313d3b6b73c2625ede32430e82713c8cf27e203f"
     }
   ],

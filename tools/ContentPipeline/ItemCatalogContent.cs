@@ -11,10 +11,13 @@ public sealed class ItemCatalogHeaderDocument
     public string? BaseSecureContainerTierId;
     public ItemCharacterSettingsEntry? Character;
     public ItemEconomySettingsEntry? Economy;
+    public ItemProgressionSettingsEntry? Progression;
     public ItemCatalogIdentityEntry[]? Categories;
     public ItemCatalogIdentityEntry[]? Tags;
     public ItemCatalogIdentityEntry[]? ToolKinds;
     public ItemEquipmentSlotEntry[]? EquipmentSlots;
+    public ItemWeaponFamilyEntry[]? WeaponFamilies;
+    public ItemCatalogIdentityEntry[]? AmmunitionFamilies;
     public SecureContainerTierAuthoringEntry[]? SecureContainerTiers;
     public ItemCatalogRetiredIdsEntry? Retired;
 }
@@ -42,10 +45,13 @@ public static class ItemCatalogContent
             BaseSecureContainerTierId = header.BaseSecureContainerTierId,
             Character = header.Character,
             Economy = header.Economy,
+            Progression = header.Progression,
             Categories = header.Categories,
             Tags = header.Tags,
             ToolKinds = header.ToolKinds,
             EquipmentSlots = header.EquipmentSlots,
+            WeaponFamilies = header.WeaponFamilies,
+            AmmunitionFamilies = header.AmmunitionFamilies,
             Definitions = definitions,
             SecureContainerTiers = header.SecureContainerTiers,
             Vendors = vendors,

@@ -173,7 +173,9 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // S31: the account's active characters for a tier change.
         "GameService.Items/Transactions/Handlers/SecureContainerTierCommandHandler.cs",
         // S33: the dead character's name and Shard.
-        "GameService.Items/Transactions/Handlers/PlayerDeath/PlayerDeathCommandHandler.cs"
+        "GameService.Items/Transactions/Handlers/PlayerDeath/PlayerDeathCommandHandler.cs",
+        // S41: equipment reads the character level for its level requirement.
+        "GameService.Items/Transactions/Context/ItemSlotPlacement.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.
@@ -200,6 +202,6 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     [GeneratedRegex(@"\b(?:LockDeathEventKeyAsync|pg_advisory_xact_lock|LockCharacterStatesAsync|LockCharacterStateForIdempotentEventAsync|LockOpenCorpseAsync|LockMutationScopeAsync)\b")]
     private static partial Regex LockCallPattern();
 
-    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement)\.Contracts")]
+    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ICharacterProgression|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement)\.Contracts")]
     private static partial Regex CrossModulePattern();
 }

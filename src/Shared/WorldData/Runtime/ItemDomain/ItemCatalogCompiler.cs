@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Mmorpg.WorldData.Combat;
 
 namespace Mmorpg.WorldData.Items
 {
@@ -39,6 +40,7 @@ namespace Mmorpg.WorldData.Items
         private static readonly string[] RequiredCategories =
         {
             ItemCategoryIds.Weapon,
+            ItemCategoryIds.Ammunition,
             ItemCategoryIds.Bag,
             ItemCategoryIds.QuestItem
         };
@@ -82,6 +84,10 @@ namespace Mmorpg.WorldData.Items
                     CurrencyDisplayName = authoring.Economy.CurrencyDisplayName,
                     StartingBalance = authoring.Economy.StartingBalance
                 },
+                Progression = new ItemProgressionSettingsEntry
+                {
+                    MaximumCharacterLevel = authoring.Progression.MaximumCharacterLevel
+                },
                 Categories = CompileIdentities(authoring.Categories),
                 Tags = CompileIdentities(authoring.Tags),
                 ToolKinds = CompileIdentities(authoring.ToolKinds),
@@ -93,6 +99,18 @@ namespace Mmorpg.WorldData.Items
                         MaximumQuantity = slot.MaximumQuantity
                     })
                     .ToArray(),
+                WeaponFamilies = authoring.WeaponFamilies
+                    .Select(family => new ItemWeaponFamilyEntry
+                    {
+                        Id = family.Id,
+                        DisplayName = family.DisplayName,
+                        CombatStyle = family.CombatStyle,
+                        AmmunitionFamily = family.AmmunitionFamily,
+                        ProjectileSpeed = family.ProjectileSpeed
+                    })
+                    .OrderBy(family => family.Id, StringComparer.Ordinal)
+                    .ToArray(),
+                AmmunitionFamilies = CompileIdentities(authoring.AmmunitionFamilies),
                 Definitions = authoring.Definitions
                     .Select(CompileDefinition)
                     .OrderBy(definition => definition.Id, StringComparer.Ordinal)
@@ -133,6 +151,7 @@ namespace Mmorpg.WorldData.Items
                 errors);
             ValidateCharacterSettings(authoring.Character, errors);
             ValidateEconomySettings(authoring.Economy, errors);
+            var maximumCharacterLevel = ValidateProgression(authoring.Progression, errors);
 
             var categoryIds = ValidateIdentities(
                 authoring.Categories,
@@ -151,6 +170,16 @@ namespace Mmorpg.WorldData.Items
                 errors,
                 true);
             var equipmentSlots = ValidateEquipmentSlots(authoring.EquipmentSlots, errors);
+            var ammunitionFamilyIds = ValidateIdentities(
+                authoring.AmmunitionFamilies,
+                "ammunitionFamilies",
+                MaximumIdentifierLength,
+                errors,
+                allowEmpty: true);
+            var weaponFamilyIds = ValidateWeaponFamilies(
+                authoring.WeaponFamilies,
+                ammunitionFamilyIds,
+                errors);
 
             ValidateRequiredIds(categoryIds, RequiredCategories, "categories", errors);
             ValidateRequiredIds(
@@ -165,6 +194,7 @@ namespace Mmorpg.WorldData.Items
                 tagIds,
                 toolKindIds,
                 equipmentSlots,
+                new CombatReferences(weaponFamilyIds, ammunitionFamilyIds, maximumCharacterLevel),
                 errors);
             ValidateVendors(authoring.Vendors, authoring.Definitions, categoryIds, errors);
             var tierIds = ValidateSecureContainerTiers(
@@ -241,6 +271,115 @@ namespace Mmorpg.WorldData.Items
             }
         }
 
+        private static int ValidateProgression(
+            ItemProgressionSettingsEntry progression,
+            ICollection<string> errors)
+        {
+            if (progression == null)
+            {
+                errors.Add("progression is required.");
+                return 0;
+            }
+
+            if (progression.MaximumCharacterLevel < 1
+                || progression.MaximumCharacterLevel > CombatContentRules.MaximumCharacterLevel)
+            {
+                errors.Add(
+                    "progression.maximumCharacterLevel must be between 1 and "
+                    + CombatContentRules.MaximumCharacterLevel.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+                return 0;
+            }
+
+            return progression.MaximumCharacterLevel;
+        }
+
+        private static HashSet<string> ValidateWeaponFamilies(
+            ItemWeaponFamilyEntry[] families,
+            ISet<string> ammunitionFamilyIds,
+            ICollection<string> errors)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            if (families == null)
+            {
+                errors.Add("weaponFamilies is required.");
+                return ids;
+            }
+
+            for (var index = 0; index < families.Length; index++)
+            {
+                var family = families[index];
+                var path = "weaponFamilies[" + index + "]";
+                if (family == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                ValidateIdentifier(family.Id, path + ".id", errors);
+                ValidateDisplayName(family.DisplayName, path + ".displayName", errors);
+                if (!string.IsNullOrWhiteSpace(family.Id) && !ids.Add(family.Id))
+                {
+                    errors.Add("weaponFamilies contains duplicate id '" + family.Id + "'.");
+                }
+
+                if (!CombatStyleIds.IsKnown(family.CombatStyle))
+                {
+                    errors.Add(path + ".combatStyle must be melee, ranged, or magic.");
+                    continue;
+                }
+
+                if (family.AmmunitionFamily == null)
+                {
+                    errors.Add(path + ".ammunitionFamily is required.");
+                }
+                else if (string.Equals(family.CombatStyle, CombatStyleIds.Ranged, StringComparison.Ordinal))
+                {
+                    ValidateIdentifier(family.AmmunitionFamily, path + ".ammunitionFamily", errors);
+                    ValidateReference(
+                        family.AmmunitionFamily,
+                        ammunitionFamilyIds,
+                        path + ".ammunitionFamily",
+                        "ammunition family",
+                        errors);
+                }
+                else if (family.AmmunitionFamily.Length != 0)
+                {
+                    errors.Add(path + ".ammunitionFamily must be empty unless the style is ranged.");
+                }
+
+                ValidateProjectileSpeed(family, path, errors);
+            }
+
+            return ids;
+        }
+
+        // Ranged projectiles fly, Melee hits at once, and Magic may do either.
+        private static void ValidateProjectileSpeed(
+            ItemWeaponFamilyEntry family,
+            string path,
+            ICollection<string> errors)
+        {
+            var speed = family.ProjectileSpeed;
+            var maximum = CombatContentRules.MaximumProjectileSpeedMetresPerSecond;
+            if (!CombatContentRules.IsFinite(speed) || speed < 0f || speed > maximum)
+            {
+                errors.Add(
+                    path + ".projectileSpeed must be between 0 and "
+                    + maximum.ToString(CultureInfo.InvariantCulture) + ".");
+            }
+            else if (string.Equals(family.CombatStyle, CombatStyleIds.Ranged, StringComparison.Ordinal)
+                && speed <= 0f)
+            {
+                errors.Add(path + ".projectileSpeed must be positive for a ranged family.");
+            }
+            else if (string.Equals(family.CombatStyle, CombatStyleIds.Melee, StringComparison.Ordinal)
+                && speed != 0f)
+            {
+                errors.Add(path + ".projectileSpeed must be 0 for a melee family.");
+            }
+        }
+
         private static void ValidateSlotCount(int value, string path, ICollection<string> errors)
         {
             if (value <= 0 || value > MaximumContainerSlotCapacity)
@@ -259,7 +398,9 @@ namespace Mmorpg.WorldData.Items
             var ids = new HashSet<string>(StringComparer.Ordinal);
             if (entries == null)
             {
-                errors.Add(collectionName + " is required.");
+                errors.Add(collectionName + (allowEmpty
+                    ? " is required."
+                    : " must contain at least one entry."));
                 return ids;
             }
 
@@ -369,6 +510,7 @@ namespace Mmorpg.WorldData.Items
             ISet<string> tagIds,
             ISet<string> toolKindIds,
             IReadOnlyDictionary<string, ItemEquipmentSlotEntry> equipmentSlots,
+            CombatReferences combat,
             ICollection<string> errors)
         {
             var definitionIds = new HashSet<string>(StringComparer.Ordinal);
@@ -498,6 +640,9 @@ namespace Mmorpg.WorldData.Items
                 ValidateEquipmentStacking(definition, equipmentSlots, path, errors);
                 ValidateBlockedEquipmentSlots(definition, path, errors);
                 ValidateBagDefinition(definition, path, tagIds, errors);
+                ValidateRequiredCharacterLevel(definition, combat, path, errors);
+                ValidateWeapon(definition, combat, path, errors);
+                ValidateAmmunition(definition, combat, path, errors);
 
                 if (string.Equals(
                         definition.Category,
@@ -521,6 +666,143 @@ namespace Mmorpg.WorldData.Items
             }
 
             return definitionIds;
+        }
+
+        private static void ValidateRequiredCharacterLevel(
+            ItemDefinitionAuthoringEntry definition,
+            CombatReferences combat,
+            string path,
+            ICollection<string> errors)
+        {
+            if (definition.RequiredCharacterLevel < 1
+                || (combat.MaximumCharacterLevel > 0
+                    && definition.RequiredCharacterLevel > combat.MaximumCharacterLevel))
+            {
+                errors.Add(
+                    path + ".requiredCharacterLevel must be between 1 and "
+                    + "progression.maximumCharacterLevel.");
+            }
+        }
+
+        // A weapon definition carries exactly one weapon block, and only a weapon does.
+        private static void ValidateWeapon(
+            ItemDefinitionAuthoringEntry definition,
+            CombatReferences combat,
+            string path,
+            ICollection<string> errors)
+        {
+            var isWeapon = string.Equals(
+                definition.Category,
+                ItemCategoryIds.Weapon,
+                StringComparison.Ordinal);
+            var weapon = definition.Weapon;
+            if (weapon == null)
+            {
+                if (isWeapon)
+                {
+                    errors.Add(path + " uses category 'weapon' but has no weapon block.");
+                }
+
+                return;
+            }
+
+            if (!isWeapon)
+            {
+                errors.Add(path + " has a weapon block but does not use category 'weapon'.");
+            }
+
+            if (definition.EquipmentSlots == null || definition.EquipmentSlots.Length == 0)
+            {
+                errors.Add(path + ".weapon requires equipment compatibility.");
+            }
+
+            ValidateIdentifier(weapon.WeaponFamily, path + ".weapon.weaponFamily", errors);
+            ValidateReference(
+                weapon.WeaponFamily,
+                combat.WeaponFamilyIds,
+                path + ".weapon.weaponFamily",
+                "weapon family",
+                errors);
+            if (!DamageTypeIds.IsKnown(weapon.DamageType))
+            {
+                errors.Add(path + ".weapon.damageType must be normal, fire, cold, nature, or shadow.");
+            }
+
+            if (!CombatContentRules.IsValidDamageRange(weapon.MinimumDamage, weapon.MaximumDamage)
+                || weapon.MaximumDamage < 1)
+            {
+                errors.Add(
+                    path + ".weapon.minimumDamage and maximumDamage must satisfy "
+                    + "0 <= minimum <= maximum, with a maximum between 1 and "
+                    + CombatContentRules.MaximumDamage.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+            }
+
+            if (!CombatContentRules.IsValidAttackInterval(weapon.AttackIntervalSeconds))
+            {
+                errors.Add(
+                    path + ".weapon.attackIntervalSeconds must be between "
+                    + CombatContentRules.MinimumAttackIntervalSeconds.ToString(CultureInfo.InvariantCulture)
+                    + " and "
+                    + CombatContentRules.MaximumAttackIntervalSeconds.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+            }
+
+            if (!CombatContentRules.IsValidAttackRange(weapon.Range))
+            {
+                errors.Add(
+                    path + ".weapon.range must be above 0 and at most "
+                    + CombatContentRules.MaximumAttackRangeMetres.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+            }
+        }
+
+        // An ammunition definition carries exactly one ammunition block, and only it does.
+        private static void ValidateAmmunition(
+            ItemDefinitionAuthoringEntry definition,
+            CombatReferences combat,
+            string path,
+            ICollection<string> errors)
+        {
+            var isAmmunition = string.Equals(
+                definition.Category,
+                ItemCategoryIds.Ammunition,
+                StringComparison.Ordinal);
+            var ammunition = definition.Ammunition;
+            if (ammunition == null)
+            {
+                if (isAmmunition)
+                {
+                    errors.Add(path + " uses category 'ammunition' but has no ammunition block.");
+                }
+
+                return;
+            }
+
+            if (!isAmmunition)
+            {
+                errors.Add(path + " has an ammunition block but does not use category 'ammunition'.");
+            }
+
+            ValidateIdentifier(
+                ammunition.AmmunitionFamily,
+                path + ".ammunition.ammunitionFamily",
+                errors);
+            ValidateReference(
+                ammunition.AmmunitionFamily,
+                combat.AmmunitionFamilyIds,
+                path + ".ammunition.ammunitionFamily",
+                "ammunition family",
+                errors);
+            if (ammunition.DamageBonusPercent < 0
+                || ammunition.DamageBonusPercent > CombatContentRules.MaximumAmmunitionDamageBonusPercent)
+            {
+                errors.Add(
+                    path + ".ammunition.damageBonusPercent must be between 0 and "
+                    + CombatContentRules.MaximumAmmunitionDamageBonusPercent.ToString(
+                        CultureInfo.InvariantCulture)
+                    + ".");
+            }
         }
 
         // A stack can only be equipped into a slot that holds more than one unit.
@@ -1169,6 +1451,25 @@ namespace Mmorpg.WorldData.Items
                 },
                 DefaultPolicies = SortStrings(authoring.DefaultPolicies),
                 Bag = CompileBagDefinition(authoring.Bag),
+                RequiredCharacterLevel = authoring.RequiredCharacterLevel,
+                Weapon = authoring.Weapon == null
+                    ? null
+                    : new ItemWeaponEntry
+                    {
+                        WeaponFamily = authoring.Weapon.WeaponFamily,
+                        DamageType = authoring.Weapon.DamageType,
+                        MinimumDamage = authoring.Weapon.MinimumDamage,
+                        MaximumDamage = authoring.Weapon.MaximumDamage,
+                        AttackIntervalSeconds = authoring.Weapon.AttackIntervalSeconds,
+                        Range = authoring.Weapon.Range
+                    },
+                Ammunition = authoring.Ammunition == null
+                    ? null
+                    : new ItemAmmunitionEntry
+                    {
+                        AmmunitionFamily = authoring.Ammunition.AmmunitionFamily,
+                        DamageBonusPercent = authoring.Ammunition.DamageBonusPercent
+                    },
                 StructuralFingerprint = string.Empty
             };
             definition.StructuralFingerprint = ComputeDefinitionStructuralFingerprint(definition);
@@ -1285,6 +1586,7 @@ namespace Mmorpg.WorldData.Items
                 writer.Write(catalog.Character.BankSlotCount);
                 writer.Write(catalog.Economy.CurrencyDisplayName);
                 writer.Write(catalog.Economy.StartingBalance);
+                writer.Write(catalog.Progression.MaximumCharacterLevel);
                 WriteIdentities(writer, catalog.Categories);
                 WriteIdentities(writer, catalog.Tags);
                 WriteIdentities(writer, catalog.ToolKinds);
@@ -1296,6 +1598,17 @@ namespace Mmorpg.WorldData.Items
                     writer.Write(slot.MaximumQuantity);
                 }
 
+                writer.Write(catalog.WeaponFamilies.Length);
+                foreach (var family in catalog.WeaponFamilies)
+                {
+                    writer.Write(family.Id);
+                    writer.Write(family.DisplayName);
+                    writer.Write(family.CombatStyle);
+                    writer.Write(family.AmmunitionFamily);
+                    writer.Write(family.ProjectileSpeed);
+                }
+
+                WriteIdentities(writer, catalog.AmmunitionFamilies);
                 writer.Write(catalog.Definitions.Length);
                 foreach (var definition in catalog.Definitions)
                 {
@@ -1304,6 +1617,7 @@ namespace Mmorpg.WorldData.Items
                     writer.Write(definition.StructuralFingerprint);
                     writer.Write(definition.Value);
                     WriteStrings(writer, definition.ToolKinds);
+                    WriteCombatData(writer, definition);
                 }
 
                 writer.Write(catalog.SecureContainerTiers.Length);
@@ -1336,6 +1650,30 @@ namespace Mmorpg.WorldData.Items
                 WriteStrings(writer, catalog.Retired.Definitions);
                 WriteStrings(writer, catalog.Retired.SecureContainerTiers);
             });
+        }
+
+        // Combat data and level requirements change the catalog revision but never custody,
+        // so they stay out of the structural fingerprint.
+        private static void WriteCombatData(BinaryWriter writer, ItemDefinition definition)
+        {
+            writer.Write(definition.RequiredCharacterLevel);
+            writer.Write(definition.Weapon != null);
+            if (definition.Weapon != null)
+            {
+                writer.Write(definition.Weapon.WeaponFamily);
+                writer.Write(definition.Weapon.DamageType);
+                writer.Write(definition.Weapon.MinimumDamage);
+                writer.Write(definition.Weapon.MaximumDamage);
+                writer.Write(definition.Weapon.AttackIntervalSeconds);
+                writer.Write(definition.Weapon.Range);
+            }
+
+            writer.Write(definition.Ammunition != null);
+            if (definition.Ammunition != null)
+            {
+                writer.Write(definition.Ammunition.AmmunitionFamily);
+                writer.Write(definition.Ammunition.DamageBonusPercent);
+            }
         }
 
         private static void WriteIdentities(
@@ -1383,6 +1721,26 @@ namespace Mmorpg.WorldData.Items
             }
 
             return builder.ToString();
+        }
+
+        private readonly struct CombatReferences
+        {
+            public CombatReferences(
+                ISet<string> weaponFamilyIds,
+                ISet<string> ammunitionFamilyIds,
+                int maximumCharacterLevel)
+            {
+                WeaponFamilyIds = weaponFamilyIds;
+                AmmunitionFamilyIds = ammunitionFamilyIds;
+                MaximumCharacterLevel = maximumCharacterLevel;
+            }
+
+            public ISet<string> WeaponFamilyIds { get; }
+
+            public ISet<string> AmmunitionFamilyIds { get; }
+
+            // 0 when the progression settings are invalid, which is reported separately.
+            public int MaximumCharacterLevel { get; }
         }
 
         private static bool Contains(IEnumerable<string> values, string expected)

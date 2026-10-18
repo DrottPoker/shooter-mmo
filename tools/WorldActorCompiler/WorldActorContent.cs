@@ -4,7 +4,8 @@ using Mmorpg.WorldData.Content;
 
 namespace Mmorpg.Tools.WorldActorCompiler;
 
-// content/actors/catalog.json: factions, presentation, and profiles shared by every actor.
+// content/actors/catalog.json: factions, presentation, and the activity, respawn, combat,
+// brain, locomotion, and loot profiles shared by every actor.
 public sealed class WorldActorCatalogHeaderDocument
 {
     public int FormatVersion;
@@ -14,6 +15,10 @@ public sealed class WorldActorCatalogHeaderDocument
     public WorldActorActivityProfileAuthoringEntry[]? ActivityProfiles;
     public WorldActorRespawnProfileAuthoringEntry[]? RespawnProfiles;
     public WorldActorResourceProfileAuthoringEntry[]? ResourceProfiles;
+    public WorldActorCombatProfileAuthoringEntry[]? CombatProfiles;
+    public WorldActorBrainProfileAuthoringEntry[]? BrainProfiles;
+    public WorldActorLocomotionProfileAuthoringEntry[]? LocomotionProfiles;
+    public WorldActorLootProfileAuthoringEntry[]? LootProfiles;
 }
 
 // Assembles actor authoring from catalog.json, one file per actor definition, and the
@@ -37,6 +42,10 @@ public static class WorldActorContent
             ActivityProfiles = header.ActivityProfiles,
             RespawnProfiles = header.RespawnProfiles,
             ResourceProfiles = header.ResourceProfiles,
+            CombatProfiles = header.CombatProfiles,
+            BrainProfiles = header.BrainProfiles,
+            LocomotionProfiles = header.LocomotionProfiles,
+            LootProfiles = header.LootProfiles,
             Actors = actors
         };
     }

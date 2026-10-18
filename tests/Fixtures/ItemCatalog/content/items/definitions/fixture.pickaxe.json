@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "tool",
@@ -13,10 +14,12 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
   "toolKinds": [
     "pickaxe"
   ],
   "unitWeight": 15,
-  "value": 50
+  "value": 50,
+  "weapon": null
 }

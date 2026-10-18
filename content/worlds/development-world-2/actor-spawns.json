@@ -1,5 +1,5 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 3,
     "worldId": "development-world-2",
     "actorCatalogId": "core",
     "spawnPoints": [
@@ -10,6 +10,15 @@
             "y": 0.0,
             "z": 4.0,
             "yawDegrees": 270.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.feral_alpha",
+            "actorId": "mob.feral_alpha",
+            "x": -120.0,
+            "y": 0.0,
+            "z": -195.0,
+            "yawDegrees": 315.0,
             "patrolPathId": ""
         }
     ],

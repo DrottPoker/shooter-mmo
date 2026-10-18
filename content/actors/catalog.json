@@ -1,5 +1,5 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 3,
     "catalogId": "core",
     "factions": [
         {
@@ -59,6 +59,99 @@
             "id": "mob.normal",
             "delaySeconds": 30.0,
             "populationLimit": 32
+        },
+        {
+            "id": "mob.boss",
+            "delaySeconds": 300.0,
+            "populationLimit": 4
+        }
+    ],
+    "combatProfiles": [
+        {
+            "id": "mob.feral_alpha",
+            "maximumHealth": 240,
+            "attackStyle": "melee",
+            "attackDamageType": "normal",
+            "minimumDamage": 7,
+            "maximumDamage": 12,
+            "attackIntervalSeconds": 2.4,
+            "attackRange": 2.0
+        },
+        {
+            "id": "mob.feral_wolf",
+            "maximumHealth": 50,
+            "attackStyle": "melee",
+            "attackDamageType": "normal",
+            "minimumDamage": 4,
+            "maximumDamage": 9,
+            "attackIntervalSeconds": 1.8,
+            "attackRange": 1.5
+        }
+    ],
+    "brainProfiles": [
+        {
+            "id": "mob.aggressive",
+            "aggression": "aggressive",
+            "detectionRange": 8.0,
+            "leashRange": 30.0,
+            "giveUpSeconds": 10.0
+        },
+        {
+            "id": "mob.aggressive_boss",
+            "aggression": "aggressive",
+            "detectionRange": 10.0,
+            "leashRange": 30.0,
+            "giveUpSeconds": 10.0
+        }
+    ],
+    "locomotionProfiles": [
+        {
+            "id": "mob.large_quadruped",
+            "walkSpeed": 4.5,
+            "collisionRadius": 0.6,
+            "collisionHeight": 1.6
+        },
+        {
+            "id": "mob.quadruped",
+            "walkSpeed": 4.5,
+            "collisionRadius": 0.4,
+            "collisionHeight": 1.1
+        }
+    ],
+    "lootProfiles": [
+        {
+            "id": "mob.feral_alpha",
+            "entries": [
+                {
+                    "definitionId": "material.wolf_pelt",
+                    "minimumQuantity": 3,
+                    "maximumQuantity": 3,
+                    "chanceBasisPoints": 10000
+                },
+                {
+                    "definitionId": "jewelry.copper_ring",
+                    "minimumQuantity": 1,
+                    "maximumQuantity": 1,
+                    "chanceBasisPoints": 2500
+                }
+            ]
+        },
+        {
+            "id": "mob.feral_wolf",
+            "entries": [
+                {
+                    "definitionId": "material.wolf_pelt",
+                    "minimumQuantity": 1,
+                    "maximumQuantity": 1,
+                    "chanceBasisPoints": 10000
+                },
+                {
+                    "definitionId": "ammunition.bronze_arrow",
+                    "minimumQuantity": 3,
+                    "maximumQuantity": 8,
+                    "chanceBasisPoints": 4000
+                }
+            ]
         }
     ],
     "resourceProfiles": [

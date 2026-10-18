@@ -168,6 +168,7 @@ internal sealed class ItemStateReader(
                 definition.value as "Value",
                 definition.maximum_stack_size as "MaximumStackSize",
                 definition.player_destroyable as "PlayerDestroyable",
+                definition.required_character_level as "RequiredCharacterLevel",
                 definition.structural_fingerprint as "StructuralFingerprint",
                 coalesce(location.is_allowed, false) as "SecureContainerEligible",
                 bag.carry_capacity_bonus as "BagCarryCapacityBonus"
@@ -237,6 +238,7 @@ internal sealed class ItemStateReader(
                 SecureContainer = row.SecureContainerEligible
             },
             DefaultPolicies = defaultPolicies,
+            RequiredCharacterLevel = row.RequiredCharacterLevel,
             StructuralFingerprint = row.StructuralFingerprint
         };
 
@@ -386,6 +388,8 @@ internal sealed class ItemStateReader(
         public int MaximumStackSize { get; set; }
 
         public bool PlayerDestroyable { get; set; }
+
+        public int RequiredCharacterLevel { get; set; }
 
         public string StructuralFingerprint { get; set; } = string.Empty;
 

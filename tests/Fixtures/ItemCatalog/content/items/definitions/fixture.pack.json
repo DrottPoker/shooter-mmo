@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": {
     "carryCapacityBonus": 50,
     "slots": [
@@ -58,8 +59,10 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
   "toolKinds": [ ],
   "unitWeight": 10,
-  "value": 200
+  "value": 200,
+  "weapon": null
 }

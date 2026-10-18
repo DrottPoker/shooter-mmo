@@ -543,6 +543,10 @@ concurrent inspection, and authoritative looting:
   slot. Equipping into a slot that an equipped item blocks, or with an item that
   would block an occupied slot, is rejected with `equipment_slot_blocked`. A
   corpse equipment slot keeps the same quantity limit.
+- Every path into a character's equipment slot, including corpse Bag swaps and
+  cross-character Bag aggregate swaps, compares the definition's mirrored
+  `required_character_level` with `characters.level` and rejects a lower level
+  with `equipment_level_requirement_not_met`.
 - Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
   child. A protected or insured Bag or child rejects the complete swap without
   changing custody, quantity, or revisions.
@@ -800,7 +804,7 @@ and interaction codes, and Unity adds `item_catalog_update_required`.
 | Authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `worker_runtime_changed`, `simulation_session_invalid` |
 | Operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large`, `item_operation_queue_full`, `item_state_diverged` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
-| Placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
+| Placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
 | Stacks | `item_stack_incompatible`, `item_stack_limit_exceeded` |
 | Policy, quest, and currency | `item_policy_restricted`, `item_policy_not_found`, `item_destroy_forbidden`, `quest_grant_invalid`, `currency_insufficient` |
 | Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |

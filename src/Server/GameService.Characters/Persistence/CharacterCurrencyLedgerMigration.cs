@@ -2,7 +2,7 @@ namespace Mmorpg.GameService.Characters.Persistence;
 
 internal static class CharacterCurrencyLedgerMigration
 {
-    public const string Id = "202610181200_character_currency_ledger";
+    public const string Id = "202610181220_character_currency_ledger";
 
     // The balance stays within the wallet's range, and every change appends one ledger row,
     // so a character's ledger deltas always sum to its balance. Balances that existed

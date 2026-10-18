@@ -1,5 +1,5 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 3,
     "worldId": "development-world-1",
     "actorCatalogId": "core",
     "spawnPoints": [

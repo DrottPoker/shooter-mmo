@@ -11,6 +11,16 @@ public static class CharactersSql
     public const string ActiveCharacters =
         "(select id, account_id, name from characters where deleted_at is null)";
 
+    // The level of the character, or null when it does not exist.
+    public static string LevelOf(string characterIdExpression)
+    {
+        return $"""
+            (select characters_sql_level.level
+             from characters characters_sql_level
+             where characters_sql_level.id = {characterIdExpression})
+            """;
+    }
+
     // The currency balance of a character.
     public static string CurrencyOf(string characterIdExpression)
     {

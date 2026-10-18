@@ -33,8 +33,8 @@ public sealed class ResourceNodeContentTests
     {
         var items = ItemCatalogTestData.Compile();
 
-        WorldActorCompiler.ValidateItemReferences(WorldActorTestData.Compile(), items);
-        WorldActorCompiler.ValidateItemReferences(
+        WorldActorItemReferences.Validate(WorldActorTestData.Compile(), items);
+        WorldActorItemReferences.Validate(
             WorldActorTestData.Compile("development-world-2"),
             items);
     }
@@ -146,7 +146,7 @@ public sealed class ResourceNodeContentTests
             .ToArray();
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorCompiler.ValidateItemReferences(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime, items));
 
         Assert.Contains(exception.Errors, value => value.Contains("unknown vendor profile", StringComparison.Ordinal));
         Assert.Contains(exception.Errors, value => value.Contains("unknown tool kind", StringComparison.Ordinal));
@@ -163,7 +163,7 @@ public sealed class ResourceNodeContentTests
         ore.MaximumStackSize = 0;
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorCompiler.ValidateItemReferences(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime, items));
 
         Assert.Contains(exception.Errors, value => value.Contains("default policies", StringComparison.Ordinal));
         Assert.Contains(exception.Errors, value => value.Contains("more than one stack", StringComparison.Ordinal));
@@ -180,7 +180,7 @@ public sealed class ResourceNodeContentTests
         }
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorCompiler.ValidateItemReferences(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime, items));
 
         Assert.Contains(exception.Errors, value => value.Contains("which no item definition provides", StringComparison.Ordinal));
     }

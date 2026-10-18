@@ -2,7 +2,7 @@ namespace Mmorpg.GameService.Items.Persistence;
 
 internal static class ItemEconomyMigration
 {
-    public const string Id = "202610181210_item_economy";
+    public const string Id = "202610181230_item_economy";
 
     // The catalog mirror gains item values, tool kinds, the currency settings, and vendor
     // profiles, so purchases, sales, and gathering read prices and tool requirements from

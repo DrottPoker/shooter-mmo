@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "jewelry",
@@ -14,8 +15,10 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
   "toolKinds": [ ],
   "unitWeight": 1,
-  "value": 40
+  "value": 40,
+  "weapon": null
 }

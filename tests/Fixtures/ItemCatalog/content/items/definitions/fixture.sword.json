@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "weapon",
@@ -14,8 +15,17 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
   "toolKinds": [ ],
   "unitWeight": 25,
-  "value": 100
+  "value": 100,
+  "weapon": {
+    "attackIntervalSeconds": 1.8,
+    "damageType": "normal",
+    "maximumDamage": 12,
+    "minimumDamage": 6,
+    "range": 1.5,
+    "weaponFamily": "blade"
+  }
 }

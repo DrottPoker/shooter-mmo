@@ -296,7 +296,9 @@ Start with [Project Overview](docs/PROJECT_OVERVIEW.md), then use the complete
 
 The agreed setting, movement, camera, combat triangle, damage type, weapon,
 ammunition, and magic direction is in
-[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md).
+[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md). The planned
+first combat slice, with its decisions and implementation order, is in
+[Combat And Mob Slice Plan](docs/COMBAT_AND_MOB_SLICE_PLAN.md).
 
 The item, inventory, carry-weight, death-loot, corpse, insurance, and recovery
 rules are in

@@ -9,7 +9,8 @@ internal enum DevelopmentItemToolCommandKind
     Grant = 2,
     Package = 3,
     Corpse = 4,
-    Currency = 5
+    Level = 5,
+    Currency = 6
 }
 
 internal enum DevelopmentItemDestination
@@ -30,6 +31,7 @@ internal sealed record DevelopmentItemToolCommand(
     double PositionX = 0d,
     double PositionY = 0d,
     double PositionZ = 0d,
+    int Level = 0,
     long Amount = 0);
 
 internal static class DevelopmentItemToolCommandParser
@@ -38,6 +40,7 @@ internal static class DevelopmentItemToolCommandParser
     public const string GrantArgument = "--dev-items-grant";
     public const string PackageArgument = "--dev-items-package";
     public const string CorpseArgument = "--dev-items-corpse";
+    public const string LevelArgument = "--dev-items-level";
     public const string CurrencyArgument = "--dev-items-currency";
 
     private static readonly string[] CommandArguments =
@@ -46,6 +49,7 @@ internal static class DevelopmentItemToolCommandParser
         GrantArgument,
         PackageArgument,
         CorpseArgument,
+        LevelArgument,
         CurrencyArgument
     ];
 
@@ -101,6 +105,11 @@ internal static class DevelopmentItemToolCommandParser
             return TryParseCorpse(arguments, selected.index, out command, out error);
         }
 
+        if (string.Equals(selected.argument, LevelArgument, StringComparison.Ordinal))
+        {
+            return TryParseLevel(arguments, selected.index, out command, out error);
+        }
+
         if (string.Equals(selected.argument, CurrencyArgument, StringComparison.Ordinal))
         {
             return TryParseCurrency(arguments, selected.index, out command, out error);
@@ -139,6 +148,38 @@ internal static class DevelopmentItemToolCommandParser
             positionX,
             positionY,
             positionZ);
+        return true;
+    }
+
+    private static bool TryParseLevel(
+        IReadOnlyList<string> arguments,
+        int commandIndex,
+        out DevelopmentItemToolCommand? command,
+        out string error)
+    {
+        command = null;
+        error = string.Empty;
+        if (commandIndex + 2 >= arguments.Count
+            || !TryParseCharacterId(arguments[commandIndex + 1], out var characterId)
+            || !int.TryParse(
+                arguments[commandIndex + 2],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var level)
+            || level < 1)
+        {
+            error = $"{LevelArgument} requires <characterGuid> <positiveLevel>.";
+            return true;
+        }
+
+        command = new DevelopmentItemToolCommand(
+            DevelopmentItemToolCommandKind.Level,
+            characterId,
+            string.Empty,
+            0,
+            DevelopmentItemDestination.PermanentInventory,
+            string.Empty,
+            Level: level);
         return true;
     }
 

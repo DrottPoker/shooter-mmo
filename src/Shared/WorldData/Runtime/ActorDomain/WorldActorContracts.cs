@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 2;
+        public const int Version = 3;
     }
 
     public static class WorldActorKindIds
@@ -33,6 +33,27 @@ namespace Mmorpg.WorldData.Actors
     {
         public const string Live = "live";
         public const string Durable = "durable";
+    }
+
+    // An aggressive Mob attacks a player it detects; a defensive Mob fights only once damaged.
+    public static class WorldActorAggressionIds
+    {
+        public const string Aggressive = "aggressive";
+        public const string Defensive = "defensive";
+    }
+
+    // Bounds for Mob combat, brain, locomotion, and loot profiles.
+    public static class WorldActorCombatRules
+    {
+        public const float MaximumDetectionRange = 64f;
+        public const float MaximumLeashRange = 256f;
+        public const float MinimumGiveUpSeconds = 1f;
+        public const float MaximumGiveUpSeconds = 600f;
+        public const float MaximumWalkSpeed = 20f;
+        public const float MaximumCollisionRadius = 4f;
+        public const float MaximumCollisionHeight = 16f;
+        public const int MaximumLootQuantity = 1_000_000;
+        public const int MaximumLootChanceBasisPoints = 10_000;
     }
 
     public static class WorldActorCorpseRules
@@ -134,6 +155,10 @@ namespace Mmorpg.WorldData.Actors
         public WorldActorActivityProfileAuthoringEntry[] ActivityProfiles;
         public WorldActorRespawnProfileAuthoringEntry[] RespawnProfiles;
         public WorldActorResourceProfileAuthoringEntry[] ResourceProfiles;
+        public WorldActorCombatProfileAuthoringEntry[] CombatProfiles;
+        public WorldActorBrainProfileAuthoringEntry[] BrainProfiles;
+        public WorldActorLocomotionProfileAuthoringEntry[] LocomotionProfiles;
+        public WorldActorLootProfileAuthoringEntry[] LootProfiles;
         public WorldActorAuthoringEntry[] Actors;
     }
 
@@ -197,6 +222,58 @@ namespace Mmorpg.WorldData.Actors
         public float RespawnSeconds;
     }
 
+    // A Mob's health and its one attack.
+    [Serializable]
+    public sealed class WorldActorCombatProfileAuthoringEntry
+    {
+        public string Id;
+        public int MaximumHealth;
+        public string AttackStyle;
+        public string AttackDamageType;
+        public int MinimumDamage = -1;
+        public int MaximumDamage = -1;
+        public float AttackIntervalSeconds;
+        public float AttackRange;
+    }
+
+    // How a Mob picks a fight and when it gives up and walks home.
+    [Serializable]
+    public sealed class WorldActorBrainProfileAuthoringEntry
+    {
+        public string Id;
+        public string Aggression;
+        public float DetectionRange;
+        public float LeashRange;
+        public float GiveUpSeconds;
+    }
+
+    // How a Mob moves: its walk speed and its collision capsule.
+    [Serializable]
+    public sealed class WorldActorLocomotionProfileAuthoringEntry
+    {
+        public string Id;
+        public float WalkSpeed;
+        public float CollisionRadius;
+        public float CollisionHeight;
+    }
+
+    // Independent loot rolls: each entry drops with its chance and a quantity in its range.
+    [Serializable]
+    public sealed class WorldActorLootProfileAuthoringEntry
+    {
+        public string Id;
+        public WorldActorLootEntryAuthoringEntry[] Entries;
+    }
+
+    [Serializable]
+    public sealed class WorldActorLootEntryAuthoringEntry
+    {
+        public string DefinitionId;
+        public int MinimumQuantity;
+        public int MaximumQuantity;
+        public int ChanceBasisPoints;
+    }
+
     [Serializable]
     public sealed class WorldActorAuthoringEntry
     {
@@ -214,6 +291,10 @@ namespace Mmorpg.WorldData.Actors
         public string RespawnProfileId;
         public string CorpsePersistenceMode;
         public float CorpseLifetimeSeconds;
+        public string CombatProfileId;
+        public string BrainProfileId;
+        public string LocomotionProfileId;
+        public string LootProfileId;
     }
 
     [Serializable]
@@ -309,6 +390,10 @@ namespace Mmorpg.WorldData.Actors
         public WorldActorActivityProfileDefinition[] ActivityProfiles;
         public WorldActorRespawnProfileDefinition[] RespawnProfiles;
         public WorldActorResourceProfileDefinition[] ResourceProfiles;
+        public WorldActorCombatProfileDefinition[] CombatProfiles;
+        public WorldActorBrainProfileDefinition[] BrainProfiles;
+        public WorldActorLocomotionProfileDefinition[] LocomotionProfiles;
+        public WorldActorLootProfileDefinition[] LootProfiles;
         public WorldActorDefinition[] Actors;
         public WorldActorSpawnSourceDefinition[] SpawnSources;
         public WorldActorSpawnInstanceDefinition[] SpawnInstances;
@@ -367,6 +452,58 @@ namespace Mmorpg.WorldData.Actors
     }
 
     [Serializable]
+    public sealed class WorldActorCombatProfileDefinition
+    {
+        public string Id;
+        public int MaximumHealth;
+        public string AttackStyle;
+        public string AttackDamageType;
+        public int MinimumDamage;
+        public int MaximumDamage;
+        public float AttackIntervalSeconds;
+        public float AttackRange;
+        public string StructuralFingerprint;
+    }
+
+    [Serializable]
+    public sealed class WorldActorBrainProfileDefinition
+    {
+        public string Id;
+        public string Aggression;
+        public float DetectionRange;
+        public float LeashRange;
+        public float GiveUpSeconds;
+        public string StructuralFingerprint;
+    }
+
+    [Serializable]
+    public sealed class WorldActorLocomotionProfileDefinition
+    {
+        public string Id;
+        public float WalkSpeed;
+        public float CollisionRadius;
+        public float CollisionHeight;
+        public string StructuralFingerprint;
+    }
+
+    [Serializable]
+    public sealed class WorldActorLootProfileDefinition
+    {
+        public string Id;
+        public WorldActorLootEntryDefinition[] Entries;
+        public string StructuralFingerprint;
+    }
+
+    [Serializable]
+    public sealed class WorldActorLootEntryDefinition
+    {
+        public string DefinitionId;
+        public int MinimumQuantity;
+        public int MaximumQuantity;
+        public int ChanceBasisPoints;
+    }
+
+    [Serializable]
     public sealed class WorldActorDefinition
     {
         public string Id;
@@ -383,6 +520,10 @@ namespace Mmorpg.WorldData.Actors
         public string RespawnProfileId;
         public string CorpsePersistenceMode;
         public float CorpseLifetimeSeconds;
+        public string CombatProfileId;
+        public string BrainProfileId;
+        public string LocomotionProfileId;
+        public string LootProfileId;
         public string StructuralFingerprint;
     }
 

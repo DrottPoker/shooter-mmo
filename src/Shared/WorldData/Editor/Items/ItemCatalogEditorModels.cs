@@ -57,9 +57,12 @@ namespace Mmorpg.WorldData.Editor.Items
         public string catalogId;
         public string baseSecureContainerTierId;
         public ItemCatalogJsonCharacter character;
+        public ItemCatalogJsonProgression progression;
         public ItemCatalogJsonIdentity[] categories;
         public ItemCatalogJsonIdentity[] tags;
         public ItemCatalogJsonEquipmentSlot[] equipmentSlots;
+        public ItemCatalogJsonWeaponFamily[] weaponFamilies;
+        public ItemCatalogJsonIdentity[] ammunitionFamilies;
         public ItemCatalogJsonSecureContainerTier[] secureContainerTiers;
         public ItemCatalogJsonRetired retired;
     }
@@ -74,7 +77,7 @@ namespace Mmorpg.WorldData.Editor.Items
         public static ItemCatalogJsonDefinition DeserializeDefinition(string json)
         {
             var definition = Deserialize<ItemCatalogJsonDefinition>(json, "Item definition");
-            definition.ClearMissingBagPlaceholder();
+            definition.ClearMissingPlaceholders();
             return definition;
         }
 
@@ -125,6 +128,10 @@ namespace Mmorpg.WorldData.Editor.Items
             // Equipment slots keep their authored order: it is the display order.
             document.equipmentSlots = document.equipmentSlots
                 ?? Array.Empty<ItemCatalogJsonEquipmentSlot>();
+            document.weaponFamilies = document.weaponFamilies
+                ?? Array.Empty<ItemCatalogJsonWeaponFamily>();
+            document.ammunitionFamilies = document.ammunitionFamilies
+                ?? Array.Empty<ItemCatalogJsonIdentity>();
             document.retired = document.retired ?? new ItemCatalogJsonRetired();
             document.retired.categories = SortStrings(document.retired.categories);
             document.retired.tags = SortStrings(document.retired.tags);
@@ -245,9 +252,12 @@ namespace Mmorpg.WorldData.Editor.Items
                 catalogId = header.catalogId,
                 baseSecureContainerTierId = header.baseSecureContainerTierId,
                 character = header.character,
+                progression = header.progression,
                 categories = header.categories,
                 tags = header.tags,
                 equipmentSlots = header.equipmentSlots,
+                weaponFamilies = header.weaponFamilies,
+                ammunitionFamilies = header.ammunitionFamilies,
                 definitions = definitions,
                 secureContainerTiers = header.secureContainerTiers,
                 retired = header.retired
@@ -273,9 +283,12 @@ namespace Mmorpg.WorldData.Editor.Items
                         catalogId = normalized.catalogId,
                         baseSecureContainerTierId = normalized.baseSecureContainerTierId,
                         character = normalized.character,
+                        progression = normalized.progression,
                         categories = normalized.categories,
                         tags = normalized.tags,
                         equipmentSlots = normalized.equipmentSlots,
+                        weaponFamilies = normalized.weaponFamilies,
+                        ammunitionFamilies = normalized.ammunitionFamilies,
                         secureContainerTiers = normalized.secureContainerTiers,
                         retired = normalized.retired
                     })
@@ -480,10 +493,13 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.catalogId = authoring.catalogId;
             Authoring.baseSecureContainerTierId = authoring.baseSecureContainerTierId;
             Authoring.character = authoring.character;
+            Authoring.progression = authoring.progression;
             Authoring.retired = authoring.retired;
             Authoring.categories = authoring.categories;
             Authoring.tags = authoring.tags;
             Authoring.equipmentSlots = authoring.equipmentSlots;
+            Authoring.weaponFamilies = authoring.weaponFamilies;
+            Authoring.ammunitionFamilies = authoring.ammunitionFamilies;
             Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogJsonDefinition>();
             Authoring.secureContainerTiers = authoring.secureContainerTiers;
             Presentation.formatVersion = presentation.formatVersion;
@@ -522,7 +538,10 @@ namespace Mmorpg.WorldData.Editor.Items
                 playerDestroyable = true,
                 locationEligibility = new ItemCatalogJsonLocationEligibility(),
                 defaultPolicies = Array.Empty<string>(),
-                bag = null
+                bag = null,
+                requiredCharacterLevel = 1,
+                weapon = null,
+                ammunition = null
             };
             Authoring.definitions = Authoring.definitions.Concat(new[] { definition }).ToArray();
             AddPresentationEntry(definition);
