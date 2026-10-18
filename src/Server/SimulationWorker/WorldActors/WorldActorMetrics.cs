@@ -26,6 +26,10 @@ public sealed class WorldActorMetrics : IDisposable
     private long activeInteractions;
     private long acceptedInteractions;
     private long rejectedInteractions;
+    private long resourceNodePopulation;
+    private long depletedResourceNodes;
+    private long activeGatherers;
+    private readonly Counter<long> gatheringCycles;
 
     public WorldActorMetrics()
     {
@@ -40,6 +44,16 @@ public sealed class WorldActorMetrics : IDisposable
         interactionLatency = meter.CreateHistogram<double>(
             "simulation_worker.world_interactions.duration",
             "ms");
+        meter.CreateObservableGauge(
+            "simulation_worker.world_actors.resource_node",
+            () => Volatile.Read(ref resourceNodePopulation));
+        meter.CreateObservableGauge(
+            "simulation_worker.resource_nodes.depleted",
+            () => Volatile.Read(ref depletedResourceNodes));
+        meter.CreateObservableGauge(
+            "simulation_worker.gathering.active",
+            () => Volatile.Read(ref activeGatherers));
+        gatheringCycles = meter.CreateCounter<long>("simulation_worker.gathering.cycles");
     }
 
     public void ObservePopulation(IReadOnlyCollection<WorldActorRuntimeState> actors)
@@ -50,6 +64,21 @@ public sealed class WorldActorMetrics : IDisposable
         Interlocked.Exchange(ref eventDrivenPopulation, actors.Count(actor => actor.ActivityTier == "event_driven"));
         Interlocked.Exchange(ref dormantPopulation, actors.Count(actor => actor.ActivityTier == "dormant"));
         Interlocked.Exchange(ref activePopulation, actors.Count(actor => actor.ActivityTier == "active"));
+        Interlocked.Exchange(
+            ref resourceNodePopulation,
+            actors.Count(actor => actor.Definition.Kind == "resource_node"));
+        Interlocked.Exchange(
+            ref depletedResourceNodes,
+            actors.Count(actor => actor.ResourceProfile is not null && !actor.IsActive));
+    }
+
+    public void SetActiveGatherers(long count) =>
+        Interlocked.Exchange(ref activeGatherers, count);
+
+    // Outcome is yielded, rejected, or retried: low cardinality, never an identity.
+    public void RecordGatheringCycle(string outcome)
+    {
+        gatheringCycles.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
     }
 
     public void SetActiveInteractions(long count) =>

@@ -12,7 +12,8 @@ public sealed class WorldActorRuntimeState
         string shardId,
         string workerRuntimeId,
         WorldActorDefinition definition,
-        WorldActorSpawnInstanceDefinition spawn)
+        WorldActorSpawnInstanceDefinition spawn,
+        WorldActorResourceProfileDefinition? resourceProfile = null)
     {
         NetworkEntityId = networkEntityId;
         RuntimeActorId = runtimeActorId;
@@ -30,10 +31,12 @@ public sealed class WorldActorRuntimeState
         InteractionRevision = 1;
         ActivityTier = string.Equals(
             definition.Kind,
-            WorldActorKindIds.Npc,
+            WorldActorKindIds.Mob,
             StringComparison.Ordinal)
-            ? WorldActorActivityTierIds.EventDriven
-            : WorldActorActivityTierIds.Dormant;
+            ? WorldActorActivityTierIds.Dormant
+            : WorldActorActivityTierIds.EventDriven;
+        ResourceProfile = resourceProfile;
+        RemainingResourceCharges = resourceProfile?.Charges ?? 0;
     }
 
     public ulong NetworkEntityId { get; }
@@ -51,6 +54,18 @@ public sealed class WorldActorRuntimeState
     public long StateRevision { get; private set; }
     public long InteractionRevision { get; private set; }
     public string ActivityTier { get; private set; }
+
+    // A resource node's profile and charges. The charges are live Shard state: every
+    // gatherer shares them, and a worker restart restores every node to full.
+    public WorldActorResourceProfileDefinition? ResourceProfile { get; }
+
+    public int RemainingResourceCharges { get; private set; }
+
+    public int ReservedResourceCharges { get; private set; }
+
+    // Advances on every depletion, so a stale respawn or completion never touches a newer
+    // cycle of the node.
+    public long ResourceGeneration { get; private set; }
 
     public float BoundsCenterX => PositionX + Definition.InteractionBounds.CenterX;
     public float BoundsCenterY => PositionY + Definition.InteractionBounds.CenterY;
@@ -85,6 +100,63 @@ public sealed class WorldActorRuntimeState
     {
         InteractionRevision++;
         StateRevision++;
+    }
+
+    // Reserves one charge for a gathering cycle whose grant is in flight. Loop-confined.
+    internal bool TryReserveResourceCharge()
+    {
+        if (ResourceProfile is null
+            || !IsActive
+            || RemainingResourceCharges - ReservedResourceCharges <= 0)
+        {
+            return false;
+        }
+
+        ReservedResourceCharges++;
+        return true;
+    }
+
+    internal void ReleaseResourceCharge(long generation)
+    {
+        if (generation == ResourceGeneration && ReservedResourceCharges > 0)
+        {
+            ReservedResourceCharges--;
+        }
+    }
+
+    // Consumes a reserved charge after its grant committed. The last charge depletes the
+    // node, which makes it inactive for every player. Returns whether this depleted it.
+    internal bool ConsumeResourceCharge(long generation)
+    {
+        if (generation != ResourceGeneration || ReservedResourceCharges <= 0)
+        {
+            return false;
+        }
+
+        ReservedResourceCharges--;
+        RemainingResourceCharges--;
+        if (RemainingResourceCharges > 0)
+        {
+            return false;
+        }
+
+        ResourceGeneration++;
+        ReservedResourceCharges = 0;
+        SetActive(false);
+        return true;
+    }
+
+    // Restores a depleted node with full charges. Returns false when it already returned.
+    internal bool ReplenishResource(long generation)
+    {
+        if (ResourceProfile is null || generation != ResourceGeneration || IsActive)
+        {
+            return false;
+        }
+
+        RemainingResourceCharges = ResourceProfile.Charges;
+        ReservedResourceCharges = 0;
+        return SetActive(true);
     }
 }
 
@@ -162,6 +234,9 @@ public sealed class WorldActorStore
         var definitions = document.Actors.ToDictionary(
             definition => definition.Id,
             StringComparer.Ordinal);
+        var resourceProfiles = (document.ResourceProfiles
+                ?? Array.Empty<WorldActorResourceProfileDefinition>())
+            .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
         lock (syncRoot)
         {
             actorsByEntityId.Clear();
@@ -178,14 +253,16 @@ public sealed class WorldActorStore
                         "World actor runtime id allocation returned an invalid or reused id.");
                 }
 
+                var definition = definitions[spawn.ActorId];
                 var actor = new WorldActorRuntimeState(
                     entityRegistry.AllocateNetworkEntityId(),
                     runtimeActorId,
                     worldId,
                     shardId,
                     workerRuntimeId,
-                    definitions[spawn.ActorId],
-                    spawn);
+                    definition,
+                    spawn,
+                    ResolveResourceProfile(definition, resourceProfiles));
                 actorsByEntityId.Add(actor.NetworkEntityId, actor);
                 actorsByRuntimeId.Add(actor.RuntimeActorId, actor);
             }
@@ -307,5 +384,26 @@ public sealed class WorldActorStore
             despawnedActorsByEntityId.Clear();
             Interlocked.Increment(ref populationRevision);
         }
+    }
+
+    // A resource node's gathering capability names its resource profile. The compiled data
+    // was validated at startup, so a missing profile means corrupt runtime data.
+    private static WorldActorResourceProfileDefinition? ResolveResourceProfile(
+        WorldActorDefinition definition,
+        IReadOnlyDictionary<string, WorldActorResourceProfileDefinition> resourceProfiles)
+    {
+        if (!string.Equals(definition.Kind, WorldActorKindIds.ResourceNode, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var gathering = definition.Capabilities.Single(capability => string.Equals(
+            capability.Kind,
+            WorldActorCapabilityKindIds.Gathering,
+            StringComparison.Ordinal));
+        return resourceProfiles.TryGetValue(gathering.ProfileId, out var profile)
+            ? profile
+            : throw new InvalidOperationException(
+                "Resource node " + definition.Id + " references a missing resource profile.");
     }
 }

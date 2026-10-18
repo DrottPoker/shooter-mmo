@@ -322,8 +322,8 @@ namespace Mmorpg.Client.Ui
                     string.Equals(policy.Kind, ItemPolicyIds.Insured, StringComparison.Ordinal)
                     && string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal));
                 var action = insured
-                    ? RealtimeNpcLifecycleActionKind.RemoveInsurance
-                    : RealtimeNpcLifecycleActionKind.ApplyInsurance;
+                    ? RealtimeCapabilityActionKind.RemoveInsurance
+                    : RealtimeCapabilityActionKind.ApplyInsurance;
                 var label = (insured ? "Insured, remove: " : "Insure: ")
                     + state.Catalog.GetDisplayName(item.DefinitionId);
                 AddButton(
@@ -361,7 +361,7 @@ namespace Mmorpg.Client.Ui
                 state.CanMutate,
                 () => SubmitLifecycle(
                     capability.Id,
-                    RealtimeNpcLifecycleActionKind.AcceptQuest,
+                    RealtimeCapabilityActionKind.AcceptQuest,
                     state.KnownItemStateRevision,
                     Guid.Empty,
                     0,
@@ -372,7 +372,7 @@ namespace Mmorpg.Client.Ui
                 state.CanMutate,
                 () => SubmitLifecycle(
                     capability.Id,
-                    RealtimeNpcLifecycleActionKind.AbandonQuest,
+                    RealtimeCapabilityActionKind.AbandonQuest,
                     state.KnownItemStateRevision,
                     Guid.Empty,
                     0,
@@ -382,7 +382,7 @@ namespace Mmorpg.Client.Ui
 
         private void SubmitLifecycle(
             string capabilityId,
-            RealtimeNpcLifecycleActionKind action,
+            RealtimeCapabilityActionKind action,
             long expectedCharacterRevision,
             Guid itemInstanceId,
             long expectedItemRevision,

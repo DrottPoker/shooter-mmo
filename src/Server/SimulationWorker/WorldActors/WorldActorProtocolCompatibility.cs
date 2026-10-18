@@ -62,15 +62,21 @@ internal static class WorldActorProtocolMapper
             capability.Id,
             WorldActorCapabilityRegistry.ToProtocolKind(capability.Kind),
             capability.DisplayName,
+            capability.ProfileId,
             true,
             checked(actor.InteractionRevision + index));
     }
 
     private static RealtimeWorldActorKind ToKind(string kind)
     {
-        return string.Equals(kind, WorldActorKindIds.Npc, StringComparison.Ordinal)
-            ? RealtimeWorldActorKind.Npc
-            : RealtimeWorldActorKind.Mob;
+        return kind switch
+        {
+            WorldActorKindIds.Npc => RealtimeWorldActorKind.Npc,
+            WorldActorKindIds.Mob => RealtimeWorldActorKind.Mob,
+            WorldActorKindIds.ResourceNode => RealtimeWorldActorKind.ResourceNode,
+            _ => throw new InvalidOperationException(
+                "Compiled world actor kind is unsupported: " + kind)
+        };
     }
 
     private static RealtimeWorldActorDisposition ToDisposition(string disposition)

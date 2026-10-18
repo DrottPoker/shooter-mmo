@@ -16,10 +16,14 @@ internal sealed class WorldActorRuntimeDriver(
     SimulationWorkerIdentity? workerIdentity,
     EntityPresenceReplicator presence,
     RealtimeNetworkMetrics networkMetrics,
+    WorldActorTimerQueue timers,
     ILogger logger)
 {
+    private readonly List<WorldActorTimer> dueTimers = [];
+
     public void Activate()
     {
+        timers.Clear();
         if (worldActorStore is not null)
         {
             if (workerIdentity is null)
@@ -45,6 +49,7 @@ internal sealed class WorldActorRuntimeDriver(
 
     public void EvaluateTick(IReadOnlyList<PlayerSimulationEntity> players, uint serverTick)
     {
+        RespawnDueResourceNodes(serverTick);
         if (worldActorActivityScheduler is not null)
         {
             foreach (var changedActor in worldActorActivityScheduler.Evaluate(
@@ -58,6 +63,26 @@ internal sealed class WorldActorRuntimeDriver(
             if (worldActorStore is not null)
             {
                 worldActorMetrics?.ObservePopulation(worldActorStore.ListActors());
+            }
+        }
+    }
+
+    // A depleted resource node returns with full charges once its respawn delay passed.
+    // A timer from an older depletion or another worker runtime finds no matching node.
+    private void RespawnDueResourceNodes(uint serverTick)
+    {
+        if (worldActorStore is null || timers.Count == 0)
+        {
+            return;
+        }
+
+        timers.DrainDue(serverTick, dueTimers);
+        foreach (var timer in dueTimers)
+        {
+            if (worldActorStore.TryGetByRuntimeId(timer.RuntimeActorId, out var actor)
+                && actor!.ReplenishResource(timer.Generation))
+            {
+                presence.BroadcastWorldActorState(actor);
             }
         }
     }

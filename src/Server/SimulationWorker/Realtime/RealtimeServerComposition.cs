@@ -43,7 +43,8 @@ internal sealed record RealtimeServerDependencies(
     LiveMobCorpseInteractionService? LiveMobCorpseInteractionService,
     CorpseRuntimeMetrics? CorpseRuntimeMetrics,
     DevelopmentItemInteractionOptions? DevelopmentItemInteractions,
-    IWorldActorCapabilityAvailabilityPolicy? CapabilityAvailability);
+    IWorldActorCapabilityAvailabilityPolicy? CapabilityAvailability,
+    SimulationGatheringService? GatheringService = null);
 
 // The only place realtime components are created. Components are not registered in
 // dependency injection, which keeps loop-confined state out of reach of other services.
@@ -188,6 +189,27 @@ internal static class RealtimeServerComposition
             completions,
             corpseAuthority,
             corpseFinalizer);
+        var worldActorTimers = new WorldActorTimerQueue();
+        var gathering = new GatheringHandler(
+            config,
+            clock,
+            peers,
+            sender,
+            worldInteractionLeases,
+            worldActorTimers,
+            presence,
+            sessionStore,
+            carryStateStore,
+            entityRegistry,
+            carrySync,
+            teardown,
+            authorityScheduler,
+            operationTracker,
+            new GatheringAuthorityOperations(
+                dependencies.GatheringService,
+                completions,
+                logger),
+            dependencies.WorldActorMetrics);
         var worldInteractions = new WorldInteractionHandler(
             worldInteractionAuthority,
             peers,
@@ -200,7 +222,8 @@ internal static class RealtimeServerComposition
             new WorldInteractionAuthorityOperations(
                 worldInteractionAuthority,
                 completions,
-                logger));
+                logger),
+            gathering);
         var sessions = new RealtimeSessionHandler(
             config,
             peers,
@@ -238,6 +261,7 @@ internal static class RealtimeServerComposition
             dependencies.WorkerIdentity,
             presence,
             networkMetrics,
+            worldActorTimers,
             logger);
         var tickLoop = new SimulationTickLoop(
             config,
@@ -246,6 +270,7 @@ internal static class RealtimeServerComposition
             carrySync,
             worldActors,
             worldInteractions,
+            gathering,
             snapshots,
             corpsePresence,
             dependencies.CollisionStreamingStore,

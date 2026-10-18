@@ -6,7 +6,7 @@ namespace Mmorpg.SharedTests
 {
     public static partial class RealtimeProtocolGolden
     {
-        // Payload bytes after the seven-byte header, pinned from protocol version 16.
+        // Payload bytes after the seven-byte header, pinned from protocol version 17.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Corpses/CorpseInteractionIntent/close"] =
@@ -294,6 +294,23 @@ namespace Mmorpg.SharedTests
                 "6e 23 00 53 65 72 76 65 72 6e 20 73 74 c3 a4 6e " +
                 "67 73 20 66 c3 b6 72 20 75 6e 64 65 72 68 c3 a5 " +
                 "6c 6c 20 e2 9c 93",
+            ["WorldActors/GatheringState/started"] =
+                "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
+                "28 27 26 25 24 23 22 21 60 61 62 63 64 65 66 67 " +
+                "68 69 6a 6b 6c 6d 6e 6f 01 b8 0b 00 00",
+            ["WorldActors/GatheringState/stopped"] =
+                "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
+                "28 27 26 25 24 23 22 21 60 61 62 63 64 65 66 67 " +
+                "68 69 6a 6b 6c 6d 6e 6f 03 16 00 72 65 73 6f 75 " +
+                "72 63 65 5f 6e 6f 64 65 5f 64 65 70 6c 65 74 65 " +
+                "64 12 00 c3 85 64 65 72 6e 20 c3 a4 72 20 74 6f " +
+                "6d 20 e2 9c 93",
+            ["WorldActors/GatheringState/yielded"] =
+                "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
+                "28 27 26 25 24 23 22 21 60 61 62 63 64 65 66 67 " +
+                "68 69 6a 6b 6c 6d 6e 6f 02 c0 27 09 00 11 00 6d " +
+                "61 74 65 72 69 61 6c 2e 69 72 6f 6e 5f 6f 72 65 " +
+                "01 00 00 00 ff ff ff ff ff ff ff 7f",
             ["WorldActors/WorldActorDespawn/typical"] =
                 "28 27 26 25 24 23 22 21 60 61 62 63 64 65 66 67 " +
                 "68 69 6a 6b 6c 6d 6e 6f 09 00 64 65 73 70 61 77 " +
@@ -346,7 +363,8 @@ namespace Mmorpg.SharedTests
                 "05 00 00 00 00 00 00 00 04 ff ff ff ff ff ff ff " +
                 "7f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
-                "00 00 00 00 00 00 00 00 00 ff ff ff ff",
+                "00 00 00 00 00 00 00 00 00 ff ff ff ff 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00",
             ["WorldActors/WorldInteractionIntent/AcceptQuest"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
@@ -357,7 +375,8 @@ namespace Mmorpg.SharedTests
                 "05 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 30 31 32 33 34 35 36 " +
-                "37 38 39 3a 3b 3c 3d 3e 3f 09 00 00 00",
+                "37 38 39 3a 3b 3c 3d 3e 3f 09 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00",
             ["WorldActors/WorldInteractionIntent/ApplyInsurance"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
@@ -369,7 +388,7 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 20 21 22 23 24 25 26 27 28 29 2a " +
                 "2b 2c 2d 2e 2f 06 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff " +
-                "ff",
+                "ff 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
             ["WorldActors/WorldInteractionIntent/RemoveInsurance"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
@@ -381,7 +400,44 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 20 21 22 23 24 25 26 27 28 29 2a " +
                 "2b 2c 2d 2e 2f 06 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff " +
-                "ff",
+                "ff 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+            ["WorldActors/WorldInteractionIntent/StartGathering"] =
+                "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
+                "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
+                "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
+                "03 01 28 27 26 25 24 23 22 21 60 61 62 63 64 65 " +
+                "66 67 68 69 6a 6b 6c 6d 6e 6f 04 00 00 00 00 00 " +
+                "00 00 0d 00 72 65 73 6f 75 72 63 65 2e 6d 69 6e " +
+                "65 0a 02 00 00 00 00 00 00 00 07 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00",
+            ["WorldActors/WorldInteractionIntent/VendorPurchase"] =
+                "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
+                "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
+                "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
+                "03 01 28 27 26 25 24 23 22 21 60 61 62 63 64 65 " +
+                "66 67 68 69 6a 6b 6c 6d 6e 6f 04 00 00 00 00 00 " +
+                "00 00 0c 00 76 65 6e 64 6f 72 2e 74 72 61 64 65 " +
+                "02 06 00 00 00 00 00 00 00 05 0c 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 ff ff ff ff 14 00 " +
+                "70 6f 74 69 6f 6e 2e 6d 69 6e 6f 72 5f 68 65 61 " +
+                "6c 69 6e 67 03 00 00 00 4b 00 00 00 00 00 00 00",
+            ["WorldActors/WorldInteractionIntent/VendorSale"] =
+                "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
+                "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
+                "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
+                "03 01 28 27 26 25 24 23 22 21 60 61 62 63 64 65 " +
+                "66 67 68 69 6a 6b 6c 6d 6e 6f 04 00 00 00 00 00 " +
+                "00 00 0c 00 76 65 6e 64 6f 72 2e 74 72 61 64 65 " +
+                "02 06 00 00 00 00 00 00 00 06 0c 00 00 00 00 00 " +
+                "00 00 20 21 22 23 24 25 26 27 28 29 2a 2b 2c 2d " +
+                "2e 2f 07 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 ff ff ff ff 00 00 " +
+                "64 00 00 00 ff ff ff ff ff ff ff 7f",
             ["WorldActors/WorldInteractionIntent/close"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
@@ -400,7 +456,8 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff " +
-                "ff ff ff",
+                "ff ff ff 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00",
             ["WorldActors/WorldInteractionIntent/open actor"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " +
@@ -422,7 +479,7 @@ namespace Mmorpg.SharedTests
                 "67 68 69 6a 6b 6c 6d 6e 6f 04 00 00 00 00 00 00 " +
                 "00 05 00 00 00 00 00 00 00 0b 00 53 6d 65 64 65 " +
                 "6e 20 c3 85 6b 65 00",
-            ["WorldActors/WorldInteractionOpened/sixteen capabilities"] = "sha256:727:131af98a50a4ec795e16511acc523775e0ba296e155ca69558eaf6960dc47995",
+            ["WorldActors/WorldInteractionOpened/sixteen capabilities"] = "sha256:815:df7de13136a68524cce2dcac37b2d410c03e671393858cae8f429f0941e1a896",
             ["WorldActors/WorldInteractionOpened/three capabilities"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +
@@ -431,12 +488,13 @@ namespace Mmorpg.SharedTests
                 "00 05 00 00 00 00 00 00 00 0b 00 53 6d 65 64 65 " +
                 "6e 20 c3 85 6b 65 03 11 00 64 69 61 6c 6f 67 75 " +
                 "65 2e 67 72 65 65 74 69 6e 67 01 05 00 50 72 61 " +
-                "74 61 01 02 00 00 00 00 00 00 00 0f 00 69 6e 73 " +
-                "75 72 61 6e 63 65 2e 62 61 73 69 63 06 0e 00 46 " +
-                "c3 b6 72 73 c3 a4 6b 72 61 20 e2 9c 93 00 03 00 " +
-                "00 00 00 00 00 00 10 00 73 74 6f 72 61 67 65 2e " +
-                "72 65 63 6f 76 65 72 79 09 06 00 48 c3 a4 6d 74 " +
-                "61 01 ff ff ff ff ff ff ff 7f",
+                "74 61 00 01 02 00 00 00 00 00 00 00 0f 00 69 6e " +
+                "73 75 72 61 6e 63 65 2e 62 61 73 69 63 06 0e 00 " +
+                "46 c3 b6 72 73 c3 a4 6b 72 61 20 e2 9c 93 00 00 " +
+                "03 00 00 00 00 00 00 00 0c 00 76 65 6e 64 6f 72 " +
+                "2e 74 72 61 64 65 02 06 00 48 61 6e 64 6c 61 01 " +
+                "14 00 76 65 6e 64 6f 72 2e 67 65 6e 65 72 61 6c " +
+                "5f 73 74 6f 72 65 01 ff ff ff ff ff ff ff 7f",
             ["WorldActors/WorldInteractionResult/capability failed with message"] =
                 "70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e 7f " +
                 "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " +

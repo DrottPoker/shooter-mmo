@@ -23,10 +23,10 @@ public sealed class ItemStorageCapabilityHandlerTests
         var handler = new ItemStorageWorldActorCapabilityHandler(kind);
 
         var opened = await handler.ExecuteAsync(
-            CreateContext(capabilityKind, RealtimeNpcLifecycleActionKind.None),
+            CreateContext(capabilityKind, RealtimeCapabilityActionKind.None),
             CancellationToken.None);
         var withAction = await handler.ExecuteAsync(
-            CreateContext(capabilityKind, RealtimeNpcLifecycleActionKind.ApplyInsurance),
+            CreateContext(capabilityKind, RealtimeCapabilityActionKind.ApplyInsurance),
             CancellationToken.None);
 
         Assert.True(opened.Succeeded);
@@ -44,7 +44,7 @@ public sealed class ItemStorageCapabilityHandlerTests
 
     private static WorldActorCapabilityOperationContext CreateContext(
         string capabilityKind,
-        RealtimeNpcLifecycleActionKind lifecycleAction)
+        RealtimeCapabilityActionKind lifecycleAction)
     {
         var session = RealtimeTestSessions.Create();
         var actor = new WorldActorStore(WorldActorTestData.Compile(), new SimulationEntityRegistry())

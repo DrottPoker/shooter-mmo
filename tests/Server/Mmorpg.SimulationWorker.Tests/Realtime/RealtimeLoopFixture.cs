@@ -95,6 +95,8 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
     public WorldInteractionLeaseRegistry Leases { get; } = new();
 
+    public WorldActorTimerQueue Timers { get; } = new();
+
     public WorldActorStore? WorldActors { get; }
 
     public WorldActorMetrics? WorldActorMetrics { get; }
@@ -175,7 +177,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
             authority);
     }
 
-    public WorldInteractionHandler CreateWorldInteractionHandler()
+    public WorldInteractionHandler CreateWorldInteractionHandler(GatheringHandler? gathering = null)
     {
         return new WorldInteractionHandler(
             WorldInteractionAuthority,
@@ -186,7 +188,29 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Teardown,
             Scheduler,
             OperationTracker,
-            CreateWorldInteractionOperations());
+            CreateWorldInteractionOperations(),
+            gathering ?? CreateGatheringHandler());
+    }
+
+    public GatheringHandler CreateGatheringHandler(SimulationGatheringService? gatheringService = null)
+    {
+        return new GatheringHandler(
+            Config,
+            Clock,
+            Registry,
+            Sender,
+            Leases,
+            Timers,
+            Presence,
+            SessionStore,
+            CarryStateStore,
+            Entities,
+            CarrySync,
+            Teardown,
+            Scheduler,
+            OperationTracker,
+            new GatheringAuthorityOperations(gatheringService, Completions, NullLogger.Instance),
+            WorldActorMetrics);
     }
 
     public WorldInteractionAuthorityOperations CreateWorldInteractionOperations()

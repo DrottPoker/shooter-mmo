@@ -86,12 +86,14 @@ public sealed class RealtimeWorldActorProtocolTests
                 "services.dialogue",
                 RealtimeWorldActorCapabilityKind.Dialogue,
                 "Talk",
+                string.Empty,
                 true,
                 1),
             new RealtimeWorldActorCapability(
                 "services.vendor",
                 RealtimeWorldActorCapabilityKind.Vendor,
                 "Trade",
+                "vendor.city_general_store",
                 false,
                 4)
         };
@@ -153,7 +155,7 @@ public sealed class RealtimeWorldActorProtocolTests
             "services.insurance",
             RealtimeWorldActorCapabilityKind.Insurance,
             2,
-            RealtimeNpcLifecycleActionKind.ApplyInsurance,
+            RealtimeCapabilityActionKind.ApplyInsurance,
             14,
             insuranceItemId,
             7);
@@ -164,8 +166,8 @@ public sealed class RealtimeWorldActorProtocolTests
                 out error),
             error);
         Assert.Equal(
-            RealtimeNpcLifecycleActionKind.ApplyInsurance,
-            decodedInsuranceAction.LifecycleAction);
+            RealtimeCapabilityActionKind.ApplyInsurance,
+            decodedInsuranceAction.CapabilityAction);
         Assert.Equal(14, decodedInsuranceAction.ExpectedCharacterRevision);
         Assert.Equal(insuranceItemId, decodedInsuranceAction.ItemInstanceId);
         Assert.Equal(7, decodedInsuranceAction.ExpectedItemRevision);

@@ -94,6 +94,7 @@ builder.Services.AddSingleton<LiveMobCorpseStore>();
 builder.Services.AddSingleton<CorpseRuntimeMetrics>();
 builder.Services.AddSingleton<CorpseViewerRegistry>();
 builder.Services.AddSingleton<SimulationItemInteractionService>();
+builder.Services.AddSingleton<SimulationGatheringService>();
 builder.Services.AddSingleton<SimulationCorpseInteractionService>();
 builder.Services.AddSingleton<LiveMobCorpseInteractionService>();
 builder.Services.AddSingleton<MobCorpseLifecycleService>();
@@ -114,6 +115,10 @@ builder.Services.AddSingleton<IWorldActorCapabilityHandler>(
     new ItemStorageWorldActorCapabilityHandler(RealtimeWorldActorCapabilityKind.Bank));
 builder.Services.AddSingleton<IWorldActorCapabilityHandler>(
     new ItemStorageWorldActorCapabilityHandler(RealtimeWorldActorCapabilityKind.RecoveryStorage));
+builder.Services.AddSingleton<IWorldActorCapabilityHandler,
+    VendorWorldActorCapabilityHandler>();
+builder.Services.AddSingleton<IWorldActorCapabilityHandler,
+    GatheringWorldActorCapabilityHandler>();
 builder.Services.AddSingleton<WorldActorCapabilityRegistry>();
 builder.Services.AddSingleton<WorldActorLineOfSightService>();
 builder.Services.AddSingleton<WorldActorMetrics>();

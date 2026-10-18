@@ -96,7 +96,10 @@ namespace Mmorpg.SharedTests
                     RealtimeProtocol.EncodeWorldInteractionClosed),
                 [RealtimeMessageType.OwnerSimulationSnapshot] = Typed<RealtimeOwnerSimulationSnapshot>(
                     RealtimeProtocol.TryDecodeOwnerSimulationSnapshot,
-                    RealtimeProtocol.EncodeOwnerSimulationSnapshot)
+                    RealtimeProtocol.EncodeOwnerSimulationSnapshot),
+                [RealtimeMessageType.GatheringState] = Typed<RealtimeGatheringState>(
+                    RealtimeProtocol.TryDecodeGatheringState,
+                    RealtimeProtocol.EncodeGatheringState)
             };
         }
 

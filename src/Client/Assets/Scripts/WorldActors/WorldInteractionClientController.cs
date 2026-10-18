@@ -314,7 +314,7 @@ namespace Mmorpg.Client.WorldActors
         {
             return TryExecuteCapability(
                 capabilityId,
-                RealtimeNpcLifecycleActionKind.None,
+                RealtimeCapabilityActionKind.None,
                 0,
                 Guid.Empty,
                 0,
@@ -325,7 +325,7 @@ namespace Mmorpg.Client.WorldActors
 
         public bool TryExecuteCapability(
             string capabilityId,
-            RealtimeNpcLifecycleActionKind lifecycleAction,
+            RealtimeCapabilityActionKind lifecycleAction,
             long expectedCharacterRevision,
             Guid itemInstanceId,
             long expectedItemRevision,

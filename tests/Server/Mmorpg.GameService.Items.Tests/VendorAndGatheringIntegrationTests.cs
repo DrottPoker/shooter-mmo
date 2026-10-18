@@ -38,7 +38,8 @@ public sealed class VendorAndGatheringIntegrationTests
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, await RevisionAsync(world, characterId))
-                with { DefinitionId = Arrow, Quantity = 5, ExpectedPrice = 5 });
+                with
+            { DefinitionId = Arrow, Quantity = 5, ExpectedPrice = 5 });
 
         Assert.True(purchase.Succeeded, purchase.Error?.Message);
         Assert.Equal(8, (await world.LoadItemAsync(arrowsId)).Quantity);
@@ -68,7 +69,8 @@ public sealed class VendorAndGatheringIntegrationTests
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, revision)
-                with { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
+                with
+            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
         AssertRejected(noFunds, ItemTransactionErrorCodes.CurrencyInsufficient);
 
         await CreditAsync(context, characterId, 100);
@@ -77,21 +79,24 @@ public sealed class VendorAndGatheringIntegrationTests
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, revision)
-                with { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 20 });
+                with
+            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 20 });
         AssertRejected(stalePrice, ItemTransactionErrorCodes.VendorPriceChanged);
 
         var notOffered = await ExecuteAsync(
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, revision)
-                with { DefinitionId = Ore, Quantity = 1, ExpectedPrice = 10 });
+                with
+            { DefinitionId = Ore, Quantity = 1, ExpectedPrice = 10 });
         AssertRejected(notOffered, ItemTransactionErrorCodes.VendorOfferUnavailable);
 
         var unknownVendor = await ExecuteAsync(
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, revision, "vendor.missing")
-                with { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
+                with
+            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
         AssertRejected(unknownVendor, ItemTransactionErrorCodes.VendorUnavailable);
 
         Assert.Equal(100, await CurrencyAsync(context, characterId));
@@ -146,7 +151,8 @@ public sealed class VendorAndGatheringIntegrationTests
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, await RevisionAsync(world, characterId))
-                with { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
+                with
+            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
         Assert.True(potion.Succeeded, potion.Error?.Message);
         var bagContents = (await world.LoadItemAsync(packId)).BagContentsContainerId!.Value;
         Assert.NotEqual(Guid.Empty, await world.FindItemAsync(bagContents, 4));
@@ -165,7 +171,8 @@ public sealed class VendorAndGatheringIntegrationTests
             context,
             session,
             Request(session, ItemOperationKinds.VendorPurchase, await RevisionAsync(world, characterId))
-                with { DefinitionId = Pickaxe, Quantity = 1, ExpectedPrice = 50 });
+                with
+            { DefinitionId = Pickaxe, Quantity = 1, ExpectedPrice = 50 });
 
         AssertRejected(full, ItemTransactionErrorCodes.InventoryFull);
         Assert.Equal(975, await CurrencyAsync(context, characterId));
@@ -230,12 +237,12 @@ public sealed class VendorAndGatheringIntegrationTests
             session,
             Request(session, ItemOperationKinds.VendorSale, revision)
                 with
-                {
-                    ItemInstanceId = oreId,
-                    ExpectedItemRevision = item.Revision,
-                    Quantity = 10,
-                    ExpectedPrice = 40
-                })));
+            {
+                ItemInstanceId = oreId,
+                ExpectedItemRevision = item.Revision,
+                Quantity = 10,
+                ExpectedPrice = 40
+            })));
 
         Assert.Single(sales, sale => sale.Succeeded);
         Assert.Equal(40, await CurrencyAsync(context, characterId));
@@ -363,12 +370,12 @@ public sealed class VendorAndGatheringIntegrationTests
                 session,
                 Request(session, ItemOperationKinds.VendorSale, await RevisionAsync(world, characterId))
                     with
-                    {
-                        ItemInstanceId = itemInstanceId,
-                        ExpectedItemRevision = item.Revision,
-                        Quantity = quantity,
-                        ExpectedPrice = expectedPrice
-                    });
+                {
+                    ItemInstanceId = itemInstanceId,
+                    ExpectedItemRevision = item.Revision,
+                    Quantity = quantity,
+                    ExpectedPrice = expectedPrice
+                });
         }
     }
 
@@ -383,14 +390,14 @@ public sealed class VendorAndGatheringIntegrationTests
             session,
             Request(session, ItemOperationKinds.GatherResource, 0, vendorProfileId: null)
                 with
-                {
-                    CapabilityId = "resource.mine",
-                    DefinitionId = yieldDefinitionId,
-                    Quantity = quantity,
-                    ResourceProfileId = "resource.fixture",
-                    ResourceNodeId = "fixture.node:0000",
-                    RequiredToolKind = "pickaxe"
-                });
+            {
+                CapabilityId = "resource.mine",
+                DefinitionId = yieldDefinitionId,
+                Quantity = quantity,
+                ResourceProfileId = "resource.fixture",
+                ResourceNodeId = "fixture.node:0000",
+                RequiredToolKind = "pickaxe"
+            });
     }
 
     private static SimulationItemOperationRequest Request(

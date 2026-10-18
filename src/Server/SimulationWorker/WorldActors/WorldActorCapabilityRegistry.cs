@@ -37,12 +37,15 @@ public sealed record WorldActorCapabilityOperationContext(
     WorldActorCapabilityDefinition Capability,
     RealtimeWorldInteractionIntent Intent);
 
+// GatheringNode names the resource node whose gathering the realtime loop starts once the
+// interaction result is final.
 public sealed record WorldActorCapabilityDispatchResult(
     bool Succeeded,
     string Code,
     string Message,
     long ItemStateRevision = 0,
-    bool ShouldDisconnect = false);
+    bool ShouldDisconnect = false,
+    WorldActorRuntimeState? GatheringNode = null);
 
 public interface IWorldActorCapabilityHandler
 {
@@ -129,6 +132,7 @@ public sealed class WorldActorCapabilityRegistry
                 capability.Id,
                 ToProtocolKind(capability.Kind),
                 capability.DisplayName,
+                capability.ProfileId,
                 availabilityPolicy.IsAvailable(session, actor, capability),
                 checked(actor.InteractionRevision + index)))
             .ToArray();
@@ -202,6 +206,7 @@ public sealed class WorldActorCapabilityRegistry
             WorldActorCapabilityKindIds.Trainer => RealtimeWorldActorCapabilityKind.Trainer,
             WorldActorCapabilityKindIds.Bank => RealtimeWorldActorCapabilityKind.Bank,
             WorldActorCapabilityKindIds.RecoveryStorage => RealtimeWorldActorCapabilityKind.RecoveryStorage,
+            WorldActorCapabilityKindIds.Gathering => RealtimeWorldActorCapabilityKind.Gathering,
             _ => throw new InvalidOperationException(
                 "Compiled world actor capability kind is unsupported: " + kind)
         };

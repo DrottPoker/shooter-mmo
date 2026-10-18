@@ -74,9 +74,9 @@ namespace Mmorpg.SharedTests
                 opened,
                 () => RealtimeProtocol.EncodeWorldInteractionOpened(OpenedModel(new[]
                 {
-                    new RealtimeWorldActorCapability("dialogue.greeting", RealtimeWorldActorCapabilityKind.Dialogue, "Prata", true, 2),
-                    new RealtimeWorldActorCapability("insurance.basic", RealtimeWorldActorCapabilityKind.Insurance, "Försäkra ✓", false, 3),
-                    new RealtimeWorldActorCapability("storage.recovery", RealtimeWorldActorCapabilityKind.RecoveryStorage, "Hämta", true, long.MaxValue)
+                    new RealtimeWorldActorCapability("dialogue.greeting", RealtimeWorldActorCapabilityKind.Dialogue, "Prata", string.Empty, true, 2),
+                    new RealtimeWorldActorCapability("insurance.basic", RealtimeWorldActorCapabilityKind.Insurance, "Försäkra ✓", null, false, 3),
+                    new RealtimeWorldActorCapability("vendor.trade", RealtimeWorldActorCapabilityKind.Vendor, "Handla", "vendor.general_store", true, long.MaxValue)
                 })));
             r.Vector(
                 "WorldActors/WorldInteractionOpened/sixteen capabilities",
@@ -84,8 +84,9 @@ namespace Mmorpg.SharedTests
                 () => RealtimeProtocol.EncodeWorldInteractionOpened(OpenedModel(Enumerable.Range(0, 16)
                     .Select(index => new RealtimeWorldActorCapability(
                         "capability." + index.ToString("00"),
-                        (RealtimeWorldActorCapabilityKind)(1 + (index % 9)),
+                        (RealtimeWorldActorCapabilityKind)(1 + (index % 10)),
                         "Capability " + index.ToString("00"),
+                        index % 3 == 0 ? "profile." + index.ToString("00") : string.Empty,
                         index % 2 == 0,
                         1 + index))
                     .ToArray())));
@@ -148,9 +149,11 @@ namespace Mmorpg.SharedTests
                     code: "target_despawned",
                     message: "The target is gone.")));
 
+            RegisterGatheringStateVectors(r);
             RegisterWorldActorPresenceCases(r);
             RegisterWorldInteractionIntentCases(r);
             RegisterWorldInteractionResponseCases(r);
+            RegisterGatheringStateCases(r);
         }
 
         private static void RegisterWorldInteractionIntentVectors(Registry r)
@@ -194,8 +197,8 @@ namespace Mmorpg.SharedTests
                     2)));
             foreach (var lifecycle in new[]
                 {
-                    RealtimeNpcLifecycleActionKind.ApplyInsurance,
-                    RealtimeNpcLifecycleActionKind.RemoveInsurance
+                    RealtimeCapabilityActionKind.ApplyInsurance,
+                    RealtimeCapabilityActionKind.RemoveInsurance
                 })
             {
                 r.Vector(
@@ -232,7 +235,7 @@ namespace Mmorpg.SharedTests
                     "quest.first",
                     RealtimeWorldActorCapabilityKind.QuestOffer,
                     5,
-                    RealtimeNpcLifecycleActionKind.AcceptQuest,
+                    RealtimeCapabilityActionKind.AcceptQuest,
                     0,
                     Guid.Empty,
                     0,
@@ -252,8 +255,86 @@ namespace Mmorpg.SharedTests
                     "quest.first",
                     RealtimeWorldActorCapabilityKind.QuestOffer,
                     5,
-                    RealtimeNpcLifecycleActionKind.AbandonQuest,
+                    RealtimeCapabilityActionKind.AbandonQuest,
                     long.MaxValue)));
+            r.Vector(
+                "WorldActors/WorldInteractionIntent/VendorPurchase",
+                intent,
+                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                    G(7),
+                    G(8),
+                    G(9),
+                    actor,
+                    ActorEntityId,
+                    G(6),
+                    4,
+                    "vendor.trade",
+                    RealtimeWorldActorCapabilityKind.Vendor,
+                    6,
+                    RealtimeCapabilityActionKind.VendorPurchase,
+                    12,
+                    offerDefinitionId: "potion.minor_healing",
+                    quantity: 3,
+                    expectedPrice: 75)));
+            r.Vector(
+                "WorldActors/WorldInteractionIntent/VendorSale",
+                intent,
+                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                    G(7),
+                    G(8),
+                    G(9),
+                    actor,
+                    ActorEntityId,
+                    G(6),
+                    4,
+                    "vendor.trade",
+                    RealtimeWorldActorCapabilityKind.Vendor,
+                    6,
+                    RealtimeCapabilityActionKind.VendorSale,
+                    12,
+                    G(2),
+                    7,
+                    quantity: 100,
+                    expectedPrice: long.MaxValue)));
+            r.Vector(
+                "WorldActors/WorldInteractionIntent/StartGathering",
+                intent,
+                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                    G(7),
+                    G(8),
+                    G(9),
+                    actor,
+                    ActorEntityId,
+                    G(6),
+                    4,
+                    "resource.mine",
+                    RealtimeWorldActorCapabilityKind.Gathering,
+                    2,
+                    RealtimeCapabilityActionKind.StartGathering)));
+        }
+
+        private static void RegisterGatheringStateVectors(Registry r)
+        {
+            const RealtimeMessageType gathering = RealtimeMessageType.GatheringState;
+            r.Vector(
+                "WorldActors/GatheringState/started",
+                gathering,
+                () => RealtimeProtocol.EncodeGatheringState(
+                    RealtimeGatheringState.CreateStarted(G(9), ActorEntityId, G(6), 3000)));
+            r.Vector(
+                "WorldActors/GatheringState/yielded",
+                gathering,
+                () => RealtimeProtocol.EncodeGatheringState(
+                    RealtimeGatheringState.CreateYielded(G(9), ActorEntityId, G(6), 600000, "material.iron_ore", 1, long.MaxValue)));
+            r.Vector(
+                "WorldActors/GatheringState/stopped",
+                gathering,
+                () => RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateStopped(
+                    G(9),
+                    ActorEntityId,
+                    G(6),
+                    "resource_node_depleted",
+                    "Ådern är tom ✓")));
         }
 
         private static void RegisterWorldActorPresenceCases(Registry r)
@@ -266,7 +347,8 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldActorSpawn/129 character spawn definition", WorldActorSpawnWire(spawnDefinitionId: Repeat("s", 129)));
             r.Rejects("WorldActors/WorldActorSpawn/whitespace display name", WorldActorSpawnWire(displayName: "\t"));
             r.Rejects("WorldActors/WorldActorSpawn/kind 0", WorldActorSpawnWire(kind: 0));
-            r.Rejects("WorldActors/WorldActorSpawn/kind 3", WorldActorSpawnWire(kind: 3));
+            r.Accepts("WorldActors/WorldActorSpawn/resource node", WorldActorSpawnWire(kind: 3));
+            r.Rejects("WorldActors/WorldActorSpawn/kind 4", WorldActorSpawnWire(kind: 4));
             r.Rejects("WorldActors/WorldActorSpawn/whitespace faction", WorldActorSpawnWire(factionId: " "));
             r.Rejects("WorldActors/WorldActorSpawn/disposition 0", WorldActorSpawnWire(disposition: 0));
             r.Rejects("WorldActors/WorldActorSpawn/disposition 4", WorldActorSpawnWire(disposition: 4));
@@ -321,7 +403,7 @@ namespace Mmorpg.SharedTests
                 () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(displayName: " ")));
             r.RejectsEncode(
                 "WorldActors/WorldActorSpawn/undefined kind",
-                () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(kind: (RealtimeWorldActorKind)3)));
+                () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(kind: (RealtimeWorldActorKind)4)));
             r.RejectsEncode(
                 "WorldActors/WorldActorSpawn/undefined disposition",
                 () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(disposition: 0)));
@@ -403,9 +485,12 @@ namespace Mmorpg.SharedTests
             r.Accepts("WorldActors/WorldInteractionIntent/action 128 character capability", ActionWire(CapabilityPayloadWire(capabilityId: Repeat("c", 128))));
             r.Rejects("WorldActors/WorldInteractionIntent/action 129 character capability", ActionWire(CapabilityPayloadWire(capabilityId: Repeat("c", 129))));
             r.Rejects("WorldActors/WorldInteractionIntent/action capability kind 0", ActionWire(CapabilityPayloadWire(capabilityKind: 0)));
-            r.Rejects("WorldActors/WorldInteractionIntent/action capability kind 10", ActionWire(CapabilityPayloadWire(capabilityKind: 10)));
+            r.Rejects("WorldActors/WorldInteractionIntent/action capability kind 11", ActionWire(CapabilityPayloadWire(capabilityKind: 11)));
             r.Rejects("WorldActors/WorldInteractionIntent/action capability revision 0", ActionWire(CapabilityPayloadWire(capabilityRevision: 0)));
-            r.Rejects("WorldActors/WorldInteractionIntent/action lifecycle 5", ActionWire(CapabilityPayloadWire(lifecycle: 5)));
+            r.Rejects("WorldActors/WorldInteractionIntent/action kind 8", ActionWire(CapabilityPayloadWire(lifecycle: 8)));
+            r.Rejects("WorldActors/WorldInteractionIntent/no action with offer", ActionWire(CapabilityPayloadWire(offer: "potion.minor_healing")));
+            r.Rejects("WorldActors/WorldInteractionIntent/no action with quantity", ActionWire(CapabilityPayloadWire(quantity: 1)));
+            r.Rejects("WorldActors/WorldInteractionIntent/no action with price", ActionWire(CapabilityPayloadWire(price: 1)));
             r.Rejects("WorldActors/WorldInteractionIntent/no lifecycle with character revision", ActionWire(CapabilityPayloadWire(characterRevision: 1)));
             r.Rejects("WorldActors/WorldInteractionIntent/no lifecycle with item", ActionWire(CapabilityPayloadWire(item: G(2))));
             r.Rejects("WorldActors/WorldInteractionIntent/no lifecycle with destination", ActionWire(CapabilityPayloadWire(destination: G(3))));
@@ -480,7 +565,84 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldInteractionIntent/abandon quest with slot 0", Quest(4, slot: 0));
             r.Rejects("WorldActors/WorldInteractionIntent/abandon quest with item", Quest(4, item: G(2)));
 
+            Wire Vendor(
+                byte action,
+                byte capabilityKind = 2,
+                long characterRevision = 12,
+                Guid? item = null,
+                long itemRevision = 0,
+                Guid? destination = null,
+                WireText offer = null,
+                int quantity = 3,
+                long price = 75)
+            {
+                return ActionWire(CapabilityPayloadWire(
+                    capabilityId: "vendor.trade",
+                    capabilityKind: capabilityKind,
+                    capabilityRevision: 6,
+                    lifecycle: action,
+                    characterRevision: characterRevision,
+                    item: item,
+                    itemRevision: itemRevision,
+                    destination: destination,
+                    offer: offer,
+                    quantity: quantity,
+                    price: price));
+            }
+
+            r.Accepts("WorldActors/WorldInteractionIntent/purchase baseline", Vendor(5, offer: "potion.minor_healing"));
+            r.Accepts("WorldActors/WorldInteractionIntent/purchase free price", Vendor(5, offer: "potion.minor_healing", price: 0));
+            r.Accepts(
+                "WorldActors/WorldInteractionIntent/purchase 128 character offer",
+                Vendor(5, offer: Repeat("o", 128)));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/purchase 129 character offer",
+                Vendor(5, offer: Repeat("o", 129)));
+            r.Rejects("WorldActors/WorldInteractionIntent/purchase without offer", Vendor(5));
+            r.Rejects("WorldActors/WorldInteractionIntent/purchase whitespace offer", Vendor(5, offer: " "));
+            r.Rejects("WorldActors/WorldInteractionIntent/purchase quantity 0", Vendor(5, offer: "potion.minor_healing", quantity: 0));
+            r.Rejects("WorldActors/WorldInteractionIntent/purchase negative price", Vendor(5, offer: "potion.minor_healing", price: -1));
+            r.Rejects("WorldActors/WorldInteractionIntent/purchase with item", Vendor(5, offer: "potion.minor_healing", item: G(2)));
+            r.Rejects("WorldActors/WorldInteractionIntent/purchase at insurance", Vendor(5, capabilityKind: 6, offer: "potion.minor_healing"));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/purchase negative character revision",
+                Vendor(5, characterRevision: -1, offer: "potion.minor_healing"));
+            r.Accepts("WorldActors/WorldInteractionIntent/sale baseline", Vendor(6, item: G(2), itemRevision: 7));
+            r.Rejects("WorldActors/WorldInteractionIntent/sale without item", Vendor(6));
+            r.Rejects("WorldActors/WorldInteractionIntent/sale with offer", Vendor(6, item: G(2), offer: "potion.minor_healing"));
+            r.Rejects("WorldActors/WorldInteractionIntent/sale with destination", Vendor(6, item: G(2), destination: G(3)));
+            r.Rejects("WorldActors/WorldInteractionIntent/sale quantity 0", Vendor(6, item: G(2), quantity: 0));
+            r.Accepts(
+                "WorldActors/WorldInteractionIntent/start gathering baseline",
+                Vendor(7, capabilityKind: 10, characterRevision: 0, quantity: 0, price: 0));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/start gathering at a vendor",
+                Vendor(7, characterRevision: 0, quantity: 0, price: 0));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/start gathering with quantity",
+                Vendor(7, capabilityKind: 10, characterRevision: 0, price: 0));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/start gathering with character revision",
+                Vendor(7, capabilityKind: 10, quantity: 0, price: 0));
+
             r.RejectsEncode("WorldActors/WorldInteractionIntent/null", () => RealtimeProtocol.EncodeWorldInteractionIntent(null));
+            r.RejectsEncode(
+                "WorldActors/WorldInteractionIntent/purchase without offer",
+                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                    G(7),
+                    G(8),
+                    G(9),
+                    RealtimeWorldInteractionTargetKind.WorldActor,
+                    ActorEntityId,
+                    G(6),
+                    4,
+                    "vendor.trade",
+                    RealtimeWorldActorCapabilityKind.Vendor,
+                    6,
+                    RealtimeCapabilityActionKind.VendorPurchase,
+                    12,
+                    quantity: 1,
+                    expectedPrice: 25)));
             r.RejectsEncode(
                 "WorldActors/WorldInteractionIntent/open without simulation session",
                 () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateOpen(
@@ -530,7 +692,7 @@ namespace Mmorpg.SharedTests
                     "dialogue.greeting",
                     RealtimeWorldActorCapabilityKind.Dialogue,
                     2,
-                    RealtimeNpcLifecycleActionKind.ApplyInsurance,
+                    RealtimeCapabilityActionKind.ApplyInsurance,
                     1,
                     G(2),
                     1)));
@@ -569,7 +731,18 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldInteractionOpened/whitespace display name", OpenedWire(displayName: " "));
             r.Rejects("WorldActors/WorldInteractionOpened/whitespace capability id", OpenedWire(capabilities: new[] { CapabilityWire(id: " ") }));
             r.Rejects("WorldActors/WorldInteractionOpened/capability kind 0", OpenedWire(capabilities: new[] { CapabilityWire(kind: 0) }));
-            r.Rejects("WorldActors/WorldInteractionOpened/capability kind 10", OpenedWire(capabilities: new[] { CapabilityWire(kind: 10) }));
+            r.Accepts("WorldActors/WorldInteractionOpened/gathering capability", OpenedWire(capabilities: new[] { CapabilityWire(kind: 10, profileId: "resource.iron_vein") }));
+            r.Rejects("WorldActors/WorldInteractionOpened/capability kind 11", OpenedWire(capabilities: new[] { CapabilityWire(kind: 11) }));
+            r.Accepts(
+                "WorldActors/WorldInteractionOpened/128 character profile",
+                OpenedWire(capabilities: new[] { CapabilityWire(kind: 2, profileId: Repeat("p", 128)) }));
+            r.Rejects(
+                "WorldActors/WorldInteractionOpened/129 character profile",
+                OpenedWire(capabilities: new[] { CapabilityWire(kind: 2, profileId: Repeat("p", 129)) }));
+            r.AcceptsAs(
+                "WorldActors/WorldInteractionOpened/present whitespace profile reads as absent",
+                OpenedWire(capabilities: new[] { CapabilityWire(kind: 2, profileId: " ") }),
+                OpenedWire(capabilities: new[] { CapabilityWire(kind: 2) }));
             r.Rejects(
                 "WorldActors/WorldInteractionOpened/whitespace capability name",
                 OpenedWire(capabilities: new[] { CapabilityWire(displayName: " ") }));
@@ -641,7 +814,7 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode(
                 "WorldActors/WorldInteractionOpened/17 capabilities",
                 () => RealtimeProtocol.EncodeWorldInteractionOpened(OpenedModel(Enumerable.Range(0, 17)
-                    .Select(index => new RealtimeWorldActorCapability("c", RealtimeWorldActorCapabilityKind.Vendor, "n", true, 1))
+                    .Select(index => new RealtimeWorldActorCapability("c", RealtimeWorldActorCapabilityKind.Vendor, "n", "p", true, 1))
                     .ToArray())));
             r.RejectsEncode(
                 "WorldActors/WorldInteractionOpened/null capability",
@@ -650,7 +823,7 @@ namespace Mmorpg.SharedTests
                 "WorldActors/WorldInteractionOpened/whitespace capability name",
                 () => RealtimeProtocol.EncodeWorldInteractionOpened(OpenedModel(new[]
                 {
-                    new RealtimeWorldActorCapability("c", RealtimeWorldActorCapabilityKind.Vendor, " ", true, 1)
+                    new RealtimeWorldActorCapability("c", RealtimeWorldActorCapabilityKind.Vendor, " ", "p", true, 1)
                 })));
             r.RejectsOversize(
                 "WorldActors/WorldInteractionOpened/long capabilities above the packet limit",
@@ -659,6 +832,7 @@ namespace Mmorpg.SharedTests
                         Repeat("c", 128),
                         RealtimeWorldActorCapabilityKind.Vendor,
                         Repeat("n", 128),
+                        Repeat("p", 128),
                         true,
                         1))
                     .ToArray())));
@@ -691,6 +865,68 @@ namespace Mmorpg.SharedTests
                     G(6),
                     " ",
                     "message")));
+        }
+
+        private static void RegisterGatheringStateCases(Registry r)
+        {
+            r.Accepts("WorldActors/GatheringState/started baseline", GatheringStateWire(1, Wire.Fragment().I32(3000)));
+            r.Rejects("WorldActors/GatheringState/started cycle 0", GatheringStateWire(1, Wire.Fragment().I32(0)));
+            r.Rejects("WorldActors/GatheringState/started cycle above ten minutes", GatheringStateWire(1, Wire.Fragment().I32(600001)));
+            r.Rejects("WorldActors/GatheringState/empty session", GatheringStateWire(1, Wire.Fragment().I32(3000), interactionSessionId: Guid.Empty));
+            r.Rejects("WorldActors/GatheringState/target entity zero", GatheringStateWire(1, Wire.Fragment().I32(3000), targetEntityId: 0));
+            r.Rejects("WorldActors/GatheringState/empty target runtime id", GatheringStateWire(1, Wire.Fragment().I32(3000), targetRuntimeId: Guid.Empty));
+            r.Rejects("WorldActors/GatheringState/kind 0", GatheringStateWire(0, Wire.Fragment()));
+            r.Rejects("WorldActors/GatheringState/kind 4", GatheringStateWire(4, Wire.Fragment()));
+            r.Accepts("WorldActors/GatheringState/yielded baseline", GatheringStateWire(2, YieldedPayload()));
+            r.Rejects("WorldActors/GatheringState/yielded quantity 0", GatheringStateWire(2, YieldedPayload(quantity: 0)));
+            r.Rejects("WorldActors/GatheringState/yielded whitespace definition", GatheringStateWire(2, YieldedPayload(definitionId: " ")));
+            r.Rejects("WorldActors/GatheringState/yielded negative item revision", GatheringStateWire(2, YieldedPayload(itemStateRevision: -1)));
+            r.Accepts(
+                "WorldActors/GatheringState/stopped baseline",
+                GatheringStateWire(3, Wire.Fragment().Text("gathering_interrupted").Text("Moved away.")));
+            r.Rejects(
+                "WorldActors/GatheringState/stopped whitespace code",
+                GatheringStateWire(3, Wire.Fragment().Text(" ").Text("Moved away.")));
+            r.Rejects(
+                "WorldActors/GatheringState/stopped 65 character code",
+                GatheringStateWire(3, Wire.Fragment().Text(Repeat("c", 65)).Text("Moved away.")));
+
+            r.RejectsEncode("WorldActors/GatheringState/null", () => RealtimeProtocol.EncodeGatheringState(null));
+            r.RejectsEncode(
+                "WorldActors/GatheringState/started cycle 0",
+                () => RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateStarted(G(9), ActorEntityId, G(6), 0)));
+            r.RejectsEncode(
+                "WorldActors/GatheringState/stopped whitespace message",
+                () => RealtimeProtocol.EncodeGatheringState(
+                    RealtimeGatheringState.CreateStopped(G(9), ActorEntityId, G(6), "code", " ")));
+
+            Wire YieldedPayload(
+                int cycle = 3000,
+                WireText definitionId = null,
+                int quantity = 1,
+                long itemStateRevision = 9)
+            {
+                return Wire.Fragment()
+                    .I32(cycle)
+                    .Text(definitionId ?? "material.iron_ore")
+                    .I32(quantity)
+                    .I64(itemStateRevision);
+            }
+        }
+
+        private static Wire GatheringStateWire(
+            byte kind,
+            Wire payload,
+            Guid? interactionSessionId = null,
+            ulong targetEntityId = ActorEntityId,
+            Guid? targetRuntimeId = null)
+        {
+            return Wire.Message(RealtimeMessageType.GatheringState)
+                .Guid(interactionSessionId ?? G(9))
+                .U64(targetEntityId)
+                .Guid(targetRuntimeId ?? G(6))
+                .U8(kind)
+                .Append(payload);
         }
 
         private static RealtimeWorldActorSpawn WorldActorSpawnModel(
@@ -863,7 +1099,10 @@ namespace Mmorpg.SharedTests
             Guid? item = null,
             long itemRevision = 0,
             Guid? destination = null,
-            int slot = -1)
+            int slot = -1,
+            WireText offer = null,
+            int quantity = 0,
+            long price = 0)
         {
             return Wire.Fragment()
                 .Text(capabilityId ?? "dialogue.greeting")
@@ -874,20 +1113,26 @@ namespace Mmorpg.SharedTests
                 .Guid(item ?? Guid.Empty)
                 .I64(itemRevision)
                 .Guid(destination ?? Guid.Empty)
-                .I32(slot);
+                .I32(slot)
+                .Text(offer ?? "")
+                .I32(quantity)
+                .I64(price);
         }
 
         private static Wire CapabilityWire(
             WireText id = null,
             byte kind = 1,
             WireText displayName = null,
+            WireText profileId = null,
             byte isAvailable = 1,
             long revision = 2)
         {
-            return Wire.Fragment()
+            var wire = Wire.Fragment()
                 .Text(id ?? "dialogue.greeting")
                 .U8(kind)
-                .Text(displayName ?? "Prata")
+                .Text(displayName ?? "Prata");
+            wire = profileId is null ? wire.Bool(false) : wire.Bool(true).Text(profileId);
+            return wire
                 .U8(isAvailable)
                 .I64(revision);
         }
@@ -903,7 +1148,11 @@ namespace Mmorpg.SharedTests
             WireText displayName = null,
             Wire[] capabilities = null)
         {
-            var list = capabilities ?? new[] { CapabilityWire(), CapabilityWire(id: "vendor.tools", kind: 2, isAvailable: 0) };
+            var list = capabilities ?? new[]
+            {
+                CapabilityWire(),
+                CapabilityWire(id: "vendor.tools", kind: 2, profileId: "vendor.general_store", isAvailable: 0)
+            };
             var wire = Wire.Message(RealtimeMessageType.WorldInteractionOpened)
                 .Guid(operationId ?? G(7))
                 .Guid(interactionSessionId ?? G(9))
