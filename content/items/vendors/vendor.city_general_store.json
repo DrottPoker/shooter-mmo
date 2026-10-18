@@ -1,0 +1,31 @@
+{
+  "displayName": "General Store",
+  "id": "vendor.city_general_store",
+  "offers": [
+    {
+      "definitionId": "ammunition.bronze_arrow"
+    },
+    {
+      "definitionId": "potion.minor_healing"
+    },
+    {
+      "definitionId": "food.cooked_trout"
+    },
+    {
+      "definitionId": "tool.starter_pickaxe"
+    }
+  ],
+  "purchasePriceBasisPoints": 10000,
+  "saleCategories": [
+    "ammunition",
+    "armor",
+    "bag",
+    "food",
+    "jewelry",
+    "material",
+    "potion",
+    "tool",
+    "weapon"
+  ],
+  "salePriceBasisPoints": 4000
+}

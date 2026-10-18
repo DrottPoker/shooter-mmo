@@ -27,6 +27,7 @@ namespace Mmorpg.WorldData.Content
         public const string SolutionFileName = "Mmorpg.slnx";
         public const string CatalogFileName = "catalog.json";
         public const string DefinitionsDirectoryName = "definitions";
+        public const string VendorsDirectoryName = "vendors";
         public const string ActorSpawnsFileName = "actor-spawns.json";
         public const string CollisionSourceFileName = "collision.json";
         public const string ItemCatalogFileName = "core.item-catalog.json";
@@ -173,6 +174,17 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(domainDirectory, DefinitionsDirectoryName);
         }
 
+        // Vendor profiles live next to the item definitions they offer and buy.
+        public static string VendorsDirectory(string itemsDirectory)
+        {
+            return Path.Combine(itemsDirectory, VendorsDirectoryName);
+        }
+
+        public static string VendorPath(string itemsDirectory, string vendorId)
+        {
+            return Path.Combine(VendorsDirectory(itemsDirectory), DefinitionFileName(vendorId));
+        }
+
         public static string DefinitionPath(string domainDirectory, string definitionId)
         {
             return Path.Combine(
@@ -231,6 +243,21 @@ namespace Mmorpg.WorldData.Content
                     "Content definitions directory does not exist at '" + directory + "'.");
             }
 
+            return ListIdFiles(directory);
+        }
+
+        // Lists vendor profile files under the same naming rules. A catalog without vendors
+        // has no vendors directory.
+        public static ContentDefinitionFile[] ListVendorFiles(string itemsDirectory)
+        {
+            var directory = VendorsDirectory(itemsDirectory);
+            return Directory.Exists(directory)
+                ? ListIdFiles(directory)
+                : Array.Empty<ContentDefinitionFile>();
+        }
+
+        private static ContentDefinitionFile[] ListIdFiles(string directory)
+        {
             var files = new List<ContentDefinitionFile>();
             foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
             {

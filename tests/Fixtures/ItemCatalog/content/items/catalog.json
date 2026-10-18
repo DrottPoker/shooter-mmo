@@ -44,6 +44,10 @@
     "baseCarryCapacity": 200,
     "inventorySlotCount": 20
   },
+  "economy": {
+    "currencyDisplayName": "Fixture Coins",
+    "startingBalance": 100
+  },
   "equipmentSlots": [
     {
       "displayName": "Head",
@@ -91,7 +95,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 3,
+  "formatVersion": 4,
   "retired": {
     "categories": [ ],
     "definitions": [ ],
@@ -122,6 +126,12 @@
     {
       "displayName": "Ammunition",
       "id": "ammunition"
+    }
+  ],
+  "toolKinds": [
+    {
+      "displayName": "Pickaxe",
+      "id": "pickaxe"
     }
   ]
 }

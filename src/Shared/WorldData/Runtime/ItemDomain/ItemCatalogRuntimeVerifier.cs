@@ -94,8 +94,16 @@ namespace Mmorpg.WorldData.Items
                         InventorySlotCount = runtime.Character.InventorySlotCount,
                         BankSlotCount = runtime.Character.BankSlotCount
                     },
+                Economy = runtime.Economy == null
+                    ? null
+                    : new ItemEconomySettingsEntry
+                    {
+                        CurrencyDisplayName = runtime.Economy.CurrencyDisplayName,
+                        StartingBalance = runtime.Economy.StartingBalance
+                    },
                 Categories = runtime.Categories?.Select(CloneIdentity).ToArray(),
                 Tags = runtime.Tags?.Select(CloneIdentity).ToArray(),
+                ToolKinds = runtime.ToolKinds?.Select(CloneIdentity).ToArray(),
                 EquipmentSlots = runtime.EquipmentSlots?
                     .Select(slot => slot == null
                         ? null
@@ -115,6 +123,23 @@ namespace Mmorpg.WorldData.Items
                             Id = tier.Id,
                             DisplayName = tier.DisplayName,
                             SlotCapacity = tier.SlotCapacity
+                        })
+                    .ToArray(),
+                Vendors = runtime.Vendors?
+                    .Select(vendor => vendor == null
+                        ? null
+                        : new VendorProfileAuthoringEntry
+                        {
+                            Id = vendor.Id,
+                            DisplayName = vendor.DisplayName,
+                            Offers = vendor.Offers?
+                                .Select(offer => offer == null
+                                    ? null
+                                    : new VendorOfferEntry { DefinitionId = offer.DefinitionId })
+                                .ToArray(),
+                            PurchasePriceBasisPoints = vendor.PurchasePriceBasisPoints,
+                            SalePriceBasisPoints = vendor.SalePriceBasisPoints,
+                            SaleCategories = vendor.SaleCategories
                         })
                     .ToArray(),
                 Retired = runtime.Retired == null
@@ -153,7 +178,9 @@ namespace Mmorpg.WorldData.Items
                 DisplayName = definition.DisplayName,
                 Category = definition.Category,
                 Tags = definition.Tags,
+                ToolKinds = definition.ToolKinds,
                 UnitWeight = definition.UnitWeight,
+                Value = definition.Value,
                 MaximumStackSize = definition.MaximumStackSize,
                 EquipmentSlots = definition.EquipmentSlots,
                 BlockedEquipmentSlots = definition.BlockedEquipmentSlots,

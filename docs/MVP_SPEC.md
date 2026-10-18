@@ -1,6 +1,6 @@
 # MMORPG MVP Spec
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -314,7 +314,7 @@ collide with the delivered item phases in
 | Unity connection and movement | Complete | Unity API and UDP flow, entity lifecycle, spatial interest, click-to-move with client-planned paths, prediction, reconciliation, interpolation, and checksummed collision |
 | SimulationWorker performance baseline | Complete | Headless stress clients, active bots, visibility and packet reuse, bounded backpressure, and repeatable baselines |
 | Items, inventory, equipment, and carry weight | Complete | Everything in [Items And Inventory](#items-and-inventory), with the temporary Unity inventory UI |
-| Vendor and gathering | Not started | One NPC vendor capability, one resource node type with the starter pickaxe, gathering through the item transaction service, and selling to the vendor |
+| Vendor and gathering | Planned in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) | One NPC vendor capability, one resource node type with the starter pickaxe, gathering through the item transaction service, and selling to the vendor |
 | Target-based combat and simple Mob | Not started | One Ranged weapon with consumed ammunition, target selection and auto attack, health and damage, authoritative death events, and one simple Mob with live loot |
 | Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas without Zones or Layers, instant logout in the Safe City, a five-minute body after disconnect in the Open Risk area, and reconnect to the same body |
 | Death, Recovery, and corpse looting | Foundation complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, and insurance are done. The combat death producer and final corpse presentation remain |

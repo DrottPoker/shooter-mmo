@@ -13,6 +13,7 @@ public sealed class WorldActorCatalogHeaderDocument
     public WorldActorPresentationAuthoringEntry[]? PresentationArchetypes;
     public WorldActorActivityProfileAuthoringEntry[]? ActivityProfiles;
     public WorldActorRespawnProfileAuthoringEntry[]? RespawnProfiles;
+    public WorldActorResourceProfileAuthoringEntry[]? ResourceProfiles;
 }
 
 // Assembles actor authoring from catalog.json, one file per actor definition, and the
@@ -35,6 +36,7 @@ public static class WorldActorContent
             PresentationArchetypes = header.PresentationArchetypes,
             ActivityProfiles = header.ActivityProfiles,
             RespawnProfiles = header.RespawnProfiles,
+            ResourceProfiles = header.ResourceProfiles,
             Actors = actors
         };
     }

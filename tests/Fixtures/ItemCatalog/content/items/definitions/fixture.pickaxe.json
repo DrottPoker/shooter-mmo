@@ -14,5 +14,9 @@
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "tags": [ ],
-  "unitWeight": 15
+  "toolKinds": [
+    "pickaxe"
+  ],
+  "unitWeight": 15,
+  "value": 50
 }

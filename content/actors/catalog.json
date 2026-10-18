@@ -1,5 +1,5 @@
 {
-    "formatVersion": 1,
+    "formatVersion": 2,
     "catalogId": "core",
     "factions": [
         {
@@ -11,6 +11,11 @@
             "id": "wild",
             "displayName": "Wild Creatures",
             "defaultDisposition": "hostile"
+        },
+        {
+            "id": "world",
+            "displayName": "World",
+            "defaultDisposition": "neutral"
         }
     ],
     "presentationArchetypes": [
@@ -33,6 +38,11 @@
             "id": "npc.city_services",
             "displayName": "City Services",
             "actorKind": "npc"
+        },
+        {
+            "id": "resource.iron_vein",
+            "displayName": "Iron Vein",
+            "actorKind": "resource_node"
         }
     ],
     "activityProfiles": [
@@ -49,6 +59,17 @@
             "id": "mob.normal",
             "delaySeconds": 30.0,
             "populationLimit": 32
+        }
+    ],
+    "resourceProfiles": [
+        {
+            "id": "resource.iron_vein",
+            "requiredToolKind": "pickaxe",
+            "yieldDefinitionId": "material.iron_ore",
+            "yieldQuantity": 1,
+            "cycleSeconds": 3.0,
+            "charges": 5,
+            "respawnSeconds": 30.0
         }
     ]
 }

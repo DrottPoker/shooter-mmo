@@ -15,8 +15,8 @@ public sealed class WorldActorCompilerTests
         Assert.Equal("core", runtime.CatalogId);
         Assert.Equal("development-world-1", runtime.WorldId);
         Assert.Equal(64, runtime.Revision.Length);
-        Assert.Equal(4, runtime.Actors.Length);
-        Assert.Equal(5, runtime.SpawnInstances.Length);
+        Assert.Equal(5, runtime.Actors.Length);
+        Assert.Equal(6, runtime.SpawnInstances.Length);
         Assert.Equal(
             WorldActorJson.SerializeRuntime(runtime),
             NormalizeLineEndings(WorldActorTestData.RuntimeJson));
@@ -29,8 +29,8 @@ public sealed class WorldActorCompilerTests
         var runtime = WorldActorTestData.Compile(worldId);
 
         Assert.Equal(worldId, runtime.WorldId);
-        Assert.Equal(4, runtime.Actors.Length);
-        Assert.Equal(7, runtime.SpawnInstances.Length);
+        Assert.Equal(5, runtime.Actors.Length);
+        Assert.Equal(11, runtime.SpawnInstances.Length);
         Assert.Equal(
             WorldActorJson.SerializeRuntime(runtime),
             NormalizeLineEndings(WorldActorTestData.RuntimeJsonFor(worldId)));
@@ -47,6 +47,7 @@ public sealed class WorldActorCompilerTests
         Array.Reverse(actors.PresentationArchetypes);
         Array.Reverse(actors.ActivityProfiles);
         Array.Reverse(actors.RespawnProfiles);
+        Array.Reverse(actors.ResourceProfiles);
         Array.Reverse(actors.Actors);
         foreach (var actor in actors.Actors)
         {

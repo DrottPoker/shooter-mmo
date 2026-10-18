@@ -60,5 +60,7 @@
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "tags": [ ],
-  "unitWeight": 100
+  "toolKinds": [ ],
+  "unitWeight": 100,
+  "value": 200
 }

@@ -22,42 +22,50 @@
         {
             "id": "services.bank",
             "kind": "bank",
-            "displayName": "Character Bank"
+            "displayName": "Character Bank",
+            "profileId": ""
         },
         {
             "id": "services.crafting",
             "kind": "crafting",
-            "displayName": "Crafting"
+            "displayName": "Crafting",
+            "profileId": ""
         },
         {
             "id": "services.dialogue",
             "kind": "dialogue",
-            "displayName": "Talk"
+            "displayName": "Talk",
+            "profileId": ""
         },
         {
             "id": "services.insurance",
             "kind": "insurance",
-            "displayName": "Insurance"
+            "displayName": "Insurance",
+            "profileId": ""
         },
         {
             "id": "services.quest_offer",
             "kind": "quest_offer",
-            "displayName": "Available Quests"
+            "displayName": "Available Quests",
+            "profileId": ""
         },
         {
             "id": "services.quest_turn_in",
             "kind": "quest_turn_in",
-            "displayName": "Complete Quest"
+            "displayName": "Complete Quest",
+            "profileId": ""
         },
         {
             "id": "services.recovery",
             "kind": "recovery_storage",
-            "displayName": "Recovery Storage"
+            "displayName": "Recovery Storage",
+            "profileId": ""
         },
         {
             "id": "services.vendor",
             "kind": "vendor",
-            "displayName": "Trade"
+            "displayName": "Trade",
+            "profileId": "vendor.city_general_store"
         }
     ],
     "activityProfileId": "",

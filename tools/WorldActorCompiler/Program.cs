@@ -2,6 +2,7 @@ using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Items;
 
 if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
@@ -14,6 +15,11 @@ try
 {
     var contentRoot = options!.ContentRoot;
     var catalog = WorldActorContent.LoadCatalog(ContentLayout.ActorsDirectory(contentRoot));
+
+    // Actors refer to vendor profiles, tool kinds, and item definitions, so the item content
+    // of the same content root is compiled first and every World is checked against it.
+    var items = ItemCatalogCompiler.Compile(
+        ItemCatalogContent.Load(ContentLayout.ItemsDirectory(contentRoot)));
     var worldIds = WorldActorContent.ListWorldIds(contentRoot);
     if (worldIds.Length == 0)
     {
@@ -23,7 +29,7 @@ try
 
     foreach (var worldId in worldIds)
     {
-        var runtime = CompileWorld(catalog, contentRoot, worldId);
+        var runtime = CompileWorld(catalog, items, contentRoot, worldId);
         GeneratedOutput.WriteOrVerifyText(
             ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
             WorldActorJson.SerializeRuntime(runtime),
@@ -52,12 +58,17 @@ catch (Exception exception)
 
 static WorldActorRuntimeDocument CompileWorld(
     WorldActorCatalogAuthoringDocument catalog,
+    ItemCatalogRuntimeDocument items,
     string contentRoot,
     string worldId)
 {
     try
     {
-        return WorldActorCompiler.Compile(catalog, WorldActorContent.LoadSpawns(contentRoot, worldId));
+        var runtime = WorldActorCompiler.Compile(
+            catalog,
+            WorldActorContent.LoadSpawns(contentRoot, worldId));
+        WorldActorCompiler.ValidateItemReferences(runtime, items);
+        return runtime;
     }
     catch (WorldActorValidationException exception)
     {

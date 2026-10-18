@@ -16,5 +16,7 @@
   "tags": [
     "ammunition"
   ],
-  "unitWeight": 1
+  "toolKinds": [ ],
+  "unitWeight": 1,
+  "value": 1
 }

@@ -1,12 +1,16 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "catalogId": "core",
-  "revision": "5b07919c5db348dcc97e4f6eb444be093b6e8322556d250395478f88a59db292",
+  "revision": "0716ce95968b2281e405d59af018715667741829942c2a003beab34021d13fb6",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 200,
     "inventorySlotCount": 20,
     "bankSlotCount": 40
+  },
+  "economy": {
+    "currencyDisplayName": "Fixture Coins",
+    "startingBalance": 100
   },
   "categories": [
     {
@@ -58,6 +62,12 @@
     {
       "id": "potion",
       "displayName": "Potion"
+    }
+  ],
+  "toolKinds": [
+    {
+      "id": "pickaxe",
+      "displayName": "Pickaxe"
     }
   ],
   "equipmentSlots": [
@@ -115,7 +125,9 @@
       "tags": [
         "ammunition"
       ],
+      "toolKinds": [],
       "unitWeight": 1,
+      "value": 1,
       "maximumStackSize": 60,
       "equipmentSlots": [
         "ammunition"
@@ -133,7 +145,9 @@
       "displayName": "Fixture Bow",
       "category": "weapon",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 25,
+      "value": 100,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "main_hand"
@@ -153,7 +167,9 @@
       "displayName": "Fixture Letter",
       "category": "quest_item",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 1,
+      "value": 0,
       "maximumStackSize": 1,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -173,7 +189,9 @@
       "tags": [
         "material"
       ],
+      "toolKinds": [],
       "unitWeight": 6,
+      "value": 10,
       "maximumStackSize": 100,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -189,7 +207,9 @@
       "displayName": "Fixture Pack",
       "category": "bag",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 10,
+      "value": 200,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "bag"
@@ -253,7 +273,11 @@
       "displayName": "Fixture Pickaxe",
       "category": "tool",
       "tags": [],
+      "toolKinds": [
+        "pickaxe"
+      ],
       "unitWeight": 15,
+      "value": 50,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "tool"
@@ -273,7 +297,9 @@
       "tags": [
         "potion"
       ],
+      "toolKinds": [],
       "unitWeight": 2,
+      "value": 25,
       "maximumStackSize": 10,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -289,7 +315,9 @@
       "displayName": "Fixture Ring",
       "category": "jewelry",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 1,
+      "value": 40,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "ring_1",
@@ -308,7 +336,9 @@
       "displayName": "Fixture Shield",
       "category": "armor",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 20,
+      "value": 60,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "off_hand"
@@ -326,7 +356,9 @@
       "displayName": "Fixture Sword",
       "category": "weapon",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 25,
+      "value": 100,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "main_hand",
@@ -345,7 +377,9 @@
       "displayName": "Fixture Tunic",
       "category": "armor",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 20,
+      "value": 80,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "body"
@@ -365,6 +399,38 @@
       "displayName": "Fixture Pouch",
       "slotCapacity": 4,
       "structuralFingerprint": "9462228681fa92f812285851c4bc7b06ed9b5c436dc8a86c05011756a79d5dca"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "vendor.fixture_store",
+      "displayName": "Fixture Store",
+      "offers": [
+        {
+          "definitionId": "fixture.arrow"
+        },
+        {
+          "definitionId": "fixture.potion"
+        },
+        {
+          "definitionId": "fixture.pickaxe"
+        },
+        {
+          "definitionId": "fixture.pack"
+        }
+      ],
+      "purchasePriceBasisPoints": 10000,
+      "salePriceBasisPoints": 4000,
+      "saleCategories": [
+        "ammunition",
+        "armor",
+        "bag",
+        "jewelry",
+        "material",
+        "potion",
+        "tool",
+        "weapon"
+      ]
     }
   ],
   "retired": {

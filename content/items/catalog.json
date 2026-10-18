@@ -48,6 +48,10 @@
     "baseCarryCapacity": 2000,
     "inventorySlotCount": 20
   },
+  "economy": {
+    "currencyDisplayName": "Gold",
+    "startingBalance": 100
+  },
   "equipmentSlots": [
     {
       "displayName": "Head",
@@ -115,7 +119,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 3,
+  "formatVersion": 4,
   "retired": {
     "categories": [
       "medical"
@@ -162,6 +166,12 @@
     {
       "displayName": "Ammunition",
       "id": "ammunition"
+    }
+  ],
+  "toolKinds": [
+    {
+      "displayName": "Pickaxe",
+      "id": "pickaxe"
     }
   ]
 }

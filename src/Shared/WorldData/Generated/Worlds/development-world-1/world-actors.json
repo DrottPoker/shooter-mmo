@@ -1,8 +1,8 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "69ee1d2fdf104ea5600d5011c6a0ce0cb801faddc116715898429ea5f4c70916",
+  "revision": "b75617858f7ec505abf91a150247e0aef4032530a54171e99a91bf0fc98ebf85",
   "factions": [
     {
       "id": "city",
@@ -15,6 +15,12 @@
       "displayName": "Wild Creatures",
       "defaultDisposition": "hostile",
       "structuralFingerprint": "8e2395996120cb12e098120f31c9a058c4c3c369f81d741b187034ccbbf85421"
+    },
+    {
+      "id": "world",
+      "displayName": "World",
+      "defaultDisposition": "neutral",
+      "structuralFingerprint": "3342a6446f8203541b7a94ef85e240cd03e3893c94a4b1cc7d5639a64123197a"
     }
   ],
   "presentationArchetypes": [
@@ -41,6 +47,12 @@
       "displayName": "City Services",
       "actorKind": "npc",
       "structuralFingerprint": "abebd90d0dc23559272c78292a91c140d1458b03a1e41b0b347098838d6c9528"
+    },
+    {
+      "id": "resource.iron_vein",
+      "displayName": "Iron Vein",
+      "actorKind": "resource_node",
+      "structuralFingerprint": "ad236d6468e47cce6eb819fb4915ce9ceeb4127c3ff0decec2fbc13a79650267"
     }
   ],
   "activityProfiles": [
@@ -59,6 +71,18 @@
       "delaySeconds": 30,
       "populationLimit": 32,
       "structuralFingerprint": "834a2190ee0f2699738bac72b5cdbdb49342a8f0decb182004fce8fccbf50da4"
+    }
+  ],
+  "resourceProfiles": [
+    {
+      "id": "resource.iron_vein",
+      "requiredToolKind": "pickaxe",
+      "yieldDefinitionId": "material.iron_ore",
+      "yieldQuantity": 1,
+      "cycleSeconds": 3,
+      "charges": 5,
+      "respawnSeconds": 30,
+      "structuralFingerprint": "7735e56d519d4dafd8039027e6b72405be46ab31f195972f5901b4ae05ef17ea"
     }
   ],
   "actors": [
@@ -142,20 +166,22 @@
           "id": "guard.dialogue",
           "kind": "dialogue",
           "displayName": "Talk",
-          "structuralFingerprint": "0f0e5c8df570634658fd43d871e5cfc8c16c3227fd18d1a123bd9bed7a84c17e"
+          "profileId": "",
+          "structuralFingerprint": "69e2d027b4e0adf1ce00e05a2d7fd6f3827387f6eea35cc15a9ea4debcf29538"
         },
         {
           "id": "guard.trainer",
           "kind": "trainer",
           "displayName": "Training",
-          "structuralFingerprint": "b3b1874100b8cb9f08300340c55d1192f6c0e030aa414e68d202ae254117249b"
+          "profileId": "",
+          "structuralFingerprint": "70bc5df4274d0822703e650ae800e5b37517f4efa569b6710661e66b0f21e0e6"
         }
       ],
       "activityProfileId": "",
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
-      "structuralFingerprint": "058f59083c3b65287f1de959e43ab70d37e5c6d11545d46d82acf74e57078857"
+      "structuralFingerprint": "f7b9cdf7d920624caff04a986528abadfab6a0df767a082b4169613e2bcae029"
     },
     {
       "id": "npc.city_services",
@@ -182,56 +208,99 @@
           "id": "services.bank",
           "kind": "bank",
           "displayName": "Character Bank",
-          "structuralFingerprint": "9e347cecd4113bb4332bbefab1683da2d81ef20a31b087cd1b739514a5712b74"
+          "profileId": "",
+          "structuralFingerprint": "a6b376f6fe7ecf2e250e71792d3c5fe7a45dfce4faa1a00d3ff93f143c7e5104"
         },
         {
           "id": "services.crafting",
           "kind": "crafting",
           "displayName": "Crafting",
-          "structuralFingerprint": "3fe8b2fd4760235c7e64e6221cb6c0a841085f2b020d3d1cfeb646ab10a89d63"
+          "profileId": "",
+          "structuralFingerprint": "6003502468254732729e48c8497c8cd5de7133505eab0fda5f5b2971ed648c3a"
         },
         {
           "id": "services.dialogue",
           "kind": "dialogue",
           "displayName": "Talk",
-          "structuralFingerprint": "fa474086f67574f6007aba9d47ef975d925bf304541a9e7d86dd6a86bf5a4a34"
+          "profileId": "",
+          "structuralFingerprint": "59dd200f25d5f4ae403c5d15bb47151f3a38e1a219ea076631328fce4406a7ba"
         },
         {
           "id": "services.insurance",
           "kind": "insurance",
           "displayName": "Insurance",
-          "structuralFingerprint": "7be8f5c2d1583ac185fec9b583dd8606b9bd8cb3de351e0a950c1b12c3d5d012"
+          "profileId": "",
+          "structuralFingerprint": "3529705acd0fa8417e2e4421dc867545ee9e23ed25d3151bc9d52ce63e75a61e"
         },
         {
           "id": "services.quest_offer",
           "kind": "quest_offer",
           "displayName": "Available Quests",
-          "structuralFingerprint": "427314a01783dee42ef33485b687e5725b130ee93b3a73d0d5970ba7d7bd649b"
+          "profileId": "",
+          "structuralFingerprint": "da69ed900c231f76c7376f273ac3541bd466191b3557061f8afc008827215720"
         },
         {
           "id": "services.quest_turn_in",
           "kind": "quest_turn_in",
           "displayName": "Complete Quest",
-          "structuralFingerprint": "9c9ac92ceef603bcc592e2a4d4aae6b1eb14743a2caf0ab50fec9f18932cca27"
+          "profileId": "",
+          "structuralFingerprint": "84b28bf94284695f594f95d4220875420a83ac99f69e99577d67107caad93947"
         },
         {
           "id": "services.recovery",
           "kind": "recovery_storage",
           "displayName": "Recovery Storage",
-          "structuralFingerprint": "091e429efbdb50dff133fee00ff15bf6b1603e7b922092ff1b46558261acfd8e"
+          "profileId": "",
+          "structuralFingerprint": "e959bf6e71ab370140a0a524f317d64d65a8a75c07681e31ea8f724ab69e36d2"
         },
         {
           "id": "services.vendor",
           "kind": "vendor",
           "displayName": "Trade",
-          "structuralFingerprint": "f09638af25f30f4fdf0d07f9aab32f0499fb5251751033f19966475158d7abe7"
+          "profileId": "vendor.city_general_store",
+          "structuralFingerprint": "3893d9a29b7ee39c02343f6c96c4384699a590c424b26866f25ea2b1cfc2bfb3"
         }
       ],
       "activityProfileId": "",
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
-      "structuralFingerprint": "d138f49600bac5449b519456e18984b2685a109ec107e536d4b9981df920f99c"
+      "structuralFingerprint": "1412275ed045d5e57924b9d4a584f300bb5a0103bb9dd7b188b4c2a0c1d2ab4e"
+    },
+    {
+      "id": "resource.iron_vein",
+      "displayName": "Iron Vein",
+      "kind": "resource_node",
+      "factionId": "world",
+      "disposition": "neutral",
+      "presentationArchetypeId": "resource.iron_vein",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "mining",
+        "resource"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 0.6,
+        "centerZ": 0,
+        "sizeX": 1.6,
+        "sizeY": 1.2,
+        "sizeZ": 1.6
+      },
+      "capabilities": [
+        {
+          "id": "resource.mine",
+          "kind": "gathering",
+          "displayName": "Mine",
+          "profileId": "resource.iron_vein",
+          "structuralFingerprint": "fb098712ca399b04f57d85a88ceb5f2baedfdbadb973ee97dd926c0432877701"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "structuralFingerprint": "1d0881f87e30a0e6333f6919ea9635d722855318cb179cc2990b83b8e2a6412c"
     }
   ],
   "spawnSources": [
@@ -294,6 +363,26 @@
       "spacing": 0,
       "seed": 1201,
       "structuralFingerprint": "d689275384654db8125738990cec31befbb71ea6e656b5ce07010add55e7d83e"
+    },
+    {
+      "id": "local.iron_vein",
+      "kind": "point",
+      "actorId": "resource.iron_vein",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": -8,
+      "originY": 0,
+      "originZ": 1,
+      "minimumX": -8,
+      "minimumZ": 1,
+      "maximumX": -8,
+      "maximumZ": 1,
+      "yawDegrees": 0,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "2d0cbf5e5e24b9809419c1e26fdd53d7fec1708608baac6977e446db736d5232"
     }
   ],
   "spawnInstances": [
@@ -351,6 +440,17 @@
       "yawDegrees": 180,
       "patrolPathId": "local.wolf_patrol",
       "structuralFingerprint": "12bc092c4c7258365d998ba75a30e1ffa08cde900ee21d378a6e0e49d5a4a541"
+    },
+    {
+      "id": "local.iron_vein:0000",
+      "spawnDefinitionId": "local.iron_vein",
+      "actorId": "resource.iron_vein",
+      "x": -8,
+      "y": 0,
+      "z": 1,
+      "yawDegrees": 0,
+      "patrolPathId": "",
+      "structuralFingerprint": "e9b8c2cb2f90cc5e5517ee4058e6eccae19dcdd0d0d9914e284c517e80c03f53"
     }
   ],
   "patrolPaths": [
