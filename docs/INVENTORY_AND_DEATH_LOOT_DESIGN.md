@@ -437,30 +437,30 @@ could create an over-cap state requires an explicit migration.
 
 ## Inventory UI Layout
 
-The Unity inventory presentation uses a stable three-area layout:
+The Unity inventory presentation uses a stable three-column layout:
 
 ```text
-+--------------------------+------------------------------------------+
-| Character equipment      | Context container                       |
-| Left side                | Upper right                              |
-|                          | Bank, corpse, Recovery Storage, or       |
-|                          | another opened loot or storage container |
-|                          +------------------------------------------+
-|                          | Character inventory                      |
-|                          | Lower right                              |
-|                          | Permanent slots, equipped Bag contents,  |
-|                          | and Secure Container                     |
-+--------------------------+------------------------------------------+
++--------------------+-----------------------------+------------------------+
+| Character          | Context container           | Character inventory    |
+| equipment          | Middle                      | Right                  |
+| Left               | Bank, corpse, Recovery      | Carry meter, Permanent |
+| Paper doll of the  | Storage, or another opened  | slots, equipped Bag    |
+| equipment slots    | loot or storage container   | contents, and Secure   |
+|                    |                             | Container              |
+|                    |                             | Selected-item footer   |
++--------------------+-----------------------------+------------------------+
 ```
 
-- Character equipment remains on the left.
-- The right side is split vertically.
-- Character-owned inventory remains in the lower-right area.
-- The upper-right area presents the currently relevant external or contextual
+- Character equipment remains on the left, laid out like a paper doll.
+- Character-owned inventory remains in the right column and keeps its place
+  and size in every view.
+- The middle column presents the currently relevant external or contextual
   container, including bank, corpse, Recovery Storage, and world loot
   containers.
-- The lower-right character area remains visible while another container is
-  open so authoritative transfers have a clear source and destination.
+- The character column remains visible while another container is open so
+  authoritative transfers have a clear source and destination.
+- The character-only and equipment views hide columns and never move the
+  character column.
 
 This is a presentation contract only. Server authority, revisions, slot rules,
 and transaction behavior do not depend on screen layout.

@@ -690,8 +690,10 @@ timeout, the presentation catalog cache, catalog mismatch, complete and
 focused snapshots, monotonic and divergent revisions, operation correlation,
 specialized targets, Secure Container eligibility, non-empty Bag rejection,
 split weight, and the 140 percent hard cap, plus typed valid and invalid
-drag-and-drop behavior.
-PlayMode verifies the persistent controller and runtime uGUI root.
+drag-and-drop behavior and the panel presentation: paper doll positions, carry
+meter levels, blocked equipment slots, catalog labels, and tooltips. PlayMode
+verifies the persistent controller and runtime uGUI root, and draws a committed
+snapshot in the complete view without a GameService.
 
 ### Give A Character Development Items
 
@@ -822,58 +824,73 @@ granted, so the character stays empty for the corrected package.
 
 ### Manual Player Loop
 
-1. Press `B` and verify only Permanent inventory, the equipped Traveler's Pack
-   contents, and Secure Container are shown. Press `C` and verify equipment plus
-   character storage are shown. Press `I` and verify the complete Development
-   view adds the upper-right Bank and Recovery context. Pressing the active key
-   closes that view, pressing another inventory key switches views, and
-   `Escape` closes any view; the cursor stays free. Verify that
-   hidden modules leave no background or header behind and that Character
-   Inventory keeps the same position and size in all three views.
-2. Drag the shortbow, jerkin, pickaxe, or ring from Permanent inventory onto a
+1. Press `B` and verify only the right column is shown: the carry meter,
+   Permanent Inventory, the equipped Traveler's Pack contents, and the Warded
+   Pouch. Press `C` and verify the equipment paper doll appears on the left.
+   Press `I` and verify the complete Development view adds the middle Bank,
+   Recovery, and Corpse column. Pressing the active key closes that view,
+   pressing another inventory key switches views, and `Escape` closes any view;
+   the cursor stays free. Verify that hidden modules leave no background or
+   header behind and that the right column keeps the same position and size in
+   all three views.
+2. Check the presentation. Every slot has the same size. Occupied slots show
+   the item name, a colored top strip for the item category, and the stack
+   quantity in the lower-right corner; empty slots are darker. The Traveler's
+   Pack specialized slots show `Food/Potion`, `Material`, and `Ammunition`. The
+   paper doll shows Tool, Head, and Bag on top, Main Hand, Body, and Off Hand in
+   the middle, and Feet at the bottom. Hover any item: a tooltip shows its name,
+   category, quantity, weight, equipment slots, and policies. The carry meter is
+   green with the caption `Weight 1040 / 2500    Load 41.6%    Speed 100%`.
+3. Drag the shortbow, jerkin, pickaxe, or ring from Permanent inventory onto a
    compatible empty equipment slot. Drag the equipped item onto an empty
    Permanent slot to unequip it. Valid targets highlight green, invalid targets
-   highlight red, and the UI waits for the committed refresh before showing the
-   new location. The header drops by the equipped item's own weight and restores
-   it when the item is unequipped into carried storage. Clicking a destination
-   without dragging does not move an item.
-3. Drag the 100 Bronze Arrows from the Bag ammunition slot onto the Ammunition
-   equipment slot. The weight drops by `100`. Select the equipped arrows, enter
-   `40`, enable `Split to Target`, and drag them onto an empty Permanent slot:
+   highlight red, the dragged label trails beside the pointer without covering
+   the target, and the UI waits for the committed refresh before showing the
+   new location. The carry meter drops by the equipped item's own weight and
+   restores it when the item is unequipped into carried storage. With the
+   shortbow equipped, Off Hand turns red and shows `Blocked`, and its tooltip
+   names the shortbow. Clicking a destination without dragging does not move an
+   item.
+4. Drag the 100 Bronze Arrows from the Bag ammunition slot onto the Ammunition
+   equipment slot. The weight drops by `100`, and the equipped slot shows `100`.
+   Select the equipped arrows; the footer below the right column shows the
+   selection. Enter `40`, click `Split`, and drag them onto an empty Permanent slot:
    `60` stay equipped and the weight rises by `40`. Drag the `40` arrows back
    onto the equipped stack to top it up to `100`, then drag the equipped stack
    back onto the Bag ammunition slot. The weight returns to `1040 / 2500`.
-4. Drag the empty Traveler's Pack from Permanent inventory into one of the
+5. Drag the empty Traveler's Pack from Permanent inventory into one of the
    equipped Bag's general slots and back. Open Bank and drag the second empty
    Traveler's Pack between Bank and Permanent inventory. Click the equipped
    non-empty Traveler's Pack
    only to inspect its actions, then drag it and confirm ordinary Permanent, Bag,
    and Bank destinations reject it.
-5. Drag the healing potion, iron ore, and arrows out of and back into the
+6. Drag the healing potion, iron ore, and arrows out of and back into the
    supplies, material, and ammunition specialized slots. Drag the shortbow across a
    specialized slot and Secure Container target and confirm both reject it.
-6. In Bank, click an iron-ore stack, enter the split quantity, enable
-   `Split to Target`, then drag that selected stack onto an empty Bank slot. Drag
+7. In Bank, click an iron-ore stack, enter the split quantity in the footer,
+   click `Split`, then drag that selected stack onto an empty Bank slot. Drag
    the resulting stack onto its compatible peer to merge it back. Confirm source
    quantities and item identities change only after the server result and
    refresh. Drag two unlike items between compatible occupied ordinary slots and
    confirm they exchange slots in one committed refresh. Repeat against an
    incompatible specialized or Secure Container slot and confirm neither moves.
-7. In Recovery, drag either item in the prepared delivery onto a Permanent or
+8. In Recovery, drag either item in the prepared delivery onto a Permanent or
    Bank slot. The complete delivery disappears and both original item instances
    appear in the chosen container only after the committed full refresh.
-8. Starting from fixture weight `1040 / 2500`, move Bank iron ore quantity `20`
+9. Starting from fixture weight `1040 / 2500`, move Bank iron ore quantity `20`
    to Permanent inventory. Weight becomes `2240 / 2500`. Move Bank iron ore
    quantity `19` to reach `3380 / 2500`, above 100 percent, where the movement
-   multiplier declines linearly. Move the single healing potion to reach
-   `3400 / 2500`, followed by the empty Bank Traveler's Pack to reach exactly
-   `3500 / 2500`, load `140%`, and movement `20%`.
-9. Attempt to move the Bank arrow stack into carried storage. The local target
+   multiplier declines linearly and the carry meter turns amber with
+   `(slowed)`. Move the single healing potion to reach `3400 / 2500`, followed
+   by the empty Bank Traveler's Pack to reach exactly `3500 / 2500`, load
+   `140%`, and speed `20%`. The carry meter is full and red with
+   `(at the carry limit)`.
+10. Attempt to move the Bank arrow stack into carried storage. The local target
    is disabled. Any equivalent authoritative request is rejected by the server,
    and the committed weight remains exactly `3500 / 2500`.
-10. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
-   quantity, carry value, and revision is restored without loss or duplication.
-11. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
+11. Leave to CharacterSelect and rejoin. Press `I` and confirm every item location,
+    quantity, carry value, and revision is restored without loss or duplication.
+12. Reopen and refresh Bank and Recovery repeatedly. Definition labels and icon
     references remain stable. Automated EditMode coverage also asserts that both
     catalog loads return the same presentation index and icon cache.
 
@@ -894,11 +911,12 @@ dotnet run --project src/Server/SimulationWorker
 
 1. Join the shard, press `I`, and move a Bank item into Permanent inventory.
    Expected result: the move is rejected with `bank_access_required`.
-2. Left-click Mira the Quartermaster and select `Character Bank` in the
+2. Left-click Mira the Quartermaster and select `Open Character Bank` in the
    interaction panel. Expected result: the interaction reports that the Character
    Bank is open, and the inventory opens in the complete view with the Bank
-   context. Moving an item between Bank and Permanent inventory now commits.
-3. Select `Recovery Storage` in the same interaction. Expected result: the
+   context. The Bank header shows `via Mira the Quartermaster`. Moving an item
+   between Bank and Permanent inventory now commits.
+3. Select `Open Recovery Storage` in the same interaction. Expected result: the
    Recovery context opens, and a prepared delivery can be claimed.
 4. Walk away from Mira until the interaction closes, then move a Bank item again.
    Expected result: the move is rejected with `bank_access_required`.
@@ -1004,30 +1022,31 @@ at the same time:
    corpse capsule.
 5. Click the corpse capsule in both clients. Expected result: each player walks
    into range and opens the same complete
-   three-section corpse view. The character inventory module stays fixed while
-   the Corpse context module opens.
+   three-section corpse view. The character column stays fixed while the
+   middle Corpse column opens.
 6. Drag two different corpse items into valid empty carried slots at nearly the
    same time. Expected result: both commits appear in both views with no lost or
    duplicated item. Then drag the same remaining item simultaneously. Exactly
    one client commits, and the loser receives a stable error followed by current
    authoritative state.
-7. For a stack, click `Partial Stack`, enter a quantity, and drag it to a valid
+7. For a stack, click `Partial stack: off` so it reads `Partial stack: on`,
+   enter a quantity, and drag it to a valid
    destination from one client while the other client loots from the same stack.
    Expected result: committed quantities never become negative and their total
    is conserved.
 8. Drag a carried item into an empty corpse slot. Then drag two complete items
    that cannot merge onto each other in both directions. Expected result: the
    deposit appears for both viewers, each valid occupied drop swaps atomically,
-   and Character Inventory refreshes without closing the corpse. Repeat with a
+   and the character column refreshes without closing the corpse. Repeat with a
    partial compatible stack deposit and verify total quantity is conserved.
 9. Drag a corpse item to another empty corpse slot, split one corpse stack into
    another corpse slot, merge compatible corpse stacks, and drop two complete
    non-mergeable corpse items onto each other. Expected result: every operation
    commits as corpse-only movement, both clients receive the result, and the
    character weight and item-state revision do not change. Verify that each
-   Corpse Equipment button shows a type such as `Head [head]` or
-   `Body [body]`. A compatible item is accepted and an incompatible
-   item is rejected without moving either item.
+   Corpse Equipment slot shows its type, such as `Head` or `Body`. A compatible
+   item is accepted and an incompatible item is rejected without moving either
+   item.
 10. In one client, drag a corpse Bag child. At the same time in the other client,
    drag the corpse Bag root onto the occupied player Bag equipment slot.
    Expected result: only a compatible complete outcome commits. Neither Bag
