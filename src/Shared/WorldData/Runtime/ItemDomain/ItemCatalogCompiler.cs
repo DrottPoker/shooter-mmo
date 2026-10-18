@@ -79,12 +79,18 @@ namespace Mmorpg.WorldData.Items
                     InventorySlotCount = authoring.Character.InventorySlotCount,
                     BankSlotCount = authoring.Character.BankSlotCount
                 },
+                Economy = new ItemEconomySettingsEntry
+                {
+                    CurrencyDisplayName = authoring.Economy.CurrencyDisplayName,
+                    StartingBalance = authoring.Economy.StartingBalance
+                },
                 Progression = new ItemProgressionSettingsEntry
                 {
                     MaximumCharacterLevel = authoring.Progression.MaximumCharacterLevel
                 },
                 Categories = CompileIdentities(authoring.Categories),
                 Tags = CompileIdentities(authoring.Tags),
+                ToolKinds = CompileIdentities(authoring.ToolKinds),
                 EquipmentSlots = authoring.EquipmentSlots
                     .Select(slot => new ItemEquipmentSlotEntry
                     {
@@ -113,6 +119,10 @@ namespace Mmorpg.WorldData.Items
                     .Select(CompileSecureContainerTier)
                     .OrderBy(tier => tier.Id, StringComparer.Ordinal)
                     .ToArray(),
+                Vendors = authoring.Vendors
+                    .Select(CompileVendor)
+                    .OrderBy(vendor => vendor.Id, StringComparer.Ordinal)
+                    .ToArray(),
                 Retired = new ItemCatalogRetiredIdsEntry
                 {
                     Categories = SortStrings(authoring.Retired.Categories),
@@ -140,6 +150,7 @@ namespace Mmorpg.WorldData.Items
                 "baseSecureContainerTierId",
                 errors);
             ValidateCharacterSettings(authoring.Character, errors);
+            ValidateEconomySettings(authoring.Economy, errors);
             var maximumCharacterLevel = ValidateProgression(authoring.Progression, errors);
 
             var categoryIds = ValidateIdentities(
@@ -152,6 +163,12 @@ namespace Mmorpg.WorldData.Items
                 "tags",
                 ItemCatalogFormat.MaximumTagLength,
                 errors);
+            var toolKindIds = ValidateIdentities(
+                authoring.ToolKinds,
+                "toolKinds",
+                MaximumIdentifierLength,
+                errors,
+                true);
             var equipmentSlots = ValidateEquipmentSlots(authoring.EquipmentSlots, errors);
             var ammunitionFamilyIds = ValidateIdentities(
                 authoring.AmmunitionFamilies,
@@ -175,9 +192,11 @@ namespace Mmorpg.WorldData.Items
                 authoring.Definitions,
                 categoryIds,
                 tagIds,
+                toolKindIds,
                 equipmentSlots,
                 new CombatReferences(weaponFamilyIds, ammunitionFamilyIds, maximumCharacterLevel),
                 errors);
+            ValidateVendors(authoring.Vendors, authoring.Definitions, categoryIds, errors);
             var tierIds = ValidateSecureContainerTiers(
                 authoring.SecureContainerTiers,
                 authoring.BaseSecureContainerTierId,
@@ -217,6 +236,39 @@ namespace Mmorpg.WorldData.Items
 
             ValidateSlotCount(character.InventorySlotCount, "character.inventorySlotCount", errors);
             ValidateSlotCount(character.BankSlotCount, "character.bankSlotCount", errors);
+        }
+
+        private static void ValidateEconomySettings(
+            ItemEconomySettingsEntry economy,
+            ICollection<string> errors)
+        {
+            if (economy == null)
+            {
+                errors.Add("economy is required.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(economy.CurrencyDisplayName)
+                || economy.CurrencyDisplayName.Length > ItemCatalogFormat.MaximumCurrencyDisplayNameLength
+                || !string.Equals(
+                    economy.CurrencyDisplayName,
+                    economy.CurrencyDisplayName.Trim(),
+                    StringComparison.Ordinal))
+            {
+                errors.Add(
+                    "economy.currencyDisplayName is required, must be trimmed, and must not exceed "
+                    + ItemCatalogFormat.MaximumCurrencyDisplayNameLength
+                    + " characters.");
+            }
+
+            if (economy.StartingBalance < 0
+                || economy.StartingBalance > VendorPricing.MaximumCurrencyBalance)
+            {
+                errors.Add(
+                    "economy.startingBalance is required and must be between 0 and "
+                    + VendorPricing.MaximumCurrencyBalance.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+            }
         }
 
         private static int ValidateProgression(
@@ -456,6 +508,7 @@ namespace Mmorpg.WorldData.Items
             ItemDefinitionAuthoringEntry[] definitions,
             ISet<string> categoryIds,
             ISet<string> tagIds,
+            ISet<string> toolKindIds,
             IReadOnlyDictionary<string, ItemEquipmentSlotEntry> equipmentSlots,
             CombatReferences combat,
             ICollection<string> errors)
@@ -511,11 +564,45 @@ namespace Mmorpg.WorldData.Items
                     path + ".blockedEquipmentSlots",
                     "equipment slot",
                     errors);
+                ValidateReferenceList(
+                    definition.ToolKinds,
+                    toolKindIds,
+                    path + ".toolKinds",
+                    "tool kind",
+                    errors);
                 ValidateDefaultPolicies(definition.DefaultPolicies, path, errors);
 
                 if (definition.UnitWeight < 0)
                 {
                     errors.Add(path + ".unitWeight must not be negative.");
+                }
+
+                if (definition.Value < 0 || definition.Value > ItemCatalogFormat.MaximumItemValue)
+                {
+                    errors.Add(
+                        path
+                        + ".value is required and must be between 0 and "
+                        + ItemCatalogFormat.MaximumItemValue.ToString(CultureInfo.InvariantCulture)
+                        + ".");
+                }
+
+                if (definition.ToolKinds != null && definition.ToolKinds.Length > 0)
+                {
+                    if (definition.ToolKinds.Length > ItemCatalogFormat.MaximumToolKindsPerDefinition)
+                    {
+                        errors.Add(
+                            path + ".toolKinds must not contain more than "
+                            + ItemCatalogFormat.MaximumToolKindsPerDefinition
+                            + " tool kinds.");
+                    }
+
+                    if (!Contains(definition.EquipmentSlots, ItemEquipmentSlotIds.Tool))
+                    {
+                        errors.Add(
+                            path + ".toolKinds requires compatibility with the '"
+                            + ItemEquipmentSlotIds.Tool
+                            + "' equipment slot.");
+                    }
                 }
 
                 if (definition.MaximumStackSize <= 0
@@ -918,6 +1005,176 @@ namespace Mmorpg.WorldData.Items
             }
         }
 
+        // Offers must be purchasable items with a value, and every sale rate stays below every
+        // purchase rate, so no buy and sell loop between vendors can create currency.
+        private static void ValidateVendors(
+            VendorProfileAuthoringEntry[] vendors,
+            ItemDefinitionAuthoringEntry[] definitions,
+            ISet<string> categoryIds,
+            ICollection<string> errors)
+        {
+            if (vendors == null)
+            {
+                errors.Add("vendors is required.");
+                return;
+            }
+
+            var definitionsById = new Dictionary<string, ItemDefinitionAuthoringEntry>(StringComparer.Ordinal);
+            foreach (var definition in definitions ?? Array.Empty<ItemDefinitionAuthoringEntry>())
+            {
+                if (definition?.Id != null && !definitionsById.ContainsKey(definition.Id))
+                {
+                    definitionsById.Add(definition.Id, definition);
+                }
+            }
+
+            var vendorIds = new HashSet<string>(StringComparer.Ordinal);
+            var highestSaleRate = -1;
+            var lowestPurchaseRate = int.MaxValue;
+            for (var index = 0; index < vendors.Length; index++)
+            {
+                var vendor = vendors[index];
+                var path = "vendors[" + index + "]";
+                if (vendor == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                ValidateIdentifier(vendor.Id, path + ".id", errors);
+                ValidateDisplayName(vendor.DisplayName, path + ".displayName", errors);
+                if (!string.IsNullOrWhiteSpace(vendor.Id) && !vendorIds.Add(vendor.Id))
+                {
+                    errors.Add("vendors contains duplicate id '" + vendor.Id + "'.");
+                }
+
+                if (vendor.PurchasePriceBasisPoints <= 0
+                    || vendor.PurchasePriceBasisPoints > VendorPricing.MaximumPriceBasisPoints)
+                {
+                    errors.Add(
+                        path + ".purchasePriceBasisPoints must be between 1 and "
+                        + VendorPricing.MaximumPriceBasisPoints.ToString(CultureInfo.InvariantCulture)
+                        + ".");
+                }
+                else
+                {
+                    lowestPurchaseRate = Math.Min(lowestPurchaseRate, vendor.PurchasePriceBasisPoints);
+                }
+
+                if (vendor.SalePriceBasisPoints < 0
+                    || vendor.SalePriceBasisPoints > VendorPricing.MaximumPriceBasisPoints)
+                {
+                    errors.Add(
+                        path + ".salePriceBasisPoints is required and must be between 0 and "
+                        + VendorPricing.MaximumPriceBasisPoints.ToString(CultureInfo.InvariantCulture)
+                        + ".");
+                }
+                else
+                {
+                    highestSaleRate = Math.Max(highestSaleRate, vendor.SalePriceBasisPoints);
+                }
+
+                ValidateReferenceList(
+                    vendor.SaleCategories,
+                    categoryIds,
+                    path + ".saleCategories",
+                    "category",
+                    errors);
+                if (Contains(vendor.SaleCategories, ItemCategoryIds.QuestItem))
+                {
+                    errors.Add(
+                        path + ".saleCategories cannot contain '" + ItemCategoryIds.QuestItem + "'.");
+                }
+
+                ValidateVendorOffers(vendor, path, definitionsById, errors);
+                if (vendor.Offers != null
+                    && vendor.Offers.Length == 0
+                    && vendor.SaleCategories != null
+                    && vendor.SaleCategories.Length == 0)
+                {
+                    errors.Add(path + " must offer items or buy at least one category.");
+                }
+            }
+
+            if (highestSaleRate >= 0
+                && lowestPurchaseRate != int.MaxValue
+                && highestSaleRate >= lowestPurchaseRate)
+            {
+                errors.Add(
+                    "vendors must keep every salePriceBasisPoints below every "
+                    + "purchasePriceBasisPoints, so buying and selling can never create currency.");
+            }
+        }
+
+        private static void ValidateVendorOffers(
+            VendorProfileAuthoringEntry vendor,
+            string path,
+            IReadOnlyDictionary<string, ItemDefinitionAuthoringEntry> definitionsById,
+            ICollection<string> errors)
+        {
+            if (vendor.Offers == null)
+            {
+                errors.Add(path + ".offers is required.");
+                return;
+            }
+
+            if (vendor.Offers.Length > ItemCatalogFormat.MaximumOffersPerVendor)
+            {
+                errors.Add(
+                    path + ".offers must not contain more than "
+                    + ItemCatalogFormat.MaximumOffersPerVendor
+                    + " offers.");
+            }
+
+            var offered = new HashSet<string>(StringComparer.Ordinal);
+            for (var offerIndex = 0; offerIndex < vendor.Offers.Length; offerIndex++)
+            {
+                var offer = vendor.Offers[offerIndex];
+                var offerPath = path + ".offers[" + offerIndex + "]";
+                if (offer == null)
+                {
+                    errors.Add(offerPath + " must not be null.");
+                    continue;
+                }
+
+                ValidateIdentifier(offer.DefinitionId, offerPath + ".definitionId", errors);
+                if (string.IsNullOrWhiteSpace(offer.DefinitionId))
+                {
+                    continue;
+                }
+
+                if (!offered.Add(offer.DefinitionId))
+                {
+                    errors.Add(
+                        path + ".offers contains duplicate definition '" + offer.DefinitionId + "'.");
+                }
+
+                if (!definitionsById.TryGetValue(offer.DefinitionId, out var definition))
+                {
+                    errors.Add(
+                        offerPath + ".definitionId references unknown definition '"
+                        + offer.DefinitionId
+                        + "'.");
+                    continue;
+                }
+
+                if (definition.Value <= 0)
+                {
+                    errors.Add(offerPath + " must offer a definition with a positive value.");
+                }
+
+                if (definition.DefaultPolicies != null && definition.DefaultPolicies.Length > 0)
+                {
+                    errors.Add(offerPath + " cannot offer a definition with default policies.");
+                }
+
+                if (string.Equals(definition.Category, ItemCategoryIds.QuestItem, StringComparison.Ordinal))
+                {
+                    errors.Add(offerPath + " cannot offer a quest item.");
+                }
+            }
+        }
+
         private static HashSet<string> ValidateSecureContainerTiers(
             SecureContainerTierAuthoringEntry[] tiers,
             string baseTierId,
@@ -1181,7 +1438,9 @@ namespace Mmorpg.WorldData.Items
                 DisplayName = authoring.DisplayName,
                 Category = authoring.Category,
                 Tags = SortStrings(authoring.Tags),
+                ToolKinds = SortStrings(authoring.ToolKinds),
                 UnitWeight = authoring.UnitWeight,
+                Value = authoring.Value,
                 MaximumStackSize = authoring.MaximumStackSize,
                 EquipmentSlots = SortStrings(authoring.EquipmentSlots),
                 BlockedEquipmentSlots = SortStrings(authoring.BlockedEquipmentSlots),
@@ -1253,6 +1512,21 @@ namespace Mmorpg.WorldData.Items
             return tier;
         }
 
+        private static VendorProfileDefinition CompileVendor(VendorProfileAuthoringEntry authoring)
+        {
+            return new VendorProfileDefinition
+            {
+                Id = authoring.Id,
+                DisplayName = authoring.DisplayName,
+                Offers = authoring.Offers
+                    .Select(offer => new VendorOfferEntry { DefinitionId = offer.DefinitionId })
+                    .ToArray(),
+                PurchasePriceBasisPoints = authoring.PurchasePriceBasisPoints,
+                SalePriceBasisPoints = authoring.SalePriceBasisPoints,
+                SaleCategories = SortStrings(authoring.SaleCategories)
+            };
+        }
+
         private static string[] SortStrings(IEnumerable<string> values)
         {
             return values.OrderBy(value => value, StringComparer.Ordinal).ToArray();
@@ -1310,9 +1584,12 @@ namespace Mmorpg.WorldData.Items
                 writer.Write(catalog.Character.BaseCarryCapacity);
                 writer.Write(catalog.Character.InventorySlotCount);
                 writer.Write(catalog.Character.BankSlotCount);
+                writer.Write(catalog.Economy.CurrencyDisplayName);
+                writer.Write(catalog.Economy.StartingBalance);
                 writer.Write(catalog.Progression.MaximumCharacterLevel);
                 WriteIdentities(writer, catalog.Categories);
                 WriteIdentities(writer, catalog.Tags);
+                WriteIdentities(writer, catalog.ToolKinds);
                 writer.Write(catalog.EquipmentSlots.Length);
                 foreach (var slot in catalog.EquipmentSlots)
                 {
@@ -1338,6 +1615,8 @@ namespace Mmorpg.WorldData.Items
                     writer.Write(definition.Id);
                     writer.Write(definition.DisplayName);
                     writer.Write(definition.StructuralFingerprint);
+                    writer.Write(definition.Value);
+                    WriteStrings(writer, definition.ToolKinds);
                     WriteCombatData(writer, definition);
                 }
 
@@ -1347,6 +1626,22 @@ namespace Mmorpg.WorldData.Items
                     writer.Write(tier.Id);
                     writer.Write(tier.DisplayName);
                     writer.Write(tier.StructuralFingerprint);
+                }
+
+                writer.Write(catalog.Vendors.Length);
+                foreach (var vendor in catalog.Vendors)
+                {
+                    writer.Write(vendor.Id);
+                    writer.Write(vendor.DisplayName);
+                    writer.Write(vendor.Offers.Length);
+                    foreach (var offer in vendor.Offers)
+                    {
+                        writer.Write(offer.DefinitionId);
+                    }
+
+                    writer.Write(vendor.PurchasePriceBasisPoints);
+                    writer.Write(vendor.SalePriceBasisPoints);
+                    WriteStrings(writer, vendor.SaleCategories);
                 }
 
                 WriteStrings(writer, catalog.Retired.Categories);

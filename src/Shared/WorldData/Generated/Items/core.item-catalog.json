@@ -1,12 +1,16 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "catalogId": "core",
-  "revision": "9e29d1f0ad2c43b782f448abe247e59ebeab90457344770edbc1cda97e06316f",
+  "revision": "76c8cd8ae93a6fcd945d8be4ed992fff78df63d6ae0c72215ab86849c1babe16",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
     "inventorySlotCount": 20,
     "bankSlotCount": 40
+  },
+  "economy": {
+    "currencyDisplayName": "Gold",
+    "startingBalance": 100
   },
   "progression": {
     "maximumCharacterLevel": 200
@@ -69,6 +73,12 @@
     {
       "id": "potion",
       "displayName": "Potion"
+    }
+  ],
+  "toolKinds": [
+    {
+      "id": "pickaxe",
+      "displayName": "Pickaxe"
     }
   ],
   "equipmentSlots": [
@@ -161,7 +171,9 @@
       "tags": [
         "ammunition"
       ],
+      "toolKinds": [],
       "unitWeight": 1,
+      "value": 1,
       "maximumStackSize": 1000,
       "equipmentSlots": [
         "ammunition"
@@ -184,7 +196,9 @@
       "displayName": "Leather Jerkin",
       "category": "armor",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 150,
+      "value": 80,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "body"
@@ -203,7 +217,9 @@
       "displayName": "Traveler\u0027s Pack",
       "category": "bag",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 100,
+      "value": 200,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "bag"
@@ -271,7 +287,9 @@
       "tags": [
         "food"
       ],
+      "toolKinds": [],
       "unitWeight": 20,
+      "value": 10,
       "maximumStackSize": 10,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -288,7 +306,9 @@
       "displayName": "Copper Ring",
       "category": "jewelry",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 10,
+      "value": 40,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "ring_1",
@@ -310,7 +330,9 @@
       "tags": [
         "material"
       ],
+      "toolKinds": [],
       "unitWeight": 60,
+      "value": 10,
       "maximumStackSize": 100,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -329,7 +351,9 @@
       "tags": [
         "material"
       ],
+      "toolKinds": [],
       "unitWeight": 20,
+      "value": 15,
       "maximumStackSize": 50,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -348,7 +372,9 @@
       "tags": [
         "potion"
       ],
+      "toolKinds": [],
       "unitWeight": 20,
+      "value": 25,
       "maximumStackSize": 10,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -365,7 +391,9 @@
       "displayName": "Sealed Letter",
       "category": "quest_item",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 10,
+      "value": 0,
       "maximumStackSize": 1,
       "equipmentSlots": [],
       "blockedEquipmentSlots": [],
@@ -384,7 +412,11 @@
       "displayName": "Starter Pickaxe",
       "category": "tool",
       "tags": [],
+      "toolKinds": [
+        "pickaxe"
+      ],
       "unitWeight": 150,
+      "value": 50,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "tool"
@@ -403,7 +435,9 @@
       "displayName": "Training Shortbow",
       "category": "weapon",
       "tags": [],
+      "toolKinds": [],
       "unitWeight": 80,
+      "value": 100,
       "maximumStackSize": 1,
       "equipmentSlots": [
         "main_hand"
@@ -434,6 +468,39 @@
       "displayName": "Warded Pouch",
       "slotCapacity": 4,
       "structuralFingerprint": "9462228681fa92f812285851c4bc7b06ed9b5c436dc8a86c05011756a79d5dca"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "vendor.city_general_store",
+      "displayName": "General Store",
+      "offers": [
+        {
+          "definitionId": "ammunition.bronze_arrow"
+        },
+        {
+          "definitionId": "potion.minor_healing"
+        },
+        {
+          "definitionId": "food.cooked_trout"
+        },
+        {
+          "definitionId": "tool.starter_pickaxe"
+        }
+      ],
+      "purchasePriceBasisPoints": 10000,
+      "salePriceBasisPoints": 4000,
+      "saleCategories": [
+        "ammunition",
+        "armor",
+        "bag",
+        "food",
+        "jewelry",
+        "material",
+        "potion",
+        "tool",
+        "weapon"
+      ]
     }
   ],
   "retired": {

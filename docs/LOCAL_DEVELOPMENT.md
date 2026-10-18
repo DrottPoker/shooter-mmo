@@ -98,9 +98,9 @@ Expected result:
   client builds.
 - Format reports no files that need changes.
 - Build completes with zero warnings and zero errors.
-- Item catalog verification reports nine definitions, one base Secure Container
-  tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 16 with 27 messages
+- Item catalog verification reports eleven definitions, one base Secure
+  Container tier, and the deterministic checked-in revision.
+- Protocol verification reports realtime protocol version 17 with 28 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -174,12 +174,14 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 16 with 27
-messages. The first command rewrites only changed files and removes files that
-the schema no longer produces. The second fails and names the file when a
-generated file is stale, missing, or not produced by the schema. Commit the
-schema, `realtime-protocol.lock.json`, the generated `.cs` files, and their
-`.meta` files together.
+Expected result: both commands report realtime protocol version 17 with 28
+messages and 16 generated files, and the second prints
+`Realtime protocol version 17 verified: 28 messages, 16 generated files.`
+The first command rewrites only changed files and removes files that the schema
+no longer produces. The second fails and names the file when a generated file
+is stale, missing, or not produced by the schema. Commit the schema,
+`realtime-protocol.lock.json`, the generated `.cs` files, and their `.meta`
+files together.
 
 When generation reports that the wire contract of the current protocol version changed,
 the schema change alters bytes or acceptance. Increase `protocol.version` in
@@ -191,15 +193,19 @@ GUIDs, and Unity compiles the new code when it next refreshes.
 ## Item Catalog Authoring And Verification
 
 The neutral source catalog is `content/items`: `catalog.json` defines stable
-category, tag, equipment-slot, and Secure Container tier content, and
-`definitions/<definition-id>.json` holds one item with its Bag layout,
-location eligibility, and policy defaults. The generated runtime catalog is
+category, tag, tool kind, equipment-slot, and Secure Container tier content and
+the `economy` block with the currency name and the starting balance of new
+characters, `definitions/<definition-id>.json` holds one item with its Bag
+layout, location eligibility, policy defaults, `value`, and `toolKinds`, and
+`vendors/<vendor-id>.json` holds one vendor profile with its offers, prices, and
+the categories it buys. The generated runtime catalog is
 `src/Shared/WorldData/Generated/Items/core.item-catalog.json`.
 
-Catalog format version 3 uses unitless non-negative integer `unitWeight`,
+The catalog uses unitless non-negative integer `unitWeight`,
 `carryCapacityBonus`, and `baseCarryCapacity` fields. Do not add physical-unit or
 decimal weight fields. The baseline scale is ammunition `1`, a one-handed weapon
-about `100`, and base character capacity `2000`.
+about `100`, and base character capacity `2000`. Item values are whole currency
+units; a value of `0` means vendors never trade the item.
 
 The canonical content workflow is available in Unity at
 `MMORPG > Tools > Item Catalog`:
@@ -226,11 +232,23 @@ The canonical content workflow is available in Unity at
    JSON. An item may remain iconless until approved client art is available.
 6. Select `Validate` to run the strict command-line compiler without writing
    files.
-7. Select `Save` to write `catalog.json`, one file per definition, and the
-   presentation content without replacing the runtime gameplay catalog. The
-   files of removed draft definitions are deleted.
+7. Select `Save` to write `catalog.json`, one file per definition, one file per
+   vendor profile, and the presentation content without replacing the runtime
+   gameplay catalog. The files of removed draft definitions and vendor profiles
+   are deleted.
 8. Select `Save And Bake` to validate and atomically replace authoring, runtime,
    and presentation JSON. Structural changes require explicit confirmation.
+
+Each definition also has `Value` and `Tool Kinds` fields. The `Definitions` and
+`Vendors` toolbar toggles switch the window between item definitions and vendor
+profiles. Vendors mode lists the profiles with `New` and `Remove`, and edits the
+vendor id, display name, `Selling Price (basis points)` that players pay,
+`Buying Price (basis points)` that players receive, `Buys Categories`, and the
+ordered offers with `Add Offer`, `Up`, `Down`, and `Remove`. Live problems are
+mapped to the vendor and its field. The `economy` block and the tool kind
+identities are edited by hand in `catalog.json`. Values, tool kinds, and vendor
+profiles never change a structural fingerprint, so they need no item migration
+or local database reset.
 
 The gameplay source remains `content/items`. The Editor-only assembly does not
 duplicate its rules: live checks call the shared compiler in `Mmorpg.WorldData`,
@@ -259,7 +277,7 @@ Then verify the checked-in result:
 dotnet run --project tools/ItemCatalogCompiler -- --verify
 ```
 
-Expected result: both commands report catalog `core`, nine definitions, one
+Expected result: both commands report catalog `core`, eleven definitions, one
 base Secure Container tier, and the same SHA-256 catalog revision. `--verify`
 returns exit code 1 for malformed authoring, a definition file whose name does
 not match its id, invalid rules, or stale runtime JSON.
@@ -320,8 +338,9 @@ dotnet test tests/Integration/Mmorpg.Integration.Tests `
   --filter "FullyQualifiedName~ConcurrentMigrationInitializationAppliesEachMigrationOnce"
 ```
 
-Expected result: the test passes with ten immutable migration ids, one current
-catalog revision, and no duplicate topology or item seed rows.
+Expected result: the test passes with every immutable migration id applied
+exactly once, one current catalog revision, and no duplicate topology or item
+seed rows.
 
 For an existing local development database, start GameService normally. Expect
 one log entry if the new migration or a new catalog revision is applied. Inspect
@@ -406,12 +425,14 @@ $catalog.definitions.Count
 $snapshot.permanentInventory.slots.Count
 $snapshot.bank.slots.Count
 $snapshot.secureContainer.contents.slots.Count
+$snapshot.currency
 ```
 
-Expected result: the values are `10`, `20`, `40`, and `4`. The snapshot is empty
-but complete, reports capacity `2000`, and contains no operation payload,
-credentials, client icon, or repeated definition metadata. No Unity Editor
-action is required for this verification.
+Expected result: the values are `11`, `20`, `40`, `4`, and `100`. The snapshot
+is empty but complete, reports capacity `2000` and the catalog's starting
+balance of `100` Gold, and contains no operation payload, credentials, client
+icon, or repeated definition metadata. No Unity Editor action is required for
+this verification.
 
 ## Item Transaction Kernel Verification
 
@@ -778,7 +799,17 @@ routed through the worker that currently owns the character.
    unavailable once that character owns items, while individual grants remain
    available. Invalid stack, Secure Container, slot, or hard-cap requests are
    rejected by GameService without a partial item transaction.
-6. To create a durable corpse, keep a source character offline and use the
+6. To give currency, use the `Give Currency` section. It shows the selected
+   character's `Balance`. Enter a positive `Amount`, which defaults to `100`,
+   and click `Give Currency`. The button is available only while the character
+   is offline. Expected result: the status reports
+   `Granted <amount> currency to <character>, who now has <balance>.` and
+   `Balance` shows the new value. The grant goes through the character wallet
+   and writes a `development` row to `character_currency_ledger`, like every
+   other balance change. A grant above the maximum balance of
+   `1,000,000,000,000` is rejected and changes nothing. Do not set currency with
+   SQL; a direct update would bypass the ledger.
+7. To create a durable corpse, keep a source character offline and use the
    `Create Durable Corpse` section. Leave Shard Id as `local-shard-1`, enter a
    nearby safe World position such as `(0, 0, -1)`, and click
    `Create Durable Corpse`. An empty source first receives the corpse seed package, the
@@ -788,7 +819,7 @@ routed through the worker that currently owns the character.
    Expected result: the status reports the corpse id, exact Shard, absolute
    five-minute expiry, and committed item-state revision. Restart
    SimulationWorker after creation so its fresh runtime restores the corpse.
-7. Start SimulationWorker with its Development launch profile, enter Play Mode,
+8. Start SimulationWorker with its Development launch profile, enter Play Mode,
    log into the target account, select its character, and join the local shard:
 
    ```powershell
@@ -825,7 +856,13 @@ dotnet run --project src/Server/GameService --configuration Release -- `
 
 dotnet run --project src/Server/GameService --configuration Release -- `
   --dev-items-level <characterId> 5
+
+dotnet run --project src/Server/GameService --configuration Release -- `
+  --dev-items-currency <characterId> 500
 ```
+
+`--dev-items-list` reports every character with its `currency` balance next to
+its item count, weight, capacity, and revision.
 
 `--dev-items-level` sets an offline character's level, from 1 up to the item
 catalog's `progression.maximumCharacterLevel`. Experience does not exist yet, so
@@ -833,6 +870,12 @@ this is how an item level requirement is tested: every character starts at level
 1, and GameService refuses to equip an item whose `requiredCharacterLevel` is
 higher with `equipment_level_requirement_not_met`. Every shipped item requires
 level 1.
+
+`--dev-items-currency` credits a positive whole amount of currency to an offline
+character through the character wallet, exactly like the `Give Currency`
+section, and writes a `development` ledger row. Use it instead of changing
+`characters.currency` with SQL. New characters start with the catalog's
+starting balance of `100` Gold, and existing characters keep their balance.
 
 The packages come from `content/development/item-packages.json`, which GameService
 copies next to its build output. Before the first grant, the tool checks the
@@ -1090,12 +1133,15 @@ dotnet run --project tools/WorldActorCompiler --configuration Release
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 ```
 
-Expected result: each command reports World `development-world-1` with four
-definitions and five runtime instances, and `development-world-2` with four
-definitions and seven runtime instances. The compiler reads
+Expected result: each command reports World `development-world-1` with five
+definitions and six runtime instances, and `development-world-2` with five
+definitions and twelve runtime instances. The compiler reads
 `content/actors/catalog.json`, one file per actor below
 `content/actors/definitions`, and every `content/worlds/<WorldId>/actor-spawns.json`,
 and writes `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
+It checks Mob loot, vendor profile ids, and resource profile tool kinds and
+yields against the compiled item catalog, so run the item catalog compiler first
+after an item change.
 Verify mode performs no write and fails if authoring, runtime JSON, references,
 bounds, transforms, fingerprints, ordering, or the complete revision diverge, if
 a World directory lacks `world.json`, `actor-spawns.json`, or `collision.json`,
@@ -1135,6 +1181,9 @@ presentation mapping:
    insurance, bank, and Recovery Storage capabilities, a note that NPCs are
    always invulnerable instead of Mob settings, authoritative interaction
    bounds with a front-view preview, and `No problems found.` below the editor.
+   The vendor capability `Trade` shows `Profile` `vendor.city_general_store`.
+   Select `Iron Vein`. Expected result: a `Resource Node` with one `Gathering`
+   capability, `Mine`, whose `Profile` is `resource.iron_vein`.
 2. Click `Duplicate`. Expected result: the copy `npc.city_services.copy` is
    added and selected. Use `Add Capability`, `Move Up`, `Move Down`, and
    `Remove` on it, then enter `-1` as the Y value of `Size`. Expected result:
@@ -1176,12 +1225,12 @@ presentation mapping:
    files stay byte-for-byte equivalent. Closing the window with unsaved edits
    asks whether to save them.
 8. Open a Scene view and `MMORPG > Tools > Content > Spawn Authoring`.
-   Expected result: the list shows the point `local.city_services`, the group
-   `local.city_guards`, the area `local.feral_wolves`, and the patrol path
-   `local.wolf_patrol` of `development-world-1`, the Scene view draws all four
-   while `Scene Preview` is on, and the problems panel reports
-   `No problems found.`. Selecting the point shows its prefab under
-   `Presentation Preview`.
+   Expected result: the list shows the points `local.city_services` and
+   `local.iron_vein`, the group `local.city_guards`, the area
+   `local.feral_wolves`, and the patrol path `local.wolf_patrol` of
+   `development-world-1`, the Scene view draws all five while `Scene Preview` is
+   on, and the problems panel reports `No problems found.`. Selecting a point
+   shows its prefab under `Presentation Preview`.
 9. Select the group, Ctrl-click the area, and click `Frame`. Expected result:
    the Scene view frames both, one move handle sits between them, dragging it
    moves both, and one `Ctrl+Z` undoes the whole drag. The `Area` and
@@ -1204,13 +1253,13 @@ presentation mapping:
     byte-for-byte equivalent and verification reports the same revisions.
 12. Start GameService and SimulationWorker, join `local-shard-1`, and approach
     Mira. Expected result: actor instances appear and disappear through normal
-    interest presence. The worker startup log reports the actor content
-    revision, four definitions, and five instances.
+    interest presence. For the default `development-world-2`, the worker
+    startup log reports `Activated 12 world actors from revision <revision>`.
 13. Left-click Mira. Expected result: the player walks to about `2.75` metres
     from her, and temporary uGUI opens only after the server accepts and lists
     the player-specific authoritative capability summary. Clicking a
-    capability reports `world_interaction_capability_deferred`, never local
-    success.
+    capability that is not implemented yet, such as `Talk` or `Crafting`,
+    reports `world_interaction_capability_deferred`, never local success.
 14. Click Mira while a wall hides her from the camera. Expected result: the
     click walks to the ground behind the pointer instead and opens nothing.
     Open within range, click the ground beyond `3.5` metres, and verify the
@@ -1269,16 +1318,13 @@ Prepare a local character while it is offline:
 
 1. Open `MMORPG > Tools > Inventory Item Grants` and grant
    `weapon.training_shortbow` into a free Permanent Inventory slot.
-2. Give the character local development currency. With the default Compose
-   database values, replace the character name and run:
-
-```powershell
-docker exec shooter_mmo_postgres psql -U shooter_mmo -d shooter_mmo -c `
-  "update characters set currency = 500 where name = 'YOUR CHARACTER';"
-```
-
-Expected result: PostgreSQL reports `UPDATE 1`. If local database names or users
-differ, use the matching values from `.env`.
+2. A new character starts with `100` Gold, enough for one policy. For more, enter
+   `500` in `Amount` under `Give Currency` in the same window and click
+   `Give Currency`, or run the `--dev-items-currency <characterId> 500` command
+   from [Give A Character Development Items](#give-a-character-development-items).
+   Expected result: the status reports
+   `Granted 500 currency to <character>, who now has <balance>.`, and
+   `Balance` shows the new value.
 
 Start GameService and SimulationWorker, join `local-shard-1`, approach Mira
 and left-click her. The player walks into range before the interaction opens.
@@ -1288,8 +1334,8 @@ Expected result:
 - The existing authoritative interaction opens and lists Insurance plus Quest
   item lifecycle actions.
 - Applying insurance refreshes the same item with `Insured | source: Insurance
-  NPC`. The server charges the configured price atomically and rejects a second
-  active policy.
+  NPC`. The server charges the configured price atomically, with an `insurance`
+  row in `character_currency_ledger`, and rejects a second active policy.
 - Explicit removal keeps the item instance and removes the insured label.
 - Accepting the quest creates one protected Sealed Letter with source
   `Quest grant`. Repeated acceptance does not create a duplicate.
@@ -1305,6 +1351,148 @@ fixture to verify first-death consumption and replay idempotency.
 
 No manual Unity Editor setup is required for this verification. Editor actions are needed
 only for the optional offline item grant used by this manual workflow.
+
+## Vendor And Gathering Verification
+
+Mira the Quartermaster offers the `Trade` vendor capability with the vendor
+profile `vendor.city_general_store`, shown as `General Store`. It sells Bronze
+Arrow for `1`, Minor Healing Potion for `25`, Cooked Trout for `10`, and Starter
+Pickaxe for `50` Gold with unlimited stock. It buys every carried item with a
+value except quest items for 40 percent of the value, rounded down on the total,
+and has no buyback. An Iron Vein is a shared resource node: with a pickaxe in the
+Tool slot it yields one Iron Ore every 3 seconds, it holds 5 ore, and a depleted
+vein returns after 30 seconds. The content places them here:
+
+- Development World 2, which `local-shard-1` uses by default: Mira at
+  `(8, 0, 4)` on the central service plaza, and four Iron Veins 6 metres apart
+  around `(96, 0, -124)` on the southeast expansion pad.
+- Development World 1: Mira at `(2.5, 0, -1)` and one Iron Vein at `(-8, 0, 1)`,
+  west of the spawn.
+
+No manual Unity Editor setup steps are required. The placeholder prefab
+`Assets/Prefabs/WorldActors/Resource_IronVein.prefab`, its entry for
+`resource.iron_vein` in the world actor presentation registry, and the baked
+presentation catalog are committed.
+
+Start the local stack:
+
+```powershell
+docker compose up -d --wait
+dotnet run --project src/Server/GameService
+```
+
+In a second terminal:
+
+```powershell
+dotnet run --project src/Server/SimulationWorker
+```
+
+GameService applies pending migrations when it starts. On an existing local
+development database it logs these two migrations once, and the catalog mirror
+receives the item values, tool kinds, and vendor:
+
+```text
+Applied database migration 202610181240_character_currency_ledger.
+Applied database migration 202610181250_item_economy.
+```
+
+The local database needs no reset: values, tool kinds, and vendors never change
+a structural fingerprint. Existing characters keep their balance, and the
+migration backfills an `opening_balance` ledger row for every nonzero balance.
+
+1. Open LoginMenu, enter Play Mode, log in, create a new character, and join
+   `local-shard-1`. Press `B`. Expected result: the character header shows
+   `100 Gold` before the item-state revision. An existing character keeps its
+   balance. To add Gold, leave the shard and use `Give Currency` as described in
+   [Give A Character Development Items](#give-a-character-development-items).
+2. Left-click Mira and choose `Trade`. Expected result: the interaction reports
+   `Trade is open while this interaction stays open.`, and the inventory opens in
+   the complete view on the `Vendor` tab with `General Store` and
+   `You have 100 Gold`. It lists the four offers with their unit price, such as
+   `50 Gold each` for the Starter Pickaxe. Each offer has a quantity field,
+   default `1`, and a button that names the total while you type, such as
+   `Buy for 50 Gold`.
+3. Click `Buy for 50 Gold` next to the Starter Pickaxe. Expected result: the
+   vendor panel reports `Purchased.`, the pickaxe appears in carried storage,
+   and the balance shows `50 Gold`.
+4. Before equipping the pickaxe, left-click an Iron Vein. Expected result: the
+   player walks into range and the interaction opens, but the panel reports
+   `Equip a gathering tool, such as a pickaxe, to gather here.` and nothing is
+   mined.
+5. Press `C`, drag the pickaxe onto the `Tool` equipment slot, and click `Mine`
+   in the interaction panel. Expected result: mining starts. The panel shows
+   `Mine...` with a progress bar that fills every 3 seconds and a
+   `Gathered <n> Iron Ore.` count. Every ore appears in carried storage after
+   the committed refresh, and the carry weight rises. From now on, clicking an
+   Iron Vein starts mining as soon as its interaction opens.
+6. Keep mining. Expected result: after the fifth ore the vein switches to its
+   depleted model for every client, mining stops, and the panel reports
+   `The resource node is depleted.`. The depleted vein cannot be targeted. About
+   30 seconds later it returns and can be mined again. With a second client
+   joined, both clients see the same vein deplete, and a second player mining
+   it stops at the same moment.
+7. Start mining a vein that has ore left, then click the ground. Expected
+   result: mining stops as soon as the character moves and no further ore
+   arrives. The panel reports `Moving stopped gathering.` until the
+   interaction closes.
+8. Return to Mira, choose `Trade`, and drag the Iron Ore stack onto the `Sell`
+   slot. Expected result: a quantity field shows the whole stack, and with 5 ore
+   the button reads `Sell 5 Iron Ore for 20 Gold`. Enter a smaller quantity to
+   sell part of the stack, or click `Cancel` to discard the sale. Click the sell
+   button. Expected result: the vendor panel reports `Sold.`, the stack shrinks
+   by the sold quantity, and the balance rises by 4 Gold per ore, rounded down
+   on the total.
+9. Currency stays with the character on death. No combat death producer exists
+   yet, so use the development death fixture: leave the shard, open
+   `MMORPG > Tools > Inventory Item Grants`, select the character, note
+   `Balance` under `Give Currency`, and click `Create Durable Corpse` as
+   described in
+   [Give A Character Development Items](#give-a-character-development-items).
+   Expected result: the corpse is created through the durable death pipeline,
+   and `Balance` is unchanged.
+
+Inspect the newest currency ledger rows without exposing database credentials:
+
+```powershell
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select character_id, source_kind, delta, balance_after from character_currency_ledger order by id desc limit 10;"'
+```
+
+Expected result: the test character has a `starting_balance` row of `100`, a
+`vendor_purchase` row of `-50`, and one `vendor_sale` row per sale, and each
+`balance_after` equals the previous balance plus `delta`.
+
+Run the focused automated coverage:
+
+```powershell
+dotnet test Mmorpg.slnx `
+  --configuration Release `
+  --filter "FullyQualifiedName~Vendor|FullyQualifiedName~ResourceNode|FullyQualifiedName~Gathering|FullyQualifiedName~CurrencyCommand"
+```
+
+Expected result: every selected test passes. The shared tests cover catalog
+format 5 and actor format 3 content, vendor and resource profiles, the rule that
+buying and selling back never gains currency, and pricing rounding and
+overflow. The SimulationWorker tests cover vendor access, resource node charges,
+gathering cycles, movement and closed-interaction stops, rejected and uncertain
+yields, depletion, and respawn. With the isolated PostgreSQL test variable from
+[Isolated PostgreSQL Integration Tests](#isolated-postgresql-integration-tests)
+set, the GameService and integration tests also run the wallet, ledger,
+purchase, sale, gathering, and development currency command against a dedicated
+test database, including one full-stack flow that buys a pickaxe, mines ore,
+sells it, and buys a potion. Otherwise they are skipped.
+
+For the client side, run both Unity suites with the Editor closed:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
+```
+
+Expected result: every EditMode and PlayMode test passes, including
+`VendorAndGatheringClientTests`, the inventory snapshot currency mapping, and
+the Item Catalog vendor mode and Actor Studio resource node coverage. With the
+Editor open, use the live Editor test commands in
+[Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
+instead.
 
 ## Mob Corpse Verification
 
@@ -1327,9 +1515,9 @@ Verify the content manually:
    carry Mob corpse settings.
 5. Click `Preview Changes`, `Save + Compile`, and `Verify Canonical`.
 
-Expected result: every action succeeds, there are four actor definitions and
-five runtime instances, and the checked-in actor runtime revision is
-`69ee1d2fdf104ea5600d5011c6a0ce0cb801faddc116715898429ea5f4c70916`.
+Expected result: every action succeeds, `development-world-1` has five actor
+definitions and six runtime instances, and its checked-in actor runtime revision
+is `69af19babbc642584545811744ceee51c8f9727c592b2249f41fcf7855567767`.
 
 Run the worker-memory lifecycle workflow:
 
@@ -1620,7 +1808,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 16, simulation revision,
+`27015`, runtime id, realtime protocol version 17, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same

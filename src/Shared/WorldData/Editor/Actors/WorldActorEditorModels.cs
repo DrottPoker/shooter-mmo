@@ -21,6 +21,7 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorBrainProfile[] brainProfiles;
         public WorldActorEditorLocomotionProfile[] locomotionProfiles;
         public WorldActorEditorLootProfile[] lootProfiles;
+        public WorldActorEditorResourceProfile[] resourceProfiles;
         public WorldActorEditorDefinition[] actors;
 
         public WorldActorCatalogAuthoringDocument ToDomain()
@@ -51,6 +52,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                     .Select(value => value.ToDomain()).ToArray(),
                 LootProfiles = (lootProfiles
                         ?? Array.Empty<WorldActorEditorLootProfile>())
+                    .Select(value => value.ToDomain()).ToArray(),
+                ResourceProfiles = (resourceProfiles
+                        ?? Array.Empty<WorldActorEditorResourceProfile>())
                     .Select(value => value.ToDomain()).ToArray(),
                 Actors = (actors ?? Array.Empty<WorldActorEditorDefinition>())
                     .Select(value => value.ToDomain()).ToArray()
@@ -241,6 +245,34 @@ namespace Mmorpg.WorldData.Editor.Actors
         }
     }
 
+    // What one gathering cycle at a resource node needs and yields, and how the node's
+    // shared charges return.
+    [Serializable]
+    public sealed class WorldActorEditorResourceProfile
+    {
+        public string id;
+        public string requiredToolKind;
+        public string yieldDefinitionId;
+        public int yieldQuantity = 1;
+        public float cycleSeconds = 3f;
+        public int charges = 5;
+        public float respawnSeconds = 30f;
+
+        public WorldActorResourceProfileAuthoringEntry ToDomain()
+        {
+            return new WorldActorResourceProfileAuthoringEntry
+            {
+                Id = id,
+                RequiredToolKind = requiredToolKind,
+                YieldDefinitionId = yieldDefinitionId,
+                YieldQuantity = yieldQuantity,
+                CycleSeconds = cycleSeconds,
+                Charges = charges,
+                RespawnSeconds = respawnSeconds
+            };
+        }
+    }
+
     [Serializable]
     public sealed class WorldActorEditorDefinition
     {
@@ -322,13 +354,18 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string kind;
         public string displayName;
 
+        // A vendor names an item catalog vendor profile and a gathering capability a resource
+        // profile; every other kind leaves it empty.
+        public string profileId;
+
         public WorldActorCapabilityAuthoringEntry ToDomain()
         {
             return new WorldActorCapabilityAuthoringEntry
             {
                 Id = id,
                 Kind = kind,
-                DisplayName = displayName
+                DisplayName = displayName,
+                ProfileId = profileId ?? string.Empty
             };
         }
     }
@@ -558,6 +595,7 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorBrainProfile[] brainProfiles;
         public WorldActorEditorLocomotionProfile[] locomotionProfiles;
         public WorldActorEditorLootProfile[] lootProfiles;
+        public WorldActorEditorResourceProfile[] resourceProfiles;
     }
 
     // The canonical file format is pretty-printed JsonUtility output with shortest float
@@ -667,6 +705,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 brainProfiles = header.brainProfiles,
                 locomotionProfiles = header.locomotionProfiles,
                 lootProfiles = header.lootProfiles,
+                resourceProfiles = header.resourceProfiles,
                 actors = ContentLayout.ListDefinitionFiles(actorsDirectory)
                     .Select(LoadDefinition)
                     .ToArray()
@@ -702,7 +741,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                         locomotionProfiles = catalog.locomotionProfiles
                             ?? Array.Empty<WorldActorEditorLocomotionProfile>(),
                         lootProfiles = catalog.lootProfiles
-                            ?? Array.Empty<WorldActorEditorLootProfile>()
+                            ?? Array.Empty<WorldActorEditorLootProfile>(),
+                        resourceProfiles = catalog.resourceProfiles
+                            ?? Array.Empty<WorldActorEditorResourceProfile>()
                     })
             };
             foreach (var actor in catalog.actors ?? Array.Empty<WorldActorEditorDefinition>())

@@ -62,6 +62,8 @@
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,
   "tags": [ ],
+  "toolKinds": [ ],
   "unitWeight": 100,
+  "value": 200,
   "weapon": null
 }

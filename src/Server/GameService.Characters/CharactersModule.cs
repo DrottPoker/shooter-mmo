@@ -10,10 +10,7 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
 {
     public string Name => "Characters";
 
-    public IReadOnlyList<DatabaseMigration> Migrations { get; } =
-    [
-        new(CharacterLevelMigration.Id, CharacterLevelMigration.Sql)
-    ];
+    public IReadOnlyList<DatabaseMigration> Migrations => CharactersSchemaMigrations.All;
 
     public IReadOnlyList<string> MeterNames { get; } = [];
 

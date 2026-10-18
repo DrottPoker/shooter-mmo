@@ -266,7 +266,8 @@ namespace Mmorpg.WorldData.Editor.Items
         }
 
         // Writes authored files first and generated files last, then deletes definition
-        // files for drafts that were removed. A failure restores every file.
+        // files for drafts that were removed and files of removed vendor profiles. A failure
+        // restores every file.
         private void Commit(ItemCatalogEditorValidationResult validation, bool includeRuntime)
         {
             var writes = validation.AuthoringFiles
@@ -288,10 +289,12 @@ namespace Mmorpg.WorldData.Editor.Items
             var written = new HashSet<string>(
                 writes.Select(write => write.Key),
                 StringComparer.OrdinalIgnoreCase);
-            var removedDefinitions = ExistingDefinitionPaths()
+            var removed = ExistingDefinitionPaths()
+                .Concat(ContentLayout.ListVendorFiles(paths.ItemsDirectory)
+                    .Select(file => Path.GetFullPath(file.Path)))
                 .Where(path => !written.Contains(path))
                 .ToArray();
-            ContentFileTransaction.Commit(writes, removedDefinitions);
+            ContentFileTransaction.Commit(writes, removed);
         }
 
         private IEnumerable<string> ExistingDefinitionPaths()

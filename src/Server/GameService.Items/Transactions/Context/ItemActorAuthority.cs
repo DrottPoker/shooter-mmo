@@ -62,6 +62,33 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
+    // Purchases and sales need a live interaction with an NPC whose vendor capability names
+    // exactly this vendor profile.
+    public void EnsureVendorAccess(string vendorId)
+    {
+        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
+            || !string.Equals(
+                Actor.Simulation!.LiveAccess.VendorProfileId,
+                vendorId,
+                StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.VendorAccessRequired,
+                "This operation requires a validated interaction with the vendor.");
+        }
+    }
+
+    // Gathering is performed by a live character in the world, never by an account route.
+    public void EnsureSimulationWorkerAuthority()
+    {
+        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker)
+        {
+            Reject(
+                ItemTransactionErrorCodes.AuthorityRequired,
+                "This operation requires a live simulation session.");
+        }
+    }
+
     // Bank and Recovery Storage are city services. Only a live character whose worker
     // granted access through an NPC interaction may change them, so offline account
     // routes can never reach them.

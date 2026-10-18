@@ -1,6 +1,6 @@
 # Development Worlds
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -24,6 +24,20 @@ remain reusable content.
 The client catalog maps `development-world-2` to `DevelopmentWorld2`, and both
 development scenes are Addressables World scenes. Build Profiles contain only
 LoginMenu and CharacterSelect.
+
+## Resource Node Placements
+
+Both Worlds place the `resource.iron_vein` actor, an Iron Vein that players mine
+with a pickaxe. The actor and its resource profile are described in
+[Game Content](../content/README.md#resource-nodes-and-item-references).
+
+| World ID | Spawn source | Positions |
+| --- | --- | --- |
+| `development-world-1` | Spawn point `local.iron_vein` | `(-8, 0, 1)`, west of the player spawn |
+| `development-world-2` | Spawn group `development_world_2.iron_veins`, 2 rows by 2 columns, 6 m apart, centered at `(96, 0, -124)` | `(93, 0, -127)`, `(99, 0, -127)`, `(93, 0, -121)`, and `(99, 0, -121)` on the southeast expansion pad, south of its cargo cluster |
+
+Every vein is its own runtime actor with its own charges, so mining one vein
+does not deplete the others.
 
 ## Development World 2 Layout Contract
 
@@ -56,6 +70,7 @@ The canonical World manifest and actor content already reserve these coordinates
 | City Guard group | centered at `(-16, 0, 12)` |
 | Feral Wolf spawn area | X/Z `-190` to `-130` |
 | Feral Alpha spawn point | `(-120, 0, -195)`, between rocks 05 and 12 |
+| Iron Vein group | 2 by 2 veins 6 m apart, centered at `(96, 0, -124)` |
 
 Do not move these authored landmarks without updating the matching `world.json`
 manifest and actor spawn content in the same change.
@@ -159,7 +174,8 @@ touching `Gameplay`, actor authoring, or actor runtime content.
    Collision Authoring. Decorative route surfaces and cyan guides must remain
    collider-free.
 5. Keep `PlayerSpawn`, all service markers, the guard marker, the wolf spawn
-   guide, and the documented wolf patrol points free of blocking geometry.
+   guide, the documented wolf patrol points, and the Iron Vein positions free of
+   blocking geometry.
 6. Save the scene. Select `MMORPG > Tools > World Collision > Bake Open
    Scene`.
 7. Confirm the Console reports a successful bake for

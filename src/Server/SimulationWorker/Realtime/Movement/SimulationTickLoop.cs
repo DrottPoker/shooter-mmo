@@ -18,6 +18,7 @@ internal sealed class SimulationTickLoop(
     CarryStateSynchronizer carrySync,
     WorldActorRuntimeDriver worldActors,
     WorldInteractionHandler worldInteractions,
+    GatheringHandler gathering,
     SnapshotReplicator snapshots,
     CorpsePresenceReplicator corpsePresence,
     WorldCollisionStreamingStore? collisionStreamingStore,
@@ -66,6 +67,8 @@ internal sealed class SimulationTickLoop(
             {
                 worldInteractions.RevalidateLeases();
             }
+
+            gathering.Process();
 
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
             if (clock.ServerTick % snapshotIntervalTicks == 0)

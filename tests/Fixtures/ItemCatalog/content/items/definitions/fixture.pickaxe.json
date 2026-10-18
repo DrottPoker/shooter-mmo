@@ -16,6 +16,10 @@
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,
   "tags": [ ],
+  "toolKinds": [
+    "pickaxe"
+  ],
   "unitWeight": 15,
+  "value": 50,
   "weapon": null
 }

@@ -29,7 +29,7 @@ public sealed class ItemStorageWorldActorCapabilityHandler : IWorldActorCapabili
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (context.Intent.LifecycleAction != RealtimeNpcLifecycleActionKind.None)
+        if (context.Intent.CapabilityAction != RealtimeCapabilityActionKind.None)
         {
             return Task.FromResult(new WorldActorCapabilityDispatchResult(
                 false,

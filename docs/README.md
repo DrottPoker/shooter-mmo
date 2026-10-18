@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -56,6 +56,9 @@ operations, and future design do not drift into duplicate descriptions.
 
 - [MVP Specification](MVP_SPEC.md) defines the working MVP scope and product
   decisions.
+- [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) records the
+  implemented vendor, currency, and gathering MVP slice: architecture, product
+  decisions, implementation order, and where the implementation differs.
 - [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md) is the product
   source of truth for the fantasy setting, character levels and talents,
   click-to-move movement and camera, the combat triangle, damage types and

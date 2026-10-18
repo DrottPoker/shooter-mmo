@@ -143,7 +143,12 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The owner's authoritative state and input acknowledgement for reconciliation.
         /// </summary>
-        OwnerSimulationSnapshot = 27
+        OwnerSimulationSnapshot = 27,
+
+        /// <summary>
+        /// A change of the character's gathering at a resource node.
+        /// </summary>
+        GatheringState = 28
     }
 
     /// <summary>
@@ -252,7 +257,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 16;
+        public const ushort Version = 17;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -358,7 +363,8 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionOpened, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionClosed, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerSimulationSnapshot, RealtimeMessageDirection.ServerToClient, UnreliableReceiveChannel, RealtimeDelivery.Unreliable)
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerSimulationSnapshot, RealtimeMessageDirection.ServerToClient, UnreliableReceiveChannel, RealtimeDelivery.Unreliable),
+            new RealtimeMessageDescriptor(RealtimeMessageType.GatheringState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

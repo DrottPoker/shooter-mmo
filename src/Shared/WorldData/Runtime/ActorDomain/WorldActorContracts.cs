@@ -4,13 +4,16 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 2;
+        public const int Version = 3;
     }
 
     public static class WorldActorKindIds
     {
         public const string Npc = "npc";
         public const string Mob = "mob";
+
+        // An interactable world object that yields a resource, such as an ore vein.
+        public const string ResourceNode = "resource_node";
     }
 
     public static class WorldActorDispositionIds
@@ -72,6 +75,16 @@ namespace Mmorpg.WorldData.Actors
         public const string Trainer = "trainer";
         public const string Bank = "bank";
         public const string RecoveryStorage = "recovery_storage";
+        public const string Gathering = "gathering";
+    }
+
+    public static class WorldActorResourceRules
+    {
+        public const float MinimumCycleSeconds = 0.5f;
+        public const float MaximumCycleSeconds = 60f;
+        public const int MaximumCharges = 1000;
+        public const float MinimumRespawnSeconds = 1f;
+        public const float MaximumRespawnSeconds = 86400f;
     }
 
     public static class WorldActorSpawnKindIds
@@ -141,6 +154,7 @@ namespace Mmorpg.WorldData.Actors
         public WorldActorPresentationAuthoringEntry[] PresentationArchetypes;
         public WorldActorActivityProfileAuthoringEntry[] ActivityProfiles;
         public WorldActorRespawnProfileAuthoringEntry[] RespawnProfiles;
+        public WorldActorResourceProfileAuthoringEntry[] ResourceProfiles;
         public WorldActorCombatProfileAuthoringEntry[] CombatProfiles;
         public WorldActorBrainProfileAuthoringEntry[] BrainProfiles;
         public WorldActorLocomotionProfileAuthoringEntry[] LocomotionProfiles;
@@ -192,6 +206,20 @@ namespace Mmorpg.WorldData.Actors
         public string Id;
         public float DelaySeconds;
         public int PopulationLimit;
+    }
+
+    // What one gathering cycle at a resource node yields and requires. The node shares its
+    // charges between every gatherer and returns after the respawn delay once depleted.
+    [Serializable]
+    public sealed class WorldActorResourceProfileAuthoringEntry
+    {
+        public string Id;
+        public string RequiredToolKind;
+        public string YieldDefinitionId;
+        public int YieldQuantity;
+        public float CycleSeconds;
+        public int Charges;
+        public float RespawnSeconds;
     }
 
     // A Mob's health and its one attack.
@@ -280,12 +308,15 @@ namespace Mmorpg.WorldData.Actors
         public float SizeZ;
     }
 
+    // ProfileId names the vendor profile of a vendor capability or the resource profile of a
+    // gathering capability, and is empty for every other kind.
     [Serializable]
     public sealed class WorldActorCapabilityAuthoringEntry
     {
         public string Id;
         public string Kind;
         public string DisplayName;
+        public string ProfileId;
     }
 
     [Serializable]
@@ -358,6 +389,7 @@ namespace Mmorpg.WorldData.Actors
         public WorldActorPresentationDefinition[] PresentationArchetypes;
         public WorldActorActivityProfileDefinition[] ActivityProfiles;
         public WorldActorRespawnProfileDefinition[] RespawnProfiles;
+        public WorldActorResourceProfileDefinition[] ResourceProfiles;
         public WorldActorCombatProfileDefinition[] CombatProfiles;
         public WorldActorBrainProfileDefinition[] BrainProfiles;
         public WorldActorLocomotionProfileDefinition[] LocomotionProfiles;
@@ -403,6 +435,19 @@ namespace Mmorpg.WorldData.Actors
         public string Id;
         public float DelaySeconds;
         public int PopulationLimit;
+        public string StructuralFingerprint;
+    }
+
+    [Serializable]
+    public sealed class WorldActorResourceProfileDefinition
+    {
+        public string Id;
+        public string RequiredToolKind;
+        public string YieldDefinitionId;
+        public int YieldQuantity;
+        public float CycleSeconds;
+        public int Charges;
+        public float RespawnSeconds;
         public string StructuralFingerprint;
     }
 
@@ -499,6 +544,7 @@ namespace Mmorpg.WorldData.Actors
         public string Id;
         public string Kind;
         public string DisplayName;
+        public string ProfileId;
         public string StructuralFingerprint;
     }
 

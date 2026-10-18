@@ -11,10 +11,17 @@ public sealed record WorldInteractionAuthorityResult(
     RealtimeWorldInteractionOpened? Opened,
     RealtimeWorldInteractionResult? Result,
     RealtimeWorldInteractionClosed? Closed,
-    bool ShouldDisconnect = false)
+    bool ShouldDisconnect = false,
+    GatheringStart? GatheringStart = null)
 {
     public bool Succeeded => Opened is not null || Result?.Succeeded == true;
 }
+
+// A validated StartGathering action: the interaction and the resource node it gathers from.
+public sealed record GatheringStart(
+    Guid InteractionSessionId,
+    string CapabilityId,
+    WorldActorRuntimeState Node);
 
 public sealed record WorldInteractionLeaseClosure(
     int PeerId,
@@ -289,7 +296,10 @@ public sealed class WorldInteractionAuthorityService(
                     ? null!
                     : new RealtimeError(dispatch.Code, dispatch.Message)),
             null,
-            dispatch.ShouldDisconnect);
+            dispatch.ShouldDisconnect,
+            dispatch.Succeeded && dispatch.GatheringNode is not null
+                ? new GatheringStart(intent.InteractionSessionId, intent.CapabilityId, dispatch.GatheringNode)
+                : null);
     }
 
     private WorldInteractionAuthorityResult Open(

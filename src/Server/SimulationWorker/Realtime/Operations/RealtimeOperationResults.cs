@@ -40,3 +40,12 @@ internal sealed record WorldInteractionOperationCompleted(
     ActiveSimulationSession Session,
     WorldInteractionAuthorityResult Result)
     : RealtimeOperationResult(PeerContext);
+
+internal sealed record GatheringCycleCompleted(
+    RealtimePeerContext PeerContext,
+    ActiveSimulationSession Session,
+    WorldActorRuntimeState Node,
+    long Generation,
+    SimulationGatheringRequest Request,
+    SimulationGatheringResult Result)
+    : RealtimeOperationResult(PeerContext);

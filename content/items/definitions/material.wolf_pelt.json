@@ -16,6 +16,8 @@
   "tags": [
     "material"
   ],
+  "toolKinds": [ ],
   "unitWeight": 20,
+  "value": 15,
   "weapon": null
 }

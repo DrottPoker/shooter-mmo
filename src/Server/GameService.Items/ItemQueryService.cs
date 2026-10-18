@@ -43,7 +43,8 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                         state.secure_container_id as "SecureContainerId",
                         state.recovery_storage_container_id as "RecoveryStorageContainerId",
                         entitlement.tier_id as "SecureContainerTierId",
-                        entitlement.revision as "SecureContainerEntitlementRevision"
+                        entitlement.revision as "SecureContainerEntitlementRevision",
+                        {CharactersSql.CurrencyOf("character.id")} as "Currency"
                     from {CharactersSql.ActiveCharacters} character
                     join character_item_states state on state.character_id = character.id
                     join item_system_settings settings on settings.id = 'character_default'
@@ -132,7 +133,8 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 CalculateLoadRatioBasisPoints(state.CarriedWeight, state.CarryCapacity),
                 EncumbranceRules.CalculateMovementMultiplierBasisPoints(
                     state.CarriedWeight,
-                    state.CarryCapacity));
+                    state.CarryCapacity),
+                state.Currency);
 
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<CharacterInventorySnapshotResponse>.Ok(response);
@@ -623,6 +625,8 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
         public string? SecureContainerTierId { get; set; }
 
         public long SecureContainerEntitlementRevision { get; set; }
+
+        public long Currency { get; set; }
     }
 
     private sealed class ContainerRow

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
+using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor.Actors
 {
@@ -57,17 +58,22 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorWorkspace(
             WorldActorEditorCatalog catalog,
             WorldActorEditorSpawns spawns,
-            WorldActorEditorRuntime runtime)
+            WorldActorEditorRuntime runtime,
+            WorldActorEditorItemReferences itemReferences = null)
         {
             Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             Spawns = spawns ?? throw new ArgumentNullException(nameof(spawns));
             CurrentRuntime = runtime
                 ?? throw new ArgumentNullException(nameof(runtime));
+            ItemReferences = itemReferences ?? new WorldActorEditorItemReferences();
         }
 
         public WorldActorEditorCatalog Catalog { get; }
         public WorldActorEditorSpawns Spawns { get; }
         public WorldActorEditorRuntime CurrentRuntime { get; private set; }
+
+        // The vendor profiles of the compiled item catalog, which vendor capabilities name.
+        public WorldActorEditorItemReferences ItemReferences { get; }
 
         public void ApplyRuntime(WorldActorEditorRuntime runtime)
         {
@@ -103,6 +109,35 @@ namespace Mmorpg.WorldData.Editor.Actors
             Spawns.spawnAreas = spawns.spawnAreas;
             Spawns.patrolPaths = spawns.patrolPaths;
         }
+    }
+
+    // The part of the compiled item catalog that actor content refers to. Unknown fields of
+    // the runtime catalog are ignored.
+    [Serializable]
+    public sealed class WorldActorEditorItemReferences
+    {
+        public WorldActorEditorItemReference[] vendors = Array.Empty<WorldActorEditorItemReference>();
+
+        public static WorldActorEditorItemReferences Load(string generatedRoot)
+        {
+            var path = ContentLayout.GeneratedItemCatalogPath(generatedRoot);
+            if (!File.Exists(path))
+            {
+                return new WorldActorEditorItemReferences();
+            }
+
+            var references = JsonUtility.FromJson<WorldActorEditorItemReferences>(File.ReadAllText(path))
+                ?? new WorldActorEditorItemReferences();
+            references.vendors = references.vendors ?? Array.Empty<WorldActorEditorItemReference>();
+            return references;
+        }
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorItemReference
+    {
+        public string id;
+        public string displayName;
     }
 
     // The editable part of a workspace: what undo and redo restore.
@@ -221,7 +256,8 @@ namespace Mmorpg.WorldData.Editor.Actors
             return new WorldActorEditorWorkspace(
                 WorldActorEditorContent.Load(paths.ActorsDirectory),
                 WorldActorEditorJson.DeserializeSpawns(File.ReadAllText(paths.SpawnPath)),
-                WorldActorEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)));
+                WorldActorEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)),
+                WorldActorEditorItemReferences.Load(paths.GeneratedRoot));
         }
 
         // Compiles the edited catalog and spawns together with the committed spawns of every
@@ -285,8 +321,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                     }
                 }
 
-                // Loot is checked against the compiled item catalog, which the item compiler
-                // writes before the actor compiler runs.
+                // Loot, vendor capabilities, and resource profiles are checked against the
+                // compiled item catalog, which the item compiler writes before the actor
+                // compiler runs.
                 var itemCatalogPath = ContentLayout.GeneratedItemCatalogPath(generatedRoot);
                 Directory.CreateDirectory(Path.GetDirectoryName(itemCatalogPath));
                 File.Copy(ContentLayout.GeneratedItemCatalogPath(paths.GeneratedRoot), itemCatalogPath);

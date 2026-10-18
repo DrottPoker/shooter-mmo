@@ -13,6 +13,7 @@ internal sealed class DevelopmentItemToolService(
     DevelopmentItemPackageApplier packageApplier,
     DevelopmentItemPackageSource packageSource,
     CorpseService corpseService,
+    ICharacterWallet characterWallet,
     ICharacterProgression characterProgression,
     ItemCatalogSource catalogSource,
     IHostEnvironment environment)
@@ -41,6 +42,10 @@ internal sealed class DevelopmentItemToolService(
                 packages,
                 cancellationToken),
             DevelopmentItemToolCommandKind.Level => await SetLevelAsync(
+                command,
+                packages,
+                cancellationToken),
+            DevelopmentItemToolCommandKind.Currency => await GrantCurrencyAsync(
                 command,
                 packages,
                 cancellationToken),
@@ -141,6 +146,37 @@ internal sealed class DevelopmentItemToolService(
             await LoadDataAsync(packages, cancellationToken));
     }
 
+    // Credits currency through the wallet, so the development grant gets its ledger row
+    // like every other balance change.
+    private async Task<DevelopmentItemToolResponse> GrantCurrencyAsync(
+        DevelopmentItemToolCommand command,
+        DevelopmentItemPackageDocument packages,
+        CancellationToken cancellationToken)
+    {
+        var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
+        EnsureOffline(target);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var credit = await characterWallet.CreditAsync(
+            new PostgresTransactionScope(connection, transaction),
+            target.CharacterId,
+            command.Amount,
+            new CurrencyChangeSource(CurrencySourceKinds.Development, ToolName.Replace(' ', '_'), null),
+            cancellationToken);
+        if (!credit.Succeeded)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new InvalidOperationException(
+                "The currency grant would exceed the maximum currency balance.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return new DevelopmentItemToolResponse(
+            true,
+            $"Granted {command.Amount} currency to {target.CharacterName}, who now has {credit.After}.",
+            await LoadDataAsync(packages, cancellationToken));
+    }
+
     private async Task<DevelopmentItemToolResponse> GrantAsync(
         DevelopmentItemToolCommand command,
         DevelopmentItemPackageDocument packages,
@@ -216,7 +252,8 @@ internal sealed class DevelopmentItemToolService(
                 ) as "RecoveryDeliveryCount",
                 state.revision as "ItemStateRevision",
                 state.carried_weight as "CarriedWeight",
-                state.carry_capacity as "CarryCapacity"
+                state.carry_capacity as "CarryCapacity",
+                {CharactersSql.CurrencyOf("character.id")} as "Currency"
             from {CharactersSql.ActiveCharacters} character
             join character_item_states state on state.character_id = character.id
             order by lower(character.name), character.id;
@@ -250,7 +287,8 @@ internal sealed class DevelopmentItemToolService(
                 row.RecoveryDeliveryCount,
                 row.ItemStateRevision,
                 row.CarriedWeight,
-                row.CarryCapacity)).ToArray(),
+                row.CarryCapacity,
+                row.Currency)).ToArray(),
             definitions.Select(row => new DevelopmentItemToolDefinition(
                 row.DefinitionId,
                 row.DisplayName,
@@ -352,6 +390,8 @@ internal sealed class DevelopmentItemToolService(
         public long CarriedWeight { get; set; }
 
         public long CarryCapacity { get; set; }
+
+        public long Currency { get; set; }
     }
 
     private sealed class DefinitionRow

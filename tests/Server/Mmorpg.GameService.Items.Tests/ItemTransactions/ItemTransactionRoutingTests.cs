@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(29, overloads.Length);
-        Assert.Equal(29, requestTypes.Distinct().Count());
-        Assert.Equal(29, Routes.Count);
+        Assert.Equal(32, overloads.Length);
+        Assert.Equal(32, requestTypes.Distinct().Count());
+        Assert.Equal(32, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -232,6 +232,21 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new SwapCorpseBagCommand(Id, Id, Id, 1, Id, 1, Id, 1, Id, 1),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.VendorPurchase] = (service, actor) => Run(
+                service,
+                actor,
+                new PurchaseFromVendorCommand(Id, 1, "vendor.fixture_store", "fixture.arrow", 1, 1),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.VendorSale] = (service, actor) => Run(
+                service,
+                actor,
+                new SellToVendorCommand(Id, 1, "vendor.fixture_store", Id, 1, 1, 0),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.GatherResource] = (service, actor) => Run(
+                service,
+                actor,
+                new GatherResourceCommand(Id, "resource.fixture", "node:0000", "pickaxe", "fixture.ore", 1),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None))
         };
 }

@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 16;
+        public const ushort PinnedVersion = 17;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -286,7 +286,8 @@ namespace Mmorpg.SharedTests
                 + "CarryStateChanged=12 ItemOperationIntent=13 ItemOperationResult=14 CorpsePresenceSnapshotChunk=15 "
                 + "CorpseInteractionIntent=16 CorpseInteractionResult=17 CorpseViewStateChunk=18 CorpseViewClosed=19 "
                 + "WorldActorSpawn=20 WorldActorState=21 WorldActorDespawn=22 WorldInteractionIntent=23 "
-                + "WorldInteractionOpened=24 WorldInteractionResult=25 WorldInteractionClosed=26 OwnerSimulationSnapshot=27");
+                + "WorldInteractionOpened=24 WorldInteractionResult=25 WorldInteractionClosed=26 OwnerSimulationSnapshot=27 "
+                + "GatheringState=28");
             ExpectEnum<RealtimeEntityKind>(failures, "Player=1");
             ExpectEnum<RealtimeItemOperationKind>(
                 failures,
@@ -296,27 +297,31 @@ namespace Mmorpg.SharedTests
                 "Open=1 Close=2 Refresh=3 LootItem=4 LootPartialStack=5 SwapBag=6 DepositItem=7 DepositPartialStack=8 "
                 + "MoveItem=9 MovePartialStack=10");
             ExpectEnum<RealtimeCorpseViewUpdateKind>(failures, "Snapshot=1 Delta=2");
-            ExpectEnum<RealtimeWorldActorKind>(failures, "Npc=1 Mob=2");
+            ExpectEnum<RealtimeWorldActorKind>(failures, "Npc=1 Mob=2 ResourceNode=3");
             ExpectEnum<RealtimeWorldActorDisposition>(failures, "Friendly=1 Neutral=2 Hostile=3");
             ExpectEnum<RealtimeWorldActorActivityTier>(failures, "EventDriven=1 Dormant=2 Active=3");
             ExpectEnum<RealtimeWorldInteractionTargetKind>(failures, "WorldActor=1 Corpse=2");
             ExpectEnum<RealtimeWorldInteractionOperationKind>(failures, "Open=1 Close=2 CapabilityAction=3");
             ExpectEnum<RealtimeWorldActorCapabilityKind>(
                 failures,
-                "Dialogue=1 Vendor=2 QuestOffer=3 QuestTurnIn=4 Crafting=5 Insurance=6 Trainer=7 Bank=8 RecoveryStorage=9");
-            ExpectEnum<RealtimeNpcLifecycleActionKind>(
+                "Dialogue=1 Vendor=2 QuestOffer=3 QuestTurnIn=4 Crafting=5 Insurance=6 Trainer=7 Bank=8 RecoveryStorage=9 "
+                + "Gathering=10");
+            ExpectEnum<RealtimeCapabilityActionKind>(
                 failures,
-                "None=0 ApplyInsurance=1 RemoveInsurance=2 AcceptQuest=3 AbandonQuest=4");
+                "None=0 ApplyInsurance=1 RemoveInsurance=2 AcceptQuest=3 AbandonQuest=4 VendorPurchase=5 VendorSale=6 "
+                + "StartGathering=7");
+            ExpectEnum<RealtimeGatheringStateKind>(failures, "Started=1 Yielded=2 Stopped=3");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 10 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 11 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);
             ExpectTypeReader(failures, "type 0", Wire.Header(0).ToArray(), false, default);
-            ExpectTypeReader(failures, "type 28", Wire.Header(28).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 29", Wire.Header(29).ToArray(), false, default);
             ExpectTypeReader(failures, "type 255", Wire.Header(255).ToArray(), false, default);
             ExpectTypeReader(failures, "type 27", Wire.Header(27).ToArray(), true, RealtimeMessageType.OwnerSimulationSnapshot);
+            ExpectTypeReader(failures, "type 28", Wire.Header(28).ToArray(), true, RealtimeMessageType.GatheringState);
 
             // The type reader looks at the header only, so any payload length is fine.
             ExpectTypeReader(

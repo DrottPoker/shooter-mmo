@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
@@ -84,6 +85,47 @@ public sealed class RealtimeMetricNamesTests
         Assert.Equal(
             ExpectedPerformanceInstruments,
             published[RealtimePerformanceMetrics.MeterName]);
+    }
+
+    // The playtest dashboard reads the world actor, interaction, and gathering instruments.
+    [Fact]
+    public void WorldActorMeterPublishesTheDocumentedInstrumentNames()
+    {
+        var published = new SortedSet<string>(StringComparer.Ordinal);
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, _) =>
+            {
+                if (instrument.Meter.Name == WorldActorMetrics.MeterName)
+                {
+                    lock (published)
+                    {
+                        published.Add(instrument.Name);
+                    }
+                }
+            }
+        };
+        listener.Start();
+
+        using var metrics = new WorldActorMetrics();
+
+        Assert.Equal(
+            [
+                "simulation_worker.gathering.active",
+                "simulation_worker.gathering.cycles",
+                "simulation_worker.resource_nodes.depleted",
+                "simulation_worker.world_actors.active",
+                "simulation_worker.world_actors.dormant",
+                "simulation_worker.world_actors.event_driven",
+                "simulation_worker.world_actors.mob",
+                "simulation_worker.world_actors.npc",
+                "simulation_worker.world_actors.resource_node",
+                "simulation_worker.world_interactions.accepted",
+                "simulation_worker.world_interactions.active",
+                "simulation_worker.world_interactions.duration",
+                "simulation_worker.world_interactions.rejected"
+            ],
+            published);
     }
 
     [Fact]

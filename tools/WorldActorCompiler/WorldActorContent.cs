@@ -14,6 +14,7 @@ public sealed class WorldActorCatalogHeaderDocument
     public WorldActorPresentationAuthoringEntry[]? PresentationArchetypes;
     public WorldActorActivityProfileAuthoringEntry[]? ActivityProfiles;
     public WorldActorRespawnProfileAuthoringEntry[]? RespawnProfiles;
+    public WorldActorResourceProfileAuthoringEntry[]? ResourceProfiles;
     public WorldActorCombatProfileAuthoringEntry[]? CombatProfiles;
     public WorldActorBrainProfileAuthoringEntry[]? BrainProfiles;
     public WorldActorLocomotionProfileAuthoringEntry[]? LocomotionProfiles;
@@ -40,6 +41,7 @@ public static class WorldActorContent
             PresentationArchetypes = header.PresentationArchetypes,
             ActivityProfiles = header.ActivityProfiles,
             RespawnProfiles = header.RespawnProfiles,
+            ResourceProfiles = header.ResourceProfiles,
             CombatProfiles = header.CombatProfiles,
             BrainProfiles = header.BrainProfiles,
             LocomotionProfiles = header.LocomotionProfiles,

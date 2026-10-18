@@ -53,7 +53,7 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   reconciliation, and remote interpolation.
 - Shared checksummed World collision chunks with ramps, walls, steps, slope
   handling, and position-driven streaming.
-- Strict item catalog authoring with ten fantasy definitions, retired-id
+- Strict item catalog authoring with eleven fantasy definitions, retired-id
   tombstones, deterministic runtime catalog and structural fingerprints, stable
   category, tag, equipment-slot, and Secure Container tier identities, and pure
   item, equipment stack, blocked-slot, Bag, unitless integer weight, and
@@ -100,6 +100,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Persistent Unity corpse presence and view state with complete chunk assembly,
   monotonic deltas, stable closure handling, a generic replaceable capsule,
   click-to-open interaction, and typed bidirectional drag-and-drop transfers.
+- A persistent Gold balance with a ledger, one NPC vendor that sells supplies
+  and buys carried items at fixed catalog prices, and shared Iron Vein resource
+  nodes mined with a pickaxe, with live Shard depletion and respawn.
 - OpenTelemetry metrics, logs, and traces from both server processes, exported
   over OTLP to a local Collector, Prometheus, Loki, Tempo, and Grafana stack with
   a playtest dashboard, a GameService dashboard, and tested Prometheus alert
@@ -298,7 +301,9 @@ The agreed setting, movement, camera, combat triangle, damage type, weapon,
 ammunition, and magic direction is in
 [Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md). The planned
 first combat slice, with its decisions and implementation order, is in
-[Combat And Mob Slice Plan](docs/COMBAT_AND_MOB_SLICE_PLAN.md).
+[Combat And Mob Slice Plan](docs/COMBAT_AND_MOB_SLICE_PLAN.md). The vendor,
+currency, and gathering decisions and their implementation are in
+[Vendor And Gathering Plan](docs/VENDOR_AND_GATHERING_PLAN.md).
 
 The item, inventory, carry-weight, death-loot, corpse, insurance, and recovery
 rules are in

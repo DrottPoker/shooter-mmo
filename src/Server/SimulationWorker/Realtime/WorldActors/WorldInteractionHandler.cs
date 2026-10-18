@@ -17,7 +17,8 @@ internal sealed class WorldInteractionHandler(
     RealtimeSessionTeardown teardown,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
-    WorldInteractionAuthorityOperations authority) : IRealtimeCompletionHandler
+    WorldInteractionAuthorityOperations authority,
+    GatheringHandler gathering) : IRealtimeCompletionHandler
 {
     public bool IsActive => worldInteractionAuthority is not null;
 
@@ -165,6 +166,15 @@ internal sealed class WorldInteractionHandler(
         }
 
         SendWorldInteractionResult(peer, completed.Result);
+        if (completed.Result.GatheringStart is not null)
+        {
+            gathering.Begin(
+                peer,
+                completed.Context,
+                completed.Session,
+                completed.Result.GatheringStart);
+        }
+
         authorityScheduler.StartNext(completed.Context);
     }
 

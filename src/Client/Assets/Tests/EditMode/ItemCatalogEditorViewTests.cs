@@ -95,6 +95,80 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        [Test]
+        public void VendorModeEditsOffersAndMapsVendorFindingsToTheProfile()
+        {
+            var view = new ItemCatalogEditorView(
+                new ItemCatalogEditorService(ItemCatalogEditorPaths.CreateDefault()),
+                undoState,
+                LoadCheckedInWorkspace);
+            try
+            {
+                view.Load(false);
+                view.ShowVendors(true);
+                Assert.That(view.IsShowingVendors, Is.True);
+                Assert.That(view.VendorList.Shown.Select(vendor => vendor.id), Is.EqualTo(new[] { "vendor.city_general_store" }));
+                view.VendorList.Select(new[] { "vendor.city_general_store" });
+                var vendor = view.VendorList.Selection.Single();
+                var offers = vendor.offers.Select(offer => offer.definitionId).ToArray();
+
+                Assert.That(view.VendorForm.TrySetValue("purchasePriceBasisPoints", 0), Is.True);
+                var finding = view.ValidateLive().Single(issue => issue.EntityKey.StartsWith(ItemCatalogEditorView.VendorIssueKeyPrefix));
+                Assert.That(finding.EntityKey, Is.EqualTo(ItemCatalogEditorView.VendorIssueKeyPrefix + "vendor.city_general_store"));
+                Assert.That(finding.Field, Is.EqualTo("purchasePriceBasisPoints"));
+                Undo.PerformUndo();
+                Assert.That(view.ValidateLive(), Is.Empty);
+
+                view.CreateVendor();
+                var created = view.VendorList.Selection.Single();
+                Assert.That(created.id, Is.EqualTo("vendor.new_vendor"));
+                // A vendor that neither sells nor buys anything is reported until it does.
+                Assert.That(
+                    view.ValidateLive().Select(issue => issue.EntityKey),
+                    Is.EqualTo(new[] { ItemCatalogEditorView.VendorIssueKeyPrefix + "vendor.new_vendor" }));
+                Assert.That(
+                    ItemCatalogEditorContent.CreateFiles(view.Workspace.Authoring).Keys,
+                    Does.Contain(Path.Combine("vendors", "vendor.new_vendor.json")));
+                Undo.PerformUndo();
+                Assert.That(view.Workspace.Authoring.vendors.Select(value => value.id), Is.EqualTo(new[] { "vendor.city_general_store" }));
+                Assert.That(view.Workspace.Authoring.vendors.Single().offers.Select(offer => offer.definitionId), Is.EqualTo(offers));
+                Assert.That(view.HasUnsavedChanges, Is.False);
+            }
+            finally
+            {
+                view.Dispose();
+            }
+        }
+
+        [Test]
+        public void DefinitionValueAndToolKindsAreEditedLikeOtherFields()
+        {
+            var view = new ItemCatalogEditorView(
+                new ItemCatalogEditorService(ItemCatalogEditorPaths.CreateDefault()),
+                undoState,
+                LoadCheckedInWorkspace);
+            try
+            {
+                view.Load(false);
+                view.List.Select(new[] { "tool.starter_pickaxe" });
+
+                Assert.That(view.Form.TrySetValue("value", -5L), Is.True);
+                Assert.That(
+                    view.ValidateLive().Single(issue => issue.Field == "value").EntityKey,
+                    Is.EqualTo("tool.starter_pickaxe"));
+                Undo.PerformUndo();
+
+                Assert.That(view.Form.TrySetFlag("toolKinds", "pickaxe", false), Is.True);
+                Assert.That(view.Workspace.Authoring.definitions.Single(value => value.id == "tool.starter_pickaxe").toolKinds, Is.Empty);
+                Undo.PerformUndo();
+                Assert.That(view.ValidateLive(), Is.Empty);
+            }
+            finally
+            {
+                view.Dispose();
+            }
+        }
+
         private static ItemCatalogEditorWorkspace LoadCheckedInWorkspace()
         {
             var paths = ItemCatalogEditorPaths.CreateDefault();

@@ -1,0 +1,30 @@
+{
+  "displayName": "Fixture Store",
+  "id": "vendor.fixture_store",
+  "offers": [
+    {
+      "definitionId": "fixture.arrow"
+    },
+    {
+      "definitionId": "fixture.potion"
+    },
+    {
+      "definitionId": "fixture.pickaxe"
+    },
+    {
+      "definitionId": "fixture.pack"
+    }
+  ],
+  "purchasePriceBasisPoints": 10000,
+  "saleCategories": [
+    "ammunition",
+    "armor",
+    "bag",
+    "jewelry",
+    "material",
+    "potion",
+    "tool",
+    "weapon"
+  ],
+  "salePriceBasisPoints": 4000
+}

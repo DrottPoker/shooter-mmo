@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -268,9 +268,9 @@ See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md)
 Status: Functional MVP foundation with temporary presentation
 
 The inventory panel has three columns. Equipment is a paper doll on the left.
-Bank, Recovery Storage, or a corpse uses the middle context column, while
-Permanent inventory, equipped Bag contents, and the Secure Container, shown as
-Warded Pouch, stay visible in the right column. Bank and Recovery may be
+Bank, Recovery Storage, a vendor, or a corpse uses the middle context column,
+while Permanent inventory, equipped Bag contents, and the Secure Container, shown
+as Warded Pouch, stay visible in the right column. Bank and Recovery may be
 inspected globally for the owning character. Mutations still require a joined
 simulation session. Production validates live city-service access, while the
 explicit Development configuration permits Bank and Recovery mutations from any
@@ -278,8 +278,9 @@ authoritative player position.
 
 A carry meter shows authoritative weight, capacity, load percentage, and
 movement speed, from green through amber when slowed to red at the 140 percent
-hard cap. The character header shows the item-state revision. Every slot has
-the same size. Occupied slots show the item name, a category color, the stack
+hard cap. The character header shows the Gold balance and the item-state
+revision. Every slot has the same size. Occupied slots show the item name, a
+category color, the stack
 quantity, and a protection or insurance badge, and empty slots are darker.
 Specialized Bag slots show the item types they accept, and an equipment slot
 that an equipped two-handed item blocks is marked Blocked. Hovering a slot
@@ -390,6 +391,8 @@ interactables is implemented:
   vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
 - `Mob` identifies a combat actor with later AI, aggro, combat, loot, corpse,
   and respawn behavior.
+- A resource node identifies a gatherable world object, such as an Iron Vein,
+  with exactly one gathering capability. See [Gathering](#gathering).
 - The pointer picks a registered target with a direct ray and a `0.15` metre
   spherecast tolerance, up to `100` metres from the camera and never through
   solid geometry. A prompt names the target under the pointer.
@@ -410,18 +413,90 @@ interactables is implemented:
   lease without replacing the existing authoritative corpse view and mutation
   flow.
 
-All city NPCs, including guards, are invulnerable in the first version. Faction
-and disposition own friendly or hostile behavior independently from NPC or Mob
-kind. The checked-in World contains one composable service NPC, one guard NPC,
-two Mob definitions, and five deterministic actor instances. The Character Bank
-and Recovery Storage buttons open the inventory with that storage, which stays
-usable while the interaction is open, and the insurance and quest offer
-capabilities run their item lifecycle. Dialogue, vendor, crafting, trainer, and
-quest completion buttons return an explicit deferred server result and never
-fabricate success. Vendor transactions, quest progression, crafting, combat AI,
-damage, death-event production, and Mob loot-table generation remain
-unimplemented. The live and durable Mob corpse lifecycle is ready for an
-authoritative producer that supplies a death event and resolved loot seeds.
+All city NPCs, including guards, and all resource nodes are invulnerable in the
+first version. Faction and disposition own friendly or hostile behavior
+independently from actor kind. The checked-in actor catalog contains one
+composable service NPC, one guard NPC, two Mob definitions, and the Iron Vein
+resource node. Development World 1 places six deterministic actor instances and
+Development World 2 twelve. The Character Bank and Recovery Storage buttons open
+the inventory with that storage, and `Trade` opens it with the vendor; each stays
+usable while the interaction is open. The insurance and quest offer
+capabilities run their item lifecycle. Dialogue, crafting, trainer, and quest
+completion buttons return an explicit server result and never fabricate
+success. Quest progression, crafting, combat AI, damage, death-event production,
+and Mob loot-table generation remain unimplemented. The live and durable Mob
+corpse lifecycle is ready for an authoritative producer that supplies a death
+event and resolved loot seeds.
+
+## Currency And Vendor Trade
+
+Status: MVP implemented with temporary presentation
+
+- Every character has a persistent balance of one currency, Gold. The currency
+  name and the starting balance are catalog content. A new character starts with
+  `100` Gold, and existing characters keep their balance. The inventory's
+  character header shows the balance, such as `1,250 Gold`, before the item-state
+  revision.
+- Currency is not an item. It takes no slot and no weight, and it stays with the
+  character on death.
+- Mira the Quartermaster offers `Trade`. Choosing it opens the complete
+  inventory view on the `Vendor` tab with the General Store and the current
+  balance. Trading works only while the interaction stays open; walking out of
+  range closes it.
+- The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
+  Cooked Trout for `10`, and Starter Pickaxe for `50` Gold, at 100 percent of
+  each item's value, with unlimited stock. Each offer has a quantity field and a
+  button that names the total, such as `Buy for 50 Gold`.
+- A purchase goes into carried storage. It first tops up existing stacks, then
+  fills free slots: matching specialized Bag slots, Permanent inventory, and
+  general Bag slots, never the Secure Container. A purchase that does not fit,
+  that the balance cannot pay, or that would pass the 140 percent hard cap is
+  rejected without a partial result.
+- To sell, drag a carried item from Permanent inventory, the equipped Bag, or
+  the Secure Container onto the `Sell` slot, choose a quantity, which defaults to
+  the whole stack, and confirm `Sell <n> <item> for <total>`. The vendor pays 40
+  percent of the value, rounded down on the total, and part of a stack can be
+  sold. A sale worth 0 Gold after rounding is refused. Equipped and banked items, protected and insured items, quest items,
+  non-empty Bags, and items without a value are refused. There is no buyback:
+  a sold item is destroyed with an audit record.
+- Prices are fixed. The client shows the price it expects, and GameService
+  rejects the trade if the price no longer matches. Client checks of price,
+  balance, quantity, location, policies, and weight are advisory only.
+- A purchase or sale is one idempotent GameService transaction that changes the
+  balance and the items together and writes a currency ledger row, so trades
+  are persistent and auditable.
+
+Known limitations: one vendor with one profile, no buyback, no stock limits, no
+player trading, and temporary uGUI. Manual test steps are in
+[Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
+
+## Gathering
+
+Status: MVP implemented with temporary presentation
+
+- Iron Veins are resource nodes. Development World 2 has four on the southeast
+  expansion pad, and Development World 1 has one west of the spawn.
+- Equip a gathering tool, such as the Starter Pickaxe, in the `Tool` slot and
+  click a vein. The character walks into range, the interaction opens, and
+  mining starts. Without a gathering tool the panel asks the player to equip one.
+- One click mines continuously: one Iron Ore every 3 seconds, shown as `Mine...`
+  with a progress bar and the gathered count. The ore enters carried storage by
+  the same rule as a purchase.
+- Mining stops when the vein is depleted, the character moves, the interaction
+  closes, carried storage is full, the ore would pass the hard cap, or the tool
+  is no longer equipped. The panel names the reason, and `Mine` starts again.
+- Veins are shared by every player on the Shard. A vein holds 5 ore. When the
+  last one is mined, it turns depleted for every player and everyone mining it
+  stops. A depleted vein stays visible but cannot be targeted, and it returns
+  after 30 seconds.
+- SimulationWorker owns the vein charges, cycle timing, depletion, and respawn
+  as live Shard state, so a worker restart restores every vein to full.
+  GameService checks the required tool in the `Tool` slot and grants each ore
+  transactionally.
+
+Known limitations: one resource type, no Mining experience or level, no success
+chance per cycle, and a placeholder vein model. Manual test steps are in
+[Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
 
 ## Planned Feature Categories
 
@@ -434,7 +509,8 @@ They remain in the MVP specification until working behavior is available:
   and loot presentation.
 - Live combat death production, final corpse art and loot presentation,
   Mob loot-table generation, and insurance or quest UI polish.
-- Gathering, crafting, professions, and player economy.
+- Crafting, professions, further resource types and gathering progression, and
+  the player economy beyond the first NPC vendor.
 - Complete NPC capability behavior, Mob AI, quests, events, and world
   activities.
 - Character progression and long-term persistence.

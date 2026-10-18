@@ -16,6 +16,8 @@
   "tags": [
     "potion"
   ],
+  "toolKinds": [ ],
   "unitWeight": 20,
+  "value": 25,
   "weapon": null
 }

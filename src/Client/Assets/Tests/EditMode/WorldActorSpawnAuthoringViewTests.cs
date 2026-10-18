@@ -10,6 +10,7 @@ namespace Mmorpg.Client.Tests.EditMode
     public sealed class WorldActorSpawnAuthoringViewTests
     {
         private const string PointKey = "spawnPoints/local.city_services";
+        private const string VeinKey = "spawnPoints/local.iron_vein";
         private const string GroupKey = "spawnGroups/local.city_guards";
         private const string AreaKey = "spawnAreas/local.feral_wolves";
         private const string PatrolKey = "patrolPaths/local.wolf_patrol";
@@ -37,7 +38,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 view.Load(false);
                 Assert.That(view.Issues, Is.Empty, string.Join("\n", view.Issues.Select(issue => issue.Message)));
-                Assert.That(view.List.Shown.Select(entry => entry.Key), Is.EquivalentTo(new[] { PointKey, GroupKey, AreaKey, PatrolKey }));
+                Assert.That(view.List.Shown.Select(entry => entry.Key), Is.EquivalentTo(new[] { PointKey, VeinKey, GroupKey, AreaKey, PatrolKey }));
 
                 view.List.Select(new[] { PointKey, GroupKey, AreaKey });
                 var before = view.List.Selection.ToDictionary(entry => entry.Key, entry => entry.Position);
@@ -131,7 +132,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 });
 
                 Assert.That(approved, Is.EqualTo(new[] { "local.city_services" }));
-                Assert.That(view.Workspace.Spawns.spawnPoints, Is.Empty);
+                Assert.That(view.Workspace.Spawns.spawnPoints.Select(point => point.id), Is.EqualTo(new[] { "local.iron_vein" }));
                 Assert.That(view.Workspace.Spawns.patrolPaths.Single().id, Is.EqualTo("local.wolf_patrol"));
                 Assert.That(view.StatusType, Is.EqualTo(UnityEngine.UIElements.HelpBoxMessageType.Warning));
             }
@@ -154,7 +155,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var snapped = view.GroundSnapSelected(position => position.x > 0f ? 1.5f : (float?)null);
 
                 Assert.That(snapped, Is.EqualTo(4));
-                Assert.That(view.Workspace.Spawns.spawnPoints.Single().y, Is.EqualTo(1.5f));
+                Assert.That(view.Workspace.Spawns.spawnPoints.Single(point => point.id == "local.city_services").y, Is.EqualTo(1.5f));
                 Assert.That(view.Workspace.Spawns.patrolPaths.Single().points.Select(point => point.y), Is.All.EqualTo(1.5f));
 
                 Undo.PerformUndo();

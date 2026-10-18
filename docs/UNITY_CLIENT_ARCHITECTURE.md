@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -513,11 +513,12 @@ input packets, or SimulationWorker state.
 
 `LocalPlayerController` moves the player only in an authenticated World-scene
 session; the prefab has no offline movement mode. A left click goes through the
-registered `IWorldClickHandler` instances first, so a click on an NPC or a
-corpse belongs to world interaction. Otherwise a ray through the pointer is cast
-against the same baked collision world that prediction uses, and the hit point
-becomes the destination. `LocalPlayerNavigator` plans the route with the shared
-`MovementPathPlanner` on a background thread. The collision world is
+registered `IWorldClickHandler` instances first, so a click on an NPC, a
+resource node, or a corpse belongs to world interaction. Otherwise a ray through
+the pointer is cast against the same baked collision world that prediction uses,
+and the hit point becomes the destination. `LocalPlayerNavigator` plans the
+route with the shared `MovementPathPlanner` on a background thread. The
+collision world is
 lock-protected, and only one plan runs at a time, so a long search never stalls
 a frame while chunk streaming continues on the main thread. Every walk,
 approach, or stop is a new intent with an id; only the newest intent's plan is
@@ -570,6 +571,13 @@ The snapshot mapper normalizes only that exact optional placeholder back to no
 item. Required Recovery delivery items and every partially populated malformed
 item still fail validation.
 
+The complete snapshot from `GET /api/characters/{characterId}/item-state` also
+carries the character's `currency` balance. The mapper rejects a balance below
+0 or above `VendorPricing.MaximumCurrencyBalance`. Every balance change while
+the character is online is an item transaction, so the balance belongs to the
+item-state revision and takes part in the same-revision coherence check. The
+client never changes the balance locally.
+
 `InventoryClientState` owns immutable complete and focused snapshots plus the
 latest observed character, Bank, and Recovery revisions. A focused response may
 advance its slice, but any newer focused revision marks the complete snapshot
@@ -603,11 +611,11 @@ keeps its place in every mode, so `B` shows only that column, `C` adds the
 equipment column on the left, and `I` adds the contextual storage column in the
 middle. Permanent inventory, equipped Bag contents, and the Secure Container,
 shown with its catalog tier name such as Warded Pouch, remain visible while
-Bank, Recovery Storage, or a corpse is selected. Bank and Recovery may be
-inspected through global owning-account reads, and the context header names the
-NPC whose open interaction offers the shown storage. Every mutation still
-travels through the joined SimulationWorker and is committed through GameService
-authority.
+Bank, Recovery Storage, a corpse, or a vendor is selected. Bank and Recovery may
+be inspected through global owning-account reads, and the context header names
+the NPC whose open interaction offers the shown storage or trade. Every mutation
+still travels through the joined SimulationWorker and is committed through
+GameService authority.
 
 The equipment column lays the catalog equipment slots out like a paper doll in
 three columns: tool, head, and Bag on top, ammunition, neck, and hands below
@@ -633,7 +641,9 @@ capacity, amber while movement is slowed, and red at the hard cap, and its
 caption shows authoritative weight, capacity, load, and movement speed. The
 selected item, its split quantity, Split, Destroy, and Clear controls, and the
 status line sit in a footer below the character column, so they work in every
-mode. The character header shows the item-state revision.
+mode. The character header shows the currency balance with the catalog's
+currency display name and the item-state revision, such as
+`100 Gold    Revision 12`.
 
 `InventoryDragCoordinator`, `InventoryDragSource`, typed
 `InventoryDragPayload`, and `InventoryDropTarget` form the reusable uGUI
@@ -656,6 +666,37 @@ submitted action, and the client never applies an optimistic custody change.
 
 World-loot retains a reserved context identity without inventing snapshots or
 operations. Corpse context is active through the corpse state described below.
+
+### Vendor Context
+
+The Context module has a Vendor tab, `InventoryContextKind.Vendor`. Choosing a
+vendor capability, such as Trade at Mira the Quartermaster, opens it through the
+worker, and the confirmed result raises `InventoryCapabilityOpened`, which opens
+the complete view on that tab. The capability's `profileId` names a vendor
+profile of the bundled item catalog, and an unknown profile asks for a client
+update instead of guessing prices. Without
+an open vendor interaction the tab only says to talk to a vendor, because
+trading needs the interaction to stay open.
+
+The tab shows the balance, then every offer in catalog order with its unit
+price, a quantity field, and a `Buy for <total>` button whose total follows the
+field as you type. Below it a `Sell` drop slot accepts a dragged carried item:
+one in the permanent inventory, the equipped Bag, or the Secure Container, but
+not an equipped item, the equipped Bag itself, or a banked item. A dropped item
+shows a quantity field that defaults to the whole stack, a
+`Sell <n> <item> for <total>` button, and `Cancel`. Every purchase and sale
+sends the total it showed as the expected price, together with the known
+item-state revision and, for a sale, the item revision.
+
+`VendorClientRules` in `Mmorpg.Client.Items` prices offers and sales with the
+shared `VendorPricing` rule and checks them before sending: an offered item, a
+purchase of 1 up to one stack, a sale of 1 up to the stack, the price range, the
+balance and its upper limit, the 140 percent hard cap, a carried location, a
+category the vendor buys, protection and insurance policies, and quest items.
+These checks are advisory. GameService recomputes every price, rejects a
+different one with `vendor_price_changed`, and owns every final rule. The
+worker's result or rejection appears in the vendor tab, and a committed trade
+refreshes the inventory to the returned item-state revision.
 
 ### Corpse Client State And Presentation
 
@@ -743,6 +784,13 @@ adapter performs the death partition. The Editor does not manufacture corpse row
 snapshots. SimulationWorker restores the committed corpse through its normal
 runtime registration path. These Development commands add no remotely callable
 gameplay route.
+
+The window's Give Currency section shows the selected character's balance, an
+`Amount` field, and a `Give Currency` button. The button is enabled only for an
+offline character, a positive amount, and while no other command runs. It runs
+`--dev-items-currency`, which credits the character through the GameService
+wallet and writes a `development` ledger row. This replaces setting currency
+through direct SQL.
 
 SimulationWorker separately loads
 `Config/appsettings.Development.json`. Its explicit
@@ -858,15 +906,26 @@ The client keeps permanent state below replaceable presentation:
   authoritative interaction session, capability summaries, server closure, and
   uncertain-state cleanup.
 - `WorldInteractionTargetingController` owns advisory pointer targeting
-  against registered NPC, corpse, and future world-object views.
+  against registered NPC, resource node, corpse, and future world-object views.
+- `GatheringClientState`, owned by `WorldInteractionClientController`, mirrors
+  the worker's gathering state for the one node the player gathers from, as
+  described in [Gathering](#gathering).
 - `WorldActorView` provides presentation identity and target registration.
-  `NpcView` and `MobView` add kind-specific presentation hooks without actor
-  authority.
+  `NpcView`, `MobView`, and `ResourceNodeView` add kind-specific presentation
+  hooks without actor authority. An inactive actor, such as a dead Mob, is
+  hidden until it returns. A depleted resource node instead stays visible: an
+  authored prefab switches from its `Available` child to its `Depleted` child,
+  and the fallback primitive shrinks to 35 percent of its height. Its target and
+  interaction collider stay disabled until the node respawns, so it cannot be
+  clicked.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
   The asset is `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`
-  and maps all four authored archetypes to collider-free placeholder prefabs in
+  and maps all five authored archetypes to collider-free placeholder prefabs in
   `Assets/Prefabs/WorldActors` with URP materials in
-  `Assets/Art/Materials/WorldActors`. Each entry is an Addressables
+  `Assets/Art/Materials/WorldActors`. `resource.iron_vein` maps to
+  `Resource_IronVein.prefab`, a rock with ore cubes below `Available` and rubble
+  below `Depleted`, with the URP Lit materials `M_Resource_IronVeinRock` and
+  `M_Resource_IronVeinOre`. Each entry is an Addressables
   `AssetReferenceGameObject`. The registry loads when a World scene opens, a
   prefab loads the first time an actor of its archetype appears, and the actor
   is presented once its prefab is ready. All handles are released when the
@@ -877,16 +936,21 @@ The client keeps permanent state below replaceable presentation:
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts. It grows with its content,
   labels Character Bank and Recovery Storage capabilities as `Open ...` because
-  they open the inventory, and shares its colors and buttons with the inventory
-  panel through `TemporaryUiKit`.
+  they open the inventory, shows a vendor capability such as `Trade` by its
+  name, draws the gathering progress described below, and shares its colors and
+  buttons with the inventory panel through `TemporaryUiKit`.
 
-The persistent realtime client decodes the actor and interaction messages
-through the shared GameProtocol source and keeps the explicit mismatch path for
-older or partially updated clients. Typed insurance apply or remove and quest
-accept or abandon payloads ride on the capability action instead of a second
-NPC or item interaction transport. A confirmed Character Bank or Recovery Storage
-capability raises `StorageCapabilityOpened`, which opens the inventory with that
-storage.
+The persistent realtime client decodes the actor, interaction, and gathering
+messages through the shared GameProtocol source and keeps the explicit mismatch
+path for older or partially updated clients. Typed insurance apply or remove,
+quest accept or abandon, vendor purchase and sale, and start gathering payloads
+ride on the capability action instead of a second NPC or item interaction
+transport. `TryPurchase` and `TrySell` send the expected price and the
+character revision, together with the offer definition and quantity or with the
+item, its revision, and the quantity. `TryStartGathering` sends no revision or
+trade terms. A confirmed Character Bank, Recovery Storage, or Vendor capability
+raises `InventoryCapabilityOpened`, which opens the complete inventory view with
+that storage or the vendor.
 
 Mob loot needs no parallel controller. The corpse presence and nullable source-character contracts represent both live Mob
 and durable player or boss corpses. The same client view, pointer target,
@@ -936,14 +1000,31 @@ corpse custody.
 
 All new Editor tools remain under the established menu root:
 
-- `MMORPG > Tools > Content > Actor Studio` owns searchable NPC and Mob
-  authoring, templates, safe duplication, capability composition, references,
-  multi-selection bulk editing, Unity Undo, live validation, preview, compile,
-  and verify.
+- `MMORPG > Tools > Item Catalog` edits item definitions, including their
+  `Value` and `Tool Kinds`, and its `Definitions | Vendors` toolbar toggle
+  switches to the vendor profiles. Vendors mode lists them with `New` and
+  `Remove` and edits the vendor id, display name,
+  `Selling Price (basis points)`, `Buying Price (basis points)`,
+  `Buys Categories`, and the ordered offers through an `Add Offer` dropdown of
+  eligible definitions with `Up`, `Down`, and `Remove`. Live findings are mapped
+  to the vendor and field. The economy settings and the tool kind identities
+  stay hand-edited in `content/items/catalog.json`. The authoring contract is in
+  [Item Catalog Authoring](../content/items/README.md).
+- `MMORPG > Tools > Content > Actor Studio` owns searchable NPC, Mob, and
+  resource node authoring, templates, safe duplication, capability composition,
+  references, multi-selection bulk editing, Unity Undo, live validation,
+  preview, compile, and verify. The `Resource Node` kind and the
+  `New Resource Node` template create a neutral, invulnerable node with one
+  gathering capability that names the first resource profile. Each capability
+  has a `Profile` dropdown for the kinds that need one: the vendor profiles of
+  the compiled item catalog for a vendor capability, and the resource profiles
+  for a gathering capability. Resource profiles stay hand-edited in
+  `content/actors/catalog.json`.
 - `MMORPG > Tools > Content > Spawn Authoring` owns scene handles, ground
   snapping, spawn areas and groups, patrol paths, prefab preview,
   multi-selection bulk editing, Unity Undo, live validation, canonical change
-  preview, save, compile, and verify.
+  preview, save, compile, and verify. It places resource nodes like any other
+  actor, and patrol paths stay limited to Mob spawns.
 
 Editor scene components are authoring adapters. They import and export stable
 neutral definitions, but only compiled WorldData creates runtime actors. Actor
@@ -954,6 +1035,33 @@ interaction, and temporary panel controllers at runtime. A new archetype works
 through the fallback presentation without scene edits until it is added to the
 presentation registry asset. A content creator uses the Editor windows only
 when changing definitions, spawn source, or the presentation registry asset.
+
+### Gathering
+
+A click on a resource node walks the player into range and opens it like any
+other target. When the open interaction belongs to a resource node,
+`WorldInteractionClientController` starts gathering at once through its
+gathering capability. It first checks that an item with a tool kind is equipped
+in the Tool slot; otherwise the panel says to equip a gathering tool. The check
+is advisory and passes while the inventory is still loading, because GameService
+checks the required tool kind on every yield.
+
+`GatheringClientState` applies the worker's `GatheringState` messages. `Started`
+must belong to the open interaction and starts a cycle timer. `Yielded` adds the
+gathered quantity and restarts the timer, and every yield refreshes the
+inventory to its committed item-state revision. `Stopped` keeps the gathered
+count and the worker's stop message. `Yielded` and `Stopped` may still arrive
+after the interaction closed, and a `Yielded` even after `Stopped`, because a
+cycle in flight still completes; it adds to the gathered count. A message for
+another gathering session is ignored, but a yield still refreshes the
+inventory. A session end clears the state.
+
+While gathering, the interaction panel shows the capability name with a
+trailing ellipsis, such as `Mine...`, the gathered count, and a progress bar for
+the current cycle. After a stop it shows the gathered count and the reason, and
+the capability button, such as `Mine`, starts again. The worker owns every
+cycle and every stop: moving, closing the interaction, a depleted node, or a
+rejected yield, such as a missing tool or a full inventory.
 
 ## Test Architecture
 
@@ -988,6 +1096,16 @@ deterministic Actor Studio and Spawn Authoring compiler integration.
 NPC lifecycle coverage round-trips typed lifecycle payloads and committed
 item-revision messages, verifies safe policy-source mapping, and keeps the
 temporary panel below the persistent inventory and interaction controllers.
+
+Vendor and gathering coverage in `VendorAndGatheringClientTests` prices offers
+with the shared rule in content order, checks purchases against the offer,
+quantity, balance, and weight, rounds sales down and accepts partial stacks,
+refuses quest, protected, equipped, and banked items, follows one gathering
+session, keeps the tool check advisory until the inventory loads, and keeps a
+depleted resource node visible but untargetable. Further EditMode tests map the
+snapshot currency, edit vendor profiles, values, and tool kinds in the Item
+Catalog window, create the Actor Studio resource node template, and count the
+Iron Vein spawns.
 
 Mob corpse coverage verifies the normal and boss corpse settings through
 the neutral Actor Studio round trip. Existing corpse protocol and client tests

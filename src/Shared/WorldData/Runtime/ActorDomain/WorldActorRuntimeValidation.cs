@@ -47,6 +47,10 @@ namespace Mmorpg.WorldData.Actors
                 runtime.RespawnProfiles.Select(value => value.Id).ToArray(),
                 "runtime.respawnProfiles",
                 errors);
+            var resourceIds = ValidateOrderedRuntimeIds(
+                runtime.ResourceProfiles.Select(value => value.Id).ToArray(),
+                "runtime.resourceProfiles",
+                errors);
             var mobProfiles = new MobProfileIds(
                 activityIds,
                 respawnIds,
@@ -96,12 +100,14 @@ namespace Mmorpg.WorldData.Actors
             ValidateRuntimePresentations(runtime.PresentationArchetypes, errors);
             ValidateRuntimeActivityProfiles(runtime.ActivityProfiles, errors);
             ValidateRuntimeRespawnProfiles(runtime.RespawnProfiles, errors);
+            ValidateRuntimeResourceProfiles(runtime.ResourceProfiles, errors);
             ValidateRuntimeMobProfiles(runtime, errors);
             ValidateRuntimeActors(
                 runtime.Actors,
                 factionIds,
                 presentationKinds,
                 mobProfiles,
+                resourceIds,
                 errors);
             ValidateRuntimePatrols(runtime.PatrolPaths, errors);
             ValidateRuntimeSources(
@@ -154,6 +160,11 @@ namespace Mmorpg.WorldData.Actors
                 errors,
                 true);
             valid &= RequireRuntimeCollection(
+                runtime.ResourceProfiles,
+                "runtime.resourceProfiles",
+                errors,
+                false);
+            valid &= RequireRuntimeCollection(
                 runtime.CombatProfiles,
                 "runtime.combatProfiles",
                 errors,
@@ -197,6 +208,8 @@ namespace Mmorpg.WorldData.Actors
                 && runtime.ActivityProfiles.Length > MaximumDefinitionsPerCollection
                 || runtime.RespawnProfiles != null
                 && runtime.RespawnProfiles.Length > MaximumDefinitionsPerCollection
+                || runtime.ResourceProfiles != null
+                && runtime.ResourceProfiles.Length > MaximumDefinitionsPerCollection
                 || runtime.CombatProfiles != null
                 && runtime.CombatProfiles.Length > MaximumDefinitionsPerCollection
                 || runtime.BrainProfiles != null
@@ -426,6 +439,29 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
+        private static void ValidateRuntimeResourceProfiles(
+            WorldActorResourceProfileDefinition[] values,
+            ICollection<string> errors)
+        {
+            foreach (var value in values)
+            {
+                ValidateResourceProfileValues(
+                    value.RequiredToolKind,
+                    value.YieldDefinitionId,
+                    value.YieldQuantity,
+                    value.CycleSeconds,
+                    value.Charges,
+                    value.RespawnSeconds,
+                    "runtime resource profile " + value.Id,
+                    errors);
+                CheckRuntimeFingerprint(
+                    value.StructuralFingerprint,
+                    ResourceProfileFingerprint(value),
+                    "runtime resource profile " + value.Id,
+                    errors);
+            }
+        }
+
         private static void ValidateRuntimeMobProfiles(
             WorldActorRuntimeDocument runtime,
             ICollection<string> errors)
@@ -535,6 +571,7 @@ namespace Mmorpg.WorldData.Actors
             ISet<string> factionIds,
             IReadOnlyDictionary<string, string> presentationKinds,
             MobProfileIds mobProfiles,
+            ISet<string> resourceIds,
             ICollection<string> errors)
         {
             foreach (var value in values)
@@ -565,10 +602,10 @@ namespace Mmorpg.WorldData.Actors
                     SupportedDamagePolicies,
                     "runtime actor damagePolicy",
                     errors);
-                if (value.Kind == WorldActorKindIds.Npc
+                if (value.Kind != WorldActorKindIds.Mob
                     && value.DamagePolicy != WorldActorDamagePolicyIds.Invulnerable)
                 {
-                    errors.Add("runtime NPC " + value.Id + " must be invulnerable.");
+                    errors.Add("runtime actor " + value.Id + " must be invulnerable.");
                 }
 
                 if (value.Kind == WorldActorKindIds.Mob)
@@ -653,7 +690,7 @@ namespace Mmorpg.WorldData.Actors
                         errors);
                     if (value.CorpseLifetimeSeconds != 0f)
                     {
-                        errors.Add("runtime NPC " + value.Id
+                        errors.Add("runtime actor " + value.Id
                             + " must not define a corpse lifetime.");
                     }
                 }
@@ -703,12 +740,17 @@ namespace Mmorpg.WorldData.Actors
                     }
                 }
 
-                if (value.Kind == WorldActorKindIds.Mob
-                    && value.Capabilities.Length > 0)
-                {
-                    errors.Add("runtime Mob " + value.Id
-                        + " cannot expose NPC capabilities.");
-                }
+                ValidateCapabilityKindRules(
+                    value.Kind,
+                    value.Capabilities
+                        .Where(capability => capability != null)
+                        .Select(capability => new KeyValuePair<string, string>(
+                            capability.Kind,
+                            capability.ProfileId))
+                        .ToArray(),
+                    resourceIds,
+                    "runtime actor " + value.Id + " capabilities",
+                    errors);
 
                 var capabilityFingerprints = new List<string>();
                 var capabilityIds = new HashSet<string>(StringComparer.Ordinal);
@@ -747,10 +789,7 @@ namespace Mmorpg.WorldData.Actors
                         SupportedCapabilityKinds,
                         "runtime capability kind",
                         errors);
-                    var expected = Fingerprint(
-                        capability.Id,
-                        capability.Kind,
-                        capability.DisplayName);
+                    var expected = CapabilityFingerprint(capability);
                     CheckRuntimeFingerprint(
                         capability.StructuralFingerprint,
                         expected,

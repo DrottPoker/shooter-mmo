@@ -177,6 +177,45 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        [Test]
+        public void NewResourceNodeGetsOneGatheringCapabilityWithAResourceProfile()
+        {
+            var view = CreateView();
+            try
+            {
+                view.Load(false);
+                view.AddActor(WorldActorKindIds.ResourceNode);
+                var node = view.List.Selection.Single();
+
+                Assert.That(node.kind, Is.EqualTo(WorldActorKindIds.ResourceNode));
+                Assert.That(node.damagePolicy, Is.EqualTo(WorldActorDamagePolicyIds.Invulnerable));
+                Assert.That(node.factionId, Is.EqualTo("world"));
+                Assert.That(node.presentationArchetypeId, Is.EqualTo("resource.iron_vein"));
+                var capability = node.capabilities.Single();
+                Assert.That(capability.kind, Is.EqualTo(WorldActorCapabilityKindIds.Gathering));
+                Assert.That(capability.profileId, Is.EqualTo("resource.iron_vein"));
+                Assert.That(
+                    WorldActorEditorIssues.Collect(view.Workspace).Where(issue => issue.EntityKey == WorldActorStudioView.Key(node)),
+                    Is.Empty);
+
+                // A vendor capability names a vendor profile of the compiled item catalog.
+                Assert.That(view.Workspace.ItemReferences.vendors.Select(vendor => vendor.id), Does.Contain("vendor.city_general_store"));
+                var services = view.Workspace.Catalog.actors.Single(actor => actor.id == "npc.city_services");
+                Assert.That(
+                    services.capabilities.Single(value => value.kind == WorldActorCapabilityKindIds.Vendor).profileId,
+                    Is.EqualTo("vendor.city_general_store"));
+
+                Assert.That(view.Form.TrySetValue("kind", WorldActorKindIds.Npc), Is.True);
+                node = view.Workspace.Catalog.actors.Single(actor => actor.id == node.id);
+                Assert.That(node.capabilities, Is.Empty);
+                Assert.That(WorldActorEditorIssues.Collect(view.Workspace).Where(issue => issue.EntityKey == WorldActorStudioView.Key(node)), Is.Empty);
+            }
+            finally
+            {
+                view.Dispose();
+            }
+        }
+
         private WorldActorStudioView CreateView()
         {
             var service = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault());

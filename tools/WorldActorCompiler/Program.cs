@@ -25,8 +25,7 @@ try
 
     foreach (var worldId in worldIds)
     {
-        var runtime = CompileWorld(catalog, contentRoot, worldId);
-        WorldActorItemReferences.Validate(runtime, itemCatalog);
+        var runtime = CompileWorld(catalog, itemCatalog, contentRoot, worldId);
         GeneratedOutput.WriteOrVerifyText(
             ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
             WorldActorJson.SerializeRuntime(runtime),
@@ -55,12 +54,17 @@ catch (Exception exception)
 
 static WorldActorRuntimeDocument CompileWorld(
     WorldActorCatalogAuthoringDocument catalog,
+    ItemCatalogRuntimeDocument itemCatalog,
     string contentRoot,
     string worldId)
 {
     try
     {
-        return WorldActorCompiler.Compile(catalog, WorldActorContent.LoadSpawns(contentRoot, worldId));
+        var runtime = WorldActorCompiler.Compile(
+            catalog,
+            WorldActorContent.LoadSpawns(contentRoot, worldId));
+        WorldActorItemReferences.Validate(runtime, itemCatalog);
+        return runtime;
     }
     catch (WorldActorValidationException exception)
     {
@@ -68,8 +72,8 @@ static WorldActorRuntimeDocument CompileWorld(
     }
 }
 
-// Loot references item definitions, so the compiled item catalog must exist first, as the
-// content compilers run in that order.
+// Loot, vendor capabilities, and resource profiles reference item content, so the compiled
+// item catalog must exist first, as the content compilers run in that order.
 static ItemCatalogRuntimeDocument LoadItemCatalog(string generatedRoot)
 {
     var path = ContentLayout.GeneratedItemCatalogPath(generatedRoot);

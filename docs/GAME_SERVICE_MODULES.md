@@ -40,9 +40,9 @@ Platform <- Accounts <- Characters <- Placement <- Items <- host
 | --- | --- | --- | --- |
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, and `IGameServiceModule`. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency, and character level |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, and character level |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, and Development simulation bots. It decides where a character plays right now. |
-| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog, item state, item transactions, corpses, death partition, Recovery, policies, item operations maintenance, and the Development item tools |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, item transactions including vendor trades and gathering yields, corpses, death partition, Recovery, policies, item operations maintenance, and the Development item tools |
 | `Mmorpg.GameService` (host) | `src/Server/GameService` | every module | `Program.cs`, the configuration loader, database startup, the frozen baseline migrations, health routes, and the shipped configuration and content files |
 
 "Placement" avoids collisions with World content (`Mmorpg.WorldData`) and with
@@ -106,13 +106,15 @@ tests. Startup runs in this order:
 | --- | --- |
 | Platform | `schema_migrations`; advisory lock `7104202607071600` |
 | Accounts | `accounts`, `account_sessions` |
-| Characters | `characters`, including `currency` and `level` |
+| Characters | `characters`, including `currency` and `level`, and `character_currency_ledger` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
-| Items | every item, container, catalog, Recovery, operation, corpse, and death table, the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
+| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
 
 Foreign keys between modules follow the dependency order only: Characters to
 Accounts, Placement to Accounts and Characters, and Items to Accounts,
-Characters, and Placement (`corpses.shard_id`). Cascading deletes therefore
+Characters, and Placement (`corpses.shard_id`). For the same reason
+`character_currency_ledger.item_operation_id` names the item operation of a
+change without a foreign key to `item_operations`. Cascading deletes therefore
 cross module boundaries, but no delete path exists for accounts or characters
 today. A future delete flow must go through the owners' contracts.
 
@@ -150,10 +152,10 @@ caller keeps its own check order, error codes, and messages.
 | `IAccountSessionLifecycleHandler` | Accounts (SPI) | implemented by Placement | Release simulation sessions and join tickets when sessions are replaced or revoked |
 | `AccountsSql` | Accounts | Placement, Items | Active account session, revocation reason, existing account id, and username fragments |
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order |
-| `ICharacterWallet` | Characters | Items | Debit character currency for insurance |
+| `ICharacterWallet` | Characters | Items | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, and the Development item tool |
 | `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
-| `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state for a new character |
-| `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, and the character level fragment |
+| `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
+| `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
 | `ISimulationSessionAuthority` | Placement | Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment |
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
@@ -174,6 +176,31 @@ transaction, a character must never exist without item state, and a World
 rebind needs exact blocker counts. An outbox becomes necessary only if a module
 later becomes its own service.
 
+### Character Wallet
+
+`ICharacterWallet.DebitAsync` and `CreditAsync` take a positive amount and a
+`CurrencyChangeSource(Kind, SourceId, ItemOperationId)`. They lock the character
+`FOR NO KEY UPDATE`, change `characters.currency`, and append one row to
+`character_currency_ledger` with the source kind, source id, item operation id
+when there is one, signed delta, balance after, and time, all in the caller's
+transaction. A change that would take the balance below zero or above
+`CurrencyRules.MaximumBalance` (1,000,000,000,000) returns a failed
+`CurrencyChange` and leaves the balance unchanged; the caller chooses its error
+code. The source kinds in `CurrencySourceKinds` are `starting_balance`,
+`vendor_purchase`, `vendor_sale`, `insurance`, and `development`. The ledger
+also accepts `opening_balance`, which only the ledger migration writes for each
+balance that existed before the ledger. A database check keeps the balance and
+every `balance_after` within the same range, so each character's ledger deltas
+sum to its balance. `CharactersSql.CurrencyOf` lets Items read the balance in
+its own statements, such as the item-state snapshot and the Development item
+tool's character list.
+
+`CharacterItemStateLifecycleHandler`, the Items implementation of
+`ICharacterLifecycleHandler`, bootstraps the new character's item state and
+then credits `item_system_settings.starting_currency_balance` with a
+`starting_balance` ledger row in the character creation transaction. A zero
+starting balance writes nothing. Existing characters keep their balance.
+
 ## Items Transaction Kernel
 
 Every durable item mutation runs through one item transaction kernel in
@@ -184,7 +211,7 @@ Every durable item mutation runs through one item transaction kernel in
 | `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, the facade with one `ExecuteAsync` overload per command; the command, actor, and result contracts; the error codes and `ItemTransactionRejection` |
 | `Kernel/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionKernel`, `IItemCommandHandler<TCommand>`, admission, the canonical request, the operation ledger, outcomes, telemetry, and the persisted JSON options |
 | `Context/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionContext` with its session and facets, the kernel-owned finalizer, the simulation authority, and the lock types |
-| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, and transform and Mob loot rules |
+| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, transform and Mob loot rules, new item instances, quantity consumption, and carried acquisition |
 | `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
 
 `Context/CarryStateCalculator` is the one carried-weight rule, shared with the
@@ -238,19 +265,73 @@ uses HTTP API error codes; and only the types named in
 [Cross-Module Statements](#cross-module-statements) use another module's
 contracts or SQL fragments.
 
+### Vendor And Gathering Commands
+
+Three operation kinds run only on the worker route
+`POST /api/simulation-sessions/{id}/item-operations`:
+
+| Operation kind | Command | Handler | Behavior |
+| --- | --- | --- | --- |
+| `vendor_purchase` | `PurchaseFromVendorCommand` | `VendorCommandHandler` | Checks the expected character revision, the vendor offer, a quantity within one stack, and the expected total price, debits the wallet with a `vendor_purchase` ledger row, and places the items through carried acquisition |
+| `vendor_sale` | `SellToVendorCommand` | `VendorCommandHandler` | Sells all or part of one carried, unequipped stack from the permanent inventory, the equipped Bag, or the Secure Container. Protected, insured, and quest items, items without value, non-empty Bags, and categories the vendor does not buy are refused. A whole stack is deleted with an `item_destructions` row with reason `vendor_sale`; part of a stack reduces its quantity. The wallet is credited with a `vendor_sale` ledger row when the price is positive |
+| `gather_resource` | `GatherResourceCommand` | `GatherResourceCommandHandler` | Requires the SimulationWorker actor, checks that an item with the required active tool kind is equipped in the `tool` slot, refuses a Bag or quest item as yield, and places the yield through carried acquisition |
+
+Both vendor commands require the vendor access of the live session:
+`ItemTransactionLiveAccess.VendorProfileId` must equal the command's vendor. The
+worker sets it from the vendor capability it validated, never from a client
+value, and GameService loads that profile with its offers and sale categories
+from the active mirrored catalog. `VendorPricing` from `Mmorpg.WorldData`
+computes the total, rounded up for a purchase and down for a sale, so GameService
+and Unity charge and show the same price. Gathering takes no expected character
+revision, because it must not fail when the player moves an item meanwhile; the
+live session fence and the worker's operation id, which it reuses when it
+retries an uncertain outcome, replace it.
+
+`CarriedAcquisition` in `Domain/` places a quantity of one definition without a
+client-chosen slot in one all-or-nothing pass. It first tops up policy-free
+stacks with room, in the permanent inventory and then in the equipped Bag, and
+then fills empty slots in this order: matching specialized Bag slots, the
+permanent inventory, and general Bag slots. It never fills the Secure Container
+and refuses definitions with default policies. When the rest does not fit it
+rejects with `inventory_full`, and the finalizer still enforces the 140 percent
+hard cap.
+
+The audit journal records `vendor_purchase` and `vendor_sale` with the vendor,
+definition, quantity, price, and balance before and after, and
+`resource_gathered` with the resource profile, node, Shard, worker runtime,
+definition, and quantity. Acquired items are recorded as
+`vendor_purchase_stack_increased`, `vendor_purchase_item_created`,
+`resource_gathered_stack_increased`, and `resource_gathered_item_created`, and
+sold items as `item_sold_to_vendor` or `item_quantity_sold_to_vendor`.
+
+The error codes of these commands are `currency_insufficient`,
+`currency_limit_exceeded`, `vendor_access_required`, `vendor_unavailable`,
+`vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`,
+`inventory_full`, `gathering_tool_required`, and `gathering_yield_invalid`. The
+worker route returns `403` for `vendor_access_required`, `409` for
+`vendor_price_changed` and `inventory_full`, and `422` for the others.
+
+The Development item tool command
+`--dev-items-currency <characterId> <positiveAmount>` credits an offline
+character through `ICharacterWallet.CreditAsync` in its own transaction with a
+`development` ledger row, and `--dev-items-list` reports each character's
+balance through `CharactersSql.CurrencyOf`.
+
 ## Items Tables
 
 | Table | Responsibility |
 | --- | --- |
 | `item_catalog_revisions` | Applied deterministic catalog revisions and the current one |
-| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings |
+| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings, and the currency display name and starting balance from its economy settings |
 | `item_categories`, `item_tags`, `equipment_slots` | Catalog vocabulary with display order, slot maximum quantity, and active state |
-| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, required character level, structural fingerprint, and active state |
-| `item_definition_tags`, `item_definition_default_policies` | Many-to-many definition tags and default policies |
+| `item_tool_kinds` | Tool kind vocabulary, such as `pickaxe`, with active state |
+| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, required character level, value in whole currency units, structural fingerprint, and active state |
+| `item_definition_tags`, `item_definition_default_policies`, `item_definition_tool_kinds` | Many-to-many definition tags, default policies, and tool kinds |
 | `item_definition_equipment_slots`, `item_definition_blocked_equipment_slots` | Compatible equipment slots and the slots an equipped definition blocks |
 | `item_definition_location_rules` | Secure Container and other explicit location eligibility |
 | `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Bag carry bonus and its stable general and specialized slots |
 | `secure_container_tiers`, `account_secure_container_entitlements` | Secure Container tiers and the account's selected tier |
+| `vendor_profiles`, `vendor_offers`, `vendor_sale_categories` | Vendor profiles with purchase and sale price basis points and active state, their ordered offers, and the categories each vendor buys. A vendor that leaves the catalog stays with `is_active = false` |
 | `character_item_states` | Aggregate revision, carried weight, carry capacity, and the owned top-level container ids |
 | `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed containers with owner binding, slot kinds, accepted tags, revision, and lifecycle |
 | `item_instances` | Durable identity, definition, quantity, revision, and exactly one location: a container slot or an equipment slot |
@@ -333,15 +414,25 @@ migration's SQL.
 | 20 | `202610181210_item_level_requirement` | Items |
 | 21 | `202610181220_death_event_killer` | Items |
 | 22 | `202610181230_worker_item_catalog_revision` | Placement |
+| 23 | `202610181240_character_currency_ledger` | Characters |
+| 24 | `202610181250_item_economy` | Items |
+
+Migration #23 adds the balance range check on `characters.currency`, creates
+`character_currency_ledger`, and opens the ledger with one `opening_balance` row
+for every existing nonzero balance. Migration #24 adds `item_definitions.value`,
+the tool kind tables, the currency settings in `item_system_settings`, and the
+vendor tables.
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
-Each module lists its own migrations in `IGameServiceModule.Migrations`.
+Each module lists its own migrations in `IGameServiceModule.Migrations`, from
+its `CharactersSchemaMigrations`, `PlacementSchemaMigrations`, or
+`ItemsSchemaMigrations` list.
 `GameServiceSchema` merges the host list with every module's list, sorted by
 ordinal id, which reproduces the original application order exactly. Startup
 fails when an id repeats or when the merged list does not start with the shipped
 history, so every new migration must sort after
-`202610181230_worker_item_catalog_revision`. A new migration also appends its id
+`202610181250_item_economy`. A new migration also appends its id
 to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
 `MigrationHistoryTests`.
 
@@ -409,7 +500,7 @@ is Items. R is read, W is write, and L is lock.
 | S27 | Offline item mutations check for an active session | Plc R | `ISimulationPresence.FindActiveCharacterAsync` in `CharacterItemStateLocks` |
 | S28 | Death and corpse loot lock one character with its item state | Chr L | as S26, in `CharacterItemStateLocks` |
 | S29 | Mob corpse creation locks the worker lease and assignment | Plc L | `ISimulationWorkerAuthority.LockLeaseAsync`, then `LockAssignmentAsync`, in `ItemSimulationAuthority` |
-| S30 | Insurance charges character currency | Chr L, W | `ICharacterWallet.DebitAsync` in `ItemPolicyCommandHandler` |
+| S30 | Insurance charges character currency | Chr L, W | `ICharacterWallet.DebitAsync` with an `insurance` ledger row in `ItemPolicyCommandHandler` |
 | S31 | Secure Container tier change lists account characters | Chr R | `CharactersSql.ActiveCharacters` in `SecureContainerTierCommandHandler` |
 | S32 | Operation claims reference the actor account and character | Acc R, Chr R | `AccountsSql.ExistingIdOrNull`, `CharactersSql.ExistingIdOrNull` in `ItemOperationLedger` |
 | S33 | Death reads the character name and Shard | Chr R, Plc R | `CharactersSql.ActiveCharacters` and `PlacementSql.ShardExists` in `PlayerDeathCommandHandler` |
@@ -424,6 +515,16 @@ is Items. R is read, W is write, and L is lock.
 | S42 | The Development item tool sets a character's level | Chr L, W | `ICharacterProgression.SetLevelAsync` in `DevelopmentItemToolService` |
 | S43 | Join and reconnect compare the worker's item catalog revision with the mirrored one | Itm R | `IItemCatalogRevisionProvider.GetCurrentRevisionAsync` in `ShardService` |
 | S44 | Ticket consume, session heartbeat, and session release read the equipment with the carry state | Itm R | the same `ISimulationCharacterStateProvider` statement as S11, S12, and S14 |
+| S45 | A vendor purchase debits character currency | Chr L, W | `ICharacterWallet.DebitAsync` in `VendorCommandHandler` |
+| S46 | A vendor sale credits character currency | Chr L, W | `ICharacterWallet.CreditAsync` in `VendorCommandHandler` |
+| S47 | Character create credits the starting balance | Chr L, W | `ICharacterWallet.CreditAsync` in `CharacterItemStateLifecycleHandler` |
+| S48 | The item-state snapshot reads the balance | Chr R | `CharactersSql.CurrencyOf` in `ItemQueryService` |
+| S49 | The Development item tool grants currency | Chr L, W | `ICharacterWallet.CreditAsync` in `DevelopmentItemToolService` |
+| S50 | The Development item tool lists each character's balance | Chr R | `CharactersSql.CurrencyOf` in `DevelopmentItemToolService` |
+
+The wallet's `FOR NO KEY UPDATE` lock in S30, S45, and S46 falls on a character
+row that the item transaction already locked through `ICharacterLocks`, so it
+adds no lock and keeps the lock order.
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
 and `update` on owned tables and fails on any foreign table outside the frozen

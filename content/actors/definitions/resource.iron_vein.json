@@ -1,0 +1,37 @@
+{
+    "id": "resource.iron_vein",
+    "displayName": "Iron Vein",
+    "kind": "resource_node",
+    "factionId": "world",
+    "disposition": "neutral",
+    "presentationArchetypeId": "resource.iron_vein",
+    "damagePolicy": "invulnerable",
+    "tags": [
+        "mining",
+        "resource"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.6,
+        "centerZ": 0.0,
+        "sizeX": 1.6,
+        "sizeY": 1.2,
+        "sizeZ": 1.6
+    },
+    "capabilities": [
+        {
+            "id": "resource.mine",
+            "kind": "gathering",
+            "displayName": "Mine",
+            "profileId": "resource.iron_vein"
+        }
+    ],
+    "activityProfileId": "",
+    "respawnProfileId": "",
+    "corpsePersistenceMode": "",
+    "corpseLifetimeSeconds": 0.0,
+    "combatProfileId": "",
+    "brainProfileId": "",
+    "locomotionProfileId": "",
+    "lootProfileId": ""
+}

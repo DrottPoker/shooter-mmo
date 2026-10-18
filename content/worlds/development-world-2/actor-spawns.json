@@ -1,5 +1,5 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 3,
     "worldId": "development-world-2",
     "actorCatalogId": "core",
     "spawnPoints": [
@@ -33,6 +33,18 @@
             "rows": 1,
             "columns": 2,
             "spacing": 3.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.iron_veins",
+            "actorId": "resource.iron_vein",
+            "centerX": 96.0,
+            "centerY": 0.0,
+            "centerZ": -124.0,
+            "yawDegrees": 0.0,
+            "rows": 2,
+            "columns": 2,
+            "spacing": 6.0,
             "patrolPathId": ""
         }
     ],

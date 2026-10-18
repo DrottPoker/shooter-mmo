@@ -168,6 +168,40 @@ public sealed class DevelopmentItemToolCommandParserTests
     }
 
     [Fact]
+    public void CurrencyCommandParsesTheCharacterAndAmount()
+    {
+        var characterId = Guid.NewGuid();
+
+        var activated = DevelopmentItemToolCommandParser.TryParse(
+            ["--dev-items-currency", characterId.ToString(), "500"],
+            out var command,
+            out var error);
+
+        Assert.True(activated);
+        Assert.NotNull(command);
+        Assert.Equal(DevelopmentItemToolCommandKind.Currency, command.Kind);
+        Assert.Equal(characterId, command.CharacterId);
+        Assert.Equal(500, command.Amount);
+        Assert.Empty(error);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("gold")]
+    public void CurrencyCommandRejectsANonPositiveAmount(string amount)
+    {
+        var activated = DevelopmentItemToolCommandParser.TryParse(
+            ["--dev-items-currency", Guid.NewGuid().ToString(), amount],
+            out var command,
+            out var error);
+
+        Assert.True(activated);
+        Assert.Null(command);
+        Assert.Equal("--dev-items-currency requires <characterGuid> <positiveAmount>.", error);
+    }
+
+    [Fact]
     public void MultipleDevelopmentCommandsAreRejected()
     {
         var activated = DevelopmentItemToolCommandParser.TryParse(

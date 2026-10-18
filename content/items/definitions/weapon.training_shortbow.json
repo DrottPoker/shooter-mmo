@@ -18,7 +18,9 @@
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,
   "tags": [ ],
+  "toolKinds": [ ],
   "unitWeight": 80,
+  "value": 100,
   "weapon": {
     "attackIntervalSeconds": 2.4,
     "damageType": "normal",

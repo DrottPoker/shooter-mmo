@@ -74,11 +74,13 @@ public sealed record SimulationSessionLeaseResponse(
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 }
 
+// VendorProfileId is the vendor profile of the validated vendor capability, or null.
 public sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
-    bool QuestNpc = false);
+    bool QuestNpc = false,
+    string? VendorProfileId = null);
 
 public sealed record SimulationItemRevisionExpectation(
     Guid ItemInstanceId,
@@ -107,7 +109,12 @@ public sealed record SimulationItemOperationRequest(
     long? ExpectedRecoveryDeliveryRevision = null,
     IReadOnlyList<SimulationItemRevisionExpectation>? Items = null,
     Guid? InteractionSessionId = null,
-    string? CapabilityId = null);
+    string? CapabilityId = null,
+    string? DefinitionId = null,
+    long? ExpectedPrice = null,
+    string? ResourceProfileId = null,
+    string? ResourceNodeId = null,
+    string? RequiredToolKind = null);
 
 public sealed record SimulationPlayerDeathRequest(
     Guid OperationId,

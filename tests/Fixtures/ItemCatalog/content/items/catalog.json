@@ -50,6 +50,10 @@
     "baseCarryCapacity": 200,
     "inventorySlotCount": 20
   },
+  "economy": {
+    "currencyDisplayName": "Fixture Coins",
+    "startingBalance": 0
+  },
   "equipmentSlots": [
     {
       "displayName": "Head",
@@ -97,7 +101,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 4,
+  "formatVersion": 5,
   "progression": {
     "maximumCharacterLevel": 200
   },
@@ -131,6 +135,12 @@
     {
       "displayName": "Ammunition",
       "id": "ammunition"
+    }
+  ],
+  "toolKinds": [
+    {
+      "displayName": "Pickaxe",
+      "id": "pickaxe"
     }
   ],
   "weaponFamilies": [

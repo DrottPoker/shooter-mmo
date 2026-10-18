@@ -15,6 +15,7 @@ public sealed partial class TableOwnershipTests
             ["accounts"] = GameServiceSourceMap.Accounts,
             ["account_sessions"] = GameServiceSourceMap.Accounts,
             ["characters"] = GameServiceSourceMap.Characters,
+            ["character_currency_ledger"] = GameServiceSourceMap.Characters,
             ["world_definitions"] = GameServiceSourceMap.Placement,
             ["fleets"] = GameServiceSourceMap.Placement,
             ["simulation_nodes"] = GameServiceSourceMap.Placement,
@@ -53,7 +54,12 @@ public sealed partial class TableOwnershipTests
             ["corpses"] = GameServiceSourceMap.Items,
             ["corpse_sections"] = GameServiceSourceMap.Items,
             ["corpse_snapshots"] = GameServiceSourceMap.Items,
-            ["death_events"] = GameServiceSourceMap.Items
+            ["death_events"] = GameServiceSourceMap.Items,
+            ["item_tool_kinds"] = GameServiceSourceMap.Items,
+            ["item_definition_tool_kinds"] = GameServiceSourceMap.Items,
+            ["vendor_profiles"] = GameServiceSourceMap.Items,
+            ["vendor_offers"] = GameServiceSourceMap.Items,
+            ["vendor_sale_categories"] = GameServiceSourceMap.Items
         };
 
     // R4: frozen migration history. Its SQL may touch any table and is pinned by

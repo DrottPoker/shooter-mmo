@@ -95,7 +95,13 @@ namespace Mmorpg.Client.WorldActors
                 interactionCollider.enabled = actor.IsActive;
             }
 
-            gameObject.SetActive(actor.IsActive);
+            ApplyActivity(actor.IsActive);
+        }
+
+        // An inactive actor, such as a dead Mob, is hidden until it returns.
+        protected virtual void ApplyActivity(bool isActive)
+        {
+            gameObject.SetActive(isActive);
         }
     }
 
@@ -105,5 +111,52 @@ namespace Mmorpg.Client.WorldActors
 
     public sealed class MobView : WorldActorView
     {
+    }
+
+    // A depleted resource node stays visible but cannot be targeted until it respawns. An
+    // authored prefab provides an "Available" and a "Depleted" child; the development
+    // fallback primitive shrinks instead.
+    public sealed class ResourceNodeView : WorldActorView
+    {
+        public const string AvailableModelName = "Available";
+        public const string DepletedModelName = "Depleted";
+        private const float DepletedFallbackHeight = 0.35f;
+
+        private Transform availableModel;
+        private Transform depletedModel;
+        private Vector3 fallbackScale;
+        private bool resolved;
+
+        public bool IsDepleted { get; private set; }
+
+        protected override void ApplyActivity(bool isActive)
+        {
+            ResolveModels();
+            IsDepleted = !isActive;
+            gameObject.SetActive(true);
+            if (availableModel != null && depletedModel != null)
+            {
+                availableModel.gameObject.SetActive(isActive);
+                depletedModel.gameObject.SetActive(!isActive);
+                return;
+            }
+
+            transform.localScale = isActive
+                ? fallbackScale
+                : new Vector3(fallbackScale.x, fallbackScale.y * DepletedFallbackHeight, fallbackScale.z);
+        }
+
+        private void ResolveModels()
+        {
+            if (resolved)
+            {
+                return;
+            }
+
+            resolved = true;
+            availableModel = transform.Find(AvailableModelName);
+            depletedModel = transform.Find(DepletedModelName);
+            fallbackScale = transform.localScale;
+        }
     }
 }

@@ -12,7 +12,8 @@ namespace Mmorpg.GameProtocol
     public enum RealtimeWorldActorKind : byte
     {
         Npc = 1,
-        Mob = 2
+        Mob = 2,
+        ResourceNode = 3
     }
 
     /// <summary>
@@ -67,19 +68,33 @@ namespace Mmorpg.GameProtocol
         Insurance = 6,
         Trainer = 7,
         Bank = 8,
-        RecoveryStorage = 9
+        RecoveryStorage = 9,
+        Gathering = 10
     }
 
     /// <summary>
-    /// An item lifecycle action that an NPC capability performs.
+    /// The action a capability performs, beyond opening it.
     /// </summary>
-    public enum RealtimeNpcLifecycleActionKind : byte
+    public enum RealtimeCapabilityActionKind : byte
     {
         None = 0,
         ApplyInsurance = 1,
         RemoveInsurance = 2,
         AcceptQuest = 3,
-        AbandonQuest = 4
+        AbandonQuest = 4,
+        VendorPurchase = 5,
+        VendorSale = 6,
+        StartGathering = 7
+    }
+
+    /// <summary>
+    /// A change of a character's gathering at a resource node.
+    /// </summary>
+    public enum RealtimeGatheringStateKind : byte
+    {
+        Started = 1,
+        Yielded = 2,
+        Stopped = 3
     }
 
     /// <summary>
@@ -91,12 +106,14 @@ namespace Mmorpg.GameProtocol
             string id,
             RealtimeWorldActorCapabilityKind kind,
             string displayName,
+            string profileId,
             bool isAvailable,
             long revision)
         {
             Id = id;
             Kind = kind;
             DisplayName = displayName;
+            ProfileId = profileId ?? string.Empty;
             IsAvailable = isAvailable;
             Revision = revision;
         }
@@ -115,6 +132,11 @@ namespace Mmorpg.GameProtocol
         /// The name the client shows.
         /// </summary>
         public string DisplayName { get; }
+
+        /// <summary>
+        /// The vendor or resource profile of the capability, or empty.
+        /// </summary>
+        public string ProfileId { get; }
 
         /// <summary>
         /// Whether the character can use the capability now.
@@ -419,12 +441,15 @@ namespace Mmorpg.GameProtocol
             string capabilityId,
             RealtimeWorldActorCapabilityKind capabilityKind,
             long expectedCapabilityRevision,
-            RealtimeNpcLifecycleActionKind lifecycleAction,
+            RealtimeCapabilityActionKind capabilityAction,
             long expectedCharacterRevision,
             Guid itemInstanceId,
             long expectedItemRevision,
             Guid destinationContainerId,
-            int destinationSlotIndex)
+            int destinationSlotIndex,
+            string offerDefinitionId,
+            int quantity,
+            long expectedPrice)
         {
             OperationId = operationId;
             SimulationSessionId = simulationSessionId;
@@ -437,12 +462,15 @@ namespace Mmorpg.GameProtocol
             CapabilityId = capabilityId;
             CapabilityKind = capabilityKind;
             ExpectedCapabilityRevision = expectedCapabilityRevision;
-            LifecycleAction = lifecycleAction;
+            CapabilityAction = capabilityAction;
             ExpectedCharacterRevision = expectedCharacterRevision;
             ItemInstanceId = itemInstanceId;
             ExpectedItemRevision = expectedItemRevision;
             DestinationContainerId = destinationContainerId;
             DestinationSlotIndex = destinationSlotIndex;
+            OfferDefinitionId = offerDefinitionId ?? string.Empty;
+            Quantity = quantity;
+            ExpectedPrice = expectedPrice;
         }
 
         /// <summary>
@@ -501,9 +529,9 @@ namespace Mmorpg.GameProtocol
         public long ExpectedCapabilityRevision { get; }
 
         /// <summary>
-        /// The item lifecycle action of the capability.
+        /// The action the capability performs.
         /// </summary>
-        public RealtimeNpcLifecycleActionKind LifecycleAction { get; }
+        public RealtimeCapabilityActionKind CapabilityAction { get; }
 
         /// <summary>
         /// The character item-state revision the client saw.
@@ -530,6 +558,21 @@ namespace Mmorpg.GameProtocol
         /// </summary>
         public int DestinationSlotIndex { get; }
 
+        /// <summary>
+        /// The item definition a vendor purchase buys, or empty.
+        /// </summary>
+        public string OfferDefinitionId { get; }
+
+        /// <summary>
+        /// The quantity a vendor purchase or sale moves, or 0.
+        /// </summary>
+        public int Quantity { get; }
+
+        /// <summary>
+        /// The total price the client showed for a vendor purchase or sale, or 0.
+        /// </summary>
+        public long ExpectedPrice { get; }
+
         public static RealtimeWorldInteractionIntent CreateOpen(
             Guid operationId,
             Guid simulationSessionId,
@@ -555,7 +598,10 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                -1);
+                -1,
+                string.Empty,
+                0,
+                0);
         }
 
         public static RealtimeWorldInteractionIntent CreateClose(
@@ -584,7 +630,10 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                -1);
+                -1,
+                string.Empty,
+                0,
+                0);
         }
 
         public static RealtimeWorldInteractionIntent CreateCapabilityAction(
@@ -598,12 +647,15 @@ namespace Mmorpg.GameProtocol
             string capabilityId,
             RealtimeWorldActorCapabilityKind capabilityKind,
             long expectedCapabilityRevision,
-            RealtimeNpcLifecycleActionKind lifecycleAction = RealtimeNpcLifecycleActionKind.None,
+            RealtimeCapabilityActionKind capabilityAction = RealtimeCapabilityActionKind.None,
             long expectedCharacterRevision = 0,
             Guid itemInstanceId = default,
             long expectedItemRevision = 0,
             Guid destinationContainerId = default,
-            int destinationSlotIndex = -1)
+            int destinationSlotIndex = -1,
+            string offerDefinitionId = default,
+            int quantity = 0,
+            long expectedPrice = 0)
         {
             return new RealtimeWorldInteractionIntent(
                 operationId,
@@ -617,12 +669,15 @@ namespace Mmorpg.GameProtocol
                 capabilityId,
                 capabilityKind,
                 expectedCapabilityRevision,
-                lifecycleAction,
+                capabilityAction,
                 expectedCharacterRevision,
                 itemInstanceId,
                 expectedItemRevision,
                 destinationContainerId,
-                destinationSlotIndex);
+                destinationSlotIndex,
+                offerDefinitionId,
+                quantity,
+                expectedPrice);
         }
     }
 
@@ -815,6 +870,147 @@ namespace Mmorpg.GameProtocol
         /// A human-readable explanation.
         /// </summary>
         public string Message { get; }
+    }
+
+    /// <summary>
+    /// A change of the character's gathering at a resource node.
+    /// </summary>
+    public sealed partial class RealtimeGatheringState
+    {
+        internal RealtimeGatheringState(
+            Guid interactionSessionId,
+            ulong targetEntityId,
+            Guid targetRuntimeId,
+            RealtimeGatheringStateKind kind,
+            int cycleMilliseconds,
+            string yieldDefinitionId,
+            int yieldQuantity,
+            long itemStateRevision,
+            string code,
+            string message)
+        {
+            InteractionSessionId = interactionSessionId;
+            TargetEntityId = targetEntityId;
+            TargetRuntimeId = targetRuntimeId;
+            Kind = kind;
+            CycleMilliseconds = cycleMilliseconds;
+            YieldDefinitionId = yieldDefinitionId;
+            YieldQuantity = yieldQuantity;
+            ItemStateRevision = itemStateRevision;
+            Code = code;
+            Message = message;
+        }
+
+        /// <summary>
+        /// The interaction with the resource node.
+        /// </summary>
+        public Guid InteractionSessionId { get; }
+
+        /// <summary>
+        /// The network entity of the resource node.
+        /// </summary>
+        public ulong TargetEntityId { get; }
+
+        /// <summary>
+        /// The runtime identity of the resource node.
+        /// </summary>
+        public Guid TargetRuntimeId { get; }
+
+        /// <summary>
+        /// What changed.
+        /// </summary>
+        public RealtimeGatheringStateKind Kind { get; }
+
+        /// <summary>
+        /// The time until the next yield.
+        /// </summary>
+        public int CycleMilliseconds { get; }
+
+        /// <summary>
+        /// The item definition the cycle yielded.
+        /// </summary>
+        public string YieldDefinitionId { get; }
+
+        /// <summary>
+        /// The quantity the cycle yielded.
+        /// </summary>
+        public int YieldQuantity { get; }
+
+        /// <summary>
+        /// The character item-state revision after the yield.
+        /// </summary>
+        public long ItemStateRevision { get; }
+
+        /// <summary>
+        /// A stable code for why gathering stopped.
+        /// </summary>
+        public string Code { get; }
+
+        /// <summary>
+        /// A human-readable explanation.
+        /// </summary>
+        public string Message { get; }
+
+        public static RealtimeGatheringState CreateStarted(
+            Guid interactionSessionId,
+            ulong targetEntityId,
+            Guid targetRuntimeId,
+            int cycleMilliseconds)
+        {
+            return new RealtimeGatheringState(
+                interactionSessionId,
+                targetEntityId,
+                targetRuntimeId,
+                RealtimeGatheringStateKind.Started,
+                cycleMilliseconds,
+                string.Empty,
+                0,
+                0,
+                string.Empty,
+                string.Empty);
+        }
+
+        public static RealtimeGatheringState CreateYielded(
+            Guid interactionSessionId,
+            ulong targetEntityId,
+            Guid targetRuntimeId,
+            int cycleMilliseconds,
+            string yieldDefinitionId,
+            int yieldQuantity,
+            long itemStateRevision)
+        {
+            return new RealtimeGatheringState(
+                interactionSessionId,
+                targetEntityId,
+                targetRuntimeId,
+                RealtimeGatheringStateKind.Yielded,
+                cycleMilliseconds,
+                yieldDefinitionId,
+                yieldQuantity,
+                itemStateRevision,
+                string.Empty,
+                string.Empty);
+        }
+
+        public static RealtimeGatheringState CreateStopped(
+            Guid interactionSessionId,
+            ulong targetEntityId,
+            Guid targetRuntimeId,
+            string code,
+            string message)
+        {
+            return new RealtimeGatheringState(
+                interactionSessionId,
+                targetEntityId,
+                targetRuntimeId,
+                RealtimeGatheringStateKind.Stopped,
+                0,
+                string.Empty,
+                0,
+                0,
+                code,
+                message);
+        }
     }
 
     // Encoding, decoding, and validation of the WorldActors family.
@@ -1327,12 +1523,15 @@ namespace Mmorpg.GameProtocol
                     writer.WriteString(value.CapabilityId);
                     writer.WriteByte((byte)value.CapabilityKind);
                     writer.WriteInt64(value.ExpectedCapabilityRevision);
-                    writer.WriteByte((byte)value.LifecycleAction);
+                    writer.WriteByte((byte)value.CapabilityAction);
                     writer.WriteInt64(value.ExpectedCharacterRevision);
                     writer.WriteGuid(value.ItemInstanceId);
                     writer.WriteInt64(value.ExpectedItemRevision);
                     writer.WriteGuid(value.DestinationContainerId);
                     writer.WriteInt32(value.DestinationSlotIndex);
+                    writer.WriteString(value.OfferDefinitionId);
+                    writer.WriteInt32(value.Quantity);
+                    writer.WriteInt64(value.ExpectedPrice);
                     break;
                 }
                 default:
@@ -1357,8 +1556,9 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeWorldInteractionOperationKind.CapabilityAction:
                 {
-                    size += 62;
+                    size += 74;
                     size += StringSize(value.CapabilityId);
+                    size += StringSize(value.OfferDefinitionId);
                     break;
                 }
                 default:
@@ -1420,12 +1620,15 @@ namespace Mmorpg.GameProtocol
             string capabilityId = string.Empty;
             RealtimeWorldActorCapabilityKind capabilityKind = default;
             long expectedCapabilityRevision = 0;
-            RealtimeNpcLifecycleActionKind lifecycleAction = default;
+            RealtimeCapabilityActionKind capabilityAction = default;
             long expectedCharacterRevision = 0;
             Guid itemInstanceId = Guid.Empty;
             long expectedItemRevision = 0;
             Guid destinationContainerId = Guid.Empty;
             int destinationSlotIndex = -1;
+            string offerDefinitionId = string.Empty;
+            int quantity = 0;
+            long expectedPrice = 0;
 
             switch (operationKind)
             {
@@ -1457,12 +1660,12 @@ namespace Mmorpg.GameProtocol
                         return false;
                     }
 
-                    if (!reader.TryReadByte(out var lifecycleActionByte, out error))
+                    if (!reader.TryReadByte(out var capabilityActionByte, out error))
                     {
                         return false;
                     }
 
-                    lifecycleAction = (RealtimeNpcLifecycleActionKind)lifecycleActionByte;
+                    capabilityAction = (RealtimeCapabilityActionKind)capabilityActionByte;
 
                     if (!reader.TryReadInt64(out expectedCharacterRevision, out error))
                     {
@@ -1489,6 +1692,21 @@ namespace Mmorpg.GameProtocol
                         return false;
                     }
 
+                    if (!reader.TryReadString(MaximumDefinitionIdLength, out offerDefinitionId, out error, allowBlank: true))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadInt32(out quantity, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadInt64(out expectedPrice, out error))
+                    {
+                        return false;
+                    }
+
                     break;
                 }
                 default:
@@ -1498,7 +1716,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeWorldInteractionIntent(operationId, simulationSessionId, interactionSessionId, operationKind, targetKind, targetEntityId, targetRuntimeId, expectedTargetRevision, capabilityId, capabilityKind, expectedCapabilityRevision, lifecycleAction, expectedCharacterRevision, itemInstanceId, expectedItemRevision, destinationContainerId, destinationSlotIndex);
+            value = new RealtimeWorldInteractionIntent(operationId, simulationSessionId, interactionSessionId, operationKind, targetKind, targetEntityId, targetRuntimeId, expectedTargetRevision, capabilityId, capabilityKind, expectedCapabilityRevision, capabilityAction, expectedCharacterRevision, itemInstanceId, expectedItemRevision, destinationContainerId, destinationSlotIndex, offerDefinitionId, quantity, expectedPrice);
             return true;
         }
 
@@ -1543,7 +1761,9 @@ namespace Mmorpg.GameProtocol
                         || value.CapabilityId.Length > MaximumWorldActorCapabilityIdLength
                         || !IsDefined(value.CapabilityKind)
                         || value.ExpectedCapabilityRevision < 1
-                        || !IsDefined(value.LifecycleAction))
+                        || !IsDefined(value.CapabilityAction)
+                        || value.OfferDefinitionId == null
+                        || value.OfferDefinitionId.Length > MaximumDefinitionIdLength)
                     {
                         return false;
                     }
@@ -1967,20 +2187,282 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        /// <summary>
+        /// A change of the character's gathering at a resource node.
+        /// </summary>
+        public static byte[] EncodeGatheringState(RealtimeGatheringState state)
+        {
+            if (!IsValidGatheringState(state))
+            {
+                throw new ArgumentException("Gathering state is invalid.", nameof(state));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.GatheringState, SizeOfGatheringState(state));
+            WriteGatheringState(ref writer, state);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeGatheringState(byte[] data, out RealtimeGatheringState state, out string error)
+        {
+            state = null;
+            if (!TryStartPacket(data, RealtimeMessageType.GatheringState, out var reader, out error)
+                || !TryReadGatheringState(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidGatheringState(decoded))
+            {
+                error = "Gathering state is invalid.";
+                return false;
+            }
+
+            state = decoded;
+            return true;
+        }
+
+        private static void WriteGatheringState(ref PacketWriter writer, RealtimeGatheringState value)
+        {
+            writer.WriteGuid(value.InteractionSessionId);
+            writer.WriteUInt64(value.TargetEntityId);
+            writer.WriteGuid(value.TargetRuntimeId);
+            writer.WriteByte((byte)value.Kind);
+
+            switch (value.Kind)
+            {
+                case RealtimeGatheringStateKind.Started:
+                {
+                    writer.WriteInt32(value.CycleMilliseconds);
+                    break;
+                }
+                case RealtimeGatheringStateKind.Yielded:
+                {
+                    writer.WriteInt32(value.CycleMilliseconds);
+                    writer.WriteString(value.YieldDefinitionId);
+                    writer.WriteInt32(value.YieldQuantity);
+                    writer.WriteInt64(value.ItemStateRevision);
+                    break;
+                }
+                case RealtimeGatheringStateKind.Stopped:
+                {
+                    writer.WriteString(value.Code);
+                    writer.WriteString(value.Message);
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Gathering state is invalid.", nameof(value));
+                }
+            }
+        }
+
+        private static int SizeOfGatheringState(RealtimeGatheringState value)
+        {
+            var size = 41;
+            switch (value.Kind)
+            {
+                case RealtimeGatheringStateKind.Started:
+                {
+                    size += 4;
+                    break;
+                }
+                case RealtimeGatheringStateKind.Yielded:
+                {
+                    size += 16;
+                    size += StringSize(value.YieldDefinitionId);
+                    break;
+                }
+                case RealtimeGatheringStateKind.Stopped:
+                {
+                    size += StringSize(value.Code);
+                    size += StringSize(value.Message);
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Gathering state is invalid.", nameof(value));
+                }
+            }
+
+            return size;
+        }
+
+        private static bool TryReadGatheringState(ref PacketReader reader, out RealtimeGatheringState value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadGuid(out var interactionSessionId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadUInt64(out var targetEntityId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadGuid(out var targetRuntimeId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var kindByte, out error))
+            {
+                return false;
+            }
+
+            var kind = (RealtimeGatheringStateKind)kindByte;
+
+            int cycleMilliseconds = 0;
+            string yieldDefinitionId = string.Empty;
+            int yieldQuantity = 0;
+            long itemStateRevision = 0;
+            string code = string.Empty;
+            string message = string.Empty;
+
+            switch (kind)
+            {
+                case RealtimeGatheringStateKind.Started:
+                {
+                    if (!reader.TryReadInt32(out cycleMilliseconds, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeGatheringStateKind.Yielded:
+                {
+                    if (!reader.TryReadInt32(out cycleMilliseconds, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadString(MaximumDefinitionIdLength, out yieldDefinitionId, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadInt32(out yieldQuantity, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadInt64(out itemStateRevision, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeGatheringStateKind.Stopped:
+                {
+                    if (!reader.TryReadString(MaximumErrorCodeLength, out code, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadString(MaximumErrorMessageLength, out message, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    error = "Gathering state kind is invalid.";
+                    return false;
+                }
+            }
+
+            value = new RealtimeGatheringState(interactionSessionId, targetEntityId, targetRuntimeId, kind, cycleMilliseconds, yieldDefinitionId, yieldQuantity, itemStateRevision, code, message);
+            return true;
+        }
+
+        private static bool IsValidGatheringState(RealtimeGatheringState value)
+        {
+            if (value == null
+                || value.InteractionSessionId == Guid.Empty
+                || value.TargetEntityId < 1
+                || value.TargetRuntimeId == Guid.Empty
+                || !IsDefined(value.Kind))
+            {
+                return false;
+            }
+
+            switch (value.Kind)
+            {
+                case RealtimeGatheringStateKind.Started:
+                {
+                    if (value.CycleMilliseconds < 1
+                        || value.CycleMilliseconds > 600000)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeGatheringStateKind.Yielded:
+                {
+                    if (value.CycleMilliseconds < 1
+                        || value.CycleMilliseconds > 600000
+                        || string.IsNullOrWhiteSpace(value.YieldDefinitionId)
+                        || value.YieldDefinitionId.Length > MaximumDefinitionIdLength
+                        || value.YieldQuantity < 1
+                        || value.ItemStateRevision < 0)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeGatheringStateKind.Stopped:
+                {
+                    if (string.IsNullOrWhiteSpace(value.Code)
+                        || value.Code.Length > MaximumErrorCodeLength
+                        || string.IsNullOrWhiteSpace(value.Message)
+                        || value.Message.Length > MaximumErrorMessageLength)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static void WriteWorldActorCapability(ref PacketWriter writer, RealtimeWorldActorCapability value)
         {
             writer.WriteString(value.Id);
             writer.WriteByte((byte)value.Kind);
             writer.WriteString(value.DisplayName);
+            var hasProfileId = !string.IsNullOrWhiteSpace(value.ProfileId);
+            writer.WriteBoolean(hasProfileId);
+            if (hasProfileId)
+            {
+                writer.WriteString(value.ProfileId);
+            }
             writer.WriteBoolean(value.IsAvailable);
             writer.WriteInt64(value.Revision);
         }
 
         private static int SizeOfWorldActorCapability(RealtimeWorldActorCapability value)
         {
-            var size = 10;
+            var size = 11;
             size += StringSize(value.Id);
             size += StringSize(value.DisplayName);
+            if (!string.IsNullOrWhiteSpace(value.ProfileId))
+            {
+                size += StringSize(value.ProfileId);
+            }
+
             return size;
         }
 
@@ -2004,6 +2486,20 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
+            if (!reader.TryReadBoolean(out var hasProfileId, out error))
+            {
+                return false;
+            }
+
+            string profileId = string.Empty;
+            if (hasProfileId)
+            {
+                if (!reader.TryReadString(MaximumIdentifierLength, out profileId, out error))
+                {
+                    return false;
+                }
+            }
+
             if (!reader.TryReadBoolean(out var isAvailable, out error))
             {
                 return false;
@@ -2014,7 +2510,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeWorldActorCapability(id, kind, displayName, isAvailable, revision);
+            value = new RealtimeWorldActorCapability(id, kind, displayName, profileId, isAvailable, revision);
             return true;
         }
 
@@ -2026,6 +2522,8 @@ namespace Mmorpg.GameProtocol
                 || !IsDefined(value.Kind)
                 || string.IsNullOrWhiteSpace(value.DisplayName)
                 || value.DisplayName.Length > MaximumWorldActorCapabilityNameLength
+                || value.ProfileId == null
+                || value.ProfileId.Length > MaximumIdentifierLength
                 || value.Revision < 1)
             {
                 return false;
@@ -2036,12 +2534,12 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeWorldActorCapabilityKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 9;
+            return (byte)value >= 1 && (byte)value <= 10;
         }
 
         private static bool IsDefined(RealtimeWorldActorKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 2;
+            return (byte)value >= 1 && (byte)value <= 3;
         }
 
         private static bool IsDefined(RealtimeWorldActorDisposition value)
@@ -2064,9 +2562,14 @@ namespace Mmorpg.GameProtocol
             return (byte)value >= 1 && (byte)value <= 2;
         }
 
-        private static bool IsDefined(RealtimeNpcLifecycleActionKind value)
+        private static bool IsDefined(RealtimeGatheringStateKind value)
         {
-            return (byte)value >= 0 && (byte)value <= 4;
+            return (byte)value >= 1 && (byte)value <= 3;
+        }
+
+        private static bool IsDefined(RealtimeCapabilityActionKind value)
+        {
+            return (byte)value >= 0 && (byte)value <= 7;
         }
     }
 }

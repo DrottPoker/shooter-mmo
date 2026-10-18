@@ -1,8 +1,7 @@
-using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.Tools.ItemCatalogCompiler;
+namespace Mmorpg.Tools.ContentPipeline;
 
 // content/items/catalog.json: the catalog-wide vocabulary shared by every definition.
 public sealed class ItemCatalogHeaderDocument
@@ -11,9 +10,11 @@ public sealed class ItemCatalogHeaderDocument
     public string? CatalogId;
     public string? BaseSecureContainerTierId;
     public ItemCharacterSettingsEntry? Character;
+    public ItemEconomySettingsEntry? Economy;
     public ItemProgressionSettingsEntry? Progression;
     public ItemCatalogIdentityEntry[]? Categories;
     public ItemCatalogIdentityEntry[]? Tags;
+    public ItemCatalogIdentityEntry[]? ToolKinds;
     public ItemEquipmentSlotEntry[]? EquipmentSlots;
     public ItemWeaponFamilyEntry[]? WeaponFamilies;
     public ItemCatalogIdentityEntry[]? AmmunitionFamilies;
@@ -21,7 +22,9 @@ public sealed class ItemCatalogHeaderDocument
     public ItemCatalogRetiredIdsEntry? Retired;
 }
 
-// Assembles the authoring document from catalog.json and one file per item definition.
+// Assembles the authoring document from catalog.json, one file per item definition, and
+// one file per vendor profile. The world actor compiler checks actor references to items
+// and vendors against the compiled catalog instead, so it never reads item authoring.
 public static class ItemCatalogContent
 {
     public static ItemCatalogAuthoringDocument Load(string itemsDirectory)
@@ -32,20 +35,26 @@ public static class ItemCatalogContent
         var definitions = ContentLayout.ListDefinitionFiles(itemsDirectory)
             .Select(LoadDefinition)
             .ToArray();
+        var vendors = ContentLayout.ListVendorFiles(itemsDirectory)
+            .Select(LoadVendor)
+            .ToArray();
         return new ItemCatalogAuthoringDocument
         {
             FormatVersion = header.FormatVersion,
             CatalogId = header.CatalogId,
             BaseSecureContainerTierId = header.BaseSecureContainerTierId,
             Character = header.Character,
+            Economy = header.Economy,
             Progression = header.Progression,
             Categories = header.Categories,
             Tags = header.Tags,
+            ToolKinds = header.ToolKinds,
             EquipmentSlots = header.EquipmentSlots,
             WeaponFamilies = header.WeaponFamilies,
             AmmunitionFamilies = header.AmmunitionFamilies,
             Definitions = definitions,
             SecureContainerTiers = header.SecureContainerTiers,
+            Vendors = vendors,
             Retired = header.Retired
         };
     }
@@ -62,5 +71,19 @@ public static class ItemCatalogContent
         }
 
         return definition;
+    }
+
+    private static VendorProfileAuthoringEntry LoadVendor(ContentDefinitionFile file)
+    {
+        var vendor = StrictContentJson.DeserializeFile<VendorProfileAuthoringEntry>(
+            file.Path,
+            "Vendor profile");
+        if (!string.Equals(vendor.Id, file.Id, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Vendor profile file '{file.Path}' must contain id '{file.Id}'.");
+        }
+
+        return vendor;
     }
 }

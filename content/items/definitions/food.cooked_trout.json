@@ -16,6 +16,8 @@
   "tags": [
     "food"
   ],
+  "toolKinds": [ ],
   "unitWeight": 20,
+  "value": 10,
   "weapon": null
 }

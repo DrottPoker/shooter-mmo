@@ -1,5 +1,5 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 3,
     "worldId": "development-world-1",
     "actorCatalogId": "core",
     "spawnPoints": [
@@ -10,6 +10,15 @@
             "y": 0.0,
             "z": -1.0,
             "yawDegrees": 270.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "local.iron_vein",
+            "actorId": "resource.iron_vein",
+            "x": -8.0,
+            "y": 0.0,
+            "z": 1.0,
+            "yawDegrees": 0.0,
             "patrolPathId": ""
         }
     ],

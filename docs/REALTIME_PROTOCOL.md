@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 16 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 17 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -246,6 +246,7 @@ of every message type, generated from the schema:
 | 25 | `WorldInteractionResult` | WorldActors | Server to client | Control | Reliable ordered |
 | 26 | `WorldInteractionClosed` | WorldActors | Server to client | Control | Reliable ordered |
 | 27 | `OwnerSimulationSnapshot` | Movement | Server to client | Unreliable receive | Unreliable |
+| 28 | `GatheringState` | WorldActors | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -277,6 +278,46 @@ A corpse view section may have zero slots. Protocol version 16 allows
 `SectionSlotCapacity` 0, because a live Mob corpse carries only general loot and
 its equipment and Bag sections are empty, and a fully looted live Mob corpse has
 no general slots left. Carried weight and carry capacity are unitless integers.
+
+## Capability Actions
+
+Protocol version 17 added vendor trades and gathering. A
+`WorldInteractionIntent` of kind `CapabilityAction` carries a
+`CapabilityActionKind`, renamed from `NpcLifecycleActionKind`: `None` (open the
+capability), the insurance and quest actions, and the new `VendorPurchase`
+(5), `VendorSale` (6), and `StartGathering` (7). The action also carries
+`OfferDefinitionId`, `Quantity`, and `ExpectedPrice`. The hand-written rules
+accept only the fields each action uses:
+
+- `VendorPurchase` targets a `Vendor` capability and needs an offer definition,
+  a quantity of at least 1, and an expected price of 0 or more, with no item and
+  no destination.
+- `VendorSale` targets a `Vendor` capability and needs an item, a quantity of
+  at least 1, and an expected price, with no offer definition and no
+  destination.
+- `StartGathering` targets a `Gathering` capability and carries no character
+  revision, item, destination, or vendor terms.
+
+The expected price is the total the player was shown. GameService recomputes
+the price from the catalog and rejects a difference with `vendor_price_changed`,
+so a stale client display can never charge a different amount.
+
+`WorldActorKind` gained `ResourceNode` (3), and `WorldActorCapabilityKind`
+gained `Gathering` (10). Every `WorldActorCapability` now carries a `ProfileId`:
+the item catalog vendor profile of a `Vendor` capability, the resource profile
+of a `Gathering` capability, and empty for every other kind.
+
+`GatheringState` reports gathering at a resource node to the gathering player,
+keyed by the interaction session and the node's entity and runtime id. Its
+`Kind` is `Started` with the cycle time in milliseconds, `Yielded` with the
+cycle time, the yield definition and quantity, and the item-state revision
+after the yield, or `Stopped` with a stable code and a message, such as
+`resource_node_depleted`, `gathering_interrupted`, `world_interaction_closed`,
+or a GameService rejection code. A `Yielded` or `Stopped` can arrive after the
+interaction closed, and a `Yielded` even after `Stopped`, because a cycle that
+was already in flight still completes. The worker always sends the `Yielded` of
+a committed cycle, so the client learns the item-state revision that holds the
+yield.
 
 ## Versioning
 

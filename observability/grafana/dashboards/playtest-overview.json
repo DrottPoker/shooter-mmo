@@ -1592,13 +1592,85 @@
       }
     },
     {
+      "type": "timeseries",
+      "title": "Gathering",
+      "description": "Players gathering at resource nodes, depleted nodes waiting for respawn, and gathering cycles per minute by outcome.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(simulation_worker_gathering_active{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "legendFormat": "gathering",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(simulation_worker_resource_nodes_depleted{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "legendFormat": "depleted nodes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (outcome) (increase(simulation_worker_gathering_cycles_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "{{outcome}} per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "id": 33,
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
       "type": "row",
       "id": 26,
       "title": "Worker process",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 59,
         "w": 24,
         "h": 1
       },
@@ -1653,7 +1725,7 @@
       "id": 27,
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 60,
         "w": 6,
         "h": 7
       }
@@ -1716,7 +1788,7 @@
       "id": 28,
       "gridPos": {
         "x": 6,
-        "y": 53,
+        "y": 60,
         "w": 6,
         "h": 7
       }
@@ -1770,7 +1842,7 @@
       "id": 29,
       "gridPos": {
         "x": 12,
-        "y": 53,
+        "y": 60,
         "w": 6,
         "h": 7
       }
@@ -1833,7 +1905,7 @@
       "id": 30,
       "gridPos": {
         "x": 18,
-        "y": 53,
+        "y": 60,
         "w": 6,
         "h": 7
       }
@@ -1845,7 +1917,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 67,
         "w": 24,
         "h": 1
       },
@@ -1883,7 +1955,7 @@
       "id": 32,
       "gridPos": {
         "x": 0,
-        "y": 61,
+        "y": 68,
         "w": 24,
         "h": 10
       }

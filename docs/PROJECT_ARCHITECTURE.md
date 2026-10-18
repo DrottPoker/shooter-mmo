@@ -170,9 +170,9 @@ Platform <- Accounts <- Characters <- Placement <- Items <- host
 | --- | --- | --- |
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, platform options, and `IGameServiceModule` |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Accounts, account sessions, account and worker authentication, policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Characters, ownership, and character currency |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Characters, ownership, and character currency with its ledger |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | World definitions, Fleets, Nodes, Shards, the worker registry, assignments, join tickets, simulation session leases, and Development simulation bots |
-| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | The item catalog, item state and transactions, corpses, death partition, Recovery, policies, item operations maintenance, and the item development tools |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | The item catalog with item values and vendor profiles, item state and transactions including vendor trades and gathering yields, corpses, death partition, Recovery, policies, item operations maintenance, and the item development tools |
 | `Mmorpg.GameService` | `src/Server/GameService` | `Program.cs`, the configuration loader, database startup and the frozen baseline migrations, health routes, and the shipped `Config` and content files |
 
 Each module exposes only its module class, its options, and its `Contracts`
@@ -270,14 +270,15 @@ keep the following contract:
   connected, then that the session id and token still match. A stale corpse
   completion releases a view reservation only for a context that still owns its
   id.
-- A peer runs at most one item, corpse, or world interaction authority operation
-  at a time and queues at most eight more.
+- A peer runs at most one item, corpse, world interaction, or gathering
+  authority operation at a time and queues at most eight more.
 - Peers are iterated in registry insertion order. Snapshot fairness and
   broadcast order depend on it, so the table stays a plain dictionary.
 - A tick runs collision streaming, carry state and movement per player in
-  entity id order, world actor activity, interaction revalidation every fifth of
-  a second, snapshots at the snapshot rate, and corpse presence twice per
-  second. At most five ticks catch up before the clock resynchronizes.
+  entity id order, due world actor timers and world actor activity, interaction
+  revalidation every fifth of a second, the gathering pass, snapshots at the
+  snapshot rate, and corpse presence twice per second. At most five ticks catch
+  up before the clock resynchronizes.
 - Shutdown stops the transport, waits for in-flight operations, clears peers,
   interest, bindings, entities, carry state, corpse viewers, interaction leases,
   world actors, cached corpse views, and the orphan sweep state, zeroes the
@@ -353,6 +354,9 @@ The current protocol version includes:
   canonical equipment-slot ids, plus reliable open, close, refresh, full or
   partial bidirectional transfer, corpse-internal move, atomic ordinary slot
   and Bag-swap, result, and view-closure messages.
+- World actor presence, state, and interaction messages, including vendor trade
+  and start gathering capability actions and the gathering state of the
+  player's own gathering.
 - Packet magic, version, type, size, and bounded-field validation.
 
 Channel 0 is reliable ordered control. Channel 1 is sequenced movement input.
@@ -640,11 +644,15 @@ writes inventory tables or holds an item collection.
 Bank and Recovery Storage operations require an open interaction with a world
 actor whose bank or recovery_storage capability is available, which the worker
 evaluates when the operation starts. Secure Container operations require no
-city service. Insurance and quest item-lifecycle operations require a matching
-interaction session and capability handler. The worker asserts only the access already validated by that
-session. GameService revalidates the live authority tuple, uses server-owned
-insurance price and quest grant configuration, and commits through the same item
-transaction kernel.
+city service. Insurance, quest item-lifecycle, and vendor trade operations
+require a matching interaction session and capability handler, and gathering
+grants require an open interaction with a resource node. The worker asserts only
+the access already validated by that session, for a vendor trade the vendor
+profile of the validated capability. GameService revalidates the live authority
+tuple, uses server-owned insurance price, quest grant configuration, and catalog
+item values and vendor prices, and commits through the same item transaction
+kernel, which moves vendor currency through the Characters wallet with a ledger
+row in the same transaction.
 
 SimulationWorker also owns live corpse discovery, proximity, and viewer state.
 The runtime store contains only GameService-provided corpse identity, transform,
@@ -718,25 +726,27 @@ Status: Implemented
 
 The world-actor boundary adds no new service or topology layer:
 
-- WorldData owns deterministic actor definitions, NPC capability descriptors,
-  factions, presentation references, spawn definitions, spawn groups, spawn
-  areas, respawn profiles, and patrol paths.
+- WorldData owns deterministic actor definitions, capability descriptors with
+  their profile ids, factions, presentation references, spawn definitions, spawn
+  groups, spawn areas, respawn profiles, resource profiles, and patrol paths.
 - SimulationWorker owns live actor identity, spawn lifecycle, active state,
-  authoritative interaction, range and line-of-sight validation, NPC capability
-  dispatch, and centrally scheduled Mob activity for its assigned Shard.
-- GameProtocol carries actor presence, interaction messages, and typed insurance
-  or quest item-lifecycle actions, compiled from the same source for .NET and
-  Unity.
+  authoritative interaction, range and line-of-sight validation, capability
+  dispatch, centrally scheduled Mob activity, live resource node charges,
+  gathering timing, and the central actor timer queue for its assigned Shard.
+- GameProtocol carries actor presence, interaction messages, typed insurance,
+  quest, and vendor trade actions, the start gathering action, and gathering
+  state, compiled from the same source for .NET and Unity.
 - Unity owns advisory pointer targeting, immutable replicated actor and
   interaction state, prefab presentation, temporary uGUI, and Editor authoring
   tools.
-- GameService remains the durable authority when a later capability mutates
-  items, currency, quests, policies, or progression.
+- GameService remains the durable authority when a capability mutates items,
+  currency, quests, policies, or progression.
 
-NPC and Mob are distinct actor kinds. NPC capability combinations are content,
-not subclasses. Faction and disposition determine friendly or hostile behavior.
-Every first-version city NPC, including guards, is invulnerable by an
-authoritative server rule.
+NPC, Mob, and resource node are distinct actor kinds. NPC capability
+combinations are content, not subclasses, and a resource node has exactly one
+gathering capability. Faction and disposition determine friendly or hostile
+behavior. Every first-version city NPC, including guards, and every resource
+node is invulnerable by an authoritative server rule.
 
 Normal actors do not receive individual PostgreSQL rows. SimulationWorker
 reconstructs their baseline from compiled WorldData when an assignment starts.
@@ -744,22 +754,27 @@ Stable actor-definition and spawn-definition ids remain distinct from fresh
 worker-runtime actor and network entity ids. Selected unique actors may later
 opt into durable state without changing the normal population model.
 
-NPCs are event-driven. Mobs use bounded central dormant and active scheduling
-buckets keyed by activity profile, tier, and tick interval. No actor owns a
-task, timer, thread, database session, or HTTP poller. Actor visibility reuses
-the shared network-entity id allocator and existing spatial interest
-management. Bounded assignment-local despawn tombstones retain only the runtime
+NPCs and resource nodes are event-driven. Mobs use bounded central dormant and
+active scheduling buckets keyed by activity profile, tier, and tick interval. No
+actor owns a task, timer, thread, database session, or HTTP poller; resource
+node respawn is a due-tick entry in the central `WorldActorTimerQueue`, and
+resource node charges are live Shard state that a restart restores to full.
+Actor visibility reuses the shared network-entity id allocator and existing
+spatial interest management. Bounded assignment-local despawn tombstones retain only the runtime
 identity required to send reliable actor-specific interest exits. Each interest
 pass drops a tombstone once no connection still sees the actor, and all clear on
 assignment reconstruction or worker shutdown.
 
 The typed capability registry maps every supported capability kind to one
 authoritative handler. Deferred handlers remain the safe default. Insurance,
-quest-offer, quest-turn-in, bank, and Recovery Storage handlers are registered
-without changing actor identity or targeting. Bank and Recovery Storage only
-confirm the capability; their item access follows the open session. Insurance apply or removal and
-quest accept or abandon reuse the established interaction session. Quest
-completion remains unavailable because no progression authority exists yet.
+quest-offer, quest-turn-in, bank, Recovery Storage, vendor, and gathering
+handlers are registered without changing actor identity or targeting. Bank,
+Recovery Storage, and an opened vendor only confirm the capability; their item
+access follows the open session. Insurance apply or removal, quest accept or
+abandon, and vendor purchase or sale reuse the established interaction session,
+and a started gathering activity runs in the central gathering pass while the
+session stays open. Quest completion remains unavailable because no progression
+authority exists yet.
 
 The generic interaction flow is:
 
@@ -787,9 +802,9 @@ player-specific capability summary is returned after open and is not duplicated
 into ordinary spawn or movement packets.
 
 Unity presentation resolves a `presentationArchetypeId` to a presentation-only
-`WorldActorView`, `NpcView`, or `MobView` prefab. Authoritative vendor, quest,
-crafting, insurance, or combat behavior never lives in a MonoBehaviour. The
-permanent Editor entry points are
+`WorldActorView`, `NpcView`, `MobView`, or `ResourceNodeView` prefab.
+Authoritative vendor, quest, crafting, gathering, insurance, or combat behavior
+never lives in a MonoBehaviour. The permanent Editor entry points are
 `MMORPG > Tools > Content > Actor Studio` and
 `MMORPG > Tools > Content > Spawn Authoring`, with visual scene handles
 that export canonical neutral WorldData.
@@ -799,9 +814,8 @@ presentation joins the shared client target selection, and its view consumes
 the shared interaction lease. Policy and quest item lifecycle run on NPC
 interactions. Live worker-owned Mob corpses and durable player or selected boss
 corpses share the same presence, view, range, lease, mutation, carry-state, and
-closure foundation. Vendor
-transactions, quest progression, complete Mob AI, combat, damage, death-event
-production, and loot-table generation remain later work.
+closure foundation. Quest progression, complete Mob AI, combat, damage,
+death-event production, and loot-table generation remain later work.
 
 Operational hardening bounds this authority graph without adding a new service
 or mutation path. GameService bounds HTTP bodies, canonical commands,
@@ -819,7 +833,8 @@ live corpses and central actor scheduling.
 | --- | --- |
 | `accounts` | Global account identity and password hash |
 | `account_sessions` | One active account login session and revocation reason |
-| `characters` | Global characters owned by accounts |
+| `characters` | Global characters owned by accounts, with their level and currency balance |
+| `character_currency_ledger` | Append-only record of every currency change with source, item operation, delta, and balance after |
 | `world_definitions` | Shared World content identities |
 | `fleets` | Regional or operational compute groups |
 | `simulation_nodes` | Machines or hosts assigned to fleets |
@@ -830,11 +845,12 @@ live corpses and central actor scheduling.
 | `character_simulation_sessions` | Global active simulation leases |
 | `schema_migrations` | Applied migration history |
 | `item_catalog_revisions` | Applied deterministic catalog revisions and one current revision per catalog |
-| `item_categories`, `item_tags`, `equipment_slots` | Stable catalog identities kept separate by domain meaning |
-| `item_definitions` and `item_definition_*` | Mirrored definition data, tags, equipment compatibility, location rules, and default policies |
+| `item_categories`, `item_tags`, `item_tool_kinds`, `equipment_slots` | Stable catalog identities kept separate by domain meaning |
+| `item_definitions` and `item_definition_*` | Mirrored definition data with item value, tags, tool kinds, equipment compatibility, location rules, and default policies |
+| `vendor_profiles`, `vendor_offers`, `vendor_sale_categories` | Mirrored vendor prices, ordered offers, and bought categories |
 | `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Mirrored Bag capacity and specialized slot acceptance |
 | `secure_container_tiers` | Mirrored account-selectable Secure Container tiers |
-| `item_system_settings` | Data-driven base carry, inventory-slot, and bank-slot bootstrap values |
+| `item_system_settings` | Data-driven base carry, inventory-slot, and bank-slot bootstrap values, the currency display name, and the starting balance |
 | `account_secure_container_entitlements` | One selected Secure Container tier per account |
 | `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed custody identities and stable general or specialized slots |
 | `character_item_states` | Character aggregate revision, weight, capacity, and required top-level container ids |
@@ -849,7 +865,8 @@ live corpses and central actor scheduling.
 | `death_events` | Unique authoritative death event, original operation, canonical request hash, corpse, immutable result correlation, and the optional killer kind and id |
 
 Every table belongs to exactly one GameService module: `accounts` and
-`account_sessions` to Accounts, `characters` to Characters, the World, Fleet,
+`account_sessions` to Accounts, `characters` and `character_currency_ledger` to
+Characters, the World, Fleet,
 Node, Shard, worker, assignment, ticket, and simulation session tables to
 Placement, `schema_migrations` to Platform, and every item, catalog, Recovery,
 operation, corpse, and death table to Items. Only the owner writes or locks its

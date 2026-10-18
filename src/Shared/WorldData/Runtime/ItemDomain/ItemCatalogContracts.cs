@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 4;
+        public const int Version = 5;
 
         // Hashed into every structural fingerprint instead of the format version, so a new
         // format that adds non-structural fields leaves persisted definitions compatible. It
@@ -21,6 +21,12 @@ namespace Mmorpg.WorldData.Items
         // An equipment slot quantity and a stack size both fit the protocol's i32 quantity.
         public const int MaximumQuantity = 1_000_000;
         public const int MaximumContainerSlotCapacity = 65535;
+
+        // Base item value in currency units. A vendor price never exceeds the maximum balance.
+        public const long MaximumItemValue = 1_000_000_000L;
+        public const int MaximumCurrencyDisplayNameLength = 32;
+        public const int MaximumOffersPerVendor = 32;
+        public const int MaximumToolKindsPerDefinition = 8;
     }
 
     // Only the ids that rules give a meaning to. Every other category, tag, and
@@ -44,6 +50,9 @@ namespace Mmorpg.WorldData.Items
     {
         // The equipped Bag activates its contents and adds its carry-capacity bonus.
         public const string Bag = "bag";
+
+        // Gathering requires a tool of the right kind equipped in this slot.
+        public const string Tool = "tool";
     }
 
     public static class ItemPolicyIds
@@ -65,14 +74,17 @@ namespace Mmorpg.WorldData.Items
         public string CatalogId;
         public string BaseSecureContainerTierId;
         public ItemCharacterSettingsEntry Character;
+        public ItemEconomySettingsEntry Economy;
         public ItemProgressionSettingsEntry Progression;
         public ItemCatalogIdentityEntry[] Categories;
         public ItemCatalogIdentityEntry[] Tags;
+        public ItemCatalogIdentityEntry[] ToolKinds;
         public ItemEquipmentSlotEntry[] EquipmentSlots;
         public ItemWeaponFamilyEntry[] WeaponFamilies;
         public ItemCatalogIdentityEntry[] AmmunitionFamilies;
         public ItemDefinitionAuthoringEntry[] Definitions;
         public SecureContainerTierAuthoringEntry[] SecureContainerTiers;
+        public VendorProfileAuthoringEntry[] Vendors;
         public ItemCatalogRetiredIdsEntry Retired;
     }
 
@@ -83,6 +95,15 @@ namespace Mmorpg.WorldData.Items
         public long BaseCarryCapacity;
         public int InventorySlotCount;
         public int BankSlotCount;
+    }
+
+    // The character currency: its display name and the balance every new character starts
+    // with. The balance itself is character state that GameService owns.
+    [Serializable]
+    public sealed class ItemEconomySettingsEntry
+    {
+        public string CurrencyDisplayName;
+        public long StartingBalance = -1;
     }
 
     // Character progression limits. Every level requirement must fit them.
@@ -160,7 +181,9 @@ namespace Mmorpg.WorldData.Items
         public string DisplayName;
         public string Category;
         public string[] Tags;
+        public string[] ToolKinds;
         public long UnitWeight = -1;
+        public long Value = -1;
         public int MaximumStackSize;
         public string[] EquipmentSlots;
         public string[] BlockedEquipmentSlots;
@@ -206,6 +229,26 @@ namespace Mmorpg.WorldData.Items
         public int SlotCapacity;
     }
 
+    // An NPC vendor's offers and prices. Rates are named from the player's side: the player
+    // purchases offers at PurchasePriceBasisPoints of item value and sells items of the sale
+    // categories at SalePriceBasisPoints.
+    [Serializable]
+    public sealed class VendorProfileAuthoringEntry
+    {
+        public string Id;
+        public string DisplayName;
+        public VendorOfferEntry[] Offers;
+        public int PurchasePriceBasisPoints;
+        public int SalePriceBasisPoints = -1;
+        public string[] SaleCategories;
+    }
+
+    [Serializable]
+    public sealed class VendorOfferEntry
+    {
+        public string DefinitionId;
+    }
+
     [Serializable]
     public sealed class ItemCatalogRuntimeDocument
     {
@@ -214,14 +257,17 @@ namespace Mmorpg.WorldData.Items
         public string Revision;
         public string BaseSecureContainerTierId;
         public ItemCharacterSettingsEntry Character;
+        public ItemEconomySettingsEntry Economy;
         public ItemProgressionSettingsEntry Progression;
         public ItemCatalogIdentityEntry[] Categories;
         public ItemCatalogIdentityEntry[] Tags;
+        public ItemCatalogIdentityEntry[] ToolKinds;
         public ItemEquipmentSlotEntry[] EquipmentSlots;
         public ItemWeaponFamilyEntry[] WeaponFamilies;
         public ItemCatalogIdentityEntry[] AmmunitionFamilies;
         public ItemDefinition[] Definitions;
         public SecureContainerTierDefinition[] SecureContainerTiers;
+        public VendorProfileDefinition[] Vendors;
         public ItemCatalogRetiredIdsEntry Retired;
     }
 
@@ -232,7 +278,9 @@ namespace Mmorpg.WorldData.Items
         public string DisplayName;
         public string Category;
         public string[] Tags;
+        public string[] ToolKinds;
         public long UnitWeight;
+        public long Value;
         public int MaximumStackSize;
         public string[] EquipmentSlots;
         public string[] BlockedEquipmentSlots;
@@ -274,5 +322,16 @@ namespace Mmorpg.WorldData.Items
         public string DisplayName;
         public int SlotCapacity;
         public string StructuralFingerprint;
+    }
+
+    [Serializable]
+    public sealed class VendorProfileDefinition
+    {
+        public string Id;
+        public string DisplayName;
+        public VendorOfferEntry[] Offers;
+        public int PurchasePriceBasisPoints;
+        public int SalePriceBasisPoints;
+        public string[] SaleCategories;
     }
 }

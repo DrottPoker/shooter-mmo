@@ -184,6 +184,38 @@ public sealed class DevelopmentItemToolIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CurrencyCommandCreditsTheWalletWithADevelopmentLedgerRow()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "currency-tool@example.com",
+            "currency_tool_player",
+            "Currency Tool Hero");
+        var service = CreateService(context);
+
+        var response = await service.ExecuteAsync(
+            CurrencyCommand(player.Character.Id, 250),
+            CancellationToken.None);
+
+        Assert.True(response.Success, response.Message);
+        Assert.Equal(250, response.Data!.Characters.Single(candidate =>
+            candidate.CharacterId == player.Character.Id).Currency);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        var ledger = (await connection.QueryAsync<(string SourceKind, long Delta, long BalanceAfter)>(
+            """
+            select source_kind as "SourceKind", delta as "Delta", balance_after as "BalanceAfter"
+            from character_currency_ledger
+            where character_id = @CharacterId
+            order by id;
+            """,
+            new { CharacterId = player.Character.Id })).ToArray();
+        Assert.Equal([("development", 250L, 250L)], ledger);
+        var overflow = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(CurrencyCommand(player.Character.Id, CurrencyRules.MaximumBalance), CancellationToken.None));
+        Assert.Contains("maximum currency balance", overflow.Message, StringComparison.Ordinal);
+    }
+
+    [PostgresIntegrationFact]
     public async Task CorpseFixtureSeedsEmptyCharacterAndUsesDurableDeathPipeline()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -239,6 +271,18 @@ public sealed class DevelopmentItemToolIntegrationTests
             Level: level);
     }
 
+    private static DevelopmentItemToolCommand CurrencyCommand(Guid characterId, long amount)
+    {
+        return new DevelopmentItemToolCommand(
+            DevelopmentItemToolCommandKind.Currency,
+            characterId,
+            string.Empty,
+            0,
+            DevelopmentItemDestination.PermanentInventory,
+            string.Empty,
+            Amount: amount);
+    }
+
     private static DevelopmentItemToolService CreateService(
         PostgresIntegrationTestContext context)
     {
@@ -251,6 +295,7 @@ public sealed class DevelopmentItemToolIntegrationTests
                 context.CatalogSource),
             context.Services.GetRequiredService<DevelopmentItemPackageSource>(),
             context.CorpseService,
+            context.Services.GetRequiredService<ICharacterWallet>(),
             context.Services.GetRequiredService<ICharacterProgression>(),
             context.CatalogSource,
             new DevelopmentHostEnvironment());

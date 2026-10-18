@@ -35,6 +35,31 @@ public sealed class QuestOfferWorldActorCapabilityHandler(
     }
 }
 
+// Opening the vendor confirms it without durable state, so the client can show its offers.
+// Purchases and sales commit through GameService with the capability's vendor profile.
+public sealed class VendorWorldActorCapabilityHandler(
+    NpcItemLifecycleCapabilityExecutor executor) : IWorldActorCapabilityHandler
+{
+    public RealtimeWorldActorCapabilityKind Kind =>
+        RealtimeWorldActorCapabilityKind.Vendor;
+
+    public Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
+        WorldActorCapabilityOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (context.Intent.CapabilityAction == RealtimeCapabilityActionKind.None)
+        {
+            return Task.FromResult(new WorldActorCapabilityDispatchResult(
+                true,
+                string.Empty,
+                context.Capability.DisplayName + " is open while this interaction stays open."));
+        }
+
+        return executor.ExecuteAsync(context, cancellationToken);
+    }
+}
+
 public sealed class QuestTurnInWorldActorCapabilityHandler : IWorldActorCapabilityHandler
 {
     public RealtimeWorldActorCapabilityKind Kind =>
@@ -73,12 +98,12 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 "Synthetic development sessions cannot mutate durable item lifecycle state.");
         }
 
-        var operationKind = ToOperationKind(intent.LifecycleAction);
+        var operationKind = ToOperationKind(intent.CapabilityAction);
         if (operationKind is null)
         {
             return Rejected(
                 "npc_lifecycle_action_invalid",
-                "Select an insurance or quest lifecycle action before submitting this capability.");
+                "Select an insurance, quest, or vendor action before submitting this capability.");
         }
 
         var insurance = string.Equals(
@@ -89,12 +114,19 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
             context.Capability.Kind,
             WorldActorCapabilityKindIds.QuestOffer,
             StringComparison.Ordinal);
-        if ((!insurance || intent.LifecycleAction is not (
-                RealtimeNpcLifecycleActionKind.ApplyInsurance
-                or RealtimeNpcLifecycleActionKind.RemoveInsurance))
-            && (!quest || intent.LifecycleAction is not (
-                RealtimeNpcLifecycleActionKind.AcceptQuest
-                or RealtimeNpcLifecycleActionKind.AbandonQuest)))
+        var vendor = string.Equals(
+            context.Capability.Kind,
+            WorldActorCapabilityKindIds.Vendor,
+            StringComparison.Ordinal);
+        if ((!insurance || intent.CapabilityAction is not (
+                RealtimeCapabilityActionKind.ApplyInsurance
+                or RealtimeCapabilityActionKind.RemoveInsurance))
+            && (!quest || intent.CapabilityAction is not (
+                RealtimeCapabilityActionKind.AcceptQuest
+                or RealtimeCapabilityActionKind.AbandonQuest))
+            && (!vendor || intent.CapabilityAction is not (
+                RealtimeCapabilityActionKind.VendorPurchase
+                or RealtimeCapabilityActionKind.VendorSale)))
         {
             return Rejected(
                 "npc_lifecycle_action_invalid",
@@ -113,7 +145,8 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 false,
                 false,
                 insurance,
-                quest),
+                quest,
+                vendor ? context.Capability.ProfileId : null),
             operationKind,
             intent.ExpectedCharacterRevision,
             ItemInstanceId: intent.ItemInstanceId == Guid.Empty
@@ -128,8 +161,13 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
             DestinationSlotIndex: intent.DestinationSlotIndex < 0
                 ? null
                 : intent.DestinationSlotIndex,
+            Quantity: intent.Quantity > 0 ? intent.Quantity : null,
             InteractionSessionId: intent.InteractionSessionId,
-            CapabilityId: intent.CapabilityId);
+            CapabilityId: intent.CapabilityId,
+            DefinitionId: string.IsNullOrEmpty(intent.OfferDefinitionId)
+                ? null
+                : intent.OfferDefinitionId,
+            ExpectedPrice: vendor ? intent.ExpectedPrice : null);
         var result = await gameServiceClient.MutateSimulationItemsAsync(
             session.SimulationSessionId,
             request,
@@ -158,7 +196,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         return new WorldActorCapabilityDispatchResult(
             true,
             string.Empty,
-            SuccessMessage(intent.LifecycleAction),
+            SuccessMessage(intent.CapabilityAction),
             itemStateRevision);
     }
 
@@ -186,30 +224,34 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         return currentCarry.ItemStateRevision;
     }
 
-    private static string? ToOperationKind(RealtimeNpcLifecycleActionKind action)
+    private static string? ToOperationKind(RealtimeCapabilityActionKind action)
     {
         return action switch
         {
-            RealtimeNpcLifecycleActionKind.ApplyInsurance => "apply_item_policy",
-            RealtimeNpcLifecycleActionKind.RemoveInsurance => "remove_insurance_policy",
-            RealtimeNpcLifecycleActionKind.AcceptQuest => "grant",
-            RealtimeNpcLifecycleActionKind.AbandonQuest => "abandon_quest_items",
+            RealtimeCapabilityActionKind.ApplyInsurance => "apply_item_policy",
+            RealtimeCapabilityActionKind.RemoveInsurance => "remove_insurance_policy",
+            RealtimeCapabilityActionKind.AcceptQuest => "grant",
+            RealtimeCapabilityActionKind.AbandonQuest => "abandon_quest_items",
+            RealtimeCapabilityActionKind.VendorPurchase => "vendor_purchase",
+            RealtimeCapabilityActionKind.VendorSale => "vendor_sale",
             _ => null
         };
     }
 
-    private static string SuccessMessage(RealtimeNpcLifecycleActionKind action)
+    private static string SuccessMessage(RealtimeCapabilityActionKind action)
     {
         return action switch
         {
-            RealtimeNpcLifecycleActionKind.ApplyInsurance =>
+            RealtimeCapabilityActionKind.ApplyInsurance =>
                 "Insurance applied. The policy covers one protecting death.",
-            RealtimeNpcLifecycleActionKind.RemoveInsurance =>
+            RealtimeCapabilityActionKind.RemoveInsurance =>
                 "Insurance removed. Normal transfer rules are restored.",
-            RealtimeNpcLifecycleActionKind.AcceptQuest =>
+            RealtimeCapabilityActionKind.AcceptQuest =>
                 "Quest accepted. The required protected item grant is active.",
-            RealtimeNpcLifecycleActionKind.AbandonQuest =>
+            RealtimeCapabilityActionKind.AbandonQuest =>
                 "Quest abandoned. Only items from this quest grant were removed.",
+            RealtimeCapabilityActionKind.VendorPurchase => "Purchased.",
+            RealtimeCapabilityActionKind.VendorSale => "Sold.",
             _ => string.Empty
         };
     }

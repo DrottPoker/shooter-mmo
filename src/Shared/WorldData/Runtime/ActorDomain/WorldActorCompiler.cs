@@ -47,7 +47,8 @@ namespace Mmorpg.WorldData.Actors
             new HashSet<string>(StringComparer.Ordinal)
             {
                 WorldActorKindIds.Npc,
-                WorldActorKindIds.Mob
+                WorldActorKindIds.Mob,
+                WorldActorKindIds.ResourceNode
             };
 
         private static readonly HashSet<string> SupportedDispositions =
@@ -83,7 +84,8 @@ namespace Mmorpg.WorldData.Actors
                 WorldActorCapabilityKindIds.Insurance,
                 WorldActorCapabilityKindIds.Trainer,
                 WorldActorCapabilityKindIds.Bank,
-                WorldActorCapabilityKindIds.RecoveryStorage
+                WorldActorCapabilityKindIds.RecoveryStorage,
+                WorldActorCapabilityKindIds.Gathering
             };
 
         private static readonly HashSet<string> SupportedAggressions =
@@ -137,6 +139,10 @@ namespace Mmorpg.WorldData.Actors
                     .ToArray(),
                 RespawnProfiles = actorAuthoring.RespawnProfiles
                     .Select(CompileRespawnProfile)
+                    .OrderBy(value => value.Id, StringComparer.Ordinal)
+                    .ToArray(),
+                ResourceProfiles = actorAuthoring.ResourceProfiles
+                    .Select(CompileResourceProfile)
                     .OrderBy(value => value.Id, StringComparer.Ordinal)
                     .ToArray(),
                 CombatProfiles = actorAuthoring.CombatProfiles
@@ -254,6 +260,11 @@ namespace Mmorpg.WorldData.Actors
                 "respawnProfiles",
                 errors);
             ValidateCollectionLimit(
+                actors.ResourceProfiles,
+                MaximumDefinitionsPerCollection,
+                "resourceProfiles",
+                errors);
+            ValidateCollectionLimit(
                 actors.CombatProfiles,
                 MaximumDefinitionsPerCollection,
                 "combatProfiles",
@@ -294,6 +305,9 @@ namespace Mmorpg.WorldData.Actors
             var respawnProfileIds = ValidateRespawnProfiles(
                 actors.RespawnProfiles,
                 errors);
+            var resourceProfileIds = ValidateResourceProfiles(
+                actors.ResourceProfiles,
+                errors);
             var mobProfiles = new MobProfileIds(
                 activityProfileIds,
                 respawnProfileIds,
@@ -306,6 +320,7 @@ namespace Mmorpg.WorldData.Actors
                 factionIds,
                 presentationIds,
                 mobProfiles,
+                resourceProfileIds,
                 errors);
             var patrolPathIds = ValidatePatrolPaths(spawns.PatrolPaths, errors);
             ValidateSpawns(spawns, actorKinds, patrolPathIds, errors);
@@ -462,6 +477,150 @@ namespace Mmorpg.WorldData.Actors
             }
 
             return ids;
+        }
+
+        // Resource profiles may be empty: a World without resource nodes needs none.
+        private static HashSet<string> ValidateResourceProfiles(
+            WorldActorResourceProfileAuthoringEntry[] values,
+            ICollection<string> errors)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            if (values == null)
+            {
+                errors.Add("resourceProfiles is required. Use an empty array when no actor gathers.");
+                return ids;
+            }
+
+            for (var index = 0; index < values.Length; index++)
+            {
+                var value = values[index];
+                var path = "resourceProfiles[" + index + "]";
+                if (value == null)
+                {
+                    errors.Add(path + " must not be null.");
+                    continue;
+                }
+
+                AddIdentifier(ids, value.Id, path + ".id", errors);
+                ValidateResourceProfileValues(
+                    value.RequiredToolKind,
+                    value.YieldDefinitionId,
+                    value.YieldQuantity,
+                    value.CycleSeconds,
+                    value.Charges,
+                    value.RespawnSeconds,
+                    path,
+                    errors);
+            }
+
+            return ids;
+        }
+
+        private static void ValidateResourceProfileValues(
+            string requiredToolKind,
+            string yieldDefinitionId,
+            int yieldQuantity,
+            float cycleSeconds,
+            int charges,
+            float respawnSeconds,
+            string path,
+            ICollection<string> errors)
+        {
+            ValidateIdentifier(requiredToolKind, path + ".requiredToolKind", errors);
+            ValidateIdentifier(yieldDefinitionId, path + ".yieldDefinitionId", errors);
+            if (yieldQuantity < 1)
+            {
+                errors.Add(path + ".yieldQuantity must be at least 1.");
+            }
+
+            if (!IsFinite(cycleSeconds)
+                || cycleSeconds < WorldActorResourceRules.MinimumCycleSeconds
+                || cycleSeconds > WorldActorResourceRules.MaximumCycleSeconds)
+            {
+                errors.Add(path + ".cycleSeconds must be between "
+                    + WorldActorResourceRules.MinimumCycleSeconds
+                    + " and "
+                    + WorldActorResourceRules.MaximumCycleSeconds
+                    + ".");
+            }
+
+            if (charges < 1 || charges > WorldActorResourceRules.MaximumCharges)
+            {
+                errors.Add(path + ".charges must be between 1 and "
+                    + WorldActorResourceRules.MaximumCharges
+                    + ".");
+            }
+
+            if (!IsFinite(respawnSeconds)
+                || respawnSeconds < WorldActorResourceRules.MinimumRespawnSeconds
+                || respawnSeconds > WorldActorResourceRules.MaximumRespawnSeconds)
+            {
+                errors.Add(path + ".respawnSeconds must be between "
+                    + WorldActorResourceRules.MinimumRespawnSeconds
+                    + " and "
+                    + WorldActorResourceRules.MaximumRespawnSeconds
+                    + ".");
+            }
+        }
+
+        // Which capabilities each actor kind may expose, and which need a profile. NPCs
+        // compose service capabilities, a resource node has exactly one gathering capability,
+        // and a Mob has none yet.
+        private static void ValidateCapabilityKindRules(
+            string actorKind,
+            IReadOnlyList<KeyValuePair<string, string>> kindAndProfileIds,
+            ISet<string> resourceProfileIds,
+            string path,
+            ICollection<string> errors)
+        {
+            if (string.Equals(actorKind, WorldActorKindIds.Mob, StringComparison.Ordinal))
+            {
+                if (kindAndProfileIds.Count > 0)
+                {
+                    errors.Add(path + " must be empty for a Mob.");
+                }
+
+                return;
+            }
+
+            var isResourceNode = string.Equals(
+                actorKind,
+                WorldActorKindIds.ResourceNode,
+                StringComparison.Ordinal);
+            if (isResourceNode
+                && (kindAndProfileIds.Count != 1
+                    || !string.Equals(
+                        kindAndProfileIds[0].Key,
+                        WorldActorCapabilityKindIds.Gathering,
+                        StringComparison.Ordinal)))
+            {
+                errors.Add(path + " must contain exactly one gathering capability for a resource node.");
+            }
+
+            for (var index = 0; index < kindAndProfileIds.Count; index++)
+            {
+                var kind = kindAndProfileIds[index].Key;
+                var profileId = kindAndProfileIds[index].Value;
+                var profilePath = path + "[" + index + "].profileId";
+                if (string.Equals(kind, WorldActorCapabilityKindIds.Gathering, StringComparison.Ordinal))
+                {
+                    if (!isResourceNode)
+                    {
+                        errors.Add(path + "[" + index + "] gathering is only available on a resource node.");
+                    }
+
+                    ValidateReference(profileId, resourceProfileIds, profilePath, errors);
+                }
+                else if (string.Equals(kind, WorldActorCapabilityKindIds.Vendor, StringComparison.Ordinal))
+                {
+                    // The item catalog owns vendor profiles, so WorldActorItemReferences checks them.
+                    ValidateIdentifier(profileId, profilePath, errors);
+                }
+                else
+                {
+                    ValidateOptionalEmpty(profileId, profilePath, errors);
+                }
+            }
         }
 
         private static HashSet<string> ValidateCombatProfiles(
@@ -746,6 +905,7 @@ namespace Mmorpg.WorldData.Actors
             ISet<string> factionIds,
             IReadOnlyDictionary<string, string> presentationKinds,
             MobProfileIds mobProfiles,
+            ISet<string> resourceProfileIds,
             ICollection<string> errors)
         {
             var kindsById = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -782,25 +942,35 @@ namespace Mmorpg.WorldData.Actors
                 }
 
                 ValidateSupported(actor.DamagePolicy, SupportedDamagePolicies, path + ".damagePolicy", errors);
-                if (string.Equals(actor.Kind, WorldActorKindIds.Npc, StringComparison.Ordinal)
+                if (!string.Equals(actor.Kind, WorldActorKindIds.Mob, StringComparison.Ordinal)
                     && !string.Equals(
                         actor.DamagePolicy,
                         WorldActorDamagePolicyIds.Invulnerable,
                         StringComparison.Ordinal))
                 {
-                    errors.Add(path + " NPC definitions must be invulnerable.");
+                    errors.Add(path + " NPC and resource node definitions must be invulnerable.");
                 }
 
                 ValidateTags(actor.Tags, path + ".tags", errors);
                 ValidateBounds(actor.InteractionBounds, path + ".interactionBounds", errors);
                 ValidateCapabilities(actor.Capabilities, path + ".capabilities", errors);
+                if (actor.Capabilities != null)
+                {
+                    ValidateCapabilityKindRules(
+                        actor.Kind,
+                        actor.Capabilities
+                            .Where(capability => capability != null)
+                            .Select(capability => new KeyValuePair<string, string>(
+                                capability.Kind,
+                                capability.ProfileId))
+                            .ToArray(),
+                        resourceProfileIds,
+                        path + ".capabilities",
+                        errors);
+                }
+
                 if (string.Equals(actor.Kind, WorldActorKindIds.Mob, StringComparison.Ordinal))
                 {
-                    if (actor.Capabilities != null && actor.Capabilities.Length > 0)
-                    {
-                        errors.Add(path + ".capabilities must be empty for a Mob.");
-                    }
-
                     ValidateReference(
                         actor.ActivityProfileId,
                         mobProfiles.Activity,
@@ -869,7 +1039,7 @@ namespace Mmorpg.WorldData.Actors
                         errors);
                     if (actor.CorpseLifetimeSeconds != 0f)
                     {
-                        errors.Add(path + ".corpseLifetimeSeconds must be zero for an NPC.");
+                        errors.Add(path + ".corpseLifetimeSeconds must be zero for an NPC or resource node.");
                     }
                 }
 
@@ -1274,6 +1444,40 @@ namespace Mmorpg.WorldData.Actors
             return compiled;
         }
 
+        private static WorldActorResourceProfileDefinition CompileResourceProfile(
+            WorldActorResourceProfileAuthoringEntry value)
+        {
+            var compiled = new WorldActorResourceProfileDefinition
+            {
+                Id = value.Id,
+                RequiredToolKind = value.RequiredToolKind,
+                YieldDefinitionId = value.YieldDefinitionId,
+                YieldQuantity = value.YieldQuantity,
+                CycleSeconds = value.CycleSeconds,
+                Charges = value.Charges,
+                RespawnSeconds = value.RespawnSeconds
+            };
+            compiled.StructuralFingerprint = ResourceProfileFingerprint(compiled);
+            return compiled;
+        }
+
+        private static string ResourceProfileFingerprint(WorldActorResourceProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                value.RequiredToolKind,
+                value.YieldDefinitionId,
+                value.YieldQuantity.ToString(CultureInfo.InvariantCulture),
+                Float(value.CycleSeconds),
+                value.Charges.ToString(CultureInfo.InvariantCulture),
+                Float(value.RespawnSeconds));
+        }
+
+        private static string CapabilityFingerprint(WorldActorCapabilityDefinition value)
+        {
+            return Fingerprint(value.Id, value.Kind, value.DisplayName, value.ProfileId);
+        }
+
         private static WorldActorCombatProfileDefinition CompileCombatProfile(
             WorldActorCombatProfileAuthoringEntry value)
         {
@@ -1397,12 +1601,10 @@ namespace Mmorpg.WorldData.Actors
                     {
                         Id = capability.Id,
                         Kind = capability.Kind,
-                        DisplayName = capability.DisplayName
+                        DisplayName = capability.DisplayName,
+                        ProfileId = capability.ProfileId ?? string.Empty
                     };
-                    compiledCapability.StructuralFingerprint = Fingerprint(
-                        compiledCapability.Id,
-                        compiledCapability.Kind,
-                        compiledCapability.DisplayName);
+                    compiledCapability.StructuralFingerprint = CapabilityFingerprint(compiledCapability);
                     return compiledCapability;
                 })
                 .OrderBy(capability => capability.Id, StringComparer.Ordinal)
@@ -1723,6 +1925,7 @@ namespace Mmorpg.WorldData.Actors
                 Join(runtime.PresentationArchetypes.Select(value => value.StructuralFingerprint)),
                 Join(runtime.ActivityProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.RespawnProfiles.Select(value => value.StructuralFingerprint)),
+                Join(runtime.ResourceProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.CombatProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.BrainProfiles.Select(value => value.StructuralFingerprint)),
                 Join(runtime.LocomotionProfiles.Select(value => value.StructuralFingerprint)),
@@ -1924,7 +2127,7 @@ namespace Mmorpg.WorldData.Actors
         {
             if (!string.IsNullOrEmpty(value))
             {
-                errors.Add(path + " must be empty for an NPC.");
+                errors.Add(path + " must be empty.");
             }
         }
 

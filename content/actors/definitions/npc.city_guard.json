@@ -22,12 +22,14 @@
         {
             "id": "guard.dialogue",
             "kind": "dialogue",
-            "displayName": "Talk"
+            "displayName": "Talk",
+            "profileId": ""
         },
         {
             "id": "guard.trainer",
             "kind": "trainer",
-            "displayName": "Training"
+            "displayName": "Training",
+            "profileId": ""
         }
     ],
     "activityProfileId": "",

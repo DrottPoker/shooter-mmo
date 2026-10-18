@@ -25,6 +25,7 @@ namespace Mmorpg.Client.Ui
         private RectTransform content;
         private RectTransform promptRect;
         private Text prompt;
+        private RectTransform gatheringProgressFill;
         private Guid requestedInventorySessionId;
         private InventoryClientController inventoryController;
 
@@ -43,6 +44,7 @@ namespace Mmorpg.Client.Ui
             if (interactionController != null)
             {
                 interactionController.State.Changed += OnInteractionStateChanged;
+                interactionController.Gathering.Changed += Rebuild;
             }
 
             if (targetingController != null)
@@ -72,6 +74,18 @@ namespace Mmorpg.Client.Ui
             }
 
             FollowPointer();
+            UpdateGatheringProgress();
+        }
+
+        private void UpdateGatheringProgress()
+        {
+            if (gatheringProgressFill == null || interactionController == null)
+            {
+                return;
+            }
+
+            var progress = interactionController.Gathering.CycleProgress(Time.unscaledTime);
+            gatheringProgressFill.anchorMax = new Vector2(progress, 1f);
         }
 
         // Insurance and quest actions need the committed inventory. It is requested once
@@ -117,6 +131,7 @@ namespace Mmorpg.Client.Ui
             if (interactionController != null)
             {
                 interactionController.State.Changed -= OnInteractionStateChanged;
+                interactionController.Gathering.Changed -= Rebuild;
             }
 
             if (targetingController != null)
@@ -202,6 +217,8 @@ namespace Mmorpg.Client.Ui
                     : string.Empty;
             prompt.gameObject.SetActive(!string.IsNullOrWhiteSpace(prompt.text));
 
+            gatheringProgressFill = null;
+
             // Hidden children leave the fitted layout at once; destruction waits for frame end.
             for (var index = content.childCount - 1; index >= 0; index--)
             {
@@ -241,6 +258,12 @@ namespace Mmorpg.Client.Ui
                     if (capability.Kind == RealtimeWorldActorCapabilityKind.QuestOffer)
                     {
                         DrawQuestCapability(capability);
+                        continue;
+                    }
+
+                    if (capability.Kind == RealtimeWorldActorCapabilityKind.Gathering)
+                    {
+                        DrawGatheringCapability(active, capability);
                         continue;
                     }
 
@@ -322,8 +345,8 @@ namespace Mmorpg.Client.Ui
                     string.Equals(policy.Kind, ItemPolicyIds.Insured, StringComparison.Ordinal)
                     && string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal));
                 var action = insured
-                    ? RealtimeNpcLifecycleActionKind.RemoveInsurance
-                    : RealtimeNpcLifecycleActionKind.ApplyInsurance;
+                    ? RealtimeCapabilityActionKind.RemoveInsurance
+                    : RealtimeCapabilityActionKind.ApplyInsurance;
                 var label = (insured ? "Insured, remove: " : "Insure: ")
                     + state.Catalog.GetDisplayName(item.DefinitionId);
                 AddButton(
@@ -337,6 +360,99 @@ namespace Mmorpg.Client.Ui
                         item.Revision,
                         Guid.Empty,
                         -1));
+            }
+        }
+
+        // Gathering runs while the interaction stays open. The worker owns every cycle; the
+        // bar only shows the time until the next yield.
+        private void DrawGatheringCapability(
+            RealtimeWorldInteractionOpened active,
+            RealtimeWorldActorCapability capability)
+        {
+            var gathering = interactionController.Gathering;
+            var here = gathering.InteractionSessionId == active.InteractionSessionId;
+            if (here && gathering.Status == GatheringClientStatus.Gathering)
+            {
+                var yielded = gathering.YieldedQuantity > 0
+                    ? "  Gathered " + gathering.YieldedQuantity + " "
+                        + DisplayName(gathering.YieldDefinitionId) + "."
+                    : string.Empty;
+                AddText(capability.DisplayName + "..." + yielded, 16, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+                AddProgressBar();
+                AddText(
+                    "Moving or closing the interaction stops gathering.",
+                    13,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextMuted);
+                return;
+            }
+
+            if (here && gathering.Status == GatheringClientStatus.Stopped)
+            {
+                AddText(
+                    StoppedText(gathering),
+                    14,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextSecondary);
+            }
+
+            AddButton(
+                capability.DisplayName + (capability.IsAvailable ? string.Empty : " (Unavailable)"),
+                capability.IsAvailable && interactionController.State.PendingOperationId == Guid.Empty,
+                () => SubmitStartGathering(capability.Id));
+        }
+
+        private string StoppedText(GatheringClientState gathering)
+        {
+            var gathered = gathering.YieldedQuantity > 0
+                ? "Gathered " + gathering.YieldedQuantity + " "
+                    + DisplayName(gathering.YieldDefinitionId) + ". "
+                : string.Empty;
+            return gathered + gathering.StopMessage;
+        }
+
+        private string DisplayName(string definitionId)
+        {
+            var catalog = inventoryController?.State.Catalog;
+            return catalog != null ? catalog.GetDisplayName(definitionId) : definitionId;
+        }
+
+        private void AddProgressBar()
+        {
+            var track = TemporaryUiKit.CreateUiObject("GatheringProgress", content);
+            var trackImage = track.AddComponent<Image>();
+            trackImage.color = TemporaryUiKit.InputColor;
+            trackImage.raycastTarget = false;
+            TemporaryUiKit.AddOutline(trackImage, TemporaryUiKit.PanelBorderColor);
+            track.AddComponent<LayoutElement>().preferredHeight = 12f;
+            var fill = TemporaryUiKit.CreateUiObject("Fill", track.transform).AddComponent<Image>();
+            fill.color = TemporaryUiKit.AccentColor;
+            fill.raycastTarget = false;
+            gatheringProgressFill = fill.rectTransform;
+            TemporaryUiKit.Stretch(
+                gatheringProgressFill,
+                Vector2.zero,
+                new Vector2(0f, 1f),
+                Vector2.zero,
+                Vector2.zero);
+            UpdateGatheringProgress();
+        }
+
+        private void SubmitStartGathering(string capabilityId)
+        {
+            if (!WorldInteractionClientController.HasEquippedGatheringTool(inventoryController?.State))
+            {
+                interactionController.State.SetLocalError(
+                    "gathering_tool_required",
+                    "Equip a gathering tool, such as a pickaxe, to gather here.");
+                return;
+            }
+
+            if (!interactionController.TryStartGathering(capabilityId, out var error))
+            {
+                interactionController.State.SetLocalError(
+                    "world_interaction_client_rejected",
+                    error);
             }
         }
 
@@ -361,7 +477,7 @@ namespace Mmorpg.Client.Ui
                 state.CanMutate,
                 () => SubmitLifecycle(
                     capability.Id,
-                    RealtimeNpcLifecycleActionKind.AcceptQuest,
+                    RealtimeCapabilityActionKind.AcceptQuest,
                     state.KnownItemStateRevision,
                     Guid.Empty,
                     0,
@@ -372,7 +488,7 @@ namespace Mmorpg.Client.Ui
                 state.CanMutate,
                 () => SubmitLifecycle(
                     capability.Id,
-                    RealtimeNpcLifecycleActionKind.AbandonQuest,
+                    RealtimeCapabilityActionKind.AbandonQuest,
                     state.KnownItemStateRevision,
                     Guid.Empty,
                     0,
@@ -382,7 +498,7 @@ namespace Mmorpg.Client.Ui
 
         private void SubmitLifecycle(
             string capabilityId,
-            RealtimeNpcLifecycleActionKind action,
+            RealtimeCapabilityActionKind action,
             long expectedCharacterRevision,
             Guid itemInstanceId,
             long expectedItemRevision,

@@ -30,6 +30,13 @@ namespace Mmorpg.WorldData.Items
     }
 
     [Serializable]
+    public sealed class ItemCatalogJsonEconomy
+    {
+        public string currencyDisplayName;
+        public long startingBalance;
+    }
+
+    [Serializable]
     public sealed class ItemCatalogJsonProgression
     {
         public int maximumCharacterLevel;
@@ -102,7 +109,9 @@ namespace Mmorpg.WorldData.Items
         public string displayName;
         public string category;
         public string[] tags;
+        public string[] toolKinds;
         public long unitWeight;
+        public long value;
         public int maximumStackSize;
         public string[] equipmentSlots;
         public string[] blockedEquipmentSlots;
@@ -149,7 +158,9 @@ namespace Mmorpg.WorldData.Items
                 DisplayName = displayName,
                 Category = category,
                 Tags = tags ?? Array.Empty<string>(),
+                ToolKinds = toolKinds ?? Array.Empty<string>(),
                 UnitWeight = unitWeight,
+                Value = value,
                 MaximumStackSize = maximumStackSize,
                 EquipmentSlots = equipmentSlots ?? Array.Empty<string>(),
                 BlockedEquipmentSlots = blockedEquipmentSlots ?? Array.Empty<string>(),
@@ -206,8 +217,40 @@ namespace Mmorpg.WorldData.Items
         public int slotCapacity;
     }
 
-    // A complete catalog: catalog.json together with every definition, or a compiled
-    // runtime catalog without its revision and fingerprints.
+    [Serializable]
+    public sealed class ItemCatalogJsonVendorOffer
+    {
+        public string definitionId;
+    }
+
+    [Serializable]
+    public sealed class ItemCatalogJsonVendor
+    {
+        public string id;
+        public string displayName;
+        public ItemCatalogJsonVendorOffer[] offers;
+        public int purchasePriceBasisPoints;
+        public int salePriceBasisPoints;
+        public string[] saleCategories;
+
+        public VendorProfileAuthoringEntry ToAuthoringEntry()
+        {
+            return new VendorProfileAuthoringEntry
+            {
+                Id = id,
+                DisplayName = displayName,
+                Offers = (offers ?? Array.Empty<ItemCatalogJsonVendorOffer>())
+                    .Select(offer => new VendorOfferEntry { DefinitionId = offer.definitionId })
+                    .ToArray(),
+                PurchasePriceBasisPoints = purchasePriceBasisPoints,
+                SalePriceBasisPoints = salePriceBasisPoints,
+                SaleCategories = saleCategories ?? Array.Empty<string>()
+            };
+        }
+    }
+
+    // A complete catalog: catalog.json together with every definition and vendor, or a
+    // compiled runtime catalog without its revision and fingerprints.
     [Serializable]
     public sealed class ItemCatalogJsonDocument
     {
@@ -215,14 +258,17 @@ namespace Mmorpg.WorldData.Items
         public string catalogId;
         public string baseSecureContainerTierId;
         public ItemCatalogJsonCharacter character;
+        public ItemCatalogJsonEconomy economy;
         public ItemCatalogJsonProgression progression;
         public ItemCatalogJsonIdentity[] categories;
         public ItemCatalogJsonIdentity[] tags;
+        public ItemCatalogJsonIdentity[] toolKinds;
         public ItemCatalogJsonEquipmentSlot[] equipmentSlots;
         public ItemCatalogJsonWeaponFamily[] weaponFamilies;
         public ItemCatalogJsonIdentity[] ammunitionFamilies;
         public ItemCatalogJsonDefinition[] definitions;
         public ItemCatalogJsonSecureContainerTier[] secureContainerTiers;
+        public ItemCatalogJsonVendor[] vendors;
         public ItemCatalogJsonRetired retired;
 
         public ItemCatalogAuthoringDocument ToAuthoringDocument()
@@ -240,6 +286,13 @@ namespace Mmorpg.WorldData.Items
                         InventorySlotCount = character.inventorySlotCount,
                         BankSlotCount = character.bankSlotCount
                     },
+                Economy = economy == null
+                    ? null
+                    : new ItemEconomySettingsEntry
+                    {
+                        CurrencyDisplayName = economy.currencyDisplayName,
+                        StartingBalance = economy.startingBalance
+                    },
                 Progression = progression == null
                     ? null
                     : new ItemProgressionSettingsEntry
@@ -248,6 +301,7 @@ namespace Mmorpg.WorldData.Items
                     },
                 Categories = ConvertIdentities(categories),
                 Tags = ConvertIdentities(tags),
+                ToolKinds = ConvertIdentities(toolKinds),
                 EquipmentSlots = (equipmentSlots ?? Array.Empty<ItemCatalogJsonEquipmentSlot>())
                     .Select(slot => new ItemEquipmentSlotEntry
                     {
@@ -278,6 +332,9 @@ namespace Mmorpg.WorldData.Items
                         DisplayName = tier.displayName,
                         SlotCapacity = tier.slotCapacity
                     })
+                    .ToArray(),
+                Vendors = (vendors ?? Array.Empty<ItemCatalogJsonVendor>())
+                    .Select(vendor => vendor.ToAuthoringEntry())
                     .ToArray(),
                 Retired = retired == null
                     ? null

@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 16,
+    "version": 17,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -239,7 +239,7 @@
       "name": "WorldActorKind",
       "family": "WorldActors",
       "description": "The kind of a world actor.",
-      "values": [ { "name": "Npc", "value": 1 }, { "name": "Mob", "value": 2 } ]
+      "values": [ { "name": "Npc", "value": 1 }, { "name": "Mob", "value": 2 }, { "name": "ResourceNode", "value": 3 } ]
     },
     {
       "name": "WorldActorDisposition",
@@ -282,20 +282,30 @@
         { "name": "Insurance", "value": 6 },
         { "name": "Trainer", "value": 7 },
         { "name": "Bank", "value": 8 },
-        { "name": "RecoveryStorage", "value": 9 }
+        { "name": "RecoveryStorage", "value": 9 },
+        { "name": "Gathering", "value": 10 }
       ]
     },
     {
-      "name": "NpcLifecycleActionKind",
+      "name": "CapabilityActionKind",
       "family": "WorldActors",
-      "description": "An item lifecycle action that an NPC capability performs.",
+      "description": "The action a capability performs, beyond opening it.",
       "values": [
         { "name": "None", "value": 0 },
         { "name": "ApplyInsurance", "value": 1 },
         { "name": "RemoveInsurance", "value": 2 },
         { "name": "AcceptQuest", "value": 3 },
-        { "name": "AbandonQuest", "value": 4 }
+        { "name": "AbandonQuest", "value": 4 },
+        { "name": "VendorPurchase", "value": 5 },
+        { "name": "VendorSale", "value": 6 },
+        { "name": "StartGathering", "value": 7 }
       ]
+    },
+    {
+      "name": "GatheringStateKind",
+      "family": "WorldActors",
+      "description": "A change of a character's gathering at a resource node.",
+      "values": [ { "name": "Started", "value": 1 }, { "name": "Yielded", "value": 2 }, { "name": "Stopped", "value": 3 } ]
     }
   ],
   "structs": [
@@ -581,6 +591,14 @@
           "type": "string",
           "maxLength": "MaximumWorldActorCapabilityNameLength",
           "description": "The name the client shows."
+        },
+        {
+          "name": "ProfileId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The vendor or resource profile of the capability, or empty."
         },
         {
           "name": "IsAvailable",
@@ -1762,9 +1780,9 @@
             "description": "The capability revision the client saw."
           },
           {
-            "name": "LifecycleAction",
-            "type": "NpcLifecycleActionKind",
-            "description": "The item lifecycle action of the capability."
+            "name": "CapabilityAction",
+            "type": "CapabilityActionKind",
+            "description": "The action the capability performs."
           },
           {
             "name": "ExpectedCharacterRevision",
@@ -1787,6 +1805,24 @@
             "type": "i32",
             "absent": -1,
             "description": "The slot that receives a quest item, or -1 for any free slot."
+          },
+          {
+            "name": "OfferDefinitionId",
+            "type": "string",
+            "maxLength": "MaximumDefinitionIdLength",
+            "blank": "allow",
+            "nullAsEmpty": true,
+            "description": "The item definition a vendor purchase buys, or empty."
+          },
+          {
+            "name": "Quantity",
+            "type": "i32",
+            "description": "The quantity a vendor purchase or sale moves, or 0."
+          },
+          {
+            "name": "ExpectedPrice",
+            "type": "i64",
+            "description": "The total price the client showed for a vendor purchase or sale, or 0."
           }
         ],
         "cases": [
@@ -1807,12 +1843,15 @@
               { "field": "CapabilityId" },
               { "field": "CapabilityKind" },
               { "field": "ExpectedCapabilityRevision", "minimum": 1 },
-              { "field": "LifecycleAction", "parameterDefault": "None" },
+              { "field": "CapabilityAction", "parameterDefault": "None" },
               { "field": "ExpectedCharacterRevision", "parameterDefault": 0 },
               { "field": "ItemInstanceId", "parameterDefault": "default" },
               { "field": "ExpectedItemRevision", "parameterDefault": 0 },
               { "field": "DestinationContainerId", "parameterDefault": "default" },
-              { "field": "DestinationSlotIndex", "parameterDefault": -1 }
+              { "field": "DestinationSlotIndex", "parameterDefault": -1 },
+              { "field": "OfferDefinitionId", "parameterDefault": "default" },
+              { "field": "Quantity", "parameterDefault": 0 },
+              { "field": "ExpectedPrice", "parameterDefault": 0 }
             ]
           }
         ]
@@ -1997,6 +2036,91 @@
           "description": "The owner's progress along its movement path."
         }
       ]
+    },
+    {
+      "name": "GatheringState",
+      "id": 28,
+      "family": "WorldActors",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A change of the character's gathering at a resource node.",
+      "parameter": "state",
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "InteractionSessionId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The interaction with the resource node."
+        },
+        {
+          "name": "TargetEntityId",
+          "type": "u64",
+          "minimum": 1,
+          "description": "The network entity of the resource node."
+        },
+        {
+          "name": "TargetRuntimeId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The runtime identity of the resource node."
+        },
+        { "name": "Kind", "type": "GatheringStateKind", "description": "What changed." }
+      ],
+      "variants": {
+        "discriminator": "Kind",
+        "fields": [
+          {
+            "name": "CycleMilliseconds",
+            "type": "i32",
+            "description": "The time until the next yield."
+          },
+          {
+            "name": "YieldDefinitionId",
+            "type": "string",
+            "maxLength": "MaximumDefinitionIdLength",
+            "description": "The item definition the cycle yielded."
+          },
+          { "name": "YieldQuantity", "type": "i32", "description": "The quantity the cycle yielded." },
+          {
+            "name": "ItemStateRevision",
+            "type": "i64",
+            "description": "The character item-state revision after the yield."
+          },
+          {
+            "name": "Code",
+            "type": "string",
+            "maxLength": "MaximumErrorCodeLength",
+            "description": "A stable code for why gathering stopped."
+          },
+          {
+            "name": "Message",
+            "type": "string",
+            "maxLength": "MaximumErrorMessageLength",
+            "description": "A human-readable explanation."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "Started", "factory": "CreateStarted" } ],
+            "fields": [ { "field": "CycleMilliseconds", "minimum": 1, "maximum": 600000 } ]
+          },
+          {
+            "kinds": [ { "kind": "Yielded", "factory": "CreateYielded" } ],
+            "fields": [
+              { "field": "CycleMilliseconds", "minimum": 1, "maximum": 600000 },
+              { "field": "YieldDefinitionId" },
+              { "field": "YieldQuantity", "minimum": 1 },
+              { "field": "ItemStateRevision", "minimum": 0 }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "Stopped", "factory": "CreateStopped" } ],
+            "fields": [ { "field": "Code" }, { "field": "Message" } ]
+          }
+        ]
+      }
     }
   ]
 }

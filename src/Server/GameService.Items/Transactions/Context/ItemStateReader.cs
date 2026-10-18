@@ -165,6 +165,7 @@ internal sealed class ItemStateReader(
                 definition.display_name as "DisplayName",
                 definition.category_id as "Category",
                 definition.unit_weight as "UnitWeight",
+                definition.value as "Value",
                 definition.maximum_stack_size as "MaximumStackSize",
                 definition.player_destroyable as "PlayerDestroyable",
                 definition.required_character_level as "RequiredCharacterLevel",
@@ -198,6 +199,11 @@ internal sealed class ItemStateReader(
             from item_definition_default_policies
             where definition_id = @DefinitionId
             order by policy_kind;
+
+            select tool_kind_id
+            from item_definition_tool_kinds
+            where definition_id = @DefinitionId
+            order by tool_kind_id;
             """,
             new { DefinitionId = definitionId },
             Transaction,
@@ -213,13 +219,16 @@ internal sealed class ItemStateReader(
         var equipmentSlots = (await grid.ReadAsync<string>()).ToArray();
         var blockedEquipmentSlots = (await grid.ReadAsync<string>()).ToArray();
         var defaultPolicies = (await grid.ReadAsync<string>()).ToArray();
+        var toolKinds = (await grid.ReadAsync<string>()).ToArray();
         var definition = new ItemDefinition
         {
             Id = row.Id,
             DisplayName = row.DisplayName,
             Category = row.Category,
             Tags = tags,
+            ToolKinds = toolKinds,
             UnitWeight = row.UnitWeight,
+            Value = row.Value,
             MaximumStackSize = row.MaximumStackSize,
             EquipmentSlots = equipmentSlots,
             BlockedEquipmentSlots = blockedEquipmentSlots,
@@ -236,6 +245,61 @@ internal sealed class ItemStateReader(
         return new ResolvedItemDefinition(
             definition,
             row.BagCarryCapacityBonus is not null);
+    }
+
+    // Loads an active vendor profile of the current catalog with its offers in display order.
+    public async Task<VendorProfileDefinition> LoadVendorAsync(
+        string vendorId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(vendorId))
+        {
+            Reject(ItemTransactionErrorCodes.VendorUnavailable, "A vendor profile id is required.");
+        }
+
+        using var grid = await Connection.QueryMultipleAsync(new CommandDefinition(
+            """
+            select
+                id as "Id",
+                display_name as "DisplayName",
+                purchase_price_basis_points as "PurchasePriceBasisPoints",
+                sale_price_basis_points as "SalePriceBasisPoints"
+            from vendor_profiles
+            where id = @VendorId
+              and is_active;
+
+            select definition_id
+            from vendor_offers
+            where vendor_id = @VendorId
+            order by offer_index;
+
+            select category_id
+            from vendor_sale_categories
+            where vendor_id = @VendorId
+            order by category_id;
+            """,
+            new { VendorId = vendorId },
+            Transaction,
+            cancellationToken: cancellationToken));
+        var vendor = await grid.ReadSingleOrDefaultAsync<VendorRow>();
+        if (vendor is null)
+        {
+            Reject(ItemTransactionErrorCodes.VendorUnavailable, "The vendor is not available.");
+        }
+
+        var offers = (await grid.ReadAsync<string>())
+            .Select(definitionId => new VendorOfferEntry { DefinitionId = definitionId })
+            .ToArray();
+        var saleCategories = (await grid.ReadAsync<string>()).ToArray();
+        return new VendorProfileDefinition
+        {
+            Id = vendor.Id,
+            DisplayName = vendor.DisplayName,
+            Offers = offers,
+            PurchasePriceBasisPoints = vendor.PurchasePriceBasisPoints,
+            SalePriceBasisPoints = vendor.SalePriceBasisPoints,
+            SaleCategories = saleCategories
+        };
     }
 
     public Task<bool> BagHasContentsAsync(
@@ -319,6 +383,8 @@ internal sealed class ItemStateReader(
 
         public long UnitWeight { get; set; }
 
+        public long Value { get; set; }
+
         public int MaximumStackSize { get; set; }
 
         public bool PlayerDestroyable { get; set; }
@@ -330,5 +396,16 @@ internal sealed class ItemStateReader(
         public bool SecureContainerEligible { get; set; }
 
         public long? BagCarryCapacityBonus { get; set; }
+    }
+
+    private sealed class VendorRow
+    {
+        public string Id { get; set; } = string.Empty;
+
+        public string DisplayName { get; set; } = string.Empty;
+
+        public int PurchasePriceBasisPoints { get; set; }
+
+        public int SalePriceBasisPoints { get; set; }
     }
 }
