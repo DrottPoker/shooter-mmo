@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
@@ -6,7 +7,8 @@ using static Mmorpg.GameService.Items.ItemTransactionRejection;
 namespace Mmorpg.GameService.Items.Transactions;
 
 // Slot and equipment placement rules: which container slot or equipment slot accepts
-// an item, including Secure Container eligibility, Bag nesting, and Recovery Storage.
+// an item, including Secure Container eligibility, Bag nesting, Recovery Storage, and the
+// level requirement of equipment.
 internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 {
     private NpgsqlConnection Connection => session.Connection;
@@ -227,6 +229,8 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
                 "The requested equipment slot is occupied.");
         }
 
+        await EnsureCharacterLevelAsync(characterId, definition, cancellationToken);
+
         var blockedSlotsByOccupiedSlot = (await Connection.QueryAsync<EquippedBlockedSlotRow>(
                 new CommandDefinition(
                     """
@@ -259,6 +263,32 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
             Reject(
                 ItemTransactionErrorCodes.EquipmentSlotBlocked,
                 $"The item in equipment slot '{blockingSlotId}' blocks this equipment change.");
+        }
+    }
+
+    // Every path that puts an item into a character's equipment slot checks the level
+    // requirement, including Bag aggregate swaps. Level 1 is every character's minimum.
+    public async Task EnsureCharacterLevelAsync(
+        Guid characterId,
+        ResolvedItemDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        var requiredLevel = definition.RuntimeDefinition.RequiredCharacterLevel;
+        if (requiredLevel <= 1)
+        {
+            return;
+        }
+
+        var level = await Connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+            $"select {CharactersSql.LevelOf("@CharacterId")};",
+            new { CharacterId = characterId },
+            Transaction,
+            cancellationToken: cancellationToken));
+        if (level is null || level.Value < requiredLevel)
+        {
+            Reject(
+                ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet,
+                $"The item requires character level {requiredLevel}.");
         }
     }
 

@@ -1,15 +1,19 @@
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Characters.Persistence;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 
 namespace Mmorpg.GameService.Characters;
 
-// Characters: characters, ownership, and character currency.
+// Characters: characters, ownership, character currency, and character level.
 public sealed class CharactersModule(CharactersModuleOptions options) : IGameServiceModule
 {
     public string Name => "Characters";
 
-    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+    public IReadOnlyList<DatabaseMigration> Migrations { get; } =
+    [
+        new(CharacterLevelMigration.Id, CharacterLevelMigration.Sql)
+    ];
 
     public IReadOnlyList<string> MeterNames { get; } = [];
 
@@ -20,6 +24,7 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
         services.AddSingleton(options);
         services.AddSingleton<ICharacterLocks, CharacterLocks>();
         services.AddSingleton<ICharacterWallet, CharacterWallet>();
+        services.AddSingleton<ICharacterProgression, CharacterProgression>();
         services.AddScoped<CharacterService>();
     }
 

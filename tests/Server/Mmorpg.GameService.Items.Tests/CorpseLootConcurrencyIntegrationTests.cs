@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Tests.ItemTransactions;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
@@ -329,6 +330,52 @@ public sealed class CorpseLootConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_instances where id = any(@BagIds);",
                 new { BagIds = new[] { corpseBag, firstBag, secondBag } }));
+    }
+
+    // The looter equips the corpse's Bag, so the swap checks the looter's level against it.
+    [PostgresIntegrationFact]
+    public async Task CorpseBagSwapRequiresTheLooterLevelOfTheCorpseBag()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var source = await context.RegisterPlayerAsync(
+            "level-swap-source@example.com",
+            "level_swap_source",
+            "Level Swap Source");
+        var looter = await context.RegisterPlayerAsync(
+            "level-swap-looter@example.com",
+            "level_swap_looter",
+            "Level Swap Looter");
+        var corpseBag = await EquipNewBagAsync(context, source);
+        var death = await CreateCorpseAsync(context, source);
+        var looterBag = await EquipNewBagAsync(context, looter);
+        await using (var connection = await context.DataSource.OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                "update item_definitions set required_character_level = 4 where id = 'fixture.pack';");
+        }
+
+        var rejected = await SwapBagAsync(
+            context,
+            looter.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, corpseBag),
+            await LoadItemAsync(context, looterBag));
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet, rejected.Error!.Code);
+
+        await using (var connection = await context.DataSource.OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                "update characters set level = 4 where id = @CharacterId;",
+                new { CharacterId = looter.Character.Id });
+        }
+
+        ItemScenarioWorld.AssertCommitted(await SwapBagAsync(
+            context,
+            looter.Character.Id,
+            death.Corpse.CorpseId,
+            await LoadItemAsync(context, corpseBag),
+            await LoadItemAsync(context, looterBag)));
     }
 
     [PostgresIntegrationFact]

@@ -15,6 +15,7 @@ internal static class ItemsSchemaMigrations
             ReleaseRetryableOperationClaimsMigration.Id,
             ReleaseRetryableOperationClaimsMigration.Sql),
         new(EquippedItemLookupIndexMigration.Id, EquippedItemLookupIndexMigration.Sql),
-        new(ItemCatalogAlignmentMigration.Id, ItemCatalogAlignmentMigration.Sql)
+        new(ItemCatalogAlignmentMigration.Id, ItemCatalogAlignmentMigration.Sql),
+        new(ItemLevelRequirementMigration.Id, ItemLevelRequirementMigration.Sql)
     ];
 }

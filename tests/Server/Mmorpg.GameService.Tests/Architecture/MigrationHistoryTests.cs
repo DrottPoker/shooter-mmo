@@ -37,7 +37,9 @@ public sealed class MigrationHistoryTests
         "202607191200_worker_selected_world_binding 20f65dda3a97d4db94ed127fd14c1f80ee72319d93783caedbd7b5a6f5b0687c",
         "202610141800_release_retryable_operation_claims 0ecee7b2a4475cac259fc125da2f72abcdb12520f9f4feb97aad9f78ba49645d",
         "202610151000_equipped_item_lookup_index ffeb417381fc8724882fac85037dc70206a5adff3432cf9a14a6674362e70ee1",
-        "202610171200_item_catalog_alignment ada94ee92d8df429ac434a2c06a306ec37cc1243db15061d8d0721ec4f02d633"
+        "202610171200_item_catalog_alignment ada94ee92d8df429ac434a2c06a306ec37cc1243db15061d8d0721ec4f02d633",
+        "202610181200_character_level e903273fcb99ff7378667d0b6d17894830507f289f8e97c50857c13f6b2342f4",
+        "202610181210_item_level_requirement 97bf5a84be3e7ff03e447f64adb3de7ae4749c22d6b7831921ece2504efb2568"
     ];
 
     [Fact]
@@ -105,13 +107,13 @@ public sealed class MigrationHistoryTests
     public void SchemaAcceptsMigrationsAfterTheShippedHistory()
     {
         var newer = new TestModule(
-            [new DatabaseMigration("202610180000_newer_than_history", "select 1;")]);
+            [new DatabaseMigration("209901010000_newer_than_history", "select 1;")]);
 
         var schema = GameServiceSchema.Create(
             LegacyBaselineMigrations.All,
             [.. ProductionModules(), newer]);
 
-        Assert.Equal("202610180000_newer_than_history", schema.Migrations[^1].Id);
+        Assert.Equal("209901010000_newer_than_history", schema.Migrations[^1].Id);
     }
 
     private static IEnumerable<(string Id, string Sql)> Migrations()

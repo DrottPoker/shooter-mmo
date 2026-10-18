@@ -1,6 +1,8 @@
+using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Testing;
@@ -156,6 +158,32 @@ public sealed class DevelopmentItemToolIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task LevelCommandSetsTheLevelWithinTheCatalogCap()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "level-tool@example.com",
+            "level_tool_player",
+            "Level Tool Hero");
+        var service = CreateService(context);
+
+        var response = await service.ExecuteAsync(
+            LevelCommand(player.Character.Id, 7),
+            CancellationToken.None);
+
+        Assert.True(response.Success, response.Message);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        Assert.Equal(
+            7,
+            await connection.ExecuteScalarAsync<int>(
+                "select level from characters where id = @CharacterId;",
+                new { CharacterId = player.Character.Id }));
+        var aboveCap = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(LevelCommand(player.Character.Id, 201), CancellationToken.None));
+        Assert.Contains("maximum level 200", aboveCap.Message, StringComparison.Ordinal);
+    }
+
+    [PostgresIntegrationFact]
     public async Task CorpseFixtureSeedsEmptyCharacterAndUsesDurableDeathPipeline()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -199,6 +227,18 @@ public sealed class DevelopmentItemToolIntegrationTests
             corpse.Sections.Select(section => section.SectionKind).Order().ToArray());
     }
 
+    private static DevelopmentItemToolCommand LevelCommand(Guid characterId, int level)
+    {
+        return new DevelopmentItemToolCommand(
+            DevelopmentItemToolCommandKind.Level,
+            characterId,
+            string.Empty,
+            0,
+            DevelopmentItemDestination.PermanentInventory,
+            string.Empty,
+            Level: level);
+    }
+
     private static DevelopmentItemToolService CreateService(
         PostgresIntegrationTestContext context)
     {
@@ -211,6 +251,8 @@ public sealed class DevelopmentItemToolIntegrationTests
                 context.CatalogSource),
             context.Services.GetRequiredService<DevelopmentItemPackageSource>(),
             context.CorpseService,
+            context.Services.GetRequiredService<ICharacterProgression>(),
+            context.CatalogSource,
             new DevelopmentHostEnvironment());
     }
 

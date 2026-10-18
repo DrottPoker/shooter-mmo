@@ -54,6 +54,14 @@ internal sealed class BagAggregateCommandHandler
             command.ExpectedSecondBagContentsRevision);
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, firstBag, cancellationToken);
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, secondBag, cancellationToken);
+        await context.Placement.EnsureCharacterLevelAsync(
+            command.SecondCharacterId,
+            await context.State.LoadDefinitionAsync(firstBag.DefinitionId, cancellationToken),
+            cancellationToken);
+        await context.Placement.EnsureCharacterLevelAsync(
+            command.FirstCharacterId,
+            await context.State.LoadDefinitionAsync(secondBag.DefinitionId, cancellationToken),
+            cancellationToken);
 
         var beforeFirst = await context.Journal.CaptureItemStateJsonAsync(
             firstBag.ItemInstanceId,

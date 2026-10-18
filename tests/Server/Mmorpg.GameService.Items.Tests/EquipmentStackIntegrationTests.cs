@@ -1,12 +1,16 @@
 using Dapper;
+using Microsoft.Extensions.DependencyInjection;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Tests.ItemTransactions;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
 namespace Mmorpg.GameService.Items.Tests;
 
-// Equipment slots that hold a stack, such as the ammunition slot, and slots that an equipped
-// item blocks. The fixture ammunition slot holds 50 arrows while an arrow stack holds 60.
+// Equipment slots that hold a stack, such as the ammunition slot, slots that an equipped item
+// blocks, and level requirements. The fixture ammunition slot holds 50 arrows while an arrow
+// stack holds 60, and the fixture helm requires level 3.
 public sealed class EquipmentStackIntegrationTests
 {
     [PostgresIntegrationFact]
@@ -103,6 +107,35 @@ public sealed class EquipmentStackIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task EquipmentAboveTheCharacterLevelIsRejectedUntilTheLevelIsReached()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("level_player");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var helm = await world.GrantAsync(
+            characterId,
+            "fixture.helm",
+            1,
+            state.PermanentInventoryContainerId,
+            0);
+
+        var rejected = await EquipAsync(world, characterId, helm, "head");
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet, rejected.Error!.Code);
+        Assert.Equal(0, await CountEquippedAsync(world, characterId));
+
+        await SetLevelAsync(context, characterId, 2);
+        var stillRejected = await EquipAsync(world, characterId, helm, "head");
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet, stillRejected.Error!.Code);
+
+        await SetLevelAsync(context, characterId, 3);
+        ItemScenarioWorld.AssertCommitted(await EquipAsync(world, characterId, helm, "head"));
+        Assert.Equal(1, await CountEquippedAsync(world, characterId));
+    }
+
+    [PostgresIntegrationFact]
     public async Task CorpseAmmunitionSlotKeepsTheEquipmentSlotLimit()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -149,6 +182,21 @@ public sealed class EquipmentStackIntegrationTests
             equipped));
         Assert.Equal(50, (await world.LoadItemAsync(equipped)).Quantity);
         Assert.Equal(5, (await world.LoadItemAsync(carried)).Quantity);
+    }
+
+    private static async Task SetLevelAsync(
+        PostgresIntegrationTestContext context,
+        Guid characterId,
+        int level)
+    {
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        Assert.True(await context.Services.GetRequiredService<ICharacterProgression>().SetLevelAsync(
+            new PostgresTransactionScope(connection, transaction),
+            characterId,
+            level,
+            CancellationToken.None));
+        await transaction.CommitAsync();
     }
 
     private static async Task<ItemTransactionResult> EquipAsync(

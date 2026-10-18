@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Development;
@@ -12,6 +13,8 @@ internal sealed class DevelopmentItemToolService(
     DevelopmentItemPackageApplier packageApplier,
     DevelopmentItemPackageSource packageSource,
     CorpseService corpseService,
+    ICharacterProgression characterProgression,
+    ItemCatalogSource catalogSource,
     IHostEnvironment environment)
 {
     private const string ToolName = "development item tool";
@@ -37,8 +40,52 @@ internal sealed class DevelopmentItemToolService(
                 command,
                 packages,
                 cancellationToken),
+            DevelopmentItemToolCommandKind.Level => await SetLevelAsync(
+                command,
+                packages,
+                cancellationToken),
             _ => throw new InvalidOperationException("Unsupported development item tool command.")
         };
+    }
+
+    // Experience does not exist yet, so this is how a level requirement is tested.
+    private async Task<DevelopmentItemToolResponse> SetLevelAsync(
+        DevelopmentItemToolCommand command,
+        DevelopmentItemPackageDocument packages,
+        CancellationToken cancellationToken)
+    {
+        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
+            catalogSource.RuntimeCatalogPath,
+            cancellationToken);
+        var maximumLevel = catalog.Progression.MaximumCharacterLevel;
+        if (command.Level > maximumLevel)
+        {
+            throw new InvalidOperationException(
+                $"The level must be between 1 and the catalog's maximum level {maximumLevel}.");
+        }
+
+        var target = await LoadTargetAsync(command.CharacterId, cancellationToken);
+        EnsureOffline(target);
+        await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
+        await using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
+        {
+            if (!await characterProgression.SetLevelAsync(
+                    new PostgresTransactionScope(connection, transaction),
+                    target.CharacterId,
+                    command.Level,
+                    cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"Character '{target.CharacterId}' does not exist.");
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return new DevelopmentItemToolResponse(
+            true,
+            $"Set the level of {target.CharacterName} to {command.Level}.",
+            await LoadDataAsync(packages, cancellationToken));
     }
 
     // An empty source character first receives the corpse seed package of the packages file.
@@ -273,7 +320,7 @@ internal sealed class DevelopmentItemToolService(
         if (target.IsOnline)
         {
             throw new InvalidOperationException(
-                $"Character '{target.CharacterName}' must be offline before items are granted.");
+                $"Character '{target.CharacterName}' must be offline before the development item tool changes it.");
         }
     }
 
