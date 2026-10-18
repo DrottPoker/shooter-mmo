@@ -688,9 +688,9 @@ after a failed or timed out build, the exception message shown first for a
 GameService startup failure, the end of the whole process tree on cancel or
 timeout, the presentation catalog cache, catalog mismatch, complete and
 focused snapshots, monotonic and divergent revisions, operation correlation,
-specialized targets,
-Secure Container eligibility, non-empty Bag rejection, split weight, and the
-140 percent hard cap, plus typed valid and invalid drag-and-drop behavior.
+specialized targets, Secure Container eligibility, non-empty Bag rejection,
+split weight, and the 140 percent hard cap, plus typed valid and invalid
+drag-and-drop behavior.
 PlayMode verifies the persistent controller and runtime uGUI root.
 
 ### Give A Character Development Items
