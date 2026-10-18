@@ -84,6 +84,8 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeWorldInteractionClosed> WorldInteractionClosed;
 
+        public event Action<RealtimeGatheringState> GatheringStateReceived;
+
         public RealtimeConnectionState State { get; private set; }
 
         public string ConnectedHost { get; private set; } = string.Empty;
@@ -750,6 +752,9 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.WorldInteractionClosed:
                         HandleWorldInteractionClosed(packet);
                         break;
+                    case RealtimeMessageType.GatheringState:
+                        HandleGatheringState(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -785,6 +790,7 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.WorldInteractionOpened:
                 case RealtimeMessageType.WorldInteractionResult:
                 case RealtimeMessageType.WorldInteractionClosed:
+                case RealtimeMessageType.GatheringState:
                     return true;
                 default:
                     return false;
@@ -1295,6 +1301,30 @@ namespace Mmorpg.Client.Networking
             }
 
             WorldInteractionClosed?.Invoke(closed);
+        }
+
+        private void HandleGatheringState(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_gathering_state",
+                    "Gathering state arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeGatheringState(
+                    packet,
+                    out var state,
+                    out var error))
+            {
+                FailProtocol(
+                    "invalid_gathering_state",
+                    error);
+                return;
+            }
+
+            GatheringStateReceived?.Invoke(state);
         }
 
         private void HandleEntitySpawn(byte[] packet)

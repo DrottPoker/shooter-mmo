@@ -126,6 +126,38 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void MapperCarriesTheBalanceAndTheRevisionCoversIt()
+        {
+            var characterId = Guid.NewGuid();
+            var response = CreateFullResponse(characterId, 3);
+            response.currency = 125;
+            Assert.That(
+                InventorySnapshotMapper.TryMap(response, catalog, out var snapshot, out var error),
+                Is.True,
+                error);
+            Assert.That(snapshot.Currency, Is.EqualTo(125));
+
+            var state = new InventoryClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(characterId);
+            Assert.That(state.ApplyFull(snapshot), Is.EqualTo(InventorySnapshotApplyResult.Applied));
+
+            // Every online balance change is an item transaction with a new revision.
+            response.currency = 126;
+            Assert.That(
+                InventorySnapshotMapper.TryMap(response, catalog, out var changed, out error),
+                Is.True,
+                error);
+            Assert.That(state.ApplyFull(changed), Is.EqualTo(InventorySnapshotApplyResult.Diverged));
+
+            response.currency = -1;
+            Assert.That(InventorySnapshotMapper.TryMap(response, catalog, out _, out error), Is.False);
+            Assert.That(error, Does.Contain("currency"));
+            response.currency = Mmorpg.WorldData.Items.VendorPricing.MaximumCurrencyBalance + 1;
+            Assert.That(InventorySnapshotMapper.TryMap(response, catalog, out _, out error), Is.False);
+        }
+
+        [Test]
         public void JsonRoundTripMapsEmptySlotsWithoutPhantomItems()
         {
             var response = CreateFullResponse(Guid.NewGuid(), 0);

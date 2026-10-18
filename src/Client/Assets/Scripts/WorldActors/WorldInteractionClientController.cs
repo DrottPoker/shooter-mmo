@@ -3,6 +3,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
@@ -134,14 +135,17 @@ namespace Mmorpg.Client.WorldActors
         private InventoryClientController inventoryController;
         private bool initialized;
         private Guid pendingCapabilityOperationId;
-        private RealtimeWorldActorCapabilityKind pendingCapabilityKind;
+        private RealtimeWorldActorCapability pendingCapability;
+        private RealtimeCapabilityActionKind pendingCapabilityAction;
 
-        // Raised when the server confirms an opened Character Bank or Recovery Storage
-        // capability, whose item access lasts while the interaction stays open.
-        public event Action<RealtimeWorldActorCapabilityKind> StorageCapabilityOpened;
+        // Raised when the server confirms an opened Character Bank, Recovery Storage, or
+        // Vendor capability. The inventory presents it while the interaction stays open.
+        public event Action<RealtimeWorldActorCapability> InventoryCapabilityOpened;
 
         public WorldInteractionClientState State { get; } =
             new WorldInteractionClientState();
+
+        public GatheringClientState Gathering { get; } = new GatheringClientState();
 
         public bool HasActiveLease
         {
@@ -181,9 +185,11 @@ namespace Mmorpg.Client.WorldActors
             simulationClient.WorldInteractionOpened += OnOpened;
             simulationClient.WorldInteractionCompleted += OnCompleted;
             simulationClient.WorldInteractionClosed += OnClosed;
+            simulationClient.GatheringStateReceived += OnGatheringState;
             simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             State.Clear();
+            Gathering.Clear();
         }
 
         private void OnDestroy()
@@ -323,15 +329,78 @@ namespace Mmorpg.Client.WorldActors
                 out error);
         }
 
+        // Buys a quantity of a vendor offer for the total the player was shown.
+        public bool TryPurchase(
+            string capabilityId,
+            string definitionId,
+            int quantity,
+            long expectedPrice,
+            long expectedCharacterRevision,
+            out string error)
+        {
+            return TryExecuteCapability(
+                capabilityId,
+                RealtimeCapabilityActionKind.VendorPurchase,
+                expectedCharacterRevision,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1,
+                out error,
+                definitionId,
+                quantity,
+                expectedPrice);
+        }
+
+        // Sells a quantity of a carried item for the total the player was shown.
+        public bool TrySell(
+            string capabilityId,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            int quantity,
+            long expectedPrice,
+            long expectedCharacterRevision,
+            out string error)
+        {
+            return TryExecuteCapability(
+                capabilityId,
+                RealtimeCapabilityActionKind.VendorSale,
+                expectedCharacterRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                Guid.Empty,
+                -1,
+                out error,
+                string.Empty,
+                quantity,
+                expectedPrice);
+        }
+
+        public bool TryStartGathering(string capabilityId, out string error)
+        {
+            return TryExecuteCapability(
+                capabilityId,
+                RealtimeCapabilityActionKind.StartGathering,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1,
+                out error);
+        }
+
         public bool TryExecuteCapability(
             string capabilityId,
-            RealtimeCapabilityActionKind lifecycleAction,
+            RealtimeCapabilityActionKind action,
             long expectedCharacterRevision,
             Guid itemInstanceId,
             long expectedItemRevision,
             Guid destinationContainerId,
             int destinationSlotIndex,
-            out string error)
+            out string error,
+            string offerDefinitionId = "",
+            int quantity = 0,
+            long expectedPrice = 0)
         {
             error = string.Empty;
             var active = State.ActiveInteraction;
@@ -370,12 +439,15 @@ namespace Mmorpg.Client.WorldActors
                 capabilityId,
                 capability.Kind,
                 capability.Revision,
-                lifecycleAction,
+                action,
                 expectedCharacterRevision,
                 itemInstanceId,
                 expectedItemRevision,
                 destinationContainerId,
-                destinationSlotIndex);
+                destinationSlotIndex,
+                offerDefinitionId ?? string.Empty,
+                quantity,
+                expectedPrice);
             if (!simulationClient.TrySendWorldInteraction(intent))
             {
                 error = "The capability action request could not be sent.";
@@ -384,8 +456,60 @@ namespace Mmorpg.Client.WorldActors
 
             State.Begin(operationId);
             pendingCapabilityOperationId = operationId;
-            pendingCapabilityKind = capability.Kind;
+            pendingCapability = capability;
+            pendingCapabilityAction = action;
             return true;
+        }
+
+        // Unknown until the inventory has loaded, so only a loaded inventory without a
+        // tool blocks the start.
+        public static bool HasEquippedGatheringTool(InventoryClientState inventory)
+        {
+            if (inventory?.FullSnapshot == null || inventory.Catalog == null)
+            {
+                return true;
+            }
+
+            foreach (var slot in inventory.FullSnapshot.Equipment)
+            {
+                if (slot.Item != null
+                    && string.Equals(slot.SlotId, ItemEquipmentSlotIds.Tool, StringComparison.Ordinal)
+                    && inventory.Catalog.TryGetDefinition(slot.Item.DefinitionId, out var definition)
+                    && definition.ToolKinds != null
+                    && definition.ToolKinds.Length > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // A resource node opens for gathering, so the click that walked the player there
+        // starts it. The tool check is advisory: GameService checks the equipped tool on
+        // every yield.
+        private void StartGatheringAtOpenedNode(RealtimeWorldInteractionOpened opened)
+        {
+            var capability = Array.Find(
+                opened.Capabilities,
+                value => value.Kind == RealtimeWorldActorCapabilityKind.Gathering);
+            if (capability == null || !capability.IsAvailable)
+            {
+                return;
+            }
+
+            if (!HasEquippedGatheringTool(inventoryController.State))
+            {
+                State.SetLocalError(
+                    "gathering_tool_required",
+                    "Equip a gathering tool, such as a pickaxe, to gather here.");
+                return;
+            }
+
+            if (!TryStartGathering(capability.Id, out var error))
+            {
+                State.SetLocalError("world_interaction_client_rejected", error);
+            }
         }
 
         private bool CanBeginWorldOperation(out string error)
@@ -426,6 +550,12 @@ namespace Mmorpg.Client.WorldActors
                 simulationClient.DisconnectForClientFailure(
                     "world_interaction_state_conflict",
                     error);
+                return;
+            }
+
+            if (actor.Kind == RealtimeWorldActorKind.ResourceNode)
+            {
+                StartGatheringAtOpenedNode(opened);
             }
         }
 
@@ -447,13 +577,17 @@ namespace Mmorpg.Client.WorldActors
 
             if (result.OperationId == pendingCapabilityOperationId)
             {
-                var kind = pendingCapabilityKind;
+                var capability = pendingCapability;
+                var action = pendingCapabilityAction;
                 pendingCapabilityOperationId = Guid.Empty;
+                pendingCapability = null;
                 if (result.Succeeded
-                    && kind is RealtimeWorldActorCapabilityKind.Bank
-                        or RealtimeWorldActorCapabilityKind.RecoveryStorage)
+                    && action == RealtimeCapabilityActionKind.None
+                    && capability.Kind is RealtimeWorldActorCapabilityKind.Bank
+                        or RealtimeWorldActorCapabilityKind.RecoveryStorage
+                        or RealtimeWorldActorCapabilityKind.Vendor)
                 {
-                    StorageCapabilityOpened?.Invoke(kind);
+                    InventoryCapabilityOpened?.Invoke(capability);
                 }
             }
         }
@@ -463,9 +597,28 @@ namespace Mmorpg.Client.WorldActors
             State.Close(closed);
         }
 
+        // A yield always refreshes the inventory to its committed revision. A state for
+        // another gathering session is ignored, because gathering never changes interaction
+        // or item state by itself.
+        private void OnGatheringState(RealtimeGatheringState gathering)
+        {
+            if (gathering.Kind == RealtimeGatheringStateKind.Yielded
+                && gathering.ItemStateRevision > 0)
+            {
+                inventoryController.EnsureFullState(gathering.ItemStateRevision);
+            }
+
+            var activeSessionId = State.ActiveInteraction?.InteractionSessionId ?? Guid.Empty;
+            if (!Gathering.TryApply(gathering, activeSessionId, Time.unscaledTime, out var error))
+            {
+                ClientLog.Warning(ClientLogCategory.Client, "Ignored gathering state: " + error);
+            }
+        }
+
         private void OnSessionEnded(RealtimeClientError error)
         {
             State.Clear();
+            Gathering.Clear();
         }
 
         private void Unsubscribe()
@@ -478,6 +631,7 @@ namespace Mmorpg.Client.WorldActors
             simulationClient.WorldInteractionOpened -= OnOpened;
             simulationClient.WorldInteractionCompleted -= OnCompleted;
             simulationClient.WorldInteractionClosed -= OnClosed;
+            simulationClient.GatheringStateReceived -= OnGatheringState;
             simulationClient.SessionEnded -= OnSessionEnded;
             initialized = false;
         }

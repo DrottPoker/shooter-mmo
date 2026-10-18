@@ -127,6 +127,7 @@ namespace Mmorpg.Client.Api
         public long carryCapacity;
         public int loadRatioBasisPoints;
         public int movementMultiplierBasisPoints;
+        public long currency;
     }
 
     [Serializable]

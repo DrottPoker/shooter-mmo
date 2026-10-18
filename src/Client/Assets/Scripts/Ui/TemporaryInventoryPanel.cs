@@ -122,7 +122,8 @@ namespace Mmorpg.Client.Ui
 
             if (worldInteractionController != null)
             {
-                worldInteractionController.StorageCapabilityOpened += OnStorageCapabilityOpened;
+                worldInteractionController.InventoryCapabilityOpened += OnInventoryCapabilityOpened;
+                worldInteractionController.State.Changed += OnWorldInteractionStateChanged;
             }
 
             FindPlayerPresentation();
@@ -181,7 +182,8 @@ namespace Mmorpg.Client.Ui
 
             if (worldInteractionController != null)
             {
-                worldInteractionController.StorageCapabilityOpened -= OnStorageCapabilityOpened;
+                worldInteractionController.InventoryCapabilityOpened -= OnInventoryCapabilityOpened;
+                worldInteractionController.State.Changed -= OnWorldInteractionStateChanged;
             }
         }
 
@@ -255,21 +257,6 @@ namespace Mmorpg.Client.Ui
             dragCoordinator?.Cancel();
             ClearSelection();
             Show(requestedMode);
-        }
-
-        // An NPC that offers the Character Bank or Recovery Storage opens it in the complete
-        // view. Its item operations are allowed while the interaction stays open.
-        private void OnStorageCapabilityOpened(RealtimeWorldActorCapabilityKind kind)
-        {
-            var next = kind == RealtimeWorldActorCapabilityKind.Bank
-                ? InventoryContextKind.Bank
-                : InventoryContextKind.RecoveryStorage;
-            if (!isOpen || mode != InventoryPanelMode.Complete)
-            {
-                Show(InventoryPanelMode.Complete);
-            }
-
-            SetContext(next);
         }
 
         private void OnCorpseStateChanged()
@@ -420,7 +407,10 @@ namespace Mmorpg.Client.Ui
             slotSize = ResolveSlotSize();
             if (state.FullSnapshot != null)
             {
-                characterHeaderDetail.text = "Revision "
+                characterHeaderDetail.text = VendorClientRules.FormatAmount(
+                        state.Catalog,
+                        state.FullSnapshot.Currency)
+                    + "    Revision "
                     + state.FullSnapshot.ItemStateRevision.ToString(CultureInfo.InvariantCulture);
                 equipmentHeaderDetail.text = state.FullSnapshot.Equipment.Count(slot => slot.Item != null)
                     + " / " + state.FullSnapshot.Equipment.Count + " equipped";
@@ -498,6 +488,7 @@ namespace Mmorpg.Client.Ui
             CreateTab(tabs, "Bank", InventoryContextKind.Bank);
             CreateTab(tabs, "Recovery", InventoryContextKind.RecoveryStorage);
             CreateTab(tabs, "Corpse", InventoryContextKind.Corpse);
+            CreateTab(tabs, "Vendor", InventoryContextKind.Vendor);
             TemporaryUiKit.CreateButton(
                 tabs,
                 "Refresh",
@@ -510,7 +501,7 @@ namespace Mmorpg.Client.Ui
             {
                 CreateMessage(
                     contextContent,
-                    "Choose Bank or Recovery above, or talk to an NPC who offers them. Click a corpse in the world to walk to it and open it.",
+                    "Choose Bank or Recovery above, or talk to an NPC who offers them or trades. Click a corpse in the world to walk to it and open it.",
                     TemporaryUiKit.TextSecondary);
                 CreateMessage(
                     contextContent,
@@ -535,6 +526,12 @@ namespace Mmorpg.Client.Ui
             if (context == InventoryContextKind.RecoveryStorage)
             {
                 DrawRecovery(contextContent, state);
+                return;
+            }
+
+            if (context == InventoryContextKind.Vendor)
+            {
+                DrawVendor(contextContent, state);
             }
         }
 
@@ -1805,19 +1802,24 @@ namespace Mmorpg.Client.Ui
             return string.Join("    ", parts);
         }
 
-        // Names the NPC whose open interaction offers the shown storage.
+        // Names the NPC whose open interaction offers the shown storage or trade.
         private string StorageAccessLabel()
         {
             var active = worldInteractionController?.State.ActiveInteraction;
             if (active == null
-                || context is not (InventoryContextKind.Bank or InventoryContextKind.RecoveryStorage))
+                || context is not (InventoryContextKind.Bank
+                    or InventoryContextKind.RecoveryStorage
+                    or InventoryContextKind.Vendor))
             {
                 return string.Empty;
             }
 
-            var kind = context == InventoryContextKind.Bank
-                ? RealtimeWorldActorCapabilityKind.Bank
-                : RealtimeWorldActorCapabilityKind.RecoveryStorage;
+            var kind = context switch
+            {
+                InventoryContextKind.Bank => RealtimeWorldActorCapabilityKind.Bank,
+                InventoryContextKind.Vendor => RealtimeWorldActorCapabilityKind.Vendor,
+                _ => RealtimeWorldActorCapabilityKind.RecoveryStorage
+            };
             return active.Capabilities.Any(capability => capability.Kind == kind)
                 ? "via " + active.DisplayName
                 : string.Empty;
@@ -1837,6 +1839,7 @@ namespace Mmorpg.Client.Ui
                 InventoryContextKind.RecoveryStorage => "Recovery Storage",
                 InventoryContextKind.Corpse => "Corpse",
                 InventoryContextKind.WorldLootPrepared => "World Loot (Prepared)",
+                InventoryContextKind.Vendor => "Vendor",
                 _ => "Storage"
             };
         }

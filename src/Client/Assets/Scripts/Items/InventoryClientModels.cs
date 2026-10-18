@@ -29,7 +29,8 @@ namespace Mmorpg.Client.Items
         Bank,
         RecoveryStorage,
         Corpse,
-        WorldLootPrepared
+        WorldLootPrepared,
+        Vendor
     }
 
     public enum InventoryItemLocationKind
@@ -350,7 +351,8 @@ namespace Mmorpg.Client.Items
             long carriedWeight,
             long carryCapacity,
             int loadRatioBasisPoints,
-            int movementMultiplierBasisPoints)
+            int movementMultiplierBasisPoints,
+            long currency = 0)
         {
             CharacterId = characterId;
             CatalogRevision = catalogRevision;
@@ -365,6 +367,7 @@ namespace Mmorpg.Client.Items
             CarryCapacity = carryCapacity;
             LoadRatioBasisPoints = loadRatioBasisPoints;
             MovementMultiplierBasisPoints = movementMultiplierBasisPoints;
+            Currency = currency;
         }
 
         public Guid CharacterId { get; }
@@ -393,6 +396,10 @@ namespace Mmorpg.Client.Items
 
         public int MovementMultiplierBasisPoints { get; }
 
+        // The character's balance. Every change while the character is online is an item
+        // transaction, so it belongs to the item-state revision.
+        public long Currency { get; }
+
         public string CoherenceSignature()
         {
             var builder = new StringBuilder();
@@ -403,6 +410,7 @@ namespace Mmorpg.Client.Items
                 .Append(CarryCapacity).Append('|')
                 .Append(LoadRatioBasisPoints).Append('|')
                 .Append(MovementMultiplierBasisPoints).Append('|')
+                .Append(Currency).Append('|')
                 .Append(PermanentInventory.CoherenceSignature()).Append('|')
                 .Append(Bank.CoherenceSignature()).Append('|')
                 .Append(SecureContainer.Contents.CoherenceSignature()).Append('|')

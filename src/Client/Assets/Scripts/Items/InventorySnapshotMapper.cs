@@ -57,6 +57,13 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
+            if (response.currency < 0
+                || response.currency > VendorPricing.MaximumCurrencyBalance)
+            {
+                error = "The inventory snapshot contains an invalid currency balance.";
+                return false;
+            }
+
             snapshot = new CharacterInventorySnapshot(
                 characterId,
                 response.catalogRevision,
@@ -70,7 +77,8 @@ namespace Mmorpg.Client.Items
                 response.carriedWeight,
                 response.carryCapacity,
                 response.loadRatioBasisPoints,
-                response.movementMultiplierBasisPoints);
+                response.movementMultiplierBasisPoints,
+                response.currency);
             return true;
         }
 

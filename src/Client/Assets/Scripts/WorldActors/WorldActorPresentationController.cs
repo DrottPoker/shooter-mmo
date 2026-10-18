@@ -248,9 +248,12 @@ namespace Mmorpg.Client.WorldActors
             else
             {
                 presentation = GameObject.CreatePrimitive(
-                    actor.Kind == RealtimeWorldActorKind.Npc
-                        ? PrimitiveType.Capsule
-                        : PrimitiveType.Cube);
+                    actor.Kind switch
+                    {
+                        RealtimeWorldActorKind.Npc => PrimitiveType.Capsule,
+                        RealtimeWorldActorKind.ResourceNode => PrimitiveType.Sphere,
+                        _ => PrimitiveType.Cube
+                    });
                 presentation.transform.SetParent(presentationRoot, false);
                 var existingCollider = presentation.GetComponent<Collider>();
                 if (existingCollider != null)
@@ -267,9 +270,12 @@ namespace Mmorpg.Client.WorldActors
             var view = presentation.GetComponent<WorldActorView>();
             if (view == null)
             {
-                view = actor.Kind == RealtimeWorldActorKind.Npc
-                    ? presentation.AddComponent<NpcView>()
-                    : presentation.AddComponent<MobView>();
+                view = actor.Kind switch
+                {
+                    RealtimeWorldActorKind.Npc => presentation.AddComponent<NpcView>(),
+                    RealtimeWorldActorKind.ResourceNode => presentation.AddComponent<ResourceNodeView>(),
+                    _ => presentation.AddComponent<MobView>()
+                };
             }
 
             view.Initialize(actor);
@@ -286,9 +292,12 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            var color = actor.Kind == RealtimeWorldActorKind.Npc
-                ? new Color(0.20f, 0.55f, 0.85f, 1f)
-                : new Color(0.70f, 0.22f, 0.18f, 1f);
+            var color = actor.Kind switch
+            {
+                RealtimeWorldActorKind.Npc => new Color(0.20f, 0.55f, 0.85f, 1f),
+                RealtimeWorldActorKind.ResourceNode => new Color(0.55f, 0.42f, 0.30f, 1f),
+                _ => new Color(0.70f, 0.22f, 0.18f, 1f)
+            };
             renderer.GetPropertyBlock(materialProperties);
             materialProperties.SetColor("_Color", color);
             materialProperties.SetColor("_BaseColor", color);
