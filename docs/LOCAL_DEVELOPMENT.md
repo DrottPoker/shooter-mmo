@@ -683,21 +683,31 @@ exact 140 percent package weight, the package check against the catalog before
 the first grant, hard-cap rejection, readback, Recovery revision, and replay
 refusal. Both Unity suites pass. EditMode coverage
 verifies the shared Editor menu root and machine-readable tool response, the
-presentation catalog cache, catalog mismatch, complete and focused snapshots,
-monotonic and divergent revisions, operation correlation, specialized targets,
-Secure Container eligibility, non-empty Bag rejection, split weight, and the
-140 percent hard cap, plus typed valid and invalid drag-and-drop behavior and
-the panel presentation: paper doll positions, carry meter levels, blocked
-equipment slots, catalog labels, and tooltips. PlayMode verifies the persistent
-controller and runtime uGUI root, and draws a committed snapshot in the complete
-view without a GameService.
+Editor tool's Release build before every command, its refusal to run anything
+after a failed or timed out build, the exception message shown first for a
+GameService startup failure, the end of the whole process tree on cancel or
+timeout, the presentation catalog cache, catalog mismatch, complete and
+focused snapshots, monotonic and divergent revisions, operation correlation,
+specialized targets, Secure Container eligibility, non-empty Bag rejection,
+split weight, and the 140 percent hard cap, plus typed valid and invalid
+drag-and-drop behavior and the panel presentation: paper doll positions, carry
+meter levels, blocked equipment slots, catalog labels, and tooltips. PlayMode
+verifies the persistent controller and runtime uGUI root, and draws a committed
+snapshot in the complete view without a GameService.
 
 ### Give A Character Development Items
 
 The Unity Editor window is the primary workflow. It never writes directly to
-PostgreSQL. It runs the Release build of GameService directly as
-`dotnet src/Server/GameService/bin/Release/<framework>/Mmorpg.GameService.dll`, so GameService runs
-inside that one process and a cancel or the 60-second timeout ends it. It starts
+PostgreSQL. Before every command it builds GameService incrementally with
+`dotnet build src/Server/GameService/Mmorpg.GameService.csproj --configuration Release`,
+so a merge or local edit can never leave it running older code against a newer
+database. The build runs without build servers and with one in-process MSBuild
+node, so nothing outlives it. When GameService is up to date the build takes
+about five seconds. The window then runs exactly the assembly that build
+reports, as `dotnet src/Server/GameService/bin/Release/<framework>/Mmorpg.GameService.dll`,
+so GameService runs inside that one process. Closing the window, a script
+reload, the five-minute build timeout, or the 60-second command timeout ends the
+running build or command together with every process it started. It starts
 a guarded GameService command that uses
 `ItemTransactionService`, accepts only Development, requires a loopback
 PostgreSQL host with a non-production-like database name, and refuses an active
@@ -711,10 +721,10 @@ removing the guard could leave the worker and Unity on stale live state. A safe
 online grant tool must be a separate service-authenticated development intent
 routed through the worker that currently owns the character.
 
-1. Build Release once, then start normal local infrastructure and GameService:
+1. Start normal local infrastructure and GameService. No separate Release
+   build is needed, because the window builds GameService itself:
 
    ```powershell
-   dotnet build Mmorpg.slnx --configuration Release
    docker compose up -d --wait
    dotnet run --project src/Server/GameService
    ```
@@ -723,8 +733,20 @@ routed through the worker that currently owns the character.
    and create a new character. Do not join a shard. Exit Play Mode. GameService
    may remain running.
 3. Select `MMORPG > Tools > Inventory Item Grants` from Unity's top menu.
-   The window refreshes automatically. Select the new offline character. The
-   row shows account, online state, item count, weight, and capacity.
+   The window refreshes automatically. The toolbar shows
+   `Building GameService...` and then `GameService command running...`. Select
+   the new offline character. The row shows account, online state, item count,
+   weight, and capacity.
+
+   If GameService does not compile, the window reports
+   `GameService could not be built, so the tool did not run an older build`
+   followed by the first compiler errors, and runs nothing. If GameService
+   stops before it answers, for example because the local database does not
+   match the source, the window shows the exception message first, such as
+   `GameService failed before it returned a development item response:
+   Npgsql.PostgresException (0x80004005): 42703: column "sort_order" does not
+   exist`. In both cases the complete build or GameService output, including the
+   stack trace, is logged as one error in the Unity Console.
 4. For a custom grant, choose an item definition, quantity, and Permanent
    Inventory, Bank, or Secure Container destination. Click `Give Item`.
    Expected result: the status reports the committed grant and the character row
@@ -775,19 +797,20 @@ bindings, persistent controller, EventSystem, Canvas, and temporary uGUI
    or created by the maintained foundation.
 
 The terminal interface remains available as a fallback or for automation. It
-uses the same guardrails and transaction service:
+uses the same guardrails and transaction service. `dotnet run` builds
+GameService first, so do not add `--no-build`:
 
 ```powershell
-dotnet run --project src/Server/GameService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release -- `
   --dev-items-list
 
-dotnet run --project src/Server/GameService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release -- `
   --dev-items-grant <characterId> material.iron_ore 20 bank
 
-dotnet run --project src/Server/GameService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release -- `
   --dev-items-package <characterId> full_inventory
 
-dotnet run --project src/Server/GameService --configuration Release --no-build -- `
+dotnet run --project src/Server/GameService --configuration Release -- `
   --dev-items-corpse <characterId> local-shard-1 0 0 -1
 ```
 
