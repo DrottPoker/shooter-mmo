@@ -54,7 +54,12 @@ public sealed record SimulationWorkerConfig(
 
     public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
 
+    public const string DefaultItemCatalogPath = "WorldData/Items/core.item-catalog.json";
+
     public string ActorDataPath { get; init; } = string.Empty;
+
+    // The compiled item catalog that combat data and Mob loot come from.
+    public string ItemCatalogPath { get; init; } = string.Empty;
 
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
@@ -577,8 +582,19 @@ public sealed record SimulationWorkerConfig(
             ItemInteraction = itemInteraction,
             ActorDataPath = WorldManifestFileStore.ResolveActorRuntimePath(
                 worldDataPath!,
-                worldId!)
+                worldId!),
+            ItemCatalogPath = ResolveItemCatalogPath(section["ItemCatalogPath"])
         };
+    }
+
+    private static string ResolveItemCatalogPath(string? configuredPath)
+    {
+        var path = string.IsNullOrWhiteSpace(configuredPath)
+            ? DefaultItemCatalogPath
+            : configuredPath.Trim();
+        return Path.GetFullPath(Path.IsPathRooted(path)
+            ? path
+            : Path.Combine(AppContext.BaseDirectory, path));
     }
 
     private static string? Require(string? value, string key, ICollection<string> errors)

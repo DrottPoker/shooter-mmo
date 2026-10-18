@@ -54,7 +54,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
                 .Select(field => $"{type.Name}.{field.Name}"))
             .ToArray();
 
-        Assert.Equal(21, handlerTypes.Length);
+        Assert.Equal(22, handlerTypes.Length);
         Assert.True(
             mutableFields.Length == 0,
             "Item command handlers are shared across concurrent transactions and may hold only readonly injected fields:"

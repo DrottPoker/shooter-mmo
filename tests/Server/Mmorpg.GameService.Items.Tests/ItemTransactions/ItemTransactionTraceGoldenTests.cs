@@ -16,6 +16,7 @@ public sealed class ItemTransactionTraceGoldenTests
     private const string Ring = "fixture.ring";
     private const string Pack = "fixture.pack";
     private const string QuestItem = "fixture.letter";
+    private const string Arrow = "fixture.arrow";
     private const string QuestGrantId = "golden_quest";
     private const string Pickaxe = "fixture.pickaxe";
     private const string Vendor = "vendor.fixture_store";
@@ -176,6 +177,65 @@ public sealed class ItemTransactionTraceGoldenTests
                 destroyId,
                 ItemTransactionActor.ForSystem(),
                 new DestroyItemCommand(characterId, state.Revision, ringId, ring.Revision, "golden_cleanup")),
+            CancellationToken.None)));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task CombatCommandsMatchTheirGoldenTraces()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        await using var traced = TracedItemTransactions.Create(context);
+        var archer = await world.RegisterAsync("golden_archer");
+        var characterId = archer.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var arrowId = await world.GrantAsync(characterId, Arrow, 50, inventoryId, 0);
+        await world.EquipAsync(characterId, arrowId, "ammunition");
+
+        state = await world.LoadStateAsync(characterId);
+        var arrow = await world.LoadItemAsync(arrowId);
+        var partialId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("consume_equipped_ammunition.partial", partialId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<ConsumeEquippedAmmunitionCommand>(
+                partialId,
+                ItemTransactionActor.ForSystem(),
+                new ConsumeEquippedAmmunitionCommand(characterId, state.Revision, arrowId, arrow.Revision, 5)),
+            CancellationToken.None)));
+
+        state = await world.LoadStateAsync(characterId);
+        arrow = await world.LoadItemAsync(arrowId);
+        var exhaustedId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("consume_equipped_ammunition.exhausted", exhaustedId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<ConsumeEquippedAmmunitionCommand>(
+                exhaustedId,
+                ItemTransactionActor.ForSystem(),
+                new ConsumeEquippedAmmunitionCommand(
+                    characterId,
+                    state.Revision,
+                    arrowId,
+                    arrow.Revision,
+                    arrow.Quantity)),
+            CancellationToken.None)));
+
+        // A combat death commits the shots the worker had not sent yet and records the killer.
+        var pendingArrowId = await world.GrantAsync(characterId, Arrow, 20, inventoryId, 0);
+        await world.EquipAsync(characterId, pendingArrowId, "ammunition");
+        state = await world.LoadStateAsync(characterId);
+        var pendingArrow = await world.LoadItemAsync(pendingArrowId);
+        var deathId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("process_player_death.combat", deathId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<ProcessPlayerDeathCommand>(
+                deathId,
+                ItemTransactionActor.ForSystem(),
+                CreateDeathCommand(characterId, state.Revision) with
+                {
+                    AmmunitionConsumption = new DeathAmmunitionConsumption(
+                        pendingArrowId,
+                        pendingArrow.Revision,
+                        3),
+                    Killer = new DeathKiller(DeathKillerKinds.Mob, "mob.fixture_wolf")
+                }),
             CancellationToken.None)));
     }
 

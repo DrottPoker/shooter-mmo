@@ -8,6 +8,7 @@ internal static class PlacementSchemaMigrations
     public static IReadOnlyList<DatabaseMigration> All { get; } =
     [
         new(DevelopmentWorldIdentityMigration.Id, DevelopmentWorldIdentityMigration.Sql),
-        new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql)
+        new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql),
+        new(WorkerItemCatalogRevisionMigration.Id, WorkerItemCatalogRevisionMigration.Sql)
     ];
 }

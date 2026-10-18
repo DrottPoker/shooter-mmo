@@ -31,8 +31,10 @@ public sealed class GameServiceSchema
         "202610171200_item_catalog_alignment",
         "202610181200_character_level",
         "202610181210_item_level_requirement",
-        "202610181220_character_currency_ledger",
-        "202610181230_item_economy"
+        "202610181220_death_event_killer",
+        "202610181230_worker_item_catalog_revision",
+        "202610181240_character_currency_ledger",
+        "202610181250_item_economy"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

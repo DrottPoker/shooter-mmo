@@ -5,6 +5,7 @@ using System.Text.Json;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Health;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.Telemetry;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
@@ -23,6 +24,9 @@ public sealed class GameServiceClient(HttpClient httpClient)
     private const int MaximumOperationContainerRevisions = 8;
     private const int MaximumOperationItemRevisions = 32;
     private const int MaximumOperationRecoveryDeliveries = 8;
+
+    // A character has one item per equipment slot, and the catalog has far fewer slots.
+    private const int MaximumEquippedItems = 64;
 
     public async Task<DependencyHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
@@ -85,6 +89,10 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && string.Equals(
                     response.CollisionRevision,
                     request.CollisionRevision,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    response.ItemCatalogRevision,
+                    request.ItemCatalogRevision,
                     StringComparison.Ordinal)
                 && response.LastHeartbeatAt != default
                 && response.OnlineUntil > response.LastHeartbeatAt,
@@ -242,6 +250,19 @@ public sealed class GameServiceClient(HttpClient httpClient)
             $"/api/simulation-sessions/{simulationSessionId}/release",
             new SimulationSessionCredentialRequest(workerRuntimeId, sessionToken),
             IsValidSimulationSessionLease,
+            cancellationToken);
+    }
+
+    public Task<GameServiceResult<SimulationItemTransactionResponse>> ConsumeAmmunitionAsync(
+        Guid simulationSessionId,
+        SimulationAmmunitionConsumptionRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationAmmunitionConsumptionRequest, SimulationItemTransactionResponse>(
+            "GameService.ConsumeAmmunition",
+            $"/api/simulation-sessions/{simulationSessionId}/ammunition-consumptions",
+            request,
+            response => IsValidAmmunitionConsumption(response, request),
             cancellationToken);
     }
 
@@ -483,7 +504,8 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && IsValidCarryState(
                 response.ItemStateRevision,
                 response.CarriedWeight,
-                response.CarryCapacity);
+                response.CarryCapacity)
+            && IsValidEquipment(response.Equipment);
     }
 
     private static bool IsValidSimulationSessionLease(
@@ -499,7 +521,8 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && IsValidCarryState(
                 response.ItemStateRevision,
                 response.CarriedWeight,
-                response.CarryCapacity);
+                response.CarryCapacity)
+            && IsValidEquipment(response.Equipment);
     }
 
     private static bool IsValidSimulationItemTransaction(
@@ -540,7 +563,46 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
             && response.ItemRevisions.All(
                 revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
-            && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty);
+            && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty)
+            && IsValidCharacterState(
+                response.CharacterState,
+                request.CharacterId,
+                response.CharacterRevisions.Count == 0 ? 0 : response.CharacterRevisions[0].Revision);
+    }
+
+    private static bool IsValidAmmunitionConsumption(
+        SimulationItemTransactionResponse response,
+        SimulationAmmunitionConsumptionRequest request)
+    {
+        return response.OperationId == request.OperationId
+            && string.Equals(
+                response.OperationKind,
+                "consume_equipped_ammunition",
+                StringComparison.Ordinal)
+            && response.Succeeded
+            && response.Error is null
+            && response.CharacterRevisions is not null
+            && response.CharacterRevisions.Count == 1
+            && response.CharacterRevisions[0].CharacterId == request.CharacterId
+            && response.CharacterRevisions[0].Revision > request.ExpectedCharacterRevision
+            && IsValidCarryState(
+                response.CharacterRevisions[0].Revision,
+                response.CharacterRevisions[0].CarriedWeight,
+                response.CharacterRevisions[0].CarryCapacity)
+            && response.ContainerRevisions is not null
+            && response.ContainerRevisions.Count == 0
+            && response.ItemRevisions is not null
+            && response.ItemRevisions.Count <= 1
+            && response.ItemRevisions.All(revision =>
+                revision.ItemInstanceId == request.ItemInstanceId
+                && revision.Revision > request.ExpectedItemRevision)
+            && response.RecoveryDeliveryIds is not null
+            && response.RecoveryDeliveryIds.Count == 0
+            && response.SecureContainerEntitlementRevision is null
+            && IsValidCharacterState(
+                response.CharacterState,
+                request.CharacterId,
+                response.CharacterRevisions[0].Revision);
     }
 
     private static bool IsValidCorpseMutation(
@@ -594,7 +656,11 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && response.Transaction.ItemRevisions.All(
                 revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
             && (response.Corpse is null
-                || IsValidCorpseView(response.Corpse, corpseId, request.ShardId));
+                || IsValidCorpseView(response.Corpse, corpseId, request.ShardId))
+            && IsValidCharacterState(
+                response.CharacterState,
+                request.CharacterId,
+                isInternalMove ? 0 : response.Transaction.CharacterRevisions[0].Revision);
     }
 
     private static bool IsValidLiveMobLootGrant(
@@ -623,7 +689,11 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && response.ItemRevisions[0].Revision >= 0
             && response.RecoveryDeliveryIds is not null
             && response.RecoveryDeliveryIds.Count == 0
-            && response.SecureContainerEntitlementRevision is null;
+            && response.SecureContainerEntitlementRevision is null
+            && IsValidCharacterState(
+                response.CharacterState,
+                request.CharacterId,
+                response.CharacterRevisions[0].Revision);
     }
 
     private static bool IsValidCorpseView(
@@ -749,7 +819,11 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && response.RecoveryDeliveryIds.Count <= MaximumDeathRecoveryDeliveries
             && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty)
             && response.RecoveryDeliveryIds.Distinct().Count()
-                == response.RecoveryDeliveryIds.Count;
+                == response.RecoveryDeliveryIds.Count
+            && IsValidCharacterState(
+                response.CharacterState,
+                request.CharacterId,
+                response.CharacterRevision.Revision);
     }
 
     private static bool IsValidDurableCorpse(
@@ -843,6 +917,37 @@ public sealed class GameServiceClient(HttpClient httpClient)
         return printable.Length <= MaximumForwardedErrorMessageLength
             ? printable
             : printable[..MaximumForwardedErrorMessageLength];
+    }
+
+    // Every mutation response carries the acting character's state, read after the commit.
+    // A later operation may have committed in between, so the state is never older than
+    // the committed revision but can be newer.
+    private static bool IsValidCharacterState(
+        SimulationCharacterState? state,
+        Guid characterId,
+        long committedRevision)
+    {
+        return state is not null
+            && state.CharacterId == characterId
+            && state.ItemStateRevision >= committedRevision
+            && IsValidCarryState(state.ItemStateRevision, state.CarriedWeight, state.CarryCapacity)
+            && IsValidEquipment(state.Equipment);
+    }
+
+    private static bool IsValidEquipment(IReadOnlyList<SimulationEquippedItem>? equipment)
+    {
+        return equipment is not null
+            && equipment.Count <= MaximumEquippedItems
+            && equipment.All(item =>
+                item is not null
+                && Identifiers.IsContentIdentifier(item.EquipmentSlotId)
+                && item.ItemInstanceId != Guid.Empty
+                && Identifiers.IsContentIdentifier(item.DefinitionId)
+                && item.Quantity > 0
+                && item.Revision >= 0)
+            && equipment.Select(item => item.EquipmentSlotId).Distinct(StringComparer.Ordinal).Count()
+                == equipment.Count
+            && equipment.Select(item => item.ItemInstanceId).Distinct().Count() == equipment.Count;
     }
 
     // Weight above the hard cap is valid: death can leave an involuntary overflow.

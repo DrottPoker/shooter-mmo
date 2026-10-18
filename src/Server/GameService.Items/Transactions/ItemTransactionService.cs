@@ -18,6 +18,7 @@ internal sealed class ItemTransactionService
     private readonly ItemRelocationCommandHandler itemRelocation = new();
     private readonly ItemEquipmentCommandHandler itemEquipment = new();
     private readonly ItemStackCommandHandler itemStack = new();
+    private readonly AmmunitionConsumptionCommandHandler ammunitionConsumption = new();
     private readonly ItemDestructionCommandHandler itemDestruction = new();
     private readonly BagAggregateCommandHandler bagAggregate = new();
     private readonly RecoveryDeliveryCommandHandler recoveryDelivery = new();
@@ -159,6 +160,18 @@ internal sealed class ItemTransactionService
             ItemOperationKinds.ConsumeQuantity,
             request.Command.CharacterId,
             itemStack,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<ConsumeEquippedAmmunitionCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.ConsumeEquippedAmmunition,
+            request.Command.CharacterId,
+            ammunitionConsumption,
             cancellationToken);
     }
 

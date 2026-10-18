@@ -28,6 +28,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             "test-worker-runtime",
             DateTime.UtcNow.AddMinutes(-1));
         var collisionWorld = CollisionTestWorldFactory.Create();
+        var itemCatalog = ItemCatalogTestData.CompileFixture();
         var registrationLease = new SimulationWorkerRegistrationLease(TimeProvider.System);
         using var service = new SimulationWorkerHeartbeatService(
             new GameServiceClient(httpClient),
@@ -36,6 +37,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             new ActiveSimulationSessionStore(),
             readiness,
             collisionWorld,
+            itemCatalog,
             NullLogger<SimulationWorkerHeartbeatService>.Instance,
             registrationLease);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -71,6 +73,8 @@ public sealed class SimulationWorkerHeartbeatServiceTests
         Assert.Equal("test-worker-runtime", handler.HeartbeatRequest.RuntimeId);
         Assert.Equal(100, handler.HeartbeatRequest.MaxConnections);
         Assert.Equal(0, handler.HeartbeatRequest.ActiveConnections);
+        Assert.Equal(collisionWorld.Revision, handler.HeartbeatRequest.CollisionRevision);
+        Assert.Equal(itemCatalog.Revision, handler.HeartbeatRequest.ItemCatalogRevision);
         Assert.Equal("test-worker-runtime", handler.OfflineRequest!.RuntimeId);
     }
 
@@ -97,6 +101,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             new ActiveSimulationSessionStore(),
             readiness,
             CollisionTestWorldFactory.Create(),
+            ItemCatalogTestData.CompileFixture(),
             NullLogger<SimulationWorkerHeartbeatService>.Instance,
             registrationLease,
             applicationLifetime);
@@ -196,6 +201,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             new ActiveSimulationSessionStore(),
             readiness,
             CollisionTestWorldFactory.Create(),
+            ItemCatalogTestData.CompileFixture(),
             NullLogger<SimulationWorkerHeartbeatService>.Instance,
             lease,
             lifetime);
@@ -279,6 +285,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     HeartbeatRequest.ProtocolVersion,
                     HeartbeatRequest.SimulationRevision,
                     HeartbeatRequest.CollisionRevision,
+                    HeartbeatRequest.ItemCatalogRevision,
                     now,
                     now.AddSeconds(30)));
             }
@@ -402,6 +409,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     heartbeat.ProtocolVersion,
                     heartbeat.SimulationRevision,
                     heartbeat.CollisionRevision,
+                    heartbeat.ItemCatalogRevision,
                     now,
                     now.AddSeconds(30)))
             };

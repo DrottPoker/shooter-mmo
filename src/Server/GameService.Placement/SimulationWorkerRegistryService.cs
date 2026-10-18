@@ -273,6 +273,7 @@ internal sealed class SimulationWorkerRegistryService(
                 protocol_version,
                 simulation_revision,
                 collision_revision,
+                item_catalog_revision,
                 is_online,
                 last_heartbeat_at,
                 updated_at)
@@ -288,6 +289,7 @@ internal sealed class SimulationWorkerRegistryService(
                 @ProtocolVersion,
                 @SimulationRevision,
                 @CollisionRevision,
+                @ItemCatalogRevision,
                 true,
                 now(),
                 now())
@@ -306,6 +308,7 @@ internal sealed class SimulationWorkerRegistryService(
                 protocol_version = excluded.protocol_version,
                 simulation_revision = excluded.simulation_revision,
                 collision_revision = excluded.collision_revision,
+                item_catalog_revision = excluded.item_catalog_revision,
                 is_online = true,
                 last_heartbeat_at = now(),
                 updated_at = now()
@@ -330,6 +333,7 @@ internal sealed class SimulationWorkerRegistryService(
                       protocol_version as "ProtocolVersion",
                       simulation_revision as "SimulationRevision",
                       collision_revision as "CollisionRevision",
+                      item_catalog_revision as "ItemCatalogRevision",
                       last_heartbeat_at as "LastHeartbeatAt",
                       last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil";
             """;
@@ -350,6 +354,7 @@ internal sealed class SimulationWorkerRegistryService(
                     request.ProtocolVersion,
                     SimulationRevision = request.SimulationRevision!.Trim(),
                     CollisionRevision = request.CollisionRevision!.Trim(),
+                    ItemCatalogRevision = request.ItemCatalogRevision!.Trim(),
                     FleetId = request.FleetId!.Trim(),
                     ShardId = shardId,
                     WorldId = worldId,
@@ -684,7 +689,8 @@ internal sealed class SimulationWorkerRegistryService(
         }
 
         if (!IsValidRevision(request.SimulationRevision)
-            || !IsValidRevision(request.CollisionRevision))
+            || !IsValidRevision(request.CollisionRevision)
+            || !IsValidRevision(request.ItemCatalogRevision))
         {
             return ("invalid_worker_revision", "Simulation worker revision metadata is invalid.");
         }

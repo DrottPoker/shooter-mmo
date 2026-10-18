@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
@@ -11,7 +12,8 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Partitions a dead character's carried items into a durable corpse and Recovery
-// Storage deliveries once per death event, and replays the event idempotently.
+// Storage deliveries once per death event, and replays the event idempotently. Shots the
+// worker had not committed yet are consumed first, so the corpse holds the true count.
 internal sealed class PlayerDeathCommandHandler
     : IItemCommandHandler<ProcessPlayerDeathCommand>
 {
@@ -193,6 +195,11 @@ internal sealed class PlayerDeathCommandHandler
             sourceRows.Select(row => row.ItemInstanceId),
             sourceContainerIds,
             cancellationToken);
+        sourceRows = await ConsumePendingAmmunitionAsync(
+            context,
+            command,
+            sourceRows,
+            cancellationToken);
 
         var partitionItems = new List<DeathPartitionItem>(sourceRows.Length);
         foreach (var source in sourceRows)
@@ -301,14 +308,18 @@ internal sealed class PlayerDeathCommandHandler
                 corpse_id,
                 operation_id,
                 request_hash,
-                result_payload)
+                result_payload,
+                killer_kind,
+                killer_id)
             values (
                 @DeathEventId,
                 @CharacterId,
                 @CorpseId,
                 @OperationId,
                 @RequestHash,
-                cast(@ResultPayload as jsonb));
+                cast(@ResultPayload as jsonb),
+                @KillerKind,
+                @KillerId);
             """,
             new
             {
@@ -317,6 +328,8 @@ internal sealed class PlayerDeathCommandHandler
                 CorpseId = corpseId,
                 context.OperationId,
                 RequestHash = requestHash,
+                KillerKind = command.Killer?.Kind,
+                KillerId = command.Killer?.Id,
                 ResultPayload = JsonSerializer.Serialize(
                     new
                     {
@@ -357,6 +370,44 @@ internal sealed class PlayerDeathCommandHandler
             });
     }
 
+    // The ammunition must be one of the character's equipped death sources. A fully
+    // consumed stack no longer exists, so it leaves the partition.
+    private static async Task<DeathItemSourceRow[]> ConsumePendingAmmunitionAsync(
+        ItemTransactionContext context,
+        ProcessPlayerDeathCommand command,
+        DeathItemSourceRow[] sourceRows,
+        CancellationToken cancellationToken)
+    {
+        var consumption = command.AmmunitionConsumption;
+        if (consumption is null)
+        {
+            return sourceRows;
+        }
+
+        var source = sourceRows.SingleOrDefault(row =>
+            row.ItemInstanceId == consumption.ItemInstanceId
+            && string.Equals(row.SourceKind, "equipment", StringComparison.Ordinal));
+        var item = source is null
+            ? null
+            : await context.State.LoadItemAsync(consumption.ItemInstanceId, cancellationToken);
+        if (item is null || item.Revision != consumption.ExpectedItemRevision)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStateConflict,
+                "The pending ammunition changed before the death event committed.");
+        }
+
+        await ItemQuantityConsumption.ConsumeEquippedAmmunitionAsync(
+            context,
+            command.CharacterId,
+            item,
+            consumption.Quantity,
+            cancellationToken);
+        return consumption.Quantity == item.Quantity
+            ? sourceRows.Where(row => row.ItemInstanceId != item.ItemInstanceId).ToArray()
+            : sourceRows;
+    }
+
     private static Task<DeathEventRow?> LoadDeathEventAsync(
         ItemTransactionContext context,
         Guid deathEventId,
@@ -392,7 +443,9 @@ internal sealed class PlayerDeathCommandHandler
                 command.RotationY,
                 command.RotationZ,
                 command.RotationW,
-                command.PresentationKey),
+                command.PresentationKey,
+                command.AmmunitionConsumption,
+                command.Killer),
             ItemOperationJson.Options);
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
@@ -433,6 +486,15 @@ internal sealed class PlayerDeathCommandHandler
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.DeathEventConflict,
                 "Player death must use the authoritative generic corpse presentation key.");
+        }
+
+        if (command.Killer is not null
+            && !string.Equals(command.Killer.Kind, DeathKillerKinds.Mob, StringComparison.Ordinal)
+            && !string.Equals(command.Killer.Kind, DeathKillerKinds.Character, StringComparison.Ordinal))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.DeathEventConflict,
+                "The death killer must be a Mob or a character.");
         }
 
         if (!CorpseTransformRules.IsFinitePosition(command.PositionX)
@@ -481,7 +543,13 @@ internal sealed class PlayerDeathCommandHandler
         double RotationY,
         double RotationZ,
         double RotationW,
-        string PresentationKey);
+        string PresentationKey,
+        // Absent values stay out of the hash, so deaths recorded before these fields
+        // existed keep their request hash.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        DeathAmmunitionConsumption? AmmunitionConsumption,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        DeathKiller? Killer);
 
     private sealed class CharacterDeathSourceRow
     {

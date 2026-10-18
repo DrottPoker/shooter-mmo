@@ -183,7 +183,7 @@ public sealed class AuthSimulationFlowIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task CarryStateIsFencedIntoJoinHeartbeatAndReconnect()
+    public async Task CarryStateAndEquipmentAreFencedIntoJoinHeartbeatAndReconnect()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync(
@@ -263,6 +263,11 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(snapshot.ItemStateRevision, consumed.Value!.ItemStateRevision);
         Assert.Equal(snapshot.CarriedWeight, consumed.Value.CarriedWeight);
         Assert.Equal(snapshot.CarryCapacity, consumed.Value.CarryCapacity);
+        var joinedBag = Assert.Single(consumed.Value.Equipment);
+        Assert.Equal("bag", joinedBag.EquipmentSlotId);
+        Assert.Equal(bag.ItemInstanceId, joinedBag.ItemInstanceId);
+        Assert.Equal("fixture.pack", joinedBag.DefinitionId);
+        Assert.Equal(1, joinedBag.Quantity);
 
         var grantWhileActive = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
@@ -291,6 +296,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(committedCarry.Revision, heartbeat.Value!.ItemStateRevision);
         Assert.Equal(committedCarry.CarriedWeight, heartbeat.Value.CarriedWeight);
         Assert.Equal(committedCarry.CarryCapacity, heartbeat.Value.CarryCapacity);
+        Assert.Equal(consumed.Value.Equipment, heartbeat.Value.Equipment);
 
         var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
@@ -306,6 +312,78 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(heartbeat.Value.ItemStateRevision, reconnect.Value.ItemStateRevision);
         Assert.Equal(heartbeat.Value.CarriedWeight, reconnect.Value.CarriedWeight);
         Assert.Equal(heartbeat.Value.CarryCapacity, reconnect.Value.CarryCapacity);
+        Assert.Equal(heartbeat.Value.Equipment, reconnect.Value.Equipment);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task JoinRequiresTheWorkerToRunTheMirroredItemCatalog()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var player = await context.RegisterPlayerAsync();
+        var mismatched = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                ItemCatalogRevision = "another-item-catalog-revision"
+            },
+            CancellationToken.None);
+        Assert.True(mismatched.Succeeded, mismatched.Error?.Message);
+        Assert.Equal("another-item-catalog-revision", mismatched.Value!.ItemCatalogRevision);
+
+        var rejected = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(StatusCodes.Status409Conflict, rejected.StatusCode);
+        Assert.Equal("simulation_worker_item_catalog_mismatch", rejected.Error!.Code);
+        Assert.Equal(0, await CountActiveTicketsAsync(context));
+
+        var matching = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest(),
+            CancellationToken.None);
+        Assert.True(matching.Succeeded, matching.Error?.Message);
+        Assert.Equal(
+            PostgresIntegrationTestContext.FixtureItemCatalogRevision,
+            matching.Value!.ItemCatalogRevision);
+        var join = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+
+        // A reconnect to the owning worker is rejected once that worker reports another catalog.
+        var changed = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                ItemCatalogRevision = "another-item-catalog-revision"
+            },
+            CancellationToken.None);
+        Assert.True(changed.Succeeded, changed.Error?.Message);
+        var reconnect = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.False(reconnect.Succeeded);
+        Assert.Equal("simulation_worker_item_catalog_mismatch", reconnect.Error!.Code);
+
+        var missing = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                ItemCatalogRevision = null
+            },
+            CancellationToken.None);
+        Assert.False(missing.Succeeded);
+        Assert.Equal(StatusCodes.Status400BadRequest, missing.StatusCode);
     }
 
     [PostgresIntegrationFact]

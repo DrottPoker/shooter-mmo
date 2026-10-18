@@ -29,7 +29,26 @@ public sealed record ConsumedSimulationJoinTicketResponse(
     // The lease duration lets the worker set a deadline on its own clock, so clock
     // differences between the worker and the database never move the deadline.
     public long SessionLeaseDurationMilliseconds { get; init; }
+
+    // What the character has equipped at ItemStateRevision.
+    public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 }
+
+// One occupied equipment slot, such as the equipped weapon or the arrow stack.
+public sealed record SimulationEquippedItem(
+    string EquipmentSlotId,
+    Guid ItemInstanceId,
+    string DefinitionId,
+    int Quantity,
+    long Revision);
+
+// The acting character's carry state and equipment after an operation, at one revision.
+public sealed record SimulationCharacterState(
+    Guid CharacterId,
+    long ItemStateRevision,
+    long CarriedWeight,
+    long CarryCapacity,
+    IReadOnlyList<SimulationEquippedItem> Equipment);
 
 public sealed record SimulationSessionCredentialRequest(
     string WorkerRuntimeId,
@@ -50,6 +69,9 @@ public sealed record SimulationSessionLeaseResponse(
     // The lease duration lets the worker set a deadline on its own clock, so clock
     // differences between the worker and the database never move the deadline.
     public long LeaseDurationMilliseconds { get; init; }
+
+    // What the character has equipped at ItemStateRevision.
+    public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 }
 
 // VendorProfileId is the vendor profile of the validated vendor capability, or null.
@@ -111,14 +133,26 @@ public sealed record SimulationPlayerDeathRequest(
     double RotationY,
     double RotationZ,
     double RotationW,
-    string PresentationKey);
+    string PresentationKey,
+    SimulationDeathAmmunitionRequest? AmmunitionConsumption = null,
+    SimulationDeathKillerRequest? Killer = null);
+
+// The shots the worker had not committed yet when the character died.
+public sealed record SimulationDeathAmmunitionRequest(
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity);
+
+// The killer kind is mob or character, and the id is its actor definition or character id.
+public sealed record SimulationDeathKillerRequest(string Kind, string Id);
 
 public sealed record PlayerDeathPartitionResponse(
     Guid OperationId,
     Guid DeathEventId,
     DurableCorpseResponse Corpse,
     SimulationItemCharacterRevision CharacterRevision,
-    IReadOnlyList<Guid> RecoveryDeliveryIds);
+    IReadOnlyList<Guid> RecoveryDeliveryIds,
+    SimulationCharacterState? CharacterState = null);
 
 public sealed record MobCorpseLootEntryRequest(
     Guid GrantId,
@@ -174,9 +208,25 @@ public sealed record SimulationItemTransactionResponse(
     IReadOnlyList<SimulationItemContainerRevision> ContainerRevisions,
     IReadOnlyList<SimulationItemInstanceRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
-    long? SecureContainerEntitlementRevision);
+    long? SecureContainerEntitlementRevision,
+    SimulationCharacterState? CharacterState = null);
 
 public sealed record SimulationItemTransactionError(string Code, string Message);
+
+// One batch of shots from the equipped ammunition stack. The operation id is the batch
+// id, so a retry replays the stored result instead of consuming twice.
+public sealed record SimulationAmmunitionConsumptionRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    long ExpectedCharacterRevision,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    int Quantity);
 
 public sealed record SimulationItemCharacterRevision(
     Guid CharacterId,
@@ -202,6 +252,7 @@ public sealed record SimulationWorkerHeartbeatResponse(
     int ProtocolVersion,
     string SimulationRevision,
     string CollisionRevision,
+    string ItemCatalogRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 
@@ -218,7 +269,8 @@ public sealed record SimulationWorkerHeartbeatRequest(
     int ActiveConnections,
     int ProtocolVersion,
     string SimulationRevision,
-    string CollisionRevision);
+    string CollisionRevision,
+    string ItemCatalogRevision);
 
 public sealed record SimulationWorkerOfflineRequest(string RuntimeId);
 
@@ -291,7 +343,8 @@ public sealed record SimulationCorpseMutationRequest(
 
 public sealed record CorpseMutationResponse(
     SimulationItemTransactionResponse Transaction,
-    CorpseViewSnapshotResponse? Corpse);
+    CorpseViewSnapshotResponse? Corpse,
+    SimulationCharacterState? CharacterState = null);
 
 public sealed record CorpseViewSnapshotResponse(
     Guid CorpseId,

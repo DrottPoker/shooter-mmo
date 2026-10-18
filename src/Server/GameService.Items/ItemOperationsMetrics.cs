@@ -300,6 +300,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
         ItemOperationKinds.MergeStacks,
         ItemOperationKinds.SwapContainerItems,
         ItemOperationKinds.ConsumeQuantity,
+        ItemOperationKinds.ConsumeEquippedAmmunition,
         ItemOperationKinds.Destroy,
         ItemOperationKinds.SwapBagAggregates,
         ItemOperationKinds.AddRecoveryDelivery,

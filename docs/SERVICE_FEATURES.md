@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -58,6 +58,7 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation through the durable kernel |
+| `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
 | `POST /api/simulation-sessions/{id}/corpses/{corpseId}/open` | Worker service policy | Read one exact-session, unexpired, same-Shard corpse snapshot after worker proximity validation |
@@ -155,7 +156,7 @@ Each SimulationWorker has:
 - Fleet, Node, Shard, and World configuration.
 - An advertised UDP endpoint.
 - Maximum and active connection counts.
-- Protocol, simulation, and collision revisions.
+- Protocol, simulation, collision, and item catalog revisions.
 - A process start timestamp.
 
 GameService validates identifiers, topology consistency, endpoint metadata,
@@ -203,6 +204,11 @@ Join placement:
    connections.
 7. Re-reads the assignment after locking the worker, so a worker that moved to
    another Shard in the meantime is never placed.
+   Rejects the join, and a reconnect to the owning worker, with `409`
+   `simulation_worker_item_catalog_mismatch` when the worker's last heartbeat
+   reported another item catalog revision than the one GameService mirrors.
+   Combat data and Mob loot come from the worker's catalog and item custody
+   from GameService's, so both must be the same catalog.
 8. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
    account session.
 9. Computes expiry with `clock_timestamp()` after placement locks are acquired.
@@ -222,9 +228,11 @@ present the ticket together with its own worker id, runtime id, and shard id.
 Consumption locks the account, character, and character item-state row, validates
 account session status, checks exact placement binding, and creates or rotates
 the simulation-session token in one transaction. The response includes the
-fenced item-state revision, carried weight, and capacity. Heartbeat updates the
-lease and reads the current committed carry tuple in the same statement so a
-worker can advance active movement state monotonically.
+fenced item-state revision, carried weight, capacity, and equipment: every
+occupied equipment slot with its item id, definition id, quantity, and item
+revision at that item-state revision. Heartbeat updates the lease and then reads
+the current committed carry tuple and equipment, so a worker can advance active
+movement and combat state monotonically.
 
 Simulation session properties:
 
@@ -321,6 +329,12 @@ This is process-local interest management for one complete shard. Cross-worker
 zone interest is deferred until zones exist.
 
 ## World Actors And Interaction
+
+SimulationWorker loads the compiled item catalog from
+`SimulationWorker:ItemCatalogPath` before binding UDP, verifies it strictly,
+checks every actor item reference against it, and reports its revision in each
+worker heartbeat. The default is `WorldData/Items/core.item-catalog.json` in the
+worker output, which the build copies from the WorldData runtime catalog.
 
 SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
 rejects malformed runtime content, revision drift, wrong World identity,
@@ -732,6 +746,27 @@ concurrent inspection, and authoritative looting:
   every reservation of the old peer first.
   Expiry, invalidation, and missing-corpse results close affected views with
   stable codes, while stale item or quantity conflicts trigger refresh.
+- Every worker mutation response, from item operations, ammunition batches,
+  corpse operations, live Mob loot grants, and player deaths, carries
+  `characterState`: the acting character's item-state revision, carry tuple,
+  and equipment, read right after the commit. A later commit can make it newer
+  than the operation's own revision but never older, and SimulationWorker
+  rejects a response whose state is older, belongs to another character, or has
+  a duplicate equipment slot or item. Stored operation results stay unchanged,
+  so a replay returns the same result with the current state.
+- SimulationWorker counts arrows against the equipped ammunition stack and
+  commits them in batches through `ammunition-consumptions`. The batch id is a
+  random version 4 operation id, so a retry replays the stored result. The batch
+  carries the expected character and item revisions and the quantity, and the
+  stack must be ammunition that the character has equipped, otherwise the batch
+  returns `422` `ammunition_not_equipped`. A batch that spends the whole stack
+  deletes it and empties the ammunition slot.
+- A player-death request may carry `ammunitionConsumption`, the shots that were
+  not committed yet, which the death transaction consumes before it partitions
+  the remaining stack into the corpse, and `killer`, either `mob` with an actor
+  definition id or `character` with a character id. `death_events` stores the
+  killer, with a character id in canonical form. Both fields are optional, and
+  a death without them keeps its previous request fingerprint.
 - SimulationWorker updates its carry-state store only from committed GameService
   results. A newer tuple is sent reliably before it affects movement. Conflicting
   same-revision data or stale live authority causes a targeted refresh response

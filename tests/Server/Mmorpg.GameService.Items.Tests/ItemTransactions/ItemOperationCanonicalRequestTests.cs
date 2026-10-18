@@ -88,6 +88,13 @@ public sealed class ItemOperationCanonicalRequestTests
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(
+                Request(new ConsumeEquippedAmmunitionCommand(A, 1, B, 2, 3)),
+                CancellationToken.None),
+            ItemOperationKinds.ConsumeEquippedAmmunition,
+            $$"""{"characterId":"{{A}}","expectedCharacterRevision":1,"itemInstanceId":"{{B}}","expectedItemRevision":2,"quantity":3}""");
+        await AssertStoredAsync(
+            context,
+            await service.ExecuteAsync(
                 Request(new DestroyItemCommand(A, 1, B, 2, "salvage")),
                 CancellationToken.None),
             ItemOperationKinds.Destroy,

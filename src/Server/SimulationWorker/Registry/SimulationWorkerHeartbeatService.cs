@@ -8,6 +8,7 @@ using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldCollision;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Registry;
 
@@ -18,6 +19,7 @@ public sealed class SimulationWorkerHeartbeatService(
     ActiveSimulationSessionStore sessionStore,
     RealtimeTransportReadiness transportReadiness,
     ChunkedStaticCollisionWorld collisionWorld,
+    ItemCatalogRuntimeDocument itemCatalog,
     ILogger<SimulationWorkerHeartbeatService> logger,
     SimulationWorkerRegistrationLease? registrationLease = null,
     IHostApplicationLifetime? applicationLifetime = null) : BackgroundService
@@ -94,7 +96,8 @@ public sealed class SimulationWorkerHeartbeatService(
                 sessionStore.ListActiveSessions().Count,
                 RealtimeProtocol.Version,
                 GameSimulationCompatibility.Revision,
-                collisionWorld.Revision),
+                collisionWorld.Revision,
+                itemCatalog.Revision),
             cancellationToken);
 
         if (!result.Succeeded)

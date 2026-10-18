@@ -16,6 +16,7 @@ internal sealed class ShardService(
     IAccountLocks accountLocks,
     ICharacterLocks characterLocks,
     ISimulationCharacterStateProvider characterStateProvider,
+    IItemCatalogRevisionProvider itemCatalogRevisionProvider,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
@@ -220,6 +221,19 @@ internal sealed class ShardService(
                 activeSession is null
                     ? "No healthy simulation worker currently has capacity for this shard."
                     : "The simulation worker that owns the active character session is unavailable.");
+        }
+
+        // Combat data and loot come from the worker's catalog and custody from GameService's,
+        // so a character only plays on a worker that runs the mirrored catalog.
+        var itemCatalogRevision = await itemCatalogRevisionProvider.GetCurrentRevisionAsync(
+            new PostgresTransactionScope(connection, transaction),
+            cancellationToken);
+        if (!string.Equals(placement.ItemCatalogRevision, itemCatalogRevision, StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<JoinShardResponse>.Conflict(
+                "simulation_worker_item_catalog_mismatch",
+                "The simulation worker runs another item catalog revision than GameService.");
         }
 
         const string insertTicketSql = """
@@ -448,7 +462,8 @@ internal sealed class ShardService(
                 carryState.CarryCapacity,
                 isReconnect)
             {
-                SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
+                SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
+                Equipment = carryState.Equipment
             });
     }
 
@@ -481,7 +496,8 @@ internal sealed class ShardService(
                        as "ActivePlayers",
                    worker.protocol_version as "ProtocolVersion",
                    worker.simulation_revision as "SimulationRevision",
-                   worker.collision_revision as "CollisionRevision"
+                   worker.collision_revision as "CollisionRevision",
+                   worker.item_catalog_revision as "ItemCatalogRevision"
             from shards shard
             join fleets fleet on fleet.id = shard.fleet_id and fleet.is_enabled
             join simulation_assignments assignment
@@ -597,7 +613,8 @@ internal sealed class ShardService(
                    worker.active_connections as "ActivePlayers",
                    worker.protocol_version as "ProtocolVersion",
                    worker.simulation_revision as "SimulationRevision",
-                   worker.collision_revision as "CollisionRevision"
+                   worker.collision_revision as "CollisionRevision",
+                   worker.item_catalog_revision as "ItemCatalogRevision"
             from shards shard
             join fleets fleet on fleet.id = shard.fleet_id and fleet.is_enabled
             join simulation_workers worker
@@ -917,7 +934,8 @@ internal sealed class ShardService(
         int ActivePlayers,
         int ProtocolVersion,
         string SimulationRevision,
-        string CollisionRevision)
+        string CollisionRevision,
+        string ItemCatalogRevision)
     {
         public ShardResponse ToShardResponse()
         {

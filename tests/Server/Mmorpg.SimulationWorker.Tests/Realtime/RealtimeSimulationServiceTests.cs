@@ -810,7 +810,8 @@ public sealed class RealtimeSimulationServiceTests
                     [],
                     [],
                     [],
-                    null));
+                    null,
+                    CharacterStateTestData.Create(CharacterId, 1)));
             }
 
             if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal))

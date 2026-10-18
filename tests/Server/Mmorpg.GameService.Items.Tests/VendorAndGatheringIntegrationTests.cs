@@ -433,8 +433,19 @@ public sealed class VendorAndGatheringIntegrationTests
             session.SimulationSessionId,
             request,
             CancellationToken.None);
-        return result.Value
-            ?? new ItemTransactionResult(
+        var value = result.Value;
+        return value is not null
+            ? new ItemTransactionResult(
+                value.OperationId,
+                value.OperationKind,
+                value.Succeeded,
+                value.Error,
+                value.CharacterRevisions,
+                value.ContainerRevisions,
+                value.ItemRevisions,
+                value.RecoveryDeliveryIds,
+                value.SecureContainerEntitlementRevision)
+            : new ItemTransactionResult(
                 request.OperationId,
                 request.OperationKind!,
                 false,

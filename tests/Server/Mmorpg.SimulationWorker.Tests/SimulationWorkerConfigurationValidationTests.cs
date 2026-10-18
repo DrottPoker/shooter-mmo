@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
+using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.Testing;
+using Mmorpg.Testing.Content;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
@@ -64,6 +66,31 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(3f, config.ItemInteraction.CorpseInteractionRadius);
         Assert.Equal(32f, config.ItemInteraction.CorpseDiscoveryRadius);
         Assert.Equal(TimeSpan.FromSeconds(30), config.ItemInteraction.DurableCorpseRefreshInterval);
+    }
+
+    [Fact]
+    public void SimulationWorkerReadsTheItemCatalogCopiedToItsOutputUnlessConfigured()
+    {
+        var defaults = SimulationWorkerConfig.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(WorkerSettings())
+            .Build());
+        var settings = WorkerSettings();
+        settings["SimulationWorker:ItemCatalogPath"] = RepositoryPaths.ItemCatalogFixtureRuntimePath;
+        var configured = SimulationWorkerConfig.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build());
+
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                SimulationWorkerConfig.DefaultItemCatalogPath)),
+            defaults.ItemCatalogPath);
+        Assert.Equal(
+            ItemCatalogTestData.Compile().Revision,
+            ItemCatalogFileLoader.Load(defaults.ItemCatalogPath).Revision);
+        Assert.Equal(
+            Path.GetFullPath(RepositoryPaths.ItemCatalogFixtureRuntimePath),
+            configured.ItemCatalogPath);
     }
 
     [Fact]

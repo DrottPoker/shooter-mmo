@@ -322,7 +322,8 @@ public sealed class RealtimeCorpseInteractionTests
                     [],
                     [],
                     null),
-                RealtimeCorpseTestData.Snapshot(mutatedCorpseId, 2))));
+                RealtimeCorpseTestData.Snapshot(mutatedCorpseId, 2),
+                CharacterStateTestData.Create(request.CharacterId, 1, 1))));
         var looterCharacter = harness.AddCharacter("Looter");
         var watcherCharacter = harness.AddCharacter("Loot Watcher");
         await harness.StartAsync();
